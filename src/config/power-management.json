@@ -1,0 +1,391 @@
+{
+  "projects": [
+    {
+      "id": "aurora",
+      "name": "Aurora 量产平台",
+      "code": "AUR-Prod"
+    },
+    {
+      "id": "nebula",
+      "name": "Nebula 高频调试项目",
+      "code": "NEB-RD"
+    },
+    {
+      "id": "atlas",
+      "name": "Atlas 海外交付项目",
+      "code": "ATL-Intl"
+    }
+  ],
+  "parameterLibrary": [
+    {
+      "id": "fast-charge-current",
+      "name": "fast_charge_current_limit_ma",
+      "description": "限制快充阶段的最大充电电流。",
+      "explanation": "控制手机在恒流快充阶段允许拉取的最大电流，过高会加剧发热并压缩电池寿命。",
+      "configFormat": "YAML: power.charge.fast_current_limit_ma: number",
+      "module": "Charging Policy",
+      "range": "2500 - 4500",
+      "unit": "mA",
+      "risk": "High",
+      "values": {
+        "aurora": {
+          "currentValue": "3850",
+          "recommendedValue": "3200",
+          "updatedAt": "1 小时前"
+        },
+        "nebula": {
+          "currentValue": "4200",
+          "recommendedValue": "3900",
+          "updatedAt": "今天 09:18"
+        },
+        "atlas": {
+          "currentValue": "3000",
+          "recommendedValue": "3100",
+          "updatedAt": "昨天"
+        }
+      }
+    },
+    {
+      "id": "charge-voltage-limit",
+      "name": "charge_voltage_limit_mv",
+      "description": "恒压阶段的充电电压上限。",
+      "explanation": "用于控制电池进入恒压补电时的目标电压，决定补电效率与热负荷上限。",
+      "configFormat": "JSON: { \"charger.cv.limitMv\": number }",
+      "module": "Charging Policy",
+      "range": "4200 - 4500",
+      "unit": "mV",
+      "risk": "High",
+      "values": {
+        "aurora": {
+          "currentValue": "4350",
+          "recommendedValue": "4320",
+          "updatedAt": "今天 08:12"
+        },
+        "nebula": {
+          "currentValue": "4380",
+          "recommendedValue": "4340",
+          "updatedAt": "1 天前"
+        },
+        "atlas": {
+          "currentValue": "4300",
+          "recommendedValue": "4310",
+          "updatedAt": "2 天前"
+        }
+      }
+    },
+    {
+      "id": "battery-temp-target",
+      "name": "battery_temp_target_c",
+      "description": "电池快充过程中的目标温度区间。",
+      "explanation": "配合散热策略控制电芯温度，目标过高会触发降额，过低则拉长充电周期。",
+      "configFormat": "JSON: { \"battery.thermal.targetTempC\": number }",
+      "module": "Battery Safety",
+      "range": "30 - 42",
+      "unit": "°C",
+      "risk": "Medium",
+      "values": {
+        "aurora": {
+          "currentValue": "38",
+          "recommendedValue": "35",
+          "updatedAt": "今天 10:24"
+        },
+        "nebula": {
+          "currentValue": "40",
+          "recommendedValue": "37",
+          "updatedAt": "2 小时前"
+        },
+        "atlas": {
+          "currentValue": "36",
+          "recommendedValue": "35",
+          "updatedAt": "3 天前"
+        }
+      }
+    },
+    {
+      "id": "soc-smoothing",
+      "name": "soc_estimation_smoothing",
+      "description": "SOC 估算平滑系数。",
+      "explanation": "控制电量百分比计算的平滑程度，数值过大则显示过慢，过小容易跳变。",
+      "configFormat": "TOML: [battery.soc] smoothing = decimal",
+      "module": "Battery Estimation",
+      "range": "0.70 - 0.95",
+      "unit": "ratio",
+      "risk": "High",
+      "values": {
+        "aurora": {
+          "currentValue": "0.82",
+          "recommendedValue": "0.88",
+          "updatedAt": "昨天"
+        },
+        "nebula": {
+          "currentValue": "0.76",
+          "recommendedValue": "0.84",
+          "updatedAt": "今天 11:05"
+        },
+        "atlas": {
+          "currentValue": "0.90",
+          "recommendedValue": "0.88",
+          "updatedAt": "4 天前"
+        }
+      }
+    },
+    {
+      "id": "battery-health-reserve",
+      "name": "battery_health_reserve_pct",
+      "description": "电池健康保留容量。",
+      "explanation": "用于控制老化机型保留的安全容量，帮助延缓满充满放对电池的损耗。",
+      "configFormat": "ENV: BATTERY_HEALTH_RESERVE_PCT=number",
+      "module": "Battery Health",
+      "range": "5 - 18",
+      "unit": "%",
+      "risk": "Medium",
+      "values": {
+        "aurora": {
+          "currentValue": "12",
+          "recommendedValue": "14",
+          "updatedAt": "今天 09:08"
+        },
+        "nebula": {
+          "currentValue": "10",
+          "recommendedValue": "13",
+          "updatedAt": "1 天前"
+        },
+        "atlas": {
+          "currentValue": "15",
+          "recommendedValue": "14",
+          "updatedAt": "3 天前"
+        }
+      }
+    },
+    {
+      "id": "usb-pd-profile",
+      "name": "usb_pd_profile_limit_w",
+      "description": "USB-PD 协商功率上限。",
+      "explanation": "限制手机与充电器协商时可接受的最大功率档位，决定是否进入 18W、33W 或更高快充。",
+      "configFormat": "ENV: POWER_USB_PD_PROFILE_LIMIT_W=number",
+      "module": "Charging Protocol",
+      "range": "18 - 65",
+      "unit": "W",
+      "risk": "Low",
+      "values": {
+        "aurora": {
+          "currentValue": "33",
+          "recommendedValue": "33",
+          "updatedAt": "今天 08:40"
+        },
+        "nebula": {
+          "currentValue": "30",
+          "recommendedValue": "33",
+          "updatedAt": "3 天前"
+        },
+        "atlas": {
+          "currentValue": "25",
+          "recommendedValue": "27",
+          "updatedAt": "昨天 17:20"
+        }
+      }
+    },
+    {
+      "id": "wireless-thermal-derate",
+      "name": "wireless_charge_thermal_derate_pct",
+      "description": "无线充电高温降额比例。",
+      "explanation": "当线圈温度接近上限时，按比例降低功率输出，避免背部温升过快。",
+      "configFormat": "YAML: power.wireless.thermal_derate_pct: number",
+      "module": "Wireless Charging",
+      "range": "10 - 35",
+      "unit": "%",
+      "risk": "Medium",
+      "values": {
+        "aurora": {
+          "currentValue": "18",
+          "recommendedValue": "24",
+          "updatedAt": "45 分钟前"
+        },
+        "nebula": {
+          "currentValue": "22",
+          "recommendedValue": "26",
+          "updatedAt": "今天 13:44"
+        },
+        "atlas": {
+          "currentValue": "16",
+          "recommendedValue": "20",
+          "updatedAt": "2 天前"
+        }
+      }
+    },
+    {
+      "id": "low-battery-shutdown",
+      "name": "low_battery_shutdown_soc",
+      "description": "低电量强制关机阈值。",
+      "explanation": "在剩余电量跌破阈值后触发保护关机，避免深度放电导致无法恢复。",
+      "configFormat": "TOML: [battery.protection] shutdown_soc = decimal",
+      "module": "Battery Protection",
+      "range": "2.0 - 4.5",
+      "unit": "%",
+      "risk": "High",
+      "values": {
+        "aurora": {
+          "currentValue": "3.2",
+          "recommendedValue": "3.0",
+          "updatedAt": "今天 12:12"
+        },
+        "nebula": {
+          "currentValue": "2.5",
+          "recommendedValue": "3.0",
+          "updatedAt": "2 天前"
+        },
+        "atlas": {
+          "currentValue": "3.8",
+          "recommendedValue": "3.5",
+          "updatedAt": "5 天前"
+        }
+      }
+    },
+    {
+      "id": "pmic-boost-voltage",
+      "name": "pmic_boost_voltage_mv",
+      "description": "电源管理芯片升压目标电压。",
+      "explanation": "配置 PMIC 在高负载和充电并发场景下的升压目标，过高会带来额外损耗。",
+      "configFormat": "ENV: PMIC_BOOST_VOLTAGE_MV=number",
+      "module": "Power IC",
+      "range": "4700 - 5600",
+      "unit": "mV",
+      "risk": "Medium",
+      "values": {
+        "aurora": {
+          "currentValue": "5200",
+          "recommendedValue": "5100",
+          "updatedAt": "2 天前"
+        },
+        "nebula": {
+          "currentValue": "5450",
+          "recommendedValue": "5300",
+          "updatedAt": "今天 16:20"
+        },
+        "atlas": {
+          "currentValue": "5000",
+          "recommendedValue": "5000",
+          "updatedAt": "6 天前"
+        }
+      }
+    },
+    {
+      "id": "standby-drain-limit",
+      "name": "standby_drain_limit_ma",
+      "description": "待机漏电流告警阈值。",
+      "explanation": "用于判定灭屏待机场景下的异常耗电，超过阈值会触发后台供电日志采集。",
+      "configFormat": "TOML: [power.standby] drain_limit_ma = number",
+      "module": "Standby Power",
+      "range": "8 - 35",
+      "unit": "mA",
+      "risk": "Low",
+      "values": {
+        "aurora": {
+          "currentValue": "18",
+          "recommendedValue": "15",
+          "updatedAt": "昨天 18:04"
+        },
+        "nebula": {
+          "currentValue": "28",
+          "recommendedValue": "22",
+          "updatedAt": "4 小时前"
+        },
+        "atlas": {
+          "currentValue": "14",
+          "recommendedValue": "14",
+          "updatedAt": "今天 07:30"
+        }
+      }
+    }
+  ],
+  "debugParameters": [
+    {
+      "id": "dbg-charge-input-current",
+      "name": "充电输入限流",
+      "key": "charger.input_current_limit_ma",
+      "currentValue": "3600",
+      "targetValue": "3600",
+      "unit": "mA",
+      "range": "2000 - 5000",
+      "risk": "High",
+      "status": "下发成功"
+    },
+    {
+      "id": "dbg-cell-temp-limit",
+      "name": "电芯温度上限",
+      "key": "battery.cell_temp_limit_c",
+      "currentValue": "43",
+      "targetValue": "41",
+      "unit": "°C",
+      "range": "38 - 46",
+      "risk": "High",
+      "status": "已同步"
+    },
+    {
+      "id": "dbg-charge-pump-enable",
+      "name": "充电泵使能",
+      "key": "charger.charge_pump.enable",
+      "currentValue": "1",
+      "targetValue": "1",
+      "unit": "bool",
+      "range": "0 - 1",
+      "risk": "Medium",
+      "status": "已同步"
+    },
+    {
+      "id": "dbg-battery-impedance",
+      "name": "电池内阻估算",
+      "key": "battery.impedance_mohm",
+      "currentValue": "68",
+      "targetValue": "68",
+      "unit": "mΩ",
+      "range": "55 - 90",
+      "risk": "Medium",
+      "status": "下发成功"
+    },
+    {
+      "id": "dbg-thermal-foldback",
+      "name": "热降额触发点",
+      "key": "battery.thermal_foldback_pct",
+      "currentValue": "84",
+      "targetValue": "80",
+      "unit": "%",
+      "range": "75 - 90",
+      "risk": "Low",
+      "status": "已同步"
+    },
+    {
+      "id": "dbg-trickle-start",
+      "name": "涓流切换电量点",
+      "key": "charger.trickle_switch_soc",
+      "currentValue": "92",
+      "targetValue": "95",
+      "unit": "%",
+      "range": "88 - 98",
+      "risk": "Medium",
+      "status": "已同步"
+    },
+    {
+      "id": "dbg-wireless-coil-temp",
+      "name": "无线线圈温度阈值",
+      "key": "wireless.coil_temp_limit_c",
+      "currentValue": "46",
+      "targetValue": "46",
+      "unit": "°C",
+      "range": "42 - 52",
+      "risk": "High",
+      "status": "下发成功"
+    },
+    {
+      "id": "dbg-pmic-boost-voltage",
+      "name": "PMIC 升压上限",
+      "key": "pmic.boost_voltage_mv",
+      "currentValue": "5200",
+      "targetValue": "5100",
+      "unit": "mV",
+      "range": "4700 - 5600",
+      "risk": "Medium",
+      "status": "已同步"
+    }
+  ]
+}

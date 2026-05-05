@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local test and browser artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Local logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.vite-dev*.log
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Codex/Superpowers local scratch state
+.superpowers/
+docs/superpowers/
+
+# Generated visual QA screenshots
+qa-screenshots/

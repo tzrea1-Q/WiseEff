@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>项目参数 Admin</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-fixed": "#d7e2ff",
+                        "secondary-container": "#50dcff",
+                        "on-primary-fixed-variant": "#0040a2",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-container": "#0052cc",
+                        "surface-container": "#e7eeff",
+                        "surface": "#f9f9ff",
+                        "on-surface": "#101c2d",
+                        "primary-fixed-dim": "#b2c5ff",
+                        "background": "#f9f9ff",
+                        "on-primary-container": "#c4d2ff",
+                        "error-container": "#ffdad6",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed-dim": "#48d7f9",
+                        "on-background": "#101c2d",
+                        "primary-fixed": "#dae2ff",
+                        "secondary": "#00687b",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#34476a",
+                        "inverse-on-surface": "#ebf1ff",
+                        "on-surface-variant": "#434654",
+                        "on-tertiary-fixed": "#041b3c",
+                        "secondary-fixed": "#afecff",
+                        "surface-container-low": "#f0f3ff",
+                        "inverse-surface": "#253143",
+                        "inverse-primary": "#b2c5ff",
+                        "surface-tint": "#0c56d0",
+                        "surface-container-high": "#dee9ff",
+                        "on-secondary-container": "#005f71",
+                        "surface-dim": "#cedbf2",
+                        "tertiary-container": "#485b80",
+                        "on-secondary": "#ffffff",
+                        "outline-variant": "#c3c6d6",
+                        "surface-bright": "#f9f9ff",
+                        "primary": "#003d9b",
+                        "on-primary-fixed": "#001848",
+                        "on-tertiary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "tertiary": "#314367",
+                        "on-tertiary-container": "#c0d3fe",
+                        "tertiary-fixed-dim": "#b4c7f1",
+                        "error": "#ba1a1a",
+                        "on-secondary-fixed-variant": "#004e5d",
+                        "outline": "#737685",
+                        "on-secondary-fixed": "#001f27",
+                        "surface-variant": "#d7e3fb",
+                        "surface-container-highest": "#d7e3fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "space-sm": "8px",
+                        "layout-margin": "32px",
+                        "space-lg": "24px",
+                        "space-xs": "4px",
+                        "layout-gutter": "20px",
+                        "space-md": "16px",
+                        "space-xl": "48px"
+                    },
+                    "fontFamily": {
+                        "data-value": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-base": ["Inter"],
+                        "data-label": ["Inter"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "data-value": ["14px", { "lineHeight": "1.4", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "1.4", "fontWeight": "600" }],
+                        "body-base": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "data-label": ["12px", { "lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-base h-screen overflow-hidden flex">
+<!-- SideNavBar -->
+<nav class="hidden md:flex flex-col bg-slate-50 border-r border-slate-200 h-screen w-64 pt-20 pb-6 z-40 fixed left-0 top-0 transition-all duration-150 ease-in-out">
+<div class="px-6 mb-8">
+<h1 class="text-lg font-black text-blue-700 font-headline-md">智效 WiseEff</h1>
+<p class="text-slate-500 font-data-label text-xs uppercase tracking-wider mt-1">AI 驱动的企业业务效率平台</p>
+</div>
+<button class="mx-4 mb-6 bg-primary text-on-primary font-data-value rounded-lg py-2.5 px-4 flex items-center justify-center gap-2 hover:bg-opacity-90 transition-colors shadow-sm">
+<span class="material-symbols-outlined text-[18px]">add</span>
+            New Analysis
+        </button>
+<div class="flex-1 flex flex-col gap-1 px-2 overflow-y-auto">
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 py-2 px-3 mx-2 hover:bg-slate-200/50 rounded-lg transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold" href="#">
+<span class="material-symbols-outlined">home</span>
+                Home
+            </a>
+<a class="flex items-center gap-3 bg-white text-blue-600 shadow-sm rounded-lg py-2 px-3 mx-2 transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">tune</span>
+                Parameters
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 py-2 px-3 mx-2 hover:bg-slate-200/50 rounded-lg transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold" href="#">
+<span class="material-symbols-outlined">list_alt</span>
+                Logs
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 py-2 px-3 mx-2 hover:bg-slate-200/50 rounded-lg transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold" href="#">
+<span class="material-symbols-outlined">terminal</span>
+                Debugging
+            </a>
+</div>
+<div class="mt-auto px-2 border-t border-slate-200 pt-4 flex flex-col gap-1">
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 py-2 px-3 mx-2 hover:bg-slate-200/50 rounded-lg transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+                Support
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 py-2 px-3 mx-2 hover:bg-slate-200/50 rounded-lg transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<div class="flex-1 flex flex-col md:ml-64 h-full relative">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 md:left-64 right-0 h-16 flex justify-between items-center px-6 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm transition-colors duration-200 w-auto">
+<div class="flex items-center gap-4">
+<span class="text-xl font-bold tracking-tight text-slate-900 font-headline-md md:hidden">智效 WiseEff</span>
+</div>
+<div class="flex items-center gap-4 ml-auto">
+<button class="text-slate-500 hover:bg-slate-50 p-2 rounded-full transition-colors active:opacity-80 duration-200">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="text-slate-500 hover:bg-slate-50 p-2 rounded-full transition-colors active:opacity-80 duration-200">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<img alt="User profile avatar" class="w-8 h-8 rounded-full border border-outline-variant cursor-pointer" data-alt="A professional headshot of a business executive in a modern office environment. The lighting is bright and even, highlighting a friendly yet authoritative expression. The background is slightly blurred with soft corporate colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDXXT4yiino-GlE6a2xeSgOukBOdBxGyJbFp4qu7qm1HuLeae2BhXri3vfR1ntPlqK4WoCYnNTQvROR0k1pmF1BrGrwPCMlbHyYlWKDLnCLGNygs1Q4HvGQCqG2O-DycFyCpZ3OhkP8jzVVmEVxeHVph54ZyfNpKaYiN0OO1gBHOK58OZ365c-NELNPO7cXOM4QFxLd9Cb4PtxmL6RuOPLuWzhUTNXg5sUZkKGl80JuJu-TMIEqeAWQCsWT4EsovxMLGZb8o44r_-U"/>
+</div>
+</header>
+<!-- Canvas -->
+<main class="flex-1 overflow-y-auto pt-24 px-layout-margin pb-layout-margin bg-background">
+<!-- Success Toast (Import Feedback) -->
+<div class="mb-space-lg bg-surface-container-lowest border border-[#DFE1E6] rounded-lg p-4 flex items-start gap-3 shadow-sm max-w-2xl animate-fade-in-down">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<div class="flex-1">
+<h4 class="font-data-value text-on-surface">Batch Import Successful</h4>
+<p class="font-body-base text-sm text-on-surface-variant mt-1">Successfully imported 1,245 parameters from config_v2.json. All validation checks passed.</p>
+</div>
+<button class="text-outline hover:text-on-surface">
+<span class="material-symbols-outlined text-[20px]">close</span>
+</button>
+</div>
+<!-- Page Header -->
+<div class="mb-space-lg">
+<h2 class="font-headline-md text-on-surface">项目参数 Admin</h2>
+<p class="font-body-base text-on-surface-variant mt-1">System-wide parameter configuration and database health overview.</p>
+</div>
+<!-- Dashboard View (Bento Grid) -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-space-md mb-space-xl">
+<!-- Database Health -->
+<div class="bg-surface-container-lowest border border-[#DFE1E6] rounded-xl p-space-md shadow-[0_4px_24px_rgba(0,61,155,0.04)] relative overflow-hidden group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-data-label text-outline uppercase">Database Health</span>
+<span class="material-symbols-outlined text-secondary">database</span>
+</div>
+<div class="flex items-end gap-3">
+<span class="font-display-lg text-on-surface">99.8%</span>
+<span class="font-data-value text-secondary bg-secondary-fixed/30 px-2 py-0.5 rounded text-xs mb-2">Optimal</span>
+</div>
+<div class="w-full bg-surface-variant h-1.5 rounded-full mt-4 overflow-hidden">
+<div class="bg-secondary h-full w-[99.8%] rounded-full"></div>
+</div>
+</div>
+<!-- Total Parameters -->
+<div class="bg-surface-container-lowest border border-[#DFE1E6] rounded-xl p-space-md shadow-[0_4px_24px_rgba(0,61,155,0.04)] relative overflow-hidden group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-data-label text-outline uppercase">Total Parameters</span>
+<span class="material-symbols-outlined text-primary">code_blocks</span>
+</div>
+<div class="flex items-end gap-3">
+<span class="font-display-lg text-on-surface">4,281</span>
+</div>
+<p class="font-body-base text-sm text-on-surface-variant mt-4 flex items-center gap-1">
+<span class="material-symbols-outlined text-[16px] text-secondary">arrow_upward</span>
+                        +124 since last week
+                    </p>
+</div>
+<!-- Sync Status -->
+<div class="bg-surface-container-lowest border border-[#DFE1E6] rounded-xl p-space-md shadow-[0_4px_24px_rgba(0,61,155,0.04)] relative overflow-hidden group">
+<div class="flex justify-between items-start mb-4">
+<span class="font-data-label text-outline uppercase">Global Sync Status</span>
+<span class="material-symbols-outlined text-on-surface-variant">sync</span>
+</div>
+<div class="flex items-end gap-3">
+<span class="font-headline-md text-on-surface">Synchronized</span>
+</div>
+<p class="font-body-base text-sm text-on-surface-variant mt-4">Last sync: 2 mins ago across 4 regions.</p>
+</div>
+</div>
+<!-- Management Tools & Audit Log Section -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-layout-gutter">
+<!-- Left Column: Tools Tabs -->
+<div class="lg:col-span-2 bg-surface-container-lowest border border-[#DFE1E6] rounded-xl shadow-[0_4px_24px_rgba(0,61,155,0.04)] overflow-hidden flex flex-col h-[500px]">
+<!-- Tabs Header -->
+<div class="flex border-b border-[#DFE1E6] bg-surface/50 px-4 pt-4">
+<button class="px-4 py-2 border-b-2 border-primary text-primary font-data-value flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">dns</span>
+                            数据库管理
+                        </button>
+<button class="px-4 py-2 border-b-2 border-transparent text-outline hover:text-on-surface font-data-value flex items-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-[18px]">upload_file</span>
+                            批量导入 (Bulk Import)
+                        </button>
+<button class="px-4 py-2 border-b-2 border-transparent text-outline hover:text-on-surface font-data-value flex items-center gap-2 transition-colors">
+<span class="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                            权限管理
+                        </button>
+</div>
+<!-- Tab Content (Database Management) -->
+<div class="p-space-lg flex-1 overflow-y-auto">
+<div class="flex justify-between items-center mb-6">
+<h3 class="font-headline-md text-on-surface text-lg">Active Connections</h3>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">search</span>
+<input class="pl-9 pr-4 py-1.5 border border-[#DFE1E6] rounded-lg font-body-base text-sm focus:border-primary focus:ring-1 focus:ring-primary w-64 bg-surface-container-lowest" placeholder="Search tables..." type="text"/>
+</div>
+</div>
+<!-- Data Table (Compact Workbench Style) -->
+<div class="border border-[#DFE1E6] rounded-lg overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface border-b border-[#DFE1E6] sticky top-0">
+<tr>
+<th class="py-2.5 px-4 font-data-label text-outline uppercase">Table Name</th>
+<th class="py-2.5 px-4 font-data-label text-outline uppercase">Rows</th>
+<th class="py-2.5 px-4 font-data-label text-outline uppercase">Size</th>
+<th class="py-2.5 px-4 font-data-label text-outline uppercase">Status</th>
+<th class="py-2.5 px-4 font-data-label text-outline uppercase text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="font-data-value text-sm divide-y divide-[#DFE1E6]">
+<tr class="hover:bg-[#F4F5F7] transition-colors group">
+<td class="py-2.5 px-4 text-on-surface font-medium">sys_config_core</td>
+<td class="py-2.5 px-4 text-on-surface-variant">1,245</td>
+<td class="py-2.5 px-4 text-on-surface-variant">4.2 MB</td>
+<td class="py-2.5 px-4">
+<span class="inline-flex items-center gap-1 bg-secondary-fixed/20 text-secondary px-2 py-0.5 rounded text-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Active
+                                            </span>
+</td>
+<td class="py-2.5 px-4 text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="hover:bg-[#F4F5F7] transition-colors group">
+<td class="py-2.5 px-4 text-on-surface font-medium">feature_flags_prod</td>
+<td class="py-2.5 px-4 text-on-surface-variant">89</td>
+<td class="py-2.5 px-4 text-on-surface-variant">128 KB</td>
+<td class="py-2.5 px-4">
+<span class="inline-flex items-center gap-1 bg-secondary-fixed/20 text-secondary px-2 py-0.5 rounded text-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Active
+                                            </span>
+</td>
+<td class="py-2.5 px-4 text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+<tr class="hover:bg-[#F4F5F7] transition-colors group">
+<td class="py-2.5 px-4 text-on-surface font-medium">auth_policies_v2</td>
+<td class="py-2.5 px-4 text-on-surface-variant">342</td>
+<td class="py-2.5 px-4 text-on-surface-variant">856 KB</td>
+<td class="py-2.5 px-4">
+<span class="inline-flex items-center gap-1 bg-error-container text-on-error-container px-2 py-0.5 rounded text-xs">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span> Locked
+                                            </span>
+</td>
+<td class="py-2.5 px-4 text-right">
+<button class="text-outline hover:text-primary transition-colors"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<!-- Right Column: Audit Log -->
+<div class="bg-surface-container-lowest border border-[#DFE1E6] rounded-xl shadow-[0_4px_24px_rgba(0,61,155,0.04)] p-space-md flex flex-col h-[500px]">
+<div class="flex justify-between items-center mb-4 pb-2 border-b border-[#DFE1E6]">
+<h3 class="font-data-value font-semibold text-on-surface">Audit Trail</h3>
+<button class="text-primary text-sm font-data-value hover:underline">View All</button>
+</div>
+<div class="flex-1 overflow-y-auto pr-2 space-y-4">
+<!-- Log Item 1 -->
+<div class="relative pl-6 pb-4 border-l border-[#DFE1E6] last:border-0 last:pb-0">
+<div class="absolute left-[-5px] top-1 w-2 h-2 rounded-full bg-secondary ring-4 ring-surface-container-lowest"></div>
+<p class="font-data-label text-outline text-[10px] mb-1">10:42 AM Today</p>
+<p class="font-data-value text-sm text-on-surface">Batch Import <span class="font-mono text-xs bg-surface-variant px-1 rounded text-primary">config_v2.json</span></p>
+<p class="font-body-base text-xs text-on-surface-variant mt-0.5">Executed by Admin_Chen</p>
+</div>
+<!-- Log Item 2 -->
+<div class="relative pl-6 pb-4 border-l border-[#DFE1E6] last:border-0 last:pb-0">
+<div class="absolute left-[-5px] top-1 w-2 h-2 rounded-full bg-outline-variant ring-4 ring-surface-container-lowest"></div>
+<p class="font-data-label text-outline text-[10px] mb-1">09:15 AM Today</p>
+<p class="font-data-value text-sm text-on-surface">Modified <span class="font-mono text-xs bg-surface-variant px-1 rounded text-primary">MAX_CONN_RETRY</span></p>
+<p class="font-body-base text-xs text-on-surface-variant mt-0.5">Value changed from 3 to 5.</p>
+</div>
+<!-- Log Item 3 -->
+<div class="relative pl-6 pb-4 border-l border-[#DFE1E6] last:border-0 last:pb-0">
+<div class="absolute left-[-5px] top-1 w-2 h-2 rounded-full bg-outline-variant ring-4 ring-surface-container-lowest"></div>
+<p class="font-data-label text-outline text-[10px] mb-1">Yesterday, 16:30 PM</p>
+<p class="font-data-value text-sm text-on-surface">Permission Group Updated</p>
+<p class="font-body-base text-xs text-on-surface-variant mt-0.5">'DevOps' group granted Write access to sys_config_core.</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<!-- AI Agent Panel (Glassmorphism Overlay) -->
+<div class="fixed bottom-6 right-6 w-96 rounded-2xl bg-surface-container-lowest border border-outline-variant shadow-2xl flex flex-col h-[500px] overflow-hidden z-50 animate-fade-in-up">
+<!-- Agent Header -->
+<div class="px-4 py-3 bg-primary text-on-primary flex justify-between items-center">
+<div class="flex items-center gap-2.5">
+<div class="w-8 h-8 rounded-full bg-on-primary/10 flex items-center justify-center">
+<span class="material-symbols-outlined text-[20px]">psychology</span>
+</div>
+<div>
+<h3 class="font-data-value font-bold text-sm leading-none">OpsAssistant</h3>
+<span class="text-[10px] opacity-80 font-medium uppercase tracking-wider">System Intelligence</span>
+</div>
+</div>
+<div class="flex items-center gap-1">
+<button class="p-1.5 hover:bg-on-primary/10 rounded-full transition-colors">
+<span class="material-symbols-outlined text-[18px]">remove</span>
+</button>
+<button class="p-1.5 hover:bg-on-primary/10 rounded-full transition-colors">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+</div>
+<!-- Insight Area (Messages) -->
+<div class="flex-1 p-4 overflow-y-auto bg-surface-container-low/30 space-y-4">
+<!-- Context Insight Card -->
+<div class="bg-white border border-outline-variant rounded-xl p-4 shadow-sm">
+<div class="flex items-center gap-2 mb-2 text-secondary">
+<span class="material-symbols-outlined text-[16px]">lightbulb</span>
+<span class="text-[11px] font-bold uppercase tracking-tight">Contextual Insight</span>
+</div>
+<div class="font-body-base text-sm text-on-surface-variant leading-relaxed">
+<p>I noticed you just completed a batch import. Would you like me to run a consistency check against the staging environment variables?</p>
+</div>
+<div class="mt-4 flex flex-wrap gap-2">
+<button class="px-3 py-1.5 bg-secondary text-on-secondary rounded-lg text-xs font-data-value hover:opacity-90 transition-opacity">Run Consistency Check</button>
+<button class="px-3 py-1.5 border border-outline-variant text-on-surface-variant rounded-lg text-xs font-data-value hover:bg-surface-variant transition-colors">Dismiss</button>
+</div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-4 bg-white border-t border-outline-variant">
+<div class="relative flex items-center">
+<input class="w-full bg-surface-container-low border-none rounded-xl py-3 pl-4 pr-12 text-sm font-body-base focus:ring-2 focus:ring-primary/20 placeholder:text-outline" placeholder="Ask about parameters..." type="text"/>
+<button class="absolute right-2 p-2 bg-primary text-on-primary rounded-lg shadow-sm hover:bg-primary-container transition-colors">
+<span class="material-symbols-outlined text-[20px]">send</span>
+</button>
+</div>
+<div class="mt-2 flex justify-center">
+<p class="text-[10px] text-outline flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">info</span>
+                AI insights may require verification
+            </p>
+</div>
+</div>
+</div>
+</body></html>

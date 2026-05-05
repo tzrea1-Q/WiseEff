@@ -1,0 +1,210 @@
+import powerManagementConfigJson from "./config/power-management.json";
+
+export type PowerManagementRisk = "High" | "Medium" | "Low";
+
+export type PowerManagementProjectId = "aurora" | "nebula" | "atlas";
+
+export type PowerManagementParameterTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  explanation: string;
+  configFormat: string;
+  module: string;
+  range: string;
+  unit: string;
+  risk: PowerManagementRisk;
+  values: Record<
+    PowerManagementProjectId,
+    {
+      currentValue: string;
+      recommendedValue: string;
+      updatedAt: string;
+    }
+  >;
+};
+
+export type PowerManagementDebugParameter = {
+  id: string;
+  name: string;
+  key: string;
+  currentValue: string;
+  targetValue: string;
+  unit: string;
+  range: string;
+  risk: PowerManagementRisk;
+  status: "已同步" | "待下发" | "下发成功";
+};
+
+export type PowerManagementProject = {
+  id: PowerManagementProjectId;
+  name: string;
+  code: string;
+};
+
+export type PowerManagementConfig = {
+  projects: PowerManagementProject[];
+  parameterLibrary: PowerManagementParameterTemplate[];
+  debugParameters: PowerManagementDebugParameter[];
+};
+
+export const bundledPowerManagementConfig: PowerManagementConfig = powerManagementConfigJson as PowerManagementConfig;
+
+export function clonePowerManagementConfig(config: PowerManagementConfig): PowerManagementConfig {
+  return JSON.parse(JSON.stringify(config)) as PowerManagementConfig;
+}
+
+export function flattenProjectParameters(config: PowerManagementConfig) {
+  return config.projects.flatMap((project) =>
+    config.parameterLibrary.map((parameter) => {
+      const value = parameter.values[project.id];
+
+      return {
+        ...parameter,
+        id: `${project.id}-${parameter.id}`,
+        projectId: project.id,
+        currentValue: value.currentValue,
+        recommendedValue: value.recommendedValue,
+        updatedAt: value.updatedAt
+      };
+    })
+  );
+}
+
+export function flattenDebugParameters(config: PowerManagementConfig) {
+  return config.debugParameters.map((parameter) => ({ ...parameter }));
+}
+
+export function updateProjectParameter(
+  config: PowerManagementConfig,
+  projectId: PowerManagementProjectId,
+  parameterId: string,
+  patch: Partial<Pick<PowerManagementParameterTemplate["values"][PowerManagementProjectId], "currentValue" | "recommendedValue" | "updatedAt">>
+) {
+  const libraryParameterId = getLibraryParameterId(projectId, parameterId);
+
+  return {
+    ...config,
+    parameterLibrary: config.parameterLibrary.map((parameter) =>
+      parameter.id !== libraryParameterId
+        ? parameter
+        : {
+            ...parameter,
+            values: {
+              ...parameter.values,
+              [projectId]: {
+                ...parameter.values[projectId],
+                ...patch
+              }
+            }
+          }
+    )
+  };
+}
+
+export function updateProjectParameterMetadata(
+  config: PowerManagementConfig,
+  projectId: PowerManagementProjectId,
+  parameterId: string,
+  patch: Partial<
+    Omit<
+      PowerManagementParameterTemplate,
+      "id" | "values"
+    >
+  >
+) {
+  const libraryParameterId = getLibraryParameterId(projectId, parameterId);
+
+  return {
+    ...config,
+    parameterLibrary: config.parameterLibrary.map((parameter) =>
+      parameter.id === libraryParameterId ? { ...parameter, ...patch } : parameter
+    )
+  };
+}
+
+export function addProjectParameter(config: PowerManagementConfig) {
+  const nextIndex = config.parameterLibrary.length + 1;
+  const values = config.projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
+    acc[project.id] = {
+      currentValue: "0",
+      recommendedValue: "0",
+      updatedAt: "刚刚"
+    };
+    return acc;
+  }, {} as PowerManagementParameterTemplate["values"]);
+
+  const parameter: PowerManagementParameterTemplate = {
+    id: `new-power-parameter-${nextIndex}`,
+    name: `new_power_parameter_${nextIndex}`,
+    description: "新增电源管理参数说明。",
+    explanation: "用于演示新增共享参数后，各项目只维护自己的参数值。",
+    configFormat: `JSON: { "power.new.parameter${nextIndex}": number }`,
+    module: "Custom Power",
+    range: "0 - 100",
+    unit: "value",
+    risk: "Medium",
+    values
+  };
+
+  return {
+    ...config,
+    parameterLibrary: [...config.parameterLibrary, parameter]
+  };
+}
+
+export function deleteProjectParameter(config: PowerManagementConfig, parameterId: string) {
+  return {
+    ...config,
+    parameterLibrary: config.parameterLibrary.filter((parameter) => parameter.id !== parameterId)
+  };
+}
+
+export function addDebugParameter(config: PowerManagementConfig) {
+  const nextIndex = config.debugParameters.length + 1;
+  const parameter: PowerManagementDebugParameter = {
+    id: `dbg-new-parameter-${nextIndex}`,
+    name: `new_debug_parameter_${nextIndex}`,
+    key: `debug.new_parameter_${nextIndex}`,
+    currentValue: "0",
+    targetValue: "0",
+    unit: "value",
+    range: "0 - 100",
+    risk: "Medium",
+    status: "待下发"
+  };
+
+  return {
+    ...config,
+    debugParameters: [...config.debugParameters, parameter]
+  };
+}
+
+export function deleteDebugParameter(config: PowerManagementConfig, parameterId: string) {
+  return {
+    ...config,
+    debugParameters: config.debugParameters.filter((parameter) => parameter.id !== parameterId)
+  };
+}
+
+export function updateDebugParameter(
+  config: PowerManagementConfig,
+  parameterId: string,
+  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "unit" | "range" | "risk" | "status">>
+) {
+  return {
+    ...config,
+    debugParameters: config.debugParameters.map((parameter) =>
+      parameter.id === parameterId ? { ...parameter, ...patch } : parameter
+    )
+  };
+}
+
+export function serializePowerManagementConfig(config: PowerManagementConfig) {
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+function getLibraryParameterId(projectId: PowerManagementProjectId, parameterId: string) {
+  const projectPrefix = `${projectId}-`;
+  return parameterId.startsWith(projectPrefix) ? parameterId.slice(projectPrefix.length) : parameterId;
+}

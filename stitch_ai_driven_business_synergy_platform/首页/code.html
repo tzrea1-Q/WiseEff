@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+
+<html class="light" lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>智效 WiseEff</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-fixed": "#d7e2ff",
+                        "secondary-container": "#50dcff",
+                        "on-primary-fixed-variant": "#0040a2",
+                        "surface-container-lowest": "#ffffff",
+                        "primary-container": "#0052cc",
+                        "surface-container": "#e7eeff",
+                        "surface": "#f9f9ff",
+                        "on-surface": "#101c2d",
+                        "primary-fixed-dim": "#b2c5ff",
+                        "background": "#f9f9ff",
+                        "on-primary-container": "#c4d2ff",
+                        "error-container": "#ffdad6",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed-dim": "#48d7f9",
+                        "on-background": "#101c2d",
+                        "primary-fixed": "#dae2ff",
+                        "secondary": "#00687b",
+                        "on-error": "#ffffff",
+                        "on-tertiary-fixed-variant": "#34476a",
+                        "inverse-on-surface": "#ebf1ff",
+                        "on-surface-variant": "#434654",
+                        "on-tertiary-fixed": "#041b3c",
+                        "secondary-fixed": "#afecff",
+                        "surface-container-low": "#f0f3ff",
+                        "inverse-surface": "#253143",
+                        "inverse-primary": "#b2c5ff",
+                        "surface-tint": "#0c56d0",
+                        "surface-container-high": "#dee9ff",
+                        "on-secondary-container": "#005f71",
+                        "surface-dim": "#cedbf2",
+                        "tertiary-container": "#485b80",
+                        "on-secondary": "#ffffff",
+                        "outline-variant": "#c3c6d6",
+                        "surface-bright": "#f9f9ff",
+                        "primary": "#003d9b",
+                        "on-primary-fixed": "#001848",
+                        "on-tertiary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "tertiary": "#314367",
+                        "on-tertiary-container": "#c0d3fe",
+                        "tertiary-fixed-dim": "#b4c7f1",
+                        "error": "#ba1a1a",
+                        "on-secondary-fixed-variant": "#004e5d",
+                        "outline": "#737685",
+                        "on-secondary-fixed": "#001f27",
+                        "surface-variant": "#d7e3fb",
+                        "surface-container-highest": "#d7e3fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "space-sm": "8px",
+                        "layout-margin": "32px",
+                        "space-lg": "24px",
+                        "space-xs": "4px",
+                        "layout-gutter": "20px",
+                        "space-md": "16px",
+                        "space-xl": "48px"
+                    },
+                    "fontFamily": {
+                        "data-value": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-base": ["Inter"],
+                        "data-label": ["Inter"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "data-value": ["14px", {"lineHeight": "1.4", "fontWeight": "500"}],
+                        "headline-md": ["24px", {"lineHeight": "1.4", "fontWeight": "600"}],
+                        "body-base": ["16px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "data-label": ["12px", {"lineHeight": "1.2", "letterSpacing": "0.05em", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "1.2", "letterSpacing": "-0.02em", "fontWeight": "700"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col md:flex-row font-body-base overflow-x-hidden">
+<!-- TopAppBar (Web & Mobile) -->
+<header class="fixed top-0 left-0 w-full h-16 flex justify-between items-center px-6 z-50 bg-white/90 backdrop-blur-md font-inter text-sm font-medium tracking-tight border-b border-slate-200 shadow-sm transition-all duration-200">
+<div class="flex items-center gap-4">
+<div class="text-xl font-bold tracking-tight text-slate-900">智效 WiseEff</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative hidden md:block">
+<input class="bg-surface-container-low text-on-surface text-data-value rounded-full py-1.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-primary border border-outline-variant w-64 placeholder-outline" placeholder="Search..." type="text"/>
+<span class="material-symbols-outlined absolute left-3 top-1.5 text-outline text-lg">search</span>
+</div>
+<button class="p-2 text-slate-500 hover:bg-slate-50 transition-colors rounded-full relative group">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-1.5 right-1.5 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="p-2 text-slate-500 hover:bg-slate-50 transition-colors rounded-full">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<div class="w-8 h-8 rounded-full bg-primary-container text-on-primary-container flex items-center justify-center font-bold overflow-hidden">
+<img alt="User profile avatar" class="w-full h-full object-cover" data-alt="A professional headshot of a corporate executive in a modern office setting. The lighting is bright and clean, typical of a high-end corporate environment. The person is smiling slightly, projecting confidence and approachability. The background is slightly blurred, showing a hint of glass and steel architecture." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCuJ8b5rQ-9dmBx9-AhbdGxkZiwpRWLg8isjVYUzVEbd2lrjMeK4PAys5xAbSbaa_L8zfzFo0LuYw_uUsK-_szEqMG-p1E0lp4hEhQL_Y5kBC_V8C-iwQLx6QeZZEaPNeQ6wzEgD68umcNmNVB2wjGrRLF-9JMz7dw8LT5vBunvVUHhQ1INv-uZesAlJ4M5iQnHzRbbJ47sF4WFpQ4lGf82vqt-oTzFOIP40SbyEROWc4JEda2YBBlB620MWIahHsfLYzxmNnq0J4Y"/>
+</div>
+</div>
+</header>
+<!-- SideNavBar (Web Only) -->
+<nav class="hidden md:flex fixed left-0 top-0 h-full flex-col pt-20 pb-6 z-40 bg-slate-50 w-64 border-r border-slate-200 transition-all duration-150 ease-in-out font-inter text-[13px] font-semibold">
+<div class="px-6 mb-6">
+<h2 class="text-lg font-black text-blue-700 uppercase tracking-wider">智效 WiseEff</h2>
+<p class="text-xs text-outline mt-1 font-data-label">AI 驱动的企业业务效率平台</p>
+</div>
+<div class="px-4 mb-8">
+<button class="w-full bg-primary text-on-primary py-2.5 rounded-lg flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-sm">
+<span class="material-symbols-outlined text-sm">add</span>
+                New Analysis
+            </button>
+</div>
+<div class="flex-1 flex flex-col gap-1">
+<a class="flex items-center gap-3 bg-white text-blue-600 shadow-sm rounded-lg py-2 px-3 mx-2 border-l-4 border-blue-600" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">home</span>
+                Home
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg py-2 px-3 mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined">tune</span>
+                Parameters
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg py-2 px-3 mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined">list_alt</span>
+                Logs
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg py-2 px-3 mx-2 transition-colors" href="#">
+<span class="material-symbols-outlined">terminal</span>
+                Debugging
+            </a>
+</div>
+<div class="mt-auto flex flex-col gap-1 border-t border-slate-200 pt-4 mx-4">
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg py-2 px-2 transition-colors" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+                Support
+            </a>
+<a class="flex items-center gap-3 text-slate-500 hover:text-slate-900 hover:bg-slate-200/50 rounded-lg py-2 px-2 transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 mt-16 md:ml-64 p-layout-margin min-h-screen pb-24 md:pb-8 flex flex-col gap-space-xl max-w-[1440px] mx-auto w-full">
+<!-- Hero Section -->
+<section class="relative rounded-2xl overflow-hidden bg-surface-container-high shadow-sm border border-outline-variant p-space-xl flex flex-col justify-center min-h-[300px]">
+<div class="absolute inset-0 z-0">
+<img alt="Abstract technology background" class="w-full h-full object-cover opacity-20" data-alt="A sleek, modern abstract background featuring a grid-like structure illuminated with soft, cool blue and subtle teal lights. The aesthetic is clean, corporate, and technological, conveying a sense of order, efficiency, and advanced AI integration. The lighting is diffused, creating a calm yet powerful visual atmosphere suitable for an enterprise dashboard hero section." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAv4jgZgTK7iTF68JcqRiEvMLL-VFDerrs5oH12tPkwQo6sd_Gf03kTGyHaWC-xAdD6QHFk96W8lw4YDVBDk8F49iC_-P9FkIhl8rQO4HO7-Gt7lcrdic0b9DqQFg2CCGjeyWIONCmNzkPeFHnH1bzXFgNqvr4wKanCnOe0RDih_mEGl7JOVOUIi5X-eHqT-rkIj2EopfOrbNf1V2PWzCg4tJv2dsdtIGhBXTM-jY-bfzx6XngEr4gUVq3QRmgWTeVuqnUli8oqKkw"/>
+<div class="absolute inset-0 bg-gradient-to-r from-surface-container-high to-transparent"></div>
+</div>
+<div class="relative z-10 max-w-3xl">
+<span class="inline-block py-1 px-3 rounded-full bg-secondary-container text-on-secondary-container font-data-label text-data-label mb-4 border border-secondary-fixed-dim">AI-Powered Governance</span>
+<h1 class="font-display-lg text-display-lg text-on-surface mb-4">智效 WiseEff：AI 驱动的企业业务效率平台</h1>
+<p class="font-body-base text-body-base text-on-surface-variant max-w-2xl">Integrate Parameters, Logs, and Debugging with intelligent oversight to streamline your operational workflows and ensure enterprise-grade reliability.</p>
+</div>
+</section>
+<!-- Bento Grid: Sub-Apps -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-layout-gutter">
+<!-- Card 1: Project Parameters -->
+<div class="bg-surface rounded-xl p-space-lg shadow-[0_4px_24px_rgba(0,61,155,0.05)] border border-outline-variant hover:shadow-[0_8px_32px_rgba(0,61,155,0.1)] transition-all duration-300 flex flex-col h-[280px] group cursor-pointer">
+<div class="flex justify-between items-start mb-auto">
+<div class="w-12 h-12 rounded-lg bg-primary-fixed flex items-center justify-center text-on-primary-fixed group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-2xl">tune</span>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">arrow_outward</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">项目参数管理</h3>
+<p class="font-body-base text-body-base text-on-surface-variant mb-6 line-clamp-2">Centralized control for all operational variables.</p>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-md text-2xl text-primary">12</span>
+<span class="font-data-label text-data-label text-outline uppercase tracking-wider">待审阅参数</span>
+</div>
+</div>
+</div>
+<!-- Card 2: Smart Logs -->
+<div class="bg-surface rounded-xl p-space-lg shadow-[0_4px_24px_rgba(0,61,155,0.05)] border border-outline-variant hover:shadow-[0_8px_32px_rgba(0,61,155,0.1)] transition-all duration-300 flex flex-col h-[280px] group cursor-pointer">
+<div class="flex justify-between items-start mb-auto">
+<div class="w-12 h-12 rounded-lg bg-primary-fixed flex items-center justify-center text-on-primary-fixed group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-2xl">list_alt</span>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">arrow_outward</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">日志智能分析</h3>
+<p class="font-body-base text-body-base text-on-surface-variant mb-6 line-clamp-2">AI-driven anomaly detection and log correlation.</p>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-md text-2xl text-secondary">98%</span>
+<span class="font-data-label text-data-label text-outline uppercase tracking-wider">分析准确率</span>
+</div>
+</div>
+</div>
+<!-- Card 3: Debugging -->
+<div class="bg-surface rounded-xl p-space-lg shadow-[0_4px_24px_rgba(0,61,155,0.05)] border border-outline-variant hover:shadow-[0_8px_32px_rgba(0,61,155,0.1)] transition-all duration-300 flex flex-col h-[280px] group cursor-pointer">
+<div class="flex justify-between items-start mb-auto">
+<div class="w-12 h-12 rounded-lg bg-primary-fixed flex items-center justify-center text-on-primary-fixed group-hover:bg-primary group-hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined text-2xl">terminal</span>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-primary transition-colors">arrow_outward</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">参数调试平台</h3>
+<p class="font-body-base text-body-base text-on-surface-variant mb-6 line-clamp-2">Real-time environment testing and validation.</p>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="font-data-value text-data-value text-secondary">Environment Stable</span>
+</div>
+</div>
+</div>
+</section>
+<!-- AI Hub & Metrics Dashboard Combo -->
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-layout-gutter">
+<!-- AI Hub Featured Section -->
+<div class="lg:col-span-5 rounded-xl border border-secondary-fixed shadow-sm bg-gradient-to-br from-surface to-secondary-fixed/20 p-space-lg relative overflow-hidden flex flex-col justify-between">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined text-[120px] text-secondary">memory</span>
+</div>
+<div class="relative z-10 mb-8">
+<div class="flex items-center gap-3 mb-4">
+<div class="w-10 h-10 rounded-full bg-secondary flex items-center justify-center text-on-secondary shadow-md">
+<span class="material-symbols-outlined">smart_toy</span>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Agent Hub</h2>
+</div>
+<p class="font-body-base text-body-base text-on-surface-variant">Cross-platform intelligence analyzing patterns across parameters and logs to proactively suggest optimizations.</p>
+</div>
+<div class="relative z-10 glass-panel rounded-lg p-4">
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-secondary mt-0.5">lightbulb</span>
+<div>
+<h4 class="font-data-value text-data-value text-on-surface mb-1">Recent Insight</h4>
+<p class="text-sm text-on-surface-variant">Log cluster Alpha-9 correlates with unoptimized routing parameters. Suggested fix available.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Metrics Grid -->
+<div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-space-md">
+<div class="bg-surface rounded-xl border border-outline-variant p-space-md flex flex-col justify-center">
+<span class="font-data-label text-data-label text-outline uppercase tracking-wider mb-2">AI 辅助处理效率</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-md text-3xl text-secondary">+35%</span>
+<span class="material-symbols-outlined text-secondary text-sm">trending_up</span>
+</div>
+<div class="mt-4 h-1 w-full bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-secondary w-[65%]"></div>
+</div>
+</div>
+<div class="bg-surface rounded-xl border border-outline-variant p-space-md flex flex-col justify-center">
+<span class="font-data-label text-data-label text-outline uppercase tracking-wider mb-2">参数流转时延</span>
+<div class="flex items-baseline gap-2">
+<span class="font-headline-md text-3xl text-primary">-20%</span>
+<span class="material-symbols-outlined text-primary text-sm">trending_down</span>
+</div>
+<div class="mt-4 h-1 w-full bg-surface-variant rounded-full overflow-hidden">
+<div class="h-full bg-primary w-[80%]"></div>
+</div>
+</div>
+<div class="bg-surface rounded-xl border border-outline-variant p-space-md flex flex-col justify-center sm:col-span-2">
+<div class="flex justify-between items-center mb-4">
+<span class="font-data-label text-data-label text-outline uppercase tracking-wider">治理自动化率</span>
+<span class="font-data-value text-data-value text-on-surface-variant">Q3 Target: 85%</span>
+</div>
+<div class="flex items-baseline gap-3 mb-2">
+<span class="font-headline-md text-4xl text-on-surface">72%</span>
+<span class="text-sm text-outline">Current Status</span>
+</div>
+<div class="h-2 w-full bg-surface-variant rounded-full overflow-hidden mt-2">
+<div class="h-full bg-primary w-[72%] rounded-full"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer / Audit Trail -->
+<footer class="mt-auto border-t border-outline-variant pt-space-lg flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-outline">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">verified</span>
+<span>Enterprise Governance Commitment • Active Audit Trail</span>
+</div>
+<div>
+                Last sync: 2 mins ago
+            </div>
+</footer>
+</main>
+<!-- AI Agent Panel (Floating) -->
+<div class="fixed bottom-6 right-6 w-[360px] max-h-[500px] flex flex-col bg-surface/90 backdrop-blur-xl border border-secondary-fixed shadow-2xl rounded-2xl z-50 overflow-hidden">
+<!-- Agent Header -->
+<div class="bg-secondary p-4 flex items-center justify-between text-on-secondary shadow-md">
+<div class="flex items-center gap-3">
+<div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-xl">smart_toy</span>
+</div>
+<div>
+<h3 class="text-sm font-bold leading-none">OpsAgent</h3>
+<span class="text-[10px] opacity-80 uppercase tracking-widest">System Active</span>
+</div>
+</div>
+<button class="p-1 hover:bg-white/10 rounded-full transition-colors">
+<span class="material-symbols-outlined text-xl">close</span>
+</button>
+</div>
+<!-- Insight / Message Area -->
+<div class="flex-1 p-4 overflow-y-auto space-y-4">
+<div class="bg-secondary/5 rounded-xl p-3 border border-secondary/10">
+<div class="flex items-start gap-2 mb-2">
+<span class="material-symbols-outlined text-secondary text-lg">lightbulb</span>
+<p class="text-xs font-bold text-on-surface">Context-Aware Insight</p>
+</div>
+<p class="text-sm text-on-surface-variant leading-relaxed">
+                Log cluster Alpha-9 correlates with unoptimized routing parameters. Suggested fix available in the Parameters module.
+            </p>
+</div>
+<div class="flex justify-center">
+<span class="text-[10px] text-outline font-data-label uppercase bg-surface-container-low px-2 py-0.5 rounded-full">Today</span>
+</div>
+<div class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-secondary-container flex-shrink-0 flex items-center justify-center">
+<span class="material-symbols-outlined text-on-secondary-container text-sm">auto_awesome</span>
+</div>
+<div class="bg-secondary-container/20 rounded-2xl rounded-tl-none p-3 text-sm text-on-surface-variant">
+                I am monitoring the current system state. Would you like me to run a diagnostic on the Q3 target gap?
+            </div>
+</div>
+</div>
+<!-- Input Area -->
+<div class="p-4 border-t border-outline-variant bg-surface">
+<div class="relative">
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-full py-2 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-secondary/50 placeholder-outline" placeholder="Ask OpsAgent..." type="text"/>
+<button class="absolute right-2 top-1.5 p-1 text-secondary hover:bg-secondary/10 rounded-full">
+<span class="material-symbols-outlined">send</span>
+</button>
+</div>
+</div>
+</div>
+</body></html>

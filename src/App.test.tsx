@@ -1,0 +1,633 @@
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import App from "./App";
+import { initialState } from "./mockData";
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  window.history.replaceState(null, "", "/");
+});
+
+describe("WiseEff app shell", () => {
+  it("presents the home AI capability section around asking and delegating to OpsAgent", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    const showcase = screen.getByRole("region", { name: "AI 工作流闭环" });
+
+    expect(showcase).toHaveTextContent("问你想问，做你想做");
+    expect(showcase).toHaveTextContent("平台里有的信息，都可以直接问");
+    expect(showcase).toHaveTextContent("把目标交给 Agent，繁琐步骤由它代劳");
+    expect(showcase).toHaveTextContent("问你想问");
+    expect(showcase).toHaveTextContent("我想让电池在高温充电时更保守，应该改哪个参数？");
+    expect(showcase).toHaveTextContent("做你想做");
+    expect(showcase).toHaveTextContent("把 Nebula 项目的快充电流调整到更稳妥的策略，并提交审阅");
+    expect(showcase).toHaveTextContent("帮我连接 ChargeLab_X01，并把可调参数下发到样机");
+    expect(showcase).toHaveTextContent("2 个核心能力");
+    expect(showcase.querySelector(".ai-carousel-track")).toBeInTheDocument();
+    const slides = Array.from(showcase.querySelectorAll(".ai-scenario-slide"));
+    expect(slides).toHaveLength(3);
+    expect(slides.filter((slide) => slide.textContent?.includes("做你想做"))).toHaveLength(2);
+    expect(showcase).not.toHaveTextContent("只做可追溯的下一步");
+    expect(showcase).not.toHaveTextContent("证据先行");
+  });
+
+  it("uses dropdown controls for project, importance, and module filters", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    const filters = screen.getByRole("complementary", { name: "参数筛选" });
+    const getTableRow = (parameterName: string) =>
+      Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((row) =>
+        row.textContent?.includes(parameterName)
+      );
+    const projectSelect = within(filters).getByRole("combobox", { name: "项目" });
+    const importanceSelect = within(filters).getByRole("combobox", { name: "重要性" });
+    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
+
+    expect(projectSelect).toHaveValue("aurora");
+    expect(importanceSelect).toHaveValue("All");
+    expect(moduleSelect).toHaveValue("All");
+    expect(within(filters).queryByRole("button", { name: /AUR-Prod/ })).not.toBeInTheDocument();
+    expect(within(filters).queryByRole("button", { name: "高" })).not.toBeInTheDocument();
+    expect(within(filters).queryByText(/当前筛选/)).not.toBeInTheDocument();
+
+    fireEvent.change(moduleSelect, { target: { value: "Charging Policy" } });
+
+    expect(within(screen.getByRole("table")).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).queryByText("battery_health_guard_enable")).not.toBeInTheDocument();
+
+    fireEvent.change(projectSelect, { target: { value: "nebula" } });
+
+    expect(projectSelect).toHaveValue("nebula");
+    expect(moduleSelect).toHaveValue("All");
+    expect(getTableRow("fast_charge_current_limit_ma")).toHaveTextContent("4200");
+  });
+
+  it("labels the parameter recommendation column as example", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    expect(screen.getByRole("columnheader", { name: "示例" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "Recommended" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the parameter example value aligned inside a normal table cell", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    const fastChargeRow = Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find(
+      (row) => row.textContent?.includes("fast_charge_current_limit_ma")
+    );
+    const exampleCell = fastChargeRow?.querySelector<HTMLTableCellElement>("td.recommended");
+
+    expect(exampleCell).toBeInTheDocument();
+    expect(exampleCell?.firstElementChild).toHaveClass("value-change");
+  });
+
+  it("removes the parameter page header subtitle and submit-change shortcut", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    expect(screen.queryByText(/当前项目：/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交变更" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交参数修改请求" })).toBeInTheDocument();
+  });
+
+  it("opens a parameter comparison workspace from the compare action", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "对比参数" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "跨项目对比" }));
+
+    expect(window.location.pathname).toBe("/parameter-comparison");
+    expect(screen.getByRole("heading", { name: "项目参数对比分析" })).toBeInTheDocument();
+    const comparisonControls = screen.getByRole("region", { name: "项目对比选择" });
+    expect(within(comparisonControls).getByRole("combobox", { name: "基准项目" })).toHaveValue("aurora");
+    expect(within(comparisonControls).getByRole("combobox", { name: "对比项目" })).toHaveValue("nebula");
+    expect(comparisonControls.querySelector(".project-choice-card")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("生产 vs 预发");
+    expect(screen.getByText("参数差异矩阵")).toBeInTheDocument();
+    expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
+    expect(screen.getByText("OpsAgent 洞察")).toBeInTheDocument();
+  });
+
+  it("compares parameter values between two real projects without percent importance drift", () => {
+    window.history.replaceState(null, "", "/parameter-comparison");
+
+    render(<App />);
+
+    const comparisonControls = screen.getByRole("region", { name: "项目对比选择" });
+    const getComparisonRow = (parameterName: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row")).find((row) =>
+        row.textContent?.includes(parameterName)
+      );
+
+    const baseProjectSelect = within(comparisonControls).getByRole("combobox", { name: "基准项目" });
+    const targetProjectSelect = within(comparisonControls).getByRole("combobox", { name: "对比项目" });
+
+    expect(baseProjectSelect).toHaveValue("aurora");
+    expect(targetProjectSelect).toHaveValue("nebula");
+    expect(within(comparisonControls).queryByRole("button", { name: /选择对比项目/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("AUR-Prod").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("NEB-RD").length).toBeGreaterThan(0);
+    expect(screen.queryByText("生产")).not.toBeInTheDocument();
+    expect(screen.queryByText("预发")).not.toBeInTheDocument();
+
+    const fastChargeRow = getComparisonRow("fast_charge_current_limit_ma");
+    expect(fastChargeRow).toHaveTextContent("3850");
+    expect(fastChargeRow).toHaveTextContent("4200");
+    expect(fastChargeRow).toHaveTextContent("高");
+    expect(fastChargeRow).not.toHaveTextContent("%");
+
+    fireEvent.change(targetProjectSelect, { target: { value: "atlas" } });
+
+    const atlasFastChargeRow = getComparisonRow("fast_charge_current_limit_ma");
+    expect(screen.getAllByText("ATL-Intl").length).toBeGreaterThan(0);
+    expect(atlasFastChargeRow).toHaveTextContent("3000");
+    expect(atlasFastChargeRow).not.toHaveTextContent("%");
+  });
+
+  it("filters the parameter comparison matrix and shows parameter meanings", () => {
+    window.history.replaceState(null, "", "/parameter-comparison");
+
+    render(<App />);
+
+    const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
+    const importanceSelect = within(filters).getByRole("combobox", { name: "重要性" });
+    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
+    const getComparisonRow = (parameterName: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row")).find((row) =>
+        row.textContent?.includes(parameterName)
+      );
+
+    expect(screen.getByText("参数含义")).toBeInTheDocument();
+    expect(getComparisonRow("fast_charge_current_limit_ma")).toHaveTextContent("限制快充阶段的最大充电电流。");
+    expect(filters).not.toHaveTextContent("当前筛选");
+
+    fireEvent.change(importanceSelect, { target: { value: "High" } });
+
+    expect(getComparisonRow("fast_charge_current_limit_ma")).toBeDefined();
+    expect(getComparisonRow("charge_voltage_limit_mv")).toBeDefined();
+    expect(getComparisonRow("battery_temp_target_c")).toBeUndefined();
+    expect(filters).not.toHaveTextContent("当前筛选");
+
+    fireEvent.change(moduleSelect, { target: { value: "Battery Protection" } });
+
+    expect(getComparisonRow("low_battery_shutdown_soc")).toBeDefined();
+    expect(getComparisonRow("fast_charge_current_limit_ma")).toBeUndefined();
+    expect(filters).not.toHaveTextContent("当前筛选");
+  });
+
+  it("opens comparison insights inside the floating OpsAgent instead of an inline sidebar", () => {
+    window.history.replaceState(null, "", "/parameter-comparison");
+
+    render(<App />);
+
+    expect(document.querySelector(".comparison-insights")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("打开 OpsAgent")).not.toBeInTheDocument();
+
+    const agentPanel = document.querySelector<HTMLElement>(".agent-panel");
+    expect(agentPanel).toBeInTheDocument();
+    expect(within(agentPanel!).getByText("项目差异风险")).toBeInTheDocument();
+    expect(within(agentPanel!).getByText("参数值对照")).toBeInTheDocument();
+    expect(within(agentPanel!).getByText("风险阈值漂移")).toBeInTheDocument();
+    expect(agentPanel).toHaveTextContent("fast_charge_current_limit_ma");
+    expect(agentPanel).toHaveTextContent("AUR-Prod 与 NEB-RD");
+  });
+
+  it("requires a rejection reason when an admin sends a parameter request back", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+    const advanceButton = within(reviewDetail).getByRole("button", { name: "推进流程" });
+    const rejectButton = within(reviewDetail).getByRole("button", { name: "打回修改" });
+
+    expect(advanceButton).toHaveClass("full");
+    expect(rejectButton).toHaveClass("full");
+
+    fireEvent.click(rejectButton);
+
+    const dialog = screen.getByRole("dialog", { name: "打回修改" });
+    const reasonInput = within(dialog).getByLabelText("打回原因");
+    fireEvent.change(reasonInput, { target: { value: "热测试数据缺少高温工况说明，需要补充后再提交。" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交打回" }));
+
+    expect(screen.queryByRole("dialog", { name: "打回修改" })).not.toBeInTheDocument();
+    expect(reviewDetail).toHaveTextContent("已打回");
+    expect(reviewDetail).toHaveTextContent("热测试数据缺少高温工况说明，需要补充后再提交。");
+  });
+
+  it("labels and aligns the review change column", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    expect(screen.getByRole("columnheader", { name: "变更" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "建议变更" })).not.toBeInTheDocument();
+
+    const changeCell = screen.getByRole("table").querySelector<HTMLTableCellElement>("td.change-cell");
+
+    expect(changeCell).toBeInTheDocument();
+    expect(changeCell?.firstElementChild).toHaveClass("value-change");
+  });
+
+  it("shows unsupported log format feedback in a dialog only after upload simulation", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+
+    expect(screen.queryByText("system_dump.bin 无法处理，请上传 .log、.txt 或 .json。")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /拖放日志文件到此处/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "不支持的日志格式" });
+    expect(dialog).toHaveTextContent("system_dump.bin 无法处理");
+    expect(dialog).toHaveTextContent("请上传 .log、.txt 或 .json");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "知道了" }));
+
+    expect(screen.queryByRole("dialog", { name: "不支持的日志格式" })).not.toBeInTheDocument();
+  });
+
+  it("switches log analysis content from clickable history records", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    expect(within(history).getByRole("button", { name: /charging_thermal_trace_20260504\.log/ })).toHaveAttribute(
+      "aria-pressed",
+      "true"
+    );
+    expect(screen.getByText("快充阶段电池包温升过快，触发热降额链路。")).toBeInTheDocument();
+    expect(screen.getByText("日志分析证据链")).toBeInTheDocument();
+    expect(screen.getByText("关联处置：下调快充电流上限")).toBeInTheDocument();
+
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation_20260503\.log/ }));
+
+    expect(screen.getByText("PD 协商在 9V/3A 档位稳定完成，未出现握手重试。")).toBeInTheDocument();
+    expect(screen.getByText("关联处置：保留 9V/3A 充电档位")).toBeInTheDocument();
+    expect(screen.getAllByText(/PD_CTRL Accept profile 9V\/3A/)).toHaveLength(2);
+
+    fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot\.bin/ }));
+
+    expect(screen.getByText("不支持的二进制热快照格式。")).toBeInTheDocument();
+    expect(screen.getByText("关联处置：请重新上传 .log、.txt 或 .json 文本日志。")).toBeInTheDocument();
+  });
+
+  it("shows a log analysis evidence chain instead of suggested actions", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+
+    const analysis = screen.getByRole("region", { name: "分析结果" });
+    expect(within(analysis).getByText("原始日志内容")).toBeInTheDocument();
+    expect(within(analysis).getByText("日志分析证据链")).toBeInTheDocument();
+    expect(within(analysis).getByText("证据 01")).toBeInTheDocument();
+    expect(within(analysis).getByText("证据 02")).toBeInTheDocument();
+    expect(within(analysis).getByText("证据 03")).toBeInTheDocument();
+    expect(within(analysis).getAllByText("10:24:01 WARN [CHG_THERMAL] battery_pack_temp=46.8C over soft_limit=45C")).toHaveLength(2);
+    expect(within(analysis).getByText("电池包温度越过 45°C 软阈值，确认热异常触发点。")).toBeInTheDocument();
+    expect(within(analysis).queryByText("建议动作")).not.toBeInTheDocument();
+    expect(within(analysis).queryByText("应用缓解措施")).not.toBeInTheDocument();
+  });
+
+  it("uses Chinese visible copy on every page surface", () => {
+    const pageChecks = [
+      {
+        path: "/",
+        present: ["智效 WiseEff", "在线"],
+        absent: ["Online", "Ready"]
+      },
+      {
+        path: "/parameters",
+        present: ["筛选条件", "全部", "参数名称", "当前值", "范围 / 单位", "更新时间"],
+        absent: ["Filters", "All", "Current", "Range / Unit", "Importance", "Updated"]
+      },
+      {
+        path: "/parameter-comparison",
+        present: ["参数", "对比分析", "基准项目", "对比项目", "同步选中项", "OpsAgent 洞察"],
+        absent: ["Parameters", "Comparison", "生产 vs 预发", "Export", "Sync Selected", "Parameter Key", "OpsAgent Insights", "View Historical Latency"]
+      },
+      {
+        path: "/parameter-review",
+        present: ["筛选队列", "待审阅请求", "变更", "变更历史", "现在"],
+        absent: ["Filter Queue", "Pending Requests", "Req ID", "Submitter", "Proposed Change", "Change History", "Targeting module"]
+      },
+      {
+        path: "/parameter-admin",
+        present: ["项目参数管理后台", "项目共享参数库", "共享参数定义", "项目参数值矩阵", "配置源预览", "共享参数"],
+        absent: ["项目参数 Admin", "items", "events"]
+      },
+      {
+        path: "/logs",
+        present: ["拖放日志文件到此处", "分析结果", "原始日志内容", "日志分析证据链"],
+        absent: ["Unsupported Log Format", "Drag and drop log files here", "Analysis Results", "Suggested Actions", "Apply Mitigation", "建议动作", "应用缓解措施"]
+      },
+      {
+        path: "/log-admin",
+        present: ["日志分析管理后台", "分析记录概览"],
+        absent: ["日志分析 Admin", "Failed", "Complete", "Processing"]
+      },
+      {
+        path: "/debugging",
+        present: ["需要连接", "实时可调参数"],
+        absent: ["Device Online", "Connect Required"]
+      },
+      {
+        path: "/debugging-admin",
+        present: ["参数调试管理后台", "可写入"],
+        absent: ["参数调试 Admin", "Ready"]
+      }
+    ];
+
+    pageChecks.forEach(({ path, present, absent }) => {
+      cleanup();
+      window.history.replaceState(null, "", path);
+      render(<App />);
+
+      present.forEach((text) => {
+        expect(document.body).toHaveTextContent(text);
+      });
+      absent.forEach((text) => {
+        expect(document.body).not.toHaveTextContent(text);
+      });
+    });
+  });
+
+  it("uses Chinese helper copy in the global chrome and OpsAgent panel", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    expect(screen.getByPlaceholderText("搜索...")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("打开 OpsAgent"));
+
+    expect(document.body).toHaveTextContent("上下文洞察");
+    expect(screen.getByPlaceholderText("询问 OpsAgent...")).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("Context-Aware Insight");
+    expect(screen.queryByPlaceholderText("Ask OpsAgent...")).not.toBeInTheDocument();
+  });
+
+  it("filters debugging parameters by module from a left filter panel", () => {
+    window.history.replaceState(null, "", "/debugging");
+
+    render(<App />);
+
+    const filters = screen.getByRole("complementary", { name: "参数筛选" });
+    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
+
+    expect(within(filters).queryByText("项目")).not.toBeInTheDocument();
+    expect(within(filters).queryByText("重要性")).not.toBeInTheDocument();
+    expect(moduleSelect).toHaveValue("All");
+    expect(within(screen.getByRole("table")).getByText("charger.input_current_limit_ma")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("battery.cell_temp_limit_c")).toBeInTheDocument();
+
+    fireEvent.change(moduleSelect, { target: { value: "Battery" } });
+
+    expect(within(screen.getByRole("table")).queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("battery.cell_temp_limit_c")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("battery.impedance_mohm")).toBeInTheDocument();
+    expect(filters).toHaveTextContent("当前筛选命中 3 条参数。");
+  });
+
+  it("edits and pushes debugging target values with operation records", () => {
+    window.history.replaceState(null, "", "/debugging");
+
+    render(<App />);
+
+    const findDebugRow = (parameterKey: string) =>
+      Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((row) =>
+        row.textContent?.includes(parameterKey)
+      );
+    const parameterKey = "charger.charge_pump.enable";
+    const row = findDebugRow(parameterKey);
+
+    expect(row).toBeDefined();
+    expect(within(row as HTMLElement).getByText("已同步")).toBeInTheDocument();
+
+    fireEvent.change(within(row as HTMLElement).getByLabelText(`${parameterKey} 目标设定值`), { target: { value: "0" } });
+
+    expect(within(findDebugRow(parameterKey) as HTMLElement).getByText("待下发")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent("1 项参数等待应用");
+
+    fireEvent.click(screen.getByRole("button", { name: "连接" }));
+    fireEvent.click(screen.getByRole("button", { name: "下发调试值" }));
+
+    const updatedRow = findDebugRow(parameterKey);
+    const timeline = screen.getByRole("complementary", { name: "调试操作记录" });
+
+    expect(updatedRow).toBeDefined();
+    expect(updatedRow).toHaveTextContent("0");
+    expect(within(updatedRow as HTMLElement).getByText("下发成功")).toBeInTheDocument();
+    expect(timeline).toHaveTextContent(`下发 ${parameterKey}`);
+    expect(timeline).toHaveTextContent("值变更：1 -> 0 bool，执行成功。");
+  });
+
+  it("removes the global project selector from review and parameter admin topbars", () => {
+    ["/parameter-review", "/parameter-admin"].forEach((path) => {
+      cleanup();
+      window.history.replaceState(null, "", path);
+      render(<App />);
+
+      const topbar = document.querySelector<HTMLElement>(".topbar");
+      expect(topbar).not.toBeNull();
+      expect(within(topbar as HTMLElement).queryByRole("combobox")).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not expose the removed tutorial surface from the home page", () => {
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "使用教程" })).not.toBeInTheDocument();
+  });
+
+  it("resolves direct tutorial urls back to the home surface", () => {
+    window.history.replaceState(null, "", "/tutorial/parameters");
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: /智效 WiseEff/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "项目参数演示脚本" })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it("provides 10 power-management parameters for every project", () => {
+    const parameterCountsByProject = initialState.parameters.reduce<Record<string, number>>(
+      (counts, parameter) => {
+        counts[parameter.projectId] = (counts[parameter.projectId] ?? 0) + 1;
+        return counts;
+      },
+      {}
+    );
+
+    expect(parameterCountsByProject).toEqual({
+      atlas: 10,
+      aurora: 10,
+      nebula: 10
+    });
+  });
+
+  it("edits project parameter config and reflects it in comparison data", () => {
+    window.history.replaceState(null, "", "/parameter-admin");
+
+    render(<App />);
+
+    const projectValues = screen.getByRole("region", { name: "项目参数值矩阵" });
+    const sharedDefinition = screen.getByRole("region", { name: "共享参数定义" });
+    const auroraCurrentValue = within(projectValues).getByLabelText("AUR-Prod 当前值");
+
+    fireEvent.change(auroraCurrentValue, { target: { value: "3650" } });
+
+    expect(document.body).toHaveTextContent('"currentValue": "3650"');
+    expect(within(sharedDefinition).getByLabelText("参数推荐值")).toHaveValue("3200");
+    expect(within(projectValues).queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "项目参数对比分析" }));
+
+    const fastChargeRow = Array.from(document.querySelectorAll<HTMLElement>(".comparison-row")).find((row) =>
+      row.textContent?.includes("fast_charge_current_limit_ma")
+    );
+    expect(fastChargeRow).toHaveTextContent("3650");
+  });
+
+  it("adds and deletes shared project parameters from the project admin config", () => {
+    window.history.replaceState(null, "", "/parameter-admin");
+
+    render(<App />);
+
+    expect(screen.getByText("项目共享参数库")).toBeInTheDocument();
+    expect(screen.getByText("共享参数定义")).toBeInTheDocument();
+    expect(screen.getByText("项目参数值矩阵")).toBeInTheDocument();
+    expect(screen.getByText("所有项目共用同一条参数定义，只在这里维护各项目的实际值。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "NEB-RD" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
+
+    expect(screen.getByDisplayValue("new_power_parameter_11")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent('"name": "new_power_parameter_11"');
+
+    expect(screen.getByText("new_power_parameter_11")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toHaveTextContent("NEB-RD");
+
+    fireEvent.click(screen.getByRole("button", { name: "删除参数" }));
+
+    expect(screen.queryByDisplayValue("new_power_parameter_11")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('"name": "new_power_parameter_11"');
+  });
+
+  it("saves project admin edits to the local JSON config endpoint", () => {
+    window.history.replaceState(null, "", "/parameter-admin");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    const projectValues = screen.getByRole("region", { name: "项目参数值矩阵" });
+    fireEvent.change(within(projectValues).getByLabelText("AUR-Prod 当前值"), { target: { value: "3650" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/power-management-config",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining('"currentValue": "3650"')
+      })
+    );
+  });
+
+  it("edits debug parameter config and reflects it in the debugging workspace", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
+
+    expect(document.body).toHaveTextContent('"targetValue": "3650"');
+
+    fireEvent.click(screen.getByRole("button", { name: "参数调试平台" }));
+
+    expect(screen.getByDisplayValue("3650")).toBeInTheDocument();
+  });
+
+  it("adds and deletes debug parameters from the debugging admin config", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "新增可调参数" }));
+
+    expect(screen.getByDisplayValue("new_debug_parameter_9")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent('"key": "debug.new_parameter_9"');
+
+    fireEvent.click(screen.getByRole("button", { name: "删除可调参数" }));
+
+    expect(screen.queryByDisplayValue("new_debug_parameter_9")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('"key": "debug.new_parameter_9"');
+  });
+
+  it("saves debug admin edits to the local JSON config endpoint", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/power-management-config",
+      expect.objectContaining({
+        method: "PUT",
+        body: expect.stringContaining('"targetValue": "3650"')
+      })
+    );
+  });
+
+  it("removes reset-to-code-version actions from both config admin pages", () => {
+    window.history.replaceState(null, "", "/parameter-admin");
+
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "重置为代码版本" })).not.toBeInTheDocument();
+
+    cleanup();
+    window.history.replaceState(null, "", "/debugging-admin");
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "重置为代码版本" })).not.toBeInTheDocument();
+  });
+
+  it("keeps browser history navigation synced with rendered pages", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /进入工作台/ }));
+    expect(window.location.pathname).toBe("/parameters");
+    expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+
+    window.history.pushState(null, "", "/logs");
+    fireEvent.popState(window);
+
+    expect(screen.getByRole("heading", { name: "日志智能分析" })).toBeInTheDocument();
+  });
+});
