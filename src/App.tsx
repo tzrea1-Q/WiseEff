@@ -21,9 +21,7 @@
   RotateCcw,
   Search,
   Send,
-  SlidersHorizontal,
   Sparkles,
-  TerminalSquare,
   Upload,
   UserRound,
   X
@@ -31,6 +29,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
+import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
   ChangeRequest,
@@ -53,51 +52,6 @@ import {
   updateProjectParameter,
   updateProjectParameterMetadata
 } from "./powerManagementConfig";
-
-const homeAiScenarios = [
-  {
-    label: "问你想问",
-    title: "我想让电池在高温充电时更保守，应该改哪个参数？",
-    context:
-      "你可以直接描述目标，不必先知道参数名。OpsAgent 会查找参数库、知识库和历史日志，给出 fast_charge_current_limit_ma、battery_temp_target_c 等候选参数和原因。",
-    evidence: ["理解目标", "检索知识库", "给出参数建议"],
-    metric: "自然语言提问",
-    action: "回答会说明建议依据和影响范围"
-  },
-  {
-    label: "做你想做",
-    title: "帮我连接 ChargeLab_X01，并把可调参数下发到样机",
-    context:
-      "用户不用逐页进入调试平台、筛模块、改输入框。OpsAgent 可以按目标连接设备、填写目标值、触发下发，并把结果写回调试操作记录。",
-    evidence: ["连接样机", "填写目标值", "下发并记录"],
-    metric: "代办调试下发",
-    action: "越界和高风险动作仍保留确认"
-  },
-  {
-    label: "做你想做",
-    title: "把 Nebula 项目的快充电流调整到更稳妥的策略，并提交审阅",
-    context:
-      "你能在 Web 上点选、填写、下发和提交的操作，都可以交给 Agent 代劳。用户只说最终目标，Agent 负责跳过繁琐步骤并保留确认节点。",
-    evidence: ["拆解步骤", "代填表单", "提交审阅"],
-    metric: "目标驱动执行",
-    action: "降低平台使用门槛，关键动作仍需确认"
-  }
-] as const;
-
-const homeAiCapabilities = [
-  {
-    label: "问你想问",
-    text: "平台里有的信息，都可以直接问"
-  },
-  {
-    label: "做你想做",
-    text: "把目标交给 Agent，繁琐步骤由它代劳"
-  },
-  {
-    label: "放心交给它",
-    text: "涉及修改、下发和审阅时保留人工确认"
-  }
-] as const;
 
 type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
@@ -203,7 +157,7 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
         submitter: roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户",
         createdAt: "刚刚",
         status: "待审阅",
-        aiSummary: action.reason || "OpsAgent 已生成影响摘要，建议参数管理员审阅后推进。"
+        aiSummary: action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。"
       };
 
       return {
@@ -432,7 +386,7 @@ function AppShell() {
     <div className={isHome ? "app-shell home-shell" : "app-shell"}>
       {!isHome ? <Sidebar activePath={page.path} onNavigate={navigate} /> : null}
       <div className={isHome ? "main-shell home-main-shell" : "main-shell"}>
-        <TopBar state={state} dispatch={dispatch} page={page} />
+        {!isHome ? <TopBar state={state} dispatch={dispatch} page={page} /> : null}
         <main className={page.key === "home" ? "main-content home-content" : "main-content"}>
           <PageRouter
             page={page}
@@ -444,7 +398,7 @@ function AppShell() {
           />
         </main>
       </div>
-      <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
+      {!isHome ? <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} /> : null}
     </div>
   );
 }
@@ -498,7 +452,7 @@ function PageRouter({
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
     default:
-      return <HomePage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <HomePage />;
   }
 }
 
@@ -595,143 +549,8 @@ function TopBar({ state, dispatch, page }: { state: PrototypeState; dispatch: Re
   );
 }
 
-function HomePage({ state, onNavigate }: PageProps) {
-  const appCards = [
-    {
-      title: "项目参数在线管理平台",
-      text: "库上参数查询、项目对比、变更提交、审阅合入和参数治理。",
-      path: "/parameters",
-      icon: SlidersHorizontal,
-      value: `${state.changeRequests.filter((request) => request.status !== "已合入").length}`,
-      label: "待流转请求"
-    },
-    {
-      title: "日志智能分析平台",
-      text: "上传日志、可视化 AI 分析阶段、根因推断和证据链追溯。",
-      path: "/logs",
-      icon: FileText,
-      value: "无线充电日志分析",
-      label: "已支持"
-    },
-    {
-      title: "参数调试平台",
-      text: "调试样机连接、实时参数下发、风险确认和回滚准备。",
-      path: "/debugging",
-      icon: TerminalSquare,
-      value: state.devices.some((device) => device.status === "已连接") ? "在线" : "就绪",
-      label: "设备状态"
-    }
-  ];
-
-  return (
-    <div className="home-grid">
-      <section className="hero-panel">
-        <div className="hero-art" />
-        <div className="hero-copy">
-          <h1>智效 WiseEff：AI 驱动的企业业务效率平台</h1>
-          <p>
-            统一连接参数、日志、调试三个高频效率场景，让 AI Agent 在同一业务上下文里辅助检索、分析、审阅、执行和治理留痕。
-          </p>
-          <div className="hero-actions">
-            <button className="button primary" type="button" onClick={() => onNavigate("/parameters")}>
-              进入工作台
-              <ArrowRight size={17} />
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="app-entry-grid">
-        {appCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <button className="entry-card" key={card.path} type="button" onClick={() => onNavigate(card.path)}>
-              <div className="entry-icon">
-                <Icon size={25} />
-              </div>
-              <ChevronRight className="entry-arrow" size={20} />
-              <h2>{card.title}</h2>
-              <p>{card.text}</p>
-              <div className="entry-metric">
-                <strong>{card.value}</strong>
-                <span>{card.label}</span>
-              </div>
-            </button>
-          );
-        })}
-      </section>
-
-      <section className="dark-ai-band ai-workflow-showcase" aria-label="AI 工作流闭环">
-        <div className="dark-ai-band-head">
-          <div className="ai-workflow-eyebrow">
-            <Sparkles size={16} />
-            <span>参数 / 日志 / 调试</span>
-          </div>
-          <h2>
-            问你想问，做你想做：让 Agent 成为<span className="text-nowrap">平台使用助手</span>
-          </h2>
-          <p>
-            平台里有的信息，都可以直接问；你能通过 Web 交互完成的操作，也可以让 OpsAgent 代劳。用户只需要讲清楚目标，Agent 负责查知识库、找参数、填表单和推进流程。
-          </p>
-          <div className="ai-workflow-stats" aria-label="AI 工作流覆盖范围">
-            <div>
-              <strong>2 个核心能力</strong>
-              <span>问你想问、做你想做</span>
-            </div>
-            <div>
-              <strong>低门槛使用</strong>
-              <span>不用先熟悉所有页面和字段</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="ai-workflow-stage">
-          <div className="ai-carousel" aria-label="AI 场景轮播">
-            <div className="ai-carousel-track">
-              {homeAiScenarios.map((scenario) => (
-                <article className="ai-scenario-slide" key={`${scenario.label}-${scenario.title}`}>
-                  <div className="ai-scenario-topline">
-                    <span>{scenario.label}</span>
-                    <strong>{scenario.metric}</strong>
-                  </div>
-                  <h3>{scenario.title}</h3>
-                  <p>{scenario.context}</p>
-                  <div className="ai-evidence-chain" aria-label={`${scenario.title}证据链`}>
-                    {scenario.evidence.map((item, index) => (
-                      <span key={item}>
-                        <b>{String(index + 1).padStart(2, "0")}</b>
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="ai-scenario-action">
-                    <CheckCircle2 size={16} />
-                    <span>{scenario.action}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="ai-capability-grid">
-            {homeAiCapabilities.map((capability) => (
-              <article className="ai-capability-card" key={capability.label}>
-                <span>{capability.label}</span>
-                <strong>{capability.text}</strong>
-              </article>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="metric-grid">
-        <MetricCard title="已处理参数修改" value="35次" trend="较上周增长 35%" tone="teal" />
-        <MetricCard title="参数合入平均闭环时长" value="20分钟" trend="较上月缩短 20%" tone="blue" />
-        <MetricCard title="日志智能分析次数" value="128次" trend="累计完成日志分析" tone="purple" />
-        <MetricCard title="参数调试使用次数" value="72次" trend="覆盖权限、确认、审计链路" tone="blue" />
-      </section>
-    </div>
-  );
+function HomePage() {
+  return <LinearTemplateHome />;
 }
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -1074,7 +893,7 @@ function ParameterComparisonPage({
       <section className="comparison-summary" aria-label="参数对比摘要">
         <MetricCard title="对比范围" value={comparisonTitle} trend="实际项目参数对比" tone="blue" />
         <MetricCard title="漂移参数" value={`${driftRows.length}`} trend="需要审阅后同步" tone="teal" />
-        <MetricCard title="高重要性差异" value={`${driftRows.filter((row) => row.risk === "High").length}`} trend="OpsAgent 已生成风险说明" tone="purple" />
+        <MetricCard title="高重要性差异" value={`${driftRows.filter((row) => row.risk === "High").length}`} trend="WiseAgent 已生成风险说明" tone="purple" />
       </section>
 
       <section className="comparison-layout">
@@ -2199,12 +2018,6 @@ function UnifiedAgent({
     };
   }, [dragging]);
 
-  useEffect(() => {
-    if (path === "/parameter-comparison") {
-      setOpen(true);
-    }
-  }, [path]);
-
   const executeAction = (id: string) => {
     switch (id) {
       case "filter-high-risk":
@@ -2215,7 +2028,7 @@ function UnifiedAgent({
           type: "ADD_CHANGE_REQUEST",
           parameterId: "p-max-session",
           targetValue: "80",
-          reason: "OpsAgent 建议将会话上限调整到安全阈值内。"
+          reason: "WiseAgent 建议将会话上限调整到安全阈值内。"
         });
         setMessages((items) => ["已生成并提交参数修改草稿，进入审阅队列。", ...items]);
         break;
@@ -2252,7 +2065,7 @@ function UnifiedAgent({
     if (!value) {
       return;
     }
-    setMessages((items) => [`你问：${value}`, `OpsAgent：我已结合 ${plan.contextTitle} 上下文生成一组可执行建议。`, ...items]);
+    setMessages((items) => [`你问：${value}`, `WiseAgent：我已结合 ${plan.contextTitle} 上下文生成一组可执行建议。`, ...items]);
     event.currentTarget.reset();
   };
 
@@ -2296,7 +2109,7 @@ function UnifiedAgent({
         onClick={openAgent}
         onPointerDown={startDraggingAgent}
         style={agentPositionStyle}
-        aria-label="打开 OpsAgent"
+        aria-label="打开 WiseAgent"
       >
         <Bot size={24} />
       </button>
@@ -2310,10 +2123,10 @@ function UnifiedAgent({
           <Bot size={19} />
         </div>
         <div>
-          <strong>OpsAgent</strong>
+          <strong>WiseAgent</strong>
           <span>{plan.contextTitle}</span>
         </div>
-        <button type="button" onClick={() => setOpen(false)} aria-label="最小化 OpsAgent">
+        <button type="button" onClick={() => setOpen(false)} aria-label="最小化 WiseAgent">
           <X size={18} />
         </button>
       </div>
@@ -2323,10 +2136,10 @@ function UnifiedAgent({
           <p>{plan.contextSummary}</p>
         </div>
         {comparisonInsights ? (
-          <div className="agent-insight-stack" aria-label="OpsAgent 洞察">
+          <div className="agent-insight-stack" aria-label="WiseAgent 洞察">
             <div className="agent-insight-heading">
               <Bot size={16} />
-              <strong>OpsAgent 洞察</strong>
+              <strong>WiseAgent 洞察</strong>
             </div>
             <div className="agent-insight-card accent-secondary">
               <SectionLabel icon={<Info size={15} />} label="项目差异风险" />
@@ -2393,7 +2206,7 @@ function UnifiedAgent({
         </div>
       </div>
       <form className="agent-input" onSubmit={submitPrompt}>
-        <input name="agentPrompt" placeholder="询问 OpsAgent..." />
+        <input name="agentPrompt" placeholder="询问 WiseAgent..." />
         <button type="submit" aria-label="发送">
           <Send size={17} />
         </button>

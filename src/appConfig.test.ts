@@ -34,6 +34,6 @@ describe("WiseEff prototype configuration", () => {
     const homePage = getPageByPath("/");
 
     expect(homePage.title).toBe("智效 WiseEff");
-    expect(homePage.subtitle).toBe("AI 驱动的企业业务效率平台");
+    expect(homePage.subtitle).toBe("业务流程里的 AI 协同工作系统");
   });
 });

@@ -54,7 +54,7 @@ export const navigationItems: PageConfig[] = [
     group: "平台总览",
     icon: Home,
     title: "智效 WiseEff",
-    subtitle: "AI 驱动的企业业务效率平台"
+    subtitle: "业务流程里的 AI 协同工作系统"
   },
   {
     key: "parameters",

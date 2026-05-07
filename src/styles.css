@@ -315,7 +315,7 @@ button:disabled {
 }
 
 .home-content {
-  padding-bottom: 140px;
+  padding: 0;
 }
 
 .home-grid,
