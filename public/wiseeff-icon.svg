@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 260 260" role="img" aria-label="WiseEff elastic path W icon">
+  <defs>
+    <linearGradient id="wiseeff-icon-bg" x1="24" y1="22" x2="236" y2="240" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#003D9B" />
+      <stop offset="0.56" stop-color="#0052CC" />
+      <stop offset="1" stop-color="#00687B" />
+    </linearGradient>
+    <linearGradient id="wiseeff-icon-path" x1="60" y1="106" x2="202" y2="158" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" />
+      <stop offset="0.58" stop-color="#E9F9FF" />
+      <stop offset="1" stop-color="#50DCFF" />
+    </linearGradient>
+  </defs>
+  <rect x="30" y="30" width="200" height="200" rx="48" fill="url(#wiseeff-icon-bg)" />
+  <path d="M59 112C70 164 82 188 102 184C119 181 118 127 138 118C161 108 156 181 176 180C197 179 204 136 208 94" fill="none" stroke="url(#wiseeff-icon-path)" stroke-width="22" stroke-linecap="round" />
+  <path d="M59 112C70 164 82 188 102 184C119 181 118 127 138 118C161 108 156 181 176 180C197 179 204 136 208 94" fill="none" stroke="#FFFFFF" stroke-opacity="0.24" stroke-width="7" stroke-linecap="round" />
+  <circle cx="138" cy="118" r="10" fill="#50DCFF" />
+  <circle cx="176" cy="180" r="7" fill="#FFFFFF" />
+  <path class="wiseeff-icon-spark" d="M184 58L190 73L205 79L190 85L184 100L178 85L163 79L178 73Z" fill="#FFFFFF" />
+</svg>
