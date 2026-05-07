@@ -43,6 +43,8 @@ describe("WiseEff app shell", () => {
     expect(homeRoot).toBeInTheDocument();
     expect(homeRoot).toHaveClass("light-homepage");
     expect(homeRoot).toHaveAttribute("data-theme", "light");
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon")).toBeInTheDocument();
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-spark")).toBeInTheDocument();
 
     expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "WiseEff homepage navigation" })).toBeInTheDocument();
@@ -59,6 +61,9 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
+    const workbenchBrand = document.querySelector(".brand-mark .wiseeff-icon");
+    expect(workbenchBrand).toBeInTheDocument();
+    expect(workbenchBrand).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();

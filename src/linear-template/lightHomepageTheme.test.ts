@@ -105,7 +105,7 @@ describe("WiseEff light homepage theme", () => {
 
   it("keeps the Agent card emblem visually anchored inside the card", () => {
     const logoMock = getCssRule(".linear-logo-light-mock");
-    const logo = getCssRule(".linear-logo-light-mock .linear-logo");
+    const logo = getCssRule(".linear-logo-light-mock .wiseeff-icon");
 
     expect(logoMock).toContain("top: -36px");
     expect(logo).toContain("top: 88px");
