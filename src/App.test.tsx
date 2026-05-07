@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { initialState } from "./mockData";
@@ -6,32 +6,105 @@ import { initialState } from "./mockData";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.useRealTimers();
   window.history.replaceState(null, "", "/");
 });
 
 describe("WiseEff app shell", () => {
-  it("presents the home AI capability section around asking and delegating to OpsAgent", () => {
+  it("renders the localized WiseEff homepage on the home route", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
-    const showcase = screen.getByRole("region", { name: "AI 工作流闭环" });
+    const homeRoot = document.querySelector(".linear-template-home");
+    expect(homeRoot).toBeInTheDocument();
+    expect(homeRoot).toHaveClass("light-homepage");
+    expect(homeRoot).toHaveAttribute("data-theme", "light");
 
-    expect(showcase).toHaveTextContent("问你想问，做你想做");
-    expect(showcase).toHaveTextContent("平台里有的信息，都可以直接问");
-    expect(showcase).toHaveTextContent("把目标交给 Agent，繁琐步骤由它代劳");
-    expect(showcase).toHaveTextContent("问你想问");
-    expect(showcase).toHaveTextContent("我想让电池在高温充电时更保守，应该改哪个参数？");
-    expect(showcase).toHaveTextContent("做你想做");
-    expect(showcase).toHaveTextContent("把 Nebula 项目的快充电流调整到更稳妥的策略，并提交审阅");
-    expect(showcase).toHaveTextContent("帮我连接 ChargeLab_X01，并把可调参数下发到样机");
-    expect(showcase).toHaveTextContent("2 个核心能力");
-    expect(showcase.querySelector(".ai-carousel-track")).toBeInTheDocument();
-    const slides = Array.from(showcase.querySelectorAll(".ai-scenario-slide"));
-    expect(slides).toHaveLength(3);
-    expect(slides.filter((slide) => slide.textContent?.includes("做你想做"))).toHaveLength(2);
-    expect(showcase).not.toHaveTextContent("只做可追溯的下一步");
-    expect(showcase).not.toHaveTextContent("证据先行");
+    expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "WiseEff homepage navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute("href", "/parameters");
+    expect(screen.queryByText("WiseEff Prototype · 当前接入电源管理场景")).not.toBeInTheDocument();
+    expect(screen.getByText(/关键变更保留确认、权限和审计/)).toBeInTheDocument();
+    expect(document.querySelector(".topbar")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("打开 WiseAgent");
+  });
+
+  it("keeps the WiseEff workbench shell on non-home routes", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
+    expect(document.querySelector(".topbar")).toBeInTheDocument();
+    expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+  });
+
+  it("organizes the localized homepage around WiseEff workflow sections", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    const homepage = screen.getByRole("main", { name: "WiseEff homepage" });
+
+    expect(within(homepage).getByRole("heading", { name: "不是另一个后台系统" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "参数流转，从查询到审阅" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "日志分析，不只给结论" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "调试动作，保留控制权" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "从一个场景，沉淀一套工作方式" })).toBeInTheDocument();
+    expect(homepage).toHaveTextContent("fast_charge_current_limit_ma");
+    expect(homepage).toHaveTextContent("battery_pack_temp=46.8C");
+    expect(homepage).toHaveTextContent("PRQ-9102");
+    expect(homepage).toHaveTextContent("ChargeLab_X01");
+  });
+
+  it("links the localized homepage CTAs into the WiseEff workbench", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute("href", "/parameters");
+    expect(screen.getByRole("link", { name: "查看当前能力" })).toHaveAttribute("href", "#platform");
+    expect(document.body).not.toHaveTextContent("Linear is a better way");
+    expect(document.body).not.toHaveTextContent("Powering the world's best product teams.");
+  });
+
+  it("switches the hero stage carousel across WiseEff applications", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "把参数差异变成可审阅变更" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+    expect(screen.getByText("ANL-2405")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把现场调参变成受控执行流程" })).toBeInTheDocument();
+    expect(screen.getByText("ChargeLab_X01 已连接")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "上一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+  });
+
+  it("pauses the hero stage auto rotation after manual carousel navigation", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(9600);
+    });
+
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "把现场调参变成受控执行流程" })).not.toBeInTheDocument();
   });
 
   it("uses dropdown controls for project, importance, and module filters", () => {
@@ -118,7 +191,8 @@ describe("WiseEff app shell", () => {
     expect(document.body).not.toHaveTextContent("生产 vs 预发");
     expect(screen.getByText("参数差异矩阵")).toBeInTheDocument();
     expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
-    expect(screen.getByText("OpsAgent 洞察")).toBeInTheDocument();
+    expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
+    expect(screen.queryByText("WiseAgent 洞察")).not.toBeInTheDocument();
   });
 
   it("compares parameter values between two real projects without percent importance drift", () => {
@@ -188,16 +262,20 @@ describe("WiseEff app shell", () => {
     expect(filters).not.toHaveTextContent("当前筛选");
   });
 
-  it("opens comparison insights inside the floating OpsAgent instead of an inline sidebar", () => {
+  it("keeps comparison insights inside the floating WiseAgent after opening it", () => {
     window.history.replaceState(null, "", "/parameter-comparison");
 
     render(<App />);
 
     expect(document.querySelector(".comparison-insights")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("打开 OpsAgent")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
+    expect(document.querySelector(".agent-panel")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
 
     const agentPanel = document.querySelector<HTMLElement>(".agent-panel");
     expect(agentPanel).toBeInTheDocument();
+    expect(within(agentPanel!).getByText("WiseAgent")).toBeInTheDocument();
     expect(within(agentPanel!).getByText("项目差异风险")).toBeInTheDocument();
     expect(within(agentPanel!).getByText("参数值对照")).toBeInTheDocument();
     expect(within(agentPanel!).getByText("风险阈值漂移")).toBeInTheDocument();
@@ -308,8 +386,8 @@ describe("WiseEff app shell", () => {
     const pageChecks = [
       {
         path: "/",
-        present: ["智效 WiseEff", "在线"],
-        absent: ["Online", "Ready"]
+        present: ["让高频业务作业更智能高效", "不是另一个后台系统", "参数流转", "日志分析", "调试动作", "Governance"],
+        absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
       },
       {
         path: "/parameters",
@@ -318,8 +396,8 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-comparison",
-        present: ["参数", "对比分析", "基准项目", "对比项目", "同步选中项", "OpsAgent 洞察"],
-        absent: ["Parameters", "Comparison", "生产 vs 预发", "Export", "Sync Selected", "Parameter Key", "OpsAgent Insights", "View Historical Latency"]
+        present: ["参数", "对比分析", "基准项目", "对比项目", "同步选中项", "WiseAgent 已生成风险说明"],
+        absent: ["Parameters", "Comparison", "生产 vs 预发", "Export", "Sync Selected", "Parameter Key", "OpsAgent", "OpsAgent Insights", "View Historical Latency"]
       },
       {
         path: "/parameter-review",
@@ -367,19 +445,20 @@ describe("WiseEff app shell", () => {
     });
   });
 
-  it("uses Chinese helper copy in the global chrome and OpsAgent panel", () => {
+  it("uses Chinese helper copy in the global chrome and WiseAgent panel", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
 
     expect(screen.getByPlaceholderText("搜索...")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByLabelText("打开 OpsAgent"));
+    fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
 
     expect(document.body).toHaveTextContent("上下文洞察");
-    expect(screen.getByPlaceholderText("询问 OpsAgent...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("询问 WiseAgent...")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("Context-Aware Insight");
     expect(screen.queryByPlaceholderText("Ask OpsAgent...")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("OpsAgent");
   });
 
   it("filters debugging parameters by module from a left filter panel", () => {
@@ -460,7 +539,7 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: /智效 WiseEff/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "项目参数演示脚本" })).not.toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
   });
@@ -619,10 +698,9 @@ describe("WiseEff app shell", () => {
   });
 
   it("keeps browser history navigation synced with rendered pages", () => {
-    render(<App />);
+    window.history.replaceState(null, "", "/parameters");
 
-    fireEvent.click(screen.getByRole("button", { name: /进入工作台/ }));
-    expect(window.location.pathname).toBe("/parameters");
+    render(<App />);
     expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
 
     window.history.pushState(null, "", "/logs");

@@ -250,7 +250,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       {
         id: "audit-2",
         app: "logs",
-        actor: "OpsAgent",
+        actor: "WiseAgent",
         action: "生成充电温升根因证据链",
         time: "18 分钟前",
         severity: "Medium"
