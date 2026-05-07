@@ -1,6 +1,10 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { WiseEffIcon } from "./WiseEffIcon";
+
+afterEach(() => {
+  cleanup();
+});
 
 describe("WiseEffIcon", () => {
   it("renders the full elastic-path W mark with accessible title", () => {
@@ -13,6 +17,33 @@ describe("WiseEffIcon", () => {
     expect(icon.querySelector(".wiseeff-icon-spark")).toBeInTheDocument();
     expect(icon.querySelector(".wiseeff-icon-node-primary")).toBeInTheDocument();
     expect(icon.querySelector(".wiseeff-icon-node-secondary")).toBeInTheDocument();
+  });
+
+  it("uses unique gradient references for each full icon instance", () => {
+    render(
+      <>
+        <WiseEffIcon title="First WiseEff icon" />
+        <WiseEffIcon title="Second WiseEff icon" />
+      </>
+    );
+
+    const firstIcon = screen.getByRole("img", { name: "First WiseEff icon" });
+    const secondIcon = screen.getByRole("img", { name: "Second WiseEff icon" });
+    const firstBgId = firstIcon.querySelector("linearGradient")?.getAttribute("id");
+    const firstPathId = firstIcon.querySelectorAll("linearGradient")[1]?.getAttribute("id");
+    const secondBgId = secondIcon.querySelector("linearGradient")?.getAttribute("id");
+    const secondPathId = secondIcon.querySelectorAll("linearGradient")[1]?.getAttribute("id");
+
+    expect(firstBgId).toBeTruthy();
+    expect(firstPathId).toBeTruthy();
+    expect(secondBgId).toBeTruthy();
+    expect(secondPathId).toBeTruthy();
+    expect(firstBgId).not.toBe(secondBgId);
+    expect(firstPathId).not.toBe(secondPathId);
+    expect(firstIcon.querySelector(".wiseeff-icon-container")).toHaveAttribute("fill", `url(#${firstBgId})`);
+    expect(firstIcon.querySelector(".wiseeff-icon-path")).toHaveAttribute("stroke", `url(#${firstPathId})`);
+    expect(secondIcon.querySelector(".wiseeff-icon-container")).toHaveAttribute("fill", `url(#${secondBgId})`);
+    expect(secondIcon.querySelector(".wiseeff-icon-path")).toHaveAttribute("stroke", `url(#${secondPathId})`);
   });
 
   it("renders a compact favicon variant without the spark", () => {
@@ -33,6 +64,15 @@ describe("WiseEffIcon", () => {
     expect(svg).toHaveAttribute("aria-hidden", "true");
     expect(svg).not.toHaveAttribute("role");
     expect(svg?.querySelector("title")).not.toBeInTheDocument();
+  });
+
+  it("keeps decorative icons hidden even when consumer aria props conflict", () => {
+    const { container } = render(<WiseEffIcon decorative aria-hidden={false} aria-label="visible" />);
+    const svg = container.querySelector("svg");
+
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+    expect(svg).not.toHaveAttribute("role");
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 
   it("renders a single-color mark for monochrome contexts", () => {

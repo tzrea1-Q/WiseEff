@@ -1,4 +1,4 @@
-import type { SVGProps } from "react";
+import { useId, type SVGProps } from "react";
 
 type WiseEffIconVariant = "full" | "favicon" | "mono";
 
@@ -16,6 +16,9 @@ export function WiseEffIcon({
   ...props
 }: WiseEffIconProps) {
   const classes = ["wiseeff-icon", `wiseeff-icon-${variant}`, className].filter(Boolean).join(" ");
+  const gradientId = useId();
+  const backgroundGradientId = `wiseeff-component-bg-${gradientId}`;
+  const pathGradientId = `wiseeff-component-path-${gradientId}`;
   const accessibilityProps = decorative
     ? { "aria-hidden": true }
     : {
@@ -25,7 +28,7 @@ export function WiseEffIcon({
 
   if (variant === "favicon") {
     return (
-      <svg viewBox="0 0 40 40" className={classes} {...accessibilityProps} {...props}>
+      <svg viewBox="0 0 40 40" className={classes} {...props} {...accessibilityProps}>
         {!decorative ? <title>{title}</title> : null}
         <rect className="wiseeff-icon-container" width="40" height="40" rx="10" fill="#003D9B" />
         <path
@@ -43,7 +46,7 @@ export function WiseEffIcon({
 
   if (variant === "mono") {
     return (
-      <svg viewBox="0 0 260 260" className={classes} {...accessibilityProps} {...props}>
+      <svg viewBox="0 0 260 260" className={classes} {...props} {...accessibilityProps}>
         {!decorative ? <title>{title}</title> : null}
         <rect
           className="wiseeff-icon-container"
@@ -70,15 +73,15 @@ export function WiseEffIcon({
   }
 
   return (
-    <svg viewBox="0 0 260 260" className={classes} {...accessibilityProps} {...props}>
+    <svg viewBox="0 0 260 260" className={classes} {...props} {...accessibilityProps}>
       {!decorative ? <title>{title}</title> : null}
       <defs>
-        <linearGradient id="wiseeff-component-bg" x1="24" y1="22" x2="236" y2="240" gradientUnits="userSpaceOnUse">
+        <linearGradient id={backgroundGradientId} x1="24" y1="22" x2="236" y2="240" gradientUnits="userSpaceOnUse">
           <stop stopColor="#003D9B" />
           <stop offset="0.56" stopColor="#0052CC" />
           <stop offset="1" stopColor="#00687B" />
         </linearGradient>
-        <linearGradient id="wiseeff-component-path" x1="60" y1="106" x2="202" y2="158" gradientUnits="userSpaceOnUse">
+        <linearGradient id={pathGradientId} x1="60" y1="106" x2="202" y2="158" gradientUnits="userSpaceOnUse">
           <stop stopColor="#FFFFFF" />
           <stop offset="0.58" stopColor="#E9F9FF" />
           <stop offset="1" stopColor="#50DCFF" />
@@ -91,13 +94,13 @@ export function WiseEffIcon({
         width="200"
         height="200"
         rx="48"
-        fill="url(#wiseeff-component-bg)"
+        fill={`url(#${backgroundGradientId})`}
       />
       <path
         className="wiseeff-icon-path"
         d="M59 112C70 164 82 188 102 184C119 181 118 127 138 118C161 108 156 181 176 180C197 179 204 136 208 94"
         fill="none"
-        stroke="url(#wiseeff-component-path)"
+        stroke={`url(#${pathGradientId})`}
         strokeWidth="22"
         strokeLinecap="round"
       />
