@@ -30,6 +30,7 @@ Thumbs.db
 
 # Codex/Superpowers local scratch state
 .superpowers/
+.worktrees/
 docs/superpowers/
 
 # Generated visual QA screenshots
