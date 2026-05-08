@@ -92,14 +92,6 @@
   flex: none;
 }
 
-.linear-logo circle {
-  fill: var(--linear-primary-blue);
-}
-
-.linear-logo path {
-  fill: #ffffff;
-}
-
 .linear-nav {
   margin-left: 28px;
 }
@@ -931,7 +923,7 @@
   mask-image: linear-gradient(to bottom, black, transparent 86%);
 }
 
-.linear-logo-light-mock .linear-logo {
+.linear-logo-light-mock .wiseeff-icon {
   position: absolute;
   top: 88px;
   left: 50%;
@@ -1352,7 +1344,7 @@
   color: var(--linear-grey);
 }
 
-.linear-footer-brand .linear-logo {
+.linear-footer-brand .wiseeff-icon {
   width: 16px;
   height: 16px;
 }

@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
 import App from "./App";
 import { initialState } from "./mockData";
 
@@ -11,6 +12,28 @@ afterEach(() => {
 });
 
 describe("WiseEff app shell", () => {
+  it("declares the WiseEff favicon assets in the document shell", () => {
+    const indexHtml = readFileSync("index.html", "utf8");
+
+    expect(indexHtml).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+    expect(indexHtml).toContain('<link rel="apple-touch-icon" href="/wiseeff-icon.svg" />');
+    expect(indexHtml).toContain('<meta name="theme-color" content="#003D9B" />');
+    expect(existsSync("public/favicon.svg")).toBe(true);
+    expect(existsSync("public/wiseeff-icon.svg")).toBe(true);
+
+    const favicon = readFileSync("public/favicon.svg", "utf8");
+    const fullIcon = readFileSync("public/wiseeff-icon.svg", "utf8");
+
+    expect(favicon).toContain('aria-label="WiseEff favicon"');
+    expect(favicon).toContain("#003D9B");
+    expect(favicon).toContain("stroke-linecap=\"round\"");
+    expect(favicon).not.toContain("wiseeff-icon-spark");
+
+    expect(fullIcon).toContain('aria-label="WiseEff elastic path W icon"');
+    expect(fullIcon).toContain("wiseeff-icon-spark");
+    expect(fullIcon).toContain("#50DCFF");
+  });
+
   it("renders the localized WiseEff homepage on the home route", () => {
     window.history.replaceState(null, "", "/");
 
@@ -20,6 +43,8 @@ describe("WiseEff app shell", () => {
     expect(homeRoot).toBeInTheDocument();
     expect(homeRoot).toHaveClass("light-homepage");
     expect(homeRoot).toHaveAttribute("data-theme", "light");
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon")).toBeInTheDocument();
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-spark")).toBeInTheDocument();
 
     expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "WiseEff homepage navigation" })).toBeInTheDocument();
@@ -36,6 +61,9 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
+    const workbenchBrand = document.querySelector(".brand-mark .wiseeff-icon");
+    expect(workbenchBrand).toBeInTheDocument();
+    expect(workbenchBrand).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
