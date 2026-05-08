@@ -46,7 +46,7 @@ const footerColumns = [
   {
     title: "Access",
     links: [
-      { label: "进入工作台", href: "/parameters" },
+      { label: "进入工作台", href: "/parameter-home" },
       { label: "查看配置", href: "/parameter-admin" },
       { label: "演示路线", href: "#scenarios" }
     ]
@@ -342,7 +342,7 @@ function TemplateHeader() {
           <a className="linear-login" href="#scenarios">
             查看演示
           </a>
-          <a className="linear-button linear-button-small" href="/parameters" aria-label="进入 WiseEff 工作台">
+          <a className="linear-button linear-button-small" href="/parameter-home" aria-label="进入 WiseEff 工作台">
             进入工作台
           </a>
         </div>
@@ -370,7 +370,7 @@ function Hero() {
         <br /> Agent 辅助检索、分析、填表和流转，关键变更保留确认、权限和审计。
       </p>
       <div className="linear-hero-actions linear-fade-item delay-3">
-        <a className="linear-button linear-button-large" href="/parameters">
+        <a className="linear-button linear-button-large" href="/parameter-home">
           进入工作台
         </a>
         <a className="linear-button linear-button-large secondary" href="#platform">
