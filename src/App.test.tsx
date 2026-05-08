@@ -26,7 +26,7 @@ describe("WiseEff app shell", () => {
 
     expect(favicon).toContain('aria-label="WiseEff favicon"');
     expect(favicon).toContain("#003D9B");
-    expect(favicon).toContain("stroke-linecap=\"round\"");
+    expect(favicon).toContain('stroke-linecap="round"');
     expect(favicon).not.toContain("wiseeff-icon-spark");
 
     expect(fullIcon).toContain('aria-label="WiseEff elastic path W icon"');
@@ -34,26 +34,62 @@ describe("WiseEff app shell", () => {
     expect(fullIcon).toContain("#50DCFF");
   });
 
-  it("renders the localized WiseEff homepage on the home route", () => {
+  it("renders the WiseEff platform homepage on the home route", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
     const homeRoot = document.querySelector(".linear-template-home");
+    expect(screen.getByRole("main", { name: "WiseEff homepage" })).toBeInTheDocument();
+    expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(homeRoot).toBeInTheDocument();
     expect(homeRoot).toHaveClass("light-homepage");
     expect(homeRoot).toHaveAttribute("data-theme", "light");
     expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon")).toBeInTheDocument();
     expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-spark")).toBeInTheDocument();
-
     expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "WiseEff homepage navigation" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute("href", "/parameters");
-    expect(screen.queryByText("WiseEff Prototype · 当前接入电源管理场景")).not.toBeInTheDocument();
-    expect(screen.getByText(/关键变更保留确认、权限和审计/)).toBeInTheDocument();
+    expect(screen.queryByText("智能参数管理")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("打开 WiseAgent");
+  });
+
+  it("keeps the platform homepage inside the app scroll container", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    expect(screen.getByRole("main", { name: "WiseEff homepage" }).closest(".main-content.home-content")).toBeInTheDocument();
+  });
+
+  it("routes platform homepage workbench entry links through the parameter homepage", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    const homepageEntryLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href="/parameter-home"]')).filter(
+      (link) => link.className.includes("linear-button") || link.closest(".linear-footer")
+    );
+
+    expect(homepageEntryLinks).toHaveLength(3);
+    expect(document.querySelector('a[href="/parameters"]')).not.toBeInTheDocument();
+  });
+
+  it("adds a parameter management homepage without replacing the platform homepage", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    expect(screen.getByRole("main", { name: "参数管理首页" })).toBeInTheDocument();
+    expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "智能参数管理" })).toBeInTheDocument();
+    expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
+    expect(screen.getByText("热门模块")).toBeInTheDocument();
+    expect(screen.getByText("关键参数变化")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "进入 项目参数工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "进入 参数合入审核" })).toBeInTheDocument();
+    expect(document.querySelector(".topbar")).toBeInTheDocument();
+    expect(within(document.querySelector(".topbar") as HTMLElement).queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "参数首页" })).toHaveClass("active");
   });
 
   it("keeps the WiseEff workbench shell on non-home routes", () => {
@@ -88,12 +124,12 @@ describe("WiseEff app shell", () => {
     expect(homepage).toHaveTextContent("ChargeLab_X01");
   });
 
-  it("links the localized homepage CTAs into the WiseEff workbench", () => {
+  it("links the localized homepage CTAs into the WiseEff parameter homepage", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
-    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute("href", "/parameters");
+    expect(screen.getAllByRole("link", { name: /进入工作台|进入 WiseEff 工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
     expect(screen.getByRole("link", { name: "查看当前能力" })).toHaveAttribute("href", "#platform");
     expect(document.body).not.toHaveTextContent("Linear is a better way");
     expect(document.body).not.toHaveTextContent("Powering the world's best product teams.");
@@ -135,6 +171,34 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("heading", { name: "把现场调参变成受控执行流程" })).not.toBeInTheDocument();
   });
 
+  it("navigates from parameter homepage entries into parameter management routes", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "进入 项目参数工作台" }));
+    expect(window.location.pathname).toBe("/parameters");
+
+    window.history.replaceState(null, "", "/parameter-home");
+    cleanup();
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "进入 参数合入审核" }));
+    expect(window.location.pathname).toBe("/parameter-review");
+  });
+
+  it("preserves contextual query strings when navigating from parameter homepage hotspots", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
+
+    expect(["/parameters", "/parameter-review"]).toContain(window.location.pathname);
+    expect(window.location.search).toMatch(/module=|project=/);
+  });
+
   it("uses dropdown controls for project, importance, and module filters", () => {
     window.history.replaceState(null, "", "/parameters");
 
@@ -168,6 +232,34 @@ describe("WiseEff app shell", () => {
     expect(getTableRow("fast_charge_current_limit_ma")).toHaveTextContent("4200");
   });
 
+  it("exports the currently filtered project parameters as an Excel-readable file", async () => {
+    window.history.replaceState(null, "", "/parameters");
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:project-parameters");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<App />);
+
+    const filters = screen.getByRole("complementary", { name: "参数筛选" });
+    fireEvent.change(within(filters).getByRole("combobox", { name: "模块" }), { target: { value: "Charging Policy" } });
+    fireEvent.click(screen.getByRole("button", { name: "导出 Excel" }));
+
+    const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
+    const exportedText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve(String(reader.result)));
+      reader.addEventListener("error", () => reject(reader.error));
+      reader.readAsText(exportedBlob);
+    });
+
+    expect(exportedBlob.type).toContain("application/vnd.ms-excel");
+    expect(exportedText).toContain("fast_charge_current_limit_ma");
+    expect(exportedText).toContain("charge_voltage_limit_mv");
+    expect(exportedText).not.toContain("battery_health_reserve_pct");
+    expect(clickAnchor).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:project-parameters");
+  });
+
   it("labels the parameter recommendation column as example", () => {
     window.history.replaceState(null, "", "/parameters");
 
@@ -175,6 +267,27 @@ describe("WiseEff app shell", () => {
 
     expect(screen.getByRole("columnheader", { name: "示例" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Recommended" })).not.toBeInTheDocument();
+  });
+
+  it("consumes parameter route context from query strings", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/parameters?project=nebula&module=Battery%20Safety&parameter=nebula-battery-temp-target"
+    );
+
+    render(<App />);
+
+    const filters = screen.getByRole("complementary", { name: "参数筛选" });
+    const projectSelect = within(filters).getByRole("combobox", { name: "项目" });
+    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
+    const detailPanel = document.querySelector<HTMLElement>(".detail-panel");
+
+    expect(projectSelect).toHaveValue("nebula");
+    expect(moduleSelect).toHaveValue("Battery Safety");
+    expect(within(screen.getByRole("table")).getByText("battery_temp_target_c")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+    expect(detailPanel).toHaveTextContent("battery_temp_target_c");
   });
 
   it("keeps the parameter example value aligned inside a normal table cell", () => {
@@ -201,6 +314,55 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("button", { name: "提交参数修改请求" })).toBeInTheDocument();
   });
 
+  it("opens a hidden personal submission history page from the parameter workbench", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
+
+    expect(window.location.pathname).toBe("/parameter-submissions");
+    expect(screen.getByRole("heading", { name: "我的历史提交" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
+  });
+
+  it("submits a round with multiple parameter changes and shows it in personal history", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "加入本轮" }));
+
+    const voltageRow = Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find((row) =>
+      row.textContent?.includes("charge_voltage_limit_mv")
+    );
+    expect(voltageRow).toBeInTheDocument();
+    fireEvent.click(voltageRow as HTMLTableRowElement);
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
+    fireEvent.click(screen.getByRole("button", { name: "加入本轮" }));
+
+    expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "提交参数修改请求" }));
+
+    const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
+    expect(within(dialog).getByText(/本轮提交包含\s*2\s*个参数修改/)).toBeInTheDocument();
+    expect(within(dialog).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(dialog).getByText("charge_voltage_limit_mv")).toBeInTheDocument();
+    expect(within(dialog).getByText(/4310/)).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认提交本轮" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
+
+    expect(screen.getByRole("heading", { name: "我的历史提交" })).toBeInTheDocument();
+    expect(screen.getAllByText(/PRS-/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/本轮提交包含\s*2\s*个参数/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.getByText("charge_voltage_limit_mv")).toBeInTheDocument();
+  });
+
   it("opens a parameter comparison workspace from the compare action", () => {
     window.history.replaceState(null, "", "/parameters");
 
@@ -221,6 +383,33 @@ describe("WiseEff app shell", () => {
     expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
     expect(screen.queryByText("WiseAgent 洞察")).not.toBeInTheDocument();
+  });
+
+  it("exports the project comparison matrix as an Excel-readable file", async () => {
+    window.history.replaceState(null, "", "/parameter-comparison");
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:comparison-parameters");
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "导出" }));
+
+    const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
+    const exportedText = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.addEventListener("load", () => resolve(String(reader.result)));
+      reader.addEventListener("error", () => reject(reader.error));
+      reader.readAsText(exportedBlob);
+    });
+
+    expect(exportedBlob.type).toContain("application/vnd.ms-excel");
+    expect(exportedText).toContain("fast_charge_current_limit_ma");
+    expect(exportedText).toContain("AUR-Prod");
+    expect(exportedText).toContain("NEB-RD");
+    expect(exportedText).toContain("参数含义");
+    expect(clickAnchor).toHaveBeenCalled();
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:comparison-parameters");
   });
 
   it("compares parameter values between two real projects without percent importance drift", () => {
@@ -257,6 +446,24 @@ describe("WiseEff app shell", () => {
     expect(screen.getAllByText("ATL-Intl").length).toBeGreaterThan(0);
     expect(atlasFastChargeRow).toHaveTextContent("3000");
     expect(atlasFastChargeRow).not.toHaveTextContent("%");
+  });
+
+  it("consumes parameter comparison context from query strings", () => {
+    window.history.replaceState(null, "", "/parameter-comparison?project=nebula&module=Battery%20Safety");
+
+    render(<App />);
+
+    const comparisonControls = screen.getByRole("region", { name: "项目对比选择" });
+    const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
+    const matrix = document.querySelector<HTMLElement>(".comparison-matrix");
+
+    expect(within(comparisonControls).getByRole("combobox", { name: "基准项目" })).toHaveValue("nebula");
+    expect(within(comparisonControls).getByRole("combobox", { name: "对比项目" })).toHaveValue("aurora");
+    expect(within(filters).getByRole("combobox", { name: "模块" })).toHaveValue("Battery Safety");
+    expect(screen.getAllByText("NEB-RD").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("AUR-Prod").length).toBeGreaterThan(0);
+    expect(matrix).toHaveTextContent("battery_temp_target_c");
+    expect(matrix).not.toHaveTextContent("fast_charge_current_limit_ma");
   });
 
   it("filters the parameter comparison matrix and shows parameter meanings", () => {
@@ -333,6 +540,28 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("dialog", { name: "打回修改" })).not.toBeInTheDocument();
     expect(reviewDetail).toHaveTextContent("已打回");
     expect(reviewDetail).toHaveTextContent("热测试数据缺少高温工况说明，需要补充后再提交。");
+  });
+
+  it("consumes parameter review context from project and module query strings", () => {
+    window.history.replaceState(null, "", "/parameter-review?project=aurora&module=Battery%20Safety");
+
+    render(<App />);
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+
+    expect(reviewDetail).toHaveTextContent("PRQ-9101");
+    expect(reviewDetail).toHaveTextContent("Battery Safety");
+  });
+
+  it("falls back to module-only matching for parameter review query strings", () => {
+    window.history.replaceState(null, "", "/parameter-review?module=Charging%20Policy");
+
+    render(<App />);
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+
+    expect(reviewDetail).toHaveTextContent("PRQ-9102");
+    expect(reviewDetail).toHaveTextContent("Charging Policy");
   });
 
   it("labels and aligns the review change column", () => {
@@ -414,7 +643,12 @@ describe("WiseEff app shell", () => {
     const pageChecks = [
       {
         path: "/",
-        present: ["让高频业务作业更智能高效", "不是另一个后台系统", "参数流转", "日志分析", "调试动作", "Governance"],
+        present: ["让高频业务作业更智能高效", "WiseEff 把参数管理、日志分析、设备调试和审阅治理连接到同一平台。", "参数管理", "日志分析", "参数调试"],
+        absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
+      },
+      {
+        path: "/parameter-home",
+        present: ["智能参数管理", "热门模块", "关键参数变化", "参数工作台", "参数合入审核"],
         absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
       },
       {
@@ -556,10 +790,33 @@ describe("WiseEff app shell", () => {
     });
   });
 
-  it("does not expose the removed tutorial surface from the home page", () => {
+  it("keeps the platform homepage as the root surface", () => {
     render(<App />);
 
-    expect(screen.queryByRole("button", { name: "使用教程" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
+  });
+
+  it("provides a left-bottom feedback entry for internal testing feedback", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    const feedbackEntry = screen.getByRole("button", { name: "问题反馈" });
+    expect(feedbackEntry).toBeInTheDocument();
+    expect(feedbackEntry.closest(".feedback-entry")).toBeInTheDocument();
+
+    fireEvent.click(feedbackEntry);
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    expect(within(dialog).getByLabelText("反馈类型")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("问题描述")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "提交反馈" })).toBeDisabled();
+
+    fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: "导出按钮需要提示成功状态" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    expect(screen.getByText("反馈已记录，内测团队会结合页面路径和问题类型跟进。")).toBeInTheDocument();
   });
 
   it("resolves direct tutorial urls back to the home surface", () => {

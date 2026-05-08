@@ -5,6 +5,7 @@ describe("WiseEff prototype configuration", () => {
   it("exposes the full PRD route map", () => {
     expect(navigationItems.map((item) => item.path)).toEqual([
       "/",
+      "/parameter-home",
       "/parameters",
       "/parameter-comparison",
       "/parameter-review",

@@ -14,7 +14,9 @@ import {
 
 export type PageKey =
   | "home"
+  | "parameter-home"
   | "parameters"
+  | "parameter-submissions"
   | "parameter-comparison"
   | "parameter-review"
   | "parameter-admin"
@@ -55,6 +57,15 @@ export const navigationItems: PageConfig[] = [
     icon: Home,
     title: "智效 WiseEff",
     subtitle: "业务流程里的 AI 协同工作系统"
+  },
+  {
+    key: "parameter-home",
+    path: "/parameter-home",
+    label: "参数首页",
+    group: "参数管理",
+    icon: Home,
+    title: "智能参数管理",
+    subtitle: "参数管理应用的运营态势、入口看板与 AI 热区分析"
   },
   {
     key: "parameters",
@@ -136,6 +147,18 @@ export const utilityItems = [
 ];
 
 export function getPageByPath(path: string): PageConfig {
+  if (path === "/parameter-submissions") {
+    return {
+      key: "parameter-submissions",
+      path: "/parameter-submissions",
+      label: "我的历史提交",
+      group: "参数管理",
+      icon: FileText,
+      title: "我的历史提交",
+      subtitle: "查看、撤回和追踪当前用户发起的参数提交轮次"
+    };
+  }
+
   return navigationItems.find((item) => item.path === path) ?? navigationItems[0];
 }
 
