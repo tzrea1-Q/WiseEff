@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -51,6 +51,7 @@ export default defineConfig({
   plugins: [react(), powerManagementConfigWriter()],
   test: {
     environment: "jsdom",
+    exclude: [...configDefaults.exclude, ".worktrees/**"],
     setupFiles: "./src/test/setup.ts"
   }
 });

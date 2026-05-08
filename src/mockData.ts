@@ -43,6 +43,8 @@ export type ParameterRecord = {
 
 export type ChangeRequest = {
   id: string;
+  submissionRoundId?: string;
+  projectId?: string;
   parameterId: string;
   module: string;
   title: string;
@@ -53,6 +55,29 @@ export type ChangeRequest = {
   status: RequestStatus;
   aiSummary: string;
   rejectReason?: string;
+};
+
+export type ParameterSubmissionItem = {
+  requestId: string;
+  parameterId: string;
+  name: string;
+  module: string;
+  currentValue: string;
+  targetValue: string;
+  unit: string;
+  risk: RiskLevel;
+  reason: string;
+};
+
+export type ParameterSubmissionRound = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  submitter: string;
+  createdAt: string;
+  status: RequestStatus | "已撤回";
+  summary: string;
+  items: ParameterSubmissionItem[];
 };
 
 export type LogRecord = {
@@ -94,6 +119,7 @@ export type PrototypeState = {
   configDraft: PowerManagementConfig;
   parameters: ParameterRecord[];
   changeRequests: ChangeRequest[];
+  parameterSubmissionRounds: ParameterSubmissionRound[];
   logs: LogRecord[];
   devices: Device[];
   debugParameters: DebugParameter[];
@@ -147,6 +173,8 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     changeRequests: [
       {
         id: "PRQ-9102",
+        submissionRoundId: "PRS-2405",
+        projectId: "aurora",
         parameterId: "aurora-fast-charge-current",
         module: "Charging Policy",
         title: "快充输入电流调整",
@@ -159,6 +187,8 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       },
       {
         id: "PRQ-9101",
+        submissionRoundId: "PRS-2404",
+        projectId: "aurora",
         parameterId: "aurora-battery-temp-target",
         module: "Battery Safety",
         title: "电池目标温度下调",
@@ -168,6 +198,52 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         createdAt: "昨天",
         status: "自动检查通过",
         aiSummary: "结合热像图，电池目标温度下调 3°C 有助于减少快充后段降额频率。"
+      }
+    ],
+    parameterSubmissionRounds: [
+      {
+        id: "PRS-2405",
+        projectId: "aurora",
+        projectName: "Aurora 量产平台",
+        submitter: "H. Zhao",
+        createdAt: "36 分钟前",
+        status: "待审阅",
+        summary: "快充输入电流调整，等待参数管理员审阅。",
+        items: [
+          {
+            requestId: "PRQ-9102",
+            parameterId: "aurora-fast-charge-current",
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            currentValue: "3800",
+            targetValue: "3200",
+            unit: "mA",
+            risk: "High",
+            reason: "将高风险参数回落到安全阈值内。"
+          }
+        ]
+      },
+      {
+        id: "PRS-2404",
+        projectId: "aurora",
+        projectName: "Aurora 量产平台",
+        submitter: "L. Chen",
+        createdAt: "昨天",
+        status: "自动检查通过",
+        summary: "电池目标温度下调，自动检查已通过。",
+        items: [
+          {
+            requestId: "PRQ-9101",
+            parameterId: "aurora-battery-temp-target",
+            name: "battery_temp_target_c",
+            module: "Battery Safety",
+            currentValue: "38",
+            targetValue: "35",
+            unit: "°C",
+            risk: "Medium",
+            reason: "减少快充后段降额频率。"
+          }
+        ]
       }
     ],
     logs: [

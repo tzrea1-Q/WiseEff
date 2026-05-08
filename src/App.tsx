@@ -6,6 +6,7 @@
   CheckCircle2,
   ChevronRight,
   CircleOff,
+  Download,
   FileSearch,
   FileText,
   Filter,
@@ -29,6 +30,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
+import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
@@ -38,6 +40,8 @@ import {
   mockDataFingerprint,
   initialState,
   LogRecord,
+  ParameterRecord,
+  ParameterSubmissionItem,
   projects,
   PrototypeState,
   roles
@@ -57,6 +61,8 @@ type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "SET_ROLE"; roleId: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
+  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason: string }
+  | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string }
   | { type: "ADVANCE_LOG"; logId: string }
@@ -99,6 +105,22 @@ type DebugParameterEditorDraft = {
   range: string;
   risk: DebugParameter["risk"];
   status: DebugParameter["status"];
+};
+
+type ParameterDraftItem = {
+  parameterId: string;
+  targetValue: string;
+  reason: string;
+};
+
+type ParameterComparisonRow = {
+  key: string;
+  module: string;
+  description: string;
+  baseValue: string;
+  targetValue: string;
+  status: "synced" | "drift";
+  risk: "High" | "Medium" | "Low";
 };
 
 const riskLabels: Record<"High" | "Medium" | "Low", string> = {
@@ -146,26 +168,129 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
       if (!parameter) {
         return state;
       }
+      const project = projects.find((item) => item.id === parameter.projectId);
+      const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+      const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
 
       const request: ChangeRequest = {
         id: `PRQ-${8910 + state.changeRequests.length}`,
+        submissionRoundId: roundId,
+        projectId: parameter.projectId,
         parameterId: parameter.id,
         module: parameter.module,
         title: parameter.name,
         currentValue: parameter.currentValue,
         targetValue: action.targetValue,
-        submitter: roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户",
+        submitter,
         createdAt: "刚刚",
         status: "待审阅",
         aiSummary: action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。"
+      };
+      const submissionItem: ParameterSubmissionItem = {
+        requestId: request.id,
+        parameterId: parameter.id,
+        name: parameter.name,
+        module: parameter.module,
+        currentValue: parameter.currentValue,
+        targetValue: action.targetValue,
+        unit: parameter.unit,
+        risk: parameter.risk,
+        reason: action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。"
       };
 
       return {
         ...state,
         changeRequests: [request, ...state.changeRequests],
+        parameterSubmissionRounds: [
+          {
+            id: roundId,
+            projectId: parameter.projectId,
+            projectName: project?.name ?? parameter.projectId,
+            submitter,
+            createdAt: "刚刚",
+            status: "待审阅",
+            summary: `${parameter.name} 提交审阅。`,
+            items: [submissionItem]
+          },
+          ...state.parameterSubmissionRounds
+        ],
         notifications: [`已提交 ${request.id}，等待参数管理员审阅`, ...state.notifications]
       };
     }
+    case "ADD_PARAMETER_SUBMISSION_ROUND": {
+      const draftItems = action.items
+        .map((item) => {
+          const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
+          return parameter ? { parameter, item } : null;
+        })
+        .filter((item): item is { parameter: ParameterRecord; item: ParameterDraftItem } => Boolean(item));
+
+      if (draftItems.length === 0) {
+        return state;
+      }
+
+      const project = projects.find((item) => item.id === draftItems[0].parameter.projectId);
+      const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+      const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
+      const requestSeed = 8910 + state.changeRequests.length;
+      const requests = draftItems.map(({ parameter, item }, index): ChangeRequest => ({
+        id: `PRQ-${requestSeed + index}`,
+        submissionRoundId: roundId,
+        projectId: parameter.projectId,
+        parameterId: parameter.id,
+        module: parameter.module,
+        title: parameter.name,
+        currentValue: parameter.currentValue,
+        targetValue: item.targetValue,
+        submitter,
+        createdAt: "刚刚",
+        status: "待审阅",
+        aiSummary: item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
+      }));
+      const submissionItems = draftItems.map(({ parameter, item }, index): ParameterSubmissionItem => ({
+        requestId: requests[index].id,
+        parameterId: parameter.id,
+        name: parameter.name,
+        module: parameter.module,
+        currentValue: parameter.currentValue,
+        targetValue: item.targetValue,
+        unit: parameter.unit,
+        risk: parameter.risk,
+        reason: item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
+      }));
+
+      return {
+        ...state,
+        changeRequests: [...requests, ...state.changeRequests],
+        parameterSubmissionRounds: [
+          {
+            id: roundId,
+            projectId: draftItems[0].parameter.projectId,
+            projectName: project?.name ?? draftItems[0].parameter.projectId,
+            submitter,
+            createdAt: "刚刚",
+            status: "待审阅",
+            summary: `本轮提交包含 ${submissionItems.length} 个参数修改。`,
+            items: submissionItems
+          },
+          ...state.parameterSubmissionRounds
+        ],
+        notifications: [`已提交 ${roundId}，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
+      };
+    }
+    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":
+      return {
+        ...state,
+        parameterSubmissionRounds: state.parameterSubmissionRounds.map((round) =>
+          round.id === action.roundId ? { ...round, status: "已撤回", summary: `${round.summary} 已由提交人撤回。` } : round
+        ),
+        changeRequests: state.changeRequests.map((request) =>
+          request.submissionRoundId === action.roundId && request.status === "待审阅"
+            ? { ...request, status: "已打回", rejectReason: "提交人已撤回本轮提交。" }
+            : request
+        ),
+        notifications: [`${action.roundId} 已撤回`, ...state.notifications]
+      };
     case "ADVANCE_REVIEW":
       return {
         ...state,
@@ -330,13 +455,21 @@ function App() {
 function AppShell() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
-  const [comparisonSelection, setComparisonSelection] = useState<ComparisonProjectSelection>(() => ({
-    baseProjectId: state.activeProjectId,
-    targetProjectId: getFallbackComparisonProjectId(state.activeProjectId)
-  }));
+  const [search, setSearch] = useState(() => window.location.search);
+  const [comparisonSelection, setComparisonSelection] = useState<ComparisonProjectSelection>(() => {
+    const contextProjectId =
+      getPageByPath(window.location.pathname).key === "parameter-comparison" ? getContextQuery(window.location.search).projectId : "";
+    const baseProjectId = projects.some((project) => project.id === contextProjectId) ? contextProjectId : state.activeProjectId;
+
+    return {
+      baseProjectId,
+      targetProjectId: getFallbackComparisonProjectId(baseProjectId)
+    };
+  });
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
-  const isHome = page.key === "home";
+  const isPlatformHome = page.key === "home";
+  const isParameterHome = page.key === "parameter-home";
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -345,6 +478,7 @@ function AppShell() {
         window.history.replaceState(null, "", nextPage.path);
       }
       setPath(nextPage.path);
+      setSearch(window.location.search);
     };
 
     syncPathFromHistory();
@@ -355,6 +489,11 @@ function AppShell() {
   }, []);
 
   useEffect(() => {
+    const contextProjectId = page.key === "parameter-comparison" ? getContextQuery(search).projectId : "";
+    if (contextProjectId && projects.some((project) => project.id === contextProjectId)) {
+      return;
+    }
+
     setComparisonSelection((current) => {
       const nextTargetProjectId =
         current.targetProjectId === state.activeProjectId
@@ -370,35 +509,58 @@ function AppShell() {
         targetProjectId: nextTargetProjectId
       };
     });
-  }, [state.activeProjectId]);
+  }, [page.key, search, state.activeProjectId]);
 
   const navigate = (nextPath: string) => {
-    if (nextPath === window.location.pathname) {
-      setPath(nextPath);
+    const url = new URL(nextPath, window.location.origin);
+    const nextPage = getPageByPath(url.pathname);
+    const nextUrl = `${nextPage.path}${url.search}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (nextUrl === currentUrl) {
+      setPath(nextPage.path);
       return;
     }
 
-    window.history.pushState(null, "", nextPath);
-    setPath(nextPath);
+    window.history.pushState(null, "", nextUrl);
+    setPath(nextPage.path);
+    setSearch(url.search);
   };
 
   return (
-    <div className={isHome ? "app-shell home-shell" : "app-shell"}>
-      {!isHome ? <Sidebar activePath={page.path} onNavigate={navigate} /> : null}
-      <div className={isHome ? "main-shell home-main-shell" : "main-shell"}>
-        {!isHome ? <TopBar state={state} dispatch={dispatch} page={page} /> : null}
-        <main className={page.key === "home" ? "main-content home-content" : "main-content"}>
-          <PageRouter
-            page={page}
-            state={state}
-            dispatch={dispatch}
-            onNavigate={navigate}
-            comparisonSelection={comparisonSelection}
-            onComparisonSelectionChange={setComparisonSelection}
-          />
-        </main>
+    <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
+      {!isPlatformHome ? <Sidebar activePath={page.path} onNavigate={navigate} /> : null}
+      <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
+        {!isPlatformHome ? <TopBar state={state} dispatch={dispatch} page={page} /> : null}
+        {isPlatformHome ? (
+          <div className="main-content home-content">
+            <PageRouter
+              page={page}
+              state={state}
+              dispatch={dispatch}
+              onNavigate={navigate}
+              search={search}
+              comparisonSelection={comparisonSelection}
+              onComparisonSelectionChange={setComparisonSelection}
+            />
+          </div>
+        ) : (
+          <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+            <PageRouter
+              page={page}
+              state={state}
+              dispatch={dispatch}
+              onNavigate={navigate}
+              search={search}
+              comparisonSelection={comparisonSelection}
+              onComparisonSelectionChange={setComparisonSelection}
+            />
+          </main>
+        )}
       </div>
-      {!isHome ? <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} /> : null}
+      {!isPlatformHome ? (
+        <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
+      ) : null}
     </div>
   );
 }
@@ -412,6 +574,7 @@ type PageProps = {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
   onNavigate: (path: string) => void;
+  search: string;
 };
 
 function PageRouter({
@@ -419,6 +582,7 @@ function PageRouter({
   state,
   dispatch,
   onNavigate,
+  search,
   comparisonSelection,
   onComparisonSelectionChange
 }: PageProps & {
@@ -428,35 +592,42 @@ function PageRouter({
 }) {
   switch (page.key) {
     case "parameters":
-      return <ParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <ParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+    case "parameter-submissions":
+      return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+    case "parameter-home":
+      return <ParameterManagementHomePage state={state} onNavigate={onNavigate} />;
     case "parameter-comparison":
       return (
         <ParameterComparisonPage
           state={state}
           dispatch={dispatch}
           onNavigate={onNavigate}
+          search={search}
           comparisonSelection={comparisonSelection}
           onComparisonSelectionChange={onComparisonSelectionChange}
         />
       );
     case "parameter-review":
-      return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-admin":
-      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "log-admin":
-      return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging":
-      return <DebuggingPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <DebuggingPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging-admin":
-      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} />;
+      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
       return <HomePage />;
   }
 }
 
 function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (path: string) => void }) {
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const pageTitle = getPageByPath(activePath).title;
   const groups = navigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
     return acc;
@@ -495,6 +666,18 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
         ))}
       </nav>
       <div className="utility-nav">
+        <button
+          aria-label="问题反馈"
+          className="nav-item compact feedback-entry"
+          type="button"
+          onClick={() => setFeedbackOpen(true)}
+        >
+          <MessageSquareText size={18} />
+          <span>
+            <strong>问题反馈</strong>
+            <small>内测收集 · 当前页</small>
+          </span>
+        </button>
         {utilityItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -505,13 +688,72 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
           );
         })}
       </div>
+      {feedbackOpen ? <FeedbackDialog pagePath={activePath} pageTitle={pageTitle} onClose={() => setFeedbackOpen(false)} /> : null}
     </aside>
+  );
+}
+
+function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pageTitle: string; onClose: () => void }) {
+  const [description, setDescription] = useState("");
+  const [feedbackType, setFeedbackType] = useState("体验问题");
+  const [submitted, setSubmitted] = useState(false);
+  const trimmedDescription = description.trim();
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+      <form
+        className="confirm-dialog feedback-dialog"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!trimmedDescription) {
+            return;
+          }
+          setSubmitted(true);
+        }}
+      >
+        <div>
+          <span className="eyebrow">Internal Beta Feedback</span>
+          <h2 id="feedback-title">问题反馈</h2>
+          <p>反馈会自动携带当前页面，方便内测团队按路径、类型和描述定位问题。</p>
+        </div>
+        <div className="feedback-context">
+          <span>当前页面</span>
+          <strong>{pageTitle}</strong>
+          <code>{pagePath}</code>
+        </div>
+        <label htmlFor="feedback-type">反馈类型</label>
+        <select id="feedback-type" value={feedbackType} onChange={(event) => setFeedbackType(event.target.value)}>
+          <option>体验问题</option>
+          <option>数据问题</option>
+          <option>导出/提交异常</option>
+          <option>功能建议</option>
+        </select>
+        <label htmlFor="feedback-description">问题描述</label>
+        <textarea
+          id="feedback-description"
+          value={description}
+          onChange={(event) => setDescription(event.target.value)}
+          rows={5}
+          placeholder="描述复现步骤、期望结果或你看到的异常现象"
+        />
+        {submitted ? <p className="feedback-success">反馈已记录，内测团队会结合页面路径和问题类型跟进。</p> : null}
+        <div className="dialog-actions">
+          <button className="button subtle" type="button" onClick={onClose}>
+            关闭
+          </button>
+          <button className="button primary" type="submit" disabled={!trimmedDescription}>
+            提交反馈
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 
 function TopBar({ state, dispatch, page }: { state: PrototypeState; dispatch: React.Dispatch<AppAction>; page: PageConfig }) {
   const showProjectSelector =
     page.group === "参数管理" &&
+    page.key !== "parameter-home" &&
     page.key !== "parameters" &&
     page.key !== "parameter-comparison" &&
     page.key !== "parameter-review" &&
@@ -559,6 +801,15 @@ function getFallbackComparisonProjectId(projectId: string) {
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
 }
 
+function getContextQuery(search: string) {
+  const params = new URLSearchParams(search);
+  return {
+    projectId: params.get("project") ?? "",
+    module: params.get("module") ?? "",
+    parameterId: params.get("parameter") ?? ""
+  };
+}
+
 function createComparisonInsights(state: PrototypeState, selection: ComparisonProjectSelection) {
   const baseProject = projects.find((project) => project.id === selection.baseProjectId) ?? projects[0];
   const targetProject = projects.find((project) => project.id === selection.targetProjectId) ?? projects[1] ?? projects[0];
@@ -586,13 +837,93 @@ function createComparisonInsights(state: PrototypeState, selection: ComparisonPr
   };
 }
 
-function ParametersPage({ state, dispatch, onNavigate }: PageProps) {
+function escapeExcelCell(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: string) {
+  const headers = ["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"];
+  const tableRows = rows
+    .map(
+      (parameter) => `
+        <tr>
+          <td>${escapeExcelCell(parameter.name)}</td>
+          <td>${escapeExcelCell(parameter.module)}</td>
+          <td>${escapeExcelCell(parameter.currentValue)}</td>
+          <td>${escapeExcelCell(parameter.recommendedValue)}</td>
+          <td>${escapeExcelCell(`${parameter.range} ${parameter.unit}`.trim())}</td>
+          <td>${riskLabels[parameter.risk]}</td>
+          <td>${escapeExcelCell(parameter.updatedAt)}</td>
+        </tr>`
+    )
+    .join("");
+  const html = `
+    <html>
+      <head><meta charset="utf-8" /></head>
+      <body>
+        <table>
+          <thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </body>
+    </html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${projectCode}-project-parameters.xls`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportComparisonRowsAsExcel(rows: ParameterComparisonRow[], baseProjectCode: string, targetProjectCode: string) {
+  const headers = ["参数键", "参数含义", "模块", baseProjectCode, targetProjectCode, "重要性", "状态"];
+  const tableRows = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeExcelCell(row.key)}</td>
+          <td>${escapeExcelCell(row.description)}</td>
+          <td>${escapeExcelCell(row.module)}</td>
+          <td>${escapeExcelCell(row.baseValue)}</td>
+          <td>${escapeExcelCell(row.targetValue)}</td>
+          <td>${riskLabels[row.risk]}</td>
+          <td>${row.status === "drift" ? "存在差异" : "已同步"}</td>
+        </tr>`
+    )
+    .join("");
+  const html = `
+    <html>
+      <head><meta charset="utf-8" /></head>
+      <body>
+        <table>
+          <caption>${escapeExcelCell(`${baseProjectCode} vs ${targetProjectCode} 项目参数对比`)}</caption>
+          <thead><tr>${headers.map((header) => `<th>${escapeExcelCell(header)}</th>`).join("")}</tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </body>
+    </html>`;
+  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${baseProjectCode}-vs-${targetProjectCode}-parameter-comparison.xls`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
   const [riskFilter, setRiskFilter] = useState<ParameterRiskFilter>("All");
   const [moduleFilter, setModuleFilter] = useState("All");
   const [selectedId, setSelectedId] = useState(state.parameters[0]?.id ?? "");
   const [targetValue, setTargetValue] = useState("80");
   const [reason, setReason] = useState("参考 Agent 巡检建议，将高风险参数回落到安全阈值内。");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [draftItems, setDraftItems] = useState<ParameterDraftItem[]>([]);
   const projectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === state.activeProjectId),
     [state.activeProjectId, state.parameters]
@@ -606,35 +937,117 @@ function ParametersPage({ state, dispatch, onNavigate }: PageProps) {
       (riskFilter === "All" || parameter.risk === riskFilter) && (moduleFilter === "All" || parameter.module === moduleFilter)
   );
   const selected = parameters.find((parameter) => parameter.id === selectedId) ?? parameters[0];
+  const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
+  const contextQuery = useMemo(() => getContextQuery(search), [search]);
+  const pendingSubmissionItems = useMemo(
+    () =>
+      draftItems
+        .map((item) => {
+          const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
+          return parameter ? { ...item, parameter } : null;
+        })
+        .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
+    [draftItems, state.parameters]
+  );
 
   useEffect(() => {
+    if (contextQuery.projectId) {
+      return;
+    }
     setModuleFilter("All");
-  }, [state.activeProjectId]);
+  }, [contextQuery.projectId, state.activeProjectId]);
+
+  useEffect(() => {
+    if (contextQuery.projectId && projects.some((project) => project.id === contextQuery.projectId) && contextQuery.projectId !== state.activeProjectId) {
+      dispatch({ type: "SET_PROJECT", projectId: contextQuery.projectId });
+    }
+  }, [contextQuery.projectId, dispatch, state.activeProjectId]);
+
+  useEffect(() => {
+    if (!contextQuery.module) {
+      return;
+    }
+    if (moduleOptions.includes(contextQuery.module)) {
+      setModuleFilter(contextQuery.module);
+    }
+  }, [contextQuery.module, moduleOptions]);
+
+  useEffect(() => {
+    if (!contextQuery.parameterId) {
+      return;
+    }
+    const requestedParameter = projectParameters.find((parameter) => parameter.id === contextQuery.parameterId);
+    if (requestedParameter) {
+      setSelectedId(requestedParameter.id);
+      setTargetValue(requestedParameter.recommendedValue);
+    }
+  }, [contextQuery.parameterId, projectParameters]);
 
   useEffect(() => {
     if (!selected) {
       return;
     }
     setSelectedId(selected.id);
-    setTargetValue(selected.recommendedValue);
-  }, [selected?.id, selected?.recommendedValue]);
+    setTargetValue(draftItems.find((item) => item.parameterId === selected.id)?.targetValue ?? selected.recommendedValue);
+  }, [draftItems, selected?.id, selected?.recommendedValue]);
 
-  const submit = () => {
+  useEffect(() => {
+    setDraftItems((items) => items.filter((item) => projectParameters.some((parameter) => parameter.id === item.parameterId)));
+  }, [projectParameters]);
+
+  const addSelectedToRound = () => {
     if (!selected) {
       return;
     }
-    dispatch({ type: "ADD_CHANGE_REQUEST", parameterId: selected.id, targetValue, reason });
+    setDraftItems((items) => {
+      const draftItem = { parameterId: selected.id, targetValue, reason };
+      return items.some((item) => item.parameterId === selected.id)
+        ? items.map((item) => (item.parameterId === selected.id ? draftItem : item))
+        : [...items, draftItem];
+    });
+  };
+
+  const openSubmitPreview = () => {
+    if (draftItems.length === 0) {
+      addSelectedToRound();
+    }
+    setConfirmOpen(true);
+  };
+
+  const submitRound = () => {
+    const itemsToSubmit = draftItems.length > 0 ? draftItems : selected ? [{ parameterId: selected.id, targetValue, reason }] : [];
+    if (itemsToSubmit.length === 0) {
+      return;
+    }
+    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, reason });
+    setDraftItems([]);
     setConfirmOpen(false);
   };
+  const previewItems =
+    pendingSubmissionItems.length > 0
+      ? pendingSubmissionItems
+      : selected
+        ? [{ parameterId: selected.id, targetValue, reason, parameter: selected }]
+        : [];
 
   return (
     <WorkbenchLayout
       title="项目参数用户工作台"
       actions={
-        <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
-          <ArrowRight size={16} />
-          跨项目对比
-        </button>
+        <>
+          <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
+            <Download size={16} />
+            导出 Excel
+          </button>
+          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+            <History size={16} />
+            历史提交
+          </button>
+          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
+            <ArrowRight size={16} />
+            跨项目对比
+          </button>
+        </>
       }
     >
       <aside className="filter-panel" aria-label="参数筛选">
@@ -736,7 +1149,7 @@ function ParametersPage({ state, dispatch, onNavigate }: PageProps) {
             className="stack"
             onSubmit={(event) => {
               event.preventDefault();
-              setConfirmOpen(true);
+              openSubmitPreview();
             }}
           >
             <div className="detail-heading">
@@ -759,7 +1172,34 @@ function ParametersPage({ state, dispatch, onNavigate }: PageProps) {
               修改原因
             </label>
             <textarea id="reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={5} />
+            <div className="round-draft-panel" aria-label="本轮提交草稿">
+              <div>
+                <strong>本轮提交 {draftItems.length} 项</strong>
+                <span>可先收集多个参数，再统一提交审阅。</span>
+              </div>
+              {pendingSubmissionItems.length > 0 ? (
+                <ul>
+                  {pendingSubmissionItems.map((item) => (
+                    <li key={item.parameterId}>
+                      <span>{item.parameter.name}</span>
+                      <strong>{item.parameter.currentValue} → {item.targetValue}</strong>
+                      <button
+                        className="link-button"
+                        type="button"
+                        onClick={() => setDraftItems((items) => items.filter((draftItem) => draftItem.parameterId !== item.parameterId))}
+                      >
+                        移除
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
             <Timeline steps={["选择参数", "填写目标值", "提交审阅", "管理员合入"]} activeIndex={1} />
+            <button className="button subtle full" type="button" onClick={addSelectedToRound}>
+              <ListChecks size={16} />
+              加入本轮
+            </button>
             <button className="button primary full" type="submit">
               提交参数修改请求
             </button>
@@ -769,20 +1209,173 @@ function ParametersPage({ state, dispatch, onNavigate }: PageProps) {
         )}
       </aside>
       {confirmOpen && selected ? (
-        <ConfirmDialog
-          title="确认提交参数修改"
-          message={`将 ${selected.name} 从 ${selected.currentValue} 修改为 ${targetValue}，提交后进入参数管理员审阅队列。`}
+        <ParameterSubmissionDialog
+          items={previewItems}
           onCancel={() => setConfirmOpen(false)}
-          onConfirm={submit}
+          onConfirm={submitRound}
         />
       ) : null}
     </WorkbenchLayout>
   );
 }
 
+function ParameterSubmissionDialog({
+  items,
+  onCancel,
+  onConfirm
+}: {
+  items: Array<ParameterDraftItem & { parameter: ParameterRecord }>;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-preview-title">
+      <div className="submission-dialog">
+        <div className="submission-dialog-head">
+          <div>
+            <span className="eyebrow">参数提交预览</span>
+            <h2 id="submission-preview-title">提交本轮参数</h2>
+            <p>本轮提交包含 {items.length} 个参数修改，确认后会按一轮提交进入历史记录，并拆分为管理员审阅队列中的参数项。</p>
+          </div>
+          <Badge tone="secondary">Diff 预览</Badge>
+        </div>
+        <div className="submission-diff-list">
+          {items.map((item) => (
+            <article className="submission-diff-card" key={item.parameterId}>
+              <div>
+                <strong>{item.parameter.name}</strong>
+                <small>{item.parameter.module} · {riskLabels[item.parameter.risk]}</small>
+              </div>
+              <div className="diff-values">
+                <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
+                <ArrowRight size={16} />
+                <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
+              </div>
+              <p>{item.reason}</p>
+            </article>
+          ))}
+        </div>
+        <div className="dialog-actions">
+          <button className="button subtle" type="button" onClick={onCancel}>
+            返回修改
+          </button>
+          <button className="button primary" type="button" onClick={onConfirm}>
+            确认提交本轮
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
+  const myName = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+  const myRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === myName);
+  const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
+  const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
+
+  useEffect(() => {
+    if (!myRounds.some((round) => round.id === selectedRoundId)) {
+      setSelectedRoundId(myRounds[0]?.id ?? "");
+    }
+  }, [myRounds, selectedRoundId]);
+
+  return (
+    <div className="submission-history-page">
+      <header className="page-header">
+        <div>
+          <nav className="breadcrumb" aria-label="历史提交路径">
+            <button type="button" onClick={() => onNavigate("/parameters")}>参数工作台</button>
+            <ChevronRight size={14} />
+            <strong>历史提交</strong>
+          </nav>
+          <h1>我的历史提交</h1>
+          <p>以“一轮提交”为单位查看你发起的参数修改，待审阅轮次可模拟撤回。</p>
+        </div>
+        <div className="page-actions">
+          <button className="button subtle" type="button" onClick={() => onNavigate("/parameters")}>
+            <ArrowRight size={16} />
+            返回工作台
+          </button>
+        </div>
+      </header>
+      <section className="comparison-summary">
+        <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
+        <MetricCard title="待审阅轮次" value={`${myRounds.filter((round) => round.status === "待审阅").length}`} trend="可撤回或等待处理" tone="teal" />
+        <MetricCard title="参数项总数" value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单参数和多参数提交" tone="purple" />
+      </section>
+      <section className="submission-history-layout">
+        <aside className="history-panel" aria-label="我的提交轮次">
+          <PanelHeader title="提交轮次" meta={`${myRounds.length} 轮`} />
+          {myRounds.map((round) => (
+            <button
+              aria-pressed={round.id === selectedRound?.id}
+              className={round.id === selectedRound?.id ? "history-item active" : "history-item"}
+              key={round.id}
+              type="button"
+              onClick={() => setSelectedRoundId(round.id)}
+            >
+              <strong>{round.id}</strong>
+              <span>{round.status} · {round.items.length} 项 · {round.createdAt}</span>
+            </button>
+          ))}
+          {myRounds.length === 0 ? <EmptyState text="当前还没有你的历史提交。" /> : null}
+        </aside>
+        <section className="submission-round-detail" aria-label="提交轮次详情">
+          {selectedRound ? (
+            <>
+              <div className="detail-card">
+                <div className="detail-heading">
+                  <div>
+                    <span className="eyebrow">{selectedRound.id}</span>
+                    <h2>{selectedRound.projectName}</h2>
+                  </div>
+                  <StatusBadge status={selectedRound.status} />
+                </div>
+                <p>本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在 {selectedRound.createdAt} 提交。</p>
+                <p>{selectedRound.summary}</p>
+              </div>
+              <div className="submission-diff-list history-diff-list">
+                {selectedRound.items.map((item) => (
+                  <article className="submission-diff-card" key={item.requestId}>
+                    <div>
+                      <strong>{item.name}</strong>
+                      <small>{item.module} · {riskLabels[item.risk]} · {item.requestId}</small>
+                    </div>
+                    <div className="diff-values">
+                      <span className="diff-before">{item.currentValue}{item.unit}</span>
+                      <ArrowRight size={16} />
+                      <span className="diff-after">{item.targetValue}{item.unit}</span>
+                    </div>
+                    <p>{item.reason}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="action-panel">
+                <button
+                  className="button danger full"
+                  type="button"
+                  disabled={selectedRound.status !== "待审阅"}
+                  onClick={() => dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId: selectedRound.id })}
+                >
+                  <RotateCcw size={16} />
+                  撤回本轮提交
+                </button>
+              </div>
+            </>
+          ) : (
+            <EmptyState text="请选择一个提交轮次查看详情。" />
+          )}
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function ParameterComparisonPage({
   state,
   onNavigate,
+  search,
   comparisonSelection,
   onComparisonSelectionChange
 }: PageProps & {
@@ -792,6 +1385,7 @@ function ParameterComparisonPage({
   const { baseProjectId, targetProjectId } = comparisonSelection;
   const [riskFilter, setRiskFilter] = useState<ParameterRiskFilter>("All");
   const [moduleFilter, setModuleFilter] = useState("All");
+  const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const baseProject = projects.find((project) => project.id === baseProjectId) ?? projects[0];
   const targetProject = projects.find((project) => project.id === targetProjectId) ?? projects[1] ?? projects[0];
 
@@ -809,7 +1403,7 @@ function ParameterComparisonPage({
     }));
   };
 
-  const comparisonRows = useMemo(() => {
+  const comparisonRows = useMemo<ParameterComparisonRow[]>(() => {
     const baseParameters = state.parameters.filter((parameter) => parameter.projectId === baseProject.id);
     const targetParameters = state.parameters.filter((parameter) => parameter.projectId === targetProject.id);
     const targetByName = new Map(targetParameters.map((parameter) => [parameter.name, parameter]));
@@ -846,6 +1440,32 @@ function ParameterComparisonPage({
     }
   }, [moduleFilter, moduleOptions]);
 
+  useEffect(() => {
+    if (!contextQuery.projectId || !projects.some((project) => project.id === contextQuery.projectId)) {
+      return;
+    }
+
+    onComparisonSelectionChange((current) => {
+      if (current.baseProjectId === contextQuery.projectId && current.targetProjectId !== contextQuery.projectId) {
+        return current;
+      }
+
+      return {
+        baseProjectId: contextQuery.projectId,
+        targetProjectId: getFallbackComparisonProjectId(contextQuery.projectId)
+      };
+    });
+  }, [contextQuery.projectId, onComparisonSelectionChange]);
+
+  useEffect(() => {
+    if (!contextQuery.module) {
+      return;
+    }
+    if (moduleOptions.includes(contextQuery.module)) {
+      setModuleFilter(contextQuery.module);
+    }
+  }, [contextQuery.module, moduleOptions]);
+
   const driftRows = comparisonRows.filter((row) => row.status === "drift");
   const comparisonTitle = `${baseProject.code} vs ${targetProject.code}`;
 
@@ -864,7 +1484,11 @@ function ParameterComparisonPage({
           <p>{baseProject.name} 与 {targetProject.name} 的充电、电池和电源管理参数差异分析。</p>
         </div>
         <div className="page-actions">
-          <button className="button subtle" type="button">
+          <button
+            className="button subtle"
+            type="button"
+            onClick={() => exportComparisonRowsAsExcel(filteredComparisonRows, baseProject.code, targetProject.code)}
+          >
             <Upload size={16} />
             导出
           </button>
@@ -1020,10 +1644,29 @@ function ProjectComparisonSelect({
   );
 }
 
-function ParameterReviewPage({ state, dispatch }: PageProps) {
+function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const [selectedId, setSelectedId] = useState(state.changeRequests[0]?.id ?? "");
   const [rejectOpen, setRejectOpen] = useState(false);
+  const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const selected = state.changeRequests.find((request) => request.id === selectedId) ?? state.changeRequests[0];
+
+  useEffect(() => {
+    if (!contextQuery.module && !contextQuery.projectId) {
+      return;
+    }
+
+    const matchingRequest = state.changeRequests.find((request) => {
+      const parameter = state.parameters.find((item) => item.id === request.parameterId);
+      const projectMatches = !contextQuery.projectId || parameter?.projectId === contextQuery.projectId;
+      const moduleMatches = !contextQuery.module || request.module === contextQuery.module;
+
+      return projectMatches && moduleMatches;
+    });
+
+    if (matchingRequest) {
+      setSelectedId(matchingRequest.id);
+    }
+  }, [contextQuery.module, contextQuery.projectId, state.changeRequests, state.parameters]);
 
   const rejectSelected = (reason: string) => {
     if (!selected) {
