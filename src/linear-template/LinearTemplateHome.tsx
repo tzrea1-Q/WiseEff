@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { WiseEffIcon } from "../components/WiseEffIcon";
 import "./linear-template.css";
 
 const navItems = [
@@ -792,10 +793,5 @@ function TemplateFooter() {
 }
 
 function LinearLogo() {
-  return (
-    <svg viewBox="0 0 100 100" aria-hidden="true" className="linear-logo">
-      <circle cx="50" cy="50" r="48" />
-      <path d="M24 62 62 24h14L38 62H24Zm0 16 54-54v12L36 78H24Zm24 0 30-30v14L62 78H48Z" />
-    </svg>
-  );
+  return <WiseEffIcon decorative className="linear-logo" />;
 }

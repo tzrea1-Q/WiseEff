@@ -105,6 +105,12 @@ button:disabled {
   box-shadow: 0 12px 22px rgba(0, 61, 155, 0.16);
 }
 
+.brand-mark .wiseeff-icon {
+  width: 36px;
+  height: 36px;
+  display: block;
+}
+
 .brand-title {
   color: #0040a2;
   font-weight: 900;

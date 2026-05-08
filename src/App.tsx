@@ -17,7 +17,6 @@
   Loader2,
   LockKeyhole,
   MessageSquareText,
-  Network,
   Play,
   RotateCcw,
   Search,
@@ -29,6 +28,7 @@
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { WiseEffIcon } from "./components/WiseEffIcon";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
@@ -637,7 +637,7 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
     <aside className="sidebar">
       <div className="brand-block">
         <div className="brand-mark">
-          <Network size={19} />
+          <WiseEffIcon decorative />
         </div>
         <div>
           <div className="brand-title">智效 WiseEff</div>

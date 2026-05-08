@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
 import App from "./App";
 import { initialState } from "./mockData";
 
@@ -11,13 +12,41 @@ afterEach(() => {
 });
 
 describe("WiseEff app shell", () => {
+  it("declares the WiseEff favicon assets in the document shell", () => {
+    const indexHtml = readFileSync("index.html", "utf8");
+
+    expect(indexHtml).toContain('<link rel="icon" type="image/svg+xml" href="/favicon.svg" />');
+    expect(indexHtml).toContain('<link rel="apple-touch-icon" href="/wiseeff-icon.svg" />');
+    expect(indexHtml).toContain('<meta name="theme-color" content="#003D9B" />');
+    expect(existsSync("public/favicon.svg")).toBe(true);
+    expect(existsSync("public/wiseeff-icon.svg")).toBe(true);
+
+    const favicon = readFileSync("public/favicon.svg", "utf8");
+    const fullIcon = readFileSync("public/wiseeff-icon.svg", "utf8");
+
+    expect(favicon).toContain('aria-label="WiseEff favicon"');
+    expect(favicon).toContain("#003D9B");
+    expect(favicon).toContain('stroke-linecap="round"');
+    expect(favicon).not.toContain("wiseeff-icon-spark");
+
+    expect(fullIcon).toContain('aria-label="WiseEff elastic path W icon"');
+    expect(fullIcon).toContain("wiseeff-icon-spark");
+    expect(fullIcon).toContain("#50DCFF");
+  });
+
   it("renders the WiseEff platform homepage on the home route", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
+    const homeRoot = document.querySelector(".linear-template-home");
     expect(screen.getByRole("main", { name: "WiseEff homepage" })).toBeInTheDocument();
     expect(screen.getAllByRole("main")).toHaveLength(1);
+    expect(homeRoot).toBeInTheDocument();
+    expect(homeRoot).toHaveClass("light-homepage");
+    expect(homeRoot).toHaveAttribute("data-theme", "light");
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon")).toBeInTheDocument();
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-spark")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "让高频业务作业更智能高效" })).toBeInTheDocument();
     expect(screen.queryByText("智能参数管理")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).not.toBeInTheDocument();
@@ -68,10 +97,78 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
+    const workbenchBrand = document.querySelector(".brand-mark .wiseeff-icon");
+    expect(workbenchBrand).toBeInTheDocument();
+    expect(workbenchBrand).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+  });
+
+  it("organizes the localized homepage around WiseEff workflow sections", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    const homepage = screen.getByRole("main", { name: "WiseEff homepage" });
+
+    expect(within(homepage).getByRole("heading", { name: "不是另一个后台系统" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "参数流转，从查询到审阅" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "日志分析，不只给结论" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "调试动作，保留控制权" })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "从一个场景，沉淀一套工作方式" })).toBeInTheDocument();
+    expect(homepage).toHaveTextContent("fast_charge_current_limit_ma");
+    expect(homepage).toHaveTextContent("battery_pack_temp=46.8C");
+    expect(homepage).toHaveTextContent("PRQ-9102");
+    expect(homepage).toHaveTextContent("ChargeLab_X01");
+  });
+
+  it("links the localized homepage CTAs into the WiseEff parameter homepage", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    expect(screen.getAllByRole("link", { name: /进入工作台|进入 WiseEff 工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
+    expect(screen.getByRole("link", { name: "查看当前能力" })).toHaveAttribute("href", "#platform");
+    expect(document.body).not.toHaveTextContent("Linear is a better way");
+    expect(document.body).not.toHaveTextContent("Powering the world's best product teams.");
+  });
+
+  it("switches the hero stage carousel across WiseEff applications", () => {
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "把参数差异变成可审阅变更" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+    expect(screen.getByText("ANL-2405")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把现场调参变成受控执行流程" })).toBeInTheDocument();
+    expect(screen.getByText("ChargeLab_X01 已连接")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "上一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+  });
+
+  it("pauses the hero stage auto rotation after manual carousel navigation", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(9600);
+    });
+
+    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "把现场调参变成受控执行流程" })).not.toBeInTheDocument();
   });
 
   it("navigates from parameter homepage entries into parameter management routes", () => {
