@@ -1,8 +1,12 @@
 import { configDefaults, defineConfig } from "vitest/config";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
+
+const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 function powerManagementConfigWriter(): Plugin {
   return {
@@ -48,7 +52,12 @@ function powerManagementConfigWriter(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), powerManagementConfigWriter()],
+  plugins: [react(), tailwindcss(), powerManagementConfigWriter()],
+  resolve: {
+    alias: {
+      "@": path.resolve(projectRoot, "./src")
+    }
+  },
   test: {
     environment: "jsdom",
     exclude: [...configDefaults.exclude, ".worktrees/**"],

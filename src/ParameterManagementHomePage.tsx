@@ -1,19 +1,14 @@
 import { useMemo, useState } from "react";
 import type { ComponentType } from "react";
-import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
 import type { PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
 
 type ParameterManagementHomePageProps = {
   state: PrototypeState;
   onNavigate: (path: string) => void;
+  timeWindow?: HomepageTimeWindow;
 };
-
-const timeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
-  { value: "7d", label: "7天" },
-  { value: "30d", label: "30天" },
-  { value: "180d", label: "180天" }
-];
 
 const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }> = [
   { value: "module", label: "模块" },
@@ -22,8 +17,7 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
 
 const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
 
-export function ParameterManagementHomePage({ state, onNavigate }: ParameterManagementHomePageProps) {
-  const [timeWindow, setTimeWindow] = useState<HomepageTimeWindow>("30d");
+export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("module");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
 
@@ -35,19 +29,6 @@ export function ParameterManagementHomePage({ state, onNavigate }: ParameterMana
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
-      <section className="parameter-homepage-hero">
-        <div className="parameter-homepage-kicker">
-          <Sparkles size={16} aria-hidden="true" />
-          <span>参数管理</span>
-        </div>
-        <div className="parameter-homepage-hero-head">
-          <h1>智能参数管理</h1>
-          <p>{analytics.aiSummary.body}</p>
-          <p className="parameter-homepage-window-copy">参数变化态势</p>
-        </div>
-        <TimeWindowSwitcher value={timeWindow} onChange={setTimeWindow} />
-      </section>
-
       <section className="homepage-main-grid" aria-label="入口卡片">
         <div className="homepage-entry-grid">
           {analytics.entryCards.map((entry) => (
@@ -132,40 +113,6 @@ export function ParameterManagementHomePage({ state, onNavigate }: ParameterMana
         </div>
       </section>
     </section>
-  );
-}
-
-function TimeWindowSwitcher({
-  value,
-  onChange
-}: {
-  value: HomepageTimeWindow;
-  onChange: (value: HomepageTimeWindow) => void;
-}) {
-  return (
-    <div className="homepage-window-switcher" aria-label="时间范围与 AI 分析维度">
-      <div className="homepage-window-switcher-head">
-        <label>
-          <span>时间范围</span>
-          <select
-            id="parameter-homepage-time-window"
-            className="parameter-homepage-select"
-            value={value}
-            onChange={(event) => onChange(event.target.value as HomepageTimeWindow)}
-          >
-            {timeWindowOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="homepage-window-switcher-body">
-        <span>AI 分析维度</span>
-        <p>变更频次、风险权重、影响范围、流程堆积、异常偏离</p>
-      </div>
-    </div>
   );
 }
 
