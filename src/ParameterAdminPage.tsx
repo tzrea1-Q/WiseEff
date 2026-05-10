@@ -283,7 +283,20 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         </div>
 
         <section className="detail-column config-editor-panel project-config-editor">
-          {selectedParameter ? (
+          {library.length === 0 ? (
+            <div className="detail-empty">
+              <Info size={22} aria-hidden="true" />
+              <p>还没有任何参数。从下方开始</p>
+              <div className="detail-empty-actions">
+                <button className="button primary" type="button" onClick={() => dispatch({ type: "ADD_PROJECT_PARAMETER" })}>
+                  新增参数
+                </button>
+                <button className="button subtle" type="button" onClick={() => console.info("m2: import")}>
+                  批量导入
+                </button>
+              </div>
+            </div>
+          ) : selectedParameter ? (
             <>
               <ParameterDefinitionForm
                 allParameters={state.configDraft.parameterLibrary}

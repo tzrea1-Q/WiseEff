@@ -247,7 +247,7 @@ export function ParameterLibraryList({
         </div>
       ) : (
         <div className="library-empty">
-          {search.coverage === "orphan" ? "没有匹配的孤儿参数。" : "没有匹配的参数。"}
+          {search.coverage === "orphan" ? "所有参数都被项目使用中 · 没有孤儿" : "没有匹配的参数。"}
         </div>
       )}
     </div>

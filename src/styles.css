@@ -2093,6 +2093,15 @@ td small {
   padding: 24px 28px 32px;
 }
 
+.param-admin-shell :focus-visible,
+.param-admin-shell button:focus-visible,
+.param-admin-shell input:focus-visible,
+.param-admin-shell select:focus-visible,
+.param-admin-shell [role="option"]:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+}
+
 .param-admin-header {
   display: flex;
   align-items: flex-start;
@@ -2736,6 +2745,32 @@ td small {
   padding: 18px 16px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.detail-empty {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  min-height: 280px;
+  padding: 32px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.detail-empty p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.detail-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .library-row div {

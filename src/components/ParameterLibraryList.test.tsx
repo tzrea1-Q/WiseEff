@@ -107,7 +107,7 @@ describe("ParameterLibraryList search and risk filters", () => {
   it("filters by coverage", () => {
     render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, coverage: "orphan" } })} />);
 
-    expect(screen.getByText("没有匹配的孤儿参数。")).toBeInTheDocument();
+    expect(screen.getByText("所有参数都被项目使用中 · 没有孤儿")).toBeInTheDocument();
     expect(queryLibraryRows()).toHaveLength(0);
   });
 
