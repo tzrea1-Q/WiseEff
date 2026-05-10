@@ -140,7 +140,8 @@ export type AppAction =
   | { type: "ADD_PROJECT_PARAMETER" }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER" }
-  | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string };
+  | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
+  | { type: "MARK_CONFIG_PERSISTED" };
 
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
   { value: "7d", label: "7天" },
@@ -725,6 +726,16 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...state,
         configDraft,
         ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "MARK_CONFIG_PERSISTED": {
+      return {
+        ...state,
+        persistedConfigSnapshot: JSON.parse(JSON.stringify(state.configDraft)) as typeof state.configDraft,
+        notifications: [
+          `已持久化 ${state.configDraft.debugParameters.length} 项调试参数到配置文件`,
+          ...state.notifications
+        ]
       };
     }
     case "IMPORT_PARAMETERS":

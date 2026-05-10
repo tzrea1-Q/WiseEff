@@ -166,3 +166,35 @@ describe("CLEAR_PUSHED_DEBUG_IDS（新增）", () => {
     expect(next.pushedDebugIds).toEqual(["a", "c"]);
   });
 });
+
+describe("MARK_CONFIG_PERSISTED", () => {
+  it("把 persistedConfigSnapshot 更新为当前 configDraft 的深拷贝", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter, index) =>
+          index === 0 ? { ...parameter, currentValue: "8888" } : parameter
+        )
+      }
+    };
+
+    expect(modified.persistedConfigSnapshot.debugParameters[0].currentValue)
+      .not.toBe("8888");
+
+    const next = reducer(modified, { type: "MARK_CONFIG_PERSISTED" });
+
+    expect(next.persistedConfigSnapshot.debugParameters[0].currentValue).toBe("8888");
+    expect(next.persistedConfigSnapshot).not.toBe(next.configDraft);
+    expect(next.persistedConfigSnapshot.debugParameters)
+      .not.toBe(next.configDraft.debugParameters);
+  });
+
+  it("追加一条通知", () => {
+    const base = createPrototypeState();
+    const next = reducer(base, { type: "MARK_CONFIG_PERSISTED" });
+
+    expect(next.notifications[0]).toMatch(/持久化|已写入|已保存/);
+  });
+});
