@@ -39,6 +39,7 @@ export type ParameterRecord = {
   unit: string;
   risk: RiskLevel;
   updatedAt: string;
+  updatedAtTs: string;
 };
 
 export type ChangeRequest = {
@@ -138,6 +139,11 @@ function createMockDataFingerprint(state: PrototypeState) {
   return `mock-data-${hash.toString(16)}`;
 }
 
+function createParameterUpdatedAtTs(index: number) {
+  const timestamp = Date.UTC(2026, 4, 10, 8, index);
+  return new Date(timestamp).toISOString();
+}
+
 export const projects: Project[] = bundledPowerManagementConfig.projects.map((project) => ({
   id: project.id,
   name: project.name,
@@ -153,8 +159,9 @@ export const roles: Role[] = [
 
 export function derivePowerManagementRuntimeState(configDraft: PowerManagementConfig) {
   return {
-    parameters: flattenProjectParameters(configDraft).map((parameter) => ({
-      ...parameter
+    parameters: flattenProjectParameters(configDraft).map((parameter, index) => ({
+      ...parameter,
+      updatedAtTs: createParameterUpdatedAtTs(index)
     })),
     debugParameters: flattenDebugParameters(configDraft).map((parameter) => ({
       ...parameter
