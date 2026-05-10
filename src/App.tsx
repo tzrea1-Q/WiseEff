@@ -39,6 +39,7 @@ import {
   ChangeRequest,
   derivePowerManagementRuntimeState,
   DebugParameter,
+  DebugSnapshot,
   mockDataFingerprint,
   initialState,
   LogRecord,
@@ -114,6 +115,9 @@ export type AppAction =
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
   | { type: "PUSH_DEBUG_VALUES"; parameterIds: string[] }
+  | { type: "ROLLBACK_LAST_SNAPSHOT" }
+  | { type: "ROLLBACK_UNDO_PUSH" }
+  | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
   | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string }
   | { type: "UPDATE_PROJECT_PARAMETER_METADATA"; projectId: string; parameterId: string; patch: Partial<ParameterEditorDraft> }
@@ -524,41 +528,113 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: ["日志分析阶段已更新", ...state.notifications]
       };
     }
-    case "CONNECT_DEVICE":
+    case "CONNECT_DEVICE": {
+      const now = new Date().toISOString();
       return {
         ...state,
         devices: state.devices.map((device) =>
           device.id === action.deviceId ? { ...device, status: "已连接", lastSeen: "刚刚" } : device
         ),
+        debuggingSessionStartedAt: state.debuggingSessionStartedAt ?? now,
+        debugEvents: [
+          ...state.debugEvents,
+          { kind: "connect", deviceId: action.deviceId, at: now }
+        ],
         notifications: ["调试样机连接成功", ...state.notifications]
       };
+    }
     case "PUSH_DEBUG_VALUE":
-      return {
-        ...state,
-        debugParameters: state.debugParameters.map((parameter) =>
-          parameter.id === action.parameterId
-            ? { ...parameter, currentValue: parameter.targetValue, status: "下发成功" }
-            : parameter
-        ),
-        notifications: ["参数调试值已下发，回滚快照已准备", ...state.notifications]
-      };
+      return reducer(state, { type: "PUSH_DEBUG_VALUES", parameterIds: [action.parameterId] });
     case "PUSH_DEBUG_VALUES": {
       const pushIds = new Set(action.parameterIds);
-      const nextDebugParameters = state.debugParameters.map((parameter) =>
-        pushIds.has(parameter.id) ? { ...parameter, currentValue: parameter.targetValue, status: "下发成功" as const } : parameter
-      );
-      const configDraft = {
-        ...state.configDraft,
-        debugParameters: state.configDraft.debugParameters.map((parameter) =>
-          pushIds.has(parameter.id) ? { ...parameter, currentValue: parameter.targetValue, status: "下发成功" as const } : parameter
-        )
+      if (pushIds.size === 0) {
+        return state;
+      }
+
+      const now = new Date().toISOString();
+      const entries = state.debugParameters
+        .filter((parameter) => pushIds.has(parameter.id))
+        .map((parameter) => ({
+          parameterId: parameter.id,
+          previousValue: parameter.currentValue,
+          nextValue: parameter.targetValue
+        }));
+      const riskPriority: Record<DebugParameter["risk"], number> = { Low: 0, Medium: 1, High: 2 };
+      const batchRisk = state.debugParameters
+        .filter((parameter) => pushIds.has(parameter.id))
+        .reduce<DebugParameter["risk"]>(
+          (max, parameter) => (riskPriority[parameter.risk] > riskPriority[max] ? parameter.risk : max),
+          "Low"
+        );
+      const snapshotId = `snap-${String(state.debugEvents.filter((event) => event.kind === "push").length + 1).padStart(4, "0")}`;
+      const snapshot: DebugSnapshot = {
+        id: snapshotId,
+        createdAt: now,
+        entries,
+        risk: batchRisk
       };
+      const nextDebugParameters = state.debugParameters.map((parameter) =>
+        pushIds.has(parameter.id) ? { ...parameter, currentValue: parameter.targetValue } : parameter
+      );
 
       return {
         ...state,
-        configDraft,
         debugParameters: nextDebugParameters,
-        notifications: [`${action.parameterIds.length} 项调试值已下发，回滚快照已准备`, ...state.notifications]
+        lastDebugSnapshot: snapshot,
+        pushedDebugIds: [...action.parameterIds],
+        debugEvents: [
+          ...state.debugEvents,
+          { kind: "push", snapshotId, parameterIds: [...action.parameterIds], at: now, risk: batchRisk }
+        ],
+        notifications: [`${action.parameterIds.length} 项调试值已下发，快照 ${snapshotId} 已保存`, ...state.notifications]
+      };
+    }
+    case "ROLLBACK_LAST_SNAPSHOT":
+    case "ROLLBACK_UNDO_PUSH": {
+      if (!state.lastDebugSnapshot) {
+        return state;
+      }
+
+      const now = new Date().toISOString();
+      const restoreMap = new Map(
+        state.lastDebugSnapshot.entries.map((entry) => [entry.parameterId, entry.previousValue])
+      );
+      const nextDebugParameters = state.debugParameters.map((parameter) =>
+        restoreMap.has(parameter.id)
+          ? { ...parameter, currentValue: restoreMap.get(parameter.id)! }
+          : parameter
+      );
+      const eventKind = action.type === "ROLLBACK_LAST_SNAPSHOT" ? "rollback" : "rollback-undo";
+
+      return {
+        ...state,
+        debugParameters: nextDebugParameters,
+        lastDebugSnapshot: null,
+        pushedDebugIds: [],
+        debugEvents: [
+          ...state.debugEvents,
+          eventKind === "rollback"
+            ? {
+                kind: "rollback",
+                snapshotId: state.lastDebugSnapshot.id,
+                parameterIds: state.lastDebugSnapshot.entries.map((entry) => entry.parameterId),
+                at: now
+              }
+            : { kind: "rollback-undo", snapshotId: state.lastDebugSnapshot.id, at: now }
+        ],
+        notifications: [
+          eventKind === "rollback"
+            ? `回滚到 ${state.lastDebugSnapshot.id} 完成，${state.lastDebugSnapshot.entries.length} 项已恢复`
+            : `已撤销 ${state.lastDebugSnapshot.id} 的下发`,
+          ...state.notifications
+        ]
+      };
+    }
+    case "CLEAR_PUSHED_DEBUG_IDS": {
+      const removeIds = new Set(action.parameterIds);
+      return {
+        ...state,
+        pushedDebugIds: state.pushedDebugIds.filter((id) => !removeIds.has(id))
       };
     }
     case "UPDATE_PROJECT_PARAMETER_METADATA": {

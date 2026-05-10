@@ -847,7 +847,6 @@ describe("WiseEff app shell", () => {
 
     expect(updatedRow).toBeDefined();
     expect(updatedRow).toHaveTextContent("0");
-    expect(within(updatedRow as HTMLElement).getByText("下发成功")).toBeInTheDocument();
     expect(timeline).toHaveTextContent(`下发 ${parameterKey}`);
     expect(timeline).toHaveTextContent("值变更：1 -> 0 bool，执行成功。");
   });

@@ -1,0 +1,168 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { reducer } from "./App";
+import { createPrototypeState } from "./mockData";
+
+describe("CONNECT_DEVICE（改写）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-10T20:30:00.000Z"));
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("首次连接写入 debuggingSessionStartedAt 与 connect 事件", () => {
+    const state = createPrototypeState();
+    const deviceId = state.devices[0].id;
+    const next = reducer(state, { type: "CONNECT_DEVICE", deviceId });
+
+    expect(next.debuggingSessionStartedAt).toBe("2026-05-10T20:30:00.000Z");
+    expect(next.debugEvents).toHaveLength(1);
+    expect(next.debugEvents[0]).toMatchObject({
+      kind: "connect",
+      deviceId,
+      at: "2026-05-10T20:30:00.000Z"
+    });
+    expect(next.devices.find((device) => device.id === deviceId)?.status).toBe("已连接");
+  });
+
+  it("已连接过的会话再次 connect 不覆盖 startedAt", () => {
+    const base = createPrototypeState();
+    const first = reducer(base, { type: "CONNECT_DEVICE", deviceId: base.devices[0].id });
+    vi.setSystemTime(new Date("2026-05-10T20:45:00.000Z"));
+    const second = reducer(first, { type: "CONNECT_DEVICE", deviceId: base.devices[0].id });
+
+    expect(second.debuggingSessionStartedAt).toBe(first.debuggingSessionStartedAt);
+    expect(second.debugEvents).toHaveLength(2);
+  });
+});
+
+describe("PUSH_DEBUG_VALUES（改写）", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-10T20:35:00.000Z"));
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it("生成快照、记录事件、填充 pushedDebugIds、更新 currentValue", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const stateWithDraft = {
+      ...base,
+      debugParameters: base.debugParameters.map((parameter) =>
+        parameter.id === target.id ? { ...parameter, targetValue: "9.9" } : parameter
+      )
+    };
+    const next = reducer(stateWithDraft, {
+      type: "PUSH_DEBUG_VALUES",
+      parameterIds: [target.id]
+    });
+
+    expect(next.lastDebugSnapshot).not.toBeNull();
+    expect(next.lastDebugSnapshot?.entries).toHaveLength(1);
+    expect(next.lastDebugSnapshot?.entries[0]).toMatchObject({
+      parameterId: target.id,
+      previousValue: target.currentValue,
+      nextValue: "9.9"
+    });
+    expect(next.lastDebugSnapshot?.risk).toBe(target.risk);
+    expect(next.pushedDebugIds).toEqual([target.id]);
+    expect(next.debugEvents).toHaveLength(1);
+    expect(next.debugEvents[0]).toMatchObject({
+      kind: "push",
+      snapshotId: next.lastDebugSnapshot?.id,
+      parameterIds: [target.id]
+    });
+    const updated = next.debugParameters.find((parameter) => parameter.id === target.id);
+    expect(updated?.currentValue).toBe("9.9");
+  });
+
+  it("批次中最高风险是 High 时快照 risk = High", () => {
+    const base = createPrototypeState();
+    const lowRisk = base.debugParameters.find((parameter) => parameter.risk === "Low");
+    const highRisk = base.debugParameters.find((parameter) => parameter.risk === "High");
+    if (!lowRisk || !highRisk) {
+      throw new Error("测试数据需要同时含 High / Low 两档");
+    }
+    const stateWithDraft = {
+      ...base,
+      debugParameters: base.debugParameters.map((parameter) =>
+        parameter.id === lowRisk.id || parameter.id === highRisk.id
+          ? { ...parameter, targetValue: "1" }
+          : parameter
+      )
+    };
+    const next = reducer(stateWithDraft, {
+      type: "PUSH_DEBUG_VALUES",
+      parameterIds: [lowRisk.id, highRisk.id]
+    });
+
+    expect(next.lastDebugSnapshot?.risk).toBe("High");
+  });
+});
+
+describe("ROLLBACK_LAST_SNAPSHOT（新增）", () => {
+  it("将快照里的 previousValue 写回 currentValue，清空快照与 pushedDebugIds，产出 rollback 事件", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const pushed = reducer(
+      {
+        ...base,
+        debugParameters: base.debugParameters.map((parameter) =>
+          parameter.id === target.id ? { ...parameter, targetValue: "42" } : parameter
+        )
+      },
+      { type: "PUSH_DEBUG_VALUES", parameterIds: [target.id] }
+    );
+
+    const rolledBack = reducer(pushed, { type: "ROLLBACK_LAST_SNAPSHOT" });
+
+    expect(rolledBack.lastDebugSnapshot).toBeNull();
+    expect(rolledBack.pushedDebugIds).toEqual([]);
+    const restored = rolledBack.debugParameters.find((parameter) => parameter.id === target.id);
+    expect(restored?.currentValue).toBe(target.currentValue);
+    expect(restored?.targetValue).toBe("42");
+    const lastEvent = rolledBack.debugEvents.at(-1);
+    expect(lastEvent?.kind).toBe("rollback");
+  });
+
+  it("没有快照时是 no-op（不抛异常、状态不变）", () => {
+    const base = createPrototypeState();
+    const next = reducer(base, { type: "ROLLBACK_LAST_SNAPSHOT" });
+    expect(next).toBe(base);
+  });
+});
+
+describe("ROLLBACK_UNDO_PUSH（新增）", () => {
+  it("行为等价 ROLLBACK_LAST_SNAPSHOT，但事件类型为 rollback-undo", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const pushed = reducer(
+      {
+        ...base,
+        debugParameters: base.debugParameters.map((parameter) =>
+          parameter.id === target.id ? { ...parameter, targetValue: "42" } : parameter
+        )
+      },
+      { type: "PUSH_DEBUG_VALUES", parameterIds: [target.id] }
+    );
+
+    const undone = reducer(pushed, { type: "ROLLBACK_UNDO_PUSH" });
+
+    expect(undone.lastDebugSnapshot).toBeNull();
+    const lastEvent = undone.debugEvents.at(-1);
+    expect(lastEvent?.kind).toBe("rollback-undo");
+  });
+});
+
+describe("CLEAR_PUSHED_DEBUG_IDS（新增）", () => {
+  it("从 pushedDebugIds 中移除指定 id", () => {
+    const base = createPrototypeState();
+    const state = {
+      ...base,
+      pushedDebugIds: ["a", "b", "c"]
+    };
+    const next = reducer(state, { type: "CLEAR_PUSHED_DEBUG_IDS", parameterIds: ["b"] });
+    expect(next.pushedDebugIds).toEqual(["a", "c"]);
+  });
+});
