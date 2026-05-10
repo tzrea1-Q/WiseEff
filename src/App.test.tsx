@@ -84,7 +84,9 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
     expect(screen.getByText("热门模块")).toBeInTheDocument();
-    expect(screen.getByText("关键参数变化")).toBeInTheDocument();
+    expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
+    expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
+    expect(screen.getByTestId("parameter-home-headline")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入 项目参数工作台" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入 参数合入审核" })).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
@@ -684,8 +686,23 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热门模块", "关键参数变化", "参数工作台", "参数合入审核"],
-        absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
+        present: [
+          "热门模块",
+          "参数更新趋势",
+          "分项目风险分布",
+          "开发人员总数",
+          "管理项目总数",
+          "项目参数工作台",
+          "参数合入审核"
+        ],
+        absent: [
+          "WiseEff Prototype",
+          "Linear is a better way",
+          "Powering the world's best product teams",
+          "Issue tracking you'll enjoy using",
+          "关键参数变化",
+          "审核合入情况"
+        ]
       },
       {
         path: "/parameters",
