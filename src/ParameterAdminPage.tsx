@@ -1,8 +1,10 @@
 import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
+import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { useParamAdminSearch } from "./hooks/useParamAdminSearch";
 import type { RiskLevel } from "./mockData";
+import { getCoverage } from "./parameterAdminAnalytics";
 import { serializePowerManagementConfig } from "./powerManagementConfig";
 
 export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageProps) {
@@ -13,6 +15,45 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
   const selectedParameter =
     state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
+  const library = state.configDraft.parameterLibrary;
+  const projects = state.configDraft.projects;
+  const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
+  const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
+  const todayChanges = state.auditEvents.filter((event) => isWithinHours(event.time, 24)).length;
+  const lastImport = state.auditEvents.find((event) => event.kind === "batch-import");
+  const kpiItems: KpiItem[] = [
+    { id: "shared", label: "共享参数", value: library.length },
+    {
+      id: "high",
+      label: "高风险",
+      value: highRiskCount,
+      interactive: highRiskCount > 0,
+      tone: "warning",
+      onClick: () => updateSearch({ risk: "high" })
+    },
+    {
+      id: "today",
+      label: "今日变更",
+      value: todayChanges,
+      interactive: todayChanges > 0,
+      onClick: () => updateSearch({ audit: "open" })
+    },
+    {
+      id: "orphan",
+      label: "孤儿参数",
+      value: orphanCount,
+      interactive: orphanCount > 0,
+      tone: "warning",
+      onClick: () => updateSearch({ coverage: "orphan" })
+    },
+    {
+      id: "last-import",
+      label: "最近导入",
+      value: lastImport ? formatRelativeTime(lastImport.time) : "—",
+      interactive: Boolean(lastImport),
+      onClick: () => updateSearch({ audit: "open" })
+    }
+  ];
 
   useEffect(() => {
     if (!state.configDraft.parameterLibrary.some((parameter) => parameter.id === selectedParameterId)) {
@@ -93,6 +134,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
           </button>
         </div>
       </header>
+      <KpiStrip items={kpiItems} />
       <main className="param-admin-body">
       <section className="config-admin-grid">
         <div className="library-panel config-list-panel">
@@ -262,6 +304,28 @@ function parseParamAdminSearch(raw: string) {
     import: undefined,
     permissions: undefined
   };
+}
+
+function isWithinHours(iso: string, hours: number) {
+  const parsed = new Date(iso).getTime();
+  return Number.isFinite(parsed) && Date.now() - parsed <= hours * 3600 * 1000;
+}
+
+function formatRelativeTime(iso: string) {
+  const parsed = new Date(iso).getTime();
+  if (!Number.isFinite(parsed)) {
+    return iso;
+  }
+  const diffMs = Math.max(Date.now() - parsed, 0);
+  const minutes = Math.round(diffMs / 60_000);
+  if (minutes < 60) {
+    return `${minutes} 分钟前`;
+  }
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) {
+    return `${hours} 小时前`;
+  }
+  return `${Math.round(hours / 24)} 天前`;
 }
 
 function ConfigExportPanel({ configJson }: { configJson: string }) {

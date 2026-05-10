@@ -47,4 +47,14 @@ describe("ParameterAdminPage", () => {
     expect(within(toolbar).getByRole("button", { name: /权限/ })).toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: /审计/ })).toBeInTheDocument();
   });
+
+  it("renders five KPI strip items", () => {
+    renderPage();
+    const strip = screen.getByRole("region", { name: "参数管理后台指标" });
+
+    expect(within(strip).getByText("共享参数")).toBeInTheDocument();
+    expect(within(strip).getByText("高风险")).toBeInTheDocument();
+    expect(within(strip).getByText("孤儿参数")).toBeInTheDocument();
+    expect(within(strip).getByText("最近导入")).toBeInTheDocument();
+  });
 });
