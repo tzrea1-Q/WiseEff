@@ -37,6 +37,9 @@
   --danger-soft: #ffdad6;
   --success: #0f7c55;
   --amber: #a05b00;
+  --risk-high: #d23c3c;
+  --risk-medium: #e4953a;
+  --risk-low: #6a8ad6;
   --shadow: 0 14px 38px rgba(0, 61, 155, 0.08);
   --shadow-soft: 0 8px 24px rgba(16, 28, 45, 0.06);
   --radius-sm: 8px;
@@ -3615,8 +3618,7 @@ td small {
   box-shadow: 0 16px 42px rgba(58, 76, 118, 0.1);
 }
 
-.parameter-homepage-hotspot-actions button,
-.parameter-homepage-change-list button {
+.parameter-homepage-hotspot-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3668,35 +3670,28 @@ td small {
 }
 
 .homepage-entry-grid,
-.homepage-main-grid,
 .parameter-homepage-hotspot-layout,
 .parameter-homepage-hotspot-list,
-.parameter-homepage-insights,
 .parameter-homepage-metrics,
-.parameter-homepage-flow,
+.parameter-homepage-charts,
 .parameter-homepage-dimension-list {
   display: grid;
   gap: 16px;
 }
 
-.homepage-main-grid,
+.parameter-homepage-headline,
+.parameter-homepage-charts,
 .parameter-homepage-hotspots,
-.parameter-homepage-insights {
+.homepage-entry-grid {
   margin-top: 18px;
-}
-
-.homepage-main-grid {
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
-  align-items: stretch;
 }
 
 .homepage-entry-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.parameter-homepage-metrics,
-.parameter-homepage-flow {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.parameter-homepage-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .parameter-homepage-card {
@@ -3728,7 +3723,6 @@ td small {
 .parameter-homepage .entry-card p,
 .parameter-homepage .metric-card p,
 .hotspot-card p,
-.parameter-homepage-change-list span,
 .parameter-homepage-section-head span,
 .parameter-homepage-evidence li {
   color: var(--app-muted);
@@ -3902,52 +3896,186 @@ td small {
   color: var(--app-primary);
 }
 
-.parameter-homepage-insights {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: start;
-}
-
-.parameter-homepage-change-list {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.key-change-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
+.parameter-homepage-headline {
+  display: flex;
   align-items: center;
-  width: 100%;
-  padding: 12px;
-  text-align: left;
+  gap: 12px;
+  padding: 14px 18px;
+  margin: 16px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--text);
   background: var(--surface-low);
-  border: 1px solid var(--outline);
-  border-radius: 8px;
 }
 
-.parameter-homepage-change-list strong,
-.parameter-homepage-change-list span {
+.parameter-homepage-headline span[aria-hidden="true"] {
+  font-size: 18px;
+}
+
+.parameter-homepage-charts {
+  grid-template-columns: 3fr 2fr;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.parameter-homepage-chart-card {
+  padding: 16px 18px 18px;
+}
+
+.parameter-homepage-chart-card > .parameter-homepage-section-head {
+  margin-bottom: 10px;
+}
+
+.update-trend-chart {
+  position: relative;
+  width: 100%;
+  height: 220px;
+}
+
+.update-trend-chart svg {
+  width: 100%;
+  height: 100%;
   display: block;
 }
 
-.parameter-homepage-change-list span {
-  margin-top: 4px;
+.update-trend-tooltip {
+  position: absolute;
+  top: 8px;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
   font-size: 12px;
-  line-height: 1.45;
+  font-weight: 700;
+  color: var(--text);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.project-risk-bar-chart {
+  position: relative;
+  width: 100%;
+}
+
+.project-risk-bar-chart.empty {
+  padding: 18px 0;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+.project-risk-bar-chart-scroller {
+  display: grid;
+  gap: 12px;
+  max-height: 384px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.project-risk-row {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) 48px;
+  gap: 12px;
+  align-items: center;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.project-risk-row:hover,
+.project-risk-row:focus-visible {
+  border-color: var(--outline);
+  background: var(--surface-low);
+  outline: none;
+}
+
+.project-risk-row-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--outline-strong);
+}
+
+.project-risk-row-bar {
+  display: flex;
+  height: 18px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--surface-mid);
+}
+
+.project-risk-segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  border-right: 1px solid #fff;
+}
+
+.project-risk-segment:last-child {
+  border-right: none;
+}
+
+.project-risk-segment.risk-high {
+  background: var(--risk-high);
+}
+
+.project-risk-segment.risk-medium {
+  background: var(--risk-medium);
+}
+
+.project-risk-segment.risk-low {
+  background: var(--risk-low);
+}
+
+.project-risk-row-total {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--app-primary);
+  text-align: right;
+}
+
+.project-risk-tooltip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.project-risk-tooltip strong {
+  color: var(--app-primary);
 }
 
 @media (max-width: 980px) {
-  .homepage-main-grid,
-  .parameter-homepage-hotspot-layout,
-  .parameter-homepage-insights {
+  .parameter-homepage-hotspot-layout {
     grid-template-columns: 1fr;
   }
 
   .homepage-entry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .parameter-homepage-charts {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -3958,12 +4086,19 @@ td small {
 
   .homepage-entry-grid,
   .parameter-homepage-metrics,
-  .parameter-homepage-flow {
+  .parameter-homepage-charts {
     grid-template-columns: 1fr;
   }
 
+  .update-trend-chart {
+    height: 180px;
+  }
+
+  .project-risk-row {
+    grid-template-columns: 72px minmax(0, 1fr) 40px;
+  }
+
   .parameter-homepage-section-head,
-  .key-change-row,
   .breakdown-row {
     align-items: flex-start;
     grid-template-columns: 1fr;
