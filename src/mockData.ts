@@ -10,6 +10,41 @@ import {
 } from "./powerManagementConfig";
 
 export type RiskLevel = "High" | "Medium" | "Low";
+export type AIConfidence = "high" | "mid" | "low";
+export type AIRecommendation = "advance" | "needs-review" | "reject";
+
+export type AIReviewSuggestion = {
+  recommendation: AIRecommendation;
+  confidence: AIConfidence;
+  summary: string;
+  reasons: string[];
+  similarRequests: string[];
+};
+
+export type ParameterHistoryEntry = {
+  version: string;
+  value: string;
+  changedAt: string;
+  changedBy: string;
+  requestId?: string;
+};
+
+export type ImpactItem = {
+  kind: "module" | "test" | "parameter";
+  name: string;
+  note: string;
+  risk: RiskLevel;
+};
+
+export type AIFeedbackEntry = {
+  id: string;
+  requestId: string;
+  feedback: "up" | "down";
+  note?: string;
+  recordedAt: string;
+};
+
+export const REVIEW_MOCK_NOW = "2026-05-10T12:00:00.000Z";
 export type RequestStatus = "待审阅" | "自动检查通过" | "等待合入" | "已合入" | "已打回";
 export type LogStage = "日志解析" | "模式匹配" | "根因推断" | "报告生成";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
