@@ -55,6 +55,17 @@ describe("ParameterManagementHomePage", () => {
     expect(headline.textContent).toMatch(/近 7 天/);
   });
 
+  it("uses a color legend for the project update chart subtitle", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
+
+    const legend = screen.getByRole("list", { name: "各项目参数更新情况颜色说明" });
+
+    expect(within(legend).getByText("红色 高风险")).toBeInTheDocument();
+    expect(within(legend).getByText("橙色 中风险")).toBeInTheDocument();
+    expect(within(legend).getByText("蓝色 低风险")).toBeInTheDocument();
+    expect(screen.queryByText("高/中/低 修改聚合")).not.toBeInTheDocument();
+  });
+
   it("entry cards remain and navigate as before", () => {
     const onNavigate = vi.fn();
     render(<ParameterManagementHomePage state={initialState} onNavigate={onNavigate} />);

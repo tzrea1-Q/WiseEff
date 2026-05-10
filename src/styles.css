@@ -3792,6 +3792,44 @@ td small {
   font-weight: 700;
 }
 
+.project-risk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 5px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-risk-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.project-risk-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.project-risk-legend-dot.risk-high {
+  background: var(--risk-high);
+}
+
+.project-risk-legend-dot.risk-medium {
+  background: var(--risk-medium);
+}
+
+.project-risk-legend-dot.risk-low {
+  background: var(--risk-low);
+}
+
 .parameter-homepage-hotspot-layout {
   grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
   align-items: start;

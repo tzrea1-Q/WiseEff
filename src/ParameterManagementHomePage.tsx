@@ -113,7 +113,20 @@ export function ParameterManagementHomePage({
           <div className="parameter-homepage-section-head">
             <div>
               <h2>各项目参数更新情况</h2>
-              <span>高/中/低 修改聚合</span>
+              <ul className="project-risk-legend" aria-label="各项目参数更新情况颜色说明">
+                <li>
+                  <span className="project-risk-legend-dot risk-high" aria-hidden="true" />
+                  红色 高风险
+                </li>
+                <li>
+                  <span className="project-risk-legend-dot risk-medium" aria-hidden="true" />
+                  橙色 中风险
+                </li>
+                <li>
+                  <span className="project-risk-legend-dot risk-low" aria-hidden="true" />
+                  蓝色 低风险
+                </li>
+              </ul>
             </div>
           </div>
           <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
