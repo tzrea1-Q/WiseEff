@@ -2,6 +2,7 @@ import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
+import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
 import { DirtyIndicator } from "./components/DirtyIndicator";
 import { ExportDiffDialog, type ExportDiff } from "./components/ExportDiffDialog";
 import { ExportMenu } from "./components/ExportMenu";
@@ -9,6 +10,7 @@ import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { ParameterDefinitionForm } from "./components/ParameterDefinitionForm";
 import { ParameterLibraryList } from "./components/ParameterLibraryList";
 import { ProjectValueMatrix } from "./components/ProjectValueMatrix";
+import { UndoableToast } from "./components/UndoableToast";
 import { useBeforeUnload } from "./hooks/useBeforeUnload";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
@@ -18,6 +20,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
@@ -179,6 +182,21 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
     });
   };
 
+  const deleteTarget = library.find((parameter) => parameter.id === deleteTargetId);
+  const deleteTargetProjects = deleteTarget
+    ? projects.filter((project) => deleteTarget.values?.[project.id]?.currentValue?.trim()).map((project) => project.code)
+    : [];
+
+  const confirmDelete = () => {
+    if (!deleteTargetId) {
+      return;
+    }
+
+    dispatch({ type: "DELETE_PROJECT_PARAMETER", parameterId: deleteTargetId });
+    setSelectedParameterId(library.find((parameter) => parameter.id !== deleteTargetId)?.id ?? "");
+    setDeleteTargetId(null);
+  };
+
   return (
     <div className="param-admin-shell" data-audit={search.audit === "open" ? "open" : "closed"}>
       <header className="param-admin-header">
@@ -250,12 +268,12 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
                 className="button danger"
                 type="button"
                 disabled={!selectedParameter || state.configDraft.parameterLibrary.length <= 1}
+                aria-label={selectedParameter ? `删除 ${selectedParameter.name}` : "删除参数"}
                 onClick={() => {
                   if (!selectedParameter) {
                     return;
                   }
-                  dispatch({ type: "DELETE_PROJECT_PARAMETER", parameterId: selectedParameter.id });
-                  setSelectedParameterId(state.configDraft.parameterLibrary.find((parameter) => parameter.id !== selectedParameter.id)?.id ?? "");
+                  setDeleteTargetId(selectedParameter.id);
                 }}
               >
                 删除参数
@@ -291,6 +309,21 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         </aside>
       </main>
       <ExportDiffDialog diff={exportDiff} open={exportDialogOpen} onCancel={closeExportDialog} onConfirm={confirmExportDialog} />
+      <DeleteParameterDialog
+        open={Boolean(deleteTarget)}
+        parameterName={deleteTarget?.name ?? ""}
+        usedByProjects={deleteTargetProjects}
+        onCancel={() => setDeleteTargetId(null)}
+        onConfirm={confirmDelete}
+      />
+      {state._undoStack ? (
+        <UndoableToast
+          message={state._undoStack.message}
+          timeout={Math.max(0, new Date(state._undoStack.expiresAt).getTime() - Date.now())}
+          onExpire={() => dispatch({ type: "CLEAR_UNDO" })}
+          onUndo={() => dispatch({ type: "UNDO_LAST_DESTRUCTIVE" })}
+        />
+      ) : null}
     </div>
   );
 }

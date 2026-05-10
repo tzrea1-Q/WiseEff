@@ -108,4 +108,43 @@ describe("ParameterAdminPage", () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "MARK_EXPORTED" }));
     expect(createObjectUrl).toHaveBeenCalled();
   });
+
+  it("opens delete confirmation and dispatches DELETE_PROJECT_PARAMETER", () => {
+    const dispatch = vi.fn();
+    const parameter = initialState.configDraft.parameterLibrary[0];
+    render(<ParameterAdminPage state={initialState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+
+    fireEvent.click(screen.getByRole("button", { name: `删除 ${parameter.name}` }));
+
+    expect(screen.getByRole("dialog", { name: /删除参数/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "DELETE_PROJECT_PARAMETER", parameterId: parameter.id });
+  });
+
+  it("shows undo toast when an undo stack entry exists", () => {
+    const dispatch = vi.fn();
+    const undoState = {
+      ...initialState,
+      _undoStack: {
+        id: "u1",
+        actionKind: "parameter-delete" as const,
+        message: "已删除 x",
+        snapshot: {},
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 10_000).toISOString(),
+        originalAuditEventId: "ae-x"
+      }
+    };
+
+    render(<ParameterAdminPage state={undoState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+
+    expect(screen.getByRole("status")).toBeInTheDocument();
+    expect(screen.getByText("已删除 x")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /撤销/ }));
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "UNDO_LAST_DESTRUCTIVE" });
+  });
 });

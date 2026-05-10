@@ -958,7 +958,11 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("new_power_parameter_11")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toHaveTextContent("NEB-RD");
 
-    fireEvent.click(screen.getByRole("button", { name: "删除参数" }));
+    fireEvent.click(screen.getByRole("button", { name: /删除 new_power_parameter_11/ }));
+
+    expect(screen.getByRole("dialog", { name: /删除参数/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
 
     expect(screen.queryByDisplayValue("new_power_parameter_11")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('"name": "new_power_parameter_11"');
