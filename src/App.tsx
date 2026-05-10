@@ -46,8 +46,11 @@ import {
   ParameterSubmissionItem,
   projects,
   PrototypeState,
-  roles
+  roles,
+  type UndoEntry,
+  type User
 } from "./mockData";
+import { buildAuditEvent } from "./parameterAdminAnalytics";
 import {
   addDebugParameter,
   addProjectParameter,
@@ -79,7 +82,16 @@ type AppAction =
   | { type: "ADD_PROJECT_PARAMETER" }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER" }
-  | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string };
+  | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
+  | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: string }
+  | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
+  | { type: "ADD_USER"; name: string; email: string; roleId: string }
+  | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
+  | { type: "DISMISS_INSIGHT"; insightId: string }
+  | { type: "SET_AI_FLAGGED_IMPORT_IDS"; ids: string[] }
+  | { type: "AGENT_ACTION_EXECUTED"; actionId: string; metadata?: Record<string, unknown> }
+  | { type: "UNDO_LAST_DESTRUCTIVE" }
+  | { type: "CLEAR_UNDO" };
 
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
   { value: "7d", label: "7天" },
@@ -165,7 +177,10 @@ function getDebugModule(parameter: DebugParameter) {
   return debugModuleLabels[keyPrefix] ?? keyPrefix.toUpperCase();
 }
 
-function reducer(state: PrototypeState, action: AppAction): PrototypeState {
+export function appReducer(state: PrototypeState, action: AppAction): PrototypeState {
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const auditActor = currentUser?.name ?? "system";
+
   switch (action.type) {
     case "SET_PROJECT":
       return { ...state, activeProjectId: action.projectId };
@@ -421,11 +436,34 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
       };
     }
     case "DELETE_PROJECT_PARAMETER": {
+      const removed = state.configDraft.parameterLibrary.find((parameter) => parameter.id === action.parameterId);
+      if (!removed) {
+        return state;
+      }
       const configDraft = deleteProjectParameter(state.configDraft, action.parameterId);
+      const event = buildAuditEvent({
+        kind: "parameter-delete",
+        actor: auditActor,
+        action: `删除 ${removed.name}`,
+        severity: "High",
+        parameterId: removed.id
+      });
+      const now = new Date();
+      const undo: UndoEntry = {
+        id: `undo-${now.getTime()}`,
+        actionKind: "parameter-delete",
+        message: `已删除 ${removed.name}`,
+        snapshot: { configDraft: state.configDraft },
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 10_000).toISOString(),
+        originalAuditEventId: event.id
+      };
       return {
         ...state,
         configDraft,
-        ...derivePowerManagementRuntimeState(configDraft)
+        ...derivePowerManagementRuntimeState(configDraft),
+        _undoStack: undo,
+        auditEvents: [event, ...state.auditEvents]
       };
     }
     case "ADD_DEBUG_PARAMETER": {
@@ -451,6 +489,150 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
       };
     case "ADD_NOTIFICATION":
       return { ...state, notifications: [action.message, ...state.notifications] };
+    case "ASSIGN_USER_ROLE": {
+      if (action.userId === state.currentUserId) {
+        return state;
+      }
+      const user = state.users.find((item) => item.id === action.userId);
+      if (!user || user.roleId === action.roleId || !roles.some((role) => role.id === action.roleId)) {
+        return state;
+      }
+      const event = buildAuditEvent({
+        kind: "user-role-change",
+        actor: auditActor,
+        action: `${user.name} 角色从 ${user.roleId} 改为 ${action.roleId}`,
+        severity: "Medium",
+        userId: user.id,
+        metadata: { previousRole: user.roleId, newRole: action.roleId }
+      });
+
+      return {
+        ...state,
+        users: state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item)),
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "TOGGLE_USER_ACTIVE": {
+      const user = state.users.find((item) => item.id === action.userId);
+      if (!user || user.id === state.currentUserId || user.isActive === action.isActive) {
+        return state;
+      }
+      const event = buildAuditEvent({
+        kind: "user-toggle",
+        actor: auditActor,
+        action: `${action.isActive ? "启用" : "停用"} 用户 ${user.name}`,
+        severity: "Medium",
+        userId: user.id,
+        metadata: {
+          previousValue: user.isActive ? "active" : "inactive",
+          newValue: action.isActive ? "active" : "inactive"
+        }
+      });
+
+      return {
+        ...state,
+        users: state.users.map((item) => (item.id === user.id ? { ...item, isActive: action.isActive } : item)),
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "ADD_USER": {
+      if (state.users.some((user) => user.email.toLowerCase() === action.email.toLowerCase())) {
+        return state;
+      }
+      const role = roles.find((item) => item.id === action.roleId);
+      if (!role) {
+        return state;
+      }
+      const newUser: User = {
+        id: `u-${Date.now().toString(36)}`,
+        name: action.name,
+        email: action.email,
+        roleId: action.roleId,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+      const event = buildAuditEvent({
+        kind: "user-add",
+        actor: auditActor,
+        action: `添加用户 ${newUser.name}（${role.name}）`,
+        severity: "Low",
+        userId: newUser.id
+      });
+
+      return {
+        ...state,
+        users: [...state.users, newUser],
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "MARK_EXPORTED": {
+      const event = buildAuditEvent({
+        kind: "export",
+        actor: auditActor,
+        action: `导出 ${action.snapshotName}`,
+        severity: "Low",
+        time: action.timestamp,
+        metadata: { snapshotName: action.snapshotName }
+      });
+
+      return {
+        ...state,
+        lastExportedSnapshot: JSON.stringify(state.configDraft),
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "DISMISS_INSIGHT":
+      if (state.insightDismissedIds.includes(action.insightId)) {
+        return state;
+      }
+      return {
+        ...state,
+        insightDismissedIds: [...state.insightDismissedIds, action.insightId]
+      };
+    case "SET_AI_FLAGGED_IMPORT_IDS":
+      return {
+        ...state,
+        aiFlaggedImportIds: [...action.ids]
+      };
+    case "AGENT_ACTION_EXECUTED": {
+      const event = buildAuditEvent({
+        kind: "agent-action",
+        actor: auditActor,
+        action: `Agent 执行 ${action.actionId}`,
+        severity: "Low",
+        viaAgent: true,
+        metadata: { aiActionId: action.actionId, ...(action.metadata ?? {}) }
+      });
+
+      return {
+        ...state,
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "UNDO_LAST_DESTRUCTIVE": {
+      const entry = state._undoStack;
+      if (!entry || Date.now() > new Date(entry.expiresAt).getTime()) {
+        return state;
+      }
+      const event = buildAuditEvent({
+        kind: "rollback-undo",
+        actor: auditActor,
+        action: `撤销 ${entry.actionKind}：${entry.message}`,
+        severity: "Low",
+        metadata: { aiActionId: entry.originalAuditEventId }
+      });
+      const nextConfigDraft = entry.snapshot.configDraft ?? state.configDraft;
+
+      return {
+        ...state,
+        ...entry.snapshot,
+        ...derivePowerManagementRuntimeState(nextConfigDraft),
+        _undoStack: null,
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "CLEAR_UNDO":
+      return { ...state, _undoStack: null };
     default:
       return state;
   }
@@ -461,7 +643,7 @@ function App() {
 }
 
 function AppShell() {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [state, dispatch] = useReducer(appReducer, initialState);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
