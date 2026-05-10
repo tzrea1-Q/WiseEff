@@ -172,6 +172,7 @@ export type AuditEvent = {
     diffSummary?: { added: number; updated: number; deleted: number };
     snapshotName?: string;
     aiActionId?: string;
+    foundOrphans?: number;
   };
   viaAgent?: boolean;
 };
