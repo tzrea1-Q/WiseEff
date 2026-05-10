@@ -67,6 +67,7 @@ import {
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
 import {
   addDebugParameter,
+  addDebugParameterFromDraft,
   addProjectParameter,
   deleteDebugParameter,
   deleteProjectParameter,
@@ -141,7 +142,7 @@ export type AppAction =
   | { type: "DISCARD_ALL_DEBUG_DIRTY" }
   | { type: "ADD_PROJECT_PARAMETER" }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
-  | { type: "ADD_DEBUG_PARAMETER" }
+  | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
   | { type: "MARK_CONFIG_PERSISTED" };
 
@@ -746,6 +747,18 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_DEBUG_PARAMETER": {
+      if (action.initialDraft) {
+        const configDraft = addDebugParameterFromDraft(
+          state.configDraft,
+          action.initialDraft,
+          new Date()
+        );
+        return {
+          ...state,
+          configDraft,
+          ...derivePowerManagementRuntimeState(configDraft)
+        };
+      }
       const configDraft = addDebugParameter(state.configDraft);
       return {
         ...state,

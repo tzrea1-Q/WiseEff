@@ -341,3 +341,56 @@ describe("DISCARD_ALL_DEBUG_DIRTY", () => {
     );
   });
 });
+
+describe("ADD_DEBUG_PARAMETER initialDraft", () => {
+  it("未传 initialDraft 时保持原有自动生成逻辑", () => {
+    const base = createPrototypeState();
+
+    const next = reducer(base, { type: "ADD_DEBUG_PARAMETER" });
+
+    const added = next.configDraft.debugParameters.at(-1);
+    expect(added?.name).toBe(`new_debug_parameter_${base.configDraft.debugParameters.length + 1}`);
+    expect(added?.key).toBe(`debug.new_parameter_${base.configDraft.debugParameters.length + 1}`);
+  });
+
+  it("传入 initialDraft 时将 draft 加入 configDraft.debugParameters", () => {
+    const base = createPrototypeState();
+    const draft = {
+      name: "pid_kp_coefficient",
+      key: "debug.pid.kp",
+      currentValue: "0.8",
+      targetValue: "1.0",
+      unit: "",
+      range: "0.1 - 2.0",
+      risk: "Medium" as const,
+      status: "待下发" as const
+    };
+
+    const next = reducer(base, { type: "ADD_DEBUG_PARAMETER", initialDraft: draft });
+
+    expect(next.configDraft.debugParameters).toHaveLength(base.configDraft.debugParameters.length + 1);
+    const added = next.configDraft.debugParameters.at(-1);
+    expect(added).toMatchObject(draft);
+    expect(added?.id).toMatch(/^dbg-custom-\d+$/);
+  });
+
+  it("传入 initialDraft 时同步 derived debugParameters", () => {
+    const base = createPrototypeState();
+    const draft = {
+      name: "x",
+      key: "x.y",
+      currentValue: "1",
+      targetValue: "2",
+      unit: "",
+      range: "",
+      risk: "Low" as const,
+      status: "待下发" as const
+    };
+
+    const next = reducer(base, { type: "ADD_DEBUG_PARAMETER", initialDraft: draft });
+
+    expect(next.debugParameters).toHaveLength(base.debugParameters.length + 1);
+    const added = next.debugParameters.at(-1);
+    expect(added?.key).toBe("x.y");
+  });
+});

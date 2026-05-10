@@ -180,6 +180,22 @@ export function addDebugParameter(config: PowerManagementConfig) {
   };
 }
 
+export function addDebugParameterFromDraft(
+  config: PowerManagementConfig,
+  draft: Omit<PowerManagementDebugParameter, "id">,
+  now: Date = new Date()
+) {
+  const parameter: PowerManagementDebugParameter = {
+    id: `dbg-custom-${now.getTime()}`,
+    ...draft
+  };
+
+  return {
+    ...config,
+    debugParameters: [...config.debugParameters, parameter]
+  };
+}
+
 export function deleteDebugParameter(config: PowerManagementConfig, parameterId: string) {
   return {
     ...config,

@@ -7,6 +7,7 @@ import {
   serializePowerManagementConfig,
   updateDebugParameter,
   addDebugParameter,
+  addDebugParameterFromDraft,
   addProjectParameter,
   deleteDebugParameter,
   deleteProjectParameter,
@@ -75,5 +76,72 @@ describe("powerManagementConfig", () => {
     expect(addedDebugParameter?.name).toBe("new_debug_parameter_9");
     expect(addedDebugParameter?.key).toBe("debug.new_parameter_9");
     expect(deleteDebugParameter(withDebugParameter, addedDebugParameter?.id ?? "").debugParameters).toHaveLength(8);
+  });
+});
+
+describe("addDebugParameterFromDraft", () => {
+  it("把 draft 加到 debugParameters 列表末尾，使用 timestamp id", () => {
+    const base = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const draft = {
+      name: "pid_kp_coefficient",
+      key: "debug.pid.kp",
+      currentValue: "0.8",
+      targetValue: "1.0",
+      unit: "",
+      range: "0.1 - 2.0",
+      risk: "Medium" as const,
+      status: "待下发" as const
+    };
+    const fixedNow = new Date("2026-05-10T23:45:00.000Z");
+
+    const next = addDebugParameterFromDraft(base, draft, fixedNow);
+
+    expect(next.debugParameters).toHaveLength(base.debugParameters.length + 1);
+    const added = next.debugParameters[next.debugParameters.length - 1];
+    expect(added.id).toBe(`dbg-custom-${fixedNow.getTime()}`);
+    expect(added.name).toBe("pid_kp_coefficient");
+    expect(added.key).toBe("debug.pid.kp");
+    expect(added.currentValue).toBe("0.8");
+    expect(added.targetValue).toBe("1.0");
+    expect(added.risk).toBe("Medium");
+  });
+
+  it("不改动 base config 对象（返回新对象）", () => {
+    const base = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const originalLength = base.debugParameters.length;
+    const draft = {
+      name: "test",
+      key: "test.key",
+      currentValue: "0",
+      targetValue: "0",
+      unit: "",
+      range: "",
+      risk: "Low" as const,
+      status: "待下发" as const
+    };
+
+    const next = addDebugParameterFromDraft(base, draft, new Date("2026-05-10T00:00:00.000Z"));
+
+    expect(base.debugParameters).toHaveLength(originalLength);
+    expect(next).not.toBe(base);
+    expect(next.debugParameters).not.toBe(base.debugParameters);
+  });
+
+  it("保留 draft 的 status 字段", () => {
+    const base = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const draft = {
+      name: "status_test",
+      key: "status.test",
+      currentValue: "1",
+      targetValue: "1",
+      unit: "",
+      range: "",
+      risk: "Low" as const,
+      status: "已同步" as const
+    };
+
+    const next = addDebugParameterFromDraft(base, draft, new Date("2026-05-10T00:00:00.000Z"));
+
+    expect(next.debugParameters.at(-1)?.status).toBe("已同步");
   });
 });
