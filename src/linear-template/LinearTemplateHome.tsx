@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { WiseEffIcon } from "../components/WiseEffIcon";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Command, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Separator } from "@/components/ui/separator";
 import "./linear-template.css";
 
 const navItems = [
-  { label: "Platform", href: "#platform" },
-  { label: "Workflow", href: "#workflow" },
-  { label: "Agent", href: "#agent" },
-  { label: "Governance", href: "#governance" },
-  { label: "Scenarios", href: "#scenarios" }
-] as const;
-
-const proofStats = [
-  { value: "3", label: "业务工作台", detail: "参数 / 日志 / 调试" },
-  { value: "10", label: "共享业务参数", detail: "跨项目独立取值" },
-  { value: "8", label: "实时可调参数", detail: "下发前保留确认" },
-  { value: "1", label: "审阅与审计链路", detail: "PRQ / 证据 / 回滚" }
+  { label: "参数管理", href: "/parameter-home" },
+  { label: "日志分析", href: "/logs" },
+  { label: "参数调试", href: "/debugging" }
 ] as const;
 
 const footerColumns = [
@@ -32,16 +27,14 @@ const footerColumns = [
     links: [
       { label: "目标进入", href: "#agent" },
       { label: "证据链", href: "#workflow" },
-      { label: "人工确认", href: "#scenarios" },
-      { label: "审计留痕", href: "#governance" }
+      { label: "人工确认", href: "#scenarios" }
     ]
   },
   {
     title: "Scope",
     links: [
       { label: "当前数据", href: "#platform" },
-      { label: "模拟边界", href: "#scenarios" },
-      { label: "后续演进", href: "#governance" }
+      { label: "模拟边界", href: "#scenarios" }
     ]
   },
   {
@@ -59,21 +52,14 @@ type Feature = {
   text: string;
 };
 
-type FeatureCard = {
-  title: string;
-  text: string;
-  details: string[];
-};
-
 type ProductSectionProps = {
   id?: string;
   color: string;
   colorDark: string;
   title: string;
-  preview: "parameters" | "logs" | "debugging" | "governance";
+  preview: "parameters" | "logs" | "debugging";
   text: string;
   features: Feature[];
-  cards?: FeatureCard[];
 };
 
 type HeroStageSlide = {
@@ -175,67 +161,6 @@ const debuggingFeatures: Feature[] = [
   { title: "回滚准备。", text: "危险操作前保留原值、目标值和撤回说明。" }
 ];
 
-const governanceFeatures: Feature[] = [
-  { title: "PRQ 审阅。", text: "PRQ-9102 串联参数差异、证据、确认人和结论。" },
-  { title: "人工确认。", text: "Agent 建议必须经过确认才进入下发或归档。" },
-  { title: "审计留痕。", text: "记录目标进入、证据链、审批动作和回滚结果。" },
-  { title: "权限分层。", text: "按平台、工作台和操作类型限制可见与可改范围。" },
-  { title: "回滚链路。", text: "保留参数快照和日志依据，支持复盘每次改动。" },
-  { title: "治理视图。", text: "把参数、日志、调试和审阅统一到同一条业务链路。" }
-];
-
-const parameterCards: FeatureCard[] = [
-  {
-    title: "参数工作台",
-    text: "集中查看共享参数、项目取值和待确认下发项。",
-    details: ["Aurora 当前值 3850", "Nebula 当前值 4200", "Atlas 当前值 3000"]
-  },
-  {
-    title: "跨项目取值",
-    text: "Aurora、Nebula、Atlas 使用同一参数定义，保留各自运行值。",
-    details: ["共享定义", "独立运行值", "差异进入审阅"]
-  }
-];
-
-const logCards: FeatureCard[] = [
-  {
-    title: "证据链日志",
-    text: "围绕异常信号聚合片段、筛选条件和审阅上下文。",
-    details: ["原始日志", "命中片段", "关联参数"]
-  },
-  {
-    title: "平台对照",
-    text: "把不同平台日志映射到统一字段，支持调试前比对。",
-    details: ["统一字段", "热保护阈值", "人工确认"]
-  }
-];
-
-const debuggingCards: FeatureCard[] = [
-  {
-    title: "调试路径",
-    text: "从目标、假设、候选参数到验证记录保留完整上下文。",
-    details: ["ChargeLab_X01", "目标值准备", "确认后下发"]
-  },
-  {
-    title: "确认后下发",
-    text: "Agent 只生成建议，工作台保留人工确认和撤回入口。",
-    details: ["Agent 建议", "工程师确认", "保留原值"]
-  }
-];
-
-const governanceCards: FeatureCard[] = [
-  {
-    title: "PRQ 审阅链",
-    text: "PRQ-9102 把参数、证据、审批与回滚说明放在一起。",
-    details: ["PRQ-9102", "待审阅", "回滚说明"]
-  },
-  {
-    title: "审计复盘",
-    text: "每次 Workflow 决策都能回看来源、确认人和影响范围。",
-    details: ["目标来源", "确认人", "影响范围"]
-  }
-];
-
 export function LinearTemplateHome() {
   return (
     <div className="linear-template-home light-homepage" data-theme="light">
@@ -246,9 +171,6 @@ export function LinearTemplateHome() {
             <Hero />
           </Container>
         </section>
-        <Container>
-          <ProofStrip />
-        </Container>
         <StarsDivider />
         <UnlikeAnyTool />
         <ProductSection
@@ -259,7 +181,6 @@ export function LinearTemplateHome() {
           preview="parameters"
           text="把差异、建议和审阅状态放到同一条参数链路里。"
           features={parameterFeatures}
-          cards={parameterCards}
         />
         <ProductSection
           id="workflow"
@@ -269,7 +190,6 @@ export function LinearTemplateHome() {
           preview="logs"
           text="让每个结论都能回到日志片段、上下文和触发点。"
           features={logFeatures}
-          cards={logCards}
         />
         <ProductSection
           id="scenarios"
@@ -279,17 +199,6 @@ export function LinearTemplateHome() {
           preview="debugging"
           text="让 Agent 准备调试路径，真正下发仍等待人工确认。"
           features={debuggingFeatures}
-          cards={debuggingCards}
-        />
-        <ProductSection
-          id="governance"
-          color="0,225,244"
-          colorDark="31,49,64"
-          title="从一个场景，沉淀一套工作方式"
-          preview="governance"
-          text="从电源管理闭环开始，沉淀可迁移的 Workflow。"
-          features={governanceFeatures}
-          cards={governanceCards}
         />
       </main>
       <TemplateFooter />
@@ -340,12 +249,12 @@ function TemplateHeader() {
           </ul>
         </nav>
         <div className="linear-header-actions">
-          <a className="linear-login" href="#scenarios">
-            查看演示
-          </a>
-          <a className="linear-button linear-button-small" href="/parameter-home" aria-label="进入 WiseEff 工作台">
-            进入工作台
-          </a>
+          <Button asChild className="linear-login" variant="link">
+            <a href="#scenarios">查看演示</a>
+          </Button>
+          <Button asChild className="linear-button linear-button-small">
+            <a href="/parameter-home" aria-label="进入 WiseEff 工作台">进入工作台</a>
+          </Button>
         </div>
         <button
           className="linear-menu-button"
@@ -365,18 +274,18 @@ function TemplateHeader() {
 function Hero() {
   return (
     <div className="linear-hero">
-      <h1 className="linear-fade-item delay-1">让高频业务作业更智能高效</h1>
+      <h1 className="linear-fade-item delay-1">让业务流程更智能更高效</h1>
       <p className="linear-hero-subtitle linear-fade-item delay-2">
         WiseEff 把参数管理、日志分析、设备调试和审阅治理连接到同一平台。
         <br /> Agent 辅助检索、分析、填表和流转，关键变更保留确认、权限和审计。
       </p>
       <div className="linear-hero-actions linear-fade-item delay-3">
-        <a className="linear-button linear-button-large" href="/parameter-home">
-          进入工作台
-        </a>
-        <a className="linear-button linear-button-large secondary" href="#platform">
-          查看当前能力
-        </a>
+        <Button asChild className="linear-button linear-button-large">
+          <a href="/parameter-home">进入工作台</a>
+        </Button>
+        <Button asChild className="linear-button linear-button-large secondary" variant="outline">
+          <a href="#platform">查看当前能力</a>
+        </Button>
       </div>
       <WiseEffHeroStage />
     </div>
@@ -484,26 +393,6 @@ function WiseEffHeroStage() {
   );
 }
 
-function ProofStrip() {
-  return (
-    <section className="linear-proof-strip" aria-label="WiseEff platform coverage">
-      <p>
-        <span>从电源管理场景开始</span>
-        <br /> 沉淀可复用的业务协同方式。
-      </p>
-      <div className="linear-proof-grid">
-        {proofStats.map((stat) => (
-          <div key={stat.label}>
-            <strong>{stat.value}</strong>
-            <span>{stat.label}</span>
-            <small>{stat.detail}</small>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function StarsDivider() {
   return (
     <div className="linear-stars-divider" aria-hidden="true">
@@ -528,55 +417,31 @@ function UnlikeAnyTool() {
         </div>
       </Container>
       <div className="linear-tool-grid" aria-label="WiseEff workflow qualities">
-        <article className="linear-tool-card large keyboard-card">
-          <KeyboardMock />
-          <h3>用目标进入</h3>
-          <p>团队先描述要达成的业务目标，再由工作流串起参数、日志和调试上下文。</p>
-        </article>
-        <article className="linear-tool-card zap-card">
-          <ZapMock />
-          <h3>为证据留位置</h3>
-          <p>关键判断不只留下结论，也保留日志片段、参数差异和审阅依据。</p>
-        </article>
-        <article className="linear-tool-card logo-light-card">
+        <Card className="linear-tool-card logo-light-card">
           <LogoLightMock />
-          <h3>让 Agent 代办</h3>
-          <p>Agent 辅助检索、解释、填写和准备草稿，危险动作保持人工确认。</p>
-          <a className="linear-card-link" href="#platform">
-            <span>当前能力</span>
-            查看边界
-            <strong>›</strong>
-          </a>
-        </article>
-        <article className="linear-tool-card large command-card">
+          <CardHeader>
+            <CardTitle>让 Agent 代办</CardTitle>
+            <CardDescription>Agent 辅助检索、解释、填写和准备草稿，危险动作保持人工确认。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="linear-card-link" variant="link">
+              <a href="#platform">
+                <span>当前能力</span>
+                查看边界
+                <strong>›</strong>
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+        <Card className="linear-tool-card large command-card">
           <CommandMenuMock />
-          <h3>把治理做进流程</h3>
-          <p>PRQ 审阅、角色边界、确认动作和回滚说明跟着业务链路一起沉淀。</p>
-        </article>
+          <CardHeader>
+            <CardTitle>把治理做进流程</CardTitle>
+            <CardDescription>PRQ 审阅、角色边界、确认动作和回滚说明跟着业务链路一起沉淀。</CardDescription>
+          </CardHeader>
+        </Card>
       </div>
     </section>
-  );
-}
-
-function KeyboardMock() {
-  const keys = ["目标", "参数", "日志", "证据", "Agent", "PRQ", "确认", "回滚"];
-
-  return (
-    <div className="linear-keyboard-mock" aria-hidden="true">
-      {keys.map((key, index) => (
-        <span key={`${key}-${index}`}>{key}</span>
-      ))}
-    </div>
-  );
-}
-
-function ZapMock() {
-  return (
-    <div className="linear-zap-mock" aria-hidden="true">
-      {Array.from({ length: 36 }, (_, index) => (
-        <span key={index} style={{ "--index": index } as CSSProperties} />
-      ))}
-    </div>
   );
 }
 
@@ -595,20 +460,22 @@ function CommandMenuMock() {
   const rows = ["定位参数", "检索日志证据", "填写变更草稿", "准备 PRQ 审阅", "等待人工确认"];
 
   return (
-    <div className="linear-command-menu-mock" aria-hidden="true">
-      <div className="linear-command-input">描述目标...</div>
-      {rows.map((row, index) => (
-        <div key={row} className={index === 1 ? "active" : ""}>
-          <span />
-          {row}
-          <kbd>⌘{index + 1}</kbd>
-        </div>
-      ))}
-    </div>
+    <Command className="linear-command-menu-mock" aria-hidden="true">
+      <CommandInput className="linear-command-input" value="描述目标..." readOnly />
+      <CommandList>
+        {rows.map((row, index) => (
+          <CommandItem key={row} className={index === 1 ? "active" : ""}>
+            <span />
+            {row}
+            <kbd>⌘{index + 1}</kbd>
+          </CommandItem>
+        ))}
+      </CommandList>
+    </Command>
   );
 }
 
-function ProductSection({ id, color, colorDark, title, preview, text, features, cards }: ProductSectionProps) {
+function ProductSection({ id, color, colorDark, title, preview, text, features }: ProductSectionProps) {
   return (
     <section
       id={id}
@@ -620,7 +487,6 @@ function ProductSection({ id, color, colorDark, title, preview, text, features, 
         } as CSSProperties
       }
     >
-      <div className="linear-feature-aura" aria-hidden="true" />
       <Container className="linear-feature-main large">
         <h2>{title}</h2>
         <div className="linear-feature-image-frame">
@@ -629,35 +495,18 @@ function ProductSection({ id, color, colorDark, title, preview, text, features, 
       </Container>
       <Container className="linear-feature-summary">
         <p>{text}</p>
-        <hr />
+        <Separator />
       </Container>
       <Container>
         <div className="linear-feature-grid">
           {features.map((feature, index) => (
-            <div key={feature.title}>
+            <Card key={feature.title}>
               <FeatureIcon index={index} />
               <span>{feature.title}</span> {feature.text}
-            </div>
+            </Card>
           ))}
         </div>
       </Container>
-      {cards ? (
-        <Container>
-          <div className="linear-feature-cards">
-            {cards.map((card) => (
-              <article key={card.title} className="linear-feature-card">
-                <h3>{card.title}</h3>
-                <p>{card.text}</p>
-                <div className="wiseeff-preview-card-list" aria-hidden="true">
-                  {card.details.map((detail) => (
-                    <span key={detail}>{detail}</span>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </Container>
-      ) : null}
     </section>
   );
 }
@@ -718,28 +567,7 @@ function WiseEffSectionPreview({ type }: { type: ProductSectionProps["preview"] 
     );
   }
 
-  return (
-    <div className="wiseeff-preview governance">
-      <PreviewHeader title="Agent Workflow Loop" meta="role boundaries" />
-      <div className="wiseeff-loop">
-        {["目标", "证据", "草稿", "确认", "审计"].map((item) => (
-          <span key={item}>{item}</span>
-        ))}
-      </div>
-      <div className="wiseeff-audit-events">
-        <div className="wiseeff-preview-row">
-          <span>Audit</span>
-          <strong>PRQ-9102 创建审阅</strong>
-          <small>Agent prepared</small>
-        </div>
-        <div className="wiseeff-preview-row">
-          <span>Boundary</span>
-          <strong>提交与合并等待人工确认</strong>
-          <small>Human required</small>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 function PreviewHeader({ title, meta }: { title: string; meta: string }) {

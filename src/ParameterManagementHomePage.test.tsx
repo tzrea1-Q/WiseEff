@@ -12,10 +12,10 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     expect(screen.queryByRole("main", { name: "参数管理首页" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "智能参数管理" })).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "时间范围" })).toHaveValue("30d");
-    expect(screen.getByText("参数变化态势")).toBeInTheDocument();
-    expect(screen.getByText("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    expect(screen.queryByText("参数变化态势")).not.toBeInTheDocument();
+    expect(screen.queryByText("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。")).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("30")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("共享参数定义")).toBeInTheDocument();
@@ -42,12 +42,8 @@ describe("ParameterManagementHomePage", () => {
     expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/^\/(parameters|parameter-review)/));
   });
 
-  it("switches time windows and expands hotspot explanations", () => {
+  it("expands hotspot explanations", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
-
-    fireEvent.change(screen.getByRole("combobox", { name: "时间范围" }), { target: { value: "7d" } });
-    expect(screen.getByText("参数变化态势")).toBeInTheDocument();
-    expect(screen.queryByText("近 7 天参数变化态势")).not.toBeInTheDocument();
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /查看评分/ })[0]);
@@ -66,69 +62,50 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByText("关联证据")).toBeInTheDocument();
   });
 
-  it("offers explicit 7, 30, and 180 day time windows", () => {
+  it("removes the hero time window panel from the parameter homepage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const timeWindowSelect = screen.getByRole("combobox", { name: "时间范围" });
-
-    expect(within(timeWindowSelect).getByRole("option", { name: "7天" })).toHaveValue("7d");
-    expect(within(timeWindowSelect).getByRole("option", { name: "30天" })).toHaveValue("30d");
-    expect(within(timeWindowSelect).getByRole("option", { name: "180天" })).toHaveValue("180d");
-    expect(screen.queryByRole("button", { name: "近 30 天" })).not.toBeInTheDocument();
-
-    fireEvent.change(timeWindowSelect, { target: { value: "180d" } });
-
-    expect(timeWindowSelect).toHaveValue("180d");
-    expect(screen.getByText("参数变化态势")).toBeInTheDocument();
-    expect(screen.queryByText("近 180 天参数变化态势")).not.toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".homepage-window-switcher")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
   });
 
-  it("keeps the time range control in a light context panel without repeating the active range", () => {
+  it("does not render the removed time range context panel copy", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const timeWindowPanel = document.querySelector(".homepage-window-switcher");
 
-    expect(timeWindowPanel).toBeInTheDocument();
-    expect(within(timeWindowPanel as HTMLElement).getByRole("combobox", { name: "时间范围" })).toHaveValue("30d");
-    expect(timeWindowPanel).not.toHaveTextContent("看板口径");
-    expect(timeWindowPanel).not.toHaveTextContent("近 30 天参数变化态势");
-    expect(timeWindowPanel).toHaveTextContent("AI 分析维度");
-    expect(timeWindowPanel).toHaveTextContent("变更频次、风险权重、影响范围、流程堆积、异常偏离");
-    expect(timeWindowPanel).not.toHaveClass("parameter-homepage-status");
+    expect(timeWindowPanel).not.toBeInTheDocument();
+    expect(screen.queryByText("AI 分析维度")).not.toBeInTheDocument();
+    expect(screen.queryByText("变更频次、风险权重、影响范围、流程堆积、异常偏离")).not.toBeInTheDocument();
   });
 
-  it("updates visible analytics when switching time windows", () => {
+  it("keeps analytics visible without a time window control", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const metrics = screen.getByRole("region", { name: "核心指标" });
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
-    const initialChangeEvents = within(metrics).getByText("修改频次").parentElement?.querySelector("strong")?.textContent;
-    const initialTopHotspotScore = within(hotspotRegion).getAllByText(/分/)[0].textContent;
 
-    fireEvent.change(screen.getByRole("combobox", { name: "时间范围" }), { target: { value: "7d" } });
-
-    const sevenDayChangeEvents = within(metrics).getByText("修改频次").parentElement?.querySelector("strong")?.textContent;
-    const sevenDayTopHotspotScore = within(hotspotRegion).getAllByText(/分/)[0].textContent;
-
-    expect(sevenDayChangeEvents).not.toBe(initialChangeEvents);
-    expect(sevenDayTopHotspotScore).not.toBe(initialTopHotspotScore);
+    expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
+    expect(within(hotspotRegion).getAllByText(/分/).length).toBeGreaterThan(0);
   });
 
   it("switches hotspot ranking between project and module dimensions", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
-    const dimensionSelect = within(hotspotRegion).getByRole("combobox", { name: "热榜维度" });
+    const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
+    const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块" });
+    const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目" });
 
-    expect(dimensionSelect).toHaveValue("module");
-    expect(within(dimensionSelect).getByRole("option", { name: "模块" })).toHaveValue("module");
-    expect(within(dimensionSelect).getByRole("option", { name: "项目" })).toHaveValue("project");
+    expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    expect(projectToggle).toHaveAttribute("aria-checked", "false");
     expect(within(hotspotRegion).getByText("Charging Policy")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("AUR-Prod · Charging Policy")).not.toBeInTheDocument();
 
-    fireEvent.change(dimensionSelect, { target: { value: "project" } });
+    fireEvent.click(projectToggle);
 
-    expect(dimensionSelect).toHaveValue("project");
+    expect(projectToggle).toHaveAttribute("aria-checked", "true");
     expect(within(hotspotRegion).getByText("AUR-Prod")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("Charging Policy")).not.toBeInTheDocument();
   });
@@ -137,8 +114,8 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     expect(document.querySelector(".parameter-homepage")).toBeInTheDocument();
-    expect(document.querySelector(".parameter-homepage-hero")).toBeInTheDocument();
-    expect(document.querySelector(".homepage-window-switcher")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".homepage-window-switcher")).not.toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-select")).toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-grid")).toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).toBeInTheDocument();

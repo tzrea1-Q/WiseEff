@@ -11,6 +11,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,

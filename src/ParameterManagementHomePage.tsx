@@ -1,19 +1,19 @@
 import { useMemo, useState } from "react";
 import type { ComponentType } from "react";
-import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, Sparkles, TrendingUp } from "lucide-react";
+import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
 import type { PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardDescription, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type ParameterManagementHomePageProps = {
   state: PrototypeState;
   onNavigate: (path: string) => void;
+  timeWindow?: HomepageTimeWindow;
 };
-
-const timeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
-  { value: "7d", label: "7天" },
-  { value: "30d", label: "30天" },
-  { value: "180d", label: "180天" }
-];
 
 const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }> = [
   { value: "module", label: "模块" },
@@ -22,8 +22,7 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
 
 const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
 
-export function ParameterManagementHomePage({ state, onNavigate }: ParameterManagementHomePageProps) {
-  const [timeWindow, setTimeWindow] = useState<HomepageTimeWindow>("30d");
+export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("module");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
 
@@ -35,19 +34,6 @@ export function ParameterManagementHomePage({ state, onNavigate }: ParameterMana
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
-      <section className="parameter-homepage-hero">
-        <div className="parameter-homepage-kicker">
-          <Sparkles size={16} aria-hidden="true" />
-          <span>参数管理</span>
-        </div>
-        <div className="parameter-homepage-hero-head">
-          <h1>智能参数管理</h1>
-          <p>{analytics.aiSummary.body}</p>
-          <p className="parameter-homepage-window-copy">参数变化态势</p>
-        </div>
-        <TimeWindowSwitcher value={timeWindow} onChange={setTimeWindow} />
-      </section>
-
       <section className="homepage-main-grid" aria-label="入口卡片">
         <div className="homepage-entry-grid">
           {analytics.entryCards.map((entry) => (
@@ -109,9 +95,9 @@ export function ParameterManagementHomePage({ state, onNavigate }: ParameterMana
                     {change.projectCode} · {change.module} · {change.driftLabel}
                   </span>
                 </div>
-                <button type="button" onClick={() => onNavigate(change.suggestedPath)}>
+                <Button type="button" variant="outline" onClick={() => onNavigate(change.suggestedPath)}>
                   进入 <ArrowRight size={14} aria-hidden="true" />
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
@@ -135,40 +121,6 @@ export function ParameterManagementHomePage({ state, onNavigate }: ParameterMana
   );
 }
 
-function TimeWindowSwitcher({
-  value,
-  onChange
-}: {
-  value: HomepageTimeWindow;
-  onChange: (value: HomepageTimeWindow) => void;
-}) {
-  return (
-    <div className="homepage-window-switcher" aria-label="时间范围与 AI 分析维度">
-      <div className="homepage-window-switcher-head">
-        <label>
-          <span>时间范围</span>
-          <select
-            id="parameter-homepage-time-window"
-            className="parameter-homepage-select"
-            value={value}
-            onChange={(event) => onChange(event.target.value as HomepageTimeWindow)}
-          >
-            {timeWindowOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="homepage-window-switcher-body">
-        <span>AI 分析维度</span>
-        <p>变更频次、风险权重、影响范围、流程堆积、异常偏离</p>
-      </div>
-    </div>
-  );
-}
-
 function HotspotDimensionSelect({
   value,
   onChange
@@ -177,21 +129,26 @@ function HotspotDimensionSelect({
   onChange: (value: HotspotDimension) => void;
 }) {
   return (
-    <label className="parameter-homepage-inline-select">
+    <div className="parameter-homepage-inline-select">
       <span>热榜维度</span>
-      <select
+      <ToggleGroup
         aria-label="热榜维度"
         className="parameter-homepage-select"
+        type="single"
         value={value}
-        onChange={(event) => onChange(event.target.value as HotspotDimension)}
+        onValueChange={(nextValue) => {
+          if (nextValue) {
+            onChange(nextValue as HotspotDimension);
+          }
+        }}
       >
         {hotspotDimensionOptions.map((option) => (
-          <option key={option.value} value={option.value}>
+          <ToggleGroupItem key={option.value} value={option.value}>
             {option.label}
-          </option>
+          </ToggleGroupItem>
         ))}
-      </select>
-    </label>
+      </ToggleGroup>
+    </div>
   );
 }
 
@@ -203,17 +160,17 @@ function EntryCard({
   onNavigate: (path: string) => void;
 }) {
   return (
-    <article className="parameter-homepage-card homepage-entry-card entry-card">
+    <Card className="parameter-homepage-card homepage-entry-card entry-card">
       <div className="parameter-homepage-entry-meta">
-        <span>{entry.statusLabel}</span>
+        <Badge variant="outline">{entry.statusLabel}</Badge>
         <strong>{entry.statusValue}</strong>
       </div>
-      <h3>{entry.title}</h3>
-      <p>{entry.description}</p>
-      <button type="button" onClick={() => onNavigate(entry.path)}>
+      <CardTitle>{entry.title}</CardTitle>
+      <CardDescription>{entry.description}</CardDescription>
+      <Button type="button" variant="link" onClick={() => onNavigate(entry.path)}>
         进入 {entry.title}
-      </button>
-    </article>
+      </Button>
+    </Card>
   );
 }
 
@@ -229,12 +186,12 @@ function MetricCard({
   Icon: ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
 }) {
   return (
-    <article className="parameter-homepage-card homepage-metric-card metric-card">
+    <Card className="parameter-homepage-card homepage-metric-card metric-card">
       <Icon size={18} aria-hidden={true} />
-      <span>{title}</span>
-      <strong>{value}</strong>
+      <CardDescription>{title}</CardDescription>
+      <CardTitle>{value}</CardTitle>
       <p>{detail}</p>
-    </article>
+    </Card>
   );
 }
 
@@ -253,7 +210,7 @@ function HotspotCard({
   const eyebrow = hotspot.module === "项目参数" ? "项目维度" : hotspot.projectCode;
 
   return (
-    <article className={selected ? "parameter-homepage-card hotspot-card selected" : "parameter-homepage-card hotspot-card"}>
+    <Card className={selected ? "parameter-homepage-card hotspot-card selected" : "parameter-homepage-card hotspot-card"}>
       <div className="parameter-homepage-hotspot-head">
         <div>
           <span>{eyebrow}</span>
@@ -267,24 +224,24 @@ function HotspotCard({
         <strong>{hotspot.score} 分</strong>
       </div>
       <div className="parameter-homepage-hotspot-actions">
-        <button type="button" onClick={onSelect}>
+        <Button type="button" variant="outline" onClick={onSelect}>
           查看评分
-        </button>
-        <button type="button" onClick={() => onNavigate(hotspot.suggestedPath)}>
+        </Button>
+        <Button type="button" variant="outline" onClick={() => onNavigate(hotspot.suggestedPath)}>
           进入 {navigationLabel}
-        </button>
+        </Button>
       </div>
-    </article>
+    </Card>
   );
 }
 
 function HotspotExplanation({ hotspot }: { hotspot: ParameterHotspot | null }) {
   if (!hotspot) {
     return (
-      <aside className="parameter-homepage-card homepage-panel parameter-homepage-explanation">
+      <Card className="parameter-homepage-card homepage-panel parameter-homepage-explanation">
         <h3>AI 评分拆解</h3>
         <p>暂无可展示的热区。</p>
-      </aside>
+      </Card>
     );
   }
 
@@ -297,9 +254,10 @@ function HotspotExplanation({ hotspot }: { hotspot: ParameterHotspot | null }) {
   ];
 
   return (
-    <aside className="parameter-homepage-card homepage-panel parameter-homepage-explanation">
+    <Card className="parameter-homepage-card homepage-panel parameter-homepage-explanation">
       <h3>AI 评分拆解</h3>
       <p>{hotspot.explanation}</p>
+      <Separator />
       <div className="parameter-homepage-evidence">
         <h4>关联证据</h4>
         <ul>
@@ -319,7 +277,7 @@ function HotspotExplanation({ hotspot }: { hotspot: ParameterHotspot | null }) {
           </div>
         ))}
       </div>
-    </aside>
+    </Card>
   );
 }
 
