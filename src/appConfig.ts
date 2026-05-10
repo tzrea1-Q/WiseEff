@@ -229,11 +229,13 @@ export function createAgentPlan(path: string): AgentPlan {
       return {
         ...shared,
         contextTitle: "参数治理 Agent",
-        contextSummary: "正在关注批量导入、权限范围、电池参数健康度和审计留痕。",
-        prompts: ["检查导入风险", "汇总权限矩阵", "查看审计异常"],
+        contextSummary: "正在关注参数库健康、孤儿参数、权限异常和导入风险。",
+        prompts: ["扫描孤儿参数", "预审下次导入风险", "汇总本周审计", "生成孤儿清理建议"],
         actions: [
-          { id: "import-parameters", label: "模拟批量导入", requiresConfirm: true },
-          { id: "audit-scan", label: "生成审计摘要", requiresConfirm: false }
+          { id: "scan-orphans", label: "扫描孤儿参数", requiresConfirm: false },
+          { id: "preview-import", label: "预审导入风险", requiresConfirm: false },
+          { id: "summarize-audit", label: "汇总本周审计", requiresConfirm: false },
+          { id: "draft-cleanup", label: "生成清理建议", requiresConfirm: true }
         ]
       };
     case "log-admin":

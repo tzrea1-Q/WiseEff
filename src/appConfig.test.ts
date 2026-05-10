@@ -38,3 +38,24 @@ describe("WiseEff prototype configuration", () => {
     expect(homePage.subtitle).toBe("业务流程里的 AI 协同工作系统");
   });
 });
+
+describe("parameter-admin agent plan", () => {
+  it("prompts 和 actions 包含四个新 id", () => {
+    const plan = createAgentPlan("/parameter-admin");
+
+    expect(plan.contextTitle).toBe("参数治理 Agent");
+    expect(plan.actions.map((action) => action.id)).toEqual([
+      "scan-orphans",
+      "preview-import",
+      "summarize-audit",
+      "draft-cleanup"
+    ]);
+    expect(plan.prompts.length).toBe(4);
+  });
+
+  it("draft-cleanup requiresConfirm", () => {
+    const plan = createAgentPlan("/parameter-admin");
+
+    expect(plan.actions.find((action) => action.id === "draft-cleanup")?.requiresConfirm).toBe(true);
+  });
+});

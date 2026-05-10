@@ -51,7 +51,7 @@ import {
   type UndoEntry,
   type User
 } from "./mockData";
-import { buildAuditEvent } from "./parameterAdminAnalytics";
+import { buildAuditEvent, getCoverage } from "./parameterAdminAnalytics";
 import {
   addDebugParameter,
   addProjectParameter,
@@ -2727,6 +2727,23 @@ function clampAgentPanelOffset(value: number, viewportSize: number) {
   return Math.min(Math.max(value, agentDragInset), Math.max(agentDragInset, viewportSize - agentPanelDesktopWidth - agentDragInset));
 }
 
+function updateParameterAdminQuery(patch: Record<string, string | undefined>) {
+  const url = new URL(window.location.href);
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      url.searchParams.set(key, value);
+    } else {
+      url.searchParams.delete(key);
+    }
+  });
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next !== current) {
+    window.history.pushState(null, "", next);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
+
 function UnifiedAgent({
   path,
   plan,
@@ -2793,6 +2810,42 @@ function UnifiedAgent({
 
   const executeAction = (id: string) => {
     switch (id) {
+      case "scan-orphans": {
+        if (path === "/parameter-admin") {
+          const orphanCount = state.configDraft.parameterLibrary.filter(
+            (parameter) => getCoverage(parameter, state.configDraft.projects) === "orphan"
+          ).length;
+          updateParameterAdminQuery({ coverage: "orphan" });
+          dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id, metadata: { orphanCount } });
+          setMessages((items) => [`WiseAgent 已切换到孤儿参数视角，当前命中 ${orphanCount} 项。`, ...items]);
+          break;
+        }
+        setMessages((items) => ["当前页面暂不支持孤儿参数扫描。", ...items]);
+        break;
+      }
+      case "draft-cleanup": {
+        if (path === "/parameter-admin") {
+          const orphanIds = state.configDraft.parameterLibrary
+            .filter((parameter) => getCoverage(parameter, state.configDraft.projects) === "orphan")
+            .map((parameter) => parameter.id);
+          updateParameterAdminQuery({ coverage: "orphan" });
+          dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id, metadata: { orphanIds } });
+          setMessages((items) => [`WiseAgent 已生成孤儿清理建议，包含 ${orphanIds.length} 个候选参数。`, ...items]);
+          break;
+        }
+        setMessages((items) => ["当前页面暂不支持清理建议。", ...items]);
+        break;
+      }
+      case "preview-import":
+      case "summarize-audit":
+        if (path === "/parameter-admin") {
+          console.info(`[Agent m2 pending] ${id}`);
+          dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id });
+          setMessages((items) => ["该 Agent 动作已记录，完整 UI 会在 m2 接入。", ...items]);
+          break;
+        }
+        setMessages((items) => ["该 Agent 动作已记录，等待后续页面能力接入。", ...items]);
+        break;
       case "filter-high-risk":
         setMessages((items) => ["已标记高风险参数：max_concurrent_sessions、risk_score_threshold。", ...items]);
         break;
