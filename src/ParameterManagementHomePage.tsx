@@ -15,6 +15,12 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
   { value: "project", label: "项目" }
 ];
 
+export const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
+  { value: "7d", label: "7天" },
+  { value: "30d", label: "30天" },
+  { value: "180d", label: "180天" }
+];
+
 const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
 
 export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {

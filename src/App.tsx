@@ -31,7 +31,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
-import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
+import { ParameterManagementHomePage, homepageTimeWindowOptions } from "./ParameterManagementHomePage";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -80,12 +80,6 @@ type AppAction =
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER" }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string };
-
-const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
-  { value: "7d", label: "7天" },
-  { value: "30d", label: "30天" },
-  { value: "180d", label: "180天" }
-];
 
 type ParameterValueDraft = {
   currentValue: string;
