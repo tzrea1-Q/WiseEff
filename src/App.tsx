@@ -980,7 +980,7 @@ function createComparisonInsights(state: PrototypeState, selection: ComparisonPr
   };
 }
 
-function escapeExcelCell(value: string) {
+export function escapeExcelCell(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 

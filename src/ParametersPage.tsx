@@ -14,6 +14,7 @@ import {
   Badge,
   DataTable,
   EmptyState,
+  escapeExcelCell,
   getContextQuery,
   riskLabels,
   RiskBadge,
@@ -42,10 +43,6 @@ type ParametersPageProps = {
   onNavigate: (path: string) => void;
   search: string;
 };
-
-function escapeExcelCell(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 
 function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: string) {
   const headers = ["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"];
