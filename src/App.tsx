@@ -2,7 +2,6 @@
   AlertTriangle,
   ArrowRight,
   Bot,
-  Check,
   CheckCircle2,
   ChevronRight,
   CircleOff,
@@ -35,6 +34,18 @@ import { ParametersPage } from "./ParametersPage";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
+import {
+  Badge,
+  DataTable,
+  EmptyState,
+  escapeExcelCell,
+  getContextQuery,
+  riskLabels,
+  RiskBadge,
+  SectionLabel,
+  Timeline,
+  WorkbenchLayout
+} from "./workbenchUi";
 import {
   AuditEvent,
   ChangeRequest,
@@ -124,12 +135,6 @@ type ParameterComparisonRow = {
   targetValue: string;
   status: "synced" | "drift";
   risk: "High" | "Medium" | "Low";
-};
-
-export const riskLabels: Record<"High" | "Medium" | "Low", string> = {
-  High: "高",
-  Medium: "中",
-  Low: "低"
 };
 
 const logStatusLabels: Record<LogRecord["status"], string> = {
@@ -944,15 +949,6 @@ function getFallbackComparisonProjectId(projectId: string) {
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
 }
 
-export function getContextQuery(search: string) {
-  const params = new URLSearchParams(search);
-  return {
-    projectId: params.get("project") ?? "",
-    module: params.get("module") ?? "",
-    parameterId: params.get("parameter") ?? ""
-  };
-}
-
 function createComparisonInsights(state: PrototypeState, selection: ComparisonProjectSelection) {
   const baseProject = projects.find((project) => project.id === selection.baseProjectId) ?? projects[0];
   const targetProject = projects.find((project) => project.id === selection.targetProjectId) ?? projects[1] ?? projects[0];
@@ -978,10 +974,6 @@ function createComparisonInsights(state: PrototypeState, selection: ComparisonPr
     primaryInsight,
     secondaryInsight
   };
-}
-
-export function escapeExcelCell(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function exportComparisonRowsAsExcel(rows: ParameterComparisonRow[], baseProjectCode: string, targetProjectCode: string) {
@@ -2279,21 +2271,6 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
   );
 }
 
-export function WorkbenchLayout({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
-  return (
-    <div className="workbench-page">
-      <header className="page-header">
-        <div>
-          <h1>{title}</h1>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
-        {actions ? <div className="page-actions">{actions}</div> : null}
-      </header>
-      <div className="workbench-grid">{children}</div>
-    </div>
-  );
-}
-
 function AdminPageScaffold({
   title,
   subtitle,
@@ -2638,43 +2615,8 @@ function MetricCard({ title, value, trend, tone }: { title: string; value: strin
   );
 }
 
-export function DataTable<T>({ headers, rows, renderRow }: { headers: string[]; rows: T[]; renderRow: (row: T) => ReactNode }) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>{rows.map(renderRow)}</tbody>
-      </table>
-      {rows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
-    </div>
-  );
-}
-
-export function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
-  return <span className={`risk-badge ${risk.toLowerCase()}`}>{riskLabels[risk]}</span>;
-}
-
 function StatusBadge({ status }: { status: string }) {
   return <span className="status-badge"><span />{status}</span>;
-}
-
-export function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "tertiary" | "secondary" }) {
-  return <span className={`badge ${tone}`}>{children}</span>;
-}
-
-export function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
-  return (
-    <div className="section-label">
-      {icon}
-      <span>{label}</span>
-    </div>
-  );
 }
 
 function PanelHeader({ title, meta }: { title: string; meta?: string }) {
@@ -2682,19 +2624,6 @@ function PanelHeader({ title, meta }: { title: string; meta?: string }) {
     <div className="panel-header">
       <strong>{title}</strong>
       {meta ? <span>{meta}</span> : null}
-    </div>
-  );
-}
-
-export function Timeline({ steps, activeIndex }: { steps: string[]; activeIndex: number }) {
-  return (
-    <div className="timeline">
-      {steps.map((step, index) => (
-        <div className={index <= activeIndex ? "done" : ""} key={step}>
-          <span>{index < activeIndex ? <Check size={14} /> : index + 1}</span>
-          <small>{step}</small>
-        </div>
-      ))}
     </div>
   );
 }
@@ -2710,15 +2639,6 @@ function VerticalTimeline({ items }: { items: [string, string, string][] }) {
           <p>{body}</p>
         </div>
       ))}
-    </div>
-  );
-}
-
-export function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="empty-state">
-      <Info size={20} />
-      {text}
     </div>
   );
 }

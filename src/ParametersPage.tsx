@@ -21,7 +21,7 @@ import {
   SectionLabel,
   Timeline,
   WorkbenchLayout
-} from "./App";
+} from "./workbenchUi";
 import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
 
