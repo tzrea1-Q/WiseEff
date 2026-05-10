@@ -47,7 +47,6 @@ export type AIFeedbackEntry = {
 
 export { REVIEW_MOCK_NOW };
 export type RequestStatus = "待审阅" | "自动检查通过" | "等待合入" | "已合入" | "已打回";
-export type LogStage = "日志解析" | "模式匹配" | "根因推断" | "报告生成";
 export type LogStageId = "parse" | "pattern" | "rootcause" | "report";
 export type LogSeverity = "Critical" | "Warning" | "Info";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
@@ -154,7 +153,7 @@ export type LogRecord = {
   fileName: string;
   projectId: string;
   status: "Processing" | "Complete" | "Failed";
-  stage: LogStage;
+  stage: LogStageId;
   confidence: number;
   conclusion: string;
   impact: string;
@@ -325,7 +324,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         fileName: "charging_thermal_trace_20260504.log",
         projectId: "aurora",
         status: "Processing",
-        stage: "根因推断",
+        stage: "rootcause",
         confidence: 92,
         conclusion: "快充阶段电池包温升过快，触发热降额链路。",
         impact: "battery-pack-lab-a",
@@ -346,7 +345,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         fileName: "usb_pd_negotiation_20260503.log",
         projectId: "aurora",
         status: "Complete",
-        stage: "报告生成",
+        stage: "report",
         confidence: 88,
         conclusion: "PD 协商在 9V/3A 档位稳定完成，未出现握手重试。",
         impact: "charger-adapter-b",
@@ -366,7 +365,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         fileName: "thermal_snapshot.bin",
         projectId: "nebula",
         status: "Failed",
-        stage: "日志解析",
+        stage: "parse",
         confidence: 0,
         conclusion: "不支持的二进制热快照格式。",
         impact: "N/A",

@@ -38,3 +38,13 @@ describe("log mockData · 新增字段契约", () => {
     expect(log?.failureReason).toMatch(/格式不支持|二进制/);
   });
 });
+
+describe("log mockData · stage 使用 LogStageId", () => {
+  it("每条 log 的 stage 都是 LogStageId", () => {
+    const ids = new Set<LogStageId>(["parse", "pattern", "rootcause", "report"]);
+
+    for (const log of initialState.logs) {
+      expect(ids.has(log.stage as LogStageId)).toBe(true);
+    }
+  });
+});

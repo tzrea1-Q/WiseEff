@@ -41,8 +41,9 @@ import {
   derivePowerManagementRuntimeState,
   DebugParameter,
   DebugSnapshot,
-  mockDataFingerprint,
   initialState,
+  LogStageId,
+  mockDataFingerprint,
   LogRecord,
   ParameterRecord,
   ParameterSubmissionItem,
@@ -50,7 +51,8 @@ import {
   projects,
   PrototypeState,
   RequestStatus,
-  roles
+  roles,
+  STAGE_LABELS
 } from "./mockData";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
 import {
@@ -498,7 +500,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADVANCE_LOG": {
-      const order: LogRecord["stage"][] = ["日志解析", "模式匹配", "根因推断", "报告生成"];
+      const order: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
       return {
         ...state,
         logs: state.logs.map((log) => {
@@ -510,8 +512,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           return {
             ...log,
             stage: nextStage,
-            status: nextStage === "报告生成" ? "Complete" : "Processing",
-            confidence: nextStage === "报告生成" ? 96 : Math.max(log.confidence, 92)
+            status: nextStage === "report" ? "Complete" : "Processing",
+            confidence: nextStage === "report" ? 96 : Math.max(log.confidence, 92)
           };
         }),
         notifications: ["日志分析阶段已更新", ...state.notifications]
@@ -2283,7 +2285,7 @@ function LogsPage({ state }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [unsupportedDialogOpen, setUnsupportedDialogOpen] = useState(false);
   const activeLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
-  const stages: LogRecord["stage"][] = ["日志解析", "模式匹配", "根因推断", "报告生成"];
+  const stages: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
   const stageIndex = stages.indexOf(activeLog.stage);
   const evidenceInsights = activeLog.evidence.map((item, index) => {
     const action = activeLog.suggestedActions[index] ?? activeLog.suggestedActions[0] ?? "保留原始日志并进入人工复核。";
@@ -2291,7 +2293,7 @@ function LogsPage({ state }: PageProps) {
     return {
       id: `${activeLog.id}-evidence-${index}`,
       label: `证据 ${String(index + 1).padStart(2, "0")}`,
-      stage: stages[Math.min(index, stages.length - 1)],
+      stage: STAGE_LABELS[stages[Math.min(index, stages.length - 1)]],
       source: item,
       inferred: inferEvidenceFinding(item, index),
       action
@@ -2311,7 +2313,7 @@ function LogsPage({ state }: PageProps) {
             icon={<Loader2 size={16} className={activeLog.status === "Processing" ? "spin" : ""} />}
             label={`${logStatusLabels[activeLog.status]}：${activeLog.fileName}`}
           />
-          <Timeline steps={stages} activeIndex={stageIndex} />
+          <Timeline steps={stages.map((stage) => STAGE_LABELS[stage])} activeIndex={stageIndex} />
         </div>
         <section className="analysis-card" aria-label="分析结果">
           <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
@@ -2393,7 +2395,7 @@ function LogAdminPage({ state }: PageProps) {
       ]}
     >
       <section className="admin-grid two">
-        <LibraryPanel title="分析记录概览" items={state.logs.map((log) => [log.fileName, log.stage, log.status])} />
+        <LibraryPanel title="分析记录概览" items={state.logs.map((log) => [log.fileName, STAGE_LABELS[log.stage], log.status])} />
         <AuditPanel events={state.auditEvents.filter((event) => event.app === "logs" || event.app === "log-admin")} />
       </section>
     </AdminPageScaffold>
