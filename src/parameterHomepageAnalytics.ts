@@ -444,3 +444,73 @@ export function deriveUpdateTrendSeries(
 
   return series;
 }
+
+export type ProjectRiskBucket = {
+  projectId: string;
+  projectCode: string;
+  projectName: string;
+  high: number;
+  medium: number;
+  low: number;
+  total: number;
+};
+
+const RISK_WINDOW_SCALE: Record<HomepageTimeWindow, number> = {
+  "7d": 0.35,
+  "30d": 1,
+  "180d": 1.6
+};
+
+const RISK_MULTIPLIERS = { high: 2, medium: 3, low: 2 } as const;
+
+function projectSeedFromId(id: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash ^ id.charCodeAt(index)) >>> 0;
+    hash = (hash * 16777619) >>> 0;
+  }
+  return hash;
+}
+
+export function deriveProjectRiskDistribution(
+  state: PrototypeState,
+  timeWindow: HomepageTimeWindow
+): ProjectRiskBucket[] {
+  const windowScale = RISK_WINDOW_SCALE[timeWindow];
+  const windowSeed = TREND_CONFIG[timeWindow].seed;
+
+  return state.configDraft.projects.map((project) => {
+    const parameters = state.parameters.filter(
+      (parameter) => parameter.projectId === project.id
+    );
+    const rand = lcg(projectSeedFromId(project.id) ^ windowSeed);
+    const jitter = () => 0.9 + rand() * 0.3;
+
+    const highSource = parameters.filter((parameter) => parameter.risk === "High").length;
+    const mediumSource = parameters.filter((parameter) => parameter.risk === "Medium").length;
+    const lowSource = parameters.filter((parameter) => parameter.risk === "Low").length;
+
+    const high = Math.max(
+      0,
+      Math.round(highSource * RISK_MULTIPLIERS.high * windowScale * jitter())
+    );
+    const medium = Math.max(
+      0,
+      Math.round(mediumSource * RISK_MULTIPLIERS.medium * windowScale * jitter())
+    );
+    const low = Math.max(
+      0,
+      Math.round(lowSource * RISK_MULTIPLIERS.low * windowScale * jitter())
+    );
+
+    return {
+      projectId: project.id,
+      projectCode: project.code,
+      projectName: project.name,
+      high,
+      medium,
+      low,
+      total: high + medium + low
+    };
+  });
+}

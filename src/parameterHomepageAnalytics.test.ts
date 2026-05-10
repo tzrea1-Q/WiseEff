@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveParameterHomepageAnalytics,
+  deriveProjectRiskDistribution,
   deriveUpdateTrendSeries
 } from "./parameterHomepageAnalytics";
 import { initialState, type RequestStatus } from "./mockData";
@@ -195,5 +196,53 @@ describe("deriveUpdateTrendSeries", () => {
     const maxValue = Math.max(...series.map((point) => point.value));
 
     expect(maxValue).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe("deriveProjectRiskDistribution", () => {
+  it("returns one bucket per managed project", () => {
+    const buckets = deriveProjectRiskDistribution(initialState, "30d");
+
+    expect(buckets).toHaveLength(initialState.configDraft.projects.length);
+    expect(buckets.map((bucket) => bucket.projectId)).toEqual(
+      initialState.configDraft.projects.map((project) => project.id)
+    );
+  });
+
+  it("exposes project code and name for display", () => {
+    const buckets = deriveProjectRiskDistribution(initialState, "30d");
+    const aurora = buckets.find((bucket) => bucket.projectId === "aurora");
+
+    expect(aurora?.projectCode).toBe("AUR-Prod");
+    expect(aurora?.projectName).toBe("Aurora 量产平台");
+  });
+
+  it("non-negative risk counts and matching total", () => {
+    const buckets = deriveProjectRiskDistribution(initialState, "30d");
+
+    buckets.forEach((bucket) => {
+      expect(bucket.high).toBeGreaterThanOrEqual(0);
+      expect(bucket.medium).toBeGreaterThanOrEqual(0);
+      expect(bucket.low).toBeGreaterThanOrEqual(0);
+      expect(bucket.total).toBe(bucket.high + bucket.medium + bucket.low);
+    });
+  });
+
+  it("scales totals by time window", () => {
+    const sevenDays = deriveProjectRiskDistribution(initialState, "7d");
+    const thirtyDays = deriveProjectRiskDistribution(initialState, "30d");
+    const oneHundredEightyDays = deriveProjectRiskDistribution(initialState, "180d");
+
+    const sum = (buckets: ReturnType<typeof deriveProjectRiskDistribution>) =>
+      buckets.reduce((acc, bucket) => acc + bucket.total, 0);
+
+    expect(sum(sevenDays)).toBeLessThan(sum(thirtyDays));
+    expect(sum(oneHundredEightyDays)).toBeGreaterThan(sum(thirtyDays));
+  });
+
+  it("is deterministic for repeated calls", () => {
+    expect(deriveProjectRiskDistribution(initialState, "30d")).toEqual(
+      deriveProjectRiskDistribution(initialState, "30d")
+    );
   });
 });
