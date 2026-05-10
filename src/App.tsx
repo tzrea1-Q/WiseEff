@@ -47,6 +47,7 @@ import {
   REVIEW_MOCK_NOW,
   projects,
   PrototypeState,
+  RequestStatus,
   roles
 } from "./mockData";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
@@ -107,6 +108,7 @@ export type AppAction =
   | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
   | { type: "TRANSFER_REVIEW"; requestId: string; to: string; note?: string }
+  | { type: "UNDO_REVIEW_ACTION"; requestId: string; previousStatus: RequestStatus }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
@@ -471,6 +473,27 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
             : request
         ),
         notifications: [`${action.requestId} 已转交给 ${action.to}`, ...state.notifications]
+      };
+    }
+    case "UNDO_REVIEW_ACTION": {
+      const exists = state.changeRequests.some((request) => request.id === action.requestId);
+      if (!exists) {
+        return state;
+      }
+
+      return {
+        ...state,
+        changeRequests: state.changeRequests.map((request) =>
+          request.id === action.requestId
+            ? {
+                ...request,
+                status: action.previousStatus,
+                rejectReason: action.previousStatus === "已打回" ? request.rejectReason : undefined,
+                updatedAt: new Date().toISOString()
+              }
+            : request
+        ),
+        notifications: [`${action.requestId} 已撤销上一步操作`, ...state.notifications]
       };
     }
     case "ADVANCE_LOG": {

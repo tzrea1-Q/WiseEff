@@ -74,3 +74,52 @@ describe("TRANSFER_REVIEW", () => {
     expect(next.changeRequests).toEqual(initialState.changeRequests);
   });
 });
+
+describe("UNDO_REVIEW_ACTION", () => {
+  it("rolls the request status back to previousStatus", () => {
+    const target = initialState.changeRequests.find((request) => request.status === "待审阅")!;
+    const afterAdvance = reducer(initialState, { type: "ADVANCE_REVIEW", requestId: target.id });
+    const advanced = afterAdvance.changeRequests.find((request) => request.id === target.id)!;
+    expect(advanced.status).toBe("自动检查通过");
+
+    const afterUndo = reducer(afterAdvance, {
+      type: "UNDO_REVIEW_ACTION",
+      requestId: target.id,
+      previousStatus: "待审阅"
+    });
+    const undone = afterUndo.changeRequests.find((request) => request.id === target.id)!;
+
+    expect(undone.status).toBe("待审阅");
+  });
+
+  it("clears rejectReason when undoing a rejection", () => {
+    const target = initialState.changeRequests.find((request) => request.status === "待审阅")!;
+    const afterReject = reducer(initialState, {
+      type: "REJECT_REVIEW",
+      requestId: target.id,
+      reason: "测试打回"
+    });
+    const rejected = afterReject.changeRequests.find((request) => request.id === target.id)!;
+    expect(rejected.rejectReason).toBe("测试打回");
+
+    const afterUndo = reducer(afterReject, {
+      type: "UNDO_REVIEW_ACTION",
+      requestId: target.id,
+      previousStatus: "待审阅"
+    });
+    const undone = afterUndo.changeRequests.find((request) => request.id === target.id)!;
+
+    expect(undone.status).toBe("待审阅");
+    expect(undone.rejectReason).toBeUndefined();
+  });
+
+  it("does not throw or mutate requests for an unknown requestId", () => {
+    const next = reducer(initialState, {
+      type: "UNDO_REVIEW_ACTION",
+      requestId: "PRQ-NOPE",
+      previousStatus: "待审阅"
+    });
+
+    expect(next.changeRequests).toEqual(initialState.changeRequests);
+  });
+});
