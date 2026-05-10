@@ -152,4 +152,48 @@ describe("ParametersTable", () => {
 
     expect(visibleParameterNames()[0]).toContain("soc_estimation_smoothing");
   });
+
+  it("selects one row without focusing the row", () => {
+    const { onFocusRow, onSelectedIdsChange } = setup();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge/ }));
+
+    expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
+    expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1"]));
+    expect(onFocusRow).not.toHaveBeenCalled();
+  });
+
+  it("selects all rows in the current view from the header checkbox", () => {
+    const { onSelectedIdsChange } = setup();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前视图" }));
+
+    expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
+    expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1", "p2", "p3"]));
+  });
+
+  it("removes all visible rows when the current view is already fully selected", () => {
+    const { onSelectedIdsChange } = setup({ selectedIds: new Set(["p1", "p2", "p3"]) });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前视图" }));
+
+    expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
+    expect(onSelectedIdsChange.mock.calls[0][0].size).toBe(0);
+  });
+
+  it("marks the header checkbox indeterminate when some visible rows are selected", () => {
+    setup({ selectedIds: new Set(["p1"]) });
+
+    expect(screen.getByRole("checkbox", { name: "全选当前视图" })).toHaveProperty("indeterminate", true);
+  });
+
+  it("selects only filtered visible rows from the header checkbox", () => {
+    const { onSelectedIdsChange } = setup();
+
+    fireEvent.change(screen.getByLabelText("按名称 / 描述 / 模块搜索"), { target: { value: "charge" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前视图" }));
+
+    expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
+    expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1"]));
+  });
 });

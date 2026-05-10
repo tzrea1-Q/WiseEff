@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ParameterRecord } from "../mockData";
 
 type SortKey = "name" | "module" | "currentValue" | "recommendedValue" | "range" | "risk" | "updatedAtTs";
@@ -64,6 +64,7 @@ function compareRows(left: ParameterRecord, right: ParameterRecord, sort: SortSt
 export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focusedId, onFocusRow }: ParametersTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [sort, setSort] = useState<SortState | null>(null);
+  const selectAllRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const filteredRows = useMemo(
     () => rows.filter((row) => matchesQuery(row, normalizedQuery)),
@@ -90,6 +91,31 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
       return null;
     });
   };
+  const visibleIds = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
+  const selectedVisibleCount = useMemo(
+    () => visibleIds.reduce((count, id) => count + (selectedIds.has(id) ? 1 : 0), 0),
+    [selectedIds, visibleIds]
+  );
+  const hasVisibleRows = visibleIds.length > 0;
+  const allVisibleSelected = hasVisibleRows && selectedVisibleCount === visibleIds.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+    }
+  }, [selectedVisibleCount, visibleIds.length]);
+
+  const updateVisibleSelection = () => {
+    const nextSelectedIds = new Set(selectedIds);
+
+    if (allVisibleSelected) {
+      visibleIds.forEach((id) => nextSelectedIds.delete(id));
+    } else {
+      visibleIds.forEach((id) => nextSelectedIds.add(id));
+    }
+
+    onSelectedIdsChange(nextSelectedIds);
+  };
 
   return (
     <section className="parameters-table" aria-label="参数表">
@@ -111,7 +137,16 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
         <table className="parameters-table-grid">
           <thead>
             <tr>
-              <th scope="col">选择</th>
+              <th scope="col">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  aria-label="全选当前视图"
+                  checked={allVisibleSelected}
+                  disabled={!hasVisibleRows}
+                  onChange={updateVisibleSelection}
+                />
+              </th>
               {sortableHeaders.map((header) => (
                 <th key={header.key} scope="col" aria-sort={sort?.key === header.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
                   <button type="button" className="parameters-table-sort-button" aria-label={`按 ${header.label} 排序`} onClick={() => updateSort(header.key)}>
