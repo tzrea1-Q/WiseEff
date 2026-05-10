@@ -2990,16 +2990,59 @@ td small {
   font-weight: 800;
 }
 
-.upload-dialog-placeholder {
-  position: fixed;
-  inset: auto 28px 28px auto;
-  z-index: 50;
-  padding: 12px 14px;
-  color: var(--app-primary);
-  background: #fff;
+.upload-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(520px, 100%);
+}
+
+.upload-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.upload-file-field {
+  display: grid;
+  gap: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.upload-file-field input {
+  width: 100%;
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface-low);
   border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.upload-dialog__state {
+  min-height: 68px;
+  padding: 12px;
+  color: var(--app-muted);
+  background: var(--surface-low);
+  border: 1px solid #dce4f2;
   border-radius: 10px;
-  box-shadow: var(--shadow);
+}
+
+.upload-dialog__state p {
+  margin: 0;
+}
+
+.upload-dialog__state--error {
+  color: #93000a;
+  background: #fff5f4;
+  border-color: rgba(186, 26, 26, 0.28);
+}
+
+.upload-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 @keyframes logPulse {

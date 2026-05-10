@@ -638,16 +638,16 @@ describe("WiseEff app shell", () => {
     expect(changeCell?.firstElementChild).toHaveClass("value-change");
   });
 
-  it("opens the log upload entry point only after upload simulation", () => {
+  it("opens the log upload dialog only after upload simulation", () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App />);
 
-    expect(screen.queryByTestId("upload-dialog-placeholder")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "上传日志" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
 
-    expect(screen.getByTestId("upload-dialog-placeholder")).toHaveTextContent("上传日志对话框占位");
+    expect(screen.getByRole("dialog", { name: "上传日志" })).toBeInTheDocument();
   });
 
   it("switches log analysis content from clickable history records", () => {
