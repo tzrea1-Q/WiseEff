@@ -50,4 +50,16 @@ describe("PlatformFlowSection", () => {
     fireEvent.keyDown(screen.getByRole("tab", { name: "日志分析" }), { key: "ArrowLeft" });
     expect(firstTab).toHaveAttribute("aria-selected", "true");
   });
+
+  it("moves from the focused tab instead of the previously selected tab", () => {
+    render(<PlatformFlowSection />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "参数调试" }));
+    const firstTab = screen.getByRole("tab", { name: "参数管理" });
+
+    firstTab.focus();
+    fireEvent.keyDown(firstTab, { key: "ArrowRight" });
+
+    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+  });
 });

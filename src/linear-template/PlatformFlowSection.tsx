@@ -102,14 +102,16 @@ export function PlatformFlowSection() {
               tabIndex={index === activeIndex ? 0 : -1}
               onClick={() => selectTab(index)}
               onKeyDown={(event) => {
+                const focusedIndex = index;
+
                 if (event.key === "ArrowRight") {
                   event.preventDefault();
-                  selectTab(activeIndex + 1, true);
+                  selectTab(focusedIndex + 1, true);
                 }
 
                 if (event.key === "ArrowLeft") {
                   event.preventDefault();
-                  selectTab(activeIndex - 1, true);
+                  selectTab(focusedIndex - 1, true);
                 }
               }}
             >
