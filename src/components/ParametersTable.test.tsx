@@ -147,6 +147,17 @@ describe("ParametersTable", () => {
     expect(visibleParameterNames()[0]).toContain("fast_charge_current_limit_ma");
   });
 
+  it("clicking the risk header reports descending sort order", () => {
+    setup();
+
+    fireEvent.click(screen.getByRole("button", { name: /按 重要性 排序/ }));
+
+    expect(screen.getByRole("button", { name: /按 重要性 排序/ }).closest("th")).toHaveAttribute(
+      "aria-sort",
+      "descending"
+    );
+  });
+
   it("sorts update time by ISO timestamp", () => {
     setup();
 
@@ -187,6 +198,14 @@ describe("ParametersTable", () => {
     setup({ selectedIds: new Set(["p1"]) });
 
     expect(screen.getByRole("checkbox", { name: "全选当前视图" })).toHaveProperty("indeterminate", true);
+  });
+
+  it("clicking a row calls onFocusRow with that row id", () => {
+    const { onFocusRow } = setup();
+
+    fireEvent.click(screen.getByText("battery_temp_target_c"));
+
+    expect(onFocusRow).toHaveBeenCalledWith("p2");
   });
 
   it("selects only filtered visible rows from the header checkbox", () => {

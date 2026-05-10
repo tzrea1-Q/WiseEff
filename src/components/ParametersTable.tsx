@@ -38,12 +38,12 @@ function matchesQuery(row: ParameterRecord, query: string) {
 }
 
 function sortValue(row: ParameterRecord, key: SortKey) {
-  if (key === "risk") {
-    return riskScores[row.risk];
-  }
-
   if (key === "range") {
     return `${row.range} ${row.unit}`.trim();
+  }
+
+  if (key === "risk") {
+    return riskScores[row.risk];
   }
 
   return row[key];
@@ -55,7 +55,7 @@ function compareRows(left: ParameterRecord, right: ParameterRecord, sort: SortSt
   const direction = sort.dir === "asc" ? 1 : -1;
 
   if (typeof leftValue === "number" && typeof rightValue === "number") {
-    return sort.key === "risk" ? (rightValue - leftValue) * direction : (leftValue - rightValue) * direction;
+    return (leftValue - rightValue) * direction;
   }
 
   return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * direction;
@@ -81,7 +81,7 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
   const updateSort = (key: SortKey) => {
     setSort((current) => {
       if (!current || current.key !== key) {
-        return { key, dir: "asc" };
+        return { key, dir: key === "risk" ? "desc" : "asc" };
       }
 
       if (current.dir === "asc") {
