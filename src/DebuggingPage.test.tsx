@@ -55,3 +55,18 @@ describe("/debugging 单栏骨架", () => {
     expect(screen.queryByText(/读取全量充电参数快照/)).not.toBeInTheDocument();
   });
 });
+
+describe("DisconnectedBanner 集成", () => {
+  it("默认设备 aurora 未连接时显示 banner", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    expect(screen.getByRole("status")).toHaveTextContent(/ChargeLab_X01/);
+  });
+
+  it("点击 banner 的连接样机后 banner 消失", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+});
