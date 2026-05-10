@@ -52,20 +52,6 @@ export type ParameterHotspot = {
   suggestedPath: string;
 };
 
-export type KeyParameterChange = {
-  id: string;
-  parameterName: string;
-  module: string;
-  projectCode: string;
-  currentValue: string;
-  recommendedValue: string;
-  driftLabel: string;
-  reason: string;
-  risk: RiskLevel;
-  status: string;
-  suggestedPath: string;
-};
-
 export type ParameterHomepageAnalytics = {
   timeWindow: HomepageTimeWindow;
   timeWindowLabel: string;
@@ -77,12 +63,6 @@ export type ParameterHomepageAnalytics = {
   updateTrend: UpdateTrendPoint[];
   riskBuckets: ProjectRiskBucket[];
   opsHeadline: string;
-  keyChanges: KeyParameterChange[];
-  aiSummary: {
-    title: string;
-    body: string;
-    dimensions: Array<{ label: string; value: string }>;
-  };
 };
 
 const timeWindowLabels: Record<HomepageTimeWindow, string> = {
@@ -107,7 +87,6 @@ const timeWindowProfiles: Record<
     logWeight: number;
     parameterWeight: number;
     hotspotLimit: number;
-    keyChangeLimit: number;
     cycleSignals: boolean;
   }
 > = {
@@ -119,7 +98,6 @@ const timeWindowProfiles: Record<
     logWeight: 0.65,
     parameterWeight: 0.75,
     hotspotLimit: 4,
-    keyChangeLimit: 3,
     cycleSignals: false
   },
   "30d": {
@@ -130,7 +108,6 @@ const timeWindowProfiles: Record<
     logWeight: 1,
     parameterWeight: 1,
     hotspotLimit: 5,
-    keyChangeLimit: 4,
     cycleSignals: false
   },
   "180d": {
@@ -141,7 +118,6 @@ const timeWindowProfiles: Record<
     logWeight: 1.2,
     parameterWeight: 1.15,
     hotspotLimit: 6,
-    keyChangeLimit: 5,
     cycleSignals: true
   }
 };
@@ -187,19 +163,7 @@ export function deriveParameterHomepageAnalytics(
     hotspots,
     updateTrend: deriveUpdateTrendSeries(timeWindow),
     riskBuckets: deriveProjectRiskDistribution(state, timeWindow),
-    opsHeadline: "",
-    keyChanges: deriveKeyChanges(state, projectCodes, profile),
-    aiSummary: {
-      title: "AI 参数治理摘要",
-      body: "系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。",
-      dimensions: [
-        { label: "变更频次", value: `${summary.changeEvents} 个事件` },
-        { label: "风险权重", value: `${summary.highRiskParameters} 个高风险参数` },
-        { label: "影响范围", value: `${summary.parameterDefinitions} 类参数定义` },
-        { label: "流程堆积", value: `${flowHealth.reviewQueue} 个待处理请求` },
-        { label: "异常偏离", value: `${Math.round(averageDrift(state.parameters))}% 平均偏离` }
-      ]
-    }
+    opsHeadline: ""
   };
 
   analytics.opsHeadline = generateOpsHeadline(analytics);
@@ -337,46 +301,12 @@ function deriveHotspots(
     .slice(0, Math.max(3, Math.min(profile.hotspotLimit, groups.size)));
 }
 
-function deriveKeyChanges(
-  state: PrototypeState,
-  projectCodes: Map<string, string>,
-  profile: (typeof timeWindowProfiles)[HomepageTimeWindow]
-): KeyParameterChange[] {
-  return [...state.parameters]
-    .sort((first, second) => {
-      const priorityDelta = riskWeight[second.risk] - riskWeight[first.risk];
-      return priorityDelta === 0 ? driftScore(second) - driftScore(first) : priorityDelta;
-    })
-    .slice(0, profile.keyChangeLimit)
-    .map((parameter) => {
-      const drift = driftScore(parameter);
-
-      return {
-        id: parameter.id,
-        parameterName: parameter.name,
-        module: parameter.module,
-        projectCode: projectCodes.get(parameter.projectId) ?? parameter.projectId,
-        currentValue: formatParameterValue(parameter.currentValue, parameter.unit),
-        recommendedValue: formatParameterValue(parameter.recommendedValue, parameter.unit),
-        driftLabel: `${Math.round(drift)}% 偏离`,
-        reason: parameter.explanation || parameter.description,
-        risk: parameter.risk,
-        status: drift > 10 || parameter.risk === "High" ? "建议优先处理" : "建议复核",
-        suggestedPath: `/parameters?project=${encodeURIComponent(parameter.projectId)}&module=${encodeURIComponent(parameter.module)}&parameter=${encodeURIComponent(parameter.id)}`
-      };
-    });
-}
-
 function mentionsModule(log: PrototypeState["logs"][number], module: string) {
   const haystack = [log.conclusion, log.impact, ...log.evidence, ...log.suggestedActions].join(" ").toLowerCase();
   return module
     .toLowerCase()
     .split(/\s+/)
     .some((part) => part.length > 2 && haystack.includes(part));
-}
-
-function averageDrift(parameters: ParameterRecord[]) {
-  return parameters.length === 0 ? 0 : parameters.reduce((total, parameter) => total + driftScore(parameter), 0) / parameters.length;
 }
 
 function driftScore(parameter: ParameterRecord) {
@@ -389,10 +319,6 @@ function driftScore(parameter: ParameterRecord) {
 
   const baseline = Math.max(Math.abs(current), Math.abs(recommended), 1);
   return (Math.abs(current - recommended) / baseline) * 100;
-}
-
-function formatParameterValue(value: string, unit: string) {
-  return unit ? `${value}${unit}` : value;
 }
 
 export type UpdateTrendPoint = {

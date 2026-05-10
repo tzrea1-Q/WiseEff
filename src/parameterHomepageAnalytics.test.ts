@@ -52,36 +52,8 @@ describe("parameter homepage analytics", () => {
         drift: expect.any(Number)
       })
     );
-    expect(analytics.aiSummary.body).toBe("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。");
-    expect(analytics.aiSummary.body).not.toContain(analytics.timeWindowLabel);
     expect(analytics.hotspots[0].explanation).toContain("近 30 天");
     expect(analytics.hotspots[0].suggestedPath).toMatch(/^\/(parameters|parameter-comparison|parameter-review|parameter-admin)/);
-  });
-
-  it("returns key parameter changes sorted by drift and risk", () => {
-    const analytics = deriveParameterHomepageAnalytics(initialState, "30d");
-
-    expect(analytics.keyChanges).toHaveLength(4);
-    expect(analytics.keyChanges[0]).toEqual(
-      expect.objectContaining({
-        parameterName: expect.any(String),
-        projectCode: expect.any(String),
-        currentValue: expect.any(String),
-        recommendedValue: expect.any(String),
-        risk: expect.stringMatching(/High|Medium|Low/),
-        suggestedPath: expect.stringContaining("/parameters")
-      })
-    );
-    analytics.keyChanges.slice(1).forEach((change, index) => {
-      const previous = analytics.keyChanges[index];
-      const previousRisk = riskPriority[previous.risk];
-      const currentRisk = riskPriority[change.risk];
-
-      expect(previousRisk).toBeGreaterThanOrEqual(currentRisk);
-      if (previousRisk === currentRisk) {
-        expect(readDrift(previous.driftLabel)).toBeGreaterThanOrEqual(readDrift(change.driftLabel));
-      }
-    });
   });
 
   it("counts explicit workflow status buckets regardless of request order", () => {
@@ -121,7 +93,6 @@ describe("parameter homepage analytics", () => {
     expect(oneHundredEightyDays.summary.changeEvents).not.toBe(thirtyDays.summary.changeEvents);
     expect(sevenDays.hotspots.map((hotspot) => hotspot.score)).not.toEqual(thirtyDays.hotspots.map((hotspot) => hotspot.score));
     expect(oneHundredEightyDays.hotspots.length).toBeGreaterThanOrEqual(thirtyDays.hotspots.length);
-    expect(sevenDays.keyChanges.map((change) => change.id)).not.toEqual(oneHundredEightyDays.keyChanges.map((change) => change.id));
   });
 
   it("aggregates hotspots by module or project dimension", () => {
@@ -139,12 +110,6 @@ describe("parameter homepage analytics", () => {
   });
 });
 
-const riskPriority = {
-  High: 3,
-  Medium: 2,
-  Low: 1
-};
-
 const requestStatuses = {
   reviewPending: "待审阅",
   autoChecked: "自动检查通过",
@@ -152,10 +117,6 @@ const requestStatuses = {
   merged: "已合入",
   rejected: "已打回"
 } satisfies Record<string, RequestStatus>;
-
-function readDrift(driftLabel: string) {
-  return Number.parseFloat(driftLabel);
-}
 
 describe("deriveUpdateTrendSeries", () => {
   it("returns 7 daily points for the 7d window", () => {
