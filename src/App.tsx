@@ -75,7 +75,7 @@ type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "SET_ROLE"; roleId: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason: string }
+  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string }
@@ -253,7 +253,7 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
         submitter,
         createdAt: "刚刚",
         status: "待审阅",
-        aiSummary: item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
+        aiSummary: item.reason
       }));
       const submissionItems = draftItems.map(({ parameter, item }, index): ParameterSubmissionItem => ({
         requestId: requests[index].id,
@@ -264,7 +264,7 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
         targetValue: item.targetValue,
         unit: parameter.unit,
         risk: parameter.risk,
-        reason: item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
+        reason: item.reason
       }));
 
       return {

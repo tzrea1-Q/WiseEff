@@ -53,6 +53,17 @@ describe("ParametersPage · 提交契约", () => {
     expect(submitSource).not.toContain("?? reason");
   });
 
+  it("does not let submission round reducer items fall back to a shared action reason", () => {
+    const appSource = readFileSync("src/App.tsx", "utf8");
+    const roundReducerSource = appSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
+    const pageSource = readFileSync("src/ParametersPage.tsx", "utf8");
+    const submitSource = pageSource.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
+
+    expect(roundReducerSource).toContain('case "ADD_PARAMETER_SUBMISSION_ROUND":');
+    expect(roundReducerSource).not.toContain("action.reason");
+    expect(submitSource).not.toContain("reason });");
+  });
+
   it("未勾选任何行时，提交按钮禁用", () => {
     renderPage();
     const btn = screen.getByRole("button", { name: /提交本轮/ });

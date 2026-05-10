@@ -34,7 +34,7 @@ type ParameterDraftItem = {
 
 type ParametersPageAction =
   | { type: "SET_PROJECT"; projectId: string }
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason: string };
+  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] };
 
 type ParametersPageProps = {
   state: PrototypeState;
@@ -247,7 +247,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     if (itemsToSubmit.length === 0) {
       return;
     }
-    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, reason });
+    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit });
     setSelectedIds(new Set());
     setDrafts({});
     setConfirmOpen(false);
