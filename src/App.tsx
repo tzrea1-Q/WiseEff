@@ -98,14 +98,14 @@ import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbS
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
-type AppAction =
+export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "SET_ROLE"; roleId: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
   | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason: string }
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
-  | { type: "ADVANCE_REVIEW"; requestId: string }
-  | { type: "REJECT_REVIEW"; requestId: string; reason: string }
+  | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
+  | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
@@ -269,7 +269,7 @@ function buildRuntimeReviewFields(summary: string, module: string) {
   };
 }
 
-function reducer(state: PrototypeState, action: AppAction): PrototypeState {
+export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   switch (action.type) {
     case "SET_PROJECT":
       return { ...state, activeProjectId: action.projectId };
@@ -420,11 +420,17 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
                     ? "自动检查通过"
                     : request.status === "自动检查通过"
                       ? "等待合入"
-                      : "已合入"
+                      : "已合入",
+                fastTrack: action.fastTrack ?? request.fastTrack,
+                reviewerNote: action.note ?? request.reviewerNote,
+                updatedAt: new Date().toISOString()
               }
             : request
         ),
-        notifications: [`${action.requestId} 已推进到下一流程节点`, ...state.notifications]
+        notifications: [
+          `${action.requestId} 已推进到下一流程节点${action.fastTrack ? "（快速通道）" : ""}`,
+          ...state.notifications
+        ]
       };
     case "REJECT_REVIEW":
       return {
@@ -434,11 +440,16 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
             ? {
                 ...request,
                 status: "已打回",
-                rejectReason: action.reason
+                rejectReason: action.reason,
+                fastTrack: action.fastTrack ?? request.fastTrack,
+                updatedAt: new Date().toISOString()
               }
             : request
         ),
-        notifications: [`${action.requestId} 已打回修改：${action.reason}`, ...state.notifications]
+        notifications: [
+          `${action.requestId} 已打回修改${action.fastTrack ? "（快速通道）" : ""}：${action.reason}`,
+          ...state.notifications
+        ]
       };
     case "ADVANCE_LOG": {
       const order: LogRecord["stage"][] = ["日志解析", "模式匹配", "根因推断", "报告生成"];
