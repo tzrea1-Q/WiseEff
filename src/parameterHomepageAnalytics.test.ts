@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { deriveParameterHomepageAnalytics } from "./parameterHomepageAnalytics";
+import {
+  deriveParameterHomepageAnalytics,
+  deriveUpdateTrendSeries
+} from "./parameterHomepageAnalytics";
 import { initialState, type RequestStatus } from "./mockData";
 
 describe("parameter homepage analytics", () => {
@@ -151,3 +154,46 @@ const requestStatuses = {
 function readDrift(driftLabel: string) {
   return Number.parseFloat(driftLabel);
 }
+
+describe("deriveUpdateTrendSeries", () => {
+  it("returns 7 daily points for the 7d window", () => {
+    const series = deriveUpdateTrendSeries("7d");
+
+    expect(series).toHaveLength(7);
+    series.forEach((point) => {
+      expect(point.value).toBeGreaterThanOrEqual(0);
+      expect(point.value).toBeLessThanOrEqual(8);
+      expect(Number.isInteger(point.value)).toBe(true);
+      expect(point.label).toMatch(/^\d+\/\d+$/);
+      expect(point.date).toMatch(/\d{4}-\d{2}-\d{2}T/);
+    });
+  });
+
+  it("returns 30 daily points for the 30d window", () => {
+    const series = deriveUpdateTrendSeries("30d");
+
+    expect(series).toHaveLength(30);
+    expect(series[0].label).toMatch(/^\d+\/\d+$/);
+  });
+
+  it("returns 26 weekly points for the 180d window", () => {
+    const series = deriveUpdateTrendSeries("180d");
+
+    expect(series).toHaveLength(26);
+    expect(series[0].label).toMatch(/^第\d+周$/);
+    expect(series[25].label).toBe("第26周");
+  });
+
+  it("is deterministic across repeated calls", () => {
+    expect(deriveUpdateTrendSeries("30d")).toEqual(deriveUpdateTrendSeries("30d"));
+    expect(deriveUpdateTrendSeries("7d")).toEqual(deriveUpdateTrendSeries("7d"));
+    expect(deriveUpdateTrendSeries("180d")).toEqual(deriveUpdateTrendSeries("180d"));
+  });
+
+  it("places a visible peak near the middle of the series", () => {
+    const series = deriveUpdateTrendSeries("30d");
+    const maxValue = Math.max(...series.map((point) => point.value));
+
+    expect(maxValue).toBeGreaterThanOrEqual(7);
+  });
+});

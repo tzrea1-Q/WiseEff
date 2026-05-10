@@ -385,3 +385,62 @@ function driftScore(parameter: ParameterRecord) {
 function formatParameterValue(value: string, unit: string) {
   return unit ? `${value}${unit}` : value;
 }
+
+export type UpdateTrendPoint = {
+  label: string;
+  value: number;
+  date: string;
+};
+
+const TREND_REFERENCE_DATE = new Date(Date.UTC(2026, 4, 10));
+
+const TREND_CONFIG: Record<
+  HomepageTimeWindow,
+  { count: number; granularity: "day" | "week"; seed: number }
+> = {
+  "7d": { count: 7, granularity: "day", seed: 70071 },
+  "30d": { count: 30, granularity: "day", seed: 300301 },
+  "180d": { count: 26, granularity: "week", seed: 1801801 }
+};
+
+function lcg(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+export function deriveUpdateTrendSeries(
+  timeWindow: HomepageTimeWindow,
+  referenceDate: Date = TREND_REFERENCE_DATE
+): UpdateTrendPoint[] {
+  const { count, granularity, seed } = TREND_CONFIG[timeWindow];
+  const rand = lcg(seed);
+  const peakIndex = Math.floor(count * 0.55);
+  const upwardStart = Math.floor((count * 2) / 3);
+  const series: UpdateTrendPoint[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    let value = Math.floor(rand() * 6);
+    if (index >= upwardStart) value += 1;
+    if (index === peakIndex) value = 7 + Math.floor(rand() * 2);
+    value = Math.max(0, Math.min(8, value));
+
+    const offset = count - 1 - index;
+    const date = new Date(referenceDate);
+    if (granularity === "day") {
+      date.setUTCDate(date.getUTCDate() - offset);
+    } else {
+      date.setUTCDate(date.getUTCDate() - offset * 7);
+    }
+
+    const month = date.getUTCMonth() + 1;
+    const day = date.getUTCDate();
+    const label = granularity === "day" ? `${month}/${day}` : `第${index + 1}周`;
+
+    series.push({ label, value, date: date.toISOString() });
+  }
+
+  return series;
+}
