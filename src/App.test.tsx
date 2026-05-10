@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import App from "./App";
@@ -78,16 +78,20 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("main", { name: "WiseEff homepage" }).closest(".main-content.home-content")).toBeInTheDocument();
   });
 
-  it("routes platform homepage workbench entry links through the parameter homepage", () => {
+  it("provides two parameter-home workbench shortcuts plus the sub-app card entry", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
-    const homepageEntryLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href="/parameter-home"]')).filter(
-      (link) => link.className.includes("linear-button") || link.closest(".linear-footer")
+    const workbenchShortcut = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href="/parameter-home"]')).filter(
+      (link) => link.className.includes("linear-button") || link.getAttribute("aria-label") === "进入 WiseEff 工作台"
     );
 
-    expect(homepageEntryLinks).toHaveLength(3);
+    expect(workbenchShortcut).toHaveLength(2);
+
+    const subAppPrimary = document.querySelectorAll<HTMLAnchorElement>('a.sub-app-card-primary[href="/parameter-home"]');
+    expect(subAppPrimary).toHaveLength(1);
+
     expect(document.querySelector('a[href="/parameters"]')).not.toBeInTheDocument();
   });
 
@@ -156,23 +160,29 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
   });
 
-  it("organizes the localized homepage around WiseEff workflow sections", () => {
+  it("exposes the three sub-app entries on the homepage main region", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
     const homepage = screen.getByRole("main", { name: "WiseEff homepage" });
 
-    expect(within(homepage).getByRole("heading", { name: "不是另一个后台系统" })).toBeInTheDocument();
-    expect(within(homepage).getByRole("heading", { name: "参数流转，从查询到审阅" })).toBeInTheDocument();
-    expect(within(homepage).getByRole("heading", { name: "日志分析，不只给结论" })).toBeInTheDocument();
-    expect(within(homepage).getByRole("heading", { name: "调试动作，保留控制权" })).toBeInTheDocument();
-    expect(within(homepage).queryByRole("heading", { name: "从一个场景，沉淀一套工作方式" })).not.toBeInTheDocument();
-    expect(homepage.querySelector("#governance")).not.toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "参数管理", level: 3 })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "日志分析", level: 3 })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "参数调试", level: 3 })).toBeInTheDocument();
+
+    expect(within(homepage).getByRole("link", { name: /进入参数首页/ })).toHaveAttribute("href", "/parameter-home");
+    expect(within(homepage).getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
+    expect(within(homepage).getByRole("link", { name: /进入调试工作台/ })).toHaveAttribute("href", "/debugging");
+
+    expect(within(homepage).getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeInTheDocument();
+
+    expect(within(homepage).queryByRole("heading", { name: "不是另一个后台系统" })).not.toBeInTheDocument();
+    expect(within(homepage).queryByRole("heading", { name: "参数流转，从查询到审阅" })).not.toBeInTheDocument();
+    expect(within(homepage).queryByRole("heading", { name: "日志分析，不只给结论" })).not.toBeInTheDocument();
+    expect(within(homepage).queryByRole("heading", { name: "调试动作，保留控制权" })).not.toBeInTheDocument();
+
     expect(homepage).toHaveTextContent("fast_charge_current_limit_ma");
-    expect(homepage).toHaveTextContent("battery_pack_temp=46.8C");
-    expect(homepage).toHaveTextContent("PRQ-9102");
-    expect(homepage).toHaveTextContent("ChargeLab_X01");
   });
 
   it("links the localized homepage CTAs into the WiseEff parameter homepage", () => {
@@ -180,46 +190,42 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    expect(screen.getAllByRole("link", { name: /进入工作台|进入 WiseEff 工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
-    expect(screen.getByRole("link", { name: "查看当前能力" })).toHaveAttribute("href", "#platform");
+    expect(screen.getAllByRole("link", { name: /打开我的工作台|进入 WiseEff 工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
+    expect(screen.getByRole("link", { name: "查看演示" })).toHaveAttribute("href", "#platform-flow");
     expect(document.body).not.toHaveTextContent("Linear is a better way");
     expect(document.body).not.toHaveTextContent("Powering the world's best product teams.");
   });
 
-  it("switches the hero stage carousel across WiseEff applications", () => {
+  it("switches the platform flow tabs across WiseEff applications", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "把参数差异变成可审阅变更" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "参数管理" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
-    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
-    expect(screen.getByText("ANL-2405")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
+    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("battery_pack_temp=46.8C")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
-    expect(screen.getByRole("heading", { name: "把现场调参变成受控执行流程" })).toBeInTheDocument();
-    expect(screen.getByText("ChargeLab_X01 已连接")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "上一项 WiseEff 应用展示" }));
-    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "参数调试" }));
+    expect(screen.getByRole("tab", { name: "参数调试" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("ChargeLab_X01")).toBeInTheDocument();
   });
 
-  it("pauses the hero stage auto rotation after manual carousel navigation", () => {
-    vi.useFakeTimers();
+  it("moves the platform flow tab selection by keyboard", () => {
     window.history.replaceState(null, "", "/");
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "下一项 WiseEff 应用展示" }));
-    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
+    const firstTab = screen.getByRole("tab", { name: "参数管理" });
 
-    act(() => {
-      vi.advanceTimersByTime(9600);
-    });
+    firstTab.focus();
+    fireEvent.keyDown(firstTab, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
 
-    expect(screen.getByRole("heading", { name: "把异常日志变成可追溯证据链" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "把现场调参变成受控执行流程" })).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("tab", { name: "日志分析" }), { key: "ArrowLeft" });
+    expect(firstTab).toHaveAttribute("aria-selected", "true");
   });
 
   it("navigates from parameter homepage entries into parameter management routes", () => {
