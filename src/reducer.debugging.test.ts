@@ -286,3 +286,58 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
     expect(next.debugParameters).toEqual(base.debugParameters);
   });
 });
+
+describe("DISCARD_ALL_DEBUG_DIRTY", () => {
+  it("把 configDraft.debugParameters 恢复到 persistedConfigSnapshot.debugParameters", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter, index) =>
+          index === 0 ? { ...parameter, currentValue: "9999", name: "被改动" } : parameter
+        )
+      }
+    };
+
+    const next = reducer(modified, { type: "DISCARD_ALL_DEBUG_DIRTY" });
+
+    expect(next.configDraft.debugParameters).toEqual(base.persistedConfigSnapshot.debugParameters);
+  });
+
+  it("不改动 parameterLibrary 和 projects", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: [...base.configDraft.debugParameters].reverse()
+      }
+    };
+
+    const next = reducer(modified, { type: "DISCARD_ALL_DEBUG_DIRTY" });
+
+    expect(next.configDraft.parameterLibrary).toBe(modified.configDraft.parameterLibrary);
+    expect(next.configDraft.projects).toBe(modified.configDraft.projects);
+  });
+
+  it("同步更新 derived debugParameters 运行时字段", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter) => ({
+          ...parameter,
+          currentValue: "0"
+        }))
+      }
+    };
+
+    const next = reducer(modified, { type: "DISCARD_ALL_DEBUG_DIRTY" });
+
+    expect(next.debugParameters).toEqual(
+      base.persistedConfigSnapshot.debugParameters.map((parameter) => ({ ...parameter }))
+    );
+  });
+});

@@ -138,6 +138,7 @@ export type AppAction =
   | { type: "UPDATE_PROJECT_PARAMETER_VALUE"; projectId: string; parameterId: string; patch: Partial<ParameterValueDraft> }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
+  | { type: "DISCARD_ALL_DEBUG_DIRTY" }
   | { type: "ADD_PROJECT_PARAMETER" }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER" }
@@ -708,6 +709,20 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const { status: _ignoredStatus, ...committable } = action.draft;
       void _ignoredStatus;
       const configDraft = updateDebugParameter(state.configDraft, action.parameterId, committable);
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "DISCARD_ALL_DEBUG_DIRTY": {
+      const restoredDebugParameters = state.persistedConfigSnapshot.debugParameters.map(
+        (parameter) => ({ ...parameter })
+      );
+      const configDraft = {
+        ...state.configDraft,
+        debugParameters: restoredDebugParameters
+      };
       return {
         ...state,
         configDraft,
