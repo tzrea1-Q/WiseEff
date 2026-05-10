@@ -4,7 +4,6 @@
   Bot,
   Check,
   CheckCircle2,
-  ChevronRight,
   CircleOff,
   Download,
   FileSearch,
@@ -32,6 +31,7 @@ import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, FormEvent, P
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
+import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -208,16 +208,6 @@ type ParameterDraftItem = {
   parameterId: string;
   targetValue: string;
   reason: string;
-};
-
-type ParameterComparisonRow = {
-  key: string;
-  module: string;
-  description: string;
-  baseValue: string;
-  targetValue: string;
-  status: "synced" | "drift";
-  risk: "High" | "Medium" | "Low";
 };
 
 const riskLabels: Record<"High" | "Medium" | "Low", string> = {
@@ -723,6 +713,17 @@ function AppShell() {
     setSearch(url.search);
   };
 
+  const updateSearch = (nextSearch: string) => {
+    const nextUrl = `${page.path}${nextSearch}`;
+    const currentUrl = `${window.location.pathname}${window.location.search}`;
+
+    if (nextUrl !== currentUrl) {
+      window.history.pushState(null, "", nextUrl);
+    }
+
+    setSearch(nextSearch);
+  };
+
   return (
     <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
       {!isPlatformHome ? <Sidebar activePath={page.path} onNavigate={navigate} /> : null}
@@ -748,6 +749,7 @@ function AppShell() {
               parameterHomeTimeWindow={parameterHomeTimeWindow}
               comparisonSelection={comparisonSelection}
               onComparisonSelectionChange={setComparisonSelection}
+              onSearchChange={updateSearch}
             />
           </div>
         ) : (
@@ -761,6 +763,7 @@ function AppShell() {
               parameterHomeTimeWindow={parameterHomeTimeWindow}
               comparisonSelection={comparisonSelection}
               onComparisonSelectionChange={setComparisonSelection}
+              onSearchChange={updateSearch}
             />
           </main>
         )}
@@ -793,11 +796,13 @@ function PageRouter({
   search,
   parameterHomeTimeWindow,
   comparisonSelection,
-  onComparisonSelectionChange
+  onComparisonSelectionChange,
+  onSearchChange
 }: PageProps & {
   page: PageConfig;
   comparisonSelection: ComparisonProjectSelection;
   onComparisonSelectionChange: React.Dispatch<React.SetStateAction<ComparisonProjectSelection>>;
+  onSearchChange: (search: string) => void;
 }) {
   switch (page.key) {
     case "parameters":
@@ -810,11 +815,11 @@ function PageRouter({
       return (
         <ParameterComparisonPage
           state={state}
-          dispatch={dispatch}
           onNavigate={onNavigate}
           search={search}
           comparisonSelection={comparisonSelection}
           onComparisonSelectionChange={onComparisonSelectionChange}
+          onSearchChange={onSearchChange}
         />
       );
     case "parameter-review":
@@ -1250,44 +1255,6 @@ function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: st
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = `${projectCode}-project-parameters.xls`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-function exportComparisonRowsAsExcel(rows: ParameterComparisonRow[], baseProjectCode: string, targetProjectCode: string) {
-  const headers = ["参数键", "参数含义", "模块", baseProjectCode, targetProjectCode, "重要性", "状态"];
-  const tableRows = rows
-    .map(
-      (row) => `
-        <tr>
-          <td>${escapeExcelCell(row.key)}</td>
-          <td>${escapeExcelCell(row.description)}</td>
-          <td>${escapeExcelCell(row.module)}</td>
-          <td>${escapeExcelCell(row.baseValue)}</td>
-          <td>${escapeExcelCell(row.targetValue)}</td>
-          <td>${riskLabels[row.risk]}</td>
-          <td>${row.status === "drift" ? "存在差异" : "已同步"}</td>
-        </tr>`
-    )
-    .join("");
-  const html = `
-    <html>
-      <head><meta charset="utf-8" /></head>
-      <body>
-        <table>
-          <caption>${escapeExcelCell(`${baseProjectCode} vs ${targetProjectCode} 项目参数对比`)}</caption>
-          <thead><tr>${headers.map((header) => `<th>${escapeExcelCell(header)}</th>`).join("")}</tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </body>
-    </html>`;
-  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${baseProjectCode}-vs-${targetProjectCode}-parameter-comparison.xls`;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
@@ -1746,261 +1713,6 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
   );
 }
 
-function ParameterComparisonPage({
-  state,
-  onNavigate,
-  search,
-  comparisonSelection,
-  onComparisonSelectionChange
-}: PageProps & {
-  comparisonSelection: ComparisonProjectSelection;
-  onComparisonSelectionChange: React.Dispatch<React.SetStateAction<ComparisonProjectSelection>>;
-}) {
-  const { baseProjectId, targetProjectId } = comparisonSelection;
-  const [riskFilter, setRiskFilter] = useState<ParameterRiskFilter>("All");
-  const [moduleFilter, setModuleFilter] = useState("All");
-  const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const baseProject = projects.find((project) => project.id === baseProjectId) ?? projects[0];
-  const targetProject = projects.find((project) => project.id === targetProjectId) ?? projects[1] ?? projects[0];
-
-  const chooseBaseProject = (projectId: string) => {
-    onComparisonSelectionChange((current) => ({
-      baseProjectId: projectId,
-      targetProjectId: current.targetProjectId === projectId ? getFallbackComparisonProjectId(projectId) : current.targetProjectId
-    }));
-  };
-
-  const chooseTargetProject = (projectId: string) => {
-    onComparisonSelectionChange((current) => ({
-      baseProjectId: current.baseProjectId === projectId ? getFallbackComparisonProjectId(projectId) : current.baseProjectId,
-      targetProjectId: projectId
-    }));
-  };
-
-  const comparisonRows = useMemo<ParameterComparisonRow[]>(() => {
-    const baseParameters = state.parameters.filter((parameter) => parameter.projectId === baseProject.id);
-    const targetParameters = state.parameters.filter((parameter) => parameter.projectId === targetProject.id);
-    const targetByName = new Map(targetParameters.map((parameter) => [parameter.name, parameter]));
-
-    return baseParameters.map((baseParameter) => {
-      const targetParameter = targetByName.get(baseParameter.name);
-      const status = targetParameter && targetParameter.currentValue === baseParameter.currentValue ? "synced" : "drift";
-
-      return {
-        key: baseParameter.name,
-        module: baseParameter.module,
-        description: baseParameter.description,
-        baseValue: `${baseParameter.currentValue} ${baseParameter.unit}`.trim(),
-        targetValue: targetParameter ? `${targetParameter.currentValue} ${targetParameter.unit}`.trim() : "未配置",
-        status,
-        risk: baseParameter.risk
-      };
-    });
-  }, [baseProject, state.parameters, targetProject]);
-  const moduleOptions = useMemo(() => Array.from(new Set(comparisonRows.map((row) => row.module))), [comparisonRows]);
-  const filteredComparisonRows = useMemo(
-    () =>
-      comparisonRows.filter(
-        (row) =>
-          (riskFilter === "All" || row.risk === riskFilter) &&
-          (moduleFilter === "All" || row.module === moduleFilter)
-      ),
-    [comparisonRows, moduleFilter, riskFilter]
-  );
-
-  useEffect(() => {
-    if (moduleFilter !== "All" && !moduleOptions.includes(moduleFilter)) {
-      setModuleFilter("All");
-    }
-  }, [moduleFilter, moduleOptions]);
-
-  useEffect(() => {
-    if (!contextQuery.projectId || !projects.some((project) => project.id === contextQuery.projectId)) {
-      return;
-    }
-
-    onComparisonSelectionChange((current) => {
-      if (current.baseProjectId === contextQuery.projectId && current.targetProjectId !== contextQuery.projectId) {
-        return current;
-      }
-
-      return {
-        baseProjectId: contextQuery.projectId,
-        targetProjectId: getFallbackComparisonProjectId(contextQuery.projectId)
-      };
-    });
-  }, [contextQuery.projectId, onComparisonSelectionChange]);
-
-  useEffect(() => {
-    if (!contextQuery.module) {
-      return;
-    }
-    if (moduleOptions.includes(contextQuery.module)) {
-      setModuleFilter(contextQuery.module);
-    }
-  }, [contextQuery.module, moduleOptions]);
-
-  const comparisonTitle = `${baseProject.code} vs ${targetProject.code}`;
-
-  return (
-    <div className="comparison-page">
-      <header className="page-header comparison-header">
-        <div>
-          <Breadcrumb className="breadcrumb" aria-label="参数对比路径">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <Button type="button" variant="link" onClick={() => onNavigate("/parameters")}>参数</Button>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>对比分析</BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>{comparisonTitle}</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <h1>项目参数对比分析</h1>
-        </div>
-        <div className="page-actions">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => exportComparisonRowsAsExcel(filteredComparisonRows, baseProject.code, targetProject.code)}
-          >
-            <Upload size={16} />
-            导出
-          </Button>
-        </div>
-      </header>
-
-      <section className="comparison-controls" aria-label="项目对比选择">
-        <ProjectComparisonSelect
-          label="基准项目"
-          selectedProjectId={baseProject.id}
-          disabledProjectId={targetProject.id}
-          onSelect={chooseBaseProject}
-        />
-        <ProjectComparisonSelect
-          label="对比项目"
-          selectedProjectId={targetProject.id}
-          disabledProjectId={baseProject.id}
-          onSelect={chooseTargetProject}
-        />
-      </section>
-
-      <section className="comparison-layout">
-        <div className="comparison-matrix">
-          <PanelHeader title="参数差异矩阵" meta={`${filteredComparisonRows.length} / ${comparisonRows.length} 项参数`} />
-          <section className="comparison-filter-bar" aria-label="参数矩阵筛选">
-            <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-            <div className="comparison-filter-fields">
-              <label className="field-label" htmlFor="comparison-risk-filter">
-                重要性
-                <SelectControl
-                  id="comparison-risk-filter"
-                  className="filter-select"
-                  value={riskFilter}
-                  onValueChange={setRiskFilter}
-                  options={([
-                    ["All", "全部"],
-                    ["High", "高"],
-                    ["Medium", "中"],
-                    ["Low", "低"]
-                  ] as const).map(([value, label]) => ({ value, label }))}
-                />
-              </label>
-              <label className="field-label" htmlFor="comparison-module-filter">
-                模块
-                <SelectControl
-                  id="comparison-module-filter"
-                  className="filter-select"
-                  value={moduleFilter}
-                  onValueChange={setModuleFilter}
-                  options={["All", ...moduleOptions].map((module) => ({ value: module, label: module === "All" ? "全部" : module }))}
-                />
-              </label>
-            </div>
-          </section>
-          <div className="comparison-matrix-scroll">
-            <div className="comparison-grid comparison-grid-head">
-              <span>参数键</span>
-              <span>参数含义</span>
-              <span><i className="env-dot production" />{baseProject.code}</span>
-              <span><i className="env-dot staging" />{targetProject.code}</span>
-              <span>重要性</span>
-              <span>操作</span>
-            </div>
-            {filteredComparisonRows.map((row) => (
-              <div className={row.status === "drift" ? "comparison-grid comparison-row drift" : "comparison-grid comparison-row"} key={row.key}>
-                <div className="comparison-key">
-                  {row.status === "drift" ? <AlertTriangle size={17} /> : <CheckCircle2 size={17} />}
-                  <div>
-                    <strong>{row.key}</strong>
-                    <small>{row.module}</small>
-                  </div>
-                </div>
-                <p className="comparison-meaning">{row.description}</p>
-                <span className="comparison-value">{row.baseValue}</span>
-                <span className="comparison-value staging-value">{row.targetValue}</span>
-                <div className="comparison-importance">
-                  <RiskBadge risk={row.risk} />
-                </div>
-                <div className="comparison-actions">
-                  {row.status === "drift" ? (
-                    <>
-                      <Button className="icon-button" type="button" aria-label={`同步 ${row.key}`} variant="outline" size="icon">
-                        <ArrowRight size={17} />
-                      </Button>
-                      <Button className="icon-button danger-icon" type="button" aria-label={`忽略 ${row.key}`} variant="destructive" size="icon">
-                        <X size={17} />
-                      </Button>
-                    </>
-                  ) : (
-                    <span>已同步</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-}
-
-function ProjectComparisonSelect({
-  label,
-  selectedProjectId,
-  disabledProjectId,
-  onSelect
-}: {
-  label: "基准项目" | "对比项目";
-  selectedProjectId: string;
-  disabledProjectId: string;
-  onSelect: (projectId: string) => void;
-}) {
-  const fieldId = label === "基准项目" ? "base-project-select" : "target-project-select";
-
-  return (
-    <label className="project-select-field" htmlFor={fieldId}>
-      <span>{label}</span>
-      <div className="project-select-shell">
-        <SelectControl
-          id={fieldId}
-          ariaLabel={label}
-          value={selectedProjectId}
-          onValueChange={onSelect}
-          options={projects.map((project) => ({
-            value: project.id,
-            label: `${project.code} · ${project.name}`,
-            disabled: project.id === disabledProjectId
-          }))}
-        />
-        <ChevronRight size={18} aria-hidden="true" />
-      </div>
-    </label>
-  );
-}
 
 function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const [selectedId, setSelectedId] = useState(state.changeRequests[0]?.id ?? "");

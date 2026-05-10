@@ -430,24 +430,17 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "跨项目对比" }));
 
     expect(window.location.pathname).toBe("/parameter-comparison");
-    expect(screen.getByRole("heading", { name: "项目参数对比分析" })).toBeInTheDocument();
-    const comparisonControls = screen.getByRole("region", { name: "项目对比选择" });
-    expectSelectValue(within(comparisonControls).getByRole("combobox", { name: "基准项目" }), "aurora");
-    expectSelectValue(within(comparisonControls).getByRole("combobox", { name: "对比项目" }), "nebula");
-    expect(comparisonControls.querySelector(".project-choice-card")).not.toBeInTheDocument();
-    expect(comparisonControls).not.toHaveTextContent("当前选择 AUR-Prod，Aurora 量产平台");
-    expect(comparisonControls).not.toHaveTextContent("当前选择 NEB-RD，Nebula 高频调试项目");
+    expect(screen.getByTestId("comparison-page-v2")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "AUR-Prod vs NEB-RD" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "基准项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "交换基准和对比项目" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "项目对比选择" })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("生产 vs 预发");
     expect(document.body).not.toHaveTextContent("的充电、电池和电源管理参数差异分析。");
     expect(screen.queryByRole("button", { name: "同步选中项" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "参数对比摘要" })).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("对比范围");
-    expect(document.body).not.toHaveTextContent("实际项目参数对比");
-    expect(document.body).not.toHaveTextContent("漂移参数");
-    expect(document.body).not.toHaveTextContent("需要审阅后同步");
-    expect(document.body).not.toHaveTextContent("高重要性差异");
     expect(document.body).not.toHaveTextContent("WiseAgent 已生成风险说明");
-    expect(screen.getByText("参数差异矩阵")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数差异矩阵" })).toBeInTheDocument();
     expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
     expect(screen.queryByText("WiseAgent 洞察")).not.toBeInTheDocument();
@@ -461,7 +454,7 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "导出" }));
+    fireEvent.click(screen.getByRole("button", { name: "导出对比结果" }));
 
     const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
     const exportedText = await new Promise<string>((resolve, reject) => {
@@ -480,23 +473,19 @@ describe("WiseEff app shell", () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:comparison-parameters");
   });
 
-  it("compares parameter values between two real projects without percent importance drift", () => {
+  it("compares parameter values between two real projects with project chips and delta badges", () => {
     window.history.replaceState(null, "", "/parameter-comparison");
 
     render(<App />);
 
-    const comparisonControls = screen.getByRole("region", { name: "项目对比选择" });
     const getComparisonRow = (parameterName: string) =>
-      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row")).find((row) =>
+      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
         row.textContent?.includes(parameterName)
       );
 
-    const baseProjectSelect = within(comparisonControls).getByRole("combobox", { name: "基准项目" });
-    const targetProjectSelect = within(comparisonControls).getByRole("combobox", { name: "对比项目" });
-
-    expectSelectValue(baseProjectSelect, "aurora");
-    expectSelectValue(targetProjectSelect, "nebula");
-    expect(within(comparisonControls).queryByRole("button", { name: /选择对比项目/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "基准项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "基准项目" })).not.toBeInTheDocument();
     expect(screen.getAllByText("AUR-Prod").length).toBeGreaterThan(0);
     expect(screen.getAllByText("NEB-RD").length).toBeGreaterThan(0);
     expect(screen.queryByText("生产")).not.toBeInTheDocument();
@@ -505,15 +494,15 @@ describe("WiseEff app shell", () => {
     const fastChargeRow = getComparisonRow("fast_charge_current_limit_ma");
     expect(fastChargeRow).toHaveTextContent("3850");
     expect(fastChargeRow).toHaveTextContent("4200");
-    expect(fastChargeRow).toHaveTextContent("高");
-    expect(fastChargeRow).not.toHaveTextContent("%");
+    expect(fastChargeRow).toHaveTextContent("+9.1%");
 
-    changeSelectValue(targetProjectSelect, /ATL-Intl/);
+    fireEvent.click(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" }));
+    fireEvent.click(screen.getByRole("option", { name: /ATL-Intl/ }));
 
     const atlasFastChargeRow = getComparisonRow("fast_charge_current_limit_ma");
     expect(screen.getAllByText("ATL-Intl").length).toBeGreaterThan(0);
     expect(atlasFastChargeRow).toHaveTextContent("3000");
-    expect(atlasFastChargeRow).not.toHaveTextContent("%");
+    expect(atlasFastChargeRow).toHaveTextContent("-22.1%");
   });
 
   it("consumes parameter comparison context from query strings", () => {
@@ -521,13 +510,13 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    const comparisonControls = screen.getByRole("region", { name: "项目对比选择" });
     const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
-    const matrix = document.querySelector<HTMLElement>(".comparison-matrix");
+    const matrix = document.querySelector<HTMLElement>(".comparison-matrix--v2");
 
-    expectSelectValue(within(comparisonControls).getByRole("combobox", { name: "基准项目" }), "nebula");
-    expectSelectValue(within(comparisonControls).getByRole("combobox", { name: "对比项目" }), "aurora");
-    expectSelectValue(within(filters).getByRole("combobox", { name: "模块" }), "Battery Safety");
+    expect(screen.getByRole("heading", { name: "NEB-RD vs AUR-Prod" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "基准项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "对比项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
+    expect(within(filters).getByText("Battery Safety")).toBeInTheDocument();
     expect(screen.getAllByText("NEB-RD").length).toBeGreaterThan(0);
     expect(screen.getAllByText("AUR-Prod").length).toBeGreaterThan(0);
     expect(matrix).toHaveTextContent("battery_temp_target_c");
@@ -540,29 +529,32 @@ describe("WiseEff app shell", () => {
     render(<App />);
 
     const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
-    const importanceSelect = within(filters).getByRole("combobox", { name: "重要性" });
-    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
     const getComparisonRow = (parameterName: string) =>
-      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row")).find((row) =>
+      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
         row.textContent?.includes(parameterName)
       );
 
-    expect(screen.getByText("参数含义")).toBeInTheDocument();
-    expect(getComparisonRow("fast_charge_current_limit_ma")).toHaveTextContent("限制快充阶段的最大充电电流。");
+    expect(screen.getByRole("columnheader", { name: "参数键 / 模块" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "NEB-RD / Δ" })).toBeInTheDocument();
+    expect(getComparisonRow("fast_charge_current_limit_ma")).toHaveTextContent("Charging Policy");
     expect(filters).not.toHaveTextContent("当前筛选");
 
-    changeSelectValue(importanceSelect, "高");
+    fireEvent.click(within(filters).getByRole("button", { name: "重要性" }));
+    fireEvent.click(screen.getByRole("option", { name: "High" }));
 
     expect(getComparisonRow("fast_charge_current_limit_ma")).toBeDefined();
     expect(getComparisonRow("charge_voltage_limit_mv")).toBeDefined();
     expect(getComparisonRow("battery_temp_target_c")).toBeUndefined();
-    expect(filters).not.toHaveTextContent("当前筛选");
+    expect(screen.getByLabelText("当前筛选")).toBeInTheDocument();
+    expect(window.location.search).toContain("risk=High");
 
-    changeSelectValue(moduleSelect, "Battery Protection");
+    fireEvent.click(within(filters).getByRole("button", { name: /模块/ }));
+    fireEvent.click(screen.getByRole("option", { name: "Battery Protection" }));
 
     expect(getComparisonRow("low_battery_shutdown_soc")).toBeDefined();
     expect(getComparisonRow("fast_charge_current_limit_ma")).toBeUndefined();
-    expect(filters).not.toHaveTextContent("当前筛选");
+    expect(filters).toHaveTextContent("Battery Protection");
+    expect(window.location.search).toContain("module=Battery+Protection");
   });
 
   it("keeps comparison insights inside the floating WiseAgent after opening it", () => {
@@ -726,17 +718,13 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-comparison",
-        present: ["参数", "对比分析", "基准项目", "对比项目", "参数差异矩阵", "AUR-Prod", "NEB-RD"],
+        present: ["参数", "对比分析", "AUR-Prod", "NEB-RD", "漂移参数", "高重要性差异", "仅看漂移"],
         absent: [
           "Parameters",
           "Comparison",
           "当前选择 AUR-Prod",
           "当前选择 NEB-RD",
-          "对比范围",
-          "实际项目参数对比",
-          "漂移参数",
           "需要审阅后同步",
-          "高重要性差异",
           "WiseAgent 已生成风险说明",
           "生产 vs 预发",
           "Export",
@@ -1021,7 +1009,7 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "项目参数对比分析" }));
 
-    const fastChargeRow = Array.from(document.querySelectorAll<HTMLElement>(".comparison-row")).find((row) =>
+    const fastChargeRow = Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
       row.textContent?.includes("fast_charge_current_limit_ma")
     );
     expect(fastChargeRow).toHaveTextContent("3650");
