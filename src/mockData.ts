@@ -74,6 +74,7 @@ export type ParameterRecord = {
   unit: string;
   risk: RiskLevel;
   updatedAt: string;
+  history: ParameterHistoryEntry[];
 };
 
 export type ChangeRequest = {
@@ -87,9 +88,17 @@ export type ChangeRequest = {
   targetValue: string;
   submitter: string;
   createdAt: string;
+  createdAtTs: string;
+  updatedAt: string;
   status: RequestStatus;
   aiSummary: string;
   rejectReason?: string;
+  waitingHours: number;
+  aiSuggestion: AIReviewSuggestion;
+  impact: ImpactItem[];
+  assignedTo?: string;
+  fastTrack?: boolean;
+  reviewerNote?: string;
 };
 
 export type ParameterSubmissionItem = {
@@ -154,6 +163,7 @@ export type PrototypeState = {
   configDraft: PowerManagementConfig;
   parameters: ParameterRecord[];
   changeRequests: ChangeRequest[];
+  aiFeedback: AIFeedbackEntry[];
   parameterSubmissionRounds: ParameterSubmissionRound[];
   logs: LogRecord[];
   devices: Device[];
