@@ -8,6 +8,7 @@ type ParameterManagementHomePageProps = {
   state: PrototypeState;
   onNavigate: (path: string) => void;
   timeWindow?: HomepageTimeWindow;
+  onTimeWindowChange?: (value: HomepageTimeWindow) => void;
 };
 
 const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }> = [
@@ -23,7 +24,7 @@ export const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label
 
 const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
 
-export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
+export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d", onTimeWindowChange }: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("module");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
 
@@ -35,6 +36,23 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
+      <div className="parameter-homepage-time-window">
+        <label className="parameter-homepage-inline-select">
+          <span>时间范围</span>
+          <select
+            aria-label="时间范围"
+            className="parameter-homepage-select"
+            value={timeWindow}
+            onChange={(event) => onTimeWindowChange?.(event.target.value as HomepageTimeWindow)}
+          >
+            {homepageTimeWindowOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <section className="homepage-main-grid" aria-label="入口卡片">
         <div className="homepage-entry-grid">
           {analytics.entryCards.map((entry) => (

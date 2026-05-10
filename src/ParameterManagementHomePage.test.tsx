@@ -13,7 +13,7 @@ describe("ParameterManagementHomePage", () => {
 
     expect(screen.queryByRole("main", { name: "参数管理首页" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "时间范围" })).toBeInTheDocument();
     expect(screen.queryByText("参数变化态势")).not.toBeInTheDocument();
     expect(screen.queryByText("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。")).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
@@ -67,7 +67,9 @@ describe("ParameterManagementHomePage", () => {
 
     expect(document.querySelector(".parameter-homepage-hero")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-window-switcher")).not.toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    // Time range control has moved from the topbar hero into the page body.
+    expect(document.querySelector(".parameter-homepage-time-window")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "时间范围" })).toBeInTheDocument();
   });
 
   it("does not render the removed time range context panel copy", () => {
@@ -80,7 +82,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByText("变更频次、风险权重、影响范围、流程堆积、异常偏离")).not.toBeInTheDocument();
   });
 
-  it("keeps analytics visible without a time window control", () => {
+  it("keeps analytics visible alongside the page-level time window control", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const metrics = screen.getByRole("region", { name: "核心指标" });
@@ -88,6 +90,7 @@ describe("ParameterManagementHomePage", () => {
 
     expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
     expect(within(hotspotRegion).getAllByText(/分/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("combobox", { name: "时间范围" })).toBeInTheDocument();
   });
 
   it("switches hotspot ranking between project and module dimensions", () => {
@@ -124,5 +127,28 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".hotspot-card")).toBeInTheDocument();
     expect(document.querySelector(".key-change-row")).toBeInTheDocument();
     expect(document.querySelector(".breakdown-row")).toBeInTheDocument();
+  });
+
+  it("renders a page-level time range control and reports changes", () => {
+    const onTimeWindowChange = vi.fn();
+    render(
+      <ParameterManagementHomePage
+        state={initialState}
+        onNavigate={vi.fn()}
+        timeWindow="30d"
+        onTimeWindowChange={onTimeWindowChange}
+      />
+    );
+
+    const timeWindowContainer = document.querySelector(".parameter-homepage-time-window");
+    expect(timeWindowContainer).toBeInTheDocument();
+
+    const combobox = within(timeWindowContainer as HTMLElement).getByRole("combobox", {
+      name: "时间范围"
+    });
+    expect(combobox).toHaveValue("30d");
+
+    fireEvent.change(combobox, { target: { value: "7d" } });
+    expect(onTimeWindowChange).toHaveBeenCalledWith("7d");
   });
 });
