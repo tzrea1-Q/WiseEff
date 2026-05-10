@@ -33,6 +33,7 @@ import { WiseEffIcon } from "./components/WiseEffIcon";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
+import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
@@ -1415,6 +1416,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
   const myRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === myName);
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
+  const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
 
   useEffect(() => {
     if (!myRounds.some((round) => round.id === selectedRoundId)) {
@@ -1476,6 +1478,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
                 </div>
                 <p>本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在 {selectedRound.createdAt} 提交。</p>
                 <p>{selectedRound.summary}</p>
+                <Timeline steps={[...timelineView.steps]} activeIndex={timelineView.activeIndex} />
               </div>
               <div className="submission-diff-list history-diff-list">
                 {selectedRound.items.map((item) => (
