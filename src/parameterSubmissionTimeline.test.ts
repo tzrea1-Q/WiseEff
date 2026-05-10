@@ -14,10 +14,14 @@ const submissionItem: ParameterSubmissionItem = {
   reason: "Exercise timeline derivation."
 };
 
+type TestParameterSubmissionRound = Omit<ParameterSubmissionRound, "status"> & {
+  status: ParameterSubmissionRound["status"] | "草稿";
+};
+
 function createRound(
   status: ParameterSubmissionRound["status"] | "草稿",
   items: ParameterSubmissionItem[] = []
-): ParameterSubmissionRound & { status: ParameterSubmissionRound["status"] | "草稿" } {
+): TestParameterSubmissionRound {
   return {
     id: "PRS-test",
     projectId: "project-test",
