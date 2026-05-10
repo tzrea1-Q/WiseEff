@@ -1759,6 +1759,89 @@ td small {
   line-height: 1.55;
 }
 
+.param-def-form {
+  align-items: start;
+}
+
+.label-hint {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: -3px;
+  padding: 3px 7px;
+  color: #005067;
+  background: #e8f7fb;
+  border: 1px solid rgba(0, 104, 123, 0.18);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.field-error {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.config-form-grid input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(186, 26, 26, 0.1);
+}
+
+.range-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 4px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.risk-picker-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 9px;
+  color: var(--app-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.risk-picker-option span {
+  font-size: 10px;
+}
+
+.risk-picker-option.active {
+  color: var(--text);
+  background: #fff;
+  border-color: var(--outline);
+  box-shadow: 0 4px 12px rgba(16, 28, 45, 0.06);
+}
+
+.risk-picker-option.risk-high span {
+  color: var(--danger);
+}
+
+.risk-picker-option.risk-medium span {
+  color: var(--amber);
+}
+
+.risk-picker-option.risk-low span {
+  color: var(--app-secondary);
+}
+
 .project-value-matrix p {
   margin: 0;
   padding: 12px 16px;
@@ -1768,6 +1851,140 @@ td small {
   border-bottom: 1px solid #e7ecf7;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.pvm-table {
+  display: grid;
+}
+
+.pvm-header,
+.pvm-row {
+  display: grid;
+  grid-template-columns: minmax(142px, 0.85fr) minmax(190px, 1.15fr) minmax(96px, 0.55fr) minmax(116px, 0.65fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.pvm-header {
+  color: var(--outline-strong);
+  background: var(--surface-low);
+  border-bottom: 1px solid #e7ecf7;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pvm-row {
+  border-bottom: 1px solid #e7ecf7;
+}
+
+.pvm-row:last-child {
+  border-bottom: 0;
+}
+
+.pvm-row.out-of-range {
+  background: #fff8f7;
+}
+
+.pvm-project strong,
+.pvm-project small,
+.pvm-error,
+.pvm-hint {
+  display: block;
+}
+
+.pvm-project strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.pvm-project small,
+.pvm-hint,
+.pvm-updated {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.pvm-value {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.pvm-value input {
+  min-width: 0;
+  width: 100%;
+  padding: 9px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.pvm-value input[aria-invalid="true"] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px rgba(186, 26, 26, 0.1);
+}
+
+.pvm-unit {
+  min-width: 34px;
+  padding: 6px 8px;
+  color: var(--outline-strong);
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.pvm-error,
+.pvm-hint {
+  grid-column: 1 / -1;
+}
+
+.pvm-error {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pvm-deviation {
+  width: fit-content;
+  min-width: 68px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.deviation-ok {
+  color: #075f44;
+  background: rgba(15, 124, 85, 0.12);
+}
+
+.deviation-warn {
+  color: #6a3d00;
+  background: #fff1cf;
+}
+
+.deviation-danger {
+  color: #8a1515;
+  background: var(--danger-soft);
+}
+
+.deviation-na {
+  color: var(--outline-strong);
+  background: var(--surface-low);
+}
+
+.pvm-updated {
+  line-height: 1.45;
 }
 
 .project-value-table {
@@ -3947,8 +4164,18 @@ td small {
   .config-admin-grid,
   .param-admin-grid,
   .project-value-head,
-  .project-value-row {
+  .project-value-row,
+  .pvm-header,
+  .pvm-row {
     grid-template-columns: 1fr;
+  }
+
+  .pvm-header {
+    display: none;
+  }
+
+  .pvm-row {
+    align-items: start;
   }
 
   .param-admin-shell[data-audit="open"] .param-admin-grid {

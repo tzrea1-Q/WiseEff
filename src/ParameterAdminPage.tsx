@@ -3,9 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
+import { ParameterDefinitionForm } from "./components/ParameterDefinitionForm";
 import { ParameterLibraryList } from "./components/ParameterLibraryList";
-import { useParamAdminSearch } from "./hooks/useParamAdminSearch";
-import type { RiskLevel } from "./mockData";
+import { ProjectValueMatrix } from "./components/ProjectValueMatrix";
+import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage } from "./parameterAdminAnalytics";
 import { serializePowerManagementConfig } from "./powerManagementConfig";
 
@@ -211,97 +212,15 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         <section className="detail-column config-editor-panel project-config-editor">
           {selectedParameter ? (
             <>
-              <section className="shared-definition-panel" aria-label="共享参数定义">
-                <PanelHeader title="共享参数定义" meta="所有项目共用" />
-                <div className="config-form-grid">
-                  <label>
-                    参数名称
-                    <input value={selectedParameter.name} onChange={(event) => updateMetadata({ name: event.target.value })} />
-                  </label>
-                  <label>
-                    模块
-                    <input value={selectedParameter.module} onChange={(event) => updateMetadata({ module: event.target.value })} />
-                  </label>
-                  <label>
-                    推荐值
-                    <input
-                      aria-label="参数推荐值"
-                      value={selectedParameter.values[state.configDraft.projects[0]?.id ?? state.activeProjectId]?.recommendedValue ?? ""}
-                      onChange={(event) => updateRecommendedValue(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    范围
-                    <input value={selectedParameter.range} onChange={(event) => updateMetadata({ range: event.target.value })} />
-                  </label>
-                  <label>
-                    单位
-                    <input value={selectedParameter.unit} onChange={(event) => updateMetadata({ unit: event.target.value })} />
-                  </label>
-                  <label>
-                    重要性
-                    <select
-                      value={selectedParameter.risk}
-                      onChange={(event) => updateMetadata({ risk: event.target.value as ParameterEditorDraft["risk"] })}
-                    >
-                      <option value="High">高</option>
-                      <option value="Medium">中</option>
-                      <option value="Low">低</option>
-                    </select>
-                  </label>
-                  <label className="wide">
-                    展示描述
-                    <textarea value={selectedParameter.description} onChange={(event) => updateMetadata({ description: event.target.value })} rows={3} />
-                  </label>
-                  <label className="wide">
-                    参数解释
-                    <textarea value={selectedParameter.explanation} onChange={(event) => updateMetadata({ explanation: event.target.value })} rows={4} />
-                  </label>
-                  <label className="wide">
-                    配置格式
-                    <textarea value={selectedParameter.configFormat} onChange={(event) => updateMetadata({ configFormat: event.target.value })} rows={3} />
-                  </label>
-                </div>
-              </section>
+              <ParameterDefinitionForm
+                allParameters={state.configDraft.parameterLibrary}
+                parameter={selectedParameter}
+                projects={state.configDraft.projects}
+                onMetadataChange={updateMetadata}
+                onRecommendedValueChange={updateRecommendedValue}
+              />
 
-              <section className="project-value-matrix" aria-label="项目参数值矩阵">
-                <PanelHeader title="项目参数值矩阵" meta="每个项目独立取值" />
-                <p>所有项目共用同一条参数定义，只在这里维护各项目的实际值。</p>
-                <div className="project-value-table">
-                  <div className="project-value-head">
-                    <span>项目</span>
-                    <span>当前值</span>
-                    <span>更新时间</span>
-                  </div>
-                  {state.configDraft.projects.map((project) => {
-                    const value = selectedParameter.values[project.id];
-                    return (
-                      <div className="project-value-row" key={project.id}>
-                        <div>
-                          <strong>{project.code}</strong>
-                          <small>{project.name}</small>
-                        </div>
-                        <label>
-                          <span>{project.code} 当前值</span>
-                          <input
-                            aria-label={`${project.code} 当前值`}
-                            value={value.currentValue}
-                            onChange={(event) => updateValue(project.id, { currentValue: event.target.value })}
-                          />
-                        </label>
-                        <label>
-                          <span>{project.code} 更新时间</span>
-                          <input
-                            aria-label={`${project.code} 更新时间`}
-                            value={value.updatedAt}
-                            onChange={(event) => updateValue(project.id, { updatedAt: event.target.value })}
-                          />
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+              <ProjectValueMatrix parameter={selectedParameter} projects={state.configDraft.projects} onValueChange={updateValue} />
             </>
           ) : (
             <EmptyState text="请选择一个项目参数。" />
@@ -320,7 +239,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
   );
 }
 
-function parseParamAdminSearch(raw: string) {
+function parseParamAdminSearch(raw: string): ParamAdminSearch {
   const params = new URLSearchParams(raw);
   const risk = params.get("risk");
   const coverage = params.get("coverage");
@@ -426,16 +345,6 @@ function ConfigExportPanel({ configJson }: { configJson: string }) {
       <div className="config-sync-note">{syncMessage}</div>
     </div>
   );
-}
-
-function RiskBadge({ risk }: { risk: RiskLevel }) {
-  const labels: Record<RiskLevel, string> = {
-    High: "高",
-    Medium: "中",
-    Low: "低"
-  };
-
-  return <span className={`risk-badge ${risk.toLowerCase()}`}>{labels[risk]}</span>;
 }
 
 function PanelHeader({ title, meta }: { title: string; meta?: string }) {
