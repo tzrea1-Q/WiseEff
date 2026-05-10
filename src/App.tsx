@@ -1290,6 +1290,7 @@ function HomePage() {
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 type LogsAuxTab = "history" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
+const DEFAULT_PARAMETER_REASON = "参考 Agent 巡检建议，将高风险参数回落到安全阈值内。";
 
 function getFallbackComparisonProjectId(projectId: string) {
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
@@ -1378,7 +1379,7 @@ function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
   const [moduleFilter, setModuleFilter] = useState("All");
   const [selectedId, setSelectedId] = useState(state.parameters[0]?.id ?? "");
   const [targetValue, setTargetValue] = useState("80");
-  const [reason, setReason] = useState("参考 Agent 巡检建议，将高风险参数回落到安全阈值内。");
+  const [reason, setReason] = useState(DEFAULT_PARAMETER_REASON);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [draftItems, setDraftItems] = useState<ParameterDraftItem[]>([]);
   const projectParameters = useMemo(
@@ -1439,6 +1440,23 @@ function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
       setTargetValue(requestedParameter.recommendedValue);
     }
   }, [contextQuery.parameterId, projectParameters]);
+
+  useEffect(() => {
+    if (!contextQuery.logId) {
+      return;
+    }
+
+    const originLog = state.logs.find((log) => log.id === contextQuery.logId);
+    if (!originLog) {
+      return;
+    }
+
+    setReason((current) =>
+      current === DEFAULT_PARAMETER_REASON
+        ? `依据日志 ${originLog.fileName} 分析：${originLog.conclusion}`
+        : current
+    );
+  }, [contextQuery.logId, state.logs]);
 
   useEffect(() => {
     if (!selected) {
