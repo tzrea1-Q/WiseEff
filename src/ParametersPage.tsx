@@ -1,28 +1,24 @@
 import {
   ArrowRight,
   Download,
-  FileText,
   Filter,
-  History,
-  Info,
-  Sparkles
+  History
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Badge,
-  DataTable,
-  EmptyState,
   escapeExcelCell,
   getContextQuery,
   riskLabels,
   RiskBadge,
   SectionLabel,
-  Timeline,
   WorkbenchLayout
 } from "./workbenchUi";
 import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
+import { ParametersTable } from "./components/ParametersTable";
+import { WorkbenchSheet } from "./components/WorkbenchSheet";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -87,6 +83,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   const [targetValue, setTargetValue] = useState("80");
   const [reason, setReason] = useState("参考 Agent 巡检建议，将高风险参数回落到安全阈值内。");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [focusedId, setFocusedId] = useState<string | null>(state.parameters[0]?.id ?? null);
@@ -98,9 +95,17 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     () => Array.from(new Set(projectParameters.map((parameter) => parameter.module))),
     [projectParameters]
   );
-  const parameters = projectParameters.filter(
-    (parameter) =>
-      (riskFilter === "All" || parameter.risk === riskFilter) && (moduleFilter === "All" || parameter.module === moduleFilter)
+  const parameterById = useMemo(
+    () => new Map(state.parameters.map((parameter) => [parameter.id, parameter])),
+    [state.parameters]
+  );
+  const parameters = useMemo(
+    () =>
+      projectParameters.filter(
+        (parameter) =>
+          (riskFilter === "All" || parameter.risk === riskFilter) && (moduleFilter === "All" || parameter.module === moduleFilter)
+      ),
+    [moduleFilter, projectParameters, riskFilter]
   );
   const selected = parameters.find((parameter) => parameter.id === focusedId) ?? parameters.find((parameter) => parameter.id === selectedId) ?? parameters[0];
   const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
@@ -109,7 +114,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     () =>
       Array.from(selectedIds)
         .map((parameterId) => {
-          const parameter = state.parameters.find((candidate) => candidate.id === parameterId);
+          const parameter = parameterById.get(parameterId);
           if (!parameter) {
             return null;
           }
@@ -125,7 +130,11 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
           };
         })
         .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
-    [drafts, selectedIds, state.parameters]
+    [drafts, parameterById, selectedIds]
+  );
+  const validPendingSubmissionItems = useMemo(
+    () => pendingSubmissionItems.filter((item) => item.targetValue.trim()),
+    [pendingSubmissionItems]
   );
 
   useEffect(() => {
@@ -183,56 +192,96 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     );
   }, [projectParameters]);
 
-  const focusParameter = (parameter: ParameterRecord) => {
+  useEffect(() => {
+    if (selectedIds.size === 0) {
+      setSheetOpen(false);
+    }
+  }, [selectedIds.size]);
+
+  const handleFocusRow = (id: string) => {
+    const parameter = parameterById.get(id);
+    if (!parameter) {
+      return;
+    }
     setSelectedId(parameter.id);
     setFocusedId(parameter.id);
     setTargetValue(drafts[parameter.id]?.targetValue ?? parameter.recommendedValue);
     setReason(drafts[parameter.id]?.reason ?? "");
   };
 
-  const toggleParameterSelection = (parameter: ParameterRecord, checked: boolean) => {
-    const nextDraft = {
-      targetValue: focusedId === parameter.id ? targetValue : parameter.recommendedValue,
-      reason: focusedId === parameter.id ? reason : ""
-    };
-    setSelectedId(parameter.id);
-    setFocusedId(parameter.id);
-    setTargetValue(nextDraft.targetValue);
-    setReason(nextDraft.reason);
-    setSelectedIds((ids) => {
-      const next = new Set(ids);
-      if (checked) {
-        next.add(parameter.id);
-      } else {
-        next.delete(parameter.id);
-      }
-      return next;
-    });
+  const handleSelectedIdsChange = (next: Set<string>) => {
+    const addedIds = Array.from(next).filter((id) => !selectedIds.has(id));
+    const removedIds = Array.from(selectedIds).filter((id) => !next.has(id));
+    const firstAddedParameter = addedIds.map((id) => parameterById.get(id)).find((parameter): parameter is ParameterRecord => Boolean(parameter));
+
+    if (firstAddedParameter) {
+      setSelectedId(firstAddedParameter.id);
+      setFocusedId(firstAddedParameter.id);
+      setTargetValue(drafts[firstAddedParameter.id]?.targetValue ?? firstAddedParameter.recommendedValue);
+      setReason(drafts[firstAddedParameter.id]?.reason ?? "");
+    }
+
+    setSelectedIds(next);
     setDrafts((items) => {
-      if (checked) {
-        return items[parameter.id] ? items : { ...items, [parameter.id]: nextDraft };
-      }
-      const { [parameter.id]: _removed, ...remainingItems } = items;
-      return remainingItems;
+      const nextDrafts = { ...items };
+
+      addedIds.forEach((id) => {
+        const parameter = parameterById.get(id);
+        if (parameter && !nextDrafts[id]) {
+          nextDrafts[id] = {
+            targetValue: drafts[id]?.targetValue ?? parameter.recommendedValue,
+            reason: drafts[id]?.reason ?? ""
+          };
+        }
+      });
+
+      removedIds.forEach((id) => {
+        delete nextDrafts[id];
+      });
+
+      return nextDrafts;
     });
+
+    if (next.size > 0) {
+      setSheetOpen(true);
+    } else {
+      setSheetOpen(false);
+    }
+  };
+
+  const updateDraft = (parameter: ParameterRecord, patch: Partial<{ targetValue: string; reason: string }>) => {
+    setDrafts((items) => ({
+      ...items,
+      [parameter.id]: {
+        targetValue: items[parameter.id]?.targetValue ?? parameter.recommendedValue,
+        reason: items[parameter.id]?.reason ?? "",
+        ...patch
+      }
+    }));
   };
 
   const updateFocusedDraft = (patch: Partial<{ targetValue: string; reason: string }>) => {
     if (!selected || !selectedIds.has(selected.id)) {
       return;
     }
-    setDrafts((items) => ({
-      ...items,
-      [selected.id]: {
-        targetValue: items[selected.id]?.targetValue ?? selected.recommendedValue,
-        reason: items[selected.id]?.reason ?? reason,
-        ...patch
-      }
-    }));
+    updateDraft(selected, patch);
+  };
+
+  const removeDraftItem = (parameterId: string) => {
+    const nextSelectedIds = new Set(selectedIds);
+    nextSelectedIds.delete(parameterId);
+    setSelectedIds(nextSelectedIds);
+    if (nextSelectedIds.size === 0) {
+      setSheetOpen(false);
+    }
+    setDrafts((items) => {
+      const { [parameterId]: _removed, ...remainingItems } = items;
+      return remainingItems;
+    });
   };
 
   const openSubmitPreview = () => {
-    if (pendingSubmissionItems.length === 0) {
+    if (validPendingSubmissionItems.length === 0) {
       return;
     }
     setConfirmOpen(true);
@@ -246,9 +295,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit });
     setSelectedIds(new Set());
     setDrafts({});
+    setSheetOpen(false);
     setConfirmOpen(false);
   };
   const previewItems = pendingSubmissionItems;
+  const focusedIsSelected = selected ? selectedIds.has(selected.id) : false;
+  const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
 
   return (
     <WorkbenchLayout
@@ -270,191 +322,200 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
         </>
       }
     >
-      <aside className="filter-panel" aria-label="参数筛选">
-        <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-        <label className="field-label" htmlFor="parameter-project-filter">
-          项目
-        </label>
-        <select
-          id="parameter-project-filter"
-          className="filter-select"
-          value={state.activeProjectId}
-          onChange={(event) => dispatch({ type: "SET_PROJECT", projectId: event.target.value })}
-        >
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.code} · {project.name}
-            </option>
-          ))}
-        </select>
-        <label className="field-label" htmlFor="parameter-risk-filter">
-          重要性
-        </label>
-        <select
-          id="parameter-risk-filter"
-          className="filter-select"
-          value={riskFilter}
-          onChange={(event) => setRiskFilter(event.target.value as ParameterRiskFilter)}
-        >
-          {([
-            ["All", "全部"],
-            ["High", "高"],
-            ["Medium", "中"],
-            ["Low", "低"]
-          ] as const).map(([risk, label]) => (
-            <option key={risk} value={risk}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <label className="field-label" htmlFor="parameter-module-filter">
-          模块
-        </label>
-        <select
-          id="parameter-module-filter"
-          className="filter-select"
-          value={moduleFilter}
-          onChange={(event) => setModuleFilter(event.target.value)}
-        >
-          {["All", ...moduleOptions].map((module) => (
-            <option key={module} value={module}>
-              {module === "All" ? "全部" : module}
-            </option>
-          ))}
-        </select>
-      </aside>
-      <section className="workbench-main">
-        <DataTable
-          headers={["选择", "参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"]}
-          rows={parameters}
-          renderRow={(parameter) => (
-            <tr
-              className={selected?.id === parameter.id ? "selected-row" : ""}
-              key={parameter.id}
-              onClick={() => focusParameter(parameter)}
+      <div className="parameters-page-layout">
+        <div className="workbench-two-col">
+          <aside className="filter-panel" aria-label="参数筛选">
+            <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
+            <label className="field-label" htmlFor="parameter-project-filter">
+              项目
+            </label>
+            <select
+              id="parameter-project-filter"
+              className="filter-select"
+              value={state.activeProjectId}
+              onChange={(event) => dispatch({ type: "SET_PROJECT", projectId: event.target.value })}
             >
-              <td>
-                <input
-                  aria-label={`勾选 ${parameter.name}`}
-                  checked={selectedIds.has(parameter.id)}
-                  type="checkbox"
-                  onChange={(event) => toggleParameterSelection(parameter, event.target.checked)}
-                  onClick={(event) => event.stopPropagation()}
-                />
-              </td>
-              <td>
-                <strong>{parameter.name}</strong>
-                <small>{parameter.description}</small>
-              </td>
-              <td>
-                <Badge tone="tertiary">{parameter.module}</Badge>
-              </td>
-              <td className="mono">{parameter.currentValue}</td>
-              <td className="mono recommended">
-                <span className="value-change">
-                  <ArrowRight size={14} />
-                  <span>{parameter.recommendedValue}</span>
-                </span>
-              </td>
-              <td>
-                <span>{parameter.range}</span>
-                <small>{parameter.unit}</small>
-              </td>
-              <td>
-                <RiskBadge risk={parameter.risk} />
-              </td>
-              <td>{parameter.updatedAt}</td>
-            </tr>
-          )}
-        />
-      </section>
-      <aside className="detail-panel">
-        <SectionLabel icon={<Sparkles size={16} />} label="修改草稿" />
-        {selected ? (
-          <form
-            className="stack"
-            onSubmit={(event) => {
-              event.preventDefault();
-              openSubmitPreview();
-            }}
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.code} · {project.name}
+                </option>
+              ))}
+            </select>
+            <label className="field-label" htmlFor="parameter-risk-filter">
+              重要性
+            </label>
+            <select
+              id="parameter-risk-filter"
+              className="filter-select"
+              value={riskFilter}
+              onChange={(event) => setRiskFilter(event.target.value as ParameterRiskFilter)}
+            >
+              {([
+                ["All", "全部"],
+                ["High", "高"],
+                ["Medium", "中"],
+                ["Low", "低"]
+              ] as const).map(([risk, label]) => (
+                <option key={risk} value={risk}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <label className="field-label" htmlFor="parameter-module-filter">
+              模块
+            </label>
+            <select
+              id="parameter-module-filter"
+              className="filter-select"
+              value={moduleFilter}
+              onChange={(event) => setModuleFilter(event.target.value)}
+            >
+              {["All", ...moduleOptions].map((module) => (
+                <option key={module} value={module}>
+                  {module === "All" ? "全部" : module}
+                </option>
+              ))}
+            </select>
+          </aside>
+          <section className="workbench-main">
+            {selected ? (
+              <div className="detail-panel parameter-focus-summary" aria-label="当前参数">
+                <div>
+                  <span>当前参数</span>
+                  <strong>{selected.name}</strong>
+                </div>
+                <RiskBadge risk={selected.risk} />
+              </div>
+            ) : null}
+            <ParametersTable
+              rows={parameters}
+              selectedIds={selectedIds}
+              onSelectedIdsChange={handleSelectedIdsChange}
+              focusedId={focusedId}
+              onFocusRow={handleFocusRow}
+            />
+            {selectedIds.size === 0 ? (
+              <div className="parameters-empty-submit">
+                <button className="button primary" type="button" disabled>
+                  提交本轮
+                </button>
+              </div>
+            ) : null}
+          </section>
+        </div>
+        {selectedIds.size > 0 && sheetOpen ? (
+          <WorkbenchSheet
+            open
+            onClose={() => setSheetOpen(false)}
+            title="修改草稿"
+            footer={
+              <div className="draft-sheet-footer">
+                <span>{validPendingSubmissionItems.length} 项可提交</span>
+                <button className="button primary" type="button" disabled={validPendingSubmissionItems.length === 0} onClick={openSubmitPreview}>
+                  {submitButtonText}
+                </button>
+              </div>
+            }
           >
-            <div className="detail-heading">
-              <strong>{selected.name}</strong>
-              <RiskBadge risk={selected.risk} />
-            </div>
-            <div className="parameter-info-card">
-              <SectionLabel icon={<Info size={15} />} label="参数说明" />
-              <p>{selected.explanation}</p>
-            </div>
-            <div className="parameter-info-card">
-              <SectionLabel icon={<FileText size={15} />} label="参数配置格式" />
-              <code>{selected.configFormat}</code>
-            </div>
-            <label className="field-label" htmlFor="target-value">
-              目标值
-            </label>
-            <input
-              id="target-value"
-              value={targetValue}
-              onChange={(event) => {
-                setTargetValue(event.target.value);
-                updateFocusedDraft({ targetValue: event.target.value });
-              }}
-            />
-            <label className="field-label" htmlFor="reason">
-              修改原因
-            </label>
-            <textarea
-              id="reason"
-              value={reason}
-              onChange={(event) => {
-                setReason(event.target.value);
-                updateFocusedDraft({ reason: event.target.value });
-              }}
-              rows={5}
-            />
-            <div className="round-draft-panel" aria-label="本轮提交草稿">
-              <div>
+            <div className="draft-sheet-stack">
+              <div className="round-draft-panel" aria-label="本轮提交草稿">
                 <strong>本轮提交 {selectedIds.size} 项</strong>
                 <span>可先收集多个参数，再统一提交审阅。</span>
               </div>
-              {pendingSubmissionItems.length > 0 ? (
-                <ul>
-                  {pendingSubmissionItems.map((item) => (
-                    <li key={item.parameterId}>
-                      <span>{item.parameter.name}</span>
-                      <strong>{item.parameter.currentValue} → {item.targetValue}</strong>
-                      <button
-                        className="link-button"
-                        type="button"
-                        onClick={() => {
-                          setSelectedIds((ids) => {
-                            const next = new Set(ids);
-                            next.delete(item.parameterId);
-                            return next;
-                          });
-                          setDrafts((items) => {
-                            const { [item.parameterId]: _removed, ...remainingItems } = items;
-                            return remainingItems;
-                          });
-                        }}
-                      >
-                        移除
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+              {selected && !focusedIsSelected ? (
+                <div className="focused-draft-editor" aria-label="当前聚焦参数">
+                  <div className="draft-card-head">
+                    <div>
+                      <strong>{selected.name}</strong>
+                      <small>{selected.module} · 未加入本轮</small>
+                    </div>
+                    <RiskBadge risk={selected.risk} />
+                  </div>
+                  <label className="field-label" htmlFor="focused-target-value">
+                    目标值
+                  </label>
+                  <input
+                    id="focused-target-value"
+                    value={targetValue}
+                    onChange={(event) => {
+                      setTargetValue(event.target.value);
+                      updateFocusedDraft({ targetValue: event.target.value });
+                    }}
+                  />
+                  <label className="field-label" htmlFor="focused-reason">
+                    修改原因
+                  </label>
+                  <textarea
+                    id="focused-reason"
+                    value={reason}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                      updateFocusedDraft({ reason: event.target.value });
+                    }}
+                    rows={3}
+                  />
+                </div>
               ) : null}
+              <div className="draft-card-list">
+                {pendingSubmissionItems.map((item) => {
+                  const isFocusedCard = focusedId === item.parameterId;
+                  const targetInputId = `target-value-${item.parameterId}`;
+                  const reasonInputId = `reason-${item.parameterId}`;
+
+                  return (
+                    <article className="draft-card" key={item.parameterId}>
+                      <div className="draft-card-head">
+                        <div>
+                          <strong>{item.parameter.name}</strong>
+                          <small>{item.parameter.module} · {riskLabels[item.parameter.risk]}</small>
+                        </div>
+                        <RiskBadge risk={item.parameter.risk} />
+                      </div>
+                      <div className="draft-diff">
+                        <span>{item.parameter.currentValue}{item.parameter.unit}</span>
+                        <ArrowRight size={15} aria-hidden="true" />
+                        <strong>{item.targetValue}{item.parameter.unit}</strong>
+                      </div>
+                      <label className="field-label" htmlFor={targetInputId}>
+                        {isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
+                      </label>
+                      <input
+                        id={targetInputId}
+                        aria-label={isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
+                        value={item.targetValue}
+                        onChange={(event) => {
+                          if (isFocusedCard) {
+                            setTargetValue(event.target.value);
+                          }
+                          updateDraft(item.parameter, { targetValue: event.target.value });
+                        }}
+                      />
+                      <label className="field-label" htmlFor={reasonInputId}>
+                        {isFocusedCard ? "修改原因" : `修改原因 ${item.parameter.name}`}
+                      </label>
+                      <textarea
+                        id={reasonInputId}
+                        aria-label={isFocusedCard ? "修改原因" : `修改原因 ${item.parameter.name}`}
+                        value={item.reason}
+                        onChange={(event) => {
+                          if (isFocusedCard) {
+                            setReason(event.target.value);
+                          }
+                          updateDraft(item.parameter, { reason: event.target.value });
+                        }}
+                        rows={3}
+                      />
+                      <button className="button subtle" type="button" onClick={() => removeDraftItem(item.parameterId)}>
+                        移除本项
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
             </div>
-            <Timeline steps={["选择参数", "填写目标值", "提交审阅", "管理员合入"]} activeIndex={1} />
-            <button className="button primary full" type="submit" disabled={selectedIds.size === 0}>
-              {selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮"}
-            </button>
-          </form>
-        ) : (
-          <EmptyState text="请选择一条参数后提交修改。" />
-        )}
-      </aside>
+          </WorkbenchSheet>
+        ) : null}
+      </div>
       {confirmOpen && previewItems.length > 0 ? (
         <ParameterSubmissionDialog
           items={previewItems}

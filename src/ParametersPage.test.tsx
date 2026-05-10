@@ -113,3 +113,28 @@ describe("ParametersPage · 提交契约", () => {
     expect(within(dialog).getAllByText("第一行的专属原因")).toHaveLength(1);
   });
 });
+
+describe("ParametersPage · 布局与 Sheet", () => {
+  it("默认未选行时，不渲染草稿 Sheet", () => {
+    renderPage();
+    expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+  });
+
+  it("勾选行后自动打开 Sheet 并展示该参数的草稿卡片", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 /})[0]);
+    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(sheet).toBeInTheDocument();
+    expect(within(sheet).getByText("本轮提交 1 项")).toBeInTheDocument();
+  });
+
+  it("点击 Sheet 关闭按钮后 Sheet 消失，但不清空勾选", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+    expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[1]);
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
+  });
+});

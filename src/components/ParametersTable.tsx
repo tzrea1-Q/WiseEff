@@ -23,7 +23,7 @@ const sortableHeaders: Array<{ key: SortKey; label: string }> = [
   { key: "name", label: "参数名称" },
   { key: "module", label: "模块" },
   { key: "currentValue", label: "当前值" },
-  { key: "recommendedValue", label: "推荐值" },
+  { key: "recommendedValue", label: "示例" },
   { key: "range", label: "范围 / 单位" },
   { key: "risk", label: "重要性" },
   { key: "updatedAtTs", label: "更新时间" }
@@ -186,7 +186,11 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
                 </td>
                 <td>{row.module}</td>
                 <td className="mono">{row.currentValue}</td>
-                <td className="mono recommended">{row.recommendedValue}</td>
+                <td className="mono recommended">
+                  <span className="value-change">
+                    <span>{row.recommendedValue}</span>
+                  </span>
+                </td>
                 <td>
                   <span>{row.range}</span>
                   <small>{row.unit}</small>
