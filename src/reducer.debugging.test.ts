@@ -166,3 +166,231 @@ describe("CLEAR_PUSHED_DEBUG_IDS（新增）", () => {
     expect(next.pushedDebugIds).toEqual(["a", "c"]);
   });
 });
+
+describe("MARK_CONFIG_PERSISTED", () => {
+  it("把 persistedConfigSnapshot 更新为当前 configDraft 的深拷贝", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter, index) =>
+          index === 0 ? { ...parameter, currentValue: "8888" } : parameter
+        )
+      }
+    };
+
+    expect(modified.persistedConfigSnapshot.debugParameters[0].currentValue)
+      .not.toBe("8888");
+
+    const next = reducer(modified, { type: "MARK_CONFIG_PERSISTED" });
+
+    expect(next.persistedConfigSnapshot.debugParameters[0].currentValue).toBe("8888");
+    expect(next.persistedConfigSnapshot).not.toBe(next.configDraft);
+    expect(next.persistedConfigSnapshot.debugParameters)
+      .not.toBe(next.configDraft.debugParameters);
+  });
+
+  it("追加一条通知", () => {
+    const base = createPrototypeState();
+    const next = reducer(base, { type: "MARK_CONFIG_PERSISTED" });
+
+    expect(next.notifications[0]).toMatch(/持久化|已写入|已保存/);
+  });
+});
+
+describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
+  it("把 draft 写入 configDraft，并同步更新 debugParameters", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const draft = {
+      name: "修改后的名称",
+      key: target.key,
+      currentValue: "1234",
+      targetValue: "5678",
+      unit: target.unit,
+      range: target.range,
+      risk: "High" as const,
+      status: target.status
+    };
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: target.id,
+      draft
+    });
+
+    const configParam = next.configDraft.debugParameters.find(
+      (parameter) => parameter.id === target.id
+    );
+    expect(configParam?.name).toBe("修改后的名称");
+    expect(configParam?.currentValue).toBe("1234");
+    expect(configParam?.targetValue).toBe("5678");
+    expect(configParam?.risk).toBe("High");
+
+    const runtimeParam = next.debugParameters.find(
+      (parameter) => parameter.id === target.id
+    );
+    expect(runtimeParam?.name).toBe("修改后的名称");
+    expect(runtimeParam?.currentValue).toBe("1234");
+  });
+
+  it("无视 draft 中的 status 字段，保持 configDraft 里原有的 status", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const originalStatus = target.status;
+
+    const draft = {
+      name: target.name,
+      key: target.key,
+      currentValue: target.currentValue,
+      targetValue: target.targetValue,
+      unit: target.unit,
+      range: target.range,
+      risk: target.risk,
+      status: originalStatus === "待下发" ? "下发成功" : "待下发"
+    } as const;
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: target.id,
+      draft
+    });
+
+    const configParam = next.configDraft.debugParameters.find(
+      (parameter) => parameter.id === target.id
+    );
+    expect(configParam?.status).toBe(originalStatus);
+  });
+
+  it("不存在的 parameterId 保持 state 不变", () => {
+    const base = createPrototypeState();
+    const draft = {
+      name: "x",
+      key: "x",
+      currentValue: "0",
+      targetValue: "0",
+      unit: "v",
+      range: "0 - 1",
+      risk: "Low" as const,
+      status: "待下发" as const
+    };
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: "dbg-does-not-exist",
+      draft
+    });
+
+    expect(next.configDraft).toEqual(base.configDraft);
+    expect(next.debugParameters).toEqual(base.debugParameters);
+  });
+});
+
+describe("DISCARD_ALL_DEBUG_DIRTY", () => {
+  it("把 configDraft.debugParameters 恢复到 persistedConfigSnapshot.debugParameters", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter, index) =>
+          index === 0 ? { ...parameter, currentValue: "9999", name: "被改动" } : parameter
+        )
+      }
+    };
+
+    const next = reducer(modified, { type: "DISCARD_ALL_DEBUG_DIRTY" });
+
+    expect(next.configDraft.debugParameters).toEqual(base.persistedConfigSnapshot.debugParameters);
+  });
+
+  it("不改动 parameterLibrary 和 projects", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: [...base.configDraft.debugParameters].reverse()
+      }
+    };
+
+    const next = reducer(modified, { type: "DISCARD_ALL_DEBUG_DIRTY" });
+
+    expect(next.configDraft.parameterLibrary).toBe(modified.configDraft.parameterLibrary);
+    expect(next.configDraft.projects).toBe(modified.configDraft.projects);
+  });
+
+  it("同步更新 derived debugParameters 运行时字段", () => {
+    const base = createPrototypeState();
+    const modified = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter) => ({
+          ...parameter,
+          currentValue: "0"
+        }))
+      }
+    };
+
+    const next = reducer(modified, { type: "DISCARD_ALL_DEBUG_DIRTY" });
+
+    expect(next.debugParameters).toEqual(
+      base.persistedConfigSnapshot.debugParameters.map((parameter) => ({ ...parameter }))
+    );
+  });
+});
+
+describe("ADD_DEBUG_PARAMETER initialDraft", () => {
+  it("未传 initialDraft 时保持原有自动生成逻辑", () => {
+    const base = createPrototypeState();
+
+    const next = reducer(base, { type: "ADD_DEBUG_PARAMETER" });
+
+    const added = next.configDraft.debugParameters.at(-1);
+    expect(added?.name).toBe(`new_debug_parameter_${base.configDraft.debugParameters.length + 1}`);
+    expect(added?.key).toBe(`debug.new_parameter_${base.configDraft.debugParameters.length + 1}`);
+  });
+
+  it("传入 initialDraft 时将 draft 加入 configDraft.debugParameters", () => {
+    const base = createPrototypeState();
+    const draft = {
+      name: "pid_kp_coefficient",
+      key: "debug.pid.kp",
+      currentValue: "0.8",
+      targetValue: "1.0",
+      unit: "",
+      range: "0.1 - 2.0",
+      risk: "Medium" as const,
+      status: "待下发" as const
+    };
+
+    const next = reducer(base, { type: "ADD_DEBUG_PARAMETER", initialDraft: draft });
+
+    expect(next.configDraft.debugParameters).toHaveLength(base.configDraft.debugParameters.length + 1);
+    const added = next.configDraft.debugParameters.at(-1);
+    expect(added).toMatchObject(draft);
+    expect(added?.id).toMatch(/^dbg-custom-\d+$/);
+  });
+
+  it("传入 initialDraft 时同步 derived debugParameters", () => {
+    const base = createPrototypeState();
+    const draft = {
+      name: "x",
+      key: "x.y",
+      currentValue: "1",
+      targetValue: "2",
+      unit: "",
+      range: "",
+      risk: "Low" as const,
+      status: "待下发" as const
+    };
+
+    const next = reducer(base, { type: "ADD_DEBUG_PARAMETER", initialDraft: draft });
+
+    expect(next.debugParameters).toHaveLength(base.debugParameters.length + 1);
+    const added = next.debugParameters.at(-1);
+    expect(added?.key).toBe("x.y");
+  });
+});

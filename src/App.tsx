@@ -67,6 +67,7 @@ import {
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
 import {
   addDebugParameter,
+  addDebugParameterFromDraft,
   addProjectParameter,
   deleteDebugParameter,
   deleteProjectParameter,
@@ -137,10 +138,13 @@ export type AppAction =
   | { type: "UPDATE_PROJECT_PARAMETER_METADATA"; projectId: string; parameterId: string; patch: Partial<ParameterEditorDraft> }
   | { type: "UPDATE_PROJECT_PARAMETER_VALUE"; projectId: string; parameterId: string; patch: Partial<ParameterValueDraft> }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
+  | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
+  | { type: "DISCARD_ALL_DEBUG_DIRTY" }
   | { type: "ADD_PROJECT_PARAMETER" }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
-  | { type: "ADD_DEBUG_PARAMETER" }
-  | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string };
+  | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
+  | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
+  | { type: "MARK_CONFIG_PERSISTED" };
 
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
   { value: "7d", label: "7天" },
@@ -695,6 +699,37 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...derivePowerManagementRuntimeState(configDraft)
       };
     }
+    case "COMMIT_DEBUG_PARAMETER_DRAFT": {
+      const exists = state.configDraft.debugParameters.some(
+        (parameter) => parameter.id === action.parameterId
+      );
+      if (!exists) {
+        return state;
+      }
+
+      const { status: _ignoredStatus, ...committable } = action.draft;
+      void _ignoredStatus;
+      const configDraft = updateDebugParameter(state.configDraft, action.parameterId, committable);
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "DISCARD_ALL_DEBUG_DIRTY": {
+      const restoredDebugParameters = state.persistedConfigSnapshot.debugParameters.map(
+        (parameter) => ({ ...parameter })
+      );
+      const configDraft = {
+        ...state.configDraft,
+        debugParameters: restoredDebugParameters
+      };
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
     case "ADD_PROJECT_PARAMETER": {
       const configDraft = addProjectParameter(state.configDraft);
       return {
@@ -712,6 +747,18 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_DEBUG_PARAMETER": {
+      if (action.initialDraft) {
+        const configDraft = addDebugParameterFromDraft(
+          state.configDraft,
+          action.initialDraft,
+          new Date()
+        );
+        return {
+          ...state,
+          configDraft,
+          ...derivePowerManagementRuntimeState(configDraft)
+        };
+      }
       const configDraft = addDebugParameter(state.configDraft);
       return {
         ...state,
@@ -725,6 +772,16 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...state,
         configDraft,
         ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "MARK_CONFIG_PERSISTED": {
+      return {
+        ...state,
+        persistedConfigSnapshot: JSON.parse(JSON.stringify(state.configDraft)) as typeof state.configDraft,
+        notifications: [
+          `已持久化 ${state.configDraft.debugParameters.length} 项调试参数到配置文件`,
+          ...state.notifications
+        ]
       };
     }
     case "IMPORT_PARAMETERS":
