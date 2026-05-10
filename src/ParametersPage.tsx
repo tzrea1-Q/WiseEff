@@ -114,15 +114,18 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             return null;
           }
           const draft = drafts[parameterId];
+          if (!draft) {
+            return null;
+          }
           return {
             parameterId,
-            targetValue: draft?.targetValue ?? parameter.recommendedValue,
-            reason: draft?.reason ?? reason,
+            targetValue: draft.targetValue,
+            reason: draft.reason,
             parameter
           };
         })
         .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
-    [drafts, reason, selectedIds, state.parameters]
+    [drafts, selectedIds, state.parameters]
   );
 
   useEffect(() => {
@@ -233,26 +236,14 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const openSubmitPreview = () => {
-    if (selectedIds.size === 0) {
+    if (pendingSubmissionItems.length === 0) {
       return;
     }
     setConfirmOpen(true);
   };
 
   const submitRound = () => {
-    const itemsToSubmit = Array.from(selectedIds)
-      .map((parameterId) => {
-        const parameter = state.parameters.find((candidate) => candidate.id === parameterId);
-        if (!parameter) {
-          return null;
-        }
-        return {
-          parameterId,
-          targetValue: drafts[parameterId]?.targetValue ?? parameter.recommendedValue,
-          reason: drafts[parameterId]?.reason ?? reason
-        };
-      })
-      .filter((item): item is ParameterDraftItem => Boolean(item));
+    const itemsToSubmit = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
     if (itemsToSubmit.length === 0) {
       return;
     }

@@ -40,6 +40,19 @@ describe("ParametersPage (抽出后的模块)", () => {
 });
 
 describe("ParametersPage · 提交契约", () => {
+  it("builds preview and submit items from selected draft entries only", () => {
+    const source = readFileSync("src/ParametersPage.tsx", "utf8");
+    const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?\n  \);\n\n  useEffect/)?.[0] ?? "";
+    const submitSource = source.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
+
+    expect(previewSource).toContain("const pendingSubmissionItems");
+    expect(submitSource).toContain("const submitRound");
+    expect(previewSource).not.toContain("?? parameter.recommendedValue");
+    expect(previewSource).not.toContain("?? reason");
+    expect(submitSource).not.toContain("?? parameter.recommendedValue");
+    expect(submitSource).not.toContain("?? reason");
+  });
+
   it("未勾选任何行时，提交按钮禁用", () => {
     renderPage();
     const btn = screen.getByRole("button", { name: /提交本轮/ });
