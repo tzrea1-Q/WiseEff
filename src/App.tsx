@@ -1,19 +1,18 @@
-﻿import {
+import {
   AlertTriangle,
   ArrowRight,
   Bot,
   Check,
   CheckCircle2,
   CircleOff,
+  Copy,
   Download,
-  FileSearch,
   FileText,
   Filter,
   History,
   Info,
   Lightbulb,
   ListChecks,
-  Loader2,
   LockKeyhole,
   MessageSquareText,
   Play,
@@ -27,7 +26,15 @@
   X
 } from "lucide-react";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
-import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type {
+  ChangeEvent,
+  ClipboardEvent as ReactClipboardEvent,
+  CSSProperties,
+  FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode
+} from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
@@ -42,6 +49,7 @@ import {
   DebugParameter,
   DebugSnapshot,
   initialState,
+  LogEvidence,
   LogStageId,
   mockDataFingerprint,
   LogRecord,
@@ -52,6 +60,7 @@ import {
   PrototypeState,
   RequestStatus,
   roles,
+  SEVERITY_LABELS,
   STAGE_LABELS
 } from "./mockData";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
@@ -257,6 +266,10 @@ function buildRuntimeReviewFields(summary: string, module: string) {
     aiSuggestion: suggestion,
     impact: buildImpactItems(module)
   };
+}
+
+function classNames(...values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
 }
 
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
@@ -1275,6 +1288,8 @@ function HomePage() {
 }
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
+type LogsAuxTab = "history" | "metadata" | "related";
+type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 
 function getFallbackComparisonProjectId(projectId: string) {
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
@@ -2285,100 +2300,821 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
   );
 }
 
-function LogsPage({ state }: PageProps) {
+function LogsPage({ state, dispatch, onNavigate }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
-  const [unsupportedDialogOpen, setUnsupportedDialogOpen] = useState(false);
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
+  const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
+  const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [liveMessage, setLiveMessage] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const prevLogCount = useRef(state.logs.length);
   const activeLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
-  const stages: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
-  const stageIndex = stages.indexOf(activeLog.stage);
-  const evidenceInsights = activeLog.evidence.map((evidence, index) => ({
-    id: evidence.id,
-    label: `证据 ${String(index + 1).padStart(2, "0")}`,
-    stage: STAGE_LABELS[evidence.stageId],
-    source: activeLog.rawLines[evidence.lineNumbers[0] - 1] ?? "",
-    inferred: evidence.inference,
-    action: evidence.suggestedAction
-  }));
+  const evidenceByLine = useMemo(() => {
+    const map = new Map<number, LogEvidence[]>();
+
+    for (const evidence of activeLog.evidence) {
+      for (const lineNumber of evidence.lineNumbers) {
+        map.set(lineNumber, [...(map.get(lineNumber) ?? []), evidence]);
+      }
+    }
+
+    return map;
+  }, [activeLog]);
+  const matchLines = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) {
+      return [];
+    }
+
+    return activeLog.rawLines.reduce<number[]>((items, line, index) => {
+      if (line.toLowerCase().includes(query)) {
+        items.push(index + 1);
+      }
+      return items;
+    }, []);
+  }, [activeLog.rawLines, searchQuery]);
+
+  useEffect(() => {
+    if (state.logs.length > prevLogCount.current) {
+      setSelectedLogId(state.logs[0].id);
+    }
+    prevLogCount.current = state.logs.length;
+  }, [state.logs]);
+
+  useEffect(() => {
+    setSearchQuery("");
+    setActiveMatchIndex(0);
+    setHoveredEvidenceId(null);
+    setFocusedEvidenceId(null);
+    setHoveredLine(null);
+  }, [activeLog.id]);
+
+  useEffect(() => {
+    setLiveMessage(`已切换到 ${activeLog.fileName}，${logStatusLabels[activeLog.status]}，置信度 ${activeLog.confidence}%`);
+  }, [activeLog.confidence, activeLog.fileName, activeLog.id, activeLog.status]);
+
+  useEffect(() => {
+    setActiveMatchIndex(0);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (activeMatchIndex > Math.max(matchLines.length - 1, 0)) {
+      setActiveMatchIndex(Math.max(matchLines.length - 1, 0));
+    }
+  }, [activeMatchIndex, matchLines.length]);
+
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
+
+  const focusEvidence = (id: string) => {
+    setFocusedEvidenceId(id);
+    const evidence = activeLog.evidence.find((item) => item.id === id);
+    const firstLine = evidence?.lineNumbers[0];
+    if (!firstLine) {
+      return;
+    }
+
+    document.querySelector(`[data-testid="rawlog-line-${firstLine}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  };
+
+  const focusLineEvidence = (lineNumber: number) => {
+    const evidence = evidenceByLine.get(lineNumber)?.[0];
+    if (!evidence) {
+      return;
+    }
+
+    setFocusedEvidenceId(evidence.id);
+    document.getElementById(`evidence-card-${evidence.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+
+  const onPrimary = () => {
+    const params = new URLSearchParams();
+
+    if (activeLog.relatedParameterId) {
+      params.set("parameter", activeLog.relatedParameterId);
+    }
+    if (activeLog.projectId) {
+      params.set("project", activeLog.projectId);
+    }
+    params.set("logId", activeLog.id);
+
+    onNavigate(`/parameters?${params.toString()}`);
+  };
+
+  const onExport = () => {
+    const markdown = [
+      `# ${activeLog.fileName}`,
+      "",
+      `- 状态：${logStatusLabels[activeLog.status]}`,
+      `- 严重度：${SEVERITY_LABELS[activeLog.severity]}`,
+      `- 置信度：${activeLog.confidence}%`,
+      `- 采集时间：${activeLog.capturedAt}`,
+      "",
+      "## 结论",
+      activeLog.conclusion,
+      "",
+      "## 影响",
+      activeLog.impact,
+      "",
+      "## 证据链",
+      ...activeLog.evidence.flatMap((evidence, index) => [
+        `### 证据 ${String(index + 1).padStart(2, "0")} · ${STAGE_LABELS[evidence.stageId]}`,
+        ...evidence.lineNumbers.map((lineNumber) => `> \`${activeLog.rawLines[lineNumber - 1] ?? ""}\``),
+        "",
+        `**推断**：${evidence.inference}`,
+        "",
+        `**处置**：${evidence.suggestedAction}`,
+        ""
+      ])
+    ].join("\n");
+    const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `${activeLog.fileName}-analysis.md`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    dispatch({ type: "ADD_NOTIFICATION", message: "报告已导出" });
+  };
+
+  const onCopyLink = async () => {
+    const link = new URL("/logs", window.location.origin);
+
+    link.searchParams.set("logId", activeLog.id);
+
+    try {
+      await navigator.clipboard.writeText(link.toString());
+      dispatch({ type: "ADD_NOTIFICATION", message: "分析链接已复制" });
+    } catch {
+      dispatch({ type: "ADD_NOTIFICATION", message: "浏览器不支持剪贴板写入" });
+    }
+  };
+
+  const onAskAgent = () => {
+    document.querySelector<HTMLButtonElement>(".agent-fab")?.click();
+    dispatch({ type: "ADD_NOTIFICATION", message: "WiseAgent 已展开" });
+  };
 
   return (
-    <WorkbenchLayout title="日志智能分析" subtitle="上传日志并观察 AI 自动化分析过程、证据链和处置线索。">
-      <section className="logs-left">
-        <Button className="upload-zone" type="button" variant="outline" onClick={() => setUnsupportedDialogOpen(true)}>
-          <Upload size={34} />
-          <strong>拖放日志文件到此处</strong>
-          <span>点击模拟上传不支持格式日志</span>
-        </Button>
-        <div className="detail-card">
-          <SectionLabel
-            icon={<Loader2 size={16} className={activeLog.status === "Processing" ? "spin" : ""} />}
-            label={`${logStatusLabels[activeLog.status]}：${activeLog.fileName}`}
-          />
-          <Timeline steps={stages.map((stage) => STAGE_LABELS[stage])} activeIndex={stageIndex} />
-        </div>
-        <section className="analysis-card" aria-label="分析结果">
+    <div className="logs-v2">
+      <div role="status" aria-live="polite" aria-label="日志切换状态" className="sr-only" data-testid="log-live-region">
+        {liveMessage}
+      </div>
+      <div className="logs-v2-main">
+        <LogsPageHeader onNavigate={onNavigate} onUpload={() => setUploadDialogOpen(true)} />
+        <LogConclusionCard
+          log={activeLog}
+          onAskAgent={onAskAgent}
+          onCopyLink={onCopyLink}
+          onExport={onExport}
+          onPrimary={onPrimary}
+          onRetry={() => setUploadDialogOpen(true)}
+        />
+        <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
+        <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
           <PanelHeader title="分析结果" meta={logStatusLabels[activeLog.status]} />
-          <div className="analysis-grid">
-            <div className="raw-log-panel">
-              <SectionLabel icon={<FileSearch size={16} />} label="结论摘要" />
-              <p className="result-copy">{activeLog.conclusion}</p>
-              <SectionLabel icon={<FileText size={16} />} label="原始日志内容" />
-              <div className="evidence-box">
-                {activeLog.evidence.map((evidence, index) => (
-                  <div className="raw-log-line" key={evidence.id}>
-                    <span>{String(evidence.lineNumbers[0] ?? index + 1).padStart(2, "0")}</span>
-                    <code>{activeLog.rawLines[evidence.lineNumbers[0] - 1] ?? ""}</code>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="evidence-chain">
-              <SectionLabel icon={<ListChecks size={16} />} label="日志分析证据链" />
-              <div className="evidence-chain-list">
-                {evidenceInsights.map((item) => (
-                  <article className="evidence-chain-item" key={item.id}>
-                    <div className="evidence-chain-marker">
-                      <span>{item.label}</span>
-                      <strong>{item.stage}</strong>
-                    </div>
-                    <div className="evidence-chain-body">
-                      <code>{item.source}</code>
-                      <p>{item.inferred}</p>
-                      <small>关联处置：{item.action}</small>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
+          <div className="logs-v2-split">
+            <RawLogViewer
+              activeMatchIndex={activeMatchIndex}
+              evidenceByLine={evidenceByLine}
+              focusedEvidenceId={focusedEvidenceId}
+              hoveredEvidenceId={hoveredEvidenceId}
+              hoveredLine={hoveredLine}
+              matchLines={matchLines}
+              rawLines={activeLog.rawLines}
+              searchInputRef={searchInputRef}
+              searchQuery={searchQuery}
+              onActiveMatchIndexChange={setActiveMatchIndex}
+              onClickLine={focusLineEvidence}
+              onHoverLine={setHoveredLine}
+              onSearchQueryChange={setSearchQuery}
+            />
+            <EvidenceChainPanel
+              evidence={activeLog.evidence}
+              focusedEvidenceId={focusedEvidenceId}
+              hoveredLine={hoveredLine}
+              rawLines={activeLog.rawLines}
+              onClickEvidence={focusEvidence}
+              onHoverEvidence={setHoveredEvidenceId}
+            />
           </div>
         </section>
-      </section>
-      <aside className="history-panel" aria-label="历史日志记录">
-        <PanelHeader title="历史日志记录" />
-        {state.logs.map((log) => (
-          <Button
-            aria-pressed={log.id === activeLog.id}
-            className={log.id === activeLog.id ? "history-item active" : "history-item"}
-            key={log.id}
-            type="button"
-            variant="ghost"
-            onClick={() => setSelectedLogId(log.id)}
-          >
-            <strong>{log.fileName}</strong>
-            <span>{logStatusLabels[log.status]} · {log.confidence}%</span>
-          </Button>
-        ))}
-      </aside>
-      {unsupportedDialogOpen ? (
-        <ConfirmDialog
-          title="不支持的日志格式"
-          message="system_dump.bin 无法处理，请上传 .log、.txt 或 .json。"
-          cancelLabel="关闭"
-          confirmLabel="知道了"
-          onCancel={() => setUnsupportedDialogOpen(false)}
-          onConfirm={() => setUnsupportedDialogOpen(false)}
+      </div>
+      <LogsAuxPanel
+        activeLog={activeLog}
+        auxTab={auxTab}
+        logs={state.logs}
+        onSelectLog={setSelectedLogId}
+        onTabChange={setAuxTab}
+      />
+      {uploadDialogOpen ? (
+        <UploadLogDialog
+          onClose={() => setUploadDialogOpen(false)}
+          onUpload={(fileName, supported) => {
+            dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName, supported });
+            setUploadDialogOpen(false);
+          }}
         />
       ) : null}
-    </WorkbenchLayout>
+    </div>
+  );
+}
+
+function isSupportedLogFile(fileName: string) {
+  return /\.(log|txt|json)$/i.test(fileName);
+}
+
+function UploadLogDialog({
+  onClose,
+  onUpload
+}: {
+  onClose: () => void;
+  onUpload: (fileName: string, supported: boolean) => void;
+}) {
+  const [phase, setPhase] = useState<UploadDialogPhase>("idle");
+  const [selectedFileName, setSelectedFileName] = useState("");
+  const [supported, setSupported] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    fileInputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
+
+  const validateFile = (fileName: string) => {
+    const nextSupported = isSupportedLogFile(fileName);
+
+    setSelectedFileName(fileName);
+    setSupported(nextSupported);
+    setPhase("validating");
+
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+    }
+    timerRef.current = window.setTimeout(() => {
+      setPhase(nextSupported ? "confirm" : "unsupported");
+      timerRef.current = null;
+    }, 200);
+  };
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const fileName = event.target.files?.[0]?.name;
+    if (!fileName) {
+      setSelectedFileName("");
+      setSupported(false);
+      setPhase("idle");
+      return;
+    }
+
+    validateFile(fileName);
+  };
+
+  const resetSelection = () => {
+    setPhase("idle");
+    setSelectedFileName("");
+    setSupported(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+      fileInputRef.current.focus();
+    }
+  };
+
+  const uploadSelected = () => {
+    if (!selectedFileName) {
+      return;
+    }
+    onUpload(selectedFileName, supported);
+  };
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title">
+      <div className="confirm-dialog upload-dialog">
+        <div className="upload-dialog__header">
+          <div>
+            <h2 id="upload-dialog-title">上传日志</h2>
+            <p>选择 .log、.txt 或 .json 文本日志，WiseEff 会模拟创建分析任务。</p>
+          </div>
+          <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <label className="upload-file-field">
+          <span>选择日志文件</span>
+          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept=".log,.txt,.json" onChange={handleFileChange} />
+        </label>
+        <div className={classNames("upload-dialog__state", phase === "unsupported" && "upload-dialog__state--error")}>
+          {phase === "idle" ? (
+            <p>等待选择日志文件。</p>
+          ) : phase === "validating" ? (
+            <p>正在读取 {selectedFileName}...</p>
+          ) : phase === "confirm" ? (
+            <p><strong>{selectedFileName}</strong> 已通过格式检查，可以进入分析队列。</p>
+          ) : (
+            <p><strong>{selectedFileName}</strong> 格式不支持。请优先上传 .log / .txt / .json 文本日志。</p>
+          )}
+        </div>
+        <div className="upload-dialog__actions">
+          {phase === "unsupported" ? (
+            <button className="button subtle" type="button" onClick={resetSelection}>
+              知道了
+            </button>
+          ) : (
+            <button className="button subtle" type="button" onClick={onClose}>
+              取消
+            </button>
+          )}
+          {phase === "confirm" ? (
+            <button className="button primary" type="button" onClick={uploadSelected}>
+              确认上传
+            </button>
+          ) : null}
+          {phase === "unsupported" ? (
+            <button className="button danger" type="button" onClick={uploadSelected}>
+              仍然上传
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LogsPageHeader({ onNavigate, onUpload }: { onNavigate: (path: string) => void; onUpload: () => void }) {
+  return (
+    <header className="logs-v2-header">
+      <div>
+        <div className="breadcrumb">
+          <button type="button" onClick={() => onNavigate("/")}>首页</button>
+          <ChevronRight size={13} />
+          <strong>日志分析</strong>
+        </div>
+        <h1>日志智能分析</h1>
+        <p>上传日志并观察 AI 自动化分析过程、证据链和处置线索。</p>
+      </div>
+      <button className="button primary" type="button" onClick={onUpload}>
+        <Upload size={16} />
+        上传新日志
+      </button>
+    </header>
+  );
+}
+
+function SeverityBadge({ severity, processing }: { severity: LogRecord["severity"]; processing: boolean }) {
+  return (
+    <span className={classNames("severity-badge", `severity-badge--${severity.toLowerCase()}`, processing && "severity-badge--processing")}>
+      {processing ? "分析中" : SEVERITY_LABELS[severity]}
+    </span>
+  );
+}
+
+function ConfidenceBar({ value, status }: { value: number; status: LogRecord["status"] }) {
+  const tone = status === "Processing" ? "indeterminate" : value >= 90 ? "high" : value >= 70 ? "mid" : "low";
+
+  return (
+    <div className={classNames("confidence-bar", `confidence-bar--${tone}`)}>
+      <div>
+        <span>置信度</span>
+        <strong>{value}%</strong>
+      </div>
+      <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={value} role="progressbar">
+        <i style={{ width: `${Math.max(0, Math.min(value, 100))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function LogConclusionCard({
+  log,
+  onAskAgent,
+  onPrimary,
+  onExport,
+  onCopyLink,
+  onRetry
+}: {
+  log: LogRecord;
+  onAskAgent: () => void;
+  onPrimary: () => void;
+  onExport: () => void;
+  onCopyLink: () => void;
+  onRetry: () => void;
+}) {
+  if (log.status === "Failed") {
+    return <LogErrorAlert log={log} onRetry={onRetry} />;
+  }
+
+  return (
+    <section className="logs-conclusion-card" aria-labelledby="log-conclusion-title">
+      <div className="logs-conclusion-head">
+        <SeverityBadge severity={log.severity} processing={log.status === "Processing"} />
+        <div>
+          <h2 id="log-conclusion-title">{log.status === "Processing" ? "AI 正在分析..." : log.conclusion}</h2>
+          <p>{log.status === "Complete" ? log.impact : log.conclusion}</p>
+        </div>
+      </div>
+      <div className="logs-conclusion-meta">
+        <span>{log.fileName}</span>
+        <span>{STAGE_LABELS[log.stage]}</span>
+        <span>{log.capturedAt}</span>
+        {log.device ? <span>{log.device}</span> : null}
+      </div>
+      <ConfidenceBar value={log.confidence} status={log.status} />
+      <div className="logs-conclusion-actions">
+        <button className="button primary" disabled={log.status !== "Complete"} type="button" onClick={onPrimary}>
+          <Sparkles size={16} />
+          生成参数修改请求
+        </button>
+        <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
+          <Download size={16} />
+          导出报告
+        </button>
+        <button className="button subtle" type="button" onClick={onCopyLink}>
+          <Copy size={16} />
+          复制链接
+        </button>
+        <button className="button subtle" type="button" onClick={onAskAgent}>
+          <Bot size={16} />
+          问 Agent 关于此结论
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function LogErrorAlert({ log, onRetry }: { log: LogRecord; onRetry: () => void }) {
+  return (
+    <section className="log-error-alert" role="alert">
+      <AlertTriangle size={22} />
+      <div>
+        <strong>{log.conclusion}</strong>
+        <p>{log.failureReason ?? "格式不支持，请上传 .log / .txt / .json 文本日志。"}</p>
+        <button className="button danger" type="button" onClick={onRetry}>
+          重新上传
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function LogStageTimeline({ stage, status }: { stage: LogStageId; status: LogRecord["status"] }) {
+  const order: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
+  const currentIndex = Math.max(0, order.indexOf(stage));
+
+  return (
+    <ol className="log-timeline" aria-label="分析流程">
+      {order.map((id, index) => {
+        const done = index < currentIndex || (index === currentIndex && status === "Complete");
+        const current = index === currentIndex && status === "Processing";
+        const failed = index === currentIndex && status === "Failed";
+        const aborted = index > currentIndex && status === "Failed";
+        const className = classNames(
+          "log-timeline__step",
+          done && "log-timeline__step--done",
+          current && "log-timeline__step--current",
+          failed && "log-timeline__step--failed",
+          aborted && "log-timeline__step--aborted"
+        );
+
+        return (
+          <li aria-current={current ? "step" : undefined} aria-disabled={aborted || undefined} className={className} key={id}>
+            <span>{failed ? "!" : done ? <Check size={14} /> : index + 1}</span>
+            <small>{STAGE_LABELS[id]}{aborted ? " · 已中止" : ""}</small>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function RawLogViewer({
+  rawLines,
+  evidenceByLine,
+  hoveredEvidenceId,
+  focusedEvidenceId,
+  hoveredLine,
+  searchQuery,
+  matchLines,
+  activeMatchIndex,
+  searchInputRef,
+  onSearchQueryChange,
+  onActiveMatchIndexChange,
+  onHoverLine,
+  onClickLine
+}: {
+  rawLines: string[];
+  evidenceByLine: Map<number, LogEvidence[]>;
+  hoveredEvidenceId: string | null;
+  focusedEvidenceId: string | null;
+  hoveredLine: number | null;
+  searchQuery: string;
+  matchLines: number[];
+  activeMatchIndex: number;
+  searchInputRef: React.RefObject<HTMLInputElement | null>;
+  onSearchQueryChange: (value: string) => void;
+  onActiveMatchIndexChange: React.Dispatch<React.SetStateAction<number>>;
+  onHoverLine: (line: number | null) => void;
+  onClickLine: (line: number) => void;
+}) {
+  const activeMatchLine = matchLines[activeMatchIndex];
+  const matchLineSet = useMemo(() => new Set(matchLines), [matchLines]);
+  const moveMatch = (delta: number) => {
+    if (matchLines.length === 0) {
+      return;
+    }
+    onActiveMatchIndexChange((index) => Math.min(matchLines.length - 1, Math.max(0, index + delta)));
+  };
+  const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      onSearchQueryChange("");
+      event.currentTarget.blur();
+    }
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveMatch(1);
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveMatch(-1);
+    }
+  };
+
+  return (
+    <section className="rawlog-viewer" aria-label="原始日志">
+      <SectionLabel icon={<FileText size={16} />} label="原始日志" />
+      <div className="rawlog-toolbar">
+        <label>
+          <Search size={15} />
+          <input
+            aria-controls="rawlog-content"
+            aria-label="在日志中搜索"
+            onChange={(event: ChangeEvent<HTMLInputElement>) => onSearchQueryChange(event.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            placeholder="在日志中搜索..."
+            ref={searchInputRef}
+            type="search"
+            value={searchQuery}
+          />
+        </label>
+        <button aria-label="上一个匹配" disabled={matchLines.length === 0} type="button" onClick={() => moveMatch(-1)}>
+          ↑
+        </button>
+        <button aria-label="下一个匹配" disabled={matchLines.length === 0} type="button" onClick={() => moveMatch(1)}>
+          ↓
+        </button>
+        <output aria-live="polite" role="status">
+          {searchQuery.trim() === "" ? "" : matchLines.length === 0 ? "无匹配。按 Esc 清空" : `${activeMatchIndex + 1} / ${matchLines.length} 匹配`}
+        </output>
+        {searchQuery ? (
+          <button aria-label="清空搜索" type="button" onClick={() => onSearchQueryChange("")}>
+            <X size={15} />
+          </button>
+        ) : null}
+      </div>
+      <div className="rawlog-viewer__body" id="rawlog-content">
+        {rawLines.map((line, index) => {
+          const lineNumber = index + 1;
+          const evidence = evidenceByLine.get(lineNumber) ?? [];
+          const isHoverAnchor = evidence.some((item) => item.id === hoveredEvidenceId);
+          const isFocusAnchor = evidence.some((item) => item.id === focusedEvidenceId);
+          const isHoveredLine = hoveredLine === lineNumber && evidence.length > 0;
+          const isMatch = matchLineSet.has(lineNumber);
+          const isCurrentMatch = activeMatchLine === lineNumber;
+
+          return (
+            <div
+              className={classNames(
+                "rawlog-line",
+                isHoverAnchor && "rawlog-line--anchor-hover",
+                isFocusAnchor && "rawlog-line--anchor-focus",
+                isHoveredLine && "rawlog-line--line-hover",
+                isMatch && "rawlog-line--match",
+                isCurrentMatch && "rawlog-line--match-current"
+              )}
+              data-testid={`rawlog-line-${lineNumber}`}
+              key={`${lineNumber}-${line}`}
+            >
+              <button
+                aria-label={evidence.length ? `跳转到第 ${lineNumber} 行对应证据` : undefined}
+                className="rawlog-line__num"
+                disabled={evidence.length === 0}
+                type="button"
+                onClick={() => onClickLine(lineNumber)}
+                onMouseEnter={() => onHoverLine(lineNumber)}
+                onMouseLeave={() => onHoverLine(null)}
+              >
+                {lineNumber}
+              </button>
+              <code>{line}</code>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function EvidenceChainPanel({
+  evidence,
+  rawLines,
+  focusedEvidenceId,
+  hoveredLine,
+  onHoverEvidence,
+  onClickEvidence
+}: {
+  evidence: LogEvidence[];
+  rawLines: string[];
+  focusedEvidenceId: string | null;
+  hoveredLine: number | null;
+  onHoverEvidence: (id: string | null) => void;
+  onClickEvidence: (id: string) => void;
+}) {
+  return (
+    <section className="evidence-chain" aria-label="日志分析证据链">
+      <SectionLabel icon={<ListChecks size={16} />} label="日志分析证据链" />
+      <div className="evidence-chain-list">
+        {evidence.map((item, index) => {
+          const focused = item.id === focusedEvidenceId;
+          const relatedToHoveredLine = hoveredLine !== null && item.lineNumbers.includes(hoveredLine);
+
+          return (
+            <EvidenceCard
+              evidence={item}
+              focused={focused || relatedToHoveredLine}
+              index={index}
+              key={item.id}
+              rawLines={rawLines}
+              onClick={() => onClickEvidence(item.id)}
+              onHover={(id) => onHoverEvidence(id)}
+            />
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function EvidenceCard({
+  evidence,
+  index,
+  rawLines,
+  focused,
+  onHover,
+  onClick
+}: {
+  evidence: LogEvidence;
+  index: number;
+  rawLines: string[];
+  focused: boolean;
+  onHover: (id: string | null) => void;
+  onClick: () => void;
+}) {
+  const title = `证据 ${String(index + 1).padStart(2, "0")}`;
+
+  return (
+    <article
+      aria-label={`${title} ${STAGE_LABELS[evidence.stageId]}`}
+      aria-pressed={focused}
+      className={classNames("evidence-card", focused && "evidence-card--focused", `evidence-card--${evidence.stageId}`)}
+      id={`evidence-card-${evidence.id}`}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+      onMouseEnter={() => onHover(evidence.id)}
+      onMouseLeave={() => onHover(null)}
+    >
+      <header>
+        <span>{title}</span>
+        <strong>{STAGE_LABELS[evidence.stageId]}</strong>
+      </header>
+      <div className="evidence-card__body">
+        <code>{evidence.lineNumbers.map((lineNumber) => `#${lineNumber} ${rawLines[lineNumber - 1] ?? ""}`).join("\n")}</code>
+        <p>{evidence.inference}</p>
+        {evidence.ruleHit ? <small>命中规则：{evidence.ruleHit}</small> : null}
+      </div>
+      <footer>
+        <small>建议处置</small>
+        <p>关联处置：{evidence.suggestedAction}</p>
+      </footer>
+    </article>
+  );
+}
+
+function LogsAuxPanel({
+  logs,
+  activeLog,
+  auxTab,
+  onTabChange,
+  onSelectLog
+}: {
+  logs: LogRecord[];
+  activeLog: LogRecord;
+  auxTab: LogsAuxTab;
+  onTabChange: (tab: LogsAuxTab) => void;
+  onSelectLog: (id: string) => void;
+}) {
+  const tabs: Array<[LogsAuxTab, string]> = [
+    ["history", "历史"],
+    ["metadata", "元数据"],
+    ["related", "相关"]
+  ];
+
+  return (
+    <aside className="logs-aux-panel" aria-label="历史日志记录">
+      <div className="logs-aux-tabs" role="tablist" aria-label="日志辅助信息">
+        {tabs.map(([id, label]) => (
+          <button
+            aria-controls={`logs-aux-${id}`}
+            aria-selected={auxTab === id}
+            id={`logs-aux-tab-${id}`}
+            key={id}
+            role="tab"
+            type="button"
+            onClick={() => onTabChange(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div aria-labelledby={`logs-aux-tab-${auxTab}`} className="logs-aux-panel__body" id={`logs-aux-${auxTab}`} role="tabpanel">
+        {auxTab === "history" ? (
+          <div className="history-panel">
+            {logs.map((log) => (
+              <button
+                aria-pressed={log.id === activeLog.id}
+                className={log.id === activeLog.id ? "history-item active" : "history-item"}
+                key={log.id}
+                type="button"
+                onClick={() => onSelectLog(log.id)}
+              >
+                <strong>{log.fileName}</strong>
+                <span>{logStatusLabels[log.status]} · {log.confidence}%</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {auxTab === "metadata" ? (
+          <dl className="logs-metadata-list">
+            <div>
+              <dt>文件名</dt>
+              <dd>{activeLog.fileName}</dd>
+            </div>
+            <div>
+              <dt>项目</dt>
+              <dd>{activeLog.projectId}</dd>
+            </div>
+            <div>
+              <dt>设备</dt>
+              <dd>{activeLog.device ?? "未记录"}</dd>
+            </div>
+            <div>
+              <dt>采集时间</dt>
+              <dd>{activeLog.capturedAt}</dd>
+            </div>
+          </dl>
+        ) : null}
+        {auxTab === "related" ? <EmptyState text="没有找到关联日志。" /> : null}
+      </div>
+    </aside>
   );
 }
 

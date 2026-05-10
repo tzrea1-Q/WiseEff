@@ -638,22 +638,16 @@ describe("WiseEff app shell", () => {
     expect(changeCell?.firstElementChild).toHaveClass("value-change");
   });
 
-  it("shows unsupported log format feedback in a dialog only after upload simulation", () => {
+  it("opens the log upload entry point only after upload simulation", () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App />);
 
-    expect(screen.queryByText("system_dump.bin 无法处理，请上传 .log、.txt 或 .json。")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("upload-dialog-placeholder")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /拖放日志文件到此处/ }));
+    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
 
-    const dialog = screen.getByRole("alertdialog", { name: "不支持的日志格式" });
-    expect(dialog).toHaveTextContent("system_dump.bin 无法处理");
-    expect(dialog).toHaveTextContent("请上传 .log、.txt 或 .json");
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "知道了" }));
-
-    expect(screen.queryByRole("dialog", { name: "不支持的日志格式" })).not.toBeInTheDocument();
+    expect(screen.getByTestId("upload-dialog-placeholder")).toHaveTextContent("上传日志对话框占位");
   });
 
   it("switches log analysis content from clickable history records", () => {
@@ -688,12 +682,13 @@ describe("WiseEff app shell", () => {
     render(<App />);
 
     const analysis = screen.getByRole("region", { name: "分析结果" });
-    expect(within(analysis).getByText("原始日志内容")).toBeInTheDocument();
+    expect(within(analysis).getByText("原始日志")).toBeInTheDocument();
     expect(within(analysis).getByText("日志分析证据链")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 01")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 02")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 03")).toBeInTheDocument();
-    expect(within(analysis).getAllByText("10:24:01 WARN [CHG_THERMAL] battery_pack_temp=46.8C over soft_limit=45C")).toHaveLength(2);
+    expect(within(analysis).getByText("10:24:01 WARN [CHG_THERMAL] battery_pack_temp=46.8C over soft_limit=45C")).toBeInTheDocument();
+    expect(within(analysis).getByText(/#20 10:24:01 WARN \[CHG_THERMAL\]/)).toBeInTheDocument();
     expect(within(analysis).getByText("电池包温度越过 45°C 软阈值，确认热异常触发点。")).toBeInTheDocument();
     expect(within(analysis).queryByText("建议动作")).not.toBeInTheDocument();
     expect(within(analysis).queryByText("应用缓解措施")).not.toBeInTheDocument();
@@ -747,7 +742,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/logs",
-        present: ["拖放日志文件到此处", "分析结果", "原始日志内容", "日志分析证据链"],
+        present: ["上传新日志", "分析结果", "原始日志", "日志分析证据链"],
         absent: ["Unsupported Log Format", "Drag and drop log files here", "Analysis Results", "Suggested Actions", "Apply Mitigation", "建议动作", "应用缓解措施"]
       },
       {
