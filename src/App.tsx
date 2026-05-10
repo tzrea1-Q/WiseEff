@@ -44,10 +44,12 @@ import {
   LogRecord,
   ParameterRecord,
   ParameterSubmissionItem,
+  REVIEW_MOCK_NOW,
   projects,
   PrototypeState,
   roles
 } from "./mockData";
+import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
 import {
   addDebugParameter,
   addProjectParameter,
@@ -248,6 +250,25 @@ function getDebugModule(parameter: DebugParameter) {
   return debugModuleLabels[keyPrefix] ?? keyPrefix.toUpperCase();
 }
 
+function buildRuntimeReviewFields(summary: string, module: string) {
+  const suggestion = buildAISuggestion({
+    recommendation: "needs-review",
+    confidence: "mid",
+    summary,
+    reasons: ["运行时提交需要管理员复核", "AI 尚未拿到完整审阅证据", "建议结合参数历史与影响范围确认"],
+    similarRequests: []
+  });
+
+  return {
+    createdAtTs: REVIEW_MOCK_NOW,
+    updatedAt: REVIEW_MOCK_NOW,
+    waitingHours: 0,
+    aiSummary: suggestion.summary,
+    aiSuggestion: suggestion,
+    impact: buildImpactItems(module)
+  };
+}
+
 function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   switch (action.type) {
     case "SET_PROJECT":
@@ -262,6 +283,7 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
       const project = projects.find((item) => item.id === parameter.projectId);
       const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
+      const summary = action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。";
 
       const request: ChangeRequest = {
         id: `PRQ-${8910 + state.changeRequests.length}`,
@@ -275,7 +297,7 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
         submitter,
         createdAt: "刚刚",
         status: "待审阅",
-        aiSummary: action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。"
+        ...buildRuntimeReviewFields(summary, parameter.module)
       };
       const submissionItem: ParameterSubmissionItem = {
         requestId: request.id,
@@ -286,7 +308,7 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
         targetValue: action.targetValue,
         unit: parameter.unit,
         risk: parameter.risk,
-        reason: action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。"
+        reason: summary
       };
 
       return {
@@ -324,20 +346,24 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
       const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const requestSeed = 8910 + state.changeRequests.length;
-      const requests = draftItems.map(({ parameter, item }, index): ChangeRequest => ({
-        id: `PRQ-${requestSeed + index}`,
-        submissionRoundId: roundId,
-        projectId: parameter.projectId,
-        parameterId: parameter.id,
-        module: parameter.module,
-        title: parameter.name,
-        currentValue: parameter.currentValue,
-        targetValue: item.targetValue,
-        submitter,
-        createdAt: "刚刚",
-        status: "待审阅",
-        aiSummary: item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
-      }));
+      const requests = draftItems.map(({ parameter, item }, index): ChangeRequest => {
+        const summary = item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。";
+
+        return {
+          id: `PRQ-${requestSeed + index}`,
+          submissionRoundId: roundId,
+          projectId: parameter.projectId,
+          parameterId: parameter.id,
+          module: parameter.module,
+          title: parameter.name,
+          currentValue: parameter.currentValue,
+          targetValue: item.targetValue,
+          submitter,
+          createdAt: "刚刚",
+          status: "待审阅",
+          ...buildRuntimeReviewFields(summary, parameter.module)
+        };
+      });
       const submissionItems = draftItems.map(({ parameter, item }, index): ParameterSubmissionItem => ({
         requestId: requests[index].id,
         parameterId: parameter.id,

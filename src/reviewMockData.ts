@@ -6,8 +6,7 @@ import type {
   RequestStatus
 } from "./mockData";
 
-export { REVIEW_MOCK_NOW } from "./mockData";
-import { REVIEW_MOCK_NOW } from "./mockData";
+export const REVIEW_MOCK_NOW = "2026-05-10T12:00:00.000Z";
 
 export function buildAISuggestion(input: AIReviewSuggestion): AIReviewSuggestion {
   return {
@@ -175,9 +174,10 @@ const SEEDS: ReviewMockSeed[] = [
     assignedTo: "admin-li"
   },
   {
-    id: "PRQ-9094",
-    projectId: "nebula",
-    parameterId: "nebula-battery-temp-target",
+    id: "PRQ-9101",
+    submissionRoundId: "PRS-2404",
+    projectId: "aurora",
+    parameterId: "aurora-battery-temp-target",
     module: "Battery Safety",
     title: "电池目标温度下调",
     currentValue: "38",
