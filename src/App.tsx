@@ -550,6 +550,7 @@ function AppShell() {
               onNavigate={navigate}
               search={search}
               parameterHomeTimeWindow={parameterHomeTimeWindow}
+              onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
               comparisonSelection={comparisonSelection}
               onComparisonSelectionChange={setComparisonSelection}
             />
@@ -563,6 +564,7 @@ function AppShell() {
               onNavigate={navigate}
               search={search}
               parameterHomeTimeWindow={parameterHomeTimeWindow}
+              onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
               comparisonSelection={comparisonSelection}
               onComparisonSelectionChange={setComparisonSelection}
             />
@@ -587,6 +589,7 @@ type PageProps = {
   onNavigate: (path: string) => void;
   search: string;
   parameterHomeTimeWindow?: HomepageTimeWindow;
+  onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
 };
 
 function PageRouter({
@@ -596,6 +599,7 @@ function PageRouter({
   onNavigate,
   search,
   parameterHomeTimeWindow,
+  onParameterHomeTimeWindowChange,
   comparisonSelection,
   onComparisonSelectionChange
 }: PageProps & {
@@ -609,7 +613,14 @@ function PageRouter({
     case "parameter-submissions":
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-home":
-      return <ParameterManagementHomePage state={state} onNavigate={onNavigate} timeWindow={parameterHomeTimeWindow} />;
+      return (
+        <ParameterManagementHomePage
+          state={state}
+          onNavigate={onNavigate}
+          timeWindow={parameterHomeTimeWindow}
+          onTimeWindowChange={onParameterHomeTimeWindowChange}
+        />
+      );
     case "parameter-comparison":
       return (
         <ParameterComparisonPage

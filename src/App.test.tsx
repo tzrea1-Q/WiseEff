@@ -88,25 +88,25 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("button", { name: "进入 项目参数工作台" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "进入 参数合入审核" })).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
+    const main = screen.getByRole("main", { name: "参数管理首页" });
+    const timeWindowSelect = within(main).getByRole("combobox", { name: "时间范围" });
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
     const searchInput = within(topbar).getByRole("textbox", { name: "搜索" });
 
     expect(timeWindowSelect).toHaveValue("30d");
-    expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toContainElement(timeWindowSelect);
-    expect(
-      Boolean(timeWindowSelect.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ).toBe(true);
+    expect(main.querySelector(".parameter-homepage-time-window")).toContainElement(timeWindowSelect);
+    expect(within(topbar).queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    expect(searchInput).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "参数首页" })).toHaveClass("active");
   });
 
-  it("updates parameter homepage analytics from the topbar time range selector", () => {
+  it("updates parameter homepage analytics from the page-level time range selector", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     render(<App />);
 
-    const topbar = document.querySelector(".topbar") as HTMLElement;
-    const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
+    const main = screen.getByRole("main", { name: "参数管理首页" });
+    const timeWindowSelect = within(main).getByRole("combobox", { name: "时间范围" });
 
     expect(screen.getByText(/近 30 天 ·/)).toBeInTheDocument();
 
