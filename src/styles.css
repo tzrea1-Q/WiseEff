@@ -324,25 +324,13 @@ button:disabled {
   gap: 10px;
 }
 
-.topbar-time-window-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.topbar-time-window-control span {
-  color: var(--outline-strong);
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .searchbox {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 220px;
-  padding: 8px 12px;
+  height: 32px;
+  padding: 0 12px;
   color: var(--outline-strong);
   background: var(--surface-low);
   border: 1px solid var(--outline);
@@ -3665,6 +3653,18 @@ td small {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.parameter-homepage-time-window {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 960px) {
+  .parameter-homepage-time-window {
+    justify-content: flex-start;
+  }
 }
 
 .homepage-entry-grid,
