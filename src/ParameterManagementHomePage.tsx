@@ -1,8 +1,15 @@
 import { useMemo, useState } from "react";
 import type { ComponentType } from "react";
-import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
+import { BarChart3, Flame, Layers3, TrendingUp, Users } from "lucide-react";
 import type { PrototypeState } from "./mockData";
-import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
+import {
+  deriveParameterHomepageAnalytics,
+  type HomepageTimeWindow,
+  type HotspotDimension,
+  type ParameterHotspot
+} from "./parameterHomepageAnalytics";
+import { ProjectRiskBarChart } from "./components/ProjectRiskBarChart";
+import { UpdateTrendChart } from "./components/UpdateTrendChart";
 
 type ParameterManagementHomePageProps = {
   state: PrototypeState;
@@ -22,9 +29,14 @@ export const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label
   { value: "180d", label: "180天" }
 ];
 
-const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
+const metricIcons = [BarChart3, Layers3, TrendingUp, Users] as const;
 
-export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d", onTimeWindowChange }: ParameterManagementHomePageProps) {
+export function ParameterManagementHomePage({
+  state,
+  onNavigate,
+  timeWindow = "30d",
+  onTimeWindowChange
+}: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("module");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
 
@@ -32,7 +44,17 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
     () => deriveParameterHomepageAnalytics(state, timeWindow, hotspotDimension),
     [state, timeWindow, hotspotDimension]
   );
-  const selectedHotspot = analytics.hotspots.find((hotspot) => hotspot.id === selectedHotspotId) ?? analytics.hotspots[0] ?? null;
+  const selectedHotspot =
+    analytics.hotspots.find((hotspot) => hotspot.id === selectedHotspotId) ??
+    analytics.hotspots[0] ??
+    null;
+
+  const metrics = [
+    { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
+    { title: "管理项目总数", value: state.configDraft.projects.length, detail: "纳入治理项目" },
+    { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
+    { title: "开发人员总数", value: state.developers.length, detail: "参数协作角色" }
+  ];
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
@@ -53,24 +75,55 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
           </select>
         </label>
       </div>
-      <section className="homepage-main-grid" aria-label="入口卡片">
-        <div className="homepage-entry-grid">
-          {analytics.entryCards.map((entry) => (
-            <EntryCard key={entry.path} entry={entry} onNavigate={onNavigate} />
-          ))}
-        </div>
 
-        <section className="parameter-homepage-metrics" aria-label="核心指标">
-          {[
-            { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
-            { title: "共享参数定义", value: analytics.summary.parameterDefinitions, detail: "跨项目复用项" },
-            { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
-            { title: "关键风险参数", value: analytics.summary.highRiskParameters, detail: "高风险优先处理" }
-          ].map((metric, index) => {
-            const Icon = metricIcons[index];
-            return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
-          })}
-        </section>
+      <p
+        className="parameter-homepage-headline homepage-panel"
+        data-testid="parameter-home-headline"
+      >
+        <span aria-hidden="true">💬</span>
+        <span>{analytics.opsHeadline}</span>
+      </p>
+
+      <section className="parameter-homepage-metrics" aria-label="核心指标">
+        {metrics.map((metric, index) => {
+          const Icon = metricIcons[index];
+          return (
+            <MetricCard
+              key={metric.title}
+              title={metric.title}
+              value={metric.value}
+              detail={metric.detail}
+              Icon={Icon}
+            />
+          );
+        })}
+      </section>
+
+      <section className="parameter-homepage-charts" aria-label="参数态势图表">
+        <div className="homepage-panel parameter-homepage-chart-card">
+          <div className="parameter-homepage-section-head">
+            <div>
+              <h2>参数更新趋势</h2>
+              <span>{analytics.timeWindowLabel}</span>
+            </div>
+          </div>
+          <UpdateTrendChart series={analytics.updateTrend} timeWindow={timeWindow} />
+        </div>
+        <div className="homepage-panel parameter-homepage-chart-card">
+          <div className="parameter-homepage-section-head">
+            <div>
+              <h2>分项目风险分布</h2>
+              <span>高/中/低 修改聚合</span>
+            </div>
+          </div>
+          <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
+        </div>
+      </section>
+
+      <section className="homepage-entry-grid" aria-label="入口卡片">
+        {analytics.entryCards.map((entry) => (
+          <EntryCard key={entry.path} entry={entry} onNavigate={onNavigate} />
+        ))}
       </section>
 
       <section className="parameter-homepage-hotspots homepage-panel" aria-label="热门模块">
@@ -96,44 +149,6 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
             ))}
           </div>
           <HotspotExplanation hotspot={selectedHotspot} />
-        </div>
-      </section>
-
-      <section className="parameter-homepage-insights">
-        <div className="parameter-homepage-card homepage-panel">
-          <div className="parameter-homepage-section-head">
-            <h2>关键参数变化</h2>
-            <span>优先关注推荐值偏离</span>
-          </div>
-          <ul className="parameter-homepage-change-list">
-            {analytics.keyChanges.map((change) => (
-              <li className="key-change-row" key={change.id}>
-                <div>
-                  <strong>{change.parameterName}</strong>
-                  <span>
-                    {change.projectCode} · {change.module} · {change.driftLabel}
-                  </span>
-                </div>
-                <button type="button" onClick={() => onNavigate(change.suggestedPath)}>
-                  进入 <ArrowRight size={14} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="parameter-homepage-card homepage-panel">
-          <div className="parameter-homepage-section-head">
-            <h2>审核合入情况</h2>
-            <span>当前审核与合并流转</span>
-          </div>
-          <div className="parameter-homepage-flow">
-            <FlowStat label="待审" value={analytics.flowHealth.reviewQueue} />
-            <FlowStat label="自动通过" value={analytics.flowHealth.autoChecked} />
-            <FlowStat label="待合并" value={analytics.flowHealth.waitingMerge} />
-            <FlowStat label="已合并" value={analytics.flowHealth.merged} />
-            <FlowStat label="需人工确认" value={analytics.flowHealth.needsHumanConfirmation} />
-          </div>
         </div>
       </section>
     </section>
@@ -224,7 +239,13 @@ function HotspotCard({
   const eyebrow = hotspot.module === "项目参数" ? "项目维度" : hotspot.projectCode;
 
   return (
-    <article className={selected ? "parameter-homepage-card hotspot-card selected" : "parameter-homepage-card hotspot-card"}>
+    <article
+      className={
+        selected
+          ? "parameter-homepage-card hotspot-card selected"
+          : "parameter-homepage-card hotspot-card"
+      }
+    >
       <div className="parameter-homepage-hotspot-head">
         <div>
           <span>{eyebrow}</span>
@@ -291,14 +312,5 @@ function HotspotExplanation({ hotspot }: { hotspot: ParameterHotspot | null }) {
         ))}
       </div>
     </aside>
-  );
-}
-
-function FlowStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="parameter-homepage-flow-stat breakdown-row">
-      <span>{label}</span>
-      <strong>{value} 项</strong>
-    </div>
   );
 }
