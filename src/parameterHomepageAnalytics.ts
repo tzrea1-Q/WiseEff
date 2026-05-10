@@ -74,6 +74,9 @@ export type ParameterHomepageAnalytics = {
   flowHealth: HomepageFlowHealth;
   entryCards: HomepageEntryCard[];
   hotspots: ParameterHotspot[];
+  updateTrend: UpdateTrendPoint[];
+  riskBuckets: ProjectRiskBucket[];
+  opsHeadline: string;
   keyChanges: KeyParameterChange[];
   aiSummary: {
     title: string;
@@ -174,7 +177,7 @@ export function deriveParameterHomepageAnalytics(
     activeHotspots: hotspots.length
   };
 
-  return {
+  const analytics: ParameterHomepageAnalytics = {
     timeWindow,
     timeWindowLabel,
     hotspotDimension,
@@ -182,6 +185,9 @@ export function deriveParameterHomepageAnalytics(
     flowHealth,
     entryCards: deriveEntryCards(state, summary, flowHealth),
     hotspots,
+    updateTrend: deriveUpdateTrendSeries(timeWindow),
+    riskBuckets: deriveProjectRiskDistribution(state, timeWindow),
+    opsHeadline: "",
     keyChanges: deriveKeyChanges(state, projectCodes, profile),
     aiSummary: {
       title: "AI 参数治理摘要",
@@ -195,6 +201,9 @@ export function deriveParameterHomepageAnalytics(
       ]
     }
   };
+
+  analytics.opsHeadline = generateOpsHeadline(analytics);
+  return analytics;
 }
 
 function takeWindowedItems<T>(items: T[], ratio: number) {
@@ -513,4 +522,20 @@ export function deriveProjectRiskDistribution(
       total: high + medium + low
     };
   });
+}
+
+export function generateOpsHeadline(analytics: ParameterHomepageAnalytics): string {
+  const { timeWindowLabel, hotspots, riskBuckets, hotspotDimension } = analytics;
+  const topHotspot = hotspots[0];
+  const highRiskLeader = [...riskBuckets].sort((first, second) => second.high - first.high)[0];
+
+  if (!topHotspot || !highRiskLeader || highRiskLeader.high === 0) {
+    return `${timeWindowLabel}参数库运行平稳，暂无需优先处理的高风险热点。`;
+  }
+
+  if (hotspotDimension === "module") {
+    return `${timeWindowLabel}参数修改集中在 ${topHotspot.title}，${highRiskLeader.projectCode} 待治理高风险参数最多（${highRiskLeader.high} 项），建议优先关注。`;
+  }
+
+  return `${timeWindowLabel}${topHotspot.title} 修改最活跃，待治理高风险参数 ${highRiskLeader.high} 项，建议优先关注。`;
 }

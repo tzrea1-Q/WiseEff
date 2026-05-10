@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   deriveParameterHomepageAnalytics,
   deriveProjectRiskDistribution,
-  deriveUpdateTrendSeries
+  deriveUpdateTrendSeries,
+  generateOpsHeadline
 } from "./parameterHomepageAnalytics";
 import { initialState, type RequestStatus } from "./mockData";
 
@@ -244,5 +245,51 @@ describe("deriveProjectRiskDistribution", () => {
     expect(deriveProjectRiskDistribution(initialState, "30d")).toEqual(
       deriveProjectRiskDistribution(initialState, "30d")
     );
+  });
+});
+
+describe("generateOpsHeadline", () => {
+  it("uses the module template in module mode", () => {
+    const analytics = deriveParameterHomepageAnalytics(initialState, "30d", "module");
+    const headline = generateOpsHeadline(analytics);
+
+    expect(headline).toContain("近 30 天");
+    expect(headline).toContain("参数修改集中在");
+    expect(headline).toContain(analytics.hotspots[0].title);
+    expect(headline).toMatch(/待治理高风险参数最多（\d+ 项）/);
+    expect(headline.endsWith("建议优先关注。")).toBe(true);
+  });
+
+  it("uses the project template in project mode", () => {
+    const analytics = deriveParameterHomepageAnalytics(initialState, "30d", "project");
+    const headline = generateOpsHeadline(analytics);
+
+    expect(headline).toContain("近 30 天");
+    expect(headline).toContain(analytics.hotspots[0].title);
+    expect(headline).toContain("修改最活跃");
+    expect(headline).toMatch(/待治理高风险参数 \d+ 项/);
+  });
+
+  it("falls back to a calm line when data is empty", () => {
+    const emptyAnalytics = deriveParameterHomepageAnalytics(
+      { ...initialState, parameters: [] },
+      "7d",
+      "module"
+    );
+    const headline = generateOpsHeadline(emptyAnalytics);
+
+    expect(headline).toBe("近 7 天参数库运行平稳，暂无需优先处理的高风险热点。");
+  });
+
+  it("updates copy across different windows", () => {
+    const sevenDays = generateOpsHeadline(
+      deriveParameterHomepageAnalytics(initialState, "7d", "module")
+    );
+    const thirtyDays = generateOpsHeadline(
+      deriveParameterHomepageAnalytics(initialState, "30d", "module")
+    );
+
+    expect(sevenDays).toContain("近 7 天");
+    expect(thirtyDays).toContain("近 30 天");
   });
 });
