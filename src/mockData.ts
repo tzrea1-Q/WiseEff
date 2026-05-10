@@ -158,6 +158,26 @@ export type AuditEvent = {
   severity: RiskLevel;
 };
 
+export type DebugSnapshotEntry = {
+  parameterId: string;
+  previousValue: string;
+  nextValue: string;
+};
+
+export type DebugSnapshot = {
+  id: string;
+  createdAt: string;
+  entries: DebugSnapshotEntry[];
+  risk: RiskLevel;
+};
+
+export type DebugEvent =
+  | { kind: "connect"; deviceId: string; at: string }
+  | { kind: "disconnect"; deviceId: string; at: string }
+  | { kind: "push"; snapshotId: string; parameterIds: string[]; at: string; risk: RiskLevel }
+  | { kind: "rollback"; snapshotId: string; parameterIds: string[]; at: string }
+  | { kind: "rollback-undo"; snapshotId: string; at: string };
+
 export type PrototypeState = {
   activeProjectId: string;
   activeRoleId: string;
@@ -171,6 +191,10 @@ export type PrototypeState = {
   debugParameters: DebugParameter[];
   auditEvents: AuditEvent[];
   notifications: string[];
+  lastDebugSnapshot: DebugSnapshot | null;
+  debugEvents: DebugEvent[];
+  pushedDebugIds: string[];
+  debuggingSessionStartedAt: string | null;
 };
 
 function createMockDataFingerprint(state: PrototypeState) {
@@ -367,7 +391,11 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         severity: "Low"
       }
     ],
-    notifications: ["手机电源管理演示模式已启动"]
+    notifications: ["手机电源管理演示模式已启动"],
+    lastDebugSnapshot: null,
+    debugEvents: [],
+    pushedDebugIds: [],
+    debuggingSessionStartedAt: null
   };
 }
 
