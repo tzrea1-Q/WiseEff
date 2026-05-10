@@ -1,5 +1,5 @@
 import { Search } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ParamAdminSearch } from "../hooks/useParamAdminSearch";
 import { getCoverage, type ParameterCoverage } from "../parameterAdminAnalytics";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "../powerManagementConfig";
@@ -30,6 +30,8 @@ const COVERAGE_LABEL = Object.fromEntries(COVERAGE_OPTIONS.map((option) => [opti
   string
 >;
 
+const COLLAPSED_GROUPS_KEY = "parameter-admin.collapsed-groups";
+
 export function ParameterLibraryList({
   parameters,
   projects,
@@ -46,10 +48,23 @@ export function ParameterLibraryList({
   onUpdateSearch: (patch: Partial<ParamAdminSearch>) => void;
 }) {
   const [coverageOpen, setCoverageOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const raw = sessionStorage.getItem(COLLAPSED_GROUPS_KEY);
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const moduleOptions = Array.from(new Set(parameters.map((parameter) => parameter.module))).map((moduleName) => ({
     value: moduleName,
     label: moduleName
   }));
+
+  useEffect(() => {
+    sessionStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify(Array.from(collapsedGroups)));
+  }, [collapsedGroups]);
+
   const filtered = parameters.filter((parameter) => {
     if (search.q) {
       const needle = search.q.toLowerCase();
@@ -73,6 +88,28 @@ export function ParameterLibraryList({
 
     return true;
   });
+  const sorted = sortParameters(filtered, search.sort);
+  const forceExpandGroups = search.q.trim().length > 0;
+  const filtersActive = search.q.trim().length > 0 || search.risk !== "all" || search.modules.length > 0 || search.coverage !== "all";
+  const grouped = new Map<string, PowerManagementParameterTemplate[]>();
+  for (const parameter of sorted) {
+    const group = grouped.get(parameter.module) ?? [];
+    group.push(parameter);
+    grouped.set(parameter.module, group);
+  }
+  const groupedEntries = Array.from(grouped.entries());
+
+  const toggleGroup = (moduleName: string) => {
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(moduleName)) {
+        next.delete(moduleName);
+      } else {
+        next.add(moduleName);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="library-panel parameter-library-panel">
@@ -139,33 +176,74 @@ export function ParameterLibraryList({
               </div>
             ) : null}
           </div>
+          <select
+            aria-label="排序"
+            className="library-sort"
+            value={search.sort}
+            onChange={(event) => onUpdateSearch({ sort: event.target.value })}
+          >
+            <option value="updatedAt-desc">更新时间 ↓</option>
+            <option value="name-asc">名称 A-Z</option>
+            <option value="risk-desc">风险 ↓</option>
+          </select>
+          {filtersActive ? (
+            <button
+              aria-label="清除筛选"
+              className="clear-filters"
+              type="button"
+              onClick={() => onUpdateSearch({ q: "", risk: "all", modules: [], coverage: "all" })}
+            >
+              清除筛选
+            </button>
+          ) : null}
         </div>
       </div>
 
       {filtered.length > 0 ? (
         <div className="library-list" role="listbox" aria-label="项目共享参数库">
-          {filtered.map((parameter) => (
-            <div
-              aria-selected={selectedId === parameter.id}
-              className={selectedId === parameter.id ? "library-row selected" : "library-row"}
-              key={parameter.id}
-              role="option"
-              tabIndex={selectedId === parameter.id ? 0 : -1}
-              onClick={() => onSelect(parameter.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(parameter.id);
-                }
-              }}
-            >
-              <span className="library-row-main">
-                <strong>{parameter.name}</strong>
-                <small>{parameter.module}</small>
-              </span>
-              <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
-            </div>
-          ))}
+          {groupedEntries.map(([moduleName, items]) => {
+            const collapsed = !forceExpandGroups && collapsedGroups.has(moduleName);
+            return (
+              <section className="param-group" key={moduleName}>
+                <button
+                  aria-expanded={!collapsed}
+                  className="param-group-header"
+                  type="button"
+                  onClick={() => toggleGroup(moduleName)}
+                >
+                  <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+                  <strong>{moduleName}</strong>
+                  <span className="param-group-count">({items.length})</span>
+                </button>
+                {collapsed ? null : (
+                  <ul className="param-group-list">
+                    {items.map((parameter) => (
+                      <li
+                        aria-selected={selectedId === parameter.id}
+                        className={selectedId === parameter.id ? "library-row selected" : "library-row"}
+                        key={parameter.id}
+                        role="option"
+                        tabIndex={selectedId === parameter.id ? 0 : -1}
+                        onClick={() => onSelect(parameter.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelect(parameter.id);
+                          }
+                        }}
+                      >
+                        <span className="library-row-main">
+                          <strong>{parameter.name}</strong>
+                          <small>{parameter.module}</small>
+                        </span>
+                        <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
         </div>
       ) : (
         <div className="library-empty">
@@ -173,5 +251,36 @@ export function ParameterLibraryList({
         </div>
       )}
     </div>
+  );
+}
+
+function sortParameters(parameters: PowerManagementParameterTemplate[], sort: string) {
+  const sorted = [...parameters];
+  switch (sort) {
+    case "name-asc":
+      sorted.sort((a, b) => a.name.localeCompare(b.name));
+      break;
+    case "risk-desc":
+      sorted.sort((a, b) => riskWeight(b.risk) - riskWeight(a.risk) || a.name.localeCompare(b.name));
+      break;
+    case "updatedAt-desc":
+    default:
+      sorted.sort((a, b) => latestUpdatedAt(b) - latestUpdatedAt(a) || a.name.localeCompare(b.name));
+      break;
+  }
+  return sorted;
+}
+
+function riskWeight(risk: PowerManagementParameterTemplate["risk"]) {
+  return risk === "High" ? 3 : risk === "Medium" ? 2 : 1;
+}
+
+function latestUpdatedAt(parameter: PowerManagementParameterTemplate) {
+  return Math.max(
+    ...Object.values(parameter.values).map((value) => {
+      const parsed = new Date(value.updatedAt).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    }),
+    0
   );
 }

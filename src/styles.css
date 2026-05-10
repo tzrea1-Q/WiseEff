@@ -2192,6 +2192,24 @@ td small {
   background: rgba(16, 28, 45, 0.04);
 }
 
+.library-sort {
+  padding: 5px 9px;
+  color: var(--text-muted);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.clear-filters {
+  padding: 5px 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+}
+
 .chip {
   padding: 5px 9px;
   color: var(--text-muted);
@@ -2211,6 +2229,45 @@ td small {
 .library-list {
   display: flex;
   flex-direction: column;
+}
+
+.param-group {
+  border-top: 1px solid var(--outline);
+}
+
+.param-group:first-child {
+  border-top: 0;
+}
+
+.param-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--text-muted);
+  background: #f8fafc;
+  border: 0;
+  cursor: pointer;
+  font-size: 11px;
+  text-align: left;
+}
+
+.param-group-header strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.param-group-count {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.param-group-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .library-row,
