@@ -115,6 +115,7 @@ export type AppAction =
   | { type: "UNDO_REVIEW_ACTION"; requestId: string; previousStatus: RequestStatus }
   | { type: "AI_FEEDBACK"; requestId: string; feedback: "up" | "down"; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
+  | { type: "SIMULATE_LOG_UPLOAD"; fileName: string; supported: boolean }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
   | { type: "PUSH_DEBUG_VALUES"; parameterIds: string[] }
@@ -517,6 +518,34 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           };
         }),
         notifications: ["日志分析阶段已更新", ...state.notifications]
+      };
+    }
+    case "SIMULATE_LOG_UPLOAD": {
+      const supportedLog = action.supported;
+      const newLog: LogRecord = {
+        id: `log-upload-${Date.now()}`,
+        fileName: action.fileName,
+        projectId: state.activeProjectId,
+        status: supportedLog ? "Processing" : "Failed",
+        stage: "parse",
+        confidence: supportedLog ? 24 : 0,
+        conclusion: supportedLog ? "新日志已进入解析队列，等待模式匹配。" : "格式不支持，无法解析为文本日志。",
+        impact: supportedLog ? "待识别" : "N/A",
+        evidence: [],
+        suggestedActions: supportedLog ? ["等待解析完成", "保留原始日志"] : ["请上传 .log / .txt / .json 文本日志。"],
+        severity: supportedLog ? "Info" : "Critical",
+        rawLines: supportedLog ? [`刚刚 INFO [UPLOAD] ${action.fileName} accepted for analysis`] : [],
+        capturedAt: "刚刚",
+        failureReason: supportedLog ? undefined : "格式不支持。请上传 .log / .txt / .json 文本日志。"
+      };
+
+      return {
+        ...state,
+        logs: [newLog, ...state.logs],
+        notifications: [
+          supportedLog ? `${action.fileName} 已加入日志分析队列` : `${action.fileName} 格式不支持，已标记失败`,
+          ...state.notifications
+        ]
       };
     }
     case "CONNECT_DEVICE": {
