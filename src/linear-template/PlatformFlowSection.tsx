@@ -1,0 +1,151 @@
+import { useRef, useState } from "react";
+
+type PreviewKey = "parameters" | "logs" | "debugging";
+
+type TabConfig = {
+  key: PreviewKey;
+  label: string;
+  headline: string;
+  meta: string;
+  previewRows: Array<[string, string, string]>;
+  features: Array<{ title: string; text: string }>;
+};
+
+const tabs: TabConfig[] = [
+  {
+    key: "parameters",
+    label: "参数管理",
+    headline: "Parameter Matrix",
+    meta: "fast_charge_current_limit_ma",
+    previewRows: [
+      ["Aurora", "3850 mA", "生产策略"],
+      ["Nebula", "4200 mA", "研发策略"],
+      ["Atlas", "3000 mA", "国际策略"]
+    ],
+    features: [
+      { title: "共享参数目录。", text: "Aurora、Nebula、Atlas 可独立读取同一业务参数。" },
+      { title: "实时调参。", text: "关键参数在下发前保留确认。" },
+      { title: "版本化配置。", text: "每次变更记录目标、来源、差异和回滚入口。" },
+      { title: "证据绑定。", text: "参数变更可挂接日志、调试记录与 PRQ 审阅。" }
+    ]
+  },
+  {
+    key: "logs",
+    label: "日志分析",
+    headline: "Evidence Chain",
+    meta: "battery_pack_temp=46.8C",
+    previewRows: [
+      ["阶段 1", "上传 charging_thermal_trace_20260504.log", "可审阅"],
+      ["阶段 2", "命中高温充电片段", "soft_limit=45C"],
+      ["阶段 3", "关联参数与 PRQ 草稿", "可追溯"]
+    ],
+    features: [
+      { title: "日志入链。", text: "围绕关键温度信号组织可审阅证据。" },
+      { title: "上下文聚合。", text: "按设备、项目、参数和 Workflow 节点还原事件现场。" },
+      { title: "异常定位。", text: "Agent 标注高风险片段，人工确认后进入后续调试。" },
+      { title: "查询留痕。", text: "关键筛选条件、命中记录和导出动作进入审计链。" }
+    ]
+  },
+  {
+    key: "debugging",
+    label: "参数调试",
+    headline: "ChargeLab_X01",
+    meta: "connected",
+    previewRows: [
+      ["当前值", "3850 mA", "快照已保留"],
+      ["目标值", "3200 mA", "等待确认"],
+      ["回滚值", "3850 mA", "可撤回"]
+    ],
+    features: [
+      { title: "调试目标进入。", text: "从参数或日志直接进入 ChargeLab_X01 场景。" },
+      { title: "多步 Workflow。", text: "把假设、参数建议、验证结果和确认动作串成路径。" },
+      { title: "Agent 协同。", text: "Agent 给出候选操作，人负责确认是否下发。" },
+      { title: "回滚准备。", text: "危险操作前保留原值、目标值和撤回说明。" }
+    ]
+  }
+];
+
+export function PlatformFlowSection() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const activeTab = tabs[activeIndex];
+
+  const selectTab = (nextIndex: number, shouldFocus = false) => {
+    const normalizedIndex = (nextIndex + tabs.length) % tabs.length;
+    setActiveIndex(normalizedIndex);
+
+    if (shouldFocus) {
+      window.requestAnimationFrame(() => tabRefs.current[normalizedIndex]?.focus());
+    }
+  };
+
+  return (
+    <section className="platform-flow-section" id="platform-flow" aria-labelledby="platform-flow-title">
+      <div className="linear-container">
+        <div className="platform-flow-head">
+          <h2 id="platform-flow-title">一条可审阅工作流，三种场景接入</h2>
+          <p>把参数、日志和设备调试压缩进同一个可核对视图，保留 Agent 辅助与人工确认的边界。</p>
+        </div>
+        <div className="platform-flow-tablist" role="tablist" aria-label="WiseEff 工作流场景">
+          {tabs.map((tab, index) => (
+            <button
+              type="button"
+              key={tab.key}
+              ref={(node) => {
+                tabRefs.current[index] = node;
+              }}
+              className={index === activeIndex ? "platform-flow-tab active" : "platform-flow-tab"}
+              id={`platform-flow-tab-${tab.key}`}
+              role="tab"
+              aria-selected={index === activeIndex}
+              aria-controls={`platform-flow-panel-${tab.key}`}
+              tabIndex={index === activeIndex ? 0 : -1}
+              onClick={() => selectTab(index)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  selectTab(activeIndex + 1, true);
+                }
+
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  selectTab(activeIndex - 1, true);
+                }
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div
+          className="platform-flow-panel"
+          id={`platform-flow-panel-${activeTab.key}`}
+          role="tabpanel"
+          aria-labelledby={`platform-flow-tab-${activeTab.key}`}
+        >
+          <div className="platform-flow-preview">
+            <div className="platform-flow-preview-head">
+              <span>{activeTab.headline}</span>
+              <strong>{activeTab.meta}</strong>
+            </div>
+            {activeTab.previewRows.map(([label, value, detail]) => (
+              <div className="platform-flow-preview-row" key={`${label}-${value}`}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+                <small>{detail}</small>
+              </div>
+            ))}
+          </div>
+          <ul className="platform-flow-features">
+            {activeTab.features.map((feature) => (
+              <li key={feature.title}>
+                <span className="platform-flow-feature-title">{feature.title}</span>
+                {feature.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
