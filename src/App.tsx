@@ -137,6 +137,7 @@ export type AppAction =
   | { type: "UPDATE_PROJECT_PARAMETER_METADATA"; projectId: string; parameterId: string; patch: Partial<ParameterEditorDraft> }
   | { type: "UPDATE_PROJECT_PARAMETER_VALUE"; projectId: string; parameterId: string; patch: Partial<ParameterValueDraft> }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
+  | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
   | { type: "ADD_PROJECT_PARAMETER" }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER" }
@@ -690,6 +691,23 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     }
     case "UPDATE_DEBUG_PARAMETER": {
       const configDraft = updateDebugParameter(state.configDraft, action.parameterId, action.patch);
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "COMMIT_DEBUG_PARAMETER_DRAFT": {
+      const exists = state.configDraft.debugParameters.some(
+        (parameter) => parameter.id === action.parameterId
+      );
+      if (!exists) {
+        return state;
+      }
+
+      const { status: _ignoredStatus, ...committable } = action.draft;
+      void _ignoredStatus;
+      const configDraft = updateDebugParameter(state.configDraft, action.parameterId, committable);
       return {
         ...state,
         configDraft,

@@ -198,3 +198,91 @@ describe("MARK_CONFIG_PERSISTED", () => {
     expect(next.notifications[0]).toMatch(/持久化|已写入|已保存/);
   });
 });
+
+describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
+  it("把 draft 写入 configDraft，并同步更新 debugParameters", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const draft = {
+      name: "修改后的名称",
+      key: target.key,
+      currentValue: "1234",
+      targetValue: "5678",
+      unit: target.unit,
+      range: target.range,
+      risk: "High" as const,
+      status: target.status
+    };
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: target.id,
+      draft
+    });
+
+    const configParam = next.configDraft.debugParameters.find(
+      (parameter) => parameter.id === target.id
+    );
+    expect(configParam?.name).toBe("修改后的名称");
+    expect(configParam?.currentValue).toBe("1234");
+    expect(configParam?.targetValue).toBe("5678");
+    expect(configParam?.risk).toBe("High");
+
+    const runtimeParam = next.debugParameters.find(
+      (parameter) => parameter.id === target.id
+    );
+    expect(runtimeParam?.name).toBe("修改后的名称");
+    expect(runtimeParam?.currentValue).toBe("1234");
+  });
+
+  it("无视 draft 中的 status 字段，保持 configDraft 里原有的 status", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const originalStatus = target.status;
+
+    const draft = {
+      name: target.name,
+      key: target.key,
+      currentValue: target.currentValue,
+      targetValue: target.targetValue,
+      unit: target.unit,
+      range: target.range,
+      risk: target.risk,
+      status: originalStatus === "待下发" ? "下发成功" : "待下发"
+    } as const;
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: target.id,
+      draft
+    });
+
+    const configParam = next.configDraft.debugParameters.find(
+      (parameter) => parameter.id === target.id
+    );
+    expect(configParam?.status).toBe(originalStatus);
+  });
+
+  it("不存在的 parameterId 保持 state 不变", () => {
+    const base = createPrototypeState();
+    const draft = {
+      name: "x",
+      key: "x",
+      currentValue: "0",
+      targetValue: "0",
+      unit: "v",
+      range: "0 - 1",
+      risk: "Low" as const,
+      status: "待下发" as const
+    };
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: "dbg-does-not-exist",
+      draft
+    });
+
+    expect(next.configDraft).toEqual(base.configDraft);
+    expect(next.debugParameters).toEqual(base.debugParameters);
+  });
+});
