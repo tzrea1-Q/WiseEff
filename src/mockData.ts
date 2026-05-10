@@ -113,6 +113,19 @@ export type AuditEvent = {
   severity: RiskLevel;
 };
 
+export type DeveloperRole =
+  | "参数工程师"
+  | "电池架构师"
+  | "充电方案工程师"
+  | "固件工程师";
+
+export type Developer = {
+  id: string;
+  name: string;
+  projectId: string;
+  role: DeveloperRole;
+};
+
 export type PrototypeState = {
   activeProjectId: string;
   activeRoleId: string;
@@ -124,6 +137,7 @@ export type PrototypeState = {
   devices: Device[];
   debugParameters: DebugParameter[];
   auditEvents: AuditEvent[];
+  developers: Developer[];
   notifications: string[];
 };
 
@@ -347,6 +361,20 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         time: "刚刚",
         severity: "Low"
       }
+    ],
+    developers: [
+      { id: "dev-1", name: "赵磊", projectId: "aurora", role: "参数工程师" },
+      { id: "dev-2", name: "陈琳", projectId: "aurora", role: "电池架构师" },
+      { id: "dev-3", name: "周元", projectId: "aurora", role: "充电方案工程师" },
+      { id: "dev-4", name: "吴敏", projectId: "aurora", role: "固件工程师" },
+      { id: "dev-5", name: "韩启", projectId: "aurora", role: "参数工程师" },
+      { id: "dev-6", name: "柳清", projectId: "nebula", role: "电池架构师" },
+      { id: "dev-7", name: "叶铭", projectId: "nebula", role: "固件工程师" },
+      { id: "dev-8", name: "钟旸", projectId: "nebula", role: "充电方案工程师" },
+      { id: "dev-9", name: "许洋", projectId: "nebula", role: "参数工程师" },
+      { id: "dev-10", name: "林溪", projectId: "atlas", role: "参数工程师" },
+      { id: "dev-11", name: "尚雯", projectId: "atlas", role: "充电方案工程师" },
+      { id: "dev-12", name: "何志", projectId: "atlas", role: "固件工程师" }
     ],
     notifications: ["手机电源管理演示模式已启动"]
   };
