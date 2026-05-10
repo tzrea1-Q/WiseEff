@@ -906,6 +906,16 @@ describe("WiseEff app shell", () => {
     expect(feedbackLayoutCss).toContain("grid-template-columns: minmax(300px, 1fr) minmax(280px, 360px);");
   });
 
+  it("includes responsive and reduced-motion styles for the log analysis workbench", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+
+    expect(css).toContain(".logs-v2");
+    expect(css).toContain("@media (max-width: 1100px)");
+    expect(css).toContain("@media (max-width: 520px)");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(css).toContain(".log-timeline__step--current span");
+  });
+
   it("attaches a screenshot pasted from the clipboard for internal feedback", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const pastedImage = new File(["pasted screenshot"], "feedback.png", { type: "image/png" });

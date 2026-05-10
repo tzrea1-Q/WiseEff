@@ -78,4 +78,26 @@ describe("LogsPage · Header", () => {
     expect(within(metadataPanel).getByText(/charging_thermal_trace/)).toBeInTheDocument();
     expect(within(metadataPanel).getByText("aurora")).toBeInTheDocument();
   });
+
+  it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开 WiseAgent", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /问 Agent/ }));
+
+    expect(document.querySelector(".agent-panel")).toBeInTheDocument();
+    expect(screen.getByText("WiseAgent")).toBeInTheDocument();
+  });
+
+  it("切换日志时 Live Region 播报文件名和状态", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+
+    expect(screen.getByTestId("log-live-region")).toHaveTextContent(/usb_pd_negotiation_20260503\.log/);
+    expect(screen.getByTestId("log-live-region")).toHaveTextContent(/已完成/);
+  });
 });

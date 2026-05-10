@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { reducer } from "./App";
 import { initialState, SEVERITY_LABELS, STAGE_LABELS, type LogSeverity, type LogStageId } from "./mockData";
 
 describe("log mockData · label 常量", () => {
@@ -69,6 +70,24 @@ describe("log mockData · evidence 已结构化", () => {
         for (const lineNumber of evidence.lineNumbers) {
           expect(lineNumber).toBeGreaterThanOrEqual(1);
           expect(lineNumber).toBeLessThanOrEqual(log.rawLines.length);
+        }
+      }
+    }
+  });
+
+  it("上传后 state.logs 仍满足 evidence lineNumbers 不越界", () => {
+    const states = [
+      reducer(initialState, { type: "SIMULATE_LOG_UPLOAD", fileName: "fresh.log", supported: true }),
+      reducer(initialState, { type: "SIMULATE_LOG_UPLOAD", fileName: "fresh.bin", supported: false })
+    ];
+
+    for (const state of states) {
+      for (const log of state.logs) {
+        for (const evidence of log.evidence) {
+          for (const lineNumber of evidence.lineNumbers) {
+            expect(lineNumber).toBeGreaterThanOrEqual(1);
+            expect(lineNumber).toBeLessThanOrEqual(log.rawLines.length);
+          }
         }
       }
     }
