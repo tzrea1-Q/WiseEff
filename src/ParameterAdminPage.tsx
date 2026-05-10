@@ -1,6 +1,7 @@
 import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
+import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { useParamAdminSearch } from "./hooks/useParamAdminSearch";
 import type { RiskLevel } from "./mockData";
@@ -19,8 +20,33 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
   const projects = state.configDraft.projects;
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
   const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
+  const highRiskOrphans = library.filter((parameter) => parameter.risk === "High" && getCoverage(parameter, projects) === "orphan");
   const todayChanges = state.auditEvents.filter((event) => isWithinHours(event.time, 24)).length;
   const lastImport = state.auditEvents.find((event) => event.kind === "batch-import");
+  const insights: Insight[] =
+    highRiskOrphans.length > 0
+      ? [
+          {
+            id: "high-risk-orphans",
+            tone: "warning",
+            headline: `参数库里有 ${highRiskOrphans.length} 个高风险孤儿参数，建议复核`,
+            meta: `孤儿合计 ${orphanCount} · 其中高风险 ${highRiskOrphans.length}`,
+            actions: [
+              { id: "view-orphans", label: "查看孤儿参数", onClick: () => updateSearch({ coverage: "orphan" }) },
+              {
+                id: "draft-cleanup",
+                label: "生成清理建议",
+                onClick: () =>
+                  dispatch({
+                    type: "AGENT_ACTION_EXECUTED",
+                    actionId: "draft-cleanup",
+                    metadata: { orphanIds: highRiskOrphans.map((parameter) => parameter.id) }
+                  })
+              }
+            ]
+          }
+        ]
+      : [];
   const kpiItems: KpiItem[] = [
     { id: "shared", label: "共享参数", value: library.length },
     {
@@ -135,55 +161,62 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         </div>
       </header>
       <KpiStrip items={kpiItems} />
-      <main className="param-admin-body">
-      <section className="config-admin-grid">
-        <div className="library-panel config-list-panel">
-          <PanelHeader title="项目共享参数库" meta={`${state.configDraft.parameterLibrary.length} 项`} />
-          <div className="config-list-actions">
-            <button
-              className="button subtle"
-              type="button"
-              onClick={() => {
-                dispatch({ type: "ADD_PROJECT_PARAMETER" });
-                setSelectedParameterId(`new-power-parameter-${state.configDraft.parameterLibrary.length + 1}`);
-              }}
-            >
-              新增参数
-            </button>
-            <button
-              className="button danger"
-              type="button"
-              disabled={!selectedParameter || state.configDraft.parameterLibrary.length <= 1}
-              onClick={() => {
-                if (!selectedParameter) {
-                  return;
-                }
-                dispatch({ type: "DELETE_PROJECT_PARAMETER", parameterId: selectedParameter.id });
-                setSelectedParameterId(state.configDraft.parameterLibrary.find((parameter) => parameter.id !== selectedParameter.id)?.id ?? "");
-              }}
-            >
-              删除参数
-            </button>
-          </div>
-          <div className="library-list">
-            {state.configDraft.parameterLibrary.map((parameter) => (
+      <AgentInsightBar
+        dismissedIds={state.insightDismissedIds}
+        items={insights}
+        persistKey="parameter-admin-insights"
+        onDismiss={(insightId) => dispatch({ type: "DISMISS_INSIGHT", insightId })}
+      />
+      <main className="param-admin-grid">
+        <div className="library-column">
+          <div className="library-panel config-list-panel">
+            <PanelHeader title="项目共享参数库" meta={`${state.configDraft.parameterLibrary.length} 项`} />
+            <div className="config-list-actions">
               <button
-                className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
-                key={parameter.id}
+                className="button subtle"
                 type="button"
-                onClick={() => setSelectedParameterId(parameter.id)}
+                onClick={() => {
+                  dispatch({ type: "ADD_PROJECT_PARAMETER" });
+                  setSelectedParameterId(`new-power-parameter-${state.configDraft.parameterLibrary.length + 1}`);
+                }}
               >
-                <span>
-                  <strong>{parameter.name}</strong>
-                  <small>{parameter.module}</small>
-                </span>
-                <RiskBadge risk={parameter.risk} />
+                新增参数
               </button>
-            ))}
+              <button
+                className="button danger"
+                type="button"
+                disabled={!selectedParameter || state.configDraft.parameterLibrary.length <= 1}
+                onClick={() => {
+                  if (!selectedParameter) {
+                    return;
+                  }
+                  dispatch({ type: "DELETE_PROJECT_PARAMETER", parameterId: selectedParameter.id });
+                  setSelectedParameterId(state.configDraft.parameterLibrary.find((parameter) => parameter.id !== selectedParameter.id)?.id ?? "");
+                }}
+              >
+                删除参数
+              </button>
+            </div>
+            <div className="library-list">
+              {state.configDraft.parameterLibrary.map((parameter) => (
+                <button
+                  className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
+                  key={parameter.id}
+                  type="button"
+                  onClick={() => setSelectedParameterId(parameter.id)}
+                >
+                  <span>
+                    <strong>{parameter.name}</strong>
+                    <small>{parameter.module}</small>
+                  </span>
+                  <RiskBadge risk={parameter.risk} />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        <div className="config-editor-panel project-config-editor">
+        <section className="detail-column config-editor-panel project-config-editor">
           {selectedParameter ? (
             <>
               <section className="shared-definition-panel" aria-label="共享参数定义">
@@ -281,10 +314,15 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
           ) : (
             <EmptyState text="请选择一个项目参数。" />
           )}
-        </div>
+          <ConfigExportPanel configJson={configJson} />
+        </section>
 
-        <ConfigExportPanel configJson={configJson} />
-      </section>
+        <aside className="audit-column" hidden={search.audit !== "open"} aria-label="审计抽屉">
+          <div className="audit-drawer-placeholder">
+            <PanelHeader title="审计抽屉" meta="m2 完整视图" />
+            <p>审计事件筛选、批次展开和反向跳转将在下一阶段接入。</p>
+          </div>
+        </aside>
       </main>
     </div>
   );

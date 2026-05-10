@@ -57,4 +57,11 @@ describe("ParameterAdminPage", () => {
     expect(within(strip).getByText("孤儿参数")).toBeInTheDocument();
     expect(within(strip).getByText("最近导入")).toBeInTheDocument();
   });
+
+  it("reflects audit drawer state on the shell", () => {
+    renderPage("audit=open");
+
+    expect(document.querySelector(".param-admin-shell")?.getAttribute("data-audit")).toBe("open");
+    expect(screen.getByRole("complementary", { name: "审计抽屉" })).toBeInTheDocument();
+  });
 });
