@@ -123,3 +123,45 @@ describe("UNDO_REVIEW_ACTION", () => {
     expect(next.changeRequests).toEqual(initialState.changeRequests);
   });
 });
+
+describe("AI_FEEDBACK", () => {
+  it("appends one feedback entry with the requestId and feedback value", () => {
+    const target = initialState.changeRequests[0];
+    const next = reducer(initialState, {
+      type: "AI_FEEDBACK",
+      requestId: target.id,
+      feedback: "up"
+    });
+
+    expect(next.aiFeedback).toHaveLength(initialState.aiFeedback.length + 1);
+    const last = next.aiFeedback[next.aiFeedback.length - 1];
+    expect(last.requestId).toBe(target.id);
+    expect(last.feedback).toBe("up");
+    expect(last.id).toMatch(/^AF-\d+$/);
+    expect(Number.isNaN(new Date(last.recordedAt).getTime())).toBe(false);
+  });
+
+  it("allows down feedback to include a note", () => {
+    const target = initialState.changeRequests[0];
+    const next = reducer(initialState, {
+      type: "AI_FEEDBACK",
+      requestId: target.id,
+      feedback: "down",
+      note: "理由不相关"
+    });
+    const last = next.aiFeedback[next.aiFeedback.length - 1];
+
+    expect(last.feedback).toBe("down");
+    expect(last.note).toBe("理由不相关");
+  });
+
+  it("accumulates repeated feedback instead of overwriting", () => {
+    const target = initialState.changeRequests[0];
+    let state = reducer(initialState, { type: "AI_FEEDBACK", requestId: target.id, feedback: "up" });
+    state = reducer(state, { type: "AI_FEEDBACK", requestId: target.id, feedback: "down" });
+    state = reducer(state, { type: "AI_FEEDBACK", requestId: target.id, feedback: "up" });
+    const entries = state.aiFeedback.filter((entry) => entry.requestId === target.id);
+
+    expect(entries.length).toBeGreaterThanOrEqual(3);
+  });
+});

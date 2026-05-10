@@ -109,6 +109,7 @@ export type AppAction =
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
   | { type: "TRANSFER_REVIEW"; requestId: string; to: string; note?: string }
   | { type: "UNDO_REVIEW_ACTION"; requestId: string; previousStatus: RequestStatus }
+  | { type: "AI_FEEDBACK"; requestId: string; feedback: "up" | "down"; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
@@ -494,6 +495,23 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
             : request
         ),
         notifications: [`${action.requestId} 已撤销上一步操作`, ...state.notifications]
+      };
+    }
+    case "AI_FEEDBACK": {
+      const nextId = `AF-${state.aiFeedback.length + 1}`;
+
+      return {
+        ...state,
+        aiFeedback: [
+          ...state.aiFeedback,
+          {
+            id: nextId,
+            requestId: action.requestId,
+            feedback: action.feedback,
+            note: action.note,
+            recordedAt: new Date().toISOString()
+          }
+        ]
       };
     }
     case "ADVANCE_LOG": {
