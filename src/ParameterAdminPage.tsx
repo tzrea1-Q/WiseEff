@@ -1,12 +1,15 @@
-import { FileText, Info, Upload } from "lucide-react";
+import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
+import { useParamAdminSearch } from "./hooks/useParamAdminSearch";
 import type { RiskLevel } from "./mockData";
 import { serializePowerManagementConfig } from "./powerManagementConfig";
 
-export function ParameterAdminPage({ state, dispatch }: PageProps) {
+export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
+  const urlSearch = useParamAdminSearch();
+  const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
+  const updateSearch = urlSearch.updateSearch;
   const selectedParameter =
     state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
@@ -56,22 +59,41 @@ export function ParameterAdminPage({ state, dispatch }: PageProps) {
   };
 
   return (
-    <AdminPageScaffold
-      title="项目参数管理后台"
-      subtitle="编辑项目内配置源，参数工作台和对比分析页会同步读取当前草稿。"
-      metrics={[
-        ["共享参数", `${state.configDraft.parameterLibrary.length}`, "所有项目共用一份参数库"],
-        ["项目值", `${state.configDraft.projects.length} 组`, "只维护每个项目的实际取值"],
-        ["配置草稿", "可写入", "可直接保存到 JSON 文件"],
-        ["高重要性", `${state.configDraft.parameterLibrary.filter((parameter) => parameter.risk === "High").length}`, "需要管理员复核"]
-      ]}
-      action={
-        <button className="button primary" type="button" onClick={() => dispatch({ type: "IMPORT_PARAMETERS" })}>
-          <Upload size={16} />
-          批量参数导入
-        </button>
-      }
-    >
+    <div className="param-admin-shell" data-audit={search.audit === "open" ? "open" : "closed"}>
+      <header className="param-admin-header">
+        <div className="param-admin-header-text">
+          <nav className="breadcrumb" aria-label="面包屑">
+            <span>参数管理</span>
+            <span aria-hidden="true">›</span>
+            <span aria-current="page">项目参数管理后台</span>
+          </nav>
+          <h1>项目参数管理后台</h1>
+          <p className="subtitle">电池与充电参数数据库 · 批量导入 · 权限和审计管理</p>
+        </div>
+        <div className="param-admin-header-actions" role="toolbar" aria-label="管理后台动作">
+          <button className="button primary" type="button" onClick={() => console.info("m2: open import wizard")}>
+            <Upload size={16} />
+            批量导入
+          </button>
+          <button className="button subtle" type="button" onClick={() => console.info("m2: export menu")}>
+            导出 JSON
+          </button>
+          <button className="button subtle" type="button" onClick={() => console.info("m2: open permissions")}>
+            <ShieldCheck size={16} />
+            权限
+          </button>
+          <button
+            className="button ghost"
+            type="button"
+            aria-pressed={search.audit === "open"}
+            onClick={() => updateSearch({ audit: search.audit === "open" ? undefined : "open" })}
+          >
+            <History size={16} />
+            审计
+          </button>
+        </div>
+      </header>
+      <main className="param-admin-body">
       <section className="config-admin-grid">
         <div className="library-panel config-list-panel">
           <PanelHeader title="项目共享参数库" meta={`${state.configDraft.parameterLibrary.length} 项`} />
@@ -221,8 +243,25 @@ export function ParameterAdminPage({ state, dispatch }: PageProps) {
 
         <ConfigExportPanel configJson={configJson} />
       </section>
-    </AdminPageScaffold>
+      </main>
+    </div>
   );
+}
+
+function parseParamAdminSearch(raw: string) {
+  const params = new URLSearchParams(raw);
+
+  return {
+    q: params.get("q") ?? "",
+    risk: "all" as const,
+    modules: [],
+    coverage: "all" as const,
+    sort: params.get("sort") ?? "updatedAt-desc",
+    id: params.get("id") ?? undefined,
+    audit: params.get("audit") === "open" ? ("open" as const) : undefined,
+    import: undefined,
+    permissions: undefined
+  };
 }
 
 function ConfigExportPanel({ configJson }: { configJson: string }) {
@@ -288,51 +327,6 @@ function ConfigExportPanel({ configJson }: { configJson: string }) {
         </button>
       </div>
       <div className="config-sync-note">{syncMessage}</div>
-    </div>
-  );
-}
-
-function AdminPageScaffold({
-  title,
-  subtitle,
-  metrics,
-  action,
-  children
-}: {
-  title: string;
-  subtitle: string;
-  metrics: [string, string, string][];
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="admin-page">
-      <header className="page-header">
-        <div>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-        </div>
-        {action ? <div className="page-actions">{action}</div> : null}
-      </header>
-      <section className="metric-grid admin-metrics">
-        {metrics.map(([label, value, trend]) => (
-          <MetricCard key={label} title={label} value={value} trend={trend} tone="blue" />
-        ))}
-      </section>
-      {children}
-    </div>
-  );
-}
-
-function MetricCard({ title, value, trend, tone }: { title: string; value: string; trend: string; tone: "blue" | "teal" | "purple" }) {
-  return (
-    <div className={`metric-card ${tone}`}>
-      <span>{title}</span>
-      <strong>{value}</strong>
-      <p>{trend}</p>
-      <div className="metric-bar">
-        <i />
-      </div>
     </div>
   );
 }

@@ -1,7 +1,12 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { initialState } from "./mockData";
+
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/parameter-admin");
+});
 
 function renderPage(search = "") {
   return render(
@@ -25,5 +30,21 @@ describe("ParameterAdminPage", () => {
     renderPage();
 
     expect(screen.getAllByRole("button", { name: /fast_charge|charge_voltage|battery/ }).length).toBeGreaterThan(0);
+  });
+
+  it("renders a single page heading", () => {
+    renderPage();
+
+    expect(screen.getAllByRole("heading", { name: /项目参数管理后台/ })).toHaveLength(1);
+  });
+
+  it("renders the header action placeholders", () => {
+    renderPage();
+    const toolbar = screen.getByRole("toolbar", { name: "管理后台动作" });
+
+    expect(within(toolbar).getByRole("button", { name: /批量导入/ })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: /导出/ })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: /权限/ })).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: /审计/ })).toBeInTheDocument();
   });
 });

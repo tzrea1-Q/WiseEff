@@ -1084,13 +1084,16 @@ function TopBar({
     page.key !== "parameter-comparison" &&
     page.key !== "parameter-review" &&
     page.key !== "parameter-admin";
+  const suppressTopbarTitle = page.key === "parameter-admin";
 
   return (
     <header className="topbar">
-      <div className="topbar-page">
-        <div className="topbar-title">{page.title}</div>
-        <div className="topbar-subtitle">{page.subtitle}</div>
-      </div>
+      {!suppressTopbarTitle ? (
+        <div className="topbar-page">
+          <div className="topbar-title">{page.title}</div>
+          <div className="topbar-subtitle">{page.subtitle}</div>
+        </div>
+      ) : null}
       <div className="topbar-actions">
         {page.key === "parameter-home" ? (
           <label className="topbar-time-window-control">

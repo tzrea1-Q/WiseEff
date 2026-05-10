@@ -1854,6 +1854,57 @@ td small {
   line-height: 1.5;
 }
 
+.param-admin-shell {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 18px;
+  padding: 24px 28px 32px;
+}
+
+.param-admin-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.param-admin-header-text {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+
+.param-admin-header-text .breadcrumb {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.param-admin-header-text h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.param-admin-header-text .subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.param-admin-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.param-admin-body {
+  display: contents;
+}
+
 .library-panel {
   overflow: hidden;
 }
