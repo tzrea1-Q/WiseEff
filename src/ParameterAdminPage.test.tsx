@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { initialState } from "./mockData";
@@ -17,6 +17,19 @@ function renderPage(search = "") {
       search={search}
     />
   );
+}
+
+function buildDirtyState() {
+  return {
+    ...initialState,
+    configDraft: {
+      ...initialState.configDraft,
+      parameterLibrary: [
+        { ...initialState.configDraft.parameterLibrary[0], description: "changed" },
+        ...initialState.configDraft.parameterLibrary.slice(1)
+      ]
+    }
+  };
 }
 
 describe("ParameterAdminPage", () => {
@@ -63,5 +76,36 @@ describe("ParameterAdminPage", () => {
 
     expect(document.querySelector(".param-admin-shell")?.getAttribute("data-audit")).toBe("open");
     expect(screen.getByRole("complementary", { name: "审计抽屉" })).toBeInTheDocument();
+  });
+
+  it("shows a dirty indicator after config diverges from the last export", () => {
+    const { rerender } = renderPage();
+
+    expect(screen.queryByText(/未导出/)).toBeNull();
+
+    rerender(<ParameterAdminPage state={buildDirtyState()} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+
+    expect(screen.getByText(/1 处未导出/)).toBeInTheDocument();
+  });
+
+  it("opens a diff dialog from the export menu and confirms MARK_EXPORTED", () => {
+    const dispatch = vi.fn();
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:parameter-admin");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    render(<ParameterAdminPage state={buildDirtyState()} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+
+    const toolbar = screen.getByRole("toolbar", { name: "管理后台动作" });
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: /导出 JSON/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /下载/ }));
+
+    expect(screen.getByRole("dialog", { name: "导出 JSON 快照" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认导出/ }));
+
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "MARK_EXPORTED" }));
+    expect(createObjectUrl).toHaveBeenCalled();
   });
 });

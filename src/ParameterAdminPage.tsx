@@ -2,16 +2,22 @@ import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
+import { DirtyIndicator } from "./components/DirtyIndicator";
+import { ExportDiffDialog, type ExportDiff } from "./components/ExportDiffDialog";
+import { ExportMenu } from "./components/ExportMenu";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { ParameterDefinitionForm } from "./components/ParameterDefinitionForm";
 import { ParameterLibraryList } from "./components/ParameterLibraryList";
 import { ProjectValueMatrix } from "./components/ProjectValueMatrix";
+import { useBeforeUnload } from "./hooks/useBeforeUnload";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
-import { getCoverage } from "./parameterAdminAnalytics";
-import { serializePowerManagementConfig } from "./powerManagementConfig";
+import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
+import { serializePowerManagementConfig, type PowerManagementParameterTemplate } from "./powerManagementConfig";
 
 export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
@@ -20,6 +26,8 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
   const library = state.configDraft.parameterLibrary;
   const projects = state.configDraft.projects;
+  const dirtyCount = selectDirtyCount(state);
+  const exportDiff = useMemo(() => computeExportDiff(state.lastExportedSnapshot, library), [library, state.lastExportedSnapshot]);
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
   const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
   const highRiskOrphans = library.filter((parameter) => parameter.risk === "High" && getCoverage(parameter, projects) === "orphan");
@@ -49,6 +57,50 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
           }
         ]
       : [];
+
+  useBeforeUnload(dirtyCount > 0, "有未导出的参数变更，确定离开吗？");
+
+  const triggerExport = (mode: "download" | "copy") => {
+    const timestamp = new Date().toISOString();
+    const snapshotName = `power-management-${timestamp.replace(/[:.]/g, "").slice(0, 15)}.json`;
+    if (mode === "download") {
+      const blob = new Blob([configJson], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = snapshotName;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } else {
+      void navigator.clipboard?.writeText(configJson);
+    }
+    dispatch({ type: "MARK_EXPORTED", snapshotName, timestamp });
+  };
+
+  const openExportFlow = (mode: "download" | "copy" | "preview") => {
+    if (mode === "preview" || dirtyCount > 0) {
+      setPendingExportMode(mode);
+      setExportDialogOpen(true);
+      return;
+    }
+    triggerExport(mode);
+  };
+
+  const closeExportDialog = () => {
+    setExportDialogOpen(false);
+    setPendingExportMode(null);
+  };
+
+  const confirmExportDialog = () => {
+    const mode = pendingExportMode;
+    closeExportDialog();
+    if (mode === "download" || mode === "copy") {
+      triggerExport(mode);
+    }
+  };
+
   const kpiItems: KpiItem[] = [
     { id: "shared", label: "共享参数", value: library.length },
     {
@@ -140,13 +192,16 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
           <p className="subtitle">电池与充电参数数据库 · 批量导入 · 权限和审计管理</p>
         </div>
         <div className="param-admin-header-actions" role="toolbar" aria-label="管理后台动作">
+          <DirtyIndicator count={dirtyCount} onInspect={() => openExportFlow("preview")} />
           <button className="button primary" type="button" onClick={() => console.info("m2: open import wizard")}>
             <Upload size={16} />
             批量导入
           </button>
-          <button className="button subtle" type="button" onClick={() => console.info("m2: export menu")}>
-            导出 JSON
-          </button>
+          <ExportMenu
+            onCopy={() => openExportFlow("copy")}
+            onDownload={() => openExportFlow("download")}
+            onViewDiff={() => openExportFlow("preview")}
+          />
           <button className="button subtle" type="button" onClick={() => console.info("m2: open permissions")}>
             <ShieldCheck size={16} />
             权限
@@ -235,8 +290,42 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
           </div>
         </aside>
       </main>
+      <ExportDiffDialog diff={exportDiff} open={exportDialogOpen} onCancel={closeExportDialog} onConfirm={confirmExportDialog} />
     </div>
   );
+}
+
+function computeExportDiff(lastExportedSnapshot: string, library: readonly PowerManagementParameterTemplate[]): ExportDiff {
+  let lastLibrary: PowerManagementParameterTemplate[] = [];
+  try {
+    const parsed = JSON.parse(lastExportedSnapshot) as { parameterLibrary?: PowerManagementParameterTemplate[] };
+    lastLibrary = Array.isArray(parsed.parameterLibrary) ? parsed.parameterLibrary : [];
+  } catch {
+    lastLibrary = [];
+  }
+
+  const currentById = new Map(library.map((parameter) => [parameter.id, parameter]));
+  const lastById = new Map(lastLibrary.map((parameter) => [parameter.id, parameter]));
+  const affectedParameters: ExportDiff["affectedParameters"] = [];
+
+  for (const id of new Set([...currentById.keys(), ...lastById.keys()])) {
+    const current = currentById.get(id);
+    const last = lastById.get(id);
+    if (current && !last) {
+      affectedParameters.push({ name: current.name, kind: "added" });
+    } else if (!current && last) {
+      affectedParameters.push({ name: last.name, kind: "deleted" });
+    } else if (current && last && JSON.stringify(current) !== JSON.stringify(last)) {
+      affectedParameters.push({ name: current.name, kind: "updated" });
+    }
+  }
+
+  return {
+    added: affectedParameters.filter((parameter) => parameter.kind === "added").length,
+    updated: affectedParameters.filter((parameter) => parameter.kind === "updated").length,
+    deleted: affectedParameters.filter((parameter) => parameter.kind === "deleted").length,
+    affectedParameters
+  };
 }
 
 function parseParamAdminSearch(raw: string): ParamAdminSearch {
