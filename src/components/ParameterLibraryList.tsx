@@ -1,7 +1,10 @@
 import { Search } from "lucide-react";
+import { useState } from "react";
 import type { ParamAdminSearch } from "../hooks/useParamAdminSearch";
+import { getCoverage, type ParameterCoverage } from "../parameterAdminAnalytics";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "../powerManagementConfig";
 import { FilterChipGroup } from "./FilterChipGroup";
+import { MultiSelectDropdown } from "./MultiSelectDropdown";
 
 const RISK_TO_FILTER = {
   High: "high",
@@ -15,8 +18,21 @@ const RISK_LABEL = {
   Low: "低"
 } as const;
 
+const COVERAGE_OPTIONS: Array<{ value: ParamAdminSearch["coverage"]; label: string }> = [
+  { value: "all", label: "全部" },
+  { value: "full", label: "3 个项目都有" },
+  { value: "partial", label: "缺某个项目" },
+  { value: "orphan", label: "孤儿参数" }
+];
+
+const COVERAGE_LABEL = Object.fromEntries(COVERAGE_OPTIONS.map((option) => [option.value, option.label])) as Record<
+  ParamAdminSearch["coverage"],
+  string
+>;
+
 export function ParameterLibraryList({
   parameters,
+  projects,
   selectedId,
   onSelect,
   search,
@@ -29,6 +45,11 @@ export function ParameterLibraryList({
   search: ParamAdminSearch;
   onUpdateSearch: (patch: Partial<ParamAdminSearch>) => void;
 }) {
+  const [coverageOpen, setCoverageOpen] = useState(false);
+  const moduleOptions = Array.from(new Set(parameters.map((parameter) => parameter.module))).map((moduleName) => ({
+    value: moduleName,
+    label: moduleName
+  }));
   const filtered = parameters.filter((parameter) => {
     if (search.q) {
       const needle = search.q.toLowerCase();
@@ -39,6 +60,14 @@ export function ParameterLibraryList({
     }
 
     if (search.risk !== "all" && RISK_TO_FILTER[parameter.risk] !== search.risk) {
+      return false;
+    }
+
+    if (search.modules.length > 0 && !search.modules.includes(parameter.module)) {
+      return false;
+    }
+
+    if (search.coverage !== "all" && getCoverage(parameter, projects) !== search.coverage) {
       return false;
     }
 
@@ -73,6 +102,44 @@ export function ParameterLibraryList({
           ]}
           onChange={(risk) => onUpdateSearch({ risk: risk as ParamAdminSearch["risk"] })}
         />
+        <div className="library-filter-row">
+          <MultiSelectDropdown
+            label="模块"
+            options={moduleOptions}
+            value={search.modules}
+            onChange={(modules) => onUpdateSearch({ modules })}
+          />
+          <div className="dropdown-root">
+            <button
+              aria-expanded={coverageOpen}
+              aria-haspopup="listbox"
+              className="dropdown-trigger"
+              type="button"
+              onClick={() => setCoverageOpen((current) => !current)}
+            >
+              覆盖{search.coverage !== "all" ? ` · ${COVERAGE_LABEL[search.coverage]}` : ""} ▾
+            </button>
+            {coverageOpen ? (
+              <div className="dropdown-menu" role="listbox">
+                {COVERAGE_OPTIONS.map((option) => (
+                  <label className="dropdown-item" key={option.value}>
+                    <input
+                      aria-label={option.label}
+                      checked={search.coverage === option.value}
+                      name="coverage"
+                      type="radio"
+                      onChange={() => {
+                        onUpdateSearch({ coverage: option.value as ParameterCoverage });
+                        setCoverageOpen(false);
+                      }}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {filtered.length > 0 ? (
@@ -101,7 +168,9 @@ export function ParameterLibraryList({
           ))}
         </div>
       ) : (
-        <div className="library-empty">没有匹配的参数。</div>
+        <div className="library-empty">
+          {search.coverage === "orphan" ? "没有匹配的孤儿参数。" : "没有匹配的参数。"}
+        </div>
       )}
     </div>
   );

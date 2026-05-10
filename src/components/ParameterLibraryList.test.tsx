@@ -74,4 +74,39 @@ describe("ParameterLibraryList search and risk filters", () => {
 
     expect(screen.getByText(/没有匹配/)).toBeInTheDocument();
   });
+
+  it("filters by selected modules", () => {
+    render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, modules: ["Charging Policy"] } })} />);
+
+    const rows = screen.getAllByRole("option");
+    expect(rows.length).toBeGreaterThan(0);
+    rows.forEach((row) => expect(row).toHaveTextContent("Charging Policy"));
+  });
+
+  it("sends module updates from the module dropdown", () => {
+    const props = defaultProps();
+    render(<ParameterLibraryList {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /模块/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
+
+    expect(props.onUpdateSearch).toHaveBeenCalledWith({ modules: ["Charging Policy"] });
+  });
+
+  it("filters by coverage", () => {
+    render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, coverage: "orphan" } })} />);
+
+    expect(screen.getByText("没有匹配的孤儿参数。")).toBeInTheDocument();
+    expect(screen.queryAllByRole("option").length).toBe(0);
+  });
+
+  it("sends coverage updates from the coverage dropdown", () => {
+    const props = defaultProps();
+    render(<ParameterLibraryList {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /覆盖/ }));
+    fireEvent.click(screen.getByRole("radio", { name: "孤儿参数" }));
+
+    expect(props.onUpdateSearch).toHaveBeenCalledWith({ coverage: "orphan" });
+  });
 });

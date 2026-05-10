@@ -2142,6 +2142,56 @@ td small {
   flex-wrap: wrap;
 }
 
+.library-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dropdown-root {
+  position: relative;
+}
+
+.dropdown-trigger {
+  padding: 5px 10px;
+  color: var(--text-muted);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 210px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.dropdown-item:hover {
+  background: rgba(16, 28, 45, 0.04);
+}
+
 .chip {
   padding: 5px 9px;
   color: var(--text-muted);
