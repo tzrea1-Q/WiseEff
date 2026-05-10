@@ -1,8 +1,9 @@
-import { RotateCcw, Send } from "lucide-react";
+import { Send } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppAction } from "./App";
 import { DisconnectedBanner } from "./components/DisconnectedBanner";
+import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { SessionSummaryCard } from "./components/SessionSummaryCard";
 import type { DebugParameter, PrototypeState } from "./mockData";
@@ -106,10 +107,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           <div className="table-actionbar">
             <span>{pendingParameters.length} 项参数等待应用</span>
             <div>
-              <button className="button subtle" type="button">
-                <RotateCcw size={16} />
-                一键回滚充电策略
-              </button>
               <button
                 className="button primary"
                 type="button"
@@ -122,6 +119,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
             </div>
           </div>
         </section>
+        <OperationHistoryPanel events={state.debugEvents} deviceName={activeDevice.name} />
       </div>
       {rollbackDialogOpen && state.lastDebugSnapshot ? (
         <RollbackConfirmDialog

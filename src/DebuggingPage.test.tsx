@@ -14,7 +14,7 @@ describe("/debugging 单栏骨架", () => {
 
     const main = screen.getByRole("main");
     expect(within(main).queryByLabelText("参数筛选")).not.toBeInTheDocument();
-    expect(within(main).queryByLabelText("调试操作记录")).not.toBeInTheDocument();
+    expect(within(main).queryByRole("list", { name: "调试事件列表" })).not.toBeInTheDocument();
     expect(main.querySelector(".workbench-one-col")).toBeInTheDocument();
     expect(main.querySelector(".workbench-grid")).not.toBeInTheDocument();
   });
@@ -129,5 +129,34 @@ describe("回滚链路端到端", () => {
     fireEvent.click(screen.getByRole("button", { name: /回滚到上次快照/ }));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
     expect(screen.getByText(/snap-/)).toBeInTheDocument();
+  });
+});
+
+describe("OperationHistoryPanel 集成", () => {
+  it("页面底部出现折叠式操作记录面板（默认折叠）", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    expect(screen.getByRole("button", { name: /调试操作记录/ })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "调试事件列表" })).not.toBeInTheDocument();
+  });
+
+  it("下发后展开面板能看到 push 事件", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    const input = document.querySelector<HTMLInputElement>("tbody tr:first-child input");
+    if (!input) {
+      throw new Error("找不到输入");
+    }
+    fireEvent.change(input, { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: /下发调试值/ }));
+    fireEvent.click(screen.getByRole("button", { name: /调试操作记录/ }));
+    expect(screen.getByText(/下发 1 项/)).toBeInTheDocument();
+  });
+
+  it("table-actionbar 中不再出现断掉的一键回滚按钮", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    expect(screen.queryByRole("button", { name: /一键回滚充电策略/ })).not.toBeInTheDocument();
   });
 });
