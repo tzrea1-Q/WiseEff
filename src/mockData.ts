@@ -48,7 +48,31 @@ export type AIFeedbackEntry = {
 export { REVIEW_MOCK_NOW };
 export type RequestStatus = "待审阅" | "自动检查通过" | "等待合入" | "已合入" | "已打回";
 export type LogStage = "日志解析" | "模式匹配" | "根因推断" | "报告生成";
+export type LogStageId = "parse" | "pattern" | "rootcause" | "report";
+export type LogSeverity = "Critical" | "Warning" | "Info";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
+
+export type LogEvidence = {
+  id: string;
+  stageId: LogStageId;
+  lineNumbers: number[];
+  inference: string;
+  suggestedAction: string;
+  ruleHit?: string;
+};
+
+export const STAGE_LABELS: Record<LogStageId, string> = {
+  parse: "日志解析",
+  pattern: "模式匹配",
+  rootcause: "根因推断",
+  report: "报告生成"
+};
+
+export const SEVERITY_LABELS: Record<LogSeverity, string> = {
+  Critical: "严重",
+  Warning: "警告",
+  Info: "提示"
+};
 
 export type Project = {
   id: PowerManagementProjectId;
@@ -136,6 +160,12 @@ export type LogRecord = {
   impact: string;
   evidence: string[];
   suggestedActions: string[];
+  severity: LogSeverity;
+  rawLines: string[];
+  capturedAt: string;
+  relatedParameterId?: string;
+  device?: string;
+  failureReason?: string;
 };
 
 export type Device = {
@@ -304,7 +334,12 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
           "10:24:03 INFO [CHG_POLICY] fast_current_limit_ma 3800 -> 2800",
           "10:24:05 WARN [BATTERY_GAUGE] soc_rise_slope drop after thermal foldback"
         ],
-        suggestedActions: ["下调快充电流上限", "复核电池温控阈值", "关联 thermal_trace 与充电电流曲线"]
+        suggestedActions: ["下调快充电流上限", "复核电池温控阈值", "关联 thermal_trace 与充电电流曲线"],
+        severity: "Warning",
+        rawLines: [],
+        capturedAt: "10:24:05",
+        relatedParameterId: "aurora-battery-temp-target",
+        device: "ChargeLab_X01"
       },
       {
         id: "log-auth",
@@ -320,7 +355,11 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
           "09:18:12 INFO PD_CTRL Accept profile 9V/3A",
           "09:18:19 INFO [CHARGER] input_voltage_mv=9020 input_current_ma=2980 stable"
         ],
-        suggestedActions: ["保留 9V/3A 充电档位", "同步适配器白名单", "跟踪海外批次 PD 兼容性"]
+        suggestedActions: ["保留 9V/3A 充电档位", "同步适配器白名单", "跟踪海外批次 PD 兼容性"],
+        severity: "Info",
+        rawLines: [],
+        capturedAt: "09:18:19",
+        device: "ChargeLab_X01"
       },
       {
         id: "log-failed",
@@ -335,7 +374,11 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
           "00:00:00 ERROR [PARSER] binary thermal snapshot cannot be decoded",
           "00:00:00 INFO [PARSER] accepted suffix: .log, .txt, .json"
         ],
-        suggestedActions: ["请重新上传 .log、.txt 或 .json 文本日志。", "从温控工具导出文本链路日志", "保留原始热快照用于离线分析"]
+        suggestedActions: ["请重新上传 .log、.txt 或 .json 文本日志。", "从温控工具导出文本链路日志", "保留原始热快照用于离线分析"],
+        severity: "Critical",
+        rawLines: [],
+        capturedAt: "刚刚",
+        failureReason: "二进制格式不支持。请导出 .log / .txt / .json 文本日志。"
       }
     ],
     devices: [

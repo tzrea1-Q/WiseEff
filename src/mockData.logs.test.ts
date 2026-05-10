@@ -1,0 +1,40 @@
+import { describe, expect, it } from "vitest";
+import { initialState, SEVERITY_LABELS, STAGE_LABELS, type LogSeverity, type LogStageId } from "./mockData";
+
+describe("log mockData · label 常量", () => {
+  it("STAGE_LABELS 覆盖所有 LogStageId 且为中文", () => {
+    const stageIds: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
+
+    for (const id of stageIds) {
+      expect(STAGE_LABELS[id]).toMatch(/[\u4e00-\u9fa5]/);
+    }
+  });
+
+  it("SEVERITY_LABELS 覆盖所有 LogSeverity 且为中文", () => {
+    const severities: LogSeverity[] = ["Critical", "Warning", "Info"];
+
+    for (const severity of severities) {
+      expect(SEVERITY_LABELS[severity]).toMatch(/[\u4e00-\u9fa5]/);
+    }
+  });
+});
+
+describe("log mockData · 新增字段契约", () => {
+  it.each(initialState.logs.map((log) => [log.id, log]))("%s 具备 severity/rawLines/capturedAt", (_id, log) => {
+    expect(["Critical", "Warning", "Info"]).toContain(log.severity);
+    expect(Array.isArray(log.rawLines)).toBe(true);
+    expect(typeof log.capturedAt).toBe("string");
+  });
+
+  it("log-active 提供 relatedParameterId=aurora-battery-temp-target", () => {
+    const log = initialState.logs.find((item) => item.id === "log-active");
+
+    expect(log?.relatedParameterId).toBe("aurora-battery-temp-target");
+  });
+
+  it("log-failed 提供 failureReason", () => {
+    const log = initialState.logs.find((item) => item.id === "log-failed");
+
+    expect(log?.failureReason).toMatch(/格式不支持|二进制/);
+  });
+});
