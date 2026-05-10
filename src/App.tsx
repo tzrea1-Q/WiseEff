@@ -106,6 +106,7 @@ export type AppAction =
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
+  | { type: "TRANSFER_REVIEW"; requestId: string; to: string; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
@@ -451,6 +452,27 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           ...state.notifications
         ]
       };
+    case "TRANSFER_REVIEW": {
+      const exists = state.changeRequests.some((request) => request.id === action.requestId);
+      if (!exists) {
+        return state;
+      }
+
+      return {
+        ...state,
+        changeRequests: state.changeRequests.map((request) =>
+          request.id === action.requestId
+            ? {
+                ...request,
+                assignedTo: action.to,
+                reviewerNote: action.note ?? request.reviewerNote,
+                updatedAt: new Date().toISOString()
+              }
+            : request
+        ),
+        notifications: [`${action.requestId} 已转交给 ${action.to}`, ...state.notifications]
+      };
+    }
     case "ADVANCE_LOG": {
       const order: LogRecord["stage"][] = ["日志解析", "模式匹配", "根因推断", "报告生成"];
       return {

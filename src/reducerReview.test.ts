@@ -41,3 +41,36 @@ describe("review reducer existing actions", () => {
     expect(next.notifications[0]).toContain("快速通道");
   });
 });
+
+describe("TRANSFER_REVIEW", () => {
+  it("updates the request assignee and keeps status unchanged", () => {
+    const existing = initialState.changeRequests[0];
+    const action: AppAction = {
+      type: "TRANSFER_REVIEW",
+      requestId: existing.id,
+      to: "specialist-wang",
+      note: "请协助审查新型号"
+    };
+
+    const next = reducer(initialState, action);
+    const updated = next.changeRequests.find((request) => request.id === existing.id);
+
+    expect(updated?.assignedTo).toBe("specialist-wang");
+    expect(updated?.status).toBe(existing.status);
+    expect(updated?.reviewerNote).toBe("请协助审查新型号");
+    expect(next.notifications[0]).toContain(existing.id);
+    expect(next.notifications[0]).toContain("specialist-wang");
+  });
+
+  it("keeps state unchanged for an unknown requestId", () => {
+    const action: AppAction = {
+      type: "TRANSFER_REVIEW",
+      requestId: "PRQ-DOES-NOT-EXIST",
+      to: "somebody"
+    };
+
+    const next = reducer(initialState, action);
+
+    expect(next.changeRequests).toEqual(initialState.changeRequests);
+  });
+});
