@@ -1280,12 +1280,13 @@ function getFallbackComparisonProjectId(projectId: string) {
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
 }
 
-function getContextQuery(search: string) {
+export function getContextQuery(search: string) {
   const params = new URLSearchParams(search);
   return {
     projectId: params.get("project") ?? "",
     module: params.get("module") ?? "",
-    parameterId: params.get("parameter") ?? ""
+    parameterId: params.get("parameter") ?? "",
+    logId: params.get("logId") ?? ""
   };
 }
 
