@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
+import { ParameterLibraryList } from "./components/ParameterLibraryList";
 import { useParamAdminSearch } from "./hooks/useParamAdminSearch";
 import type { RiskLevel } from "./mockData";
 import { getCoverage } from "./parameterAdminAnalytics";
@@ -169,8 +170,15 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
       />
       <main className="param-admin-grid">
         <div className="library-column">
-          <div className="library-panel config-list-panel">
-            <PanelHeader title="项目共享参数库" meta={`${state.configDraft.parameterLibrary.length} 项`} />
+          <ParameterLibraryList
+            parameters={state.configDraft.parameterLibrary}
+            projects={state.configDraft.projects}
+            search={search}
+            selectedId={selectedParameter?.id}
+            onSelect={setSelectedParameterId}
+            onUpdateSearch={updateSearch}
+          />
+          <div className="library-admin-actions">
             <div className="config-list-actions">
               <button
                 className="button subtle"
@@ -196,22 +204,6 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
               >
                 删除参数
               </button>
-            </div>
-            <div className="library-list">
-              {state.configDraft.parameterLibrary.map((parameter) => (
-                <button
-                  className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
-                  key={parameter.id}
-                  type="button"
-                  onClick={() => setSelectedParameterId(parameter.id)}
-                >
-                  <span>
-                    <strong>{parameter.name}</strong>
-                    <small>{parameter.module}</small>
-                  </span>
-                  <RiskBadge risk={parameter.risk} />
-                </button>
-              ))}
             </div>
           </div>
         </div>
@@ -330,12 +322,15 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
 
 function parseParamAdminSearch(raw: string) {
   const params = new URLSearchParams(raw);
+  const risk = params.get("risk");
+  const coverage = params.get("coverage");
+  const modules = params.get("module");
 
   return {
     q: params.get("q") ?? "",
-    risk: "all" as const,
-    modules: [],
-    coverage: "all" as const,
+    risk: risk === "high" || risk === "medium" || risk === "low" ? risk : ("all" as const),
+    modules: modules ? modules.split(",").filter(Boolean) : [],
+    coverage: coverage === "full" || coverage === "partial" || coverage === "orphan" ? coverage : ("all" as const),
     sort: params.get("sort") ?? "updatedAt-desc",
     id: params.get("id") ?? undefined,
     audit: params.get("audit") === "open" ? ("open" as const) : undefined,

@@ -29,7 +29,7 @@ describe("ParameterAdminPage", () => {
   it("renders at least one parameter list item", () => {
     renderPage();
 
-    expect(screen.getAllByRole("button", { name: /fast_charge|charge_voltage|battery/ }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("option", { name: /fast_charge|charge_voltage|battery/ }).length).toBeGreaterThan(0);
   });
 
   it("renders a single page heading", () => {

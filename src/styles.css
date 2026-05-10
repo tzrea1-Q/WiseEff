@@ -1671,6 +1671,15 @@ td small {
   border-bottom: 1px solid #e7ecf7;
 }
 
+.library-admin-actions {
+  margin-top: 12px;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
 .config-list-row {
   display: flex;
   align-items: center;
@@ -2084,6 +2093,71 @@ td small {
   overflow: hidden;
 }
 
+.parameter-library-panel {
+  border-radius: 8px;
+}
+
+.library-header {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-bottom: 1px solid var(--outline);
+}
+
+.library-header > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.library-header span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.library-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.library-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  padding: 5px 9px;
+  color: var(--text-muted);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.chip-active {
+  color: var(--app-primary);
+  background: #eef5ff;
+  border-color: rgba(0, 82, 204, 0.26);
+}
+
 .library-list {
   display: flex;
   flex-direction: column;
@@ -2098,6 +2172,33 @@ td small {
   gap: 14px;
   padding: 13px 16px;
   border-bottom: 1px solid #e7ecf7;
+}
+
+.library-row {
+  cursor: pointer;
+}
+
+.library-row.selected {
+  background: #f4f7ff;
+}
+
+.library-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.library-row-main strong,
+.library-row-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-empty {
+  padding: 18px 16px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .library-row div {
