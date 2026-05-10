@@ -117,6 +117,16 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText(/近 30 天 ·/)).not.toBeInTheDocument();
   });
 
+  it("no longer renders the time range control inside the topbar", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(topbar).not.toBeNull();
+    expect(within(topbar).queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+  });
+
   it("keeps the WiseEff workbench shell on non-home routes", () => {
     window.history.replaceState(null, "", "/parameters");
 

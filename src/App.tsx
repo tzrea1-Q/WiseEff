@@ -539,8 +539,6 @@ function AppShell() {
             state={state}
             dispatch={dispatch}
             page={page}
-            parameterHomeTimeWindow={parameterHomeTimeWindow}
-            onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
           />
         ) : null}
         {isPlatformHome ? (
@@ -878,15 +876,11 @@ function isSupportedScreenshotMimeType(type: string) {
 function TopBar({
   state,
   dispatch,
-  page,
-  parameterHomeTimeWindow,
-  onParameterHomeTimeWindowChange
+  page
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
   page: PageConfig;
-  parameterHomeTimeWindow: HomepageTimeWindow;
-  onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
 }) {
   const showProjectSelector =
     page.group === "参数管理" &&
@@ -903,22 +897,6 @@ function TopBar({
         <div className="topbar-subtitle">{page.subtitle}</div>
       </div>
       <div className="topbar-actions">
-        {page.key === "parameter-home" ? (
-          <label className="topbar-time-window-control">
-            <span>时间范围</span>
-            <select
-              aria-label="时间范围"
-              value={parameterHomeTimeWindow}
-              onChange={(event) => onParameterHomeTimeWindowChange(event.target.value as HomepageTimeWindow)}
-            >
-              {homepageTimeWindowOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
         <div className="searchbox">
           <Search size={17} />
           <input aria-label="搜索" placeholder="搜索..." />
