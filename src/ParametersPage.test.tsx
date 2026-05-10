@@ -1,17 +1,21 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParametersPage } from "./ParametersPage";
 import { initialState } from "./mockData";
 
+beforeEach(() => {
+  cleanup();
+});
+
 function renderPage() {
   return render(
-    <ParametersPage
-      state={initialState}
-      dispatch={() => {}}
-      onNavigate={() => {}}
-      search=""
-    />
+      <ParametersPage
+        state={initialState}
+        dispatch={vi.fn()}
+        onNavigate={() => {}}
+        search=""
+      />
   );
 }
 
@@ -32,5 +36,37 @@ describe("ParametersPage (抽出后的模块)", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
 
     expect(source).not.toContain('from "./App"');
+  });
+});
+
+describe("ParametersPage · 提交契约", () => {
+  it("未勾选任何行时，提交按钮禁用", () => {
+    renderPage();
+    const btn = screen.getByRole("button", { name: /提交本轮/ });
+    expect(btn).toBeDisabled();
+  });
+
+  it("勾选 1 行后，按钮文案变为『提交本轮 (1 项)』并可点", () => {
+    renderPage();
+    const anyCheckbox = screen.getAllByRole("checkbox", {
+      name: /勾选 /
+    })[0];
+    fireEvent.click(anyCheckbox);
+    const btn = screen.getByRole("button", { name: "提交本轮 (1 项)" });
+    expect(btn).toBeEnabled();
+  });
+
+  it("不存在『加入本轮』按钮", () => {
+    renderPage();
+    expect(screen.queryByRole("button", { name: /加入本轮/ })).not.toBeInTheDocument();
+  });
+
+  it("点击提交 → 弹出预览对话框，数量等于勾选数", () => {
+    renderPage();
+    const boxes = screen.getAllByRole("checkbox", { name: /勾选 / }).slice(0, 2);
+    boxes.forEach((box) => fireEvent.click(box));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
   });
 });

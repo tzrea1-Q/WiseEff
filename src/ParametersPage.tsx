@@ -5,7 +5,6 @@ import {
   Filter,
   History,
   Info,
-  ListChecks,
   Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -88,7 +87,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   const [targetValue, setTargetValue] = useState("80");
   const [reason, setReason] = useState("参考 Agent 巡检建议，将高风险参数回落到安全阈值内。");
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [draftItems, setDraftItems] = useState<ParameterDraftItem[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
+  const [focusedId, setFocusedId] = useState<string | null>(state.parameters[0]?.id ?? null);
   const projectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === state.activeProjectId),
     [state.activeProjectId, state.parameters]
@@ -101,18 +102,27 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     (parameter) =>
       (riskFilter === "All" || parameter.risk === riskFilter) && (moduleFilter === "All" || parameter.module === moduleFilter)
   );
-  const selected = parameters.find((parameter) => parameter.id === selectedId) ?? parameters[0];
+  const selected = parameters.find((parameter) => parameter.id === focusedId) ?? parameters.find((parameter) => parameter.id === selectedId) ?? parameters[0];
   const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const pendingSubmissionItems = useMemo(
     () =>
-      draftItems
-        .map((item) => {
-          const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
-          return parameter ? { ...item, parameter } : null;
+      Array.from(selectedIds)
+        .map((parameterId) => {
+          const parameter = state.parameters.find((candidate) => candidate.id === parameterId);
+          if (!parameter) {
+            return null;
+          }
+          const draft = drafts[parameterId];
+          return {
+            parameterId,
+            targetValue: draft?.targetValue ?? parameter.recommendedValue,
+            reason: draft?.reason ?? reason,
+            parameter
+          };
         })
         .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
-    [draftItems, state.parameters]
+    [drafts, reason, selectedIds, state.parameters]
   );
 
   useEffect(() => {
@@ -144,6 +154,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     const requestedParameter = projectParameters.find((parameter) => parameter.id === contextQuery.parameterId);
     if (requestedParameter) {
       setSelectedId(requestedParameter.id);
+      setFocusedId(requestedParameter.id);
       setTargetValue(requestedParameter.recommendedValue);
     }
   }, [contextQuery.parameterId, projectParameters]);
@@ -153,47 +164,104 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
       return;
     }
     setSelectedId(selected.id);
-    setTargetValue(draftItems.find((item) => item.parameterId === selected.id)?.targetValue ?? selected.recommendedValue);
-  }, [draftItems, selected?.id, selected?.recommendedValue]);
+    setFocusedId(selected.id);
+    setTargetValue(drafts[selected.id]?.targetValue ?? selected.recommendedValue);
+    if (drafts[selected.id]) {
+      setReason(drafts[selected.id].reason);
+    }
+  }, [drafts, selected?.id, selected?.recommendedValue]);
 
   useEffect(() => {
-    setDraftItems((items) => items.filter((item) => projectParameters.some((parameter) => parameter.id === item.parameterId)));
+    const activeParameterIds = new Set(projectParameters.map((parameter) => parameter.id));
+    setSelectedIds((ids) => {
+      const next = new Set(Array.from(ids).filter((id) => activeParameterIds.has(id)));
+      return next.size === ids.size ? ids : next;
+    });
+    setDrafts((items) =>
+      Object.fromEntries(Object.entries(items).filter(([parameterId]) => activeParameterIds.has(parameterId)))
+    );
   }, [projectParameters]);
 
-  const addSelectedToRound = () => {
-    if (!selected) {
-      return;
+  const focusParameter = (parameter: ParameterRecord) => {
+    setSelectedId(parameter.id);
+    setFocusedId(parameter.id);
+    setTargetValue(drafts[parameter.id]?.targetValue ?? parameter.recommendedValue);
+    if (drafts[parameter.id]) {
+      setReason(drafts[parameter.id].reason);
     }
-    setDraftItems((items) => {
-      const draftItem = { parameterId: selected.id, targetValue, reason };
-      return items.some((item) => item.parameterId === selected.id)
-        ? items.map((item) => (item.parameterId === selected.id ? draftItem : item))
-        : [...items, draftItem];
+  };
+
+  const toggleParameterSelection = (parameter: ParameterRecord, checked: boolean) => {
+    const nextDraft = {
+      targetValue: focusedId === parameter.id ? targetValue : parameter.recommendedValue,
+      reason: focusedId === parameter.id ? reason : ""
+    };
+    setSelectedId(parameter.id);
+    setFocusedId(parameter.id);
+    setTargetValue(nextDraft.targetValue);
+    setReason(nextDraft.reason);
+    setSelectedIds((ids) => {
+      const next = new Set(ids);
+      if (checked) {
+        next.add(parameter.id);
+      } else {
+        next.delete(parameter.id);
+      }
+      return next;
+    });
+    setDrafts((items) => {
+      if (checked) {
+        return items[parameter.id] ? items : { ...items, [parameter.id]: nextDraft };
+      }
+      const { [parameter.id]: _removed, ...remainingItems } = items;
+      return remainingItems;
     });
   };
 
+  const updateFocusedDraft = (patch: Partial<{ targetValue: string; reason: string }>) => {
+    if (!selected || !selectedIds.has(selected.id)) {
+      return;
+    }
+    setDrafts((items) => ({
+      ...items,
+      [selected.id]: {
+        targetValue: items[selected.id]?.targetValue ?? selected.recommendedValue,
+        reason: items[selected.id]?.reason ?? reason,
+        ...patch
+      }
+    }));
+  };
+
   const openSubmitPreview = () => {
-    if (draftItems.length === 0) {
-      addSelectedToRound();
+    if (selectedIds.size === 0) {
+      return;
     }
     setConfirmOpen(true);
   };
 
   const submitRound = () => {
-    const itemsToSubmit = draftItems.length > 0 ? draftItems : selected ? [{ parameterId: selected.id, targetValue, reason }] : [];
+    const itemsToSubmit = Array.from(selectedIds)
+      .map((parameterId) => {
+        const parameter = state.parameters.find((candidate) => candidate.id === parameterId);
+        if (!parameter) {
+          return null;
+        }
+        return {
+          parameterId,
+          targetValue: drafts[parameterId]?.targetValue ?? parameter.recommendedValue,
+          reason: drafts[parameterId]?.reason ?? reason
+        };
+      })
+      .filter((item): item is ParameterDraftItem => Boolean(item));
     if (itemsToSubmit.length === 0) {
       return;
     }
     dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, reason });
-    setDraftItems([]);
+    setSelectedIds(new Set());
+    setDrafts({});
     setConfirmOpen(false);
   };
-  const previewItems =
-    pendingSubmissionItems.length > 0
-      ? pendingSubmissionItems
-      : selected
-        ? [{ parameterId: selected.id, targetValue, reason, parameter: selected }]
-        : [];
+  const previewItems = pendingSubmissionItems;
 
   return (
     <WorkbenchLayout
@@ -270,17 +338,23 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
       </aside>
       <section className="workbench-main">
         <DataTable
-          headers={["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"]}
+          headers={["选择", "参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"]}
           rows={parameters}
           renderRow={(parameter) => (
             <tr
               className={selected?.id === parameter.id ? "selected-row" : ""}
               key={parameter.id}
-              onClick={() => {
-                setSelectedId(parameter.id);
-                setTargetValue(parameter.recommendedValue);
-              }}
+              onClick={() => focusParameter(parameter)}
             >
+              <td>
+                <input
+                  aria-label={`勾选 ${parameter.name}`}
+                  checked={selectedIds.has(parameter.id)}
+                  type="checkbox"
+                  onChange={(event) => toggleParameterSelection(parameter, event.target.checked)}
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </td>
               <td>
                 <strong>{parameter.name}</strong>
                 <small>{parameter.description}</small>
@@ -332,14 +406,29 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             <label className="field-label" htmlFor="target-value">
               目标值
             </label>
-            <input id="target-value" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} />
+            <input
+              id="target-value"
+              value={targetValue}
+              onChange={(event) => {
+                setTargetValue(event.target.value);
+                updateFocusedDraft({ targetValue: event.target.value });
+              }}
+            />
             <label className="field-label" htmlFor="reason">
               修改原因
             </label>
-            <textarea id="reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={5} />
+            <textarea
+              id="reason"
+              value={reason}
+              onChange={(event) => {
+                setReason(event.target.value);
+                updateFocusedDraft({ reason: event.target.value });
+              }}
+              rows={5}
+            />
             <div className="round-draft-panel" aria-label="本轮提交草稿">
               <div>
-                <strong>本轮提交 {draftItems.length} 项</strong>
+                <strong>本轮提交 {selectedIds.size} 项</strong>
                 <span>可先收集多个参数，再统一提交审阅。</span>
               </div>
               {pendingSubmissionItems.length > 0 ? (
@@ -351,7 +440,17 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                       <button
                         className="link-button"
                         type="button"
-                        onClick={() => setDraftItems((items) => items.filter((draftItem) => draftItem.parameterId !== item.parameterId))}
+                        onClick={() => {
+                          setSelectedIds((ids) => {
+                            const next = new Set(ids);
+                            next.delete(item.parameterId);
+                            return next;
+                          });
+                          setDrafts((items) => {
+                            const { [item.parameterId]: _removed, ...remainingItems } = items;
+                            return remainingItems;
+                          });
+                        }}
                       >
                         移除
                       </button>
@@ -361,19 +460,15 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
               ) : null}
             </div>
             <Timeline steps={["选择参数", "填写目标值", "提交审阅", "管理员合入"]} activeIndex={1} />
-            <button className="button subtle full" type="button" onClick={addSelectedToRound}>
-              <ListChecks size={16} />
-              加入本轮
-            </button>
-            <button className="button primary full" type="submit">
-              提交参数修改请求
+            <button className="button primary full" type="submit" disabled={selectedIds.size === 0}>
+              {selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮"}
             </button>
           </form>
         ) : (
           <EmptyState text="请选择一条参数后提交修改。" />
         )}
       </aside>
-      {confirmOpen && selected ? (
+      {confirmOpen && previewItems.length > 0 ? (
         <ParameterSubmissionDialog
           items={previewItems}
           onCancel={() => setConfirmOpen(false)}
@@ -413,7 +508,7 @@ function ParameterSubmissionDialog({
               </div>
               <div className="diff-values">
                 <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
-                <ArrowRight size={16} />
+                <span>→</span>
                 <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
               </div>
               <p>{item.reason}</p>

@@ -347,7 +347,8 @@ describe("WiseEff app shell", () => {
 
     expect(screen.queryByText(/当前项目：/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交变更" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交参数修改请求" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "提交参数修改请求" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
   });
 
   it("opens a hidden personal submission history page from the parameter workbench", () => {
@@ -369,19 +370,18 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "加入本轮" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "勾选 fast_charge_current_limit_ma" }));
 
     const voltageRow = Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find((row) =>
       row.textContent?.includes("charge_voltage_limit_mv")
     );
     expect(voltageRow).toBeInTheDocument();
-    fireEvent.click(voltageRow as HTMLTableRowElement);
+    fireEvent.click(screen.getByRole("checkbox", { name: "勾选 charge_voltage_limit_mv" }));
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
-    fireEvent.click(screen.getByRole("button", { name: "加入本轮" }));
 
     expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "提交参数修改请求" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
 
     const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
     expect(within(dialog).getByText(/本轮提交包含\s*2\s*个参数修改/)).toBeInTheDocument();
