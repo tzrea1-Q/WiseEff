@@ -12,8 +12,9 @@ describe("ParameterRecord", () => {
   });
 
   it("updatedAtTs 与 updatedAt 文案同步（新字段不影响旧展示）", () => {
-    const sample = initialState.parameters[0];
-    expect(typeof sample.updatedAt).toBe("string");
-    expect(sample.updatedAt.length).toBeGreaterThan(0);
+    for (const param of initialState.parameters) {
+      expect(typeof param.updatedAt).toBe("string");
+      expect(param.updatedAt.length).toBeGreaterThan(0);
+    }
   });
 });
