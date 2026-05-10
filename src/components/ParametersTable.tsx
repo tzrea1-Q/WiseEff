@@ -2,6 +2,9 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ParameterRecord } from "../mockData";
 
+type SortKey = "name" | "module" | "currentValue" | "recommendedValue" | "range" | "risk" | "updatedAtTs";
+type SortState = { key: SortKey; dir: "asc" | "desc" };
+
 export type ParametersTableProps = {
   rows: ParameterRecord[];
   selectedIds: Set<string>;
@@ -9,6 +12,22 @@ export type ParametersTableProps = {
   focusedId: string | null;
   onFocusRow: (id: string) => void;
 };
+
+const riskScores: Record<ParameterRecord["risk"], number> = {
+  High: 3,
+  Medium: 2,
+  Low: 1
+};
+
+const sortableHeaders: Array<{ key: SortKey; label: string }> = [
+  { key: "name", label: "参数名称" },
+  { key: "module", label: "模块" },
+  { key: "currentValue", label: "当前值" },
+  { key: "recommendedValue", label: "推荐值" },
+  { key: "range", label: "范围 / 单位" },
+  { key: "risk", label: "重要性" },
+  { key: "updatedAtTs", label: "更新时间" }
+];
 
 function matchesQuery(row: ParameterRecord, query: string) {
   if (!query) {
@@ -18,13 +37,59 @@ function matchesQuery(row: ParameterRecord, query: string) {
   return [row.name, row.description, row.module].some((value) => value.toLowerCase().includes(query));
 }
 
+function sortValue(row: ParameterRecord, key: SortKey) {
+  if (key === "risk") {
+    return riskScores[row.risk];
+  }
+
+  if (key === "range") {
+    return `${row.range} ${row.unit}`.trim();
+  }
+
+  return row[key];
+}
+
+function compareRows(left: ParameterRecord, right: ParameterRecord, sort: SortState) {
+  const leftValue = sortValue(left, sort.key);
+  const rightValue = sortValue(right, sort.key);
+  const direction = sort.dir === "asc" ? 1 : -1;
+
+  if (typeof leftValue === "number" && typeof rightValue === "number") {
+    return sort.key === "risk" ? (rightValue - leftValue) * direction : (leftValue - rightValue) * direction;
+  }
+
+  return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * direction;
+}
+
 export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focusedId, onFocusRow }: ParametersTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [sort, setSort] = useState<SortState | null>(null);
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const visibleRows = useMemo(
+  const filteredRows = useMemo(
     () => rows.filter((row) => matchesQuery(row, normalizedQuery)),
     [normalizedQuery, rows]
   );
+  const visibleRows = useMemo(() => {
+    if (!sort) {
+      return filteredRows;
+    }
+
+    return [...filteredRows].sort((left, right) => compareRows(left, right, sort));
+  }, [filteredRows, sort]);
+
+  const updateSort = (key: SortKey) => {
+    setSort((current) => {
+      if (!current || current.key !== key) {
+        return { key, dir: "asc" };
+      }
+
+      if (current.dir === "asc") {
+        return { key, dir: "desc" };
+      }
+
+      return null;
+    });
+  };
 
   return (
     <section className="parameters-table" aria-label="参数表">
@@ -47,13 +112,13 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
           <thead>
             <tr>
               <th scope="col">选择</th>
-              <th scope="col">参数名称</th>
-              <th scope="col">模块</th>
-              <th scope="col">当前值</th>
-              <th scope="col">推荐值</th>
-              <th scope="col">范围 / 单位</th>
-              <th scope="col">重要性</th>
-              <th scope="col">更新时间</th>
+              {sortableHeaders.map((header) => (
+                <th key={header.key} scope="col" aria-sort={sort?.key === header.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+                  <button type="button" className="parameters-table-sort-button" aria-label={`按 ${header.label} 排序`} onClick={() => updateSort(header.key)}>
+                    {header.label}
+                  </button>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterRecord } from "../mockData";
 import { ParametersTable, type ParametersTableProps } from "./ParametersTable";
@@ -72,6 +72,13 @@ function setup(overrides: Partial<ParametersTableProps> = {}) {
   return { onFocusRow, onSelectedIdsChange };
 }
 
+function visibleParameterNames() {
+  return screen
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => within(row).getAllByRole("cell")[1].textContent ?? "");
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -106,5 +113,43 @@ describe("ParametersTable", () => {
     fireEvent.click(screen.getByRole("button", { name: "清除筛选条件" }));
 
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+  });
+
+  it("keeps the input row order before a sort is selected", () => {
+    setup();
+
+    expect(visibleParameterNames()).toEqual([
+      "fast_charge_current_limit_maFast charge input current limit",
+      "battery_temp_target_cTarget battery pack temperature",
+      "soc_estimation_smoothingSOC smoothing factor"
+    ]);
+  });
+
+  it("sorts by parameter name ascending and descending from the header", () => {
+    setup();
+
+    fireEvent.click(screen.getByRole("button", { name: /按 参数名称 排序/ }));
+
+    expect(visibleParameterNames()[0]).toContain("battery_temp_target_c");
+
+    fireEvent.click(screen.getByRole("button", { name: /按 参数名称 排序/ }));
+
+    expect(visibleParameterNames()[0]).toContain("soc_estimation_smoothing");
+  });
+
+  it("sorts importance with high risk first", () => {
+    setup();
+
+    fireEvent.click(screen.getByRole("button", { name: /按 重要性 排序/ }));
+
+    expect(visibleParameterNames()[0]).toContain("fast_charge_current_limit_ma");
+  });
+
+  it("sorts update time by ISO timestamp", () => {
+    setup();
+
+    fireEvent.click(screen.getByRole("button", { name: /按 更新时间 排序/ }));
+
+    expect(visibleParameterNames()[0]).toContain("soc_estimation_smoothing");
   });
 });
