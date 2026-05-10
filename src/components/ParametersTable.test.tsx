@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ParameterRecord } from "../mockData";
 import { ParametersTable, type ParametersTableProps } from "./ParametersTable";
@@ -195,5 +197,17 @@ describe("ParametersTable", () => {
 
     expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
     expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1"]));
+  });
+
+  it("keeps sticky columns anchored and gives the search wrapper a focus ring", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+
+    expect(styles).toMatch(
+      /\.parameters-table-grid th:first-child,\s*\.parameters-table-grid td:first-child\s*\{[^}]*position:\s*sticky;[^}]*left:\s*0;/s
+    );
+    expect(styles).toMatch(
+      /\.parameters-table-grid th:nth-child\(2\),\s*\.parameters-table-grid td:nth-child\(2\)\s*\{[^}]*left:\s*48px;/s
+    );
+    expect(styles).toMatch(/\.parameters-table-search:focus-within\s*\{[^}]*box-shadow:/s);
   });
 });

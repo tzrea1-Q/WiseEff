@@ -3322,6 +3322,11 @@ td small {
   border-radius: 8px;
 }
 
+.parameters-table-search:focus-within {
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.14);
+}
+
 .parameters-table-search input {
   width: 100%;
   min-width: 0;
@@ -3389,9 +3394,19 @@ td small {
 
 .parameters-table-grid th:first-child,
 .parameters-table-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
   width: 48px;
   min-width: 48px;
+  background: #fff;
   text-align: center;
+  box-shadow: inset -1px 0 0 #edf1f8;
+}
+
+.parameters-table-grid th:first-child {
+  z-index: 6;
+  background: var(--surface-low);
 }
 
 .parameters-table-grid th:nth-child(2),
@@ -3408,6 +3423,11 @@ td small {
 .parameters-table-grid th:nth-child(2) {
   z-index: 5;
   background: var(--surface-low);
+}
+
+.parameters-table-grid tbody tr:hover td:first-child,
+.parameters-table-grid tbody tr:hover td:nth-child(2) {
+  background: #f4f7ff;
 }
 
 .parameters-table-grid tbody tr:hover td {
