@@ -224,6 +224,7 @@ export type PrototypeState = {
   debugEvents: DebugEvent[];
   pushedDebugIds: string[];
   debuggingSessionStartedAt: string | null;
+  persistedConfigSnapshot: PowerManagementConfig;
 };
 
 function createMockDataFingerprint(state: PrototypeState) {
@@ -581,7 +582,8 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     lastDebugSnapshot: null,
     debugEvents: [],
     pushedDebugIds: [],
-    debuggingSessionStartedAt: null
+    debuggingSessionStartedAt: null,
+    persistedConfigSnapshot: clonePowerManagementConfig(configDraft)
   };
 }
 
