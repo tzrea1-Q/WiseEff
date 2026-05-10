@@ -124,6 +124,13 @@ const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: strin
   { value: "180d", label: "180天" }
 ];
 
+const parameterHomeQuickEntries = [
+  { title: "项目参数工作台", path: "/parameters" },
+  { title: "项目参数对比分析", path: "/parameter-comparison" },
+  { title: "参数合入审核", path: "/parameter-review" },
+  { title: "项目参数管理后台", path: "/parameter-admin" }
+];
+
 type SelectOption<Value extends string = string> = {
   value: Value;
   label: ReactNode;
@@ -627,6 +634,7 @@ function AppShell() {
             page={page}
             parameterHomeTimeWindow={parameterHomeTimeWindow}
             onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
+            onNavigate={navigate}
           />
         ) : null}
         {isPlatformHome ? (
@@ -990,13 +998,15 @@ function TopBar({
   dispatch,
   page,
   parameterHomeTimeWindow,
-  onParameterHomeTimeWindowChange
+  onParameterHomeTimeWindowChange,
+  onNavigate
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
   page: PageConfig;
   parameterHomeTimeWindow: HomepageTimeWindow;
   onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
+  onNavigate: (path: string) => void;
 }) {
   const showProjectSelector =
     page.group === "参数管理" &&
@@ -1014,15 +1024,24 @@ function TopBar({
       </div>
       <div className="topbar-actions">
         {page.key === "parameter-home" ? (
-          <label className="topbar-time-window-control">
-            <span>时间范围</span>
-            <SelectControl
-              ariaLabel="时间范围"
-              value={parameterHomeTimeWindow}
-              onValueChange={onParameterHomeTimeWindowChange}
-              options={homepageTimeWindowOptions}
-            />
-          </label>
+          <>
+            <nav className="parameter-homepage-topbar-nav" aria-label="参数管理快捷入口">
+              {parameterHomeQuickEntries.map((entry) => (
+                <Button key={entry.path} type="button" variant="outline" onClick={() => onNavigate(entry.path)}>
+                  {entry.title}
+                </Button>
+              ))}
+            </nav>
+            <label className="topbar-time-window-control">
+              <span>时间范围</span>
+              <SelectControl
+                ariaLabel="时间范围"
+                value={parameterHomeTimeWindow}
+                onValueChange={onParameterHomeTimeWindowChange}
+                options={homepageTimeWindowOptions}
+              />
+            </label>
+          </>
         ) : null}
         <div className="searchbox">
           <Search size={17} />
@@ -1721,7 +1740,6 @@ function ParameterComparisonPage({
     }
   }, [contextQuery.module, moduleOptions]);
 
-  const driftRows = comparisonRows.filter((row) => row.status === "drift");
   const comparisonTitle = `${baseProject.code} vs ${targetProject.code}`;
 
   return (
@@ -1742,7 +1760,6 @@ function ParameterComparisonPage({
             </BreadcrumbList>
           </Breadcrumb>
           <h1>项目参数对比分析</h1>
-          <p>{baseProject.name} 与 {targetProject.name} 的充电、电池和电源管理参数差异分析。</p>
         </div>
         <div className="page-actions">
           <Button
@@ -1752,10 +1769,6 @@ function ParameterComparisonPage({
           >
             <Upload size={16} />
             导出
-          </Button>
-          <Button type="button">
-            <RotateCcw size={16} />
-            同步选中项
           </Button>
         </div>
       </header>
@@ -1773,12 +1786,6 @@ function ParameterComparisonPage({
           disabledProjectId={baseProject.id}
           onSelect={chooseTargetProject}
         />
-      </section>
-
-      <section className="comparison-summary" aria-label="参数对比摘要">
-        <MetricCard title="对比范围" value={comparisonTitle} trend="实际项目参数对比" tone="blue" />
-        <MetricCard title="漂移参数" value={`${driftRows.length}`} trend="需要审阅后同步" tone="teal" />
-        <MetricCard title="高重要性差异" value={`${driftRows.filter((row) => row.risk === "High").length}`} trend="WiseAgent 已生成风险说明" tone="purple" />
       </section>
 
       <section className="comparison-layout">
@@ -1872,7 +1879,6 @@ function ProjectComparisonSelect({
   disabledProjectId: string;
   onSelect: (projectId: string) => void;
 }) {
-  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
   const fieldId = label === "基准项目" ? "base-project-select" : "target-project-select";
 
   return (
@@ -1892,9 +1898,6 @@ function ProjectComparisonSelect({
         />
         <ChevronRight size={18} aria-hidden="true" />
       </div>
-      <small>
-        当前选择 {selectedProject.code}，{selectedProject.name}
-      </small>
     </label>
   );
 }
@@ -2069,7 +2072,7 @@ function RejectReviewDialog({
   );
 }
 
-function ConfigExportPanel({ configJson }: { configJson: string }) {
+function ConfigExportActions({ configJson }: { configJson: string }) {
   const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
   const [saving, setSaving] = useState(false);
   const exportConfig = () => {
@@ -2114,9 +2117,7 @@ function ConfigExportPanel({ configJson }: { configJson: string }) {
   };
 
   return (
-    <div className="config-preview-panel">
-      <PanelHeader title="配置源预览" meta="src/config/power-management.json" />
-      <pre>{configJson}</pre>
+    <div className="config-admin-actions">
       <div className="config-actions">
         <Button type="button" onClick={saveConfig} disabled={saving}>
           <FileText size={16} />
@@ -2131,7 +2132,17 @@ function ConfigExportPanel({ configJson }: { configJson: string }) {
           复制 JSON
         </Button>
       </div>
-      <div className="config-sync-note">{syncMessage}</div>
+      <small className="config-sync-note">{syncMessage}</small>
+    </div>
+  );
+}
+
+function ConfigExportPanel({ configJson }: { configJson: string }) {
+  return (
+    <div className="config-preview-panel">
+      <PanelHeader title="配置源预览" meta="src/config/power-management.json" />
+      <pre>{configJson}</pre>
+      <ConfigExportActions configJson={configJson} />
     </div>
   );
 }
@@ -2141,6 +2152,15 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
   const selectedParameter =
     state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
+  const actionControls = (
+    <div className="config-toolbar-actions">
+      <Button type="button" onClick={() => dispatch({ type: "IMPORT_PARAMETERS" })}>
+        <Upload size={16} />
+        批量参数导入
+      </Button>
+      <ConfigExportActions configJson={configJson} />
+    </div>
+  );
 
   useEffect(() => {
     if (!state.configDraft.parameterLibrary.some((parameter) => parameter.id === selectedParameterId)) {
@@ -2196,7 +2216,7 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
         ["配置草稿", "可写入", "可直接保存到 JSON 文件"],
         ["高重要性", `${state.configDraft.parameterLibrary.filter((parameter) => parameter.risk === "High").length}`, "需要管理员复核"]
       ]}
-      action={<Button type="button" onClick={() => dispatch({ type: "IMPORT_PARAMETERS" })}><Upload size={16} />批量参数导入</Button>}
+      action={actionControls}
     >
       <section className="config-admin-grid">
         <div className="library-panel config-list-panel">
@@ -2227,16 +2247,20 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
               删除参数
             </Button>
           </div>
-          <div className="library-list">
+          <div className="library-list project-parameter-library-list">
             {state.configDraft.parameterLibrary.map((parameter) => (
               <Button
-                className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
+                className={
+                  parameter.id === selectedParameter?.id
+                    ? "config-list-row project-parameter-list-row selected"
+                    : "config-list-row project-parameter-list-row"
+                }
                 key={parameter.id}
                 type="button"
                 variant="ghost"
                 onClick={() => setSelectedParameterId(parameter.id)}
               >
-                <span>
+                <span className="project-parameter-list-row-main">
                   <strong>{parameter.name}</strong>
                   <small>{parameter.module}</small>
                 </span>
@@ -2347,7 +2371,6 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
           )}
         </div>
 
-        <ConfigExportPanel configJson={configJson} />
       </section>
     </AdminPageScaffold>
   );

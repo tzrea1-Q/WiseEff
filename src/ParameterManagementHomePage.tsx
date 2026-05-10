@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
-import type { PrototypeState } from "./mockData";
+import { roles, type PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -31,22 +30,17 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
     [state, timeWindow, hotspotDimension]
   );
   const selectedHotspot = analytics.hotspots.find((hotspot) => hotspot.id === selectedHotspotId) ?? analytics.hotspots[0] ?? null;
+  const developerCount = roles.filter((role) => role.id.includes("developer") || role.name.includes("开发")).length;
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
-      <section className="homepage-main-grid" aria-label="入口卡片">
-        <div className="homepage-entry-grid">
-          {analytics.entryCards.map((entry) => (
-            <EntryCard key={entry.path} entry={entry} onNavigate={onNavigate} />
-          ))}
-        </div>
-
+      <section className="homepage-main-grid">
         <section className="parameter-homepage-metrics" aria-label="核心指标">
           {[
             { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
-            { title: "共享参数定义", value: analytics.summary.parameterDefinitions, detail: "跨项目复用项" },
+            { title: "管理项目总数", value: state.configDraft.projects.length, detail: "纳入治理项目" },
             { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
-            { title: "关键风险参数", value: analytics.summary.highRiskParameters, detail: "高风险优先处理" }
+            { title: "开发人员总数", value: developerCount, detail: "参数协作角色" }
           ].map((metric, index) => {
             const Icon = metricIcons[index];
             return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
@@ -149,28 +143,6 @@ function HotspotDimensionSelect({
         ))}
       </ToggleGroup>
     </div>
-  );
-}
-
-function EntryCard({
-  entry,
-  onNavigate
-}: {
-  entry: { title: string; description: string; path: string; statusLabel: string; statusValue: string };
-  onNavigate: (path: string) => void;
-}) {
-  return (
-    <Card className="parameter-homepage-card homepage-entry-card entry-card">
-      <div className="parameter-homepage-entry-meta">
-        <Badge variant="outline">{entry.statusLabel}</Badge>
-        <strong>{entry.statusValue}</strong>
-      </div>
-      <CardTitle>{entry.title}</CardTitle>
-      <CardDescription>{entry.description}</CardDescription>
-      <Button type="button" variant="link" onClick={() => onNavigate(entry.path)}>
-        进入 {entry.title}
-      </Button>
-    </Card>
   );
 }
 

@@ -20,6 +20,14 @@ function changeSelectValue(trigger: HTMLElement, optionName: string | RegExp) {
   fireEvent.click(screen.getByRole("option", { name: optionName }));
 }
 
+function readCssBlock(css: string, selector: string) {
+  const start = css.indexOf(`${selector} {`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = css.indexOf("\n}", start);
+  expect(end).toBeGreaterThan(start);
+  return css.slice(start, end);
+}
+
 describe("WiseEff app shell", () => {
   it("declares the WiseEff favicon assets in the document shell", () => {
     const indexHtml = readFileSync("index.html", "utf8");
@@ -94,15 +102,23 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
     expect(screen.getByText("热门模块")).toBeInTheDocument();
     expect(screen.getByText("关键参数变化")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "进入 项目参数工作台" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "进入 参数合入审核" })).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
+    const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
     const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
     const searchInput = within(topbar).getByRole("textbox", { name: "搜索" });
 
+    expect(screen.queryByRole("button", { name: "进入 项目参数工作台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入 参数合入审核" })).not.toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "项目参数工作台" })).toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "项目参数对比分析" })).toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "参数合入审核" })).toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "项目参数管理后台" })).toBeInTheDocument();
     expectSelectValue(timeWindowSelect, "30d");
-    expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toContainElement(timeWindowSelect);
+    expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toBe(topbarEntries);
+    expect(
+      Boolean(topbarEntries.compareDocumentPosition(timeWindowSelect) & Node.DOCUMENT_POSITION_FOLLOWING)
+    ).toBe(true);
     expect(
       Boolean(timeWindowSelect.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
@@ -211,14 +227,20 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "进入 项目参数工作台" }));
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
+
+    fireEvent.click(within(topbarEntries).getByRole("button", { name: "项目参数工作台" }));
     expect(window.location.pathname).toBe("/parameters");
 
     window.history.replaceState(null, "", "/parameter-home");
     cleanup();
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "进入 参数合入审核" }));
+    const rerenderedTopbar = document.querySelector(".topbar") as HTMLElement;
+    const rerenderedEntries = within(rerenderedTopbar).getByRole("navigation", { name: "参数管理快捷入口" });
+
+    fireEvent.click(within(rerenderedEntries).getByRole("button", { name: "参数合入审核" }));
     expect(window.location.pathname).toBe("/parameter-review");
   });
 
@@ -413,7 +435,18 @@ describe("WiseEff app shell", () => {
     expectSelectValue(within(comparisonControls).getByRole("combobox", { name: "基准项目" }), "aurora");
     expectSelectValue(within(comparisonControls).getByRole("combobox", { name: "对比项目" }), "nebula");
     expect(comparisonControls.querySelector(".project-choice-card")).not.toBeInTheDocument();
+    expect(comparisonControls).not.toHaveTextContent("当前选择 AUR-Prod，Aurora 量产平台");
+    expect(comparisonControls).not.toHaveTextContent("当前选择 NEB-RD，Nebula 高频调试项目");
     expect(document.body).not.toHaveTextContent("生产 vs 预发");
+    expect(document.body).not.toHaveTextContent("的充电、电池和电源管理参数差异分析。");
+    expect(screen.queryByRole("button", { name: "同步选中项" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "参数对比摘要" })).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("对比范围");
+    expect(document.body).not.toHaveTextContent("实际项目参数对比");
+    expect(document.body).not.toHaveTextContent("漂移参数");
+    expect(document.body).not.toHaveTextContent("需要审阅后同步");
+    expect(document.body).not.toHaveTextContent("高重要性差异");
+    expect(document.body).not.toHaveTextContent("WiseAgent 已生成风险说明");
     expect(screen.getByText("参数差异矩阵")).toBeInTheDocument();
     expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
@@ -693,8 +726,26 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-comparison",
-        present: ["参数", "对比分析", "基准项目", "对比项目", "同步选中项", "WiseAgent 已生成风险说明"],
-        absent: ["Parameters", "Comparison", "生产 vs 预发", "Export", "Sync Selected", "Parameter Key", "OpsAgent", "OpsAgent Insights", "View Historical Latency"]
+        present: ["参数", "对比分析", "基准项目", "对比项目", "参数差异矩阵", "AUR-Prod", "NEB-RD"],
+        absent: [
+          "Parameters",
+          "Comparison",
+          "当前选择 AUR-Prod",
+          "当前选择 NEB-RD",
+          "对比范围",
+          "实际项目参数对比",
+          "漂移参数",
+          "需要审阅后同步",
+          "高重要性差异",
+          "WiseAgent 已生成风险说明",
+          "生产 vs 预发",
+          "Export",
+          "Sync Selected",
+          "Parameter Key",
+          "OpsAgent",
+          "OpsAgent Insights",
+          "View Historical Latency"
+        ]
       },
       {
         path: "/parameter-review",
@@ -703,7 +754,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "项目共享参数库", "共享参数定义", "项目参数值矩阵", "配置源预览", "共享参数"],
+        present: ["项目参数管理后台", "项目共享参数库", "共享参数定义", "项目参数值矩阵", "保存到 JSON 文件", "导出 JSON", "共享参数"],
         absent: ["项目参数 Admin", "items", "events"]
       },
       {
@@ -841,8 +892,13 @@ describe("WiseEff app shell", () => {
     expect(feedbackEntry).toBeInTheDocument();
     expect(feedbackEntry.closest(".feedback-entry")).toBeInTheDocument();
     const css = readFileSync("src/styles.css", "utf8");
+    const navItemCss = readCssBlock(css, ".nav-item");
+    const feedbackEntryCss = readCssBlock(css, ".feedback-entry");
     expect(css).toContain(".utility-nav {\n  flex: 0 0 auto;");
     expect(css).toContain(".utility-nav {\n    display: block;");
+    expect(navItemCss).toContain("justify-content: flex-start;");
+    expect(navItemCss).toContain("height: auto;");
+    expect(feedbackEntryCss).toContain("align-items: flex-start;");
     expect(css).toContain(".agent-header [data-slot=\"button\"]");
 
     fireEvent.click(feedbackEntry);
@@ -856,6 +912,29 @@ describe("WiseEff app shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
     expect(screen.getByText("反馈已记录，内测团队会结合页面路径和问题类型跟进。")).toBeInTheDocument();
+  });
+
+  it("keeps the feedback dialog wide enough for form and screenshot capture columns", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
+
+    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
+    expect(dialog).toHaveClass("feedback-dialog");
+    expect(within(dialog).getByText("问题信息")).toBeInTheDocument();
+    expect(within(dialog).getByText("粘贴上传截图")).toBeInTheDocument();
+
+    const css = readFileSync("src/styles.css", "utf8");
+    const feedbackDialogCss = readCssBlock(css, ".feedback-dialog");
+    const feedbackDialogFormCss = readCssBlock(css, ".feedback-dialog form");
+    const feedbackLayoutCss = readCssBlock(css, ".feedback-layout");
+
+    expect(feedbackDialogCss).toContain("max-width: min(900px, calc(100vw - 48px));");
+    expect(feedbackDialogCss).toContain("padding: 0;");
+    expect(feedbackDialogFormCss).toContain("display: grid;");
+    expect(feedbackLayoutCss).toContain("grid-template-columns: minmax(300px, 1fr) minmax(280px, 360px);");
   });
 
   it("attaches a screenshot pasted from the clipboard for internal feedback", async () => {
@@ -936,7 +1015,7 @@ describe("WiseEff app shell", () => {
 
     fireEvent.change(auroraCurrentValue, { target: { value: "3650" } });
 
-    expect(document.body).toHaveTextContent('"currentValue": "3650"');
+    expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
     expect(within(sharedDefinition).getByLabelText("参数推荐值")).toHaveValue("3200");
     expect(within(projectValues).queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
 
@@ -956,13 +1035,21 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("项目共享参数库")).toBeInTheDocument();
     expect(screen.getByText("共享参数定义")).toBeInTheDocument();
     expect(screen.getByText("项目参数值矩阵")).toBeInTheDocument();
+    expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
+    expect(document.querySelector(".config-preview-panel")).not.toBeInTheDocument();
+    expect(document.querySelector(".config-toolbar-actions")).toHaveTextContent("批量参数导入");
+    expect(document.querySelector(".config-toolbar-actions")).toHaveTextContent("保存到 JSON 文件");
+    expect(document.querySelector(".config-toolbar-actions")).toHaveTextContent("导出 JSON");
+    const configFormLabelCss = readCssBlock(readFileSync("src/styles.css", "utf8"), ".config-form-grid label");
+    expect(configFormLabelCss).toContain("align-items: flex-start;");
+    expect(configFormLabelCss).toContain("text-align: left;");
+    expect(readCssBlock(readFileSync("src/styles.css", "utf8"), ".project-value-row label")).toContain("text-align: left;");
     expect(screen.getByText("所有项目共用同一条参数定义，只在这里维护各项目的实际值。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "NEB-RD" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
 
     expect(screen.getByDisplayValue("new_power_parameter_11")).toBeInTheDocument();
-    expect(document.body).toHaveTextContent('"name": "new_power_parameter_11"');
 
     expect(screen.getByText("new_power_parameter_11")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toHaveTextContent("NEB-RD");
@@ -970,7 +1057,27 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "删除参数" }));
 
     expect(screen.queryByDisplayValue("new_power_parameter_11")).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent('"name": "new_power_parameter_11"');
+  });
+
+  it("keeps the project shared parameter library list breathable and scannable", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const listBlock = readCssBlock(css, ".project-parameter-library-list");
+    const rowBlock = readCssBlock(css, "[data-slot=\"button\"].project-parameter-list-row");
+    const selectedBlock = readCssBlock(css, "[data-slot=\"button\"].project-parameter-list-row.selected");
+    const nameBlock = readCssBlock(css, ".project-parameter-list-row strong");
+
+    expect(listBlock).toContain("gap: 8px;");
+    expect(listBlock).toContain("max-height: 520px;");
+    expect(listBlock).toContain("overflow: auto;");
+    expect(rowBlock).toContain("grid-template-columns: minmax(0, 1fr) auto;");
+    expect(rowBlock).toContain("min-height: 68px;");
+    expect(rowBlock).toContain("border-radius: 8px;");
+    expect(rowBlock).toContain("transition: none;");
+    expect(selectedBlock).toContain("background-color: #eef4ff;");
+    expect(selectedBlock).toContain("box-shadow: inset 3px 0 0 var(--app-primary);");
+    expect(nameBlock).toContain("font-size: 14px;");
+    expect(nameBlock).toContain("overflow-wrap: anywhere;");
+    expect(nameBlock).toContain("white-space: normal;");
   });
 
   it("saves project admin edits to the local JSON config endpoint", () => {
