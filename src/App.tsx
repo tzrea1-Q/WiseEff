@@ -31,7 +31,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
-import { ParameterManagementHomePage, homepageTimeWindowOptions } from "./ParameterManagementHomePage";
+import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -589,7 +589,6 @@ type PageProps = {
   onNavigate: (path: string) => void;
   search: string;
   parameterHomeTimeWindow?: HomepageTimeWindow;
-  onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
 };
 
 function PageRouter({
@@ -604,6 +603,7 @@ function PageRouter({
   onComparisonSelectionChange
 }: PageProps & {
   page: PageConfig;
+  onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
   comparisonSelection: ComparisonProjectSelection;
   onComparisonSelectionChange: React.Dispatch<React.SetStateAction<ComparisonProjectSelection>>;
 }) {
