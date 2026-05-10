@@ -1074,10 +1074,21 @@ body {
   min-height: 650px;
 }
 
+.workbench-one-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.debugging-page .page-header {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .filter-panel,
 .detail-panel,
 .review-detail,
-.debug-timeline,
 .history-panel {
   padding: 18px;
 }
@@ -2178,10 +2189,6 @@ td small {
   font-size: 12px;
 }
 
-.debug-timeline {
-  grid-column: span 1;
-}
-
 .comparison-page {
   display: flex;
   flex-direction: column;
@@ -3242,7 +3249,6 @@ td small {
 
   .detail-panel,
   .review-detail,
-  .debug-timeline,
   .history-panel {
     grid-column: span 2;
   }
@@ -3455,7 +3461,6 @@ td small {
   .review-detail,
   .review-queue,
   .debug-table,
-  .debug-timeline,
   .history-panel,
   .logs-left {
     grid-column: span 1;

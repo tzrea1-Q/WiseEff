@@ -797,29 +797,18 @@ describe("WiseEff app shell", () => {
     expect(document.body).not.toHaveTextContent("OpsAgent");
   });
 
-  it("filters debugging parameters by module from a left filter panel", () => {
+  it("keeps the debug route on a single column without a filter panel", () => {
     window.history.replaceState(null, "", "/debugging");
 
     render(<App />);
 
-    const filters = screen.getByRole("complementary", { name: "参数筛选" });
-    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
-
-    expect(within(filters).queryByText("项目")).not.toBeInTheDocument();
-    expect(within(filters).queryByText("重要性")).not.toBeInTheDocument();
-    expectSelectValue(moduleSelect, "All");
+    expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
+    expect(screen.queryByText("当前筛选命中 8 条参数。")).not.toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("charger.input_current_limit_ma")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("battery.cell_temp_limit_c")).toBeInTheDocument();
-
-    changeSelectValue(moduleSelect, "Battery");
-
-    expect(within(screen.getByRole("table")).queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText("battery.cell_temp_limit_c")).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText("battery.impedance_mohm")).toBeInTheDocument();
-    expect(filters).toHaveTextContent("当前筛选命中 3 条参数。");
   });
 
-  it("edits and pushes debugging target values with operation records", () => {
+  it("edits and pushes debugging target values on the debug route", () => {
     window.history.replaceState(null, "", "/debugging");
 
     render(<App />);
@@ -843,12 +832,10 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "下发调试值" }));
 
     const updatedRow = findDebugRow(parameterKey);
-    const timeline = screen.getByRole("complementary", { name: "调试操作记录" });
 
     expect(updatedRow).toBeDefined();
     expect(updatedRow).toHaveTextContent("0");
-    expect(timeline).toHaveTextContent(`下发 ${parameterKey}`);
-    expect(timeline).toHaveTextContent("值变更：1 -> 0 bool，执行成功。");
+    expect(within(updatedRow as HTMLElement).getByText("待下发")).toBeInTheDocument();
   });
 
   it("removes the global project selector from review and parameter admin topbars", () => {

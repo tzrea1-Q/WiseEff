@@ -33,6 +33,7 @@ import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityIte
 import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
+import { DebuggingPage } from "./DebuggingPage";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
@@ -226,13 +227,6 @@ const logStatusLabels: Record<LogRecord["status"], string> = {
   Failed: "失败"
 };
 
-const debugModuleLabels: Record<string, string> = {
-  charger: "Charger",
-  battery: "Battery",
-  wireless: "Wireless",
-  pmic: "PMIC"
-};
-
 function displayTag(text: string) {
   if (text in riskLabels) {
     return riskLabels[text as keyof typeof riskLabels];
@@ -241,11 +235,6 @@ function displayTag(text: string) {
     return logStatusLabels[text as keyof typeof logStatusLabels];
   }
   return text;
-}
-
-function getDebugModule(parameter: DebugParameter) {
-  const keyPrefix = parameter.key.split(".")[0] ?? "other";
-  return debugModuleLabels[keyPrefix] ?? keyPrefix.toUpperCase();
 }
 
 function buildRuntimeReviewFields(summary: string, module: string) {
@@ -907,7 +896,7 @@ function PageRouter({
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging":
-      return <DebuggingPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <DebuggingPage state={state} dispatch={dispatch} />;
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
@@ -2408,134 +2397,6 @@ function LogAdminPage({ state }: PageProps) {
         <AuditPanel events={state.auditEvents.filter((event) => event.app === "logs" || event.app === "log-admin")} />
       </section>
     </AdminPageScaffold>
-  );
-}
-
-function DebuggingPage({ state, dispatch }: PageProps) {
-  const [moduleFilter, setModuleFilter] = useState("All");
-  const [operationRecords, setOperationRecords] = useState<[string, string, string][]>([]);
-  const activeDevice = state.devices.find((device) => device.projectId === state.activeProjectId) ?? state.devices[0];
-  const moduleOptions = useMemo(
-    () => Array.from(new Set(state.debugParameters.map((parameter) => getDebugModule(parameter)))),
-    [state.debugParameters]
-  );
-  const debugParameters =
-    moduleFilter === "All"
-      ? state.debugParameters
-      : state.debugParameters.filter((parameter) => getDebugModule(parameter) === moduleFilter);
-  const pendingParameters = debugParameters.filter((parameter) => parameter.status === "待下发");
-  const connected = activeDevice.status === "已连接";
-  const timelineItems: [string, string, string][] = [
-    ...operationRecords,
-    ["刚刚", connected ? `${activeDevice.name} 在线` : "等待连接样机", activeDevice.firmware],
-    ["10:45:02", "下发 charger.input_current_limit_ma", "值变更：3800 -> 3500，执行成功。"],
-    ["10:50:11", "battery.cell_temp_limit_c 被拒绝", "越界错误，允许最大值为 46°C。"],
-    ["10:52:30", "读取全量充电参数快照", "共 142 项。"]
-  ];
-  const updateTargetValue = (parameter: DebugParameter, targetValue: string) => {
-    dispatch({
-      type: "UPDATE_DEBUG_PARAMETER",
-      parameterId: parameter.id,
-      patch: {
-        targetValue,
-        status: targetValue === parameter.currentValue ? "已同步" : "待下发"
-      }
-    });
-  };
-  const pushPendingValues = () => {
-    if (pendingParameters.length === 0) {
-      return;
-    }
-
-    const records = pendingParameters.map(
-      (parameter): [string, string, string] => [
-        "刚刚",
-        `下发 ${parameter.key}`,
-        `值变更：${parameter.currentValue} -> ${parameter.targetValue} ${parameter.unit}，执行成功。`
-      ]
-    );
-    setOperationRecords((items) => [...records, ...items]);
-    dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingParameters.map((parameter) => parameter.id) });
-  };
-
-  return (
-    <WorkbenchLayout
-      title="参数调试平台"
-      subtitle="连接调试样机后执行实时充电参数调节，所有下发动作都保留确认和回滚准备。"
-      actions={
-        <div className="device-pill">
-          <span className={connected ? "live-dot" : "idle-dot"} />
-          {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
-          <Button className="link-button" type="button" variant="link" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
-            连接
-          </Button>
-        </div>
-      }
-    >
-      <aside className="filter-panel" aria-label="参数筛选">
-        <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-        <Label className="field-label" htmlFor="debug-module-filter">
-          模块
-        </Label>
-        <SelectControl
-          id="debug-module-filter"
-          className="filter-select"
-          value={moduleFilter}
-          onValueChange={setModuleFilter}
-          options={["All", ...moduleOptions].map((module) => ({ value: module, label: module === "All" ? "全部" : module }))}
-        />
-        <div className="empty-hint">
-          {debugParameters.length === 0 ? "当前筛选无数据，可重置模块。" : `当前筛选命中 ${debugParameters.length} 条参数。`}
-        </div>
-      </aside>
-      <section className="debug-table">
-        <PanelHeader title="实时可调参数" meta={connected ? "设备在线" : "需要连接"} />
-        <DataTable
-          headers={["参数名称", "当前值", "目标设定值", "范围", "风险", "状态"]}
-          rows={debugParameters}
-          renderRow={(parameter) => (
-            <TableRow key={parameter.id}>
-              <TableCell>
-                <strong>{parameter.name}</strong>
-                <small>{parameter.key}</small>
-              </TableCell>
-              <TableCell className="mono">{parameter.currentValue}</TableCell>
-              <TableCell>
-                <Input
-                  aria-label={`${parameter.key} 目标设定值`}
-                  value={parameter.targetValue}
-                  onChange={(event) => updateTargetValue(parameter, event.target.value)}
-                />
-              </TableCell>
-              <TableCell>{parameter.range} {parameter.unit}</TableCell>
-              <TableCell><RiskBadge risk={parameter.risk} /></TableCell>
-              <TableCell><Badge tone={parameter.status === "待下发" ? "secondary" : "neutral"}>{parameter.status}</Badge></TableCell>
-            </TableRow>
-          )}
-        />
-        <div className="table-actionbar">
-          <span>{pendingParameters.length} 项参数等待应用</span>
-          <div>
-            <Button variant="outline" type="button">
-              <RotateCcw size={16} />
-              一键回滚充电策略
-            </Button>
-            <Button
-              type="button"
-              disabled={!connected || pendingParameters.length === 0}
-              onClick={pushPendingValues}
-            >
-              <Send size={16} />
-              下发调试值
-            </Button>
-          </div>
-        </div>
-      </section>
-      <aside className="debug-timeline" aria-label="调试操作记录">
-        <PanelHeader title="调试操作记录" />
-        <VerticalTimeline items={timelineItems} />
-      </aside>
-    </WorkbenchLayout>
   );
 }
 
