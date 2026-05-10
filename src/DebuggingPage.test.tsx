@@ -89,3 +89,45 @@ describe("SessionSummaryCard 集成", () => {
     expect(button).toHaveAttribute("title", expect.stringMatching(/尚无快照/));
   });
 });
+
+describe("回滚链路端到端", () => {
+  it("下发 → 回滚 → 快照清空、currentValue 恢复", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+
+    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input");
+    if (!firstTargetInput) {
+      throw new Error("找不到第一行目标值输入");
+    }
+    const originalCurrentText = firstTargetInput.closest("tr")?.querySelector("td.mono")?.textContent ?? "";
+    fireEvent.change(firstTargetInput, { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: /下发调试值/ }));
+
+    expect(screen.getByText(/snap-/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /回滚到上次快照/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认回滚/ }));
+
+    expect(screen.queryByText(/snap-/)).not.toBeInTheDocument();
+
+    const restoredCurrent = firstTargetInput.closest("tr")?.querySelector("td.mono")?.textContent ?? "";
+    expect(restoredCurrent).toBe(originalCurrentText);
+  });
+
+  it("点击取消保留快照", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input");
+    if (!firstTargetInput) {
+      throw new Error("找不到输入");
+    }
+    fireEvent.change(firstTargetInput, { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: /下发调试值/ }));
+    fireEvent.click(screen.getByRole("button", { name: /回滚到上次快照/ }));
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
+    expect(screen.getByText(/snap-/)).toBeInTheDocument();
+  });
+});

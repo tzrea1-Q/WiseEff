@@ -1195,6 +1195,79 @@ body {
   margin-left: auto;
 }
 
+.rollback-confirm-dialog {
+  display: grid;
+  gap: 16px;
+  width: min(540px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: hidden;
+}
+
+.rollback-confirm-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.rollback-confirm-head svg {
+  margin-top: 6px;
+  color: var(--amber);
+}
+
+.rollback-confirm-head h2 {
+  margin: 2px 0 6px;
+  font-size: 20px;
+}
+
+.rollback-confirm-head p {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.rollback-confirm-list {
+  display: grid;
+  gap: 10px;
+  max-height: 340px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.rollback-confirm-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+}
+
+.rollback-confirm-name strong {
+  display: block;
+  font-weight: 800;
+}
+
+.rollback-confirm-name small {
+  display: block;
+  margin-top: 3px;
+  color: var(--app-muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.rollback-confirm-diff {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+}
+
 .filter-panel,
 .detail-panel,
 .review-detail,

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppAction } from "./App";
 import { DisconnectedBanner } from "./components/DisconnectedBanner";
+import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { SessionSummaryCard } from "./components/SessionSummaryCard";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
@@ -19,6 +20,7 @@ type DebuggingPageProps = {
 
 export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
   const [nowTick, setNowTick] = useState(() => new Date());
+  const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const activeDevice = state.devices.find((device) => device.projectId === state.activeProjectId) ?? state.devices[0];
   const debugParameters = state.debugParameters;
   const pendingParameters = debugParameters.filter((parameter) => parameter.status === "待下发");
@@ -74,9 +76,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
         <SessionSummaryCard
           state={state}
           now={nowTick}
-          onRollbackRequest={() => {
-            console.debug("rollback requested - dialog coming in Task 6");
-          }}
+          onRollbackRequest={() => setRollbackDialogOpen(true)}
         />
         <section className="debug-table">
           <PanelHeader title="实时可调参数" meta={connected ? "设备在线" : "需要连接"} />
@@ -123,6 +123,17 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           </div>
         </section>
       </div>
+      {rollbackDialogOpen && state.lastDebugSnapshot ? (
+        <RollbackConfirmDialog
+          snapshot={state.lastDebugSnapshot}
+          parameters={state.debugParameters}
+          onCancel={() => setRollbackDialogOpen(false)}
+          onConfirm={() => {
+            dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
+            setRollbackDialogOpen(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
