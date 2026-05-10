@@ -94,17 +94,18 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
-    const dimensionSelect = within(hotspotRegion).getByRole("combobox", { name: "热榜维度" });
+    const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
+    const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块" });
+    const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目" });
 
-    expect(dimensionSelect).toHaveValue("module");
-    expect(within(dimensionSelect).getByRole("option", { name: "模块" })).toHaveValue("module");
-    expect(within(dimensionSelect).getByRole("option", { name: "项目" })).toHaveValue("project");
+    expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    expect(projectToggle).toHaveAttribute("aria-checked", "false");
     expect(within(hotspotRegion).getByText("Charging Policy")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("AUR-Prod · Charging Policy")).not.toBeInTheDocument();
 
-    fireEvent.change(dimensionSelect, { target: { value: "project" } });
+    fireEvent.click(projectToggle);
 
-    expect(dimensionSelect).toHaveValue("project");
+    expect(projectToggle).toHaveAttribute("aria-checked", "true");
     expect(within(hotspotRegion).getByText("AUR-Prod")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("Charging Policy")).not.toBeInTheDocument();
   });

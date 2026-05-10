@@ -89,22 +89,6 @@ body {
   overflow: hidden;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
-}
-
-button {
-  cursor: pointer;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.52;
-}
-
 .app-shell {
   min-height: 100vh;
   display: flex;
@@ -359,24 +343,6 @@ button:disabled {
   font-size: 13px;
 }
 
-.topbar select,
-.detail-panel input,
-.detail-panel textarea,
-.debug-table input,
-.agent-input input {
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  outline: 0;
-}
-
-.topbar select {
-  max-width: 170px;
-  padding: 8px 28px 8px 10px;
-  font-size: 13px;
-}
-
 .icon-button,
 .avatar {
   position: relative;
@@ -464,42 +430,6 @@ button:disabled {
   display: flex;
   gap: 12px;
   margin-top: 28px;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 38px;
-  padding: 9px 14px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  font-size: 14px;
-  font-weight: 750;
-  transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
-}
-
-.button:active {
-  transform: translateY(1px);
-}
-
-.button.primary {
-  color: #fff;
-  background: var(--app-primary);
-  box-shadow: 0 10px 22px rgba(0, 61, 155, 0.18);
-}
-
-.button.subtle {
-  color: var(--text);
-  background: #fff;
-  border-color: var(--outline);
-}
-
-.button.danger {
-  color: var(--danger);
-  background: #fff;
-  border-color: rgba(186, 26, 26, 0.35);
 }
 
 .button.full {
@@ -1137,18 +1067,6 @@ button:disabled {
   font-weight: 800;
 }
 
-.filter-select {
-  width: 100%;
-  min-width: 0;
-  padding: 9px 32px 9px 10px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  outline: 0;
-  font-size: 13px;
-}
-
 .segmented {
   display: flex;
   gap: 8px;
@@ -1378,14 +1296,13 @@ td small {
   gap: 12px;
 }
 
-.detail-panel input,
-.detail-panel textarea,
-.debug-table input {
+.detail-panel [data-slot="input"],
+.detail-panel [data-slot="textarea"],
+.debug-table [data-slot="input"] {
   width: 100%;
-  padding: 9px 10px;
 }
 
-.detail-panel textarea {
+.detail-panel [data-slot="textarea"] {
   resize: vertical;
   line-height: 1.55;
 }
@@ -1677,6 +1594,7 @@ td small {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  min-height: 0;
   padding: 13px 16px;
   color: var(--text);
   background: #fff;
@@ -1733,19 +1651,13 @@ td small {
   grid-column: 1 / -1;
 }
 
-.config-form-grid input,
-.config-form-grid textarea,
-.config-form-grid select {
+.config-form-grid [data-slot="input"],
+.config-form-grid [data-slot="textarea"],
+.config-form-grid [data-slot="select-trigger"] {
   width: 100%;
-  padding: 9px 10px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  outline: 0;
 }
 
-.config-form-grid textarea {
+.config-form-grid [data-slot="textarea"] {
   resize: vertical;
   line-height: 1.55;
 }
@@ -1813,15 +1725,9 @@ td small {
   font-weight: 800;
 }
 
-.project-value-row input {
+.project-value-row [data-slot="input"] {
   width: 100%;
   min-width: 0;
-  padding: 9px 10px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  outline: 0;
 }
 
 .config-preview-panel pre {
@@ -1933,14 +1839,13 @@ td small {
   place-items: center;
   gap: 8px;
   width: 100%;
+  height: auto;
   min-height: 180px;
   padding: 28px;
   color: var(--app-primary);
   background: #fff;
   border: 2px dashed var(--outline);
   border-radius: 14px;
-  cursor: pointer;
-  font: inherit;
   text-align: center;
 }
 
@@ -2093,13 +1998,12 @@ td small {
 .history-item {
   display: block;
   width: 100%;
+  height: auto;
   padding: 12px;
   color: inherit;
   background: transparent;
   border: 0;
   border-bottom: 1px solid #e7ecf7;
-  cursor: pointer;
-  font: inherit;
   text-align: left;
 }
 
@@ -2172,21 +2076,12 @@ td small {
   display: flex;
   align-items: center;
   min-width: 0;
-  background: #fff;
-  border: 1px solid #b9c7e7;
-  border-radius: 8px;
   box-shadow: 0 8px 18px rgba(0, 61, 155, 0.06);
 }
 
-.project-select-shell select {
+.project-select-shell [data-slot="select-trigger"] {
   width: 100%;
   min-width: 0;
-  padding: 11px 40px 11px 12px;
-  color: var(--text);
-  background: transparent;
-  border: 0;
-  outline: 0;
-  appearance: none;
   font-weight: 800;
 }
 
@@ -2207,10 +2102,6 @@ td small {
 .project-select-field:focus-within {
   border-color: #8eabff;
   box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
-}
-
-.project-select-field:focus-within .project-select-shell {
-  border-color: var(--primary-container);
 }
 
 .breadcrumb {
@@ -2507,9 +2398,6 @@ td small {
 
 .link-button {
   padding: 0;
-  color: var(--app-primary);
-  background: transparent;
-  border: 0;
   font-weight: 850;
 }
 
@@ -2748,11 +2636,6 @@ td small {
   backdrop-filter: blur(16px);
 }
 
-.app-shell:has(.modal-backdrop) .agent-fab,
-.app-shell:has(.modal-backdrop) .agent-panel {
-  display: none;
-}
-
 .agent-header {
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr) 30px;
@@ -2791,14 +2674,11 @@ td small {
   text-transform: uppercase;
 }
 
-.agent-header button {
-  display: grid;
-  place-items: center;
+.agent-header [data-slot="button"] {
   width: 30px;
   height: 30px;
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
-  border: 0;
   border-radius: 999px;
 }
 
@@ -2857,12 +2737,8 @@ td small {
   gap: 7px;
 }
 
-.quick-prompts button,
-.agent-actions button {
-  padding: 7px 10px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
+.quick-prompts [data-slot="button"],
+.agent-actions [data-slot="button"] {
   border-radius: 999px;
   font-size: 12px;
   font-weight: 750;
@@ -2900,7 +2776,7 @@ td small {
   gap: 8px;
 }
 
-.agent-actions button {
+.agent-actions [data-slot="button"] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2909,7 +2785,6 @@ td small {
 }
 
 .agent-actions .requires-confirm {
-  color: #fff;
   background: var(--app-primary);
   border-color: var(--app-primary);
 }
@@ -2922,59 +2797,24 @@ td small {
   border-top: 1px solid var(--outline);
 }
 
-.agent-input input {
+.agent-input [data-slot="input"] {
   flex: 1;
   min-width: 0;
-  padding: 10px 12px;
   border-radius: 999px;
 }
 
-.agent-input button {
+.agent-input [data-slot="button"] {
   display: grid;
   place-items: center;
   width: 38px;
   height: 38px;
   color: #001f27;
   background: var(--secondary-container);
-  border: 0;
   border-radius: 999px;
-}
-
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(16, 28, 45, 0.38);
-  backdrop-filter: blur(4px);
 }
 
 .confirm-dialog {
   width: min(460px, 100%);
-  padding: 22px;
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 16px;
-  box-shadow: 0 24px 70px rgba(16, 28, 45, 0.28);
-}
-
-.confirm-dialog h2 {
-  margin: 0 0 8px;
-  font-size: 20px;
-}
-
-.confirm-dialog p {
-  margin: 0 0 20px;
-  color: var(--app-muted);
-  line-height: 1.6;
-}
-
-.confirm-dialog:not(.feedback-dialog) > div {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
 }
 
 .rejection-dialog {
@@ -2982,32 +2822,11 @@ td small {
   gap: 12px;
 }
 
-.rejection-dialog p {
-  margin-bottom: 4px;
-}
-
-.rejection-dialog label {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.rejection-dialog textarea {
+.rejection-dialog [data-slot="textarea"] {
   width: 100%;
   min-height: 120px;
-  padding: 10px 12px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  outline: 0;
   resize: vertical;
   line-height: 1.55;
-}
-
-.rejection-dialog textarea:focus {
-  border-color: var(--primary-container);
-  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
 }
 
 .feedback-dialog {
@@ -3016,10 +2835,6 @@ td small {
   width: min(760px, 100%);
   max-height: min(820px, calc(100vh - 48px));
   overflow: auto;
-  padding: 0;
-  border-color: rgba(115, 118, 133, 0.22);
-  border-radius: 8px;
-  box-shadow: 0 28px 80px rgba(16, 28, 45, 0.26);
 }
 
 .feedback-dialog-header {
@@ -3114,33 +2929,15 @@ td small {
   font-weight: 800;
 }
 
-.feedback-section label {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.feedback-section select,
-.feedback-section textarea {
+.feedback-section [data-slot="select-trigger"],
+.feedback-section [data-slot="textarea"] {
   width: 100%;
-  padding: 10px 12px;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-  outline: 0;
 }
 
-.feedback-section textarea {
+.feedback-section [data-slot="textarea"] {
   min-height: 156px;
   resize: vertical;
   line-height: 1.55;
-}
-
-.feedback-section select:focus,
-.feedback-section textarea:focus {
-  border-color: var(--primary-container);
-  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
 }
 
 .feedback-capture-panel {
@@ -3205,7 +3002,7 @@ td small {
   gap: 8px;
 }
 
-.feedback-capture-actions .button {
+.feedback-capture-actions [data-slot="button"] {
   flex: 1;
 }
 
@@ -3417,12 +3214,6 @@ td small {
     gap: 6px;
   }
 
-  .topbar select {
-    max-width: 122px;
-    padding: 7px 8px;
-    font-size: 12px;
-  }
-
   .main-content {
     padding: calc(var(--topbar-height) + 14px) 12px 118px;
   }
@@ -3550,10 +3341,6 @@ td small {
 }
 
 @media (max-width: 520px) {
-  .topbar select:nth-of-type(2) {
-    display: none;
-  }
-
   .hero-copy h1 {
     font-size: 29px;
   }
@@ -3562,7 +3349,7 @@ td small {
     flex-direction: column;
   }
 
-  .button {
+  .hero-actions [data-slot="button"] {
     width: 100%;
   }
 

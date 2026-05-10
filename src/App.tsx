@@ -58,6 +58,43 @@ import {
   updateProjectParameter,
   updateProjectParameterMetadata
 } from "./powerManagementConfig";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge as UiBadge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
 type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
@@ -86,6 +123,45 @@ const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: strin
   { value: "30d", label: "30天" },
   { value: "180d", label: "180天" }
 ];
+
+type SelectOption<Value extends string = string> = {
+  value: Value;
+  label: ReactNode;
+  disabled?: boolean;
+};
+
+function SelectControl<Value extends string>({
+  value,
+  onValueChange,
+  options,
+  ariaLabel,
+  id,
+  className,
+  placeholder
+}: {
+  value: Value;
+  onValueChange: (value: Value) => void;
+  options: SelectOption<Value>[];
+  ariaLabel?: string;
+  id?: string;
+  className?: string;
+  placeholder?: string;
+}) {
+  return (
+    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)}>
+      <SelectTrigger id={id} aria-label={ariaLabel} className={className} data-value={value}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 type ParameterValueDraft = {
   currentValue: string;
@@ -457,7 +533,11 @@ function reducer(state: PrototypeState, action: AppAction): PrototypeState {
 }
 
 function App() {
-  return <AppShell key={mockDataFingerprint} />;
+  return (
+    <TooltipProvider delayDuration={0}>
+      <AppShell key={mockDataFingerprint} />
+    </TooltipProvider>
+  );
 }
 
 function AppShell() {
@@ -665,32 +745,36 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
           <div className="brand-subtitle">AI 驱动的企业业务效率平台</div>
         </div>
       </div>
-      <nav className="nav-scroll" aria-label="主导航">
-        {Object.entries(groups).map(([group, items]) => (
-          <div className="nav-group" key={group}>
-            <div className="nav-group-label">{group}</div>
-            {items.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  className={item.path === activePath ? "nav-item active" : "nav-item"}
-                  key={item.path}
-                  type="button"
-                  onClick={() => onNavigate(item.path)}
-                >
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+      <ScrollArea className="nav-scroll">
+        <nav aria-label="主导航">
+          {Object.entries(groups).map(([group, items]) => (
+            <div className="nav-group" key={group}>
+              <div className="nav-group-label">{group}</div>
+              {items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Button
+                    className={item.path === activePath ? "nav-item active" : "nav-item"}
+                    key={item.path}
+                    type="button"
+                    variant="ghost"
+                    onClick={() => onNavigate(item.path)}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </Button>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+      </ScrollArea>
       <div className="utility-nav">
-        <button
+        <Button
           aria-label="问题反馈"
           className="nav-item compact feedback-entry"
           type="button"
+          variant="ghost"
           onClick={() => setFeedbackOpen(true)}
         >
           <MessageSquareText size={18} />
@@ -698,23 +782,38 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
             <strong>问题反馈</strong>
             <small>内测收集 · 当前页</small>
           </span>
-        </button>
+        </Button>
         {utilityItems.map((item) => {
           const Icon = item.icon;
           return (
-            <button className="nav-item compact" key={item.label} type="button">
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
+            <Tooltip key={item.label}>
+              <TooltipTrigger asChild>
+                <Button className="nav-item compact" type="button" variant="ghost">
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
           );
         })}
       </div>
-      {feedbackOpen ? <FeedbackDialog pagePath={activePath} pageTitle={pageTitle} onClose={() => setFeedbackOpen(false)} /> : null}
+      <FeedbackDialog open={feedbackOpen} pagePath={activePath} pageTitle={pageTitle} onOpenChange={setFeedbackOpen} />
     </aside>
   );
 }
 
-function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pageTitle: string; onClose: () => void }) {
+function FeedbackDialog({
+  open,
+  pagePath,
+  pageTitle,
+  onOpenChange
+}: {
+  open: boolean;
+  pagePath: string;
+  pageTitle: string;
+  onOpenChange: (open: boolean) => void;
+}) {
   const [description, setDescription] = useState("");
   const [feedbackType, setFeedbackType] = useState("体验问题");
   const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
@@ -730,6 +829,12 @@ function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pa
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setSubmitted(false);
+    }
+  }, [open]);
 
   const handleScreenshotPaste = (event: ReactClipboardEvent<HTMLElement>) => {
     const image = getPastedImage(event.clipboardData);
@@ -760,9 +865,9 @@ function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pa
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="feedback-title">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="feedback-dialog">
       <form
-        className="confirm-dialog feedback-dialog"
         onSubmit={(event) => {
           event.preventDefault();
           if (!trimmedDescription) {
@@ -771,16 +876,13 @@ function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pa
           setSubmitted(true);
         }}
       >
-        <div className="feedback-dialog-header">
+        <DialogHeader className="feedback-dialog-header">
           <div>
             <span className="eyebrow">Internal Beta Feedback</span>
-            <h2 id="feedback-title">问题反馈</h2>
-            <p>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</p>
+            <DialogTitle>问题反馈</DialogTitle>
+            <DialogDescription>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</DialogDescription>
           </div>
-          <button className="icon-button" type="button" aria-label="关闭问题反馈" onClick={onClose}>
-            <X size={18} />
-          </button>
-        </div>
+        </DialogHeader>
         <div className="feedback-context">
           <div>
             <span>当前页面</span>
@@ -794,15 +896,16 @@ function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pa
               <span id="feedback-info-title">问题信息</span>
               <small>必填</small>
             </div>
-            <label htmlFor="feedback-type">反馈类型</label>
-            <select id="feedback-type" value={feedbackType} onChange={(event) => setFeedbackType(event.target.value)}>
-              <option>体验问题</option>
-              <option>数据问题</option>
-              <option>导出/提交异常</option>
-              <option>功能建议</option>
-            </select>
-            <label htmlFor="feedback-description">问题描述</label>
-            <textarea
+            <Label htmlFor="feedback-type">反馈类型</Label>
+            <SelectControl
+              id="feedback-type"
+              ariaLabel="反馈类型"
+              value={feedbackType}
+              onValueChange={setFeedbackType}
+              options={["体验问题", "数据问题", "导出/提交异常", "功能建议"].map((label) => ({ value: label, label }))}
+            />
+            <Label htmlFor="feedback-description">问题描述</Label>
+            <Textarea
               id="feedback-description"
               value={description}
               onChange={(event) => setDescription(event.target.value)}
@@ -833,10 +936,10 @@ function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pa
             </div>
             {screenshotUrl ? (
               <div className="feedback-capture-actions">
-                <button className="button subtle feedback-remove-shot" type="button" onClick={removeScreenshot}>
+                <Button className="feedback-remove-shot" type="button" variant="outline" onClick={removeScreenshot}>
                   <Trash2 size={16} />
                   移除
-                </button>
+                </Button>
               </div>
             ) : null}
             {screenshotStatus === "ready" ? <p className="feedback-capture-status success">截图已粘贴，可随反馈一起提交。</p> : null}
@@ -848,16 +951,17 @@ function FeedbackDialog({ pagePath, pageTitle, onClose }: { pagePath: string; pa
             {screenshotUrl ? "反馈已记录，并附带粘贴截图。" : "反馈已记录，内测团队会结合页面路径和问题类型跟进。"}
           </p>
         ) : null}
-        <div className="dialog-actions">
-          <button className="button subtle" type="button" onClick={onClose}>
+        <DialogFooter className="dialog-actions">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             关闭
-          </button>
-          <button className="button primary" type="submit" disabled={!trimmedDescription}>
+          </Button>
+          <Button type="submit" disabled={!trimmedDescription}>
             提交反馈
-          </button>
-        </div>
+          </Button>
+        </DialogFooter>
       </form>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -912,39 +1016,35 @@ function TopBar({
         {page.key === "parameter-home" ? (
           <label className="topbar-time-window-control">
             <span>时间范围</span>
-            <select
-              aria-label="时间范围"
+            <SelectControl
+              ariaLabel="时间范围"
               value={parameterHomeTimeWindow}
-              onChange={(event) => onParameterHomeTimeWindowChange(event.target.value as HomepageTimeWindow)}
-            >
-              {homepageTimeWindowOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={onParameterHomeTimeWindowChange}
+              options={homepageTimeWindowOptions}
+            />
           </label>
         ) : null}
         <div className="searchbox">
           <Search size={17} />
-          <input aria-label="搜索" placeholder="搜索..." />
+          <Input aria-label="搜索" placeholder="搜索..." />
         </div>
         {showProjectSelector ? (
-          <select value={state.activeProjectId} onChange={(event) => dispatch({ type: "SET_PROJECT", projectId: event.target.value })}>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
+          <SelectControl
+            ariaLabel="项目"
+            value={state.activeProjectId}
+            onValueChange={(projectId) => dispatch({ type: "SET_PROJECT", projectId })}
+            options={projects.map((project) => ({ value: project.id, label: project.name }))}
+          />
         ) : null}
-        <button className="icon-button" type="button" aria-label="通知">
+        <Button className="icon-button" type="button" aria-label="通知" variant="outline" size="icon">
           <MessageSquareText size={18} />
           <span className="notification-dot" />
-        </button>
-        <div className="avatar">
-          <UserRound size={17} />
-        </div>
+        </Button>
+        <Avatar className="avatar">
+          <AvatarFallback>
+            <UserRound size={17} />
+          </AvatarFallback>
+        </Avatar>
       </div>
     </header>
   );
@@ -1194,80 +1294,65 @@ function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
       title="项目参数用户工作台"
       actions={
         <>
-          <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
+          <Button variant="outline" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
             <Download size={16} />
             导出 Excel
-          </button>
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+          </Button>
+          <Button variant="outline" type="button" onClick={() => onNavigate("/parameter-submissions")}>
             <History size={16} />
             历史提交
-          </button>
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
+          </Button>
+          <Button variant="outline" type="button" onClick={() => onNavigate("/parameter-comparison")}>
             <ArrowRight size={16} />
             跨项目对比
-          </button>
+          </Button>
         </>
       }
     >
       <aside className="filter-panel" aria-label="参数筛选">
         <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-        <label className="field-label" htmlFor="parameter-project-filter">
+        <Label className="field-label" htmlFor="parameter-project-filter">
           项目
-        </label>
-        <select
+        </Label>
+        <SelectControl
           id="parameter-project-filter"
           className="filter-select"
           value={state.activeProjectId}
-          onChange={(event) => dispatch({ type: "SET_PROJECT", projectId: event.target.value })}
-        >
-          {projects.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.code} · {project.name}
-            </option>
-          ))}
-        </select>
-        <label className="field-label" htmlFor="parameter-risk-filter">
+          onValueChange={(projectId) => dispatch({ type: "SET_PROJECT", projectId })}
+          options={projects.map((project) => ({ value: project.id, label: `${project.code} · ${project.name}` }))}
+        />
+        <Label className="field-label" htmlFor="parameter-risk-filter">
           重要性
-        </label>
-        <select
+        </Label>
+        <SelectControl
           id="parameter-risk-filter"
           className="filter-select"
           value={riskFilter}
-          onChange={(event) => setRiskFilter(event.target.value as ParameterRiskFilter)}
-        >
-          {([
+          onValueChange={setRiskFilter}
+          options={([
             ["All", "全部"],
             ["High", "高"],
             ["Medium", "中"],
             ["Low", "低"]
-          ] as const).map(([risk, label]) => (
-            <option key={risk} value={risk}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <label className="field-label" htmlFor="parameter-module-filter">
+          ] as const).map(([value, label]) => ({ value, label }))}
+        />
+        <Label className="field-label" htmlFor="parameter-module-filter">
           模块
-        </label>
-        <select
+        </Label>
+        <SelectControl
           id="parameter-module-filter"
           className="filter-select"
           value={moduleFilter}
-          onChange={(event) => setModuleFilter(event.target.value)}
-        >
-          {["All", ...moduleOptions].map((module) => (
-            <option key={module} value={module}>
-              {module === "All" ? "全部" : module}
-            </option>
-          ))}
-        </select>
+          onValueChange={setModuleFilter}
+          options={["All", ...moduleOptions].map((module) => ({ value: module, label: module === "All" ? "全部" : module }))}
+        />
       </aside>
       <section className="workbench-main">
         <DataTable
           headers={["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"]}
           rows={parameters}
           renderRow={(parameter) => (
-            <tr
+            <TableRow
               className={selected?.id === parameter.id ? "selected-row" : ""}
               key={parameter.id}
               onClick={() => {
@@ -1275,29 +1360,29 @@ function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
                 setTargetValue(parameter.recommendedValue);
               }}
             >
-              <td>
+              <TableCell>
                 <strong>{parameter.name}</strong>
                 <small>{parameter.description}</small>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <Badge tone="tertiary">{parameter.module}</Badge>
-              </td>
-              <td className="mono">{parameter.currentValue}</td>
-              <td className="mono recommended">
+              </TableCell>
+              <TableCell className="mono">{parameter.currentValue}</TableCell>
+              <TableCell className="mono recommended">
                 <span className="value-change">
                   <ArrowRight size={14} />
                   <span>{parameter.recommendedValue}</span>
                 </span>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <span>{parameter.range}</span>
                 <small>{parameter.unit}</small>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <RiskBadge risk={parameter.risk} />
-              </td>
-              <td>{parameter.updatedAt}</td>
-            </tr>
+              </TableCell>
+              <TableCell>{parameter.updatedAt}</TableCell>
+            </TableRow>
           )}
         />
       </section>
@@ -1323,14 +1408,14 @@ function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
               <SectionLabel icon={<FileText size={15} />} label="参数配置格式" />
               <code>{selected.configFormat}</code>
             </div>
-            <label className="field-label" htmlFor="target-value">
+            <Label className="field-label" htmlFor="target-value">
               目标值
-            </label>
-            <input id="target-value" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} />
-            <label className="field-label" htmlFor="reason">
+            </Label>
+            <Input id="target-value" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} />
+            <Label className="field-label" htmlFor="reason">
               修改原因
-            </label>
-            <textarea id="reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={5} />
+            </Label>
+            <Textarea id="reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={5} />
             <div className="round-draft-panel" aria-label="本轮提交草稿">
               <div>
                 <strong>本轮提交 {draftItems.length} 项</strong>
@@ -1342,26 +1427,27 @@ function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
                     <li key={item.parameterId}>
                       <span>{item.parameter.name}</span>
                       <strong>{item.parameter.currentValue} → {item.targetValue}</strong>
-                      <button
+                      <Button
                         className="link-button"
                         type="button"
+                        variant="link"
                         onClick={() => setDraftItems((items) => items.filter((draftItem) => draftItem.parameterId !== item.parameterId))}
                       >
                         移除
-                      </button>
+                      </Button>
                     </li>
                   ))}
                 </ul>
               ) : null}
             </div>
             <Timeline steps={["选择参数", "填写目标值", "提交审阅", "管理员合入"]} activeIndex={1} />
-            <button className="button subtle full" type="button" onClick={addSelectedToRound}>
+            <Button className="full" type="button" variant="outline" onClick={addSelectedToRound}>
               <ListChecks size={16} />
               加入本轮
-            </button>
-            <button className="button primary full" type="submit">
+            </Button>
+            <Button className="full" type="submit">
               提交参数修改请求
-            </button>
+            </Button>
           </form>
         ) : (
           <EmptyState text="请选择一条参数后提交修改。" />
@@ -1388,42 +1474,44 @@ function ParameterSubmissionDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-preview-title">
-      <div className="submission-dialog">
-        <div className="submission-dialog-head">
+    <Dialog open onOpenChange={(open) => (!open ? onCancel() : undefined)}>
+      <DialogContent className="submission-dialog">
+        <DialogHeader className="submission-dialog-head">
           <div>
             <span className="eyebrow">参数提交预览</span>
-            <h2 id="submission-preview-title">提交本轮参数</h2>
-            <p>本轮提交包含 {items.length} 个参数修改，确认后会按一轮提交进入历史记录，并拆分为管理员审阅队列中的参数项。</p>
+            <DialogTitle>提交本轮参数</DialogTitle>
+            <DialogDescription>本轮提交包含 {items.length} 个参数修改，确认后会按一轮提交进入历史记录，并拆分为管理员审阅队列中的参数项。</DialogDescription>
           </div>
           <Badge tone="secondary">Diff 预览</Badge>
-        </div>
+        </DialogHeader>
         <div className="submission-diff-list">
           {items.map((item) => (
-            <article className="submission-diff-card" key={item.parameterId}>
-              <div>
-                <strong>{item.parameter.name}</strong>
-                <small>{item.parameter.module} · {riskLabels[item.parameter.risk]}</small>
-              </div>
-              <div className="diff-values">
-                <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
-                <ArrowRight size={16} />
-                <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
-              </div>
-              <p>{item.reason}</p>
-            </article>
+            <Card className="submission-diff-card" key={item.parameterId} size="sm">
+              <CardHeader>
+                <CardTitle>{item.parameter.name}</CardTitle>
+                <CardDescription>{item.parameter.module} · {riskLabels[item.parameter.risk]}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="diff-values">
+                  <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
+                  <ArrowRight size={16} />
+                  <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
+                </div>
+                <p>{item.reason}</p>
+              </CardContent>
+            </Card>
           ))}
         </div>
-        <div className="dialog-actions">
-          <button className="button subtle" type="button" onClick={onCancel}>
+        <DialogFooter className="dialog-actions">
+          <Button variant="outline" type="button" onClick={onCancel}>
             返回修改
-          </button>
-          <button className="button primary" type="button" onClick={onConfirm}>
+          </Button>
+          <Button type="button" onClick={onConfirm}>
             确认提交本轮
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1443,19 +1531,25 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
     <div className="submission-history-page">
       <header className="page-header">
         <div>
-          <nav className="breadcrumb" aria-label="历史提交路径">
-            <button type="button" onClick={() => onNavigate("/parameters")}>参数工作台</button>
-            <ChevronRight size={14} />
-            <strong>历史提交</strong>
-          </nav>
+          <Breadcrumb className="breadcrumb" aria-label="历史提交路径">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <Button type="button" variant="link" onClick={() => onNavigate("/parameters")}>参数工作台</Button>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>历史提交</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <h1>我的历史提交</h1>
           <p>以“一轮提交”为单位查看你发起的参数修改，待审阅轮次可模拟撤回。</p>
         </div>
         <div className="page-actions">
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameters")}>
+          <Button variant="outline" type="button" onClick={() => onNavigate("/parameters")}>
             <ArrowRight size={16} />
             返回工作台
-          </button>
+          </Button>
         </div>
       </header>
       <section className="comparison-summary">
@@ -1467,16 +1561,17 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
         <aside className="history-panel" aria-label="我的提交轮次">
           <PanelHeader title="提交轮次" meta={`${myRounds.length} 轮`} />
           {myRounds.map((round) => (
-            <button
+            <Button
               aria-pressed={round.id === selectedRound?.id}
               className={round.id === selectedRound?.id ? "history-item active" : "history-item"}
               key={round.id}
               type="button"
+              variant="ghost"
               onClick={() => setSelectedRoundId(round.id)}
             >
               <strong>{round.id}</strong>
               <span>{round.status} · {round.items.length} 项 · {round.createdAt}</span>
-            </button>
+            </Button>
           ))}
           {myRounds.length === 0 ? <EmptyState text="当前还没有你的历史提交。" /> : null}
         </aside>
@@ -1511,15 +1606,16 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
                 ))}
               </div>
               <div className="action-panel">
-                <button
-                  className="button danger full"
+                <Button
+                  className="full"
                   type="button"
+                  variant="destructive"
                   disabled={selectedRound.status !== "待审阅"}
                   onClick={() => dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId: selectedRound.id })}
                 >
                   <RotateCcw size={16} />
                   撤回本轮提交
-                </button>
+                </Button>
               </div>
             </>
           ) : (
@@ -1632,29 +1728,35 @@ function ParameterComparisonPage({
     <div className="comparison-page">
       <header className="page-header comparison-header">
         <div>
-          <nav className="breadcrumb" aria-label="参数对比路径">
-            <button type="button" onClick={() => onNavigate("/parameters")}>参数</button>
-            <ChevronRight size={14} />
-            <span>对比分析</span>
-            <ChevronRight size={14} />
-            <strong>{comparisonTitle}</strong>
-          </nav>
+          <Breadcrumb className="breadcrumb" aria-label="参数对比路径">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <Button type="button" variant="link" onClick={() => onNavigate("/parameters")}>参数</Button>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>对比分析</BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{comparisonTitle}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <h1>项目参数对比分析</h1>
           <p>{baseProject.name} 与 {targetProject.name} 的充电、电池和电源管理参数差异分析。</p>
         </div>
         <div className="page-actions">
-          <button
-            className="button subtle"
+          <Button
+            variant="outline"
             type="button"
             onClick={() => exportComparisonRowsAsExcel(filteredComparisonRows, baseProject.code, targetProject.code)}
           >
             <Upload size={16} />
             导出
-          </button>
-          <button className="button primary" type="button">
+          </Button>
+          <Button type="button">
             <RotateCcw size={16} />
             同步选中项
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -1687,38 +1789,28 @@ function ParameterComparisonPage({
             <div className="comparison-filter-fields">
               <label className="field-label" htmlFor="comparison-risk-filter">
                 重要性
-                <select
+                <SelectControl
                   id="comparison-risk-filter"
                   className="filter-select"
                   value={riskFilter}
-                  onChange={(event) => setRiskFilter(event.target.value as ParameterRiskFilter)}
-                >
-                  {([
+                  onValueChange={setRiskFilter}
+                  options={([
                     ["All", "全部"],
                     ["High", "高"],
                     ["Medium", "中"],
                     ["Low", "低"]
-                  ] as const).map(([risk, label]) => (
-                    <option key={risk} value={risk}>
-                      {label}
-                    </option>
-                  ))}
-                </select>
+                  ] as const).map(([value, label]) => ({ value, label }))}
+                />
               </label>
               <label className="field-label" htmlFor="comparison-module-filter">
                 模块
-                <select
+                <SelectControl
                   id="comparison-module-filter"
                   className="filter-select"
                   value={moduleFilter}
-                  onChange={(event) => setModuleFilter(event.target.value)}
-                >
-                  {["All", ...moduleOptions].map((module) => (
-                    <option key={module} value={module}>
-                      {module === "All" ? "全部" : module}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={setModuleFilter}
+                  options={["All", ...moduleOptions].map((module) => ({ value: module, label: module === "All" ? "全部" : module }))}
+                />
               </label>
             </div>
           </section>
@@ -1749,12 +1841,12 @@ function ParameterComparisonPage({
                 <div className="comparison-actions">
                   {row.status === "drift" ? (
                     <>
-                      <button className="icon-button" type="button" aria-label={`同步 ${row.key}`}>
+                      <Button className="icon-button" type="button" aria-label={`同步 ${row.key}`} variant="outline" size="icon">
                         <ArrowRight size={17} />
-                      </button>
-                      <button className="icon-button danger-icon" type="button" aria-label={`忽略 ${row.key}`}>
+                      </Button>
+                      <Button className="icon-button danger-icon" type="button" aria-label={`忽略 ${row.key}`} variant="destructive" size="icon">
                         <X size={17} />
-                      </button>
+                      </Button>
                     </>
                   ) : (
                     <span>已同步</span>
@@ -1787,13 +1879,17 @@ function ProjectComparisonSelect({
     <label className="project-select-field" htmlFor={fieldId}>
       <span>{label}</span>
       <div className="project-select-shell">
-        <select id={fieldId} aria-label={label} value={selectedProjectId} onChange={(event) => onSelect(event.target.value)}>
-          {projects.map((project) => (
-            <option key={project.id} value={project.id} disabled={project.id === disabledProjectId}>
-              {project.code} · {project.name}
-            </option>
-          ))}
-        </select>
+        <SelectControl
+          id={fieldId}
+          ariaLabel={label}
+          value={selectedProjectId}
+          onValueChange={onSelect}
+          options={projects.map((project) => ({
+            value: project.id,
+            label: `${project.code} · ${project.name}`,
+            disabled: project.id === disabledProjectId
+          }))}
+        />
         <ChevronRight size={18} aria-hidden="true" />
       </div>
       <small>
@@ -1840,10 +1936,10 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       title="参数管理员工作台"
       subtitle="审阅参数变更队列，结合 AI 摘要和时间线推进合入上库流程。"
       actions={
-        <button className="button subtle" type="button">
+        <Button variant="outline" type="button">
           <Filter size={16} />
           筛选队列
-        </button>
+        </Button>
       }
     >
       <section className="review-queue">
@@ -1852,25 +1948,25 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
           headers={["请求编号", "模块", "提交人", "变更", "状态"]}
           rows={state.changeRequests}
           renderRow={(request) => (
-            <tr
+            <TableRow
               className={request.id === selected?.id ? "selected-row" : ""}
               key={request.id}
               onClick={() => setSelectedId(request.id)}
             >
-              <td className="mono">{request.id}</td>
-              <td>{request.module}</td>
-              <td>{request.submitter}</td>
-              <td className="change-cell">
+              <TableCell className="mono">{request.id}</TableCell>
+              <TableCell>{request.module}</TableCell>
+              <TableCell>{request.submitter}</TableCell>
+              <TableCell className="change-cell">
                 <span className="value-change">
                   <span className="strike">{request.currentValue}</span>
                   <ArrowRight size={14} />
                   <strong>{request.targetValue}</strong>
                 </span>
-              </td>
-              <td>
+              </TableCell>
+              <TableCell>
                 <StatusBadge status={request.status} />
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           )}
         />
       </section>
@@ -1905,14 +2001,14 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
               />
             </div>
             <div className="action-panel">
-              <button className="button primary full" type="button" onClick={() => dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id })}>
+              <Button className="full" type="button" onClick={() => dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id })}>
                 <CheckCircle2 size={17} />
                 推进流程
-              </button>
-              <button className="button danger full" type="button" onClick={() => setRejectOpen(true)}>
+              </Button>
+              <Button className="full" type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
                 <CircleOff size={17} />
                 打回修改
-              </button>
+              </Button>
             </div>
           </>
         ) : (
@@ -1937,41 +2033,39 @@ function RejectReviewDialog({
 }) {
   const [reason, setReason] = useState("");
   const trimmedReason = reason.trim();
+  const submitRejection = () => {
+    if (trimmedReason) {
+      onSubmit(trimmedReason);
+    }
+  };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="reject-title">
-      <form
-        className="confirm-dialog rejection-dialog"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!trimmedReason) {
-            return;
-          }
-          onSubmit(trimmedReason);
-        }}
-      >
-        <h2 id="reject-title">打回修改</h2>
-        <p>
-          将 {request.id} 打回给提交人，管理员需要填写明确原因，方便项目侧补充测试数据或重新调整目标值。
-        </p>
-        <label htmlFor="reject-reason">打回原因</label>
-        <textarea
+    <AlertDialog open onOpenChange={(open) => (!open ? onCancel() : undefined)}>
+      <AlertDialogContent className="rejection-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>打回修改</AlertDialogTitle>
+          <AlertDialogDescription>
+            将 {request.id} 打回给提交人，管理员需要填写明确原因，方便项目侧补充测试数据或重新调整目标值。
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <Label htmlFor="reject-reason">打回原因</Label>
+        <Textarea
           id="reject-reason"
           value={reason}
           onChange={(event) => setReason(event.target.value)}
           rows={5}
           placeholder="说明需要补充的测试数据、风险依据或参数调整方向"
         />
-        <div className="dialog-actions">
-          <button className="button subtle" type="button" onClick={onCancel}>
+        <AlertDialogFooter className="dialog-actions">
+          <AlertDialogCancel type="button" onClick={onCancel}>
             取消
-          </button>
-          <button className="button danger" type="submit" disabled={!trimmedReason}>
+          </AlertDialogCancel>
+          <AlertDialogAction type="button" variant="destructive" disabled={!trimmedReason} onClick={submitRejection}>
             提交打回
-          </button>
-        </div>
-      </form>
-    </div>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -2024,18 +2118,18 @@ function ConfigExportPanel({ configJson }: { configJson: string }) {
       <PanelHeader title="配置源预览" meta="src/config/power-management.json" />
       <pre>{configJson}</pre>
       <div className="config-actions">
-        <button className="button primary" type="button" onClick={saveConfig} disabled={saving}>
+        <Button type="button" onClick={saveConfig} disabled={saving}>
           <FileText size={16} />
           {saving ? "保存中" : "保存到 JSON 文件"}
-        </button>
-        <button className="button subtle" type="button" onClick={exportConfig}>
+        </Button>
+        <Button variant="outline" type="button" onClick={exportConfig}>
           <Upload size={16} />
           导出 JSON
-        </button>
-        <button className="button subtle" type="button" onClick={copyConfig}>
+        </Button>
+        <Button variant="outline" type="button" onClick={copyConfig}>
           <FileText size={16} />
           复制 JSON
-        </button>
+        </Button>
       </div>
       <div className="config-sync-note">{syncMessage}</div>
     </div>
@@ -2102,14 +2196,14 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
         ["配置草稿", "可写入", "可直接保存到 JSON 文件"],
         ["高重要性", `${state.configDraft.parameterLibrary.filter((parameter) => parameter.risk === "High").length}`, "需要管理员复核"]
       ]}
-      action={<button className="button primary" type="button" onClick={() => dispatch({ type: "IMPORT_PARAMETERS" })}><Upload size={16} />批量参数导入</button>}
+      action={<Button type="button" onClick={() => dispatch({ type: "IMPORT_PARAMETERS" })}><Upload size={16} />批量参数导入</Button>}
     >
       <section className="config-admin-grid">
         <div className="library-panel config-list-panel">
           <PanelHeader title="项目共享参数库" meta={`${state.configDraft.parameterLibrary.length} 项`} />
           <div className="config-list-actions">
-            <button
-              className="button subtle"
+            <Button
+              variant="outline"
               type="button"
               onClick={() => {
                 dispatch({ type: "ADD_PROJECT_PARAMETER" });
@@ -2117,9 +2211,9 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
               }}
             >
               新增参数
-            </button>
-            <button
-              className="button danger"
+            </Button>
+            <Button
+              variant="destructive"
               type="button"
               disabled={!selectedParameter || state.configDraft.parameterLibrary.length <= 1}
               onClick={() => {
@@ -2131,14 +2225,15 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
               }}
             >
               删除参数
-            </button>
+            </Button>
           </div>
           <div className="library-list">
             {state.configDraft.parameterLibrary.map((parameter) => (
-              <button
+              <Button
                 className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
                 key={parameter.id}
                 type="button"
+                variant="ghost"
                 onClick={() => setSelectedParameterId(parameter.id)}
               >
                 <span>
@@ -2146,7 +2241,7 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
                   <small>{parameter.module}</small>
                 </span>
                 <RiskBadge risk={parameter.risk} />
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -2157,53 +2252,54 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
               <section className="shared-definition-panel" aria-label="共享参数定义">
                 <PanelHeader title="共享参数定义" meta="所有项目共用" />
                 <div className="config-form-grid">
-                  <label>
+                  <Label>
                     参数名称
-                    <input value={selectedParameter.name} onChange={(event) => updateMetadata({ name: event.target.value })} />
-                  </label>
-                  <label>
+                    <Input value={selectedParameter.name} onChange={(event) => updateMetadata({ name: event.target.value })} />
+                  </Label>
+                  <Label>
                     模块
-                    <input value={selectedParameter.module} onChange={(event) => updateMetadata({ module: event.target.value })} />
-                  </label>
-                  <label>
+                    <Input value={selectedParameter.module} onChange={(event) => updateMetadata({ module: event.target.value })} />
+                  </Label>
+                  <Label>
                     推荐值
-                    <input
+                    <Input
                       aria-label="参数推荐值"
                       value={selectedParameter.values[state.configDraft.projects[0]?.id ?? state.activeProjectId]?.recommendedValue ?? ""}
                       onChange={(event) => updateRecommendedValue(event.target.value)}
                     />
-                  </label>
-                  <label>
+                  </Label>
+                  <Label>
                     范围
-                    <input value={selectedParameter.range} onChange={(event) => updateMetadata({ range: event.target.value })} />
-                  </label>
-                  <label>
+                    <Input value={selectedParameter.range} onChange={(event) => updateMetadata({ range: event.target.value })} />
+                  </Label>
+                  <Label>
                     单位
-                    <input value={selectedParameter.unit} onChange={(event) => updateMetadata({ unit: event.target.value })} />
-                  </label>
-                  <label>
+                    <Input value={selectedParameter.unit} onChange={(event) => updateMetadata({ unit: event.target.value })} />
+                  </Label>
+                  <Label>
                     重要性
-                    <select
+                    <SelectControl
                       value={selectedParameter.risk}
-                      onChange={(event) => updateMetadata({ risk: event.target.value as ParameterEditorDraft["risk"] })}
-                    >
-                      <option value="High">高</option>
-                      <option value="Medium">中</option>
-                      <option value="Low">低</option>
-                    </select>
-                  </label>
-                  <label className="wide">
+                      onValueChange={(risk) => updateMetadata({ risk })}
+                      options={[
+                        { value: "High", label: "高" },
+                        { value: "Medium", label: "中" },
+                        { value: "Low", label: "低" }
+                      ]}
+                    />
+                  </Label>
+                  <Label className="wide">
                     展示描述
-                    <textarea value={selectedParameter.description} onChange={(event) => updateMetadata({ description: event.target.value })} rows={3} />
-                  </label>
-                  <label className="wide">
+                    <Textarea value={selectedParameter.description} onChange={(event) => updateMetadata({ description: event.target.value })} rows={3} />
+                  </Label>
+                  <Label className="wide">
                     参数解释
-                    <textarea value={selectedParameter.explanation} onChange={(event) => updateMetadata({ explanation: event.target.value })} rows={4} />
-                  </label>
-                  <label className="wide">
+                    <Textarea value={selectedParameter.explanation} onChange={(event) => updateMetadata({ explanation: event.target.value })} rows={4} />
+                  </Label>
+                  <Label className="wide">
                     配置格式
-                    <textarea value={selectedParameter.configFormat} onChange={(event) => updateMetadata({ configFormat: event.target.value })} rows={3} />
-                  </label>
+                    <Textarea value={selectedParameter.configFormat} onChange={(event) => updateMetadata({ configFormat: event.target.value })} rows={3} />
+                  </Label>
                 </div>
               </section>
 
@@ -2224,22 +2320,22 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
                           <strong>{project.code}</strong>
                           <small>{project.name}</small>
                         </div>
-                        <label>
+                        <Label>
                           <span>{project.code} 当前值</span>
-                          <input
+                          <Input
                             aria-label={`${project.code} 当前值`}
                             value={value.currentValue}
                             onChange={(event) => updateValue(project.id, { currentValue: event.target.value })}
                           />
-                        </label>
-                        <label>
+                        </Label>
+                        <Label>
                           <span>{project.code} 更新时间</span>
-                          <input
+                          <Input
                             aria-label={`${project.code} 更新时间`}
                             value={value.updatedAt}
                             onChange={(event) => updateValue(project.id, { updatedAt: event.target.value })}
                           />
-                        </label>
+                        </Label>
                       </div>
                     );
                   })}
@@ -2305,11 +2401,11 @@ function LogsPage({ state }: PageProps) {
   return (
     <WorkbenchLayout title="日志智能分析" subtitle="上传日志并观察 AI 自动化分析过程、证据链和处置线索。">
       <section className="logs-left">
-        <button className="upload-zone" type="button" onClick={() => setUnsupportedDialogOpen(true)}>
+        <Button className="upload-zone" type="button" variant="outline" onClick={() => setUnsupportedDialogOpen(true)}>
           <Upload size={34} />
           <strong>拖放日志文件到此处</strong>
           <span>点击模拟上传不支持格式日志</span>
-        </button>
+        </Button>
         <div className="detail-card">
           <SectionLabel
             icon={<Loader2 size={16} className={activeLog.status === "Processing" ? "spin" : ""} />}
@@ -2357,16 +2453,17 @@ function LogsPage({ state }: PageProps) {
       <aside className="history-panel" aria-label="历史日志记录">
         <PanelHeader title="历史日志记录" />
         {state.logs.map((log) => (
-          <button
+          <Button
             aria-pressed={log.id === activeLog.id}
             className={log.id === activeLog.id ? "history-item active" : "history-item"}
             key={log.id}
             type="button"
+            variant="ghost"
             onClick={() => setSelectedLogId(log.id)}
           >
             <strong>{log.fileName}</strong>
             <span>{logStatusLabels[log.status]} · {log.confidence}%</span>
-          </button>
+          </Button>
         ))}
       </aside>
       {unsupportedDialogOpen ? (
@@ -2458,29 +2555,24 @@ function DebuggingPage({ state, dispatch }: PageProps) {
         <div className="device-pill">
           <span className={connected ? "live-dot" : "idle-dot"} />
           {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
-          <button className="link-button" type="button" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
+          <Button className="link-button" type="button" variant="link" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
             连接
-          </button>
+          </Button>
         </div>
       }
     >
       <aside className="filter-panel" aria-label="参数筛选">
         <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-        <label className="field-label" htmlFor="debug-module-filter">
+        <Label className="field-label" htmlFor="debug-module-filter">
           模块
-        </label>
-        <select
+        </Label>
+        <SelectControl
           id="debug-module-filter"
           className="filter-select"
           value={moduleFilter}
-          onChange={(event) => setModuleFilter(event.target.value)}
-        >
-          {["All", ...moduleOptions].map((module) => (
-            <option key={module} value={module}>
-              {module === "All" ? "全部" : module}
-            </option>
-          ))}
-        </select>
+          onValueChange={setModuleFilter}
+          options={["All", ...moduleOptions].map((module) => ({ value: module, label: module === "All" ? "全部" : module }))}
+        />
         <div className="empty-hint">
           {debugParameters.length === 0 ? "当前筛选无数据，可重置模块。" : `当前筛选命中 ${debugParameters.length} 条参数。`}
         </div>
@@ -2491,41 +2583,40 @@ function DebuggingPage({ state, dispatch }: PageProps) {
           headers={["参数名称", "当前值", "目标设定值", "范围", "风险", "状态"]}
           rows={debugParameters}
           renderRow={(parameter) => (
-            <tr key={parameter.id}>
-              <td>
+            <TableRow key={parameter.id}>
+              <TableCell>
                 <strong>{parameter.name}</strong>
                 <small>{parameter.key}</small>
-              </td>
-              <td className="mono">{parameter.currentValue}</td>
-              <td>
-                <input
+              </TableCell>
+              <TableCell className="mono">{parameter.currentValue}</TableCell>
+              <TableCell>
+                <Input
                   aria-label={`${parameter.key} 目标设定值`}
                   value={parameter.targetValue}
                   onChange={(event) => updateTargetValue(parameter, event.target.value)}
                 />
-              </td>
-              <td>{parameter.range} {parameter.unit}</td>
-              <td><RiskBadge risk={parameter.risk} /></td>
-              <td><Badge tone={parameter.status === "待下发" ? "secondary" : "neutral"}>{parameter.status}</Badge></td>
-            </tr>
+              </TableCell>
+              <TableCell>{parameter.range} {parameter.unit}</TableCell>
+              <TableCell><RiskBadge risk={parameter.risk} /></TableCell>
+              <TableCell><Badge tone={parameter.status === "待下发" ? "secondary" : "neutral"}>{parameter.status}</Badge></TableCell>
+            </TableRow>
           )}
         />
         <div className="table-actionbar">
           <span>{pendingParameters.length} 项参数等待应用</span>
           <div>
-            <button className="button subtle" type="button">
+            <Button variant="outline" type="button">
               <RotateCcw size={16} />
               一键回滚充电策略
-            </button>
-            <button
-              className="button primary"
+            </Button>
+            <Button
               type="button"
               disabled={!connected || pendingParameters.length === 0}
               onClick={pushPendingValues}
             >
               <Send size={16} />
               下发调试值
-            </button>
+            </Button>
           </div>
         </div>
       </section>
@@ -2571,8 +2662,8 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
         <div className="library-panel config-list-panel">
           <PanelHeader title="可调参数目录" meta={`${state.configDraft.debugParameters.length} 项`} />
           <div className="config-list-actions">
-            <button
-              className="button subtle"
+            <Button
+              variant="outline"
               type="button"
               onClick={() => {
                 dispatch({ type: "ADD_DEBUG_PARAMETER" });
@@ -2580,9 +2671,9 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
               }}
             >
               新增可调参数
-            </button>
-            <button
-              className="button danger"
+            </Button>
+            <Button
+              variant="destructive"
               type="button"
               disabled={!selectedParameter || state.configDraft.debugParameters.length <= 1}
               onClick={() => {
@@ -2594,14 +2685,15 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
               }}
             >
               删除可调参数
-            </button>
+            </Button>
           </div>
           <div className="library-list">
             {state.configDraft.debugParameters.map((parameter) => (
-              <button
+              <Button
                 className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
                 key={parameter.id}
                 type="button"
+                variant="ghost"
                 onClick={() => setSelectedParameterId(parameter.id)}
               >
                 <span>
@@ -2609,7 +2701,7 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
                   <small>{parameter.key}</small>
                 </span>
                 <RiskBadge risk={parameter.risk} />
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -2618,56 +2710,58 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
           <PanelHeader title="调试参数编辑" meta="实时下发目录" />
           {selectedParameter ? (
             <div className="config-form-grid">
-              <label>
+              <Label>
                 参数名称
-                <input value={selectedParameter.name} onChange={(event) => updateDebug({ name: event.target.value })} />
-              </label>
-              <label>
+                <Input value={selectedParameter.name} onChange={(event) => updateDebug({ name: event.target.value })} />
+              </Label>
+              <Label>
                 参数 key
-                <input value={selectedParameter.key} onChange={(event) => updateDebug({ key: event.target.value })} />
-              </label>
-              <label>
+                <Input value={selectedParameter.key} onChange={(event) => updateDebug({ key: event.target.value })} />
+              </Label>
+              <Label>
                 当前值
-                <input value={selectedParameter.currentValue} onChange={(event) => updateDebug({ currentValue: event.target.value })} />
-              </label>
-              <label>
+                <Input value={selectedParameter.currentValue} onChange={(event) => updateDebug({ currentValue: event.target.value })} />
+              </Label>
+              <Label>
                 目标值
-                <input
+                <Input
                   aria-label="调试目标值"
                   value={selectedParameter.targetValue}
                   onChange={(event) => updateDebug({ targetValue: event.target.value })}
                 />
-              </label>
-              <label>
+              </Label>
+              <Label>
                 范围
-                <input value={selectedParameter.range} onChange={(event) => updateDebug({ range: event.target.value })} />
-              </label>
-              <label>
+                <Input value={selectedParameter.range} onChange={(event) => updateDebug({ range: event.target.value })} />
+              </Label>
+              <Label>
                 单位
-                <input value={selectedParameter.unit} onChange={(event) => updateDebug({ unit: event.target.value })} />
-              </label>
-              <label>
+                <Input value={selectedParameter.unit} onChange={(event) => updateDebug({ unit: event.target.value })} />
+              </Label>
+              <Label>
                 重要性
-                <select
+                <SelectControl
                   value={selectedParameter.risk}
-                  onChange={(event) => updateDebug({ risk: event.target.value as DebugParameterEditorDraft["risk"] })}
-                >
-                  <option value="High">高</option>
-                  <option value="Medium">中</option>
-                  <option value="Low">低</option>
-                </select>
-              </label>
-              <label>
+                  onValueChange={(risk) => updateDebug({ risk })}
+                  options={[
+                    { value: "High", label: "高" },
+                    { value: "Medium", label: "中" },
+                    { value: "Low", label: "低" }
+                  ]}
+                />
+              </Label>
+              <Label>
                 状态
-                <select
+                <SelectControl
                   value={selectedParameter.status}
-                  onChange={(event) => updateDebug({ status: event.target.value as DebugParameterEditorDraft["status"] })}
-                >
-                  <option value="已同步">已同步</option>
-                  <option value="待下发">待下发</option>
-                  <option value="下发成功">下发成功</option>
-                </select>
-              </label>
+                  onValueChange={(status) => updateDebug({ status })}
+                  options={[
+                    { value: "已同步", label: "已同步" },
+                    { value: "待下发", label: "待下发" },
+                    { value: "下发成功", label: "下发成功" }
+                  ]}
+                />
+              </Label>
             </div>
           ) : (
             <EmptyState text="请选择一个调试参数。" />
@@ -2928,9 +3022,9 @@ function UnifiedAgent({
           <strong>WiseAgent</strong>
           <span>{plan.contextTitle}</span>
         </div>
-        <button type="button" onClick={() => setOpen(false)} aria-label="最小化 WiseAgent">
+        <Button type="button" variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="最小化 WiseAgent">
           <X size={18} />
-        </button>
+        </Button>
       </div>
       <div className="agent-body">
         <div className="agent-context">
@@ -2949,7 +3043,7 @@ function UnifiedAgent({
                 <code>{comparisonInsights.primaryInsight?.key}</code> 在 {comparisonInsights.baseProject.code} 与 {comparisonInsights.targetProject.code} 间存在差异，
                 建议结合充电温升与降额日志判断是否同步。
               </p>
-              <button className="link-button" type="button">查看历史延迟</button>
+              <Button className="link-button" type="button" variant="link">查看历史延迟</Button>
             </div>
             <div className="agent-insight-card accent-tertiary">
               <SectionLabel icon={<ListChecks size={15} />} label="参数值对照" />
@@ -2975,9 +3069,9 @@ function UnifiedAgent({
         </div>
         <div className="quick-prompts">
           {plan.prompts.map((prompt) => (
-            <button key={prompt} type="button" onClick={() => setMessages((items) => [`已选择建议问题：${prompt}`, ...items])}>
+            <Button key={prompt} type="button" variant="outline" size="sm" onClick={() => setMessages((items) => [`已选择建议问题：${prompt}`, ...items])}>
               {prompt}
-            </button>
+            </Button>
           ))}
         </div>
         <div className="agent-messages">
@@ -2989,10 +3083,11 @@ function UnifiedAgent({
         </div>
         <div className="agent-actions">
           {plan.actions.map((action) => (
-            <button
+            <Button
               className={action.requiresConfirm ? "requires-confirm" : ""}
               key={action.id}
               type="button"
+              variant={action.requiresConfirm ? "default" : "outline"}
               onClick={() => {
                 if (action.requiresConfirm) {
                   setConfirmAction(action.id);
@@ -3003,15 +3098,15 @@ function UnifiedAgent({
             >
               {action.requiresConfirm ? <LockKeyhole size={14} /> : <Play size={14} />}
               {action.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
       <form className="agent-input" onSubmit={submitPrompt}>
-        <input name="agentPrompt" placeholder="询问 WiseAgent..." />
-        <button type="submit" aria-label="发送">
+        <Input name="agentPrompt" placeholder="询问 WiseAgent..." />
+        <Button type="submit" aria-label="发送" size="icon">
           <Send size={17} />
-        </button>
+        </Button>
       </form>
       {confirmAction ? (
         <ConfirmDialog
@@ -3030,45 +3125,49 @@ function UnifiedAgent({
 
 function MetricCard({ title, value, trend, tone }: { title: string; value: string; trend: string; tone: "blue" | "teal" | "purple" }) {
   return (
-    <div className={`metric-card ${tone}`}>
-      <span>{title}</span>
-      <strong>{value}</strong>
-      <p>{trend}</p>
-      <div className="metric-bar">
-        <i />
-      </div>
-    </div>
+    <Card className={`metric-card ${tone}`} size="sm">
+      <CardHeader>
+        <CardDescription>{title}</CardDescription>
+        <CardTitle>{value}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p>{trend}</p>
+        <div className="metric-bar">
+          <i />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function DataTable<T>({ headers, rows, renderRow }: { headers: string[]; rows: T[]; renderRow: (row: T) => ReactNode }) {
   return (
     <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
+      <Table>
+        <TableHeader>
+          <TableRow>
             {headers.map((header) => (
-              <th key={header}>{header}</th>
+              <TableHead key={header}>{header}</TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>{rows.map(renderRow)}</tbody>
-      </table>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{rows.map(renderRow)}</TableBody>
+      </Table>
       {rows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
     </div>
   );
 }
 
 function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
-  return <span className={`risk-badge ${risk.toLowerCase()}`}>{riskLabels[risk]}</span>;
+  return <UiBadge className={`risk-badge ${risk.toLowerCase()}`} variant="outline">{riskLabels[risk]}</UiBadge>;
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <span className="status-badge"><span />{status}</span>;
+  return <UiBadge className="status-badge" variant="secondary"><span />{status}</UiBadge>;
 }
 
 function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "tertiary" | "secondary" }) {
-  return <span className={`badge ${tone}`}>{children}</span>;
+  return <UiBadge className={`badge ${tone}`} variant={tone === "secondary" ? "secondary" : "outline"}>{children}</UiBadge>;
 }
 
 function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
@@ -3119,10 +3218,15 @@ function VerticalTimeline({ items }: { items: [string, string, string][] }) {
 
 function EmptyState({ text }: { text: string }) {
   return (
-    <div className="empty-state">
-      <Info size={20} />
-      {text}
-    </div>
+    <Empty className="empty-state">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <Info size={20} />
+        </EmptyMedia>
+        <EmptyTitle>暂无内容</EmptyTitle>
+        <EmptyDescription>{text}</EmptyDescription>
+      </EmptyHeader>
+    </Empty>
   );
 }
 
@@ -3142,16 +3246,18 @@ function ConfirmDialog({
   onConfirm: () => void;
 }) {
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-      <div className="confirm-dialog">
-        <h2 id="confirm-title">{title}</h2>
-        <p>{message}</p>
-        <div>
-          <button className="button subtle" type="button" onClick={onCancel}>{cancelLabel}</button>
-          <button className="button primary" type="button" onClick={onConfirm}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
+    <AlertDialog open onOpenChange={(open) => (!open ? onCancel() : undefined)}>
+      <AlertDialogContent className="confirm-dialog">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{title}</AlertDialogTitle>
+          <AlertDialogDescription>{message}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel type="button" onClick={onCancel}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction type="button" onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
