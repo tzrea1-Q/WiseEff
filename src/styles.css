@@ -4056,11 +4056,14 @@ td small {
 }
 
 .project-risk-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
-  margin-top: 10px;
   padding: 8px 12px;
   background: var(--surface);
   border: 1px solid var(--outline);
