@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ProjectRiskBucket } from "../parameterHomepageAnalytics";
 
 type ProjectRiskBarChartProps = {
@@ -18,11 +18,6 @@ type TooltipState = {
 export function ProjectRiskBarChart({ buckets, onNavigate }: ProjectRiskBarChartProps) {
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
 
-  const maxTotal = useMemo(
-    () => buckets.reduce((max, bucket) => Math.max(max, bucket.total), 0),
-    [buckets]
-  );
-
   if (buckets.length === 0) {
     return (
       <div className="project-risk-bar-chart empty" role="status">
@@ -32,13 +27,13 @@ export function ProjectRiskBarChart({ buckets, onNavigate }: ProjectRiskBarChart
   }
 
   return (
-    <div className="project-risk-bar-chart" aria-label="分项目风险分布">
+    <div className="project-risk-bar-chart" aria-label="各项目参数更新情况">
       <div className="project-risk-bar-chart-scroller">
         {buckets.map((bucket) => {
-          const widthDenominator = Math.max(1, maxTotal);
-          const highRatio = bucket.high / widthDenominator;
-          const mediumRatio = bucket.medium / widthDenominator;
-          const lowRatio = bucket.low / widthDenominator;
+          const heightDenominator = Math.max(1, bucket.total);
+          const highRatio = bucket.high / heightDenominator;
+          const mediumRatio = bucket.medium / heightDenominator;
+          const lowRatio = bucket.low / heightDenominator;
           const nextTooltip = {
             projectId: bucket.projectId,
             label: bucket.projectCode,
@@ -61,12 +56,11 @@ export function ProjectRiskBarChart({ buckets, onNavigate }: ProjectRiskBarChart
               onBlur={() => setTooltip(null)}
               aria-label={`${bucket.projectCode} 高 ${bucket.high} 中 ${bucket.medium} 低 ${bucket.low}`}
             >
-              <span className="project-risk-row-label">{bucket.projectCode}</span>
               <span className="project-risk-row-bar">
                 {bucket.high > 0 && (
                   <span
                     className="project-risk-segment risk-high"
-                    style={{ width: `${(highRatio * 100).toFixed(2)}%` }}
+                    style={{ height: `${(highRatio * 100).toFixed(2)}%` }}
                   >
                     {highRatio > 0.08 ? bucket.high : ""}
                   </span>
@@ -74,7 +68,7 @@ export function ProjectRiskBarChart({ buckets, onNavigate }: ProjectRiskBarChart
                 {bucket.medium > 0 && (
                   <span
                     className="project-risk-segment risk-medium"
-                    style={{ width: `${(mediumRatio * 100).toFixed(2)}%` }}
+                    style={{ height: `${(mediumRatio * 100).toFixed(2)}%` }}
                   >
                     {mediumRatio > 0.08 ? bucket.medium : ""}
                   </span>
@@ -82,12 +76,13 @@ export function ProjectRiskBarChart({ buckets, onNavigate }: ProjectRiskBarChart
                 {bucket.low > 0 && (
                   <span
                     className="project-risk-segment risk-low"
-                    style={{ width: `${(lowRatio * 100).toFixed(2)}%` }}
+                    style={{ height: `${(lowRatio * 100).toFixed(2)}%` }}
                   >
                     {lowRatio > 0.08 ? bucket.low : ""}
                   </span>
                 )}
               </span>
+              <span className="project-risk-row-label">{bucket.projectCode}</span>
               <span className="project-risk-row-total">{bucket.total}</span>
             </button>
           );

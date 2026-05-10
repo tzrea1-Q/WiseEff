@@ -689,7 +689,7 @@ describe("WiseEff app shell", () => {
         present: [
           "热门模块",
           "参数更新趋势",
-          "分项目风险分布",
+          "各项目参数更新情况",
           "开发人员总数",
           "管理项目总数",
           "项目参数工作台",
@@ -701,7 +701,8 @@ describe("WiseEff app shell", () => {
           "Powering the world's best product teams",
           "Issue tracking you'll enjoy using",
           "关键参数变化",
-          "审核合入情况"
+          "审核合入情况",
+          "分项目风险分布"
         ]
       },
       {

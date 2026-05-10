@@ -112,7 +112,7 @@ export function ParameterManagementHomePage({
         <div className="homepage-panel parameter-homepage-chart-card">
           <div className="parameter-homepage-section-head">
             <div>
-              <h2>分项目风险分布</h2>
+              <h2>各项目参数更新情况</h2>
               <span>高/中/低 修改聚合</span>
             </div>
           </div>

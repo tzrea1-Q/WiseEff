@@ -3914,7 +3914,7 @@ td small {
 }
 
 .parameter-homepage-charts {
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-top: 18px;
 }
@@ -3967,20 +3967,24 @@ td small {
 }
 
 .project-risk-bar-chart-scroller {
-  display: grid;
-  gap: 12px;
+  display: flex;
+  align-items: end;
+  justify-content: space-around;
+  gap: 18px;
   max-height: 384px;
-  overflow-y: auto;
-  padding-right: 4px;
+  min-height: 220px;
+  overflow-x: auto;
+  padding: 8px 4px 0;
 }
 
 .project-risk-row {
   display: grid;
-  grid-template-columns: 80px minmax(0, 1fr) 48px;
-  gap: 12px;
-  align-items: center;
-  height: 36px;
-  padding: 0 8px;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  justify-items: center;
+  gap: 7px;
+  min-width: 86px;
+  height: 214px;
+  padding: 8px 8px 10px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -3997,14 +4001,21 @@ td small {
 }
 
 .project-risk-row-label {
+  max-width: 76px;
   font-size: 12px;
   font-weight: 800;
   color: var(--outline-strong);
+  text-align: center;
+  white-space: nowrap;
 }
 
 .project-risk-row-bar {
   display: flex;
-  height: 18px;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-self: end;
+  width: 42px;
+  height: 148px;
   border-radius: 6px;
   overflow: hidden;
   background: var(--surface-mid);
@@ -4014,14 +4025,15 @@ td small {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   color: #fff;
   font-size: 11px;
   font-weight: 800;
-  border-right: 1px solid #fff;
+  border-bottom: 1px solid #fff;
 }
 
 .project-risk-segment:last-child {
-  border-right: none;
+  border-bottom: none;
 }
 
 .project-risk-segment.risk-high {
@@ -4040,7 +4052,7 @@ td small {
   font-size: 12px;
   font-weight: 800;
   color: var(--app-primary);
-  text-align: right;
+  text-align: center;
 }
 
 .project-risk-tooltip {
@@ -4095,7 +4107,7 @@ td small {
   }
 
   .project-risk-row {
-    grid-template-columns: 72px minmax(0, 1fr) 40px;
+    min-width: 78px;
   }
 
   .parameter-homepage-section-head,

@@ -38,11 +38,22 @@ const buckets: ProjectRiskBucket[] = [
 ];
 
 describe("ProjectRiskBarChart", () => {
-  it("renders one row per project bucket", () => {
+  it("renders one vertical column per project bucket", () => {
     render(<ProjectRiskBarChart buckets={buckets} onNavigate={vi.fn()} />);
     expect(document.querySelectorAll('[data-testid="project-risk-row"]').length).toBe(
       buckets.length
     );
+  });
+
+  it("uses height-based stacked segments for vertical bars", () => {
+    render(<ProjectRiskBarChart buckets={buckets} onNavigate={vi.fn()} />);
+    const firstHighSegment = document.querySelector(
+      ".project-risk-segment.risk-high"
+    ) as HTMLElement;
+
+    expect(firstHighSegment).toBeTruthy();
+    expect(firstHighSegment.style.height).toBe("45.45%");
+    expect(firstHighSegment.style.width).toBe("");
   });
 
   it("shows project codes as axis labels", () => {
@@ -73,5 +84,13 @@ describe("ProjectRiskBarChart", () => {
   it("renders an empty-state message when buckets is empty", () => {
     render(<ProjectRiskBarChart buckets={[]} onNavigate={vi.fn()} />);
     expect(screen.getByText(/暂无项目/)).toBeInTheDocument();
+  });
+
+  it("uses the updated chart label", () => {
+    render(<ProjectRiskBarChart buckets={buckets} onNavigate={vi.fn()} />);
+    expect(document.querySelector(".project-risk-bar-chart")).toHaveAttribute(
+      "aria-label",
+      "各项目参数更新情况"
+    );
   });
 });

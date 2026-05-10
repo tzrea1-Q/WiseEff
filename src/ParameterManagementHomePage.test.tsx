@@ -17,6 +17,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("region", { name: "核心指标" })).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-charts")).toBeInTheDocument();
     expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
+    expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(document.querySelector(".project-risk-bar-chart")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "入口卡片" })).toBeInTheDocument();
     expect(screen.getByText("热门模块")).toBeInTheDocument();
@@ -112,6 +113,7 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".parameter-homepage-headline")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-metrics")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-charts")).toBeInTheDocument();
+    expect(screen.queryByText("分项目风险分布")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-grid")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-hotspots")).toBeInTheDocument();
   });
