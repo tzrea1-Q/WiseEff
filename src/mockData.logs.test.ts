@@ -48,3 +48,29 @@ describe("log mockData · stage 使用 LogStageId", () => {
     }
   });
 });
+
+describe("log mockData · evidence 已结构化", () => {
+  it("每条 evidence 包含 id/stageId/lineNumbers/inference/suggestedAction", () => {
+    for (const log of initialState.logs) {
+      for (const evidence of log.evidence) {
+        expect(typeof evidence.id).toBe("string");
+        expect(["parse", "pattern", "rootcause", "report"]).toContain(evidence.stageId);
+        expect(Array.isArray(evidence.lineNumbers)).toBe(true);
+        expect(evidence.lineNumbers.length).toBeGreaterThan(0);
+        expect(typeof evidence.inference).toBe("string");
+        expect(typeof evidence.suggestedAction).toBe("string");
+      }
+    }
+  });
+
+  it("每条 evidence.lineNumbers 都落在 rawLines 范围内", () => {
+    for (const log of initialState.logs) {
+      for (const evidence of log.evidence) {
+        for (const lineNumber of evidence.lineNumbers) {
+          expect(lineNumber).toBeGreaterThanOrEqual(1);
+          expect(lineNumber).toBeLessThanOrEqual(log.rawLines.length);
+        }
+      }
+    }
+  });
+});

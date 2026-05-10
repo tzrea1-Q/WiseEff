@@ -157,7 +157,7 @@ export type LogRecord = {
   confidence: number;
   conclusion: string;
   impact: string;
-  evidence: string[];
+  evidence: LogEvidence[];
   suggestedActions: string[];
   severity: LogSeverity;
   rawLines: string[];
@@ -262,6 +262,97 @@ export function derivePowerManagementRuntimeState(configDraft: PowerManagementCo
   };
 }
 
+const activeLogRawLines = [
+  "10:23:42.012 INFO [BOOT] session=chg-a17 project=aurora firmware=v5.2.0-powerlab",
+  "10:23:42.118 INFO [DEVICE] attach usb_c_port=0 cable=eMarked_5A",
+  "10:23:42.315 INFO [PD_CTRL] SinkRequest profile=9V/3A",
+  "10:23:42.622 INFO [CHARGER] input_voltage_mv=8990 input_current_ma=0",
+  "10:23:43.004 INFO [BATTERY_GAUGE] soc=41 temp_cell_avg=37.2C",
+  "10:23:44.218 INFO [THERMAL_MON] skin_temp=36.1C board_temp=38.7C",
+  "10:23:45.009 INFO [CHG_POLICY] fast_current_limit_ma=3800 thermal_state=normal",
+  "10:23:46.447 INFO [CHARGER] input_current_ma=1520 charge_current_ma=1480",
+  "10:23:48.002 INFO [BATTERY_GAUGE] soc=42 rise_slope=0.51",
+  "10:23:49.333 INFO [THERMAL_MON] battery_pack_temp=39.2C",
+  "10:23:51.004 INFO [CHARGER] input_current_ma=2840 charge_current_ma=2760",
+  "10:23:52.106 INFO [CHG_POLICY] fast_current_limit_ma=3800 thermal_state=normal",
+  "10:23:54.441 INFO [BATTERY_GAUGE] soc=43 rise_slope=0.49",
+  "10:23:55.010 INFO [THERMAL_MON] battery_pack_temp=41.8C",
+  "10:23:57.762 INFO [CHARGER] input_current_ma=3620 charge_current_ma=3510",
+  "10:23:58.201 INFO [CHG_POLICY] thermal_budget remaining=72%",
+  "10:23:59.918 INFO [BATTERY_GAUGE] soc=44 rise_slope=0.47",
+  "10:24:00.330 INFO [THERMAL_MON] battery_pack_temp=44.3C",
+  "10:24:00.831 WARN [THERMAL_MON] skin_temp=41.7C near comfort_limit=42C",
+  "10:24:01 WARN [CHG_THERMAL] battery_pack_temp=46.8C over soft_limit=45C",
+  "10:24:01.216 INFO [CHG_POLICY] thermal_foldback request=prepare",
+  "10:24:01.812 INFO [PMIC] die_temp=58.1C regulator_state=stable",
+  "10:24:02.314 INFO [CHARGER] input_current_ma=3790 charge_current_ma=3660",
+  "10:24:02.886 INFO [THERMAL_MON] pack_temp_slope=0.92C/min window=180s",
+  "10:24:03 INFO [CHG_POLICY] fast_current_limit_ma 3800 -> 2800",
+  "10:24:03.488 INFO [CHARGER] input_current_ma=2790 charge_current_ma=2680",
+  "10:24:03.955 INFO [BATTERY_GAUGE] soc=45 rise_slope=0.31",
+  "10:24:04.308 INFO [THERMAL_MON] battery_pack_temp=46.4C cooling=slow",
+  "10:24:04.650 INFO [CHG_POLICY] display_estimate update=+4min",
+  "10:24:05 WARN [BATTERY_GAUGE] soc_rise_slope drop after thermal foldback",
+  "10:24:05.420 INFO [PMIC] regulator_state=stable ripple_mv=18",
+  "10:24:06.028 INFO [THERMAL_MON] skin_temp=42.2C comfort_limit=42C",
+  "10:24:07.117 INFO [CHARGER] input_voltage_mv=8974 input_current_ma=2765",
+  "10:24:08.690 INFO [CHG_POLICY] fast_current_limit_ma=2800 thermal_state=restricted",
+  "10:24:10.004 INFO [BATTERY_GAUGE] soc=45 rise_slope=0.29",
+  "10:24:11.516 INFO [THERMAL_MON] battery_pack_temp=45.9C",
+  "10:24:13.228 INFO [CHG_POLICY] thermal_budget remaining=38%",
+  "10:24:15.673 INFO [CHARGER] charge_current_ma=2660 vbat_mv=3921",
+  "10:24:18.091 INFO [BATTERY_GAUGE] smoothing applied window=5",
+  "10:24:20.445 INFO [REPORT] evidence candidates=3 confidence_seed=0.92",
+  "10:24:22.008 INFO [REPORT] recommended parameter=battery_temp_target_c",
+  "10:24:25.771 INFO [END] session=chg-a17 status=processing"
+];
+
+const authLogRawLines = [
+  "09:18:04.004 INFO [BOOT] session=pd-b09 project=aurora firmware=v5.2.0-powerlab",
+  "09:18:04.331 INFO [USB_C] cc_attach orientation=normal",
+  "09:18:04.612 INFO [PD_CTRL] HardReset count=0",
+  "09:18:05.041 INFO [PD_CTRL] DiscoverIdentity cable=5A",
+  "09:18:05.450 INFO [PD_CTRL] SinkCaps ready",
+  "09:18:06.102 INFO [CHARGER] input_voltage_mv=5020 input_current_ma=480",
+  "09:18:06.772 INFO [PD_CTRL] Wait SourceCap",
+  "09:18:07.058 INFO [PD_CTRL] SourceCap msg_id=2 objects=3",
+  "09:18:11 INFO [PD_CTRL] SourceCap includes 5V/3A, 9V/3A, 12V/2.25A",
+  "09:18:07.645 INFO [POLICY] prefer_profile=9V/3A reason=thermal_safe",
+  "09:18:08.202 INFO [PD_CTRL] Request profile=9V/3A operating_current=3000mA",
+  "09:18:08.870 INFO [PD_CTRL] GoodCRC received",
+  "09:18:12 INFO PD_CTRL Accept profile 9V/3A",
+  "09:18:09.990 INFO [PD_CTRL] PS_RDY received",
+  "09:18:10.330 INFO [CHARGER] switch input target=9000mV",
+  "09:18:10.904 INFO [CHARGER] input_voltage_mv=8960 input_current_ma=1120",
+  "09:18:11.404 INFO [BATTERY_GAUGE] soc=57 temp_cell_avg=34.4C",
+  "09:18:11.908 INFO [THERMAL_MON] battery_pack_temp=35.0C",
+  "09:18:12.333 INFO [CHARGER] input_voltage_mv=9012 input_current_ma=2360",
+  "09:18:12.976 INFO [CHG_POLICY] fast_current_limit_ma=3000 thermal_state=normal",
+  "09:18:13.512 INFO [PD_CTRL] retry_count=0",
+  "09:18:14.019 INFO [CHARGER] input_voltage_mv=9021 input_current_ma=2910",
+  "09:18:14.447 INFO [PMIC] die_temp=44.8C regulator_state=stable",
+  "09:18:15.044 INFO [BATTERY_GAUGE] soc=58 rise_slope=0.44",
+  "09:18:15.612 INFO [PD_CTRL] KeepAlive ack",
+  "09:18:16.021 INFO [CHARGER] input_current_ma=2980 charge_current_ma=2860",
+  "09:18:16.774 INFO [THERMAL_MON] skin_temp=35.8C",
+  "09:18:17.281 INFO [PD_CTRL] no renegotiation observed",
+  "09:18:17.903 INFO [CHARGER] input_voltage_mv=9018 input_current_ma=2974",
+  "09:18:18.411 INFO [BATTERY_GAUGE] soc=59 rise_slope=0.43",
+  "09:18:19 INFO [CHARGER] input_voltage_mv=9020 input_current_ma=2980 stable",
+  "09:18:19.462 INFO [POLICY] adapter_whitelist matched=HW-AUD-93",
+  "09:18:20.035 INFO [REPORT] evidence candidates=3 confidence_seed=0.88",
+  "09:18:21.110 INFO [REPORT] conclusion=no_pd_retry",
+  "09:18:22.008 INFO [END] session=pd-b09 status=complete"
+];
+
+const failedLogRawLines = [
+  "00:00:00 ERROR [PARSER] binary thermal snapshot cannot be decoded",
+  "00:00:00 INFO [PARSER] detected magic=0x5448524d size=12.4MB",
+  "00:00:00 INFO [PARSER] accepted suffix: .log, .txt, .json",
+  "00:00:00 WARN [PARSER] text stream unavailable; raw snapshot retained",
+  "00:00:00 INFO [PARSER] action=export_text_log_required"
+];
+
 export function createPrototypeState(configDraft: PowerManagementConfig = clonePowerManagementConfig(bundledPowerManagementConfig)): PrototypeState {
   const runtime = derivePowerManagementRuntimeState(configDraft);
 
@@ -329,13 +420,33 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         conclusion: "快充阶段电池包温升过快，触发热降额链路。",
         impact: "battery-pack-lab-a",
         evidence: [
-          "10:24:01 WARN [CHG_THERMAL] battery_pack_temp=46.8C over soft_limit=45C",
-          "10:24:03 INFO [CHG_POLICY] fast_current_limit_ma 3800 -> 2800",
-          "10:24:05 WARN [BATTERY_GAUGE] soc_rise_slope drop after thermal foldback"
+          {
+            id: "log-active-ev-thermal",
+            stageId: "parse",
+            lineNumbers: [20],
+            inference: "电池包温度越过 45°C 软阈值，确认热异常触发点。",
+            suggestedAction: "复核电池温控阈值",
+            ruleHit: "thermal_soft_limit"
+          },
+          {
+            id: "log-active-ev-policy",
+            stageId: "pattern",
+            lineNumbers: [25],
+            inference: "充电策略已主动降低快充电流，说明热保护链路已经介入。",
+            suggestedAction: "下调快充电流上限",
+            ruleHit: "thermal_foldback_current_limit"
+          },
+          {
+            id: "log-active-ev-gauge",
+            stageId: "rootcause",
+            lineNumbers: [30],
+            inference: "SOC 增长斜率在降额后回落，佐证温升与充电体验波动有关。",
+            suggestedAction: "关联 thermal_trace 与充电电流曲线"
+          }
         ],
         suggestedActions: ["下调快充电流上限", "复核电池温控阈值", "关联 thermal_trace 与充电电流曲线"],
         severity: "Warning",
-        rawLines: [],
+        rawLines: activeLogRawLines,
         capturedAt: "10:24:05",
         relatedParameterId: "aurora-battery-temp-target",
         device: "ChargeLab_X01"
@@ -350,13 +461,33 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         conclusion: "PD 协商在 9V/3A 档位稳定完成，未出现握手重试。",
         impact: "charger-adapter-b",
         evidence: [
-          "09:18:11 INFO [PD_CTRL] SourceCap includes 5V/3A, 9V/3A, 12V/2.25A",
-          "09:18:12 INFO PD_CTRL Accept profile 9V/3A",
-          "09:18:19 INFO [CHARGER] input_voltage_mv=9020 input_current_ma=2980 stable"
+          {
+            id: "log-auth-ev-sourcecap",
+            stageId: "parse",
+            lineNumbers: [9],
+            inference: "适配器上报的 SourceCap 覆盖目标档位，具备稳定协商基础。",
+            suggestedAction: "保留 9V/3A 充电档位",
+            ruleHit: "pd_sourcecap_target_profile"
+          },
+          {
+            id: "log-auth-ev-accept",
+            stageId: "pattern",
+            lineNumbers: [13],
+            inference: "设备端接受 9V/3A 档位，确认 PD 协商链路未发生重试。",
+            suggestedAction: "同步适配器白名单",
+            ruleHit: "pd_accept_no_retry"
+          },
+          {
+            id: "log-auth-ev-stable",
+            stageId: "rootcause",
+            lineNumbers: [31],
+            inference: "输入电压与电流保持在目标窗口内，充电链路进入稳定阶段。",
+            suggestedAction: "跟踪海外批次 PD 兼容性"
+          }
         ],
         suggestedActions: ["保留 9V/3A 充电档位", "同步适配器白名单", "跟踪海外批次 PD 兼容性"],
         severity: "Info",
-        rawLines: [],
+        rawLines: authLogRawLines,
         capturedAt: "09:18:19",
         device: "ChargeLab_X01"
       },
@@ -370,12 +501,25 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         conclusion: "不支持的二进制热快照格式。",
         impact: "N/A",
         evidence: [
-          "00:00:00 ERROR [PARSER] binary thermal snapshot cannot be decoded",
-          "00:00:00 INFO [PARSER] accepted suffix: .log, .txt, .json"
+          {
+            id: "log-failed-ev-decode",
+            stageId: "parse",
+            lineNumbers: [1],
+            inference: "解析器识别到当前文件不满足文本日志要求，需要保留原件并重新导出。",
+            suggestedAction: "请重新上传 .log、.txt 或 .json 文本日志。",
+            ruleHit: "unsupported_binary_snapshot"
+          },
+          {
+            id: "log-failed-ev-suffix",
+            stageId: "parse",
+            lineNumbers: [3],
+            inference: "当前导入入口仅接受文本链路日志，二进制热快照需走离线分析流程。",
+            suggestedAction: "从温控工具导出文本链路日志"
+          }
         ],
         suggestedActions: ["请重新上传 .log、.txt 或 .json 文本日志。", "从温控工具导出文本链路日志", "保留原始热快照用于离线分析"],
         severity: "Critical",
-        rawLines: [],
+        rawLines: failedLogRawLines,
         capturedAt: "刚刚",
         failureReason: "二进制格式不支持。请导出 .log / .txt / .json 文本日志。"
       }

@@ -2255,50 +2255,20 @@ function ParameterAdminPage({ state, dispatch }: PageProps) {
   );
 }
 
-function inferEvidenceFinding(source: string, fallbackIndex: number) {
-  if (source.includes("[CHG_THERMAL]")) {
-    return "电池包温度越过 45°C 软阈值，确认热异常触发点。";
-  }
-  if (source.includes("[CHG_POLICY]")) {
-    return "充电策略已主动降低快充电流，说明热保护链路已经介入。";
-  }
-  if (source.includes("[BATTERY_GAUGE]")) {
-    return "SOC 增长斜率在降额后回落，佐证温升与充电体验波动有关。";
-  }
-  if (source.includes("SourceCap")) {
-    return "适配器上报的 SourceCap 覆盖目标档位，具备稳定协商基础。";
-  }
-  if (source.includes("Accept profile")) {
-    return "设备端接受 9V/3A 档位，确认 PD 协商链路未发生重试。";
-  }
-  if (source.includes("[CHARGER]")) {
-    return "输入电压与电流保持在目标窗口内，充电链路进入稳定阶段。";
-  }
-  if (source.includes("[PARSER]")) {
-    return "解析器识别到当前文件不满足文本日志要求，需要保留原件并重新导出。";
-  }
-
-  return fallbackIndex === 0 ? "日志片段已进入证据池，等待后续模式匹配。" : "日志片段已进入证据池，等待后续报告合并。";
-}
-
 function LogsPage({ state }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [unsupportedDialogOpen, setUnsupportedDialogOpen] = useState(false);
   const activeLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
   const stages: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
   const stageIndex = stages.indexOf(activeLog.stage);
-  const evidenceInsights = activeLog.evidence.map((item, index) => {
-    const action = activeLog.suggestedActions[index] ?? activeLog.suggestedActions[0] ?? "保留原始日志并进入人工复核。";
-
-    return {
-      id: `${activeLog.id}-evidence-${index}`,
-      label: `证据 ${String(index + 1).padStart(2, "0")}`,
-      stage: STAGE_LABELS[stages[Math.min(index, stages.length - 1)]],
-      source: item,
-      inferred: inferEvidenceFinding(item, index),
-      action
-    };
-  });
+  const evidenceInsights = activeLog.evidence.map((evidence, index) => ({
+    id: evidence.id,
+    label: `证据 ${String(index + 1).padStart(2, "0")}`,
+    stage: STAGE_LABELS[evidence.stageId],
+    source: activeLog.rawLines[evidence.lineNumbers[0] - 1] ?? "",
+    inferred: evidence.inference,
+    action: evidence.suggestedAction
+  }));
 
   return (
     <WorkbenchLayout title="日志智能分析" subtitle="上传日志并观察 AI 自动化分析过程、证据链和处置线索。">
@@ -2323,10 +2293,10 @@ function LogsPage({ state }: PageProps) {
               <p className="result-copy">{activeLog.conclusion}</p>
               <SectionLabel icon={<FileText size={16} />} label="原始日志内容" />
               <div className="evidence-box">
-                {activeLog.evidence.map((item, index) => (
-                  <div className="raw-log-line" key={item}>
-                    <span>{String(index + 1).padStart(2, "0")}</span>
-                    <code>{item}</code>
+                {activeLog.evidence.map((evidence, index) => (
+                  <div className="raw-log-line" key={evidence.id}>
+                    <span>{String(evidence.lineNumbers[0] ?? index + 1).padStart(2, "0")}</span>
+                    <code>{activeLog.rawLines[evidence.lineNumbers[0] - 1] ?? ""}</code>
                   </div>
                 ))}
               </div>

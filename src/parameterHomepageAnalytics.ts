@@ -359,7 +359,12 @@ function deriveKeyChanges(
 }
 
 function mentionsModule(log: PrototypeState["logs"][number], module: string) {
-  const haystack = [log.conclusion, log.impact, ...log.evidence, ...log.suggestedActions].join(" ").toLowerCase();
+  const evidenceText = log.evidence.flatMap((evidence) => [
+    evidence.inference,
+    evidence.suggestedAction,
+    ...evidence.lineNumbers.map((lineNumber) => log.rawLines[lineNumber - 1] ?? "")
+  ]);
+  const haystack = [log.conclusion, log.impact, ...evidenceText, ...log.suggestedActions].join(" ").toLowerCase();
   return module
     .toLowerCase()
     .split(/\s+/)
