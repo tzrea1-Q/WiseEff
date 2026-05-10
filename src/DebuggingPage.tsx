@@ -1,7 +1,9 @@
 import { RotateCcw, Send } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { AppAction } from "./App";
 import { DisconnectedBanner } from "./components/DisconnectedBanner";
+import { SessionSummaryCard } from "./components/SessionSummaryCard";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 const riskLabels: Record<"High" | "Medium" | "Low", string> = {
@@ -16,10 +18,16 @@ type DebuggingPageProps = {
 };
 
 export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
+  const [nowTick, setNowTick] = useState(() => new Date());
   const activeDevice = state.devices.find((device) => device.projectId === state.activeProjectId) ?? state.devices[0];
   const debugParameters = state.debugParameters;
   const pendingParameters = debugParameters.filter((parameter) => parameter.status === "待下发");
   const connected = activeDevice.status === "已连接";
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const updateTargetValue = (parameter: DebugParameter, targetValue: string) => {
     dispatch({
@@ -62,6 +70,13 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
         <DisconnectedBanner
           device={activeDevice}
           onConnect={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}
+        />
+        <SessionSummaryCard
+          state={state}
+          now={nowTick}
+          onRollbackRequest={() => {
+            console.debug("rollback requested - dialog coming in Task 6");
+          }}
         />
         <section className="debug-table">
           <PanelHeader title="实时可调参数" meta={connected ? "设备在线" : "需要连接"} />

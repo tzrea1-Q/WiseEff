@@ -70,3 +70,22 @@ describe("DisconnectedBanner 集成", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
+
+describe("SessionSummaryCard 集成", () => {
+  it("未连接默认设备时按钮 disabled 且提示连接设备", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    const button = screen.getByRole("button", { name: /回滚到上次快照/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", expect.stringMatching(/连接/));
+  });
+
+  it("连接后按钮仍 disabled（尚无快照）但 title 文案改变", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    const button = screen.getByRole("button", { name: /回滚到上次快照/ });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", expect.stringMatching(/尚无快照/));
+  });
+});
