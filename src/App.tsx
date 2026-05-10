@@ -4,6 +4,7 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronRight,
   CircleOff,
   Copy,
   Download,
