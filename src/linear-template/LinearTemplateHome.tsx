@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { WiseEffIcon } from "../components/WiseEffIcon";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Command, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
 import "./linear-template.css";
 
@@ -417,29 +415,21 @@ function UnlikeAnyTool() {
         </div>
       </Container>
       <div className="linear-tool-grid" aria-label="WiseEff workflow qualities">
-        <Card className="linear-tool-card logo-light-card">
+        <article className="linear-tool-card logo-light-card">
           <LogoLightMock />
-          <CardHeader>
-            <CardTitle>让 Agent 代办</CardTitle>
-            <CardDescription>Agent 辅助检索、解释、填写和准备草稿，危险动作保持人工确认。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild className="linear-card-link" variant="link">
-              <a href="#platform">
-                <span>当前能力</span>
-                查看边界
-                <strong>›</strong>
-              </a>
-            </Button>
-          </CardContent>
-        </Card>
-        <Card className="linear-tool-card large command-card">
+          <h3>让 Agent 代办</h3>
+          <p>Agent 辅助检索、解释、填写和准备草稿，危险动作保持人工确认。</p>
+          <a className="linear-card-link" href="#platform">
+            <span>当前能力</span>
+            查看边界
+            <strong>›</strong>
+          </a>
+        </article>
+        <article className="linear-tool-card large command-card">
           <CommandMenuMock />
-          <CardHeader>
-            <CardTitle>把治理做进流程</CardTitle>
-            <CardDescription>PRQ 审阅、角色边界、确认动作和回滚说明跟着业务链路一起沉淀。</CardDescription>
-          </CardHeader>
-        </Card>
+          <h3>把治理做进流程</h3>
+          <p>PRQ 审阅、角色边界、确认动作和回滚说明跟着业务链路一起沉淀。</p>
+        </article>
       </div>
     </section>
   );
@@ -460,18 +450,16 @@ function CommandMenuMock() {
   const rows = ["定位参数", "检索日志证据", "填写变更草稿", "准备 PRQ 审阅", "等待人工确认"];
 
   return (
-    <Command className="linear-command-menu-mock" aria-hidden="true">
-      <CommandInput className="linear-command-input" value="描述目标..." readOnly />
-      <CommandList>
-        {rows.map((row, index) => (
-          <CommandItem key={row} className={index === 1 ? "active" : ""}>
-            <span />
-            {row}
-            <kbd>⌘{index + 1}</kbd>
-          </CommandItem>
-        ))}
-      </CommandList>
-    </Command>
+    <div className="linear-command-menu-mock" aria-hidden="true">
+      <div className="linear-command-input">描述目标...</div>
+      {rows.map((row, index) => (
+        <div key={row} className={index === 1 ? "active" : ""}>
+          <span />
+          {row}
+          <kbd>⌘{index + 1}</kbd>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -500,10 +488,10 @@ function ProductSection({ id, color, colorDark, title, preview, text, features }
       <Container>
         <div className="linear-feature-grid">
           {features.map((feature, index) => (
-            <Card key={feature.title}>
+            <div key={feature.title}>
               <FeatureIcon index={index} />
               <span>{feature.title}</span> {feature.text}
-            </Card>
+            </div>
           ))}
         </div>
       </Container>

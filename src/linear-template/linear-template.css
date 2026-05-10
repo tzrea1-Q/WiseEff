@@ -1056,7 +1056,7 @@
   text-wrap: balance;
 }
 
-.linear-feature-summary hr {
+.linear-feature-summary [data-slot="separator"] {
   height: 1px;
   margin: 0 0 72px;
   border: 0;
