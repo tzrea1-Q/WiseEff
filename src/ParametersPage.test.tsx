@@ -93,4 +93,23 @@ describe("ParametersPage · 提交契约", () => {
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
     expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
   });
+
+  it("聚焦未勾选行后再勾选，不会继承上一行的修改原因", () => {
+    renderPage();
+    const boxes = screen.getAllByRole("checkbox", { name: /勾选 / });
+    fireEvent.click(boxes[0]);
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "第一行的专属原因" }
+    });
+
+    fireEvent.click(screen.getByText("charge_voltage_limit_mv"));
+    expect(screen.getByLabelText("修改原因")).toHaveValue("");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 charge_voltage_limit_mv/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+
+    expect(within(dialog).getByText("第一行的专属原因")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("第一行的专属原因")).toHaveLength(1);
+  });
 });

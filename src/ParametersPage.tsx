@@ -169,9 +169,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setSelectedId(selected.id);
     setFocusedId(selected.id);
     setTargetValue(drafts[selected.id]?.targetValue ?? selected.recommendedValue);
-    if (drafts[selected.id]) {
-      setReason(drafts[selected.id].reason);
-    }
+    setReason(drafts[selected.id]?.reason ?? "");
   }, [drafts, selected?.id, selected?.recommendedValue]);
 
   useEffect(() => {
@@ -189,9 +187,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setSelectedId(parameter.id);
     setFocusedId(parameter.id);
     setTargetValue(drafts[parameter.id]?.targetValue ?? parameter.recommendedValue);
-    if (drafts[parameter.id]) {
-      setReason(drafts[parameter.id].reason);
-    }
+    setReason(drafts[parameter.id]?.reason ?? "");
   };
 
   const toggleParameterSelection = (parameter: ParameterRecord, checked: boolean) => {
