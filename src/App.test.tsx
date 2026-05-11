@@ -296,12 +296,12 @@ describe("WiseEff app shell", () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:project-parameters");
   });
 
-  it("labels the parameter recommendation column as example", () => {
+  it("labels the parameter recommendation column as recommended value", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
 
-    expect(screen.getByRole("columnheader", { name: "示例" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "推荐值" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Recommended" })).not.toBeInTheDocument();
   });
 
@@ -326,7 +326,7 @@ describe("WiseEff app shell", () => {
     expect(detailPanel).toHaveTextContent("battery_temp_target_c");
   });
 
-  it("keeps the parameter example value aligned inside a normal table cell", () => {
+  it("keeps the parameter recommended value inside a normal table cell", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
@@ -337,7 +337,8 @@ describe("WiseEff app shell", () => {
     const exampleCell = fastChargeRow?.querySelector<HTMLTableCellElement>("td.recommended");
 
     expect(exampleCell).toBeInTheDocument();
-    expect(exampleCell?.firstElementChild).toHaveClass("value-change");
+    expect(exampleCell).toHaveTextContent("3200");
+    expect(exampleCell?.firstElementChild).toBeNull();
   });
 
   it("removes the parameter page header subtitle and submit-change shortcut", () => {
