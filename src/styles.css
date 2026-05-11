@@ -1798,6 +1798,72 @@ td small {
   font-weight: 750;
 }
 
+.parameter-insight-bar {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 32px;
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  color: #10315f;
+  background: linear-gradient(135deg, rgba(0, 82, 204, 0.08), rgba(80, 220, 255, 0.12));
+  border: 1px solid rgba(0, 82, 204, 0.18);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+}
+
+.parameter-insight-icon {
+  color: var(--primary);
+}
+
+.parameter-insight-copy {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.parameter-insight-copy strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.parameter-insight-copy strong span,
+.parameter-insight-copy p {
+  color: var(--app-muted);
+}
+
+.parameter-insight-copy p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.parameter-insight-copy code {
+  font-family: inherit;
+  font-weight: 800;
+}
+
+.parameter-insight-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.parameter-insight-collapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 32px;
+  padding: 6px 10px;
+  color: var(--primary);
+  background: rgba(0, 82, 204, 0.07);
+  border: 1px solid rgba(0, 82, 204, 0.14);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .risk-badge,
 .badge,
 .status-badge {
