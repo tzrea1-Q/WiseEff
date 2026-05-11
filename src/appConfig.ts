@@ -65,7 +65,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Home,
     title: "智能参数管理",
-    subtitle: "参数管理应用的运营态势、入口看板与 AI 热区分析"
+    subtitle: "参数治理态势 · 入口看板 · AI 热区"
   },
   {
     key: "parameters",

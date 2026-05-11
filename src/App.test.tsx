@@ -12,10 +12,25 @@ afterEach(() => {
 });
 
 function expectSelectValue(trigger: HTMLElement, value: string) {
+  if (trigger instanceof HTMLSelectElement) {
+    expect(trigger).toHaveValue(value);
+    return;
+  }
+
   expect(trigger).toHaveAttribute("data-value", value);
 }
 
 function changeSelectValue(trigger: HTMLElement, optionName: string | RegExp) {
+  if (trigger instanceof HTMLSelectElement) {
+    const option = Array.from(trigger.options).find((item) =>
+      typeof optionName === "string" ? item.textContent === optionName || item.value === optionName : optionName.test(item.textContent ?? "")
+    );
+
+    expect(option).toBeDefined();
+    fireEvent.change(trigger, { target: { value: option?.value } });
+    return;
+  }
+
   fireEvent.click(trigger);
   fireEvent.click(screen.getByRole("option", { name: optionName }));
 }
@@ -157,7 +172,7 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
   });
 
   it("exposes the three sub-app entries on the homepage main region", () => {
@@ -355,7 +370,7 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("columnheader", { name: "示例" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "推荐值" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Recommended" })).not.toBeInTheDocument();
   });
 
@@ -391,7 +406,7 @@ describe("WiseEff app shell", () => {
     const exampleCell = fastChargeRow?.querySelector<HTMLTableCellElement>("td.recommended");
 
     expect(exampleCell).toBeInTheDocument();
-    expect(exampleCell?.firstElementChild).toHaveClass("value-change");
+    expect(exampleCell).toHaveTextContent("3200");
   });
 
   it("removes the parameter page header subtitle and submit-change shortcut", () => {
@@ -401,7 +416,7 @@ describe("WiseEff app shell", () => {
 
     expect(screen.queryByText(/当前项目：/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交变更" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交参数修改请求" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
   });
 
   it("opens a hidden personal submission history page from the parameter workbench", () => {
@@ -423,19 +438,13 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "加入本轮" }));
-
-    const voltageRow = Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find((row) =>
-      row.textContent?.includes("charge_voltage_limit_mv")
-    );
-    expect(voltageRow).toBeInTheDocument();
-    fireEvent.click(voltageRow as HTMLTableRowElement);
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 charge_voltage_limit_mv/ }));
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
-    fireEvent.click(screen.getByRole("button", { name: "加入本轮" }));
 
     expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "提交参数修改请求" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
 
     const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
     expect(within(dialog).getByText(/本轮提交包含\s*2\s*个参数修改/)).toBeInTheDocument();
@@ -1208,7 +1217,7 @@ describe("WiseEff app shell", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
-    expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
 
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);

@@ -44,6 +44,8 @@ import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
 import { LogAdminPage } from "./LogAdminPage";
+import { ParametersPage as UserParametersPage } from "./ParametersPage";
+import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
@@ -126,7 +128,7 @@ export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "SET_ROLE"; roleId: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason: string }
+  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason?: string }
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
@@ -408,7 +410,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const requestSeed = 8910 + state.changeRequests.length;
       const requests = draftItems.map(({ parameter, item }, index): ChangeRequest => {
-        const summary = item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。";
+        const summary = item.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。";
 
         return {
           id: `PRQ-${requestSeed + index}`,
@@ -434,7 +436,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         targetValue: item.targetValue,
         unit: parameter.unit,
         risk: parameter.risk,
-        reason: item.reason || action.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
+        reason: item.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
       }));
 
       return {
@@ -1370,7 +1372,7 @@ function PageRouter({
 }) {
   switch (page.key) {
     case "parameters":
-      return <ParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <UserParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-submissions":
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-home":
@@ -1742,10 +1744,8 @@ function HomePage() {
   return <LinearTemplateHome />;
 }
 
-type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 type LogsAuxTab = "history" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
-const DEFAULT_PARAMETER_REASON = "参考 Agent 巡检建议，将高风险参数回落到安全阈值内。";
 
 function getFallbackComparisonProjectId(projectId: string) {
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
@@ -1788,409 +1788,12 @@ function createComparisonInsights(state: PrototypeState, selection: ComparisonPr
   };
 }
 
-function escapeExcelCell(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: string) {
-  const headers = ["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"];
-  const tableRows = rows
-    .map(
-      (parameter) => `
-        <tr>
-          <td>${escapeExcelCell(parameter.name)}</td>
-          <td>${escapeExcelCell(parameter.module)}</td>
-          <td>${escapeExcelCell(parameter.currentValue)}</td>
-          <td>${escapeExcelCell(parameter.recommendedValue)}</td>
-          <td>${escapeExcelCell(`${parameter.range} ${parameter.unit}`.trim())}</td>
-          <td>${riskLabels[parameter.risk]}</td>
-          <td>${escapeExcelCell(parameter.updatedAt)}</td>
-        </tr>`
-    )
-    .join("");
-  const html = `
-    <html>
-      <head><meta charset="utf-8" /></head>
-      <body>
-        <table>
-          <thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </body>
-    </html>`;
-  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${projectCode}-project-parameters.xls`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
-function ParametersPage({ state, dispatch, onNavigate, search }: PageProps) {
-  const [riskFilter, setRiskFilter] = useState<ParameterRiskFilter>("All");
-  const [moduleFilter, setModuleFilter] = useState("All");
-  const [selectedId, setSelectedId] = useState(state.parameters[0]?.id ?? "");
-  const [targetValue, setTargetValue] = useState("80");
-  const [reason, setReason] = useState(DEFAULT_PARAMETER_REASON);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [draftItems, setDraftItems] = useState<ParameterDraftItem[]>([]);
-  const projectParameters = useMemo(
-    () => state.parameters.filter((parameter) => parameter.projectId === state.activeProjectId),
-    [state.activeProjectId, state.parameters]
-  );
-  const moduleOptions = useMemo(
-    () => Array.from(new Set(projectParameters.map((parameter) => parameter.module))),
-    [projectParameters]
-  );
-  const parameters = projectParameters.filter(
-    (parameter) =>
-      (riskFilter === "All" || parameter.risk === riskFilter) && (moduleFilter === "All" || parameter.module === moduleFilter)
-  );
-  const selected = parameters.find((parameter) => parameter.id === selectedId) ?? parameters[0];
-  const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
-  const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const pendingSubmissionItems = useMemo(
-    () =>
-      draftItems
-        .map((item) => {
-          const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
-          return parameter ? { ...item, parameter } : null;
-        })
-        .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
-    [draftItems, state.parameters]
-  );
-
-  useEffect(() => {
-    if (contextQuery.projectId) {
-      return;
-    }
-    setModuleFilter("All");
-  }, [contextQuery.projectId, state.activeProjectId]);
-
-  useEffect(() => {
-    if (contextQuery.projectId && projects.some((project) => project.id === contextQuery.projectId) && contextQuery.projectId !== state.activeProjectId) {
-      dispatch({ type: "SET_PROJECT", projectId: contextQuery.projectId });
-    }
-  }, [contextQuery.projectId, dispatch, state.activeProjectId]);
-
-  useEffect(() => {
-    if (!contextQuery.module) {
-      return;
-    }
-    if (moduleOptions.includes(contextQuery.module)) {
-      setModuleFilter(contextQuery.module);
-    }
-  }, [contextQuery.module, moduleOptions]);
-
-  useEffect(() => {
-    if (!contextQuery.parameterId) {
-      return;
-    }
-    const requestedParameter = projectParameters.find((parameter) => parameter.id === contextQuery.parameterId);
-    if (requestedParameter) {
-      setSelectedId(requestedParameter.id);
-      setTargetValue(requestedParameter.recommendedValue);
-    }
-  }, [contextQuery.parameterId, projectParameters]);
-
-  useEffect(() => {
-    if (!contextQuery.logId) {
-      return;
-    }
-
-    const originLog = state.logs.find((log) => log.id === contextQuery.logId);
-    if (!originLog) {
-      return;
-    }
-
-    setReason((current) =>
-      current === DEFAULT_PARAMETER_REASON
-        ? `依据日志 ${originLog.fileName} 分析：${originLog.conclusion}`
-        : current
-    );
-  }, [contextQuery.logId, state.logs]);
-
-  useEffect(() => {
-    if (!selected) {
-      return;
-    }
-    setSelectedId(selected.id);
-    setTargetValue(draftItems.find((item) => item.parameterId === selected.id)?.targetValue ?? selected.recommendedValue);
-  }, [draftItems, selected?.id, selected?.recommendedValue]);
-
-  useEffect(() => {
-    setDraftItems((items) => items.filter((item) => projectParameters.some((parameter) => parameter.id === item.parameterId)));
-  }, [projectParameters]);
-
-  const addSelectedToRound = () => {
-    if (!selected) {
-      return;
-    }
-    setDraftItems((items) => {
-      const draftItem = { parameterId: selected.id, targetValue, reason };
-      return items.some((item) => item.parameterId === selected.id)
-        ? items.map((item) => (item.parameterId === selected.id ? draftItem : item))
-        : [...items, draftItem];
-    });
-  };
-
-  const openSubmitPreview = () => {
-    if (draftItems.length === 0) {
-      addSelectedToRound();
-    }
-    setConfirmOpen(true);
-  };
-
-  const submitRound = () => {
-    const itemsToSubmit = draftItems.length > 0 ? draftItems : selected ? [{ parameterId: selected.id, targetValue, reason }] : [];
-    if (itemsToSubmit.length === 0) {
-      return;
-    }
-    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, reason });
-    setDraftItems([]);
-    setConfirmOpen(false);
-  };
-  const previewItems =
-    pendingSubmissionItems.length > 0
-      ? pendingSubmissionItems
-      : selected
-        ? [{ parameterId: selected.id, targetValue, reason, parameter: selected }]
-        : [];
-
-  return (
-    <WorkbenchLayout
-      title="项目参数用户工作台"
-      actions={
-        <>
-          <Button variant="outline" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
-            <Download size={16} />
-            导出 Excel
-          </Button>
-          <Button variant="outline" type="button" onClick={() => onNavigate("/parameter-submissions")}>
-            <History size={16} />
-            历史提交
-          </Button>
-          <Button variant="outline" type="button" onClick={() => onNavigate("/parameter-comparison")}>
-            <ArrowRight size={16} />
-            跨项目对比
-          </Button>
-        </>
-      }
-    >
-      <aside className="filter-panel" aria-label="参数筛选">
-        <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-        <Label className="field-label" htmlFor="parameter-project-filter">
-          项目
-        </Label>
-        <SelectControl
-          id="parameter-project-filter"
-          className="filter-select"
-          value={state.activeProjectId}
-          onValueChange={(projectId) => dispatch({ type: "SET_PROJECT", projectId })}
-          options={projects.map((project) => ({ value: project.id, label: `${project.code} · ${project.name}` }))}
-        />
-        <Label className="field-label" htmlFor="parameter-risk-filter">
-          重要性
-        </Label>
-        <SelectControl
-          id="parameter-risk-filter"
-          className="filter-select"
-          value={riskFilter}
-          onValueChange={setRiskFilter}
-          options={([
-            ["All", "全部"],
-            ["High", "高"],
-            ["Medium", "中"],
-            ["Low", "低"]
-          ] as const).map(([value, label]) => ({ value, label }))}
-        />
-        <Label className="field-label" htmlFor="parameter-module-filter">
-          模块
-        </Label>
-        <SelectControl
-          id="parameter-module-filter"
-          className="filter-select"
-          value={moduleFilter}
-          onValueChange={setModuleFilter}
-          options={["All", ...moduleOptions].map((module) => ({ value: module, label: module === "All" ? "全部" : module }))}
-        />
-      </aside>
-      <section className="workbench-main">
-        <DataTable
-          headers={["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"]}
-          rows={parameters}
-          renderRow={(parameter) => (
-            <TableRow
-              className={selected?.id === parameter.id ? "selected-row" : ""}
-              key={parameter.id}
-              onClick={() => {
-                setSelectedId(parameter.id);
-                setTargetValue(parameter.recommendedValue);
-              }}
-            >
-              <TableCell>
-                <strong>{parameter.name}</strong>
-                <small>{parameter.description}</small>
-              </TableCell>
-              <TableCell>
-                <Badge tone="tertiary">{parameter.module}</Badge>
-              </TableCell>
-              <TableCell className="mono">{parameter.currentValue}</TableCell>
-              <TableCell className="mono recommended">
-                <span className="value-change">
-                  <ArrowRight size={14} />
-                  <span>{parameter.recommendedValue}</span>
-                </span>
-              </TableCell>
-              <TableCell>
-                <span>{parameter.range}</span>
-                <small>{parameter.unit}</small>
-              </TableCell>
-              <TableCell>
-                <RiskBadge risk={parameter.risk} />
-              </TableCell>
-              <TableCell>{parameter.updatedAt}</TableCell>
-            </TableRow>
-          )}
-        />
-      </section>
-      <aside className="detail-panel">
-        <SectionLabel icon={<Sparkles size={16} />} label="修改草稿" />
-        {selected ? (
-          <form
-            className="stack"
-            onSubmit={(event) => {
-              event.preventDefault();
-              openSubmitPreview();
-            }}
-          >
-            <div className="detail-heading">
-              <strong>{selected.name}</strong>
-              <RiskBadge risk={selected.risk} />
-            </div>
-            <div className="parameter-info-card">
-              <SectionLabel icon={<Info size={15} />} label="参数说明" />
-              <p>{selected.explanation}</p>
-            </div>
-            <div className="parameter-info-card">
-              <SectionLabel icon={<FileText size={15} />} label="参数配置格式" />
-              <code>{selected.configFormat}</code>
-            </div>
-            <Label className="field-label" htmlFor="target-value">
-              目标值
-            </Label>
-            <Input id="target-value" value={targetValue} onChange={(event) => setTargetValue(event.target.value)} />
-            <Label className="field-label" htmlFor="reason">
-              修改原因
-            </Label>
-            <Textarea id="reason" value={reason} onChange={(event) => setReason(event.target.value)} rows={5} />
-            <div className="round-draft-panel" aria-label="本轮提交草稿">
-              <div>
-                <strong>本轮提交 {draftItems.length} 项</strong>
-                <span>可先收集多个参数，再统一提交审阅。</span>
-              </div>
-              {pendingSubmissionItems.length > 0 ? (
-                <ul>
-                  {pendingSubmissionItems.map((item) => (
-                    <li key={item.parameterId}>
-                      <span>{item.parameter.name}</span>
-                      <strong>{item.parameter.currentValue} → {item.targetValue}</strong>
-                      <Button
-                        className="link-button"
-                        type="button"
-                        variant="link"
-                        onClick={() => setDraftItems((items) => items.filter((draftItem) => draftItem.parameterId !== item.parameterId))}
-                      >
-                        移除
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-            <Timeline steps={["选择参数", "填写目标值", "提交审阅", "管理员合入"]} activeIndex={1} />
-            <Button className="full" type="button" variant="outline" onClick={addSelectedToRound}>
-              <ListChecks size={16} />
-              加入本轮
-            </Button>
-            <Button className="full" type="submit">
-              提交参数修改请求
-            </Button>
-          </form>
-        ) : (
-          <EmptyState text="请选择一条参数后提交修改。" />
-        )}
-      </aside>
-      {confirmOpen && selected ? (
-        <ParameterSubmissionDialog
-          items={previewItems}
-          onCancel={() => setConfirmOpen(false)}
-          onConfirm={submitRound}
-        />
-      ) : null}
-    </WorkbenchLayout>
-  );
-}
-
-function ParameterSubmissionDialog({
-  items,
-  onCancel,
-  onConfirm
-}: {
-  items: Array<ParameterDraftItem & { parameter: ParameterRecord }>;
-  onCancel: () => void;
-  onConfirm: () => void;
-}) {
-  return (
-    <Dialog open onOpenChange={(open) => (!open ? onCancel() : undefined)}>
-      <DialogContent className="submission-dialog">
-        <DialogHeader className="submission-dialog-head">
-          <div>
-            <span className="eyebrow">参数提交预览</span>
-            <DialogTitle>提交本轮参数</DialogTitle>
-            <DialogDescription>本轮提交包含 {items.length} 个参数修改，确认后会按一轮提交进入历史记录，并拆分为管理员审阅队列中的参数项。</DialogDescription>
-          </div>
-          <Badge tone="secondary">Diff 预览</Badge>
-        </DialogHeader>
-        <div className="submission-diff-list">
-          {items.map((item) => (
-            <Card className="submission-diff-card" key={item.parameterId} size="sm">
-              <CardHeader>
-                <CardTitle>{item.parameter.name}</CardTitle>
-                <CardDescription>{item.parameter.module} · {riskLabels[item.parameter.risk]}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="diff-values">
-                  <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
-                  <ArrowRight size={16} />
-                  <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
-                </div>
-                <p>{item.reason}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        <DialogFooter className="dialog-actions">
-          <Button variant="outline" type="button" onClick={onCancel}>
-            返回修改
-          </Button>
-          <Button type="button" onClick={onConfirm}>
-            确认提交本轮
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
   const myName = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
   const myRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === myName);
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
+  const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
 
   useEffect(() => {
     if (!myRounds.some((round) => round.id === selectedRoundId)) {
@@ -2259,6 +1862,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
                 </div>
                 <p>本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在 {selectedRound.createdAt} 提交。</p>
                 <p>{selectedRound.summary}</p>
+                <Timeline steps={[...timelineView.steps]} activeIndex={timelineView.activeIndex} />
               </div>
               <div className="submission-diff-list history-diff-list">
                 {selectedRound.items.map((item) => (
@@ -3951,10 +3555,6 @@ function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
 
 function StatusBadge({ status }: { status: string }) {
   return <UiBadge className="status-badge" variant="secondary"><span />{status}</UiBadge>;
-}
-
-function Badge({ children, tone = "neutral" }: { children: ReactNode; tone?: "neutral" | "tertiary" | "secondary" }) {
-  return <UiBadge className={`badge ${tone}`} variant={tone === "secondary" ? "secondary" : "outline"}>{children}</UiBadge>;
 }
 
 function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {

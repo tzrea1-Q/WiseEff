@@ -1071,6 +1071,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
   white-space: nowrap;
 }
 
@@ -1080,6 +1081,20 @@ body {
   gap: 18px;
   align-items: stretch;
   min-height: 650px;
+}
+
+.parameters-page-layout {
+  grid-column: 1 / -1;
+  min-width: 0;
+  min-height: 650px;
+}
+
+.workbench-two-col {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: inherit;
 }
 
 .workbench-one-col {
@@ -1458,6 +1473,60 @@ body {
   flex-direction: column;
 }
 
+.parameters-page-layout .workbench-main {
+  padding: 18px;
+  gap: 12px;
+}
+
+.workbench-sheet {
+  position: fixed;
+  top: calc(var(--topbar-height) + 16px);
+  right: 20px;
+  bottom: 20px;
+  z-index: 35;
+  display: flex;
+  flex-direction: column;
+  width: min(440px, calc(100vw - var(--sidebar-width) - 40px));
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: 0 24px 72px rgba(16, 28, 45, 0.22);
+}
+
+.workbench-sheet-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid var(--outline);
+}
+
+.workbench-sheet-head h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.workbench-sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.workbench-sheet-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 18px;
+  background: #fbfcff;
+  border-top: 1px solid var(--outline);
+}
+
 .table-wrap {
   flex: 1;
   min-height: 0;
@@ -1548,6 +1617,184 @@ td small {
 .strike {
   color: var(--app-muted);
   text-decoration: line-through;
+}
+
+.parameters-table {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.parameters-table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.parameters-table-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(360px, 100%);
+  padding: 9px 12px;
+  color: var(--outline-strong);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.parameters-table-search:focus-within {
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.14);
+}
+
+.parameters-table-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 13px;
+}
+
+.parameters-table-count {
+  flex: 0 0 auto;
+  color: var(--outline-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.parameters-table-scroll {
+  min-width: 0;
+  overflow: auto;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.parameters-table-grid {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: left;
+}
+
+.parameters-table-grid thead {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--surface-low);
+}
+
+.parameters-table-grid th,
+.parameters-table-grid td {
+  padding: 11px 10px;
+  border-bottom: 1px solid #e7ecf7;
+  border-right: 1px solid #edf1f8;
+  vertical-align: middle;
+}
+
+.parameters-table-grid th {
+  color: var(--outline-strong);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  overflow-wrap: anywhere;
+}
+
+.parameters-table-grid td {
+  max-width: 220px;
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.parameters-table-grid th:first-child,
+.parameters-table-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 48px;
+  min-width: 48px;
+  background: #fff;
+  text-align: center;
+  box-shadow: inset -1px 0 0 #edf1f8;
+}
+
+.parameters-table-grid th:first-child {
+  z-index: 6;
+  background: var(--surface-low);
+}
+
+.parameters-table-grid th:nth-child(2),
+.parameters-table-grid td:nth-child(2) {
+  position: sticky;
+  left: 48px;
+  z-index: 3;
+  width: 210px;
+  min-width: 0;
+  background: #fff;
+  box-shadow: inset -1px 0 0 var(--outline);
+}
+
+.parameters-table-grid th:nth-child(2) {
+  z-index: 5;
+  background: var(--surface-low);
+}
+
+.parameters-table-grid tbody tr:hover td:first-child,
+.parameters-table-grid tbody tr:hover td:nth-child(2) {
+  background: #f4f7ff;
+}
+
+.parameters-table-grid tbody tr:hover td {
+  background: #f4f7ff;
+}
+
+.parameters-table-grid tbody tr.parameters-table-row-focused td {
+  background: var(--primary-soft);
+}
+
+.parameters-table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+}
+
+.parameters-table-empty {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  min-height: 140px;
+  padding: 22px;
+  color: var(--app-muted);
+  text-align: center;
+  background: #fff;
+  border: 1px dashed var(--outline);
+  border-radius: 8px;
+}
+
+.parameters-table-empty p {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 750;
 }
 
 .risk-badge,
@@ -3599,6 +3846,127 @@ td small {
   white-space: nowrap;
 }
 
+.parameter-focus-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.parameter-focus-summary span,
+.parameter-focus-summary strong {
+  display: block;
+}
+
+.parameter-focus-summary span {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.draft-sheet-stack,
+.draft-card-list,
+.draft-card,
+.focused-draft-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.draft-card,
+.focused-draft-editor {
+  padding: 14px;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.draft-card-head,
+.draft-sheet-footer,
+.draft-diff {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.draft-card-head {
+  justify-content: space-between;
+}
+
+.draft-card-head strong,
+.draft-card-head small {
+  display: block;
+}
+
+.draft-card-head small {
+  margin-top: 4px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.draft-diff {
+  justify-content: flex-start;
+  padding: 10px 12px;
+  color: var(--app-muted);
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.draft-diff strong {
+  color: var(--app-primary);
+}
+
+.draft-card input,
+.draft-card textarea,
+.focused-draft-editor input,
+.focused-draft-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  outline: 0;
+}
+
+.draft-card textarea,
+.focused-draft-editor textarea {
+  resize: vertical;
+}
+
+.draft-card > .button {
+  justify-self: start;
+}
+
+.draft-sheet-footer {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.draft-sheet-footer .button {
+  width: auto;
+  flex: 0 1 auto;
+}
+
+.draft-sheet-footer span,
+.parameters-empty-submit {
+  color: var(--app-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.parameters-empty-submit {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .submission-dialog {
   width: min(820px, 100%);
   max-height: min(760px, calc(100vh - 48px));
@@ -4392,7 +4760,8 @@ td small {
   .admin-metrics,
   .admin-grid,
   .admin-grid.two,
-  .workbench-grid {
+  .workbench-grid,
+  .workbench-two-col {
     grid-template-columns: 1fr;
   }
 
@@ -4438,6 +4807,7 @@ td small {
   }
 
   .filter-panel,
+  .parameters-page-layout,
   .detail-panel,
   .review-detail,
   .review-queue,
@@ -4457,6 +4827,35 @@ td small {
 
   table {
     min-width: 720px;
+  }
+
+  .workbench-sheet {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+    bottom: 12px;
+    width: auto;
+  }
+
+  .parameters-table-grid {
+    min-width: 980px;
+    table-layout: auto;
+  }
+
+  .parameters-table-grid th,
+  .parameters-table-grid td {
+    padding: 12px 14px;
+  }
+
+  .parameters-table-grid th {
+    white-space: nowrap;
+  }
+
+  .parameters-table-grid th:nth-child(2),
+  .parameters-table-grid td:nth-child(2) {
+    width: auto;
+    min-width: 260px;
+    max-width: 320px;
   }
 
   .agent-panel {

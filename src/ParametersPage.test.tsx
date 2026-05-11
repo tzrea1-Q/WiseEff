@@ -1,0 +1,274 @@
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ParametersPage } from "./ParametersPage";
+import { initialState } from "./mockData";
+
+beforeEach(() => {
+  cleanup();
+});
+
+function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
+  const result = render(
+      <ParametersPage
+        state={initialState}
+        dispatch={dispatch}
+        onNavigate={onNavigate}
+        search=""
+      />
+  );
+
+  return { ...result, dispatch, onNavigate };
+}
+
+describe("ParametersPage (抽出后的模块)", () => {
+  it("可以从独立模块引入并渲染工作台根节点", () => {
+    renderPage();
+    expect(screen.getByLabelText("参数筛选")).toBeInTheDocument();
+  });
+
+  it("复用共享模块中的 Excel 单元格转义 helper", () => {
+    const source = readFileSync("src/ParametersPage.tsx", "utf8");
+
+    expect(source).toContain("escapeExcelCell");
+    expect(source).not.toMatch(/function\s+escapeExcelCell/);
+  });
+
+  it("不从 App 模块导入共享 UI 以避免循环依赖", () => {
+    const source = readFileSync("src/ParametersPage.tsx", "utf8");
+
+    expect(source).not.toContain('from "./App"');
+  });
+});
+
+describe("ParametersPage draft edge cases", () => {
+  it("shows breadcrumb context in the page header", () => {
+    renderPage();
+
+    const breadcrumb = screen.getByRole("navigation", { name: "面包屑" });
+
+    expect(within(breadcrumb).getByText("参数管理")).toBeInTheDocument();
+    expect(within(breadcrumb).getByText("项目参数工作台")).toBeInTheDocument();
+  });
+
+  it("uses tertiary link-style header actions with AI audit as the only primary action", () => {
+    const { container } = renderPage();
+    const header = container.querySelector(".page-header");
+
+    expect(header).not.toBeNull();
+    ["导出 Excel", "历史提交", "跨项目对比"].forEach((label) => {
+      const action = within(header as HTMLElement).getByRole("button", { name: label });
+      expect(action).toHaveClass("link-button");
+      expect(action).not.toHaveClass("primary");
+    });
+
+    const primaryActions = Array.from(header!.querySelectorAll<HTMLButtonElement>(".button.primary"));
+    expect(primaryActions).toHaveLength(1);
+    expect(primaryActions[0]).toHaveAccessibleName("AI 巡检");
+  });
+
+  it("shows the M2 placeholder when AI audit is clicked", () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 巡检" }));
+
+    expect(alertSpy).toHaveBeenCalledWith("AI 巡检将在 M2 启用");
+    alertSpy.mockRestore();
+  });
+
+  it("does not show the old hard-coded timeline inside the draft sheet", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));
+
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).queryByText("管理员合入")).not.toBeInTheDocument();
+  });
+
+  it("navigates to my submissions from the draft sheet footer", () => {
+    const onNavigate = vi.fn();
+    renderPage(vi.fn(), onNavigate);
+    fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "查看我的提交" }));
+
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions");
+  });
+
+  it("does not render an editable draft card for a focused unselected row", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getAllByText("charge_voltage_limit_mv")[0]);
+
+    expect(container.querySelector(".workbench-sheet")).toBeInTheDocument();
+    expect(container.querySelector(".focused-draft-editor")).not.toBeInTheDocument();
+  });
+
+  it("keeps preview closed when any selected draft has a blank target value", () => {
+    const { container } = renderPage();
+    const boxes = screen.getAllByRole("checkbox", { name: /勾选 / }).slice(0, 2);
+    boxes.forEach((box) => fireEvent.click(box));
+
+    const targetInput = container.querySelector<HTMLInputElement>(".draft-card input");
+    expect(targetInput).not.toBeNull();
+    fireEvent.change(targetInput!, { target: { value: "   " } });
+
+    const submitButton = container.querySelector<HTMLButtonElement>(".draft-sheet-footer .button.primary");
+    expect(submitButton).not.toBeNull();
+    expect(submitButton).toBeDisabled();
+    fireEvent.click(submitButton!);
+    expect(container.querySelector(".submission-dialog")).not.toBeInTheDocument();
+  });
+
+  it("cleans up selection, drafts, and sheet state after submit", () => {
+    const dispatch = vi.fn();
+    const { container } = renderPage(dispatch);
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
+    const reasonInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea");
+    expect(reasonInput).not.toBeNull();
+    fireEvent.change(reasonInput!, {
+      target: { value: "submit cleanup reason" }
+    });
+
+    const submitButton = container.querySelector<HTMLButtonElement>(".draft-sheet-footer .button.primary");
+    expect(submitButton).not.toBeNull();
+    fireEvent.click(submitButton!);
+    const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
+    expect(confirmButton).not.toBeNull();
+    fireEvent.click(confirmButton!);
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_PARAMETER_SUBMISSION_ROUND",
+      items: [
+        expect.objectContaining({
+          parameterId: initialState.parameters[0].id,
+          reason: "submit cleanup reason"
+        })
+      ]
+    });
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(container.querySelector(".parameters-empty-submit .button")).toBeDisabled();
+  });
+});
+
+describe("ParametersPage · 提交契约", () => {
+  it("builds preview and submit items from selected draft entries only", () => {
+    const source = readFileSync("src/ParametersPage.tsx", "utf8");
+    const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsHaveTargets[\s\S]*?;/)?.[0] ?? "";
+    const submitSource = source.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
+
+    expect(previewSource).toContain("const pendingSubmissionItems");
+    expect(submitSource).toContain("const submitRound");
+    expect(previewSource).not.toContain("?? parameter.recommendedValue");
+    expect(previewSource).not.toContain("?? reason");
+    expect(submitSource).not.toContain("?? parameter.recommendedValue");
+    expect(submitSource).not.toContain("?? reason");
+  });
+
+  it("does not let submission round reducer items fall back to a shared action reason", () => {
+    const appSource = readFileSync("src/App.tsx", "utf8");
+    const roundReducerSource = appSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
+    const pageSource = readFileSync("src/ParametersPage.tsx", "utf8");
+    const submitSource = pageSource.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
+
+    expect(roundReducerSource).toContain('case "ADD_PARAMETER_SUBMISSION_ROUND":');
+    expect(roundReducerSource).not.toContain("action.reason");
+    expect(submitSource).not.toContain("reason });");
+  });
+
+  it("未勾选任何行时，提交按钮禁用", () => {
+    renderPage();
+    const btn = screen.getByRole("button", { name: /提交本轮/ });
+    expect(btn).toBeDisabled();
+  });
+
+  it("勾选 1 行后，按钮文案变为『提交本轮 (1 项)』并可点", () => {
+    renderPage();
+    const anyCheckbox = screen.getAllByRole("checkbox", {
+      name: /勾选 /
+    })[0];
+    fireEvent.click(anyCheckbox);
+    const btn = screen.getByRole("button", { name: "提交本轮 (1 项)" });
+    expect(btn).toBeEnabled();
+  });
+
+  it("不存在『加入本轮』按钮", () => {
+    renderPage();
+    expect(screen.queryByRole("button", { name: /加入本轮/ })).not.toBeInTheDocument();
+  });
+
+  it("点击提交 → 弹出预览对话框，数量等于勾选数", () => {
+    renderPage();
+    const boxes = screen.getAllByRole("checkbox", { name: /勾选 / }).slice(0, 2);
+    boxes.forEach((box) => fireEvent.click(box));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("聚焦未勾选行后再勾选，不会继承上一行的修改原因", () => {
+    renderPage();
+    const boxes = screen.getAllByRole("checkbox", { name: /勾选 / });
+    fireEvent.click(boxes[0]);
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "第一行的专属原因" }
+    });
+
+    fireEvent.click(screen.getByText("charge_voltage_limit_mv"));
+    expect(screen.queryByLabelText("修改原因")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 charge_voltage_limit_mv/ }));
+    expect(screen.getByLabelText("修改原因")).toHaveValue("");
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+
+    expect(within(dialog).getByText("第一行的专属原因")).toBeInTheDocument();
+    expect(within(dialog).getAllByText("第一行的专属原因")).toHaveLength(1);
+  });
+});
+
+describe("ParametersPage · 布局与 Sheet", () => {
+  it("默认未选行时，不渲染草稿 Sheet", () => {
+    renderPage();
+    expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+  });
+
+  it("勾选行后自动打开 Sheet 并展示该参数的草稿卡片", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 /})[0]);
+    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(sheet).toBeInTheDocument();
+    expect(within(sheet).getByText("本轮提交 1 项")).toBeInTheDocument();
+  });
+
+  it("点击 Sheet 关闭按钮后 Sheet 消失，但不清空勾选", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+    expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[1]);
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
+  });
+
+  it("removing the last draft item clears selection and closes the sheet", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "移除本项" }));
+
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: /勾选 / })[0]).not.toBeChecked();
+    expect(container.querySelector(".parameters-empty-submit .button")).toBeDisabled();
+  });
+
+  it("shows a persistent reopen action after closing the sheet with selected drafts", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "重新打开草稿 (1 项)" }));
+
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(screen.getByText("本轮提交 1 项")).toBeInTheDocument();
+  });
+});
