@@ -1682,7 +1682,6 @@ function TopBar({
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
-    page.key !== "parameters" &&
     page.key !== "parameter-comparison" &&
     page.key !== "parameter-review" &&
     page.key !== "parameter-admin";

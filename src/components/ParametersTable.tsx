@@ -1,12 +1,18 @@
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { ParameterRecord } from "../mockData";
 
-type SortKey = "name" | "module" | "currentValue" | "recommendedValue" | "range" | "risk" | "updatedAtTs";
+type SortKey = "name" | "module" | "valueDiff" | "range" | "risk" | "updatedAtTs";
 type SortState = { key: SortKey; dir: "asc" | "desc" };
 
 export type ParametersTableProps = {
   rows: ParameterRecord[];
+  totalRows?: number;
+  searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
+  onClearFilters?: () => void;
+  filters?: ReactNode;
   selectedIds: Set<string>;
   onSelectedIdsChange: (ids: Set<string>) => void;
   focusedId: string | null;
@@ -22,8 +28,7 @@ const riskScores: Record<ParameterRecord["risk"], number> = {
 const sortableHeaders: Array<{ key: SortKey; label: string }> = [
   { key: "name", label: "参数名称" },
   { key: "module", label: "模块" },
-  { key: "currentValue", label: "当前值" },
-  { key: "recommendedValue", label: "推荐值" },
+  { key: "valueDiff", label: "当前 → 推荐" },
   { key: "range", label: "范围 / 单位" },
   { key: "risk", label: "重要性" },
   { key: "updatedAtTs", label: "更新时间" }
@@ -37,6 +42,38 @@ function matchesQuery(row: ParameterRecord, query: string) {
   return [row.name, row.description, row.module].some((value) => value.toLowerCase().includes(query));
 }
 
+function getValueDiffMagnitude(row: ParameterRecord) {
+  const current = Number.parseFloat(row.currentValue);
+  const recommended = Number.parseFloat(row.recommendedValue);
+  if (!Number.isFinite(current) || !Number.isFinite(recommended)) {
+    return row.currentValue === row.recommendedValue ? 0 : 1;
+  }
+  return Math.abs(recommended - current);
+}
+
+function getValueDiffDirection(row: ParameterRecord) {
+  const current = Number.parseFloat(row.currentValue);
+  const recommended = Number.parseFloat(row.recommendedValue);
+  if (!Number.isFinite(current) || !Number.isFinite(recommended)) {
+    return row.currentValue === row.recommendedValue ? "same" : "changed";
+  }
+  if (recommended > current) return "up";
+  if (recommended < current) return "down";
+  return "same";
+}
+
+function getValueDiffIcon(row: ParameterRecord) {
+  const direction = getValueDiffDirection(row);
+  if (direction === "up") return "↑";
+  if (direction === "down") return "↓";
+  if (direction === "same") return "✓";
+  return "→";
+}
+
+function getModuleToneIndex(module: string) {
+  return Array.from(module).reduce((total, char) => total + char.charCodeAt(0), 0) % 8;
+}
+
 function sortValue(row: ParameterRecord, key: SortKey) {
   if (key === "range") {
     return `${row.range} ${row.unit}`.trim();
@@ -44,6 +81,10 @@ function sortValue(row: ParameterRecord, key: SortKey) {
 
   if (key === "risk") {
     return riskScores[row.risk];
+  }
+
+  if (key === "valueDiff") {
+    return getValueDiffMagnitude(row);
   }
 
   return row[key];
@@ -61,14 +102,27 @@ function compareRows(left: ParameterRecord, right: ParameterRecord, sort: SortSt
   return String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true, sensitivity: "base" }) * direction;
 }
 
-export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focusedId, onFocusRow }: ParametersTableProps) {
-  const [searchQuery, setSearchQuery] = useState("");
+export function ParametersTable({
+  rows,
+  totalRows,
+  searchQuery,
+  onSearchQueryChange,
+  onClearFilters,
+  filters,
+  selectedIds,
+  onSelectedIdsChange,
+  focusedId,
+  onFocusRow
+}: ParametersTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
-  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const controlledSearch = searchQuery !== undefined;
+  const [internalSearchQuery, setInternalSearchQuery] = useState("");
+  const activeSearchQuery = controlledSearch ? searchQuery : internalSearchQuery;
+  const normalizedQuery = activeSearchQuery.trim().toLowerCase();
   const filteredRows = useMemo(
-    () => rows.filter((row) => matchesQuery(row, normalizedQuery)),
-    [normalizedQuery, rows]
+    () => (controlledSearch ? rows : rows.filter((row) => matchesQuery(row, normalizedQuery))),
+    [controlledSearch, normalizedQuery, rows]
   );
   const visibleRows = useMemo(() => {
     if (!sort) {
@@ -98,6 +152,7 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
   );
   const hasVisibleRows = visibleIds.length > 0;
   const allVisibleSelected = hasVisibleRows && selectedVisibleCount === visibleIds.length;
+  const rowCountTotal = totalRows ?? rows.length;
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -117,6 +172,22 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
     onSelectedIdsChange(nextSelectedIds);
   };
 
+  const handleSearchChange = (query: string) => {
+    if (controlledSearch) {
+      onSearchQueryChange?.(query);
+      return;
+    }
+    setInternalSearchQuery(query);
+  };
+
+  const clearFilters = () => {
+    if (controlledSearch) {
+      onClearFilters?.();
+      return;
+    }
+    setInternalSearchQuery("");
+  };
+
   return (
     <section className="parameters-table" aria-label="参数表">
       <div className="parameters-table-toolbar">
@@ -126,11 +197,12 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
             type="search"
             placeholder="按名称 / 描述 / 模块搜索"
             aria-label="按名称 / 描述 / 模块搜索"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
+            value={activeSearchQuery}
+            onChange={(event) => handleSearchChange(event.target.value)}
           />
         </label>
-        <span className="parameters-table-count">Showing {visibleRows.length} of {rows.length}</span>
+        {filters ? <div className="parameters-table-filters">{filters}</div> : null}
+        <span className="parameters-table-count">Showing {visibleRows.length} of {rowCountTotal}</span>
       </div>
 
       <div className="parameters-table-scroll">
@@ -160,10 +232,14 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
             {visibleRows.map((row) => (
               <tr
                 key={row.id}
-                className={focusedId === row.id ? "parameters-table-row-focused" : ""}
+                className={[
+                  focusedId === row.id ? "parameters-table-row-focused" : "",
+                  row.risk === "High" ? "row-risk-high" : "",
+                  row.currentValue === row.recommendedValue ? "row-value-same" : ""
+                ].filter(Boolean).join(" ")}
                 onClick={() => onFocusRow(row.id)}
               >
-                <td>
+                <td data-label="选择">
                   <input
                     type="checkbox"
                     aria-label={`勾选 ${row.name}`}
@@ -180,19 +256,26 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
                     }}
                   />
                 </td>
-                <td>
+                <td data-label="参数名称">
                   <strong>{row.name}</strong>
                   <small>{row.description}</small>
                 </td>
-                <td>{row.module}</td>
-                <td className="mono">{row.currentValue}</td>
-                <td className="mono recommended">{row.recommendedValue}</td>
-                <td>
+                <td data-label="模块">
+                  <span className={`module-badge module-tone-${getModuleToneIndex(row.module)}`}>{row.module}</span>
+                </td>
+                <td className="mono" data-label="当前 → 推荐">
+                  <span className={`parameter-value-diff diff-${getValueDiffDirection(row)}`}>
+                    <span>{row.currentValue}</span>
+                    <span aria-hidden="true">{getValueDiffIcon(row)}</span>
+                    <strong>{row.recommendedValue}</strong>
+                  </span>
+                </td>
+                <td data-label="范围 / 单位">
                   <span>{row.range}</span>
                   <small>{row.unit}</small>
                 </td>
-                <td>{row.risk}</td>
-                <td>{row.updatedAt}</td>
+                <td data-label="重要性">{row.risk}</td>
+                <td data-label="更新时间">{row.updatedAt}</td>
               </tr>
             ))}
           </tbody>
@@ -202,7 +285,7 @@ export function ParametersTable({ rows, selectedIds, onSelectedIdsChange, focuse
       {visibleRows.length === 0 ? (
         <div className="parameters-table-empty">
           <p>没有匹配的参数</p>
-          <button type="button" className="button subtle" onClick={() => setSearchQuery("")}>
+          <button type="button" className="button subtle" onClick={clearFilters}>
             清除筛选条件
           </button>
         </div>

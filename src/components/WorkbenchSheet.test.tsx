@@ -31,6 +31,17 @@ describe("WorkbenchSheet", () => {
     expect(screen.getByText("草稿内容")).toBeInTheDocument();
   });
 
+  it("renders an optional description below the title", () => {
+    render(
+      <WorkbenchSheet open onClose={() => {}} title="参数草稿" description="提交前可逐项调整目标值和原因。">
+        草稿内容
+      </WorkbenchSheet>
+    );
+
+    expect(screen.getByRole("dialog", { name: "参数草稿" })).toBeInTheDocument();
+    expect(screen.getByText("提交前可逐项调整目标值和原因。")).toBeInTheDocument();
+  });
+
   it("calls onClose when the close button is clicked", () => {
     const onClose = vi.fn();
     render(

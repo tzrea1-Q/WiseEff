@@ -309,36 +309,34 @@ describe("WiseEff app shell", () => {
     expect(window.location.search).toContain("module=");
   });
 
-  it("uses dropdown controls for project, importance, and module filters", () => {
+  it("uses the TopBar project selector and operation-bar risk/module filters", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
 
-    const filters = screen.getByRole("complementary", { name: "参数筛选" });
     const getTableRow = (parameterName: string) =>
       Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((row) =>
         row.textContent?.includes(parameterName)
       );
-    const projectSelect = within(filters).getByRole("combobox", { name: "项目" });
-    const importanceSelect = within(filters).getByRole("combobox", { name: "重要性" });
-    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
+    const projectSelect = screen.getByRole("combobox", { name: "项目" });
+    const riskFilters = screen.getByRole("group", { name: "风险等级" });
 
     expectSelectValue(projectSelect, "aurora");
-    expectSelectValue(importanceSelect, "All");
-    expectSelectValue(moduleSelect, "All");
-    expect(within(filters).queryByRole("button", { name: /AUR-Prod/ })).not.toBeInTheDocument();
-    expect(within(filters).queryByRole("button", { name: "高" })).not.toBeInTheDocument();
-    expect(within(filters).queryByText(/当前筛选/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
+    expect(within(riskFilters).getByRole("button", { name: "高 4" })).toHaveAttribute("aria-pressed", "false");
+    expect(within(riskFilters).getByRole("button", { name: "中 4" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "模块 ▾" })).toBeInTheDocument();
 
-    changeSelectValue(moduleSelect, "Charging Policy");
+    fireEvent.click(screen.getByRole("button", { name: "模块 ▾" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
 
     expect(within(screen.getByRole("table")).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("battery_health_guard_enable")).not.toBeInTheDocument();
 
-    changeSelectValue(projectSelect, /NEB-RD/);
+    changeSelectValue(projectSelect, /Nebula/);
 
     expectSelectValue(projectSelect, "nebula");
-    expectSelectValue(moduleSelect, "All");
+    expect(screen.getByRole("button", { name: "模块 ▾" })).toBeInTheDocument();
     expect(getTableRow("fast_charge_current_limit_ma")).toHaveTextContent("4200");
   });
 
@@ -350,8 +348,8 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    const filters = screen.getByRole("complementary", { name: "参数筛选" });
-    changeSelectValue(within(filters).getByRole("combobox", { name: "模块" }), "Charging Policy");
+    fireEvent.click(screen.getByRole("button", { name: "模块 ▾" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
     fireEvent.click(screen.getByRole("button", { name: "导出 Excel" }));
 
     const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
@@ -370,12 +368,13 @@ describe("WiseEff app shell", () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:project-parameters");
   });
 
-  it("labels the parameter recommendation column as example", () => {
+  it("labels the parameter value column as a current-to-recommended diff", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
 
-    expect(screen.getByRole("columnheader", { name: "推荐值" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "当前 → 推荐" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "推荐值" })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Recommended" })).not.toBeInTheDocument();
   });
 
@@ -388,13 +387,11 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    const filters = screen.getByRole("complementary", { name: "参数筛选" });
-    const projectSelect = within(filters).getByRole("combobox", { name: "项目" });
-    const moduleSelect = within(filters).getByRole("combobox", { name: "模块" });
+    const projectSelect = screen.getByRole("combobox", { name: "项目" });
     const detailPanel = document.querySelector<HTMLElement>(".detail-panel");
 
     expectSelectValue(projectSelect, "nebula");
-    expectSelectValue(moduleSelect, "Battery Safety");
+    expect(screen.getByRole("button", { name: "模块 (1) ▾" })).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("battery_temp_target_c")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
     expect(detailPanel).toHaveTextContent("battery_temp_target_c");
@@ -408,10 +405,11 @@ describe("WiseEff app shell", () => {
     const fastChargeRow = Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find(
       (row) => row.textContent?.includes("fast_charge_current_limit_ma")
     );
-    const exampleCell = fastChargeRow?.querySelector<HTMLTableCellElement>("td.recommended");
+    const exampleCell = fastChargeRow?.querySelector<HTMLTableCellElement>("td[data-label='当前 → 推荐']");
 
     expect(exampleCell).toBeInTheDocument();
     expect(exampleCell).toHaveTextContent("3200");
+    expect(exampleCell?.querySelector(".parameter-value-diff")).toBeInTheDocument();
   });
 
   it("removes the parameter page header subtitle and submit-change shortcut", () => {
@@ -762,7 +760,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameters",
-        present: ["筛选条件", "全部", "参数名称", "当前值", "范围 / 单位", "更新时间"],
+        present: ["Agent 发现", "高 4", "参数名称", "当前 → 推荐", "范围 / 单位", "更新时间"],
         absent: ["Filters", "All", "Current", "Range / Unit", "Importance", "Updated"]
       },
       {
