@@ -229,4 +229,19 @@ describe("ParametersTable", () => {
     );
     expect(styles).toMatch(/\.parameters-table-search:focus-within\s*\{[^}]*box-shadow:/s);
   });
+
+  it("does not force desktop horizontal scrolling with a wide table min-width", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const tableGridRule = styles.match(/\.parameters-table-grid\s*\{[^}]*\}/)?.[0] ?? "";
+    const tableHeaderRule = styles.match(/\.parameters-table-grid th\s*\{[^}]*\}/)?.[0] ?? "";
+    const nameColumnRule = styles.match(/\.parameters-table-grid th:nth-child\(2\),\s*\.parameters-table-grid td:nth-child\(2\)\s*\{[^}]*\}/)?.[0] ?? "";
+    const mobileTableGridRule = styles.match(/@media \(max-width: 900px\)[\s\S]*?\.parameters-table-grid\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(tableGridRule).not.toMatch(/min-width:\s*980px/);
+    expect(tableGridRule).toMatch(/min-width:\s*0/);
+    expect(tableGridRule).toMatch(/table-layout:\s*fixed/);
+    expect(tableHeaderRule).not.toMatch(/white-space:\s*nowrap/);
+    expect(nameColumnRule).toMatch(/min-width:\s*0/);
+    expect(mobileTableGridRule).toMatch(/min-width:\s*980px/);
+  });
 });
