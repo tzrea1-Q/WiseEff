@@ -1066,7 +1066,11 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("new_power_parameter_11")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toHaveTextContent("NEB-RD");
 
-    fireEvent.click(screen.getByRole("button", { name: "删除参数" }));
+    fireEvent.click(screen.getByRole("button", { name: /删除 new_power_parameter_11/ }));
+
+    expect(screen.getByRole("dialog", { name: /删除参数/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
 
     expect(screen.queryByDisplayValue("new_power_parameter_11")).not.toBeInTheDocument();
   });
@@ -1090,6 +1094,25 @@ describe("WiseEff app shell", () => {
     expect(nameBlock).toContain("font-size: 14px;");
     expect(nameBlock).toContain("overflow-wrap: anywhere;");
     expect(nameBlock).toContain("white-space: normal;");
+  });
+
+  it("runs parameter admin Agent actions against the current page", () => {
+    window.history.replaceState(null, "", "/parameter-admin");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
+    const agentActions = document.querySelector(".agent-actions") as HTMLElement;
+    fireEvent.click(within(agentActions).getByRole("button", { name: /扫描孤儿参数/ }));
+
+    expect(window.location.search).toContain("coverage=orphan");
+    expect(document.body).toHaveTextContent("WiseAgent 已切换到孤儿参数视角");
+
+    fireEvent.click(within(agentActions).getByRole("button", { name: /生成清理建议/ }));
+    fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
+
+    expect(window.location.search).toContain("coverage=orphan");
+    expect(document.body).toHaveTextContent("WiseAgent 已生成孤儿清理建议");
   });
 
   it("saves project admin edits to the local JSON config endpoint", () => {
