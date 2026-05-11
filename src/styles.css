@@ -2740,7 +2740,13 @@ td small {
 
 .draft-sheet-footer {
   width: 100%;
+  flex-wrap: wrap;
   justify-content: space-between;
+}
+
+.draft-sheet-footer .button {
+  width: auto;
+  flex: 0 1 auto;
 }
 
 .draft-sheet-footer span,

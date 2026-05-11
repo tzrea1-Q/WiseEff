@@ -8,15 +8,17 @@ beforeEach(() => {
   cleanup();
 });
 
-function renderPage() {
-  return render(
+function renderPage(dispatch = vi.fn()) {
+  const result = render(
       <ParametersPage
         state={initialState}
-        dispatch={vi.fn()}
+        dispatch={dispatch}
         onNavigate={() => {}}
         search=""
       />
   );
+
+  return { ...result, dispatch };
 }
 
 describe("ParametersPage (抽出后的模块)", () => {
@@ -39,10 +41,67 @@ describe("ParametersPage (抽出后的模块)", () => {
   });
 });
 
+describe("ParametersPage draft edge cases", () => {
+  it("does not render an editable draft card for a focused unselected row", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getAllByText("charge_voltage_limit_mv")[0]);
+
+    expect(container.querySelector(".workbench-sheet")).toBeInTheDocument();
+    expect(container.querySelector(".focused-draft-editor")).not.toBeInTheDocument();
+  });
+
+  it("keeps preview closed when any selected draft has a blank target value", () => {
+    const { container } = renderPage();
+    const boxes = screen.getAllByRole("checkbox", { name: /勾选 / }).slice(0, 2);
+    boxes.forEach((box) => fireEvent.click(box));
+
+    const targetInput = container.querySelector<HTMLInputElement>(".draft-card input");
+    expect(targetInput).not.toBeNull();
+    fireEvent.change(targetInput!, { target: { value: "   " } });
+
+    const submitButton = container.querySelector<HTMLButtonElement>(".draft-sheet-footer .button.primary");
+    expect(submitButton).not.toBeNull();
+    expect(submitButton).toBeDisabled();
+    fireEvent.click(submitButton!);
+    expect(container.querySelector(".submission-dialog")).not.toBeInTheDocument();
+  });
+
+  it("cleans up selection, drafts, and sheet state after submit", () => {
+    const dispatch = vi.fn();
+    const { container } = renderPage(dispatch);
+    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
+    const reasonInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea");
+    expect(reasonInput).not.toBeNull();
+    fireEvent.change(reasonInput!, {
+      target: { value: "submit cleanup reason" }
+    });
+
+    const submitButton = container.querySelector<HTMLButtonElement>(".draft-sheet-footer .button.primary");
+    expect(submitButton).not.toBeNull();
+    fireEvent.click(submitButton!);
+    const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
+    expect(confirmButton).not.toBeNull();
+    fireEvent.click(confirmButton!);
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_PARAMETER_SUBMISSION_ROUND",
+      items: [
+        expect.objectContaining({
+          parameterId: initialState.parameters[0].id,
+          reason: "submit cleanup reason"
+        })
+      ]
+    });
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(container.querySelector(".parameters-empty-submit .button")).toBeDisabled();
+  });
+});
+
 describe("ParametersPage · 提交契约", () => {
   it("builds preview and submit items from selected draft entries only", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
-    const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?\n  \);\n\n  useEffect/)?.[0] ?? "";
+    const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsHaveTargets[\s\S]*?;/)?.[0] ?? "";
     const submitSource = source.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
 
     expect(previewSource).toContain("const pendingSubmissionItems");
@@ -103,9 +162,10 @@ describe("ParametersPage · 提交契约", () => {
     });
 
     fireEvent.click(screen.getByText("charge_voltage_limit_mv"));
-    expect(screen.getByLabelText("修改原因")).toHaveValue("");
+    expect(screen.queryByLabelText("修改原因")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("checkbox", { name: /勾选 charge_voltage_limit_mv/ }));
+    expect(screen.getByLabelText("修改原因")).toHaveValue("");
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
 
@@ -136,5 +196,26 @@ describe("ParametersPage · 布局与 Sheet", () => {
     fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[1]);
     expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
     expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
+  });
+
+  it("removing the last draft item clears selection and closes the sheet", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "移除本项" }));
+
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("checkbox", { name: /勾选 / })[0]).not.toBeChecked();
+    expect(container.querySelector(".parameters-empty-submit .button")).toBeDisabled();
+  });
+
+  it("shows a persistent reopen action after closing the sheet with selected drafts", () => {
+    renderPage();
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /勾选 / })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "重新打开草稿 (1 项)" }));
+
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(screen.getByText("本轮提交 1 项")).toBeInTheDocument();
   });
 });

@@ -80,8 +80,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   const [riskFilter, setRiskFilter] = useState<ParameterRiskFilter>("All");
   const [moduleFilter, setModuleFilter] = useState("All");
   const [selectedId, setSelectedId] = useState(state.parameters[0]?.id ?? "");
-  const [targetValue, setTargetValue] = useState("80");
-  const [reason, setReason] = useState("参考 Agent 巡检建议，将高风险参数回落到安全阈值内。");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -136,6 +134,10 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     () => pendingSubmissionItems.filter((item) => item.targetValue.trim()),
     [pendingSubmissionItems]
   );
+  const allSelectedDraftsHaveTargets =
+    selectedIds.size > 0 &&
+    pendingSubmissionItems.length === selectedIds.size &&
+    validPendingSubmissionItems.length === pendingSubmissionItems.length;
 
   useEffect(() => {
     if (contextQuery.projectId) {
@@ -167,7 +169,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     if (requestedParameter) {
       setSelectedId(requestedParameter.id);
       setFocusedId(requestedParameter.id);
-      setTargetValue(requestedParameter.recommendedValue);
     }
   }, [contextQuery.parameterId, projectParameters]);
 
@@ -177,9 +178,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     }
     setSelectedId(selected.id);
     setFocusedId(selected.id);
-    setTargetValue(drafts[selected.id]?.targetValue ?? selected.recommendedValue);
-    setReason(drafts[selected.id]?.reason ?? "");
-  }, [drafts, selected?.id, selected?.recommendedValue]);
+  }, [selected?.id]);
 
   useEffect(() => {
     const activeParameterIds = new Set(projectParameters.map((parameter) => parameter.id));
@@ -205,8 +204,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     }
     setSelectedId(parameter.id);
     setFocusedId(parameter.id);
-    setTargetValue(drafts[parameter.id]?.targetValue ?? parameter.recommendedValue);
-    setReason(drafts[parameter.id]?.reason ?? "");
   };
 
   const handleSelectedIdsChange = (next: Set<string>) => {
@@ -217,8 +214,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     if (firstAddedParameter) {
       setSelectedId(firstAddedParameter.id);
       setFocusedId(firstAddedParameter.id);
-      setTargetValue(drafts[firstAddedParameter.id]?.targetValue ?? firstAddedParameter.recommendedValue);
-      setReason(drafts[firstAddedParameter.id]?.reason ?? "");
     }
 
     setSelectedIds(next);
@@ -260,13 +255,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     }));
   };
 
-  const updateFocusedDraft = (patch: Partial<{ targetValue: string; reason: string }>) => {
-    if (!selected || !selectedIds.has(selected.id)) {
-      return;
-    }
-    updateDraft(selected, patch);
-  };
-
   const removeDraftItem = (parameterId: string) => {
     const nextSelectedIds = new Set(selectedIds);
     nextSelectedIds.delete(parameterId);
@@ -281,13 +269,16 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const openSubmitPreview = () => {
-    if (validPendingSubmissionItems.length === 0) {
+    if (!allSelectedDraftsHaveTargets) {
       return;
     }
     setConfirmOpen(true);
   };
 
   const submitRound = () => {
+    if (!allSelectedDraftsHaveTargets) {
+      return;
+    }
     const itemsToSubmit = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
     if (itemsToSubmit.length === 0) {
       return;
@@ -299,7 +290,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setConfirmOpen(false);
   };
   const previewItems = pendingSubmissionItems;
-  const focusedIsSelected = selected ? selectedIds.has(selected.id) : false;
   const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
 
   return (
@@ -400,6 +390,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                   提交本轮
                 </button>
               </div>
+            ) : !sheetOpen ? (
+              <div className="parameters-empty-submit">
+                <button className="button primary" type="button" onClick={() => setSheetOpen(true)}>
+                  重新打开草稿 ({selectedIds.size} 项)
+                </button>
+              </div>
             ) : null}
           </section>
         </div>
@@ -411,7 +407,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             footer={
               <div className="draft-sheet-footer">
                 <span>{validPendingSubmissionItems.length} 项可提交</span>
-                <button className="button primary" type="button" disabled={validPendingSubmissionItems.length === 0} onClick={openSubmitPreview}>
+                <button className="button primary" type="button" disabled={!allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
                   {submitButtonText}
                 </button>
               </div>
@@ -422,40 +418,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                 <strong>本轮提交 {selectedIds.size} 项</strong>
                 <span>可先收集多个参数，再统一提交审阅。</span>
               </div>
-              {selected && !focusedIsSelected ? (
-                <div className="focused-draft-editor" aria-label="当前聚焦参数">
-                  <div className="draft-card-head">
-                    <div>
-                      <strong>{selected.name}</strong>
-                      <small>{selected.module} · 未加入本轮</small>
-                    </div>
-                    <RiskBadge risk={selected.risk} />
-                  </div>
-                  <label className="field-label" htmlFor="focused-target-value">
-                    目标值
-                  </label>
-                  <input
-                    id="focused-target-value"
-                    value={targetValue}
-                    onChange={(event) => {
-                      setTargetValue(event.target.value);
-                      updateFocusedDraft({ targetValue: event.target.value });
-                    }}
-                  />
-                  <label className="field-label" htmlFor="focused-reason">
-                    修改原因
-                  </label>
-                  <textarea
-                    id="focused-reason"
-                    value={reason}
-                    onChange={(event) => {
-                      setReason(event.target.value);
-                      updateFocusedDraft({ reason: event.target.value });
-                    }}
-                    rows={3}
-                  />
-                </div>
-              ) : null}
               <div className="draft-card-list">
                 {pendingSubmissionItems.map((item) => {
                   const isFocusedCard = focusedId === item.parameterId;
@@ -484,9 +446,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                         aria-label={isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
                         value={item.targetValue}
                         onChange={(event) => {
-                          if (isFocusedCard) {
-                            setTargetValue(event.target.value);
-                          }
                           updateDraft(item.parameter, { targetValue: event.target.value });
                         }}
                       />
@@ -498,9 +457,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                         aria-label={isFocusedCard ? "修改原因" : `修改原因 ${item.parameter.name}`}
                         value={item.reason}
                         onChange={(event) => {
-                          if (isFocusedCard) {
-                            setReason(event.target.value);
-                          }
                           updateDraft(item.parameter, { reason: event.target.value });
                         }}
                         rows={3}
