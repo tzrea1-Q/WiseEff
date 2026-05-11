@@ -24,7 +24,9 @@ function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
 describe("ParametersPage (抽出后的模块)", () => {
   it("可以从独立模块引入并渲染工作台根节点", () => {
     renderPage();
-    expect(screen.getByLabelText("参数筛选")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Agent 参数洞察" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("参数筛选")).not.toBeInTheDocument();
   });
 
   it("复用共享模块中的 Excel 单元格转义 helper", () => {
@@ -67,14 +69,36 @@ describe("ParametersPage draft edge cases", () => {
     expect(primaryActions[0]).toHaveAccessibleName("AI 巡检");
   });
 
-  it("shows the M2 placeholder when AI audit is clicked", () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+  it("reopens the Agent insight when AI audit is clicked after dismissal", () => {
     renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "关闭洞察" }));
+    expect(screen.queryByRole("status", { name: "Agent 参数洞察" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "AI 巡检" }));
 
-    expect(alertSpy).toHaveBeenCalledWith("AI 巡检将在 M2 启用");
-    alertSpy.mockRestore();
+    expect(screen.getByRole("status", { name: "Agent 参数洞察" })).toBeInTheDocument();
+  });
+
+  it("filters to high-risk rows from the Agent insight", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看高风险" }));
+
+    expect(screen.getByRole("button", { name: "高 4" })).toHaveAttribute("aria-pressed", "true");
+    const table = screen.getByRole("table");
+    expect(within(table).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(table).queryByText("battery_temp_target_c")).not.toBeInTheDocument();
+  });
+
+  it("adds insight parameters to the draft sheet in one click", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "一键加入草稿" }));
+
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交本轮 (3 项)" })).toBeEnabled();
+    expect(screen.getByDisplayValue("参考 Agent 巡检建议（-16.9%）")).toBeInTheDocument();
   });
 
   it("does not show the old hard-coded timeline inside the draft sheet", () => {
@@ -118,6 +142,35 @@ describe("ParametersPage draft edge cases", () => {
     expect(submitButton).toBeDisabled();
     fireEvent.click(submitButton!);
     expect(container.querySelector(".submission-dialog")).not.toBeInTheDocument();
+  });
+
+  it("clears every draft from the sheet header", () => {
+    renderPage();
+    screen.getAllByRole("checkbox", { name: /勾选 / }).slice(0, 2).forEach((box) => fireEvent.click(box));
+
+    fireEvent.click(screen.getByRole("button", { name: "全部清空" }));
+
+    expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
+  });
+
+  it("shows drift explanation in each draft card", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));
+
+    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(sheet).getByText(/Agent 建议/)).toBeInTheDocument();
+    expect(within(sheet).getByText(/当前偏差/)).toBeInTheDocument();
+  });
+
+  it("warns when target value is outside the configured range", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));
+
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "99999" } });
+
+    expect(screen.getByText(/超出 2500 - 4500 mA/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交本轮 (1 项)" })).toBeEnabled();
   });
 
   it("cleans up selection, drafts, and sheet state after submit", () => {

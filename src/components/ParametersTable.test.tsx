@@ -150,6 +150,28 @@ describe("ParametersTable", () => {
     expect(visibleParameterNames()[0]).toContain("fast_charge_current_limit_ma");
   });
 
+  it("renders current and recommended values as one diff column", () => {
+    setup();
+
+    expect(screen.getByRole("columnheader", { name: "当前 → 推荐" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "当前值" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "推荐值" })).not.toBeInTheDocument();
+    const fastChargeRow = screen.getByRole("checkbox", { name: /fast_charge/ }).closest("tr");
+    const diffCell = fastChargeRow?.querySelector<HTMLTableCellElement>("td[data-label='当前 → 推荐']");
+
+    expect(diffCell).toBeInTheDocument();
+    expect(diffCell?.querySelector(".parameter-value-diff")).toHaveTextContent("3800");
+    expect(diffCell?.querySelector(".parameter-value-diff")).toHaveTextContent("3200");
+  });
+
+  it("adds high-risk row styling and module badge hooks", () => {
+    setup();
+    const highRiskRow = screen.getByRole("checkbox", { name: /fast_charge/ }).closest("tr");
+
+    expect(highRiskRow).toHaveClass("row-risk-high");
+    expect(document.querySelector(".module-badge")).toHaveTextContent("Charging Policy");
+  });
+
   it("clicking the risk header reports descending sort order", () => {
     setup();
 
@@ -238,13 +260,22 @@ describe("ParametersTable", () => {
     const tableGridRule = styles.match(/\.parameters-table-grid\s*\{[^}]*\}/)?.[0] ?? "";
     const tableHeaderRule = styles.match(/\.parameters-table-grid th\s*\{[^}]*\}/)?.[0] ?? "";
     const nameColumnRule = styles.match(/\.parameters-table-grid th:nth-child\(2\),\s*\.parameters-table-grid td:nth-child\(2\)\s*\{[^}]*\}/)?.[0] ?? "";
-    const mobileTableGridRule = styles.match(/@media \(max-width: 900px\)[\s\S]*?\.parameters-table-grid\s*\{[^}]*\}/)?.[0] ?? "";
 
     expect(tableGridRule).not.toMatch(/min-width:\s*980px/);
     expect(tableGridRule).toMatch(/min-width:\s*0/);
     expect(tableGridRule).toMatch(/table-layout:\s*fixed/);
     expect(tableHeaderRule).not.toMatch(/white-space:\s*nowrap/);
     expect(nameColumnRule).toMatch(/min-width:\s*0/);
-    expect(mobileTableGridRule).toMatch(/min-width:\s*980px/);
+  });
+
+  it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+
+    expect(styles).toContain("@media (max-width: 760px)");
+    expect(styles).toContain(".parameters-table-grid thead");
+    expect(styles).toContain("display: none");
+    expect(styles).toContain(".parameters-table-grid tbody tr");
+    expect(styles).toContain("display: grid");
+    expect(styles).not.toMatch(/@media \(max-width: 900px\)[\s\S]*?\.parameters-table-grid\s*\{[^}]*min-width:\s*980px/);
   });
 });

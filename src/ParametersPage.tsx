@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   ChevronRight,
-  Filter,
   Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -12,13 +11,15 @@ import {
   getContextQuery,
   riskLabels,
   RiskBadge,
-  SectionLabel,
   WorkbenchLayout
 } from "./workbenchUi";
 import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
 import { ParametersTable } from "./components/ParametersTable";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
+import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
+import { ParameterInsightBar } from "./components/ParameterInsightBar";
+import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -38,6 +39,26 @@ type ParametersPageProps = {
   onNavigate: (path: string) => void;
   search: string;
 };
+
+function parseRange(range: string) {
+  const [min, max] = range.split("-").map((part) => Number.parseFloat(part.trim()));
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return null;
+  }
+  return { min, max };
+}
+
+function getRangeWarning(parameter: ParameterRecord, targetValue: string) {
+  const numericValue = Number.parseFloat(targetValue);
+  const parsedRange = parseRange(parameter.range);
+  if (!parsedRange || !Number.isFinite(numericValue)) {
+    return "";
+  }
+  if (numericValue < parsedRange.min || numericValue > parsedRange.max) {
+    return `超出 ${parameter.range} ${parameter.unit}`.trim();
+  }
+  return "";
+}
 
 function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: string) {
   const headers = ["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"];
@@ -77,14 +98,19 @@ function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: st
 }
 
 export function ParametersPage({ state, dispatch, onNavigate, search }: ParametersPageProps) {
-  const [riskFilter, setRiskFilter] = useState<ParameterRiskFilter>("All");
-  const [moduleFilter, setModuleFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
+  const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState(state.parameters[0]?.id ?? "");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [focusedId, setFocusedId] = useState<string | null>(state.parameters[0]?.id ?? null);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const insightStorageKey = `parameter-workbench-insight:${state.activeProjectId}:${todayKey}`;
+  const [insightDismissed, setInsightDismissed] = useState(() => sessionStorage.getItem(insightStorageKey) === "dismissed");
+  const [insightCollapsed, setInsightCollapsed] = useState(false);
   const projectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === state.activeProjectId),
     [state.activeProjectId, state.parameters]
@@ -97,17 +123,26 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     () => new Map(state.parameters.map((parameter) => [parameter.id, parameter])),
     [state.parameters]
   );
+  const normalizedSearchQuery = searchQuery.trim().toLowerCase();
   const parameters = useMemo(
     () =>
-      projectParameters.filter(
-        (parameter) =>
-          (riskFilter === "All" || parameter.risk === riskFilter) && (moduleFilter === "All" || parameter.module === moduleFilter)
-      ),
-    [moduleFilter, projectParameters, riskFilter]
+      projectParameters.filter((parameter) => {
+        const matchesSearch =
+          !normalizedSearchQuery ||
+          [parameter.name, parameter.description, parameter.module].some((value) => value.toLowerCase().includes(normalizedSearchQuery));
+        const matchesRisk = riskFilters.size === 0 || riskFilters.has(parameter.risk);
+        const matchesModule = moduleFilters.size === 0 || moduleFilters.has(parameter.module);
+        return matchesSearch && matchesRisk && matchesModule;
+      }),
+    [moduleFilters, normalizedSearchQuery, projectParameters, riskFilters]
   );
   const selected = parameters.find((parameter) => parameter.id === focusedId) ?? parameters.find((parameter) => parameter.id === selectedId) ?? parameters[0];
   const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
+  const insightSnapshot = useMemo(
+    () => deriveParameterWorkbenchInsightSnapshot(state, state.activeProjectId),
+    [state, state.activeProjectId]
+  );
   const pendingSubmissionItems = useMemo(
     () =>
       Array.from(selectedIds)
@@ -140,11 +175,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     validPendingSubmissionItems.length === pendingSubmissionItems.length;
 
   useEffect(() => {
-    if (contextQuery.projectId) {
+    if (contextQuery.projectId || contextQuery.module) {
       return;
     }
-    setModuleFilter("All");
-  }, [contextQuery.projectId, state.activeProjectId]);
+    setModuleFilters(new Set());
+    setRiskFilters(new Set());
+  }, [contextQuery.module, contextQuery.projectId, state.activeProjectId]);
 
   useEffect(() => {
     if (contextQuery.projectId && projects.some((project) => project.id === contextQuery.projectId) && contextQuery.projectId !== state.activeProjectId) {
@@ -157,9 +193,14 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
       return;
     }
     if (moduleOptions.includes(contextQuery.module)) {
-      setModuleFilter(contextQuery.module);
+      setModuleFilters(new Set([contextQuery.module]));
     }
   }, [contextQuery.module, moduleOptions]);
+
+  useEffect(() => {
+    setInsightDismissed(sessionStorage.getItem(insightStorageKey) === "dismissed");
+    setInsightCollapsed(false);
+  }, [insightStorageKey]);
 
   useEffect(() => {
     if (!contextQuery.parameterId) {
@@ -302,6 +343,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     });
   };
 
+  const clearAllDrafts = () => {
+    setSelectedIds(new Set());
+    setDrafts({});
+    setSheetOpen(false);
+  };
+
   const openSubmitPreview = () => {
     if (!allSelectedDraftsHaveTargets) {
       return;
@@ -325,9 +372,65 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
   const previewItems = pendingSubmissionItems;
   const handleAiAuditClick = () => {
-    window.alert("AI 巡检将在 M2 启用");
+    sessionStorage.removeItem(insightStorageKey);
+    setInsightDismissed(false);
+    setInsightCollapsed(false);
+    document.querySelector(".parameter-insight-bar, .parameter-insight-collapsed")?.scrollIntoView({
+      block: "nearest",
+      behavior: "smooth"
+    });
   };
   const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
+  const toggleRiskFilter = (risk: ParameterRiskFilter) => {
+    setRiskFilters((current) => {
+      const next = new Set(current);
+      if (next.has(risk)) {
+        next.delete(risk);
+      } else {
+        next.add(risk);
+      }
+      return next;
+    });
+  };
+  const clearFilters = () => {
+    setSearchQuery("");
+    setRiskFilters(new Set());
+    setModuleFilters(new Set());
+  };
+  const dismissInsightForToday = () => {
+    sessionStorage.setItem(insightStorageKey, "dismissed");
+    setInsightDismissed(true);
+  };
+  const viewHighRiskFromInsight = () => {
+    setRiskFilters(new Set(["High"]));
+    setInsightCollapsed(true);
+    document.querySelector(".parameters-table")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  };
+  const addInsightItemsToDraft = () => {
+    const insightIds = insightSnapshot.topParameters.map((parameter) => parameter.id);
+    if (insightIds.length === 0) {
+      return;
+    }
+    setSelectedIds(new Set([...Array.from(selectedIds), ...insightIds]));
+    setDrafts((items) => {
+      const nextDrafts = { ...items };
+      insightSnapshot.topParameters.forEach((item) => {
+        const parameter = parameterById.get(item.id);
+        if (!parameter) {
+          return;
+        }
+        nextDrafts[item.id] = {
+          targetValue: nextDrafts[item.id]?.targetValue ?? parameter.recommendedValue,
+          reason: nextDrafts[item.id]?.reason || `参考 Agent 巡检建议（${item.driftLabel}）`
+        };
+      });
+      return nextDrafts;
+    });
+    setFocusedId(insightIds[0]);
+    setSelectedId(insightIds[0]);
+    setSheetOpen(true);
+    setInsightCollapsed(true);
+  };
 
   return (
     <WorkbenchLayout
@@ -358,60 +461,17 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
       }
     >
       <div className="parameters-page-layout">
-        <div className="workbench-two-col">
-          <aside className="filter-panel" aria-label="参数筛选">
-            <SectionLabel icon={<Filter size={16} />} label="筛选条件" />
-            <label className="field-label" htmlFor="parameter-project-filter">
-              项目
-            </label>
-            <select
-              id="parameter-project-filter"
-              className="filter-select"
-              value={state.activeProjectId}
-              onChange={(event) => dispatch({ type: "SET_PROJECT", projectId: event.target.value })}
-            >
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.code} · {project.name}
-                </option>
-              ))}
-            </select>
-            <label className="field-label" htmlFor="parameter-risk-filter">
-              重要性
-            </label>
-            <select
-              id="parameter-risk-filter"
-              className="filter-select"
-              value={riskFilter}
-              onChange={(event) => setRiskFilter(event.target.value as ParameterRiskFilter)}
-            >
-              {([
-                ["All", "全部"],
-                ["High", "高"],
-                ["Medium", "中"],
-                ["Low", "低"]
-              ] as const).map(([risk, label]) => (
-                <option key={risk} value={risk}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <label className="field-label" htmlFor="parameter-module-filter">
-              模块
-            </label>
-            <select
-              id="parameter-module-filter"
-              className="filter-select"
-              value={moduleFilter}
-              onChange={(event) => setModuleFilter(event.target.value)}
-            >
-              {["All", ...moduleOptions].map((module) => (
-                <option key={module} value={module}>
-                  {module === "All" ? "全部" : module}
-                </option>
-              ))}
-            </select>
-          </aside>
+        {!insightDismissed ? (
+          <ParameterInsightBar
+            snapshot={insightSnapshot}
+            collapsed={insightCollapsed}
+            onExpand={() => setInsightCollapsed(false)}
+            onViewHighRisk={viewHighRiskFromInsight}
+            onAddToDraft={addInsightItemsToDraft}
+            onDismiss={dismissInsightForToday}
+          />
+        ) : null}
+        <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
             {selected ? (
               <div className="detail-panel parameter-focus-summary" aria-label="当前参数">
@@ -424,6 +484,33 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             ) : null}
             <ParametersTable
               rows={parameters}
+              totalRows={projectParameters.length}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              onClearFilters={clearFilters}
+              filters={
+                <>
+                  <div className="risk-chip-group" role="group" aria-label="风险等级">
+                    {(["High", "Medium", "Low"] as const).map((risk) => (
+                      <button
+                        key={risk}
+                        type="button"
+                        className={riskFilters.has(risk) ? "chip chip-active" : "chip"}
+                        aria-pressed={riskFilters.has(risk)}
+                        onClick={() => toggleRiskFilter(risk)}
+                      >
+                        {riskLabels[risk]} {projectParameters.filter((parameter) => parameter.risk === risk).length}
+                      </button>
+                    ))}
+                  </div>
+                  <MultiSelectDropdown
+                    label="模块"
+                    value={Array.from(moduleFilters)}
+                    options={moduleOptions.map((module) => ({ value: module, label: module }))}
+                    onChange={(nextModules) => setModuleFilters(new Set(nextModules))}
+                  />
+                </>
+              }
               selectedIds={selectedIds}
               onSelectedIdsChange={handleSelectedIdsChange}
               focusedId={focusedId}
@@ -449,6 +536,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             open
             onClose={() => setSheetOpen(false)}
             title="修改草稿"
+            description="勾选即加入草稿，提交前可逐项调整目标值和原因。"
             footer={
               <div className="draft-sheet-footer">
                 <span>
@@ -465,14 +553,20 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
           >
             <div className="draft-sheet-stack">
               <div className="round-draft-panel" aria-label="本轮提交草稿">
-                <strong>本轮提交 {selectedIds.size} 项</strong>
-                <span>可先收集多个参数，再统一提交审阅。</span>
+                <div>
+                  <strong>本轮提交 {selectedIds.size} 项</strong>
+                  <span>可先收集多个参数，再统一提交审阅。</span>
+                </div>
+                <button className="link-button" type="button" onClick={clearAllDrafts}>
+                  全部清空
+                </button>
               </div>
               <div className="draft-card-list">
                 {pendingSubmissionItems.map((item) => {
                   const isFocusedCard = focusedId === item.parameterId;
                   const targetInputId = `target-value-${item.parameterId}`;
                   const reasonInputId = `reason-${item.parameterId}`;
+                  const warning = getRangeWarning(item.parameter, item.targetValue);
 
                   return (
                     <article className="draft-card" key={item.parameterId}>
@@ -488,6 +582,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                         <ArrowRight size={15} aria-hidden="true" />
                         <strong>{item.targetValue}{item.parameter.unit}</strong>
                       </div>
+                      <p className="draft-drift-note">
+                        Agent 建议调整到推荐值，当前偏差 {item.parameter.currentValue} → {item.parameter.recommendedValue}{item.parameter.unit}
+                      </p>
                       <label className="field-label" htmlFor={targetInputId}>
                         {isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
                       </label>
@@ -499,6 +596,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                           updateDraft(item.parameter, { targetValue: event.target.value });
                         }}
                       />
+                      {warning ? <p className="field-warning">{warning}</p> : null}
                       <label className="field-label" htmlFor={reasonInputId}>
                         {isFocusedCard ? "修改原因" : `修改原因 ${item.parameter.name}`}
                       </label>
@@ -509,6 +607,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                         onChange={(event) => {
                           updateDraft(item.parameter, { reason: event.target.value });
                         }}
+                        placeholder={`说明为什么要把 ${item.parameter.name} 改为 ${item.targetValue}`}
                         rows={3}
                       />
                       <button className="button subtle" type="button" onClick={() => removeDraftItem(item.parameterId)}>
