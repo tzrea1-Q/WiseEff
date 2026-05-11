@@ -138,7 +138,8 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "项目参数用户工作台" })).not.toBeInTheDocument();
   });
 
   it("organizes the localized homepage around WiseEff workflow sections", () => {
@@ -1068,7 +1069,8 @@ describe("WiseEff app shell", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
-    expect(screen.getByRole("heading", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "项目参数用户工作台" })).not.toBeInTheDocument();
 
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);

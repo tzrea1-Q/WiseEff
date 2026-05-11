@@ -1427,6 +1427,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   return (
     <WorkbenchLayout
       title="参数管理员工作台"
+      header={<h1>参数管理员工作台</h1>}
       subtitle="审阅参数变更队列，结合 AI 摘要和时间线推进合入上库流程。"
       actions={
         <button className="button subtle" type="button">
@@ -1892,7 +1893,11 @@ function LogsPage({ state }: PageProps) {
   });
 
   return (
-    <WorkbenchLayout title="日志智能分析" subtitle="上传日志并观察 AI 自动化分析过程、证据链和处置线索。">
+    <WorkbenchLayout
+      title="日志智能分析"
+      header={<h1>日志智能分析</h1>}
+      subtitle="上传日志并观察 AI 自动化分析过程、证据链和处置线索。"
+    >
       <section className="logs-left">
         <button className="upload-zone" type="button" onClick={() => setUnsupportedDialogOpen(true)}>
           <Upload size={34} />
@@ -2042,6 +2047,7 @@ function DebuggingPage({ state, dispatch }: PageProps) {
   return (
     <WorkbenchLayout
       title="参数调试平台"
+      header={<h1>参数调试平台</h1>}
       subtitle="连接调试样机后执行实时充电参数调节，所有下发动作都保留确认和回滚准备。"
       actions={
         <div className="device-pill">

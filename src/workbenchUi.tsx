@@ -20,18 +20,36 @@ export function escapeExcelCell(value: string) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function WorkbenchLayout({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
+export function WorkbenchLayout({
+  title,
+  subtitle,
+  header,
+  actions,
+  children
+}: {
+  title: string;
+  subtitle?: string;
+  header?: ReactNode;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  const hasHeader = Boolean(header || subtitle || actions);
+
   return (
-    <div className="workbench-page">
-      <header className="page-header">
-        <div>
-          <h1>{title}</h1>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
-        {actions ? <div className="page-actions">{actions}</div> : null}
-      </header>
+    <section className="workbench-page" aria-label={title}>
+      {hasHeader ? (
+        <header className="page-header">
+          {header || subtitle ? (
+            <div>
+              {header}
+              {subtitle ? <p className="workbench-page-subtitle">{subtitle}</p> : null}
+            </div>
+          ) : null}
+          {actions ? <div className="page-actions">{actions}</div> : null}
+        </header>
+      ) : null}
       <div className="workbench-grid">{children}</div>
-    </div>
+    </section>
   );
 }
 
