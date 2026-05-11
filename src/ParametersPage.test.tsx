@@ -42,6 +42,41 @@ describe("ParametersPage (抽出后的模块)", () => {
 });
 
 describe("ParametersPage draft edge cases", () => {
+  it("shows breadcrumb context in the page header", () => {
+    renderPage();
+
+    const breadcrumb = screen.getByRole("navigation", { name: "面包屑" });
+
+    expect(within(breadcrumb).getByText("参数管理")).toBeInTheDocument();
+    expect(within(breadcrumb).getByText("项目参数工作台")).toBeInTheDocument();
+  });
+
+  it("uses tertiary link-style header actions with AI audit as the only primary action", () => {
+    const { container } = renderPage();
+    const header = container.querySelector(".page-header");
+
+    expect(header).not.toBeNull();
+    ["导出 Excel", "历史提交", "跨项目对比"].forEach((label) => {
+      const action = within(header as HTMLElement).getByRole("button", { name: label });
+      expect(action).toHaveClass("link-button");
+      expect(action).not.toHaveClass("primary");
+    });
+
+    const primaryActions = Array.from(header!.querySelectorAll<HTMLButtonElement>(".button.primary"));
+    expect(primaryActions).toHaveLength(1);
+    expect(primaryActions[0]).toHaveAccessibleName("AI 巡检");
+  });
+
+  it("shows the M2 placeholder when AI audit is clicked", () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 巡检" }));
+
+    expect(alertSpy).toHaveBeenCalledWith("AI 巡检将在 M2 启用");
+    alertSpy.mockRestore();
+  });
+
   it("does not show the old hard-coded timeline inside the draft sheet", () => {
     renderPage();
     fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));

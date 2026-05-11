@@ -1,8 +1,8 @@
 import {
   ArrowRight,
-  Download,
+  ChevronRight,
   Filter,
-  History
+  Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch } from "react";
@@ -290,24 +290,35 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setConfirmOpen(false);
   };
   const previewItems = pendingSubmissionItems;
+  const handleAiAuditClick = () => {
+    window.alert("AI 巡检将在 M2 启用");
+  };
   const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
 
   return (
     <WorkbenchLayout
       title="项目参数用户工作台"
+      header={
+        <nav className="breadcrumb" aria-label="面包屑">
+          <span>参数管理</span>
+          <ChevronRight size={14} aria-hidden="true" />
+          <strong>项目参数工作台</strong>
+        </nav>
+      }
       actions={
         <>
-          <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
-            <Download size={16} />
+          <button className="link-button" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
             导出 Excel
           </button>
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
-            <History size={16} />
+          <button className="link-button" type="button" onClick={() => onNavigate("/parameter-submissions")}>
             历史提交
           </button>
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
-            <ArrowRight size={16} />
+          <button className="link-button" type="button" onClick={() => onNavigate("/parameter-comparison")}>
             跨项目对比
+          </button>
+          <button className="button primary" type="button" onClick={handleAiAuditClick}>
+            <Sparkles size={16} />
+            AI 巡检
           </button>
         </>
       }
