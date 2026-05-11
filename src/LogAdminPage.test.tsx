@@ -68,13 +68,6 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(within(table).getByText(/thermal_snapshot\.bin/)).toBeInTheDocument();
   });
 
-  it("renders AuditTimeline with filtered events", () => {
-    renderPage();
-
-    expect(screen.getByText("审计事件")).toBeInTheDocument();
-    expect(screen.getByText(/生成充电温升根因证据链/)).toBeInTheDocument();
-  });
-
   it("resets filters when 重置 button is clicked", async () => {
     renderPage();
     const search = screen.getByPlaceholderText(/搜索 RPT-/);

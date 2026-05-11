@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AccessControlPanel,
   AddUserDialog,
-  AuditTimeline,
   DataTable,
   LogRecordDrawer,
   MetricBentoCard,
@@ -272,8 +271,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   };
 
   const hasActiveFilters = tableQuery !== "" || statusFilter !== "all" || moduleFilter !== "all";
-  const auditEvents = state.auditEvents.filter((event) => event.app === "logs" || event.app === "log-admin");
-
   return (
     <div className="log-admin-page flex flex-col gap-5 p-6">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4">
@@ -355,8 +352,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         />
       ) : null}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <section className="flex flex-col gap-2 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4">
+        <section className="flex flex-col gap-2">
           <div>
             <h2 className="text-sm font-semibold text-foreground">日志分析记录</h2>
           </div>
@@ -429,18 +426,15 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
             }
           />
         </section>
-        <aside>
-          <AccessControlPanel
-            users={state.logAdminUsers}
-            canManage={canManage}
-            onAddClick={() => setAddUserOpen(true)}
-            onRoleChange={(userId, newRole) => dispatch({ type: "LOG_ADMIN_UPDATE_USER_ROLE", userId, role: newRole })}
-            onRemove={(userId) => dispatch({ type: "LOG_ADMIN_REMOVE_USER", userId })}
-          />
-        </aside>
       </div>
 
-      <AuditTimeline events={auditEvents} />
+      <AccessControlPanel
+        users={state.logAdminUsers}
+        canManage={canManage}
+        onAddClick={() => setAddUserOpen(true)}
+        onRoleChange={(userId, newRole) => dispatch({ type: "LOG_ADMIN_UPDATE_USER_ROLE", userId, role: newRole })}
+        onRemove={(userId) => dispatch({ type: "LOG_ADMIN_REMOVE_USER", userId })}
+      />
 
       <LogRecordDrawer
         record={selectedRecord}

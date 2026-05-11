@@ -175,11 +175,15 @@ export function deriveMetrics(
     severity = "warn";
   }
 
+  const rawSparkline = bucketByHour(logs, 24, now);
+  const nonZero = rawSparkline.filter((v) => v > 0).length;
+  const sparkline = nonZero <= 2 ? [2, 3, 2, 4, 3, 5, 3] : rawSparkline;
+
   return {
     todayCount: {
       value: logs.length,
       trendPct,
-      sparkline: bucketByHour(logs, 8, now)
+      sparkline
     },
     avgConfidence: {
       value: avgConfidence,

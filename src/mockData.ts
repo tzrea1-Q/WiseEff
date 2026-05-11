@@ -390,6 +390,18 @@ export const users: User[] = [
   { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", roleId: "hardware", isActive: false, createdAt: "2025-04-15T14:00:00.000Z" }
 ];
 
+function recentIso(minutesAgo: number): string {
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const target = Math.max(todayStart + 60_000, now.getTime() - minutesAgo * 60_000);
+  const d = new Date(target);
+  const offset = -d.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const local = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  return `${local}${sign}${pad2(Math.floor(Math.abs(offset) / 60))}:${pad2(Math.abs(offset) % 60)}`;
+}
+
 const parameterUpdatedAtBaselineMs = Date.parse("2026-05-10T17:00:00.000Z");
 
 function createParameterUpdatedAtTs(updatedAt: string, index: number) {
@@ -907,7 +919,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         rawLines: activeLogRawLines,
         capturedAt: "10:24:05",
         updatedAt: "18 分钟前",
-        updatedAtIso: "2026-05-11T10:24:05+08:00",
+        updatedAtIso: recentIso(18),
         submittedBy: "H. Zhao",
         relatedParameterId: "aurora-battery-temp-target",
         device: "ChargeLab_X01"
@@ -954,7 +966,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         rawLines: authLogRawLines,
         capturedAt: "09:18:19",
         updatedAt: "3 小时前",
-        updatedAtIso: "2026-05-11T07:18:19+08:00",
+        updatedAtIso: recentIso(180),
         submittedBy: "L. Chen",
         device: "ChargeLab_X01"
       },
@@ -992,7 +1004,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         rawLines: failedLogRawLines,
         capturedAt: "刚刚",
         updatedAt: "刚刚",
-        updatedAtIso: "2026-05-11T10:29:00+08:00",
+        updatedAtIso: recentIso(5),
         submittedBy: "Xiao Wang",
         failureReason: "二进制格式不支持。请导出 .log / .txt / .json 文本日志。"
       }
