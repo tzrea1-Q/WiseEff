@@ -41,6 +41,7 @@ import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityIte
 import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
+import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -62,9 +63,12 @@ import {
   RequestStatus,
   roles,
   SEVERITY_LABELS,
-  STAGE_LABELS
+  STAGE_LABELS,
+  type UndoEntry,
+  type User
 } from "./mockData";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
+import { buildAuditEvent, getCoverage } from "./parameterAdminAnalytics";
 import {
   addDebugParameter,
   addDebugParameterFromDraft,
@@ -144,6 +148,15 @@ export type AppAction =
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
+  | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: string }
+  | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
+  | { type: "ADD_USER"; name: string; email: string; roleId: string }
+  | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
+  | { type: "DISMISS_INSIGHT"; insightId: string }
+  | { type: "SET_AI_FLAGGED_IMPORT_IDS"; ids: string[] }
+  | { type: "AGENT_ACTION_EXECUTED"; actionId: string; metadata?: Record<string, unknown> }
+  | { type: "UNDO_LAST_DESTRUCTIVE" }
+  | { type: "CLEAR_UNDO" }
   | { type: "MARK_CONFIG_PERSISTED" };
 
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
@@ -198,13 +211,13 @@ function SelectControl<Value extends string>({
   );
 }
 
-type ParameterValueDraft = {
+export type ParameterValueDraft = {
   currentValue: string;
   recommendedValue: string;
   updatedAt: string;
 };
 
-type ParameterEditorDraft = {
+export type ParameterEditorDraft = {
   name: string;
   description: string;
   explanation: string;
@@ -278,6 +291,9 @@ function classNames(...values: Array<string | false | null | undefined>) {
 }
 
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const auditActor = currentUser?.name ?? "system";
+
   switch (action.type) {
     case "SET_PROJECT":
       return { ...state, activeProjectId: action.projectId };
@@ -739,11 +755,34 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DELETE_PROJECT_PARAMETER": {
+      const removed = state.configDraft.parameterLibrary.find((parameter) => parameter.id === action.parameterId);
+      if (!removed) {
+        return state;
+      }
       const configDraft = deleteProjectParameter(state.configDraft, action.parameterId);
+      const event = buildAuditEvent({
+        kind: "parameter-delete",
+        actor: auditActor,
+        action: `删除 ${removed.name}`,
+        severity: "High",
+        parameterId: removed.id
+      });
+      const now = new Date();
+      const undo: UndoEntry = {
+        id: `undo-${now.getTime()}`,
+        actionKind: "parameter-delete",
+        message: `已删除 ${removed.name}`,
+        snapshot: { configDraft: state.configDraft },
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + 10_000).toISOString(),
+        originalAuditEventId: event.id
+      };
       return {
         ...state,
         configDraft,
-        ...derivePowerManagementRuntimeState(configDraft)
+        ...derivePowerManagementRuntimeState(configDraft),
+        _undoStack: undo,
+        auditEvents: [event, ...state.auditEvents]
       };
     }
     case "ADD_DEBUG_PARAMETER": {
@@ -784,6 +823,150 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     }
+    case "ASSIGN_USER_ROLE": {
+      if (action.userId === state.currentUserId) {
+        return state;
+      }
+      const user = state.users.find((item) => item.id === action.userId);
+      if (!user || user.roleId === action.roleId || !roles.some((role) => role.id === action.roleId)) {
+        return state;
+      }
+      const event = buildAuditEvent({
+        kind: "user-role-change",
+        actor: auditActor,
+        action: `${user.name} 角色从 ${user.roleId} 改为 ${action.roleId}`,
+        severity: "Medium",
+        userId: user.id,
+        metadata: { previousRole: user.roleId, newRole: action.roleId }
+      });
+
+      return {
+        ...state,
+        users: state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item)),
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "TOGGLE_USER_ACTIVE": {
+      const user = state.users.find((item) => item.id === action.userId);
+      if (!user || user.id === state.currentUserId || user.isActive === action.isActive) {
+        return state;
+      }
+      const event = buildAuditEvent({
+        kind: "user-toggle",
+        actor: auditActor,
+        action: `${action.isActive ? "启用" : "停用"} 用户 ${user.name}`,
+        severity: "Medium",
+        userId: user.id,
+        metadata: {
+          previousValue: user.isActive ? "active" : "inactive",
+          newValue: action.isActive ? "active" : "inactive"
+        }
+      });
+
+      return {
+        ...state,
+        users: state.users.map((item) => (item.id === user.id ? { ...item, isActive: action.isActive } : item)),
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "ADD_USER": {
+      if (state.users.some((user) => user.email.toLowerCase() === action.email.toLowerCase())) {
+        return state;
+      }
+      const role = roles.find((item) => item.id === action.roleId);
+      if (!role) {
+        return state;
+      }
+      const newUser: User = {
+        id: `u-${Date.now().toString(36)}`,
+        name: action.name,
+        email: action.email,
+        roleId: action.roleId,
+        isActive: true,
+        createdAt: new Date().toISOString()
+      };
+      const event = buildAuditEvent({
+        kind: "user-add",
+        actor: auditActor,
+        action: `添加用户 ${newUser.name}（${role.name}）`,
+        severity: "Low",
+        userId: newUser.id
+      });
+
+      return {
+        ...state,
+        users: [...state.users, newUser],
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "MARK_EXPORTED": {
+      const event = buildAuditEvent({
+        kind: "export",
+        actor: auditActor,
+        action: `导出 ${action.snapshotName}`,
+        severity: "Low",
+        time: action.timestamp,
+        metadata: { snapshotName: action.snapshotName }
+      });
+
+      return {
+        ...state,
+        lastExportedSnapshot: JSON.stringify(state.configDraft),
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "DISMISS_INSIGHT":
+      if (state.insightDismissedIds.includes(action.insightId)) {
+        return state;
+      }
+      return {
+        ...state,
+        insightDismissedIds: [...state.insightDismissedIds, action.insightId]
+      };
+    case "SET_AI_FLAGGED_IMPORT_IDS":
+      return {
+        ...state,
+        aiFlaggedImportIds: [...action.ids]
+      };
+    case "AGENT_ACTION_EXECUTED": {
+      const event = buildAuditEvent({
+        kind: "agent-action",
+        actor: auditActor,
+        action: `Agent 执行 ${action.actionId}`,
+        severity: "Low",
+        viaAgent: true,
+        metadata: { aiActionId: action.actionId, ...(action.metadata ?? {}) }
+      });
+
+      return {
+        ...state,
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "UNDO_LAST_DESTRUCTIVE": {
+      const entry = state._undoStack;
+      if (!entry || Date.now() > new Date(entry.expiresAt).getTime()) {
+        return state;
+      }
+      const event = buildAuditEvent({
+        kind: "rollback-undo",
+        actor: auditActor,
+        action: `撤销 ${entry.actionKind}：${entry.message}`,
+        severity: "Low",
+        metadata: { aiActionId: entry.originalAuditEventId }
+      });
+      const nextConfigDraft = entry.snapshot.configDraft ?? state.configDraft;
+
+      return {
+        ...state,
+        ...entry.snapshot,
+        ...derivePowerManagementRuntimeState(nextConfigDraft),
+        _undoStack: null,
+        auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "CLEAR_UNDO":
+      return { ...state, _undoStack: null };
     case "IMPORT_PARAMETERS":
       return {
         ...state,
@@ -795,6 +978,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       return state;
   }
 }
+
+export const appReducer = reducer;
 
 function App() {
   return (
@@ -947,7 +1132,7 @@ type ComparisonProjectSelection = {
   targetProjectId: string;
 };
 
-type PageProps = {
+export type PageProps = {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
   onNavigate: (path: string) => void;
@@ -2147,235 +2332,6 @@ function ConfigExportPanel({ configJson }: { configJson: string }) {
   );
 }
 
-function ParameterAdminPage({ state, dispatch }: PageProps) {
-  const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
-  const selectedParameter =
-    state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
-  const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
-  const actionControls = (
-    <div className="config-toolbar-actions">
-      <Button type="button" onClick={() => dispatch({ type: "IMPORT_PARAMETERS" })}>
-        <Upload size={16} />
-        批量参数导入
-      </Button>
-      <ConfigExportActions configJson={configJson} />
-    </div>
-  );
-
-  useEffect(() => {
-    if (!state.configDraft.parameterLibrary.some((parameter) => parameter.id === selectedParameterId)) {
-      setSelectedParameterId(state.configDraft.parameterLibrary[0]?.id ?? "");
-    }
-  }, [selectedParameterId, state.configDraft.parameterLibrary]);
-
-  const updateMetadata = (patch: Partial<ParameterEditorDraft>) => {
-    if (!selectedParameter) {
-      return;
-    }
-    dispatch({
-      type: "UPDATE_PROJECT_PARAMETER_METADATA",
-      projectId: state.configDraft.projects[0]?.id ?? state.activeProjectId,
-      parameterId: selectedParameter.id,
-      patch
-    });
-  };
-
-  const updateValue = (projectId: string, patch: Partial<ParameterValueDraft>) => {
-    if (!selectedParameter) {
-      return;
-    }
-    dispatch({
-      type: "UPDATE_PROJECT_PARAMETER_VALUE",
-      projectId,
-      parameterId: selectedParameter.id,
-      patch
-    });
-  };
-
-  const updateRecommendedValue = (recommendedValue: string) => {
-    if (!selectedParameter) {
-      return;
-    }
-    state.configDraft.projects.forEach((project) => {
-      dispatch({
-        type: "UPDATE_PROJECT_PARAMETER_VALUE",
-        projectId: project.id,
-        parameterId: selectedParameter.id,
-        patch: { recommendedValue }
-      });
-    });
-  };
-
-  return (
-    <AdminPageScaffold
-      title="项目参数管理后台"
-      subtitle="编辑项目内配置源，参数工作台和对比分析页会同步读取当前草稿。"
-      metrics={[
-        ["共享参数", `${state.configDraft.parameterLibrary.length}`, "所有项目共用一份参数库"],
-        ["项目值", `${state.configDraft.projects.length} 组`, "只维护每个项目的实际取值"],
-        ["配置草稿", "可写入", "可直接保存到 JSON 文件"],
-        ["高重要性", `${state.configDraft.parameterLibrary.filter((parameter) => parameter.risk === "High").length}`, "需要管理员复核"]
-      ]}
-      action={actionControls}
-    >
-      <section className="config-admin-grid">
-        <div className="library-panel config-list-panel">
-          <PanelHeader title="项目共享参数库" meta={`${state.configDraft.parameterLibrary.length} 项`} />
-          <div className="config-list-actions">
-            <Button
-              variant="outline"
-              type="button"
-              onClick={() => {
-                dispatch({ type: "ADD_PROJECT_PARAMETER" });
-                setSelectedParameterId(`new-power-parameter-${state.configDraft.parameterLibrary.length + 1}`);
-              }}
-            >
-              新增参数
-            </Button>
-            <Button
-              variant="destructive"
-              type="button"
-              disabled={!selectedParameter || state.configDraft.parameterLibrary.length <= 1}
-              onClick={() => {
-                if (!selectedParameter) {
-                  return;
-                }
-                dispatch({ type: "DELETE_PROJECT_PARAMETER", parameterId: selectedParameter.id });
-                setSelectedParameterId(state.configDraft.parameterLibrary.find((parameter) => parameter.id !== selectedParameter.id)?.id ?? "");
-              }}
-            >
-              删除参数
-            </Button>
-          </div>
-          <div className="library-list project-parameter-library-list">
-            {state.configDraft.parameterLibrary.map((parameter) => (
-              <Button
-                className={
-                  parameter.id === selectedParameter?.id
-                    ? "config-list-row project-parameter-list-row selected"
-                    : "config-list-row project-parameter-list-row"
-                }
-                key={parameter.id}
-                type="button"
-                variant="ghost"
-                onClick={() => setSelectedParameterId(parameter.id)}
-              >
-                <span className="project-parameter-list-row-main">
-                  <strong>{parameter.name}</strong>
-                  <small>{parameter.module}</small>
-                </span>
-                <RiskBadge risk={parameter.risk} />
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="config-editor-panel project-config-editor">
-          {selectedParameter ? (
-            <>
-              <section className="shared-definition-panel" aria-label="共享参数定义">
-                <PanelHeader title="共享参数定义" meta="所有项目共用" />
-                <div className="config-form-grid">
-                  <Label>
-                    参数名称
-                    <Input value={selectedParameter.name} onChange={(event) => updateMetadata({ name: event.target.value })} />
-                  </Label>
-                  <Label>
-                    模块
-                    <Input value={selectedParameter.module} onChange={(event) => updateMetadata({ module: event.target.value })} />
-                  </Label>
-                  <Label>
-                    推荐值
-                    <Input
-                      aria-label="参数推荐值"
-                      value={selectedParameter.values[state.configDraft.projects[0]?.id ?? state.activeProjectId]?.recommendedValue ?? ""}
-                      onChange={(event) => updateRecommendedValue(event.target.value)}
-                    />
-                  </Label>
-                  <Label>
-                    范围
-                    <Input value={selectedParameter.range} onChange={(event) => updateMetadata({ range: event.target.value })} />
-                  </Label>
-                  <Label>
-                    单位
-                    <Input value={selectedParameter.unit} onChange={(event) => updateMetadata({ unit: event.target.value })} />
-                  </Label>
-                  <Label>
-                    重要性
-                    <SelectControl
-                      value={selectedParameter.risk}
-                      onValueChange={(risk) => updateMetadata({ risk })}
-                      options={[
-                        { value: "High", label: "高" },
-                        { value: "Medium", label: "中" },
-                        { value: "Low", label: "低" }
-                      ]}
-                    />
-                  </Label>
-                  <Label className="wide">
-                    展示描述
-                    <Textarea value={selectedParameter.description} onChange={(event) => updateMetadata({ description: event.target.value })} rows={3} />
-                  </Label>
-                  <Label className="wide">
-                    参数解释
-                    <Textarea value={selectedParameter.explanation} onChange={(event) => updateMetadata({ explanation: event.target.value })} rows={4} />
-                  </Label>
-                  <Label className="wide">
-                    配置格式
-                    <Textarea value={selectedParameter.configFormat} onChange={(event) => updateMetadata({ configFormat: event.target.value })} rows={3} />
-                  </Label>
-                </div>
-              </section>
-
-              <section className="project-value-matrix" aria-label="项目参数值矩阵">
-                <PanelHeader title="项目参数值矩阵" meta="每个项目独立取值" />
-                <p>所有项目共用同一条参数定义，只在这里维护各项目的实际值。</p>
-                <div className="project-value-table">
-                  <div className="project-value-head">
-                    <span>项目</span>
-                    <span>当前值</span>
-                    <span>更新时间</span>
-                  </div>
-                  {state.configDraft.projects.map((project) => {
-                    const value = selectedParameter.values[project.id];
-                    return (
-                      <div className="project-value-row" key={project.id}>
-                        <div>
-                          <strong>{project.code}</strong>
-                          <small>{project.name}</small>
-                        </div>
-                        <Label>
-                          <span>{project.code} 当前值</span>
-                          <Input
-                            aria-label={`${project.code} 当前值`}
-                            value={value.currentValue}
-                            onChange={(event) => updateValue(project.id, { currentValue: event.target.value })}
-                          />
-                        </Label>
-                        <Label>
-                          <span>{project.code} 更新时间</span>
-                          <Input
-                            aria-label={`${project.code} 更新时间`}
-                            value={value.updatedAt}
-                            onChange={(event) => updateValue(project.id, { updatedAt: event.target.value })}
-                          />
-                        </Label>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            </>
-          ) : (
-            <EmptyState text="请选择一个项目参数。" />
-          )}
-        </div>
-
-      </section>
-    </AdminPageScaffold>
-  );
-}
-
 function LogsPage({ state, dispatch, onNavigate }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -3436,6 +3392,23 @@ function clampAgentPanelOffset(value: number, viewportSize: number) {
   return Math.min(Math.max(value, agentDragInset), Math.max(agentDragInset, viewportSize - agentPanelDesktopWidth - agentDragInset));
 }
 
+function updateParameterAdminQuery(patch: Record<string, string | undefined>) {
+  const url = new URL(window.location.href);
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value) {
+      url.searchParams.set(key, value);
+    } else {
+      url.searchParams.delete(key);
+    }
+  });
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next !== current) {
+    window.history.pushState(null, "", next);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }
+}
+
 function UnifiedAgent({
   path,
   plan,
@@ -3502,6 +3475,42 @@ function UnifiedAgent({
 
   const executeAction = (id: string) => {
     switch (id) {
+      case "scan-orphans": {
+        if (path === "/parameter-admin") {
+          const orphanCount = state.configDraft.parameterLibrary.filter(
+            (parameter) => getCoverage(parameter, state.configDraft.projects) === "orphan"
+          ).length;
+          updateParameterAdminQuery({ coverage: "orphan" });
+          dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id, metadata: { orphanCount } });
+          setMessages((items) => [`WiseAgent 已切换到孤儿参数视角，当前命中 ${orphanCount} 项。`, ...items]);
+          break;
+        }
+        setMessages((items) => ["当前页面暂不支持孤儿参数扫描。", ...items]);
+        break;
+      }
+      case "draft-cleanup": {
+        if (path === "/parameter-admin") {
+          const orphanIds = state.configDraft.parameterLibrary
+            .filter((parameter) => getCoverage(parameter, state.configDraft.projects) === "orphan")
+            .map((parameter) => parameter.id);
+          updateParameterAdminQuery({ coverage: "orphan" });
+          dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id, metadata: { orphanIds } });
+          setMessages((items) => [`WiseAgent 已生成孤儿清理建议，包含 ${orphanIds.length} 个候选参数。`, ...items]);
+          break;
+        }
+        setMessages((items) => ["当前页面暂不支持清理建议。", ...items]);
+        break;
+      }
+      case "preview-import":
+      case "summarize-audit":
+        if (path === "/parameter-admin") {
+          console.info(`[Agent m2 pending] ${id}`);
+          dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id });
+          setMessages((items) => ["该 Agent 动作已记录，完整 UI 会在 m2 接入。", ...items]);
+          break;
+        }
+        setMessages((items) => ["该 Agent 动作已记录，等待后续页面能力接入。", ...items]);
+        break;
       case "filter-high-risk":
         setMessages((items) => ["已标记高风险参数：max_concurrent_sessions、risk_score_threshold。", ...items]);
         break;

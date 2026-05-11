@@ -82,6 +82,19 @@ export type Project = {
 export type Role = {
   id: string;
   name: string;
+  capabilities: RoleCapability[];
+  description: string;
+};
+
+export type RoleCapability = "view" | "edit" | "publish" | "manage-permissions";
+
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  roleId: string;
+  isActive: boolean;
+  createdAt: string;
 };
 
 export type ParameterRecord = {
@@ -178,13 +191,64 @@ export type Device = {
 
 export type DebugParameter = PowerManagementDebugParameter;
 
+export type AuditEventKind =
+  | "parameter-add"
+  | "parameter-update"
+  | "parameter-delete"
+  | "batch-import"
+  | "bulk-risk-change"
+  | "bulk-module-change"
+  | "bulk-delete"
+  | "user-add"
+  | "user-role-change"
+  | "user-toggle"
+  | "export"
+  | "rollback-undo"
+  | "agent-action";
+
+export type ImportBatch = {
+  id: string;
+  source: "file" | "paste" | "demo";
+  demoSourceId?: string;
+  submittedAt: string;
+  summary: { added: number; updated: number; deleted: number };
+  affectedIds: string[];
+  aiFlaggedIds: string[];
+};
+
+export type UndoEntry = {
+  id: string;
+  actionKind: AuditEventKind;
+  message: string;
+  snapshot: Partial<PrototypeState>;
+  createdAt: string;
+  expiresAt: string;
+  originalAuditEventId: string;
+};
+
 export type AuditEvent = {
   id: string;
+  kind: AuditEventKind;
   app: PageKey;
   actor: string;
   action: string;
   time: string;
   severity: RiskLevel;
+  parameterId?: string;
+  batchId?: string;
+  userId?: string;
+  metadata?: {
+    previousValue?: string;
+    newValue?: string;
+    previousRole?: string;
+    newRole?: string;
+    affectedIds?: string[];
+    diffSummary?: { added: number; updated: number; deleted: number };
+    snapshotName?: string;
+    aiActionId?: string;
+    foundOrphans?: number;
+  };
+  viaAgent?: boolean;
 };
 
 export type DebugSnapshotEntry = {
@@ -225,6 +289,12 @@ export type PrototypeState = {
   pushedDebugIds: string[];
   debuggingSessionStartedAt: string | null;
   persistedConfigSnapshot: PowerManagementConfig;
+  users: User[];
+  currentUserId: string;
+  lastExportedSnapshot: string;
+  _undoStack: UndoEntry | null;
+  insightDismissedIds: string[];
+  aiFlaggedImportIds: string[];
 };
 
 function createMockDataFingerprint(state: PrototypeState) {
@@ -245,10 +315,41 @@ export const projects: Project[] = bundledPowerManagementConfig.projects.map((pr
 }));
 
 export const roles: Role[] = [
-  { id: "hardware", name: "硬件开发" },
-  { id: "project", name: "项目开发" },
-  { id: "parameter-admin", name: "参数管理员" },
-  { id: "admin", name: "平台管理员" }
+  {
+    id: "hardware",
+    name: "硬件开发",
+    capabilities: ["view"],
+    description: "只读参数库，用于研发阶段查阅和对比。"
+  },
+  {
+    id: "project",
+    name: "项目开发",
+    capabilities: ["view", "edit"],
+    description: "可编辑参数与项目取值，发起修改提交。"
+  },
+  {
+    id: "parameter-admin",
+    name: "参数管理员",
+    capabilities: ["view", "edit", "publish"],
+    description: "负责审阅和发布变更，管理参数库。"
+  },
+  {
+    id: "admin",
+    name: "平台管理员",
+    capabilities: ["view", "edit", "publish", "manage-permissions"],
+    description: "全部权限，可管理他人权限与全平台配置。"
+  }
+];
+
+export const users: User[] = [
+  { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z" },
+  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", roleId: "hardware", isActive: true, createdAt: "2025-01-14T03:12:00.000Z" },
+  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", roleId: "project", isActive: true, createdAt: "2025-02-03T08:04:00.000Z" },
+  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", roleId: "parameter-admin", isActive: true, createdAt: "2024-12-20T12:00:00.000Z" },
+  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", roleId: "project", isActive: true, createdAt: "2025-03-10T10:00:00.000Z" },
+  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", roleId: "hardware", isActive: true, createdAt: "2025-03-22T11:00:00.000Z" },
+  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", roleId: "parameter-admin", isActive: true, createdAt: "2025-04-01T09:00:00.000Z" },
+  { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", roleId: "hardware", isActive: false, createdAt: "2025-04-15T14:00:00.000Z" }
 ];
 
 export function derivePowerManagementRuntimeState(configDraft: PowerManagementConfig) {
@@ -353,6 +454,227 @@ const failedLogRawLines = [
   "00:00:00 WARN [PARSER] text stream unavailable; raw snapshot retained",
   "00:00:00 INFO [PARSER] action=export_text_log_required"
 ];
+
+function buildAuditEvents(): AuditEvent[] {
+  return [
+    {
+      id: "ae-001",
+      kind: "parameter-update",
+      app: "parameter-admin",
+      actor: "Wang Jie",
+      action: "更新 fast_charge_current_limit_ma 推荐值",
+      time: "刚刚",
+      severity: "High",
+      parameterId: "fast-charge-current",
+      userId: "u-wang-jie",
+      metadata: { previousValue: "3800", newValue: "3200" }
+    },
+    {
+      id: "ae-002",
+      kind: "parameter-update",
+      app: "parameter-admin",
+      actor: "Sun Mei",
+      action: "调整 battery_temp_target_c 范围",
+      time: "12 分钟前",
+      severity: "Medium",
+      parameterId: "battery-temp-target",
+      userId: "u-sun-mei",
+      metadata: { previousValue: "32 - 44", newValue: "30 - 42" }
+    },
+    {
+      id: "ae-003",
+      kind: "parameter-delete",
+      app: "parameter-admin",
+      actor: "Xu Yun",
+      action: "删除 legacy_charge_profile",
+      time: "24 分钟前",
+      severity: "High",
+      parameterId: "legacy-charge-profile",
+      userId: "u-xu-yun"
+    },
+    {
+      id: "ae-004",
+      kind: "batch-import",
+      app: "parameter-admin",
+      actor: "WiseAgent",
+      action: "导入 8 条混合参数草稿",
+      time: "38 分钟前",
+      severity: "Medium",
+      batchId: "BI-20260510-001",
+      viaAgent: true,
+      metadata: { affectedIds: ["fast-charge-current", "battery-temp-target"], diffSummary: { added: 3, updated: 5, deleted: 0 } }
+    },
+    {
+      id: "ae-005",
+      kind: "bulk-risk-change",
+      app: "parameter-admin",
+      actor: "Wang Jie",
+      action: "批量标记 3 个热管理参数为中风险",
+      time: "1 小时前",
+      severity: "Medium",
+      userId: "u-wang-jie",
+      metadata: { affectedIds: ["thermal-derating-start-c", "thermal-resume-c", "skin-temp-limit-c"] }
+    },
+    {
+      id: "ae-006",
+      kind: "bulk-module-change",
+      app: "parameter-admin",
+      actor: "Sun Mei",
+      action: "批量归档电池保护模块参数",
+      time: "2 小时前",
+      severity: "Low",
+      userId: "u-sun-mei",
+      metadata: { affectedIds: ["battery-temp-target", "battery-voltage-guard"] }
+    },
+    {
+      id: "ae-007",
+      kind: "bulk-delete",
+      app: "parameter-admin",
+      actor: "Xu Yun",
+      action: "批量清理 2 个孤儿参数",
+      time: "昨天",
+      severity: "High",
+      userId: "u-xu-yun",
+      metadata: { affectedIds: ["legacy-param-a", "legacy-param-b"] }
+    },
+    {
+      id: "ae-008",
+      kind: "user-add",
+      app: "parameter-admin",
+      actor: "Xu Yun",
+      action: "添加 Tao Lin 到硬件开发组",
+      time: "昨天",
+      severity: "Low",
+      userId: "u-tao-lin"
+    },
+    {
+      id: "ae-009",
+      kind: "user-role-change",
+      app: "parameter-admin",
+      actor: "Xu Yun",
+      action: "将 Wang Jie 设为参数管理员",
+      time: "2 天前",
+      severity: "Medium",
+      userId: "u-wang-jie",
+      metadata: { previousRole: "project", newRole: "parameter-admin" }
+    },
+    {
+      id: "ae-010",
+      kind: "user-toggle",
+      app: "parameter-admin",
+      actor: "Xu Yun",
+      action: "停用 Tao Lin 的访问权限",
+      time: "2 天前",
+      severity: "Medium",
+      userId: "u-tao-lin"
+    },
+    {
+      id: "ae-011",
+      kind: "export",
+      app: "parameter-admin",
+      actor: "Wang Jie",
+      action: "导出参数库快照",
+      time: "3 天前",
+      severity: "Low",
+      metadata: { snapshotName: "parameter-admin-20260507.json" }
+    },
+    {
+      id: "ae-012",
+      kind: "rollback-undo",
+      app: "parameter-admin",
+      actor: "Sun Mei",
+      action: "撤销删除 thermal_legacy_limit_c",
+      time: "3 天前",
+      severity: "Medium",
+      parameterId: "thermal-legacy-limit"
+    },
+    {
+      id: "ae-013",
+      kind: "agent-action",
+      app: "parameter-admin",
+      actor: "WiseAgent",
+      action: "扫描孤儿参数并生成建议",
+      time: "4 天前",
+      severity: "Low",
+      viaAgent: true,
+      metadata: { aiActionId: "scan-orphans" }
+    },
+    {
+      id: "ae-014",
+      kind: "parameter-add",
+      app: "parameter-admin",
+      actor: "Liu Min",
+      action: "新增 wireless_rx_power_limit_w",
+      time: "4 天前",
+      severity: "Medium",
+      parameterId: "wireless-rx-power-limit",
+      userId: "u-liu-min"
+    },
+    {
+      id: "ae-015",
+      kind: "parameter-update",
+      app: "parameters",
+      actor: "H. Zhao",
+      action: "提交快充输入电流变更 PRQ-9102",
+      time: "36 分钟前",
+      severity: "High",
+      parameterId: "fast-charge-current"
+    },
+    {
+      id: "ae-016",
+      kind: "agent-action",
+      app: "logs",
+      actor: "WiseAgent",
+      action: "生成充电温升根因证据链",
+      time: "18 分钟前",
+      severity: "Medium",
+      viaAgent: true,
+      metadata: { aiActionId: "summarize-log" }
+    },
+    {
+      id: "ae-017",
+      kind: "parameter-update",
+      app: "debugging",
+      actor: "硬件开发",
+      action: "尝试下发 charger.input_current_limit_ma 进入确认队列",
+      time: "12 分钟前",
+      severity: "High",
+      parameterId: "charger.input_current_limit_ma"
+    },
+    {
+      id: "ae-018",
+      kind: "export",
+      app: "parameter-admin",
+      actor: "平台管理员",
+      action: "同步电池保护参数目录版本 5.2.0",
+      time: "刚刚",
+      severity: "Low",
+      metadata: { snapshotName: "battery-protection-5.2.0.json" }
+    },
+    {
+      id: "ae-019",
+      kind: "parameter-update",
+      app: "parameter-admin",
+      actor: "Chen Na",
+      action: "修订 standby_drain_limit_ma 描述",
+      time: "5 天前",
+      severity: "Low",
+      parameterId: "standby-drain-limit",
+      userId: "u-chen-na"
+    },
+    {
+      id: "ae-020",
+      kind: "batch-import",
+      app: "parameter-admin",
+      actor: "Xu Yun",
+      action: "导入批次 BI-20260505-002",
+      time: "5 天前",
+      severity: "Medium",
+      batchId: "BI-20260505-002",
+      userId: "u-xu-yun"
+    }
+  ];
+}
 
 export function createPrototypeState(configDraft: PowerManagementConfig = clonePowerManagementConfig(bundledPowerManagementConfig)): PrototypeState {
   const runtime = derivePowerManagementRuntimeState(configDraft);
@@ -544,48 +866,22 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       }
     ],
     debugParameters: runtime.debugParameters,
-    auditEvents: [
-      {
-        id: "audit-1",
-        app: "parameters",
-        actor: "H. Zhao",
-        action: "提交快充输入电流变更 PRQ-9102",
-        time: "36 分钟前",
-        severity: "High"
-      },
-      {
-        id: "audit-2",
-        app: "logs",
-        actor: "WiseAgent",
-        action: "生成充电温升根因证据链",
-        time: "18 分钟前",
-        severity: "Medium"
-      },
-      {
-        id: "audit-3",
-        app: "debugging",
-        actor: "硬件开发",
-        action: "尝试下发 charger.input_current_limit_ma 进入确认队列",
-        time: "12 分钟前",
-        severity: "High"
-      },
-      {
-        id: "audit-4",
-        app: "parameter-admin",
-        actor: "平台管理员",
-        action: "同步电池保护参数目录版本 5.2.0",
-        time: "刚刚",
-        severity: "Low"
-      }
-    ],
+    auditEvents: buildAuditEvents(),
     notifications: ["手机电源管理演示模式已启动"],
     lastDebugSnapshot: null,
     debugEvents: [],
     pushedDebugIds: [],
     debuggingSessionStartedAt: null,
-    persistedConfigSnapshot: clonePowerManagementConfig(configDraft)
+    persistedConfigSnapshot: clonePowerManagementConfig(configDraft),
+    users,
+    currentUserId: "u-xu-yun",
+    lastExportedSnapshot: JSON.stringify(configDraft),
+    _undoStack: null,
+    insightDismissedIds: [],
+    aiFlaggedImportIds: []
   };
 }
 
 export const initialState = createPrototypeState();
+export const auditEvents = initialState.auditEvents;
 export const mockDataFingerprint = createMockDataFingerprint(initialState);
