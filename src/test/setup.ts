@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
-import { beforeEach, vi } from "vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach, beforeEach, vi } from "vitest";
 
 class ResizeObserverMock {
   observe() {}
@@ -23,4 +24,8 @@ beforeEach(() => {
     configurable: true,
     value: clipboard
   });
+});
+
+afterEach(() => {
+  cleanup();
 });

@@ -42,6 +42,7 @@ import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
 import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { DebuggingPage } from "./DebuggingPage";
+import { LogAdminPage } from "./LogAdminPage";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
@@ -50,8 +51,11 @@ import {
   DebugParameter,
   DebugSnapshot,
   initialState,
+  LogAdminRole,
+  LogAdminUserAvatarTone,
   LogEvidence,
   LogStageId,
+  TimeWindow,
   mockDataFingerprint,
   LogRecord,
   ParameterRecord,
@@ -144,7 +148,16 @@ export type AppAction =
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
-  | { type: "MARK_CONFIG_PERSISTED" };
+  | { type: "MARK_CONFIG_PERSISTED" }
+  | { type: "LOG_ADMIN_REANALYZE_LOG"; logId: string }
+  | { type: "LOG_ADMIN_ARCHIVE_LOG"; logId: string }
+  | { type: "LOG_ADMIN_UNARCHIVE_LOG"; logId: string }
+  | { type: "LOG_ADMIN_ADD_USER"; input: { name: string; title: string; role: LogAdminRole } }
+  | { type: "LOG_ADMIN_UPDATE_USER_ROLE"; userId: string; role: LogAdminRole }
+  | { type: "LOG_ADMIN_REMOVE_USER"; userId: string }
+  | { type: "LOG_ADMIN_SYNC_LOGS" }
+  | { type: "LOG_ADMIN_EXPORT_REPORT"; timeWindow: TimeWindow }
+  | { type: "OPEN_AGENT_WITH_PRESET"; preset: string };
 
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
   { value: "7d", label: "7天" },
@@ -244,16 +257,6 @@ const logStatusLabels: Record<LogRecord["status"], string> = {
   Failed: "失败"
 };
 
-function displayTag(text: string) {
-  if (text in riskLabels) {
-    return riskLabels[text as keyof typeof riskLabels];
-  }
-  if (text in logStatusLabels) {
-    return logStatusLabels[text as keyof typeof logStatusLabels];
-  }
-  return text;
-}
-
 function buildRuntimeReviewFields(summary: string, module: string) {
   const suggestion = buildAISuggestion({
     recommendation: "needs-review",
@@ -271,6 +274,36 @@ function buildRuntimeReviewFields(summary: string, module: string) {
     aiSuggestion: suggestion,
     impact: buildImpactItems(module)
   };
+}
+
+function activeRoleLabel(activeRoleId: string) {
+  return roles.find((role) => role.id === activeRoleId)?.name ?? "平台用户";
+}
+
+function addAuditEvent(state: PrototypeState, event: Omit<AuditEvent, "id" | "actor" | "time"> & { actor?: string }): AuditEvent[] {
+  return [
+    ...state.auditEvents,
+    {
+      id: `audit-log-admin-${state.auditEvents.length + 1}`,
+      actor: event.actor ?? activeRoleLabel(state.activeRoleId),
+      time: "刚刚",
+      ...event
+    }
+  ];
+}
+
+function initialsOf(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function pickAvatarTone(index: number): LogAdminUserAvatarTone {
+  const tones: LogAdminUserAvatarTone[] = ["blue", "teal", "violet", "slate"];
+  return tones[index % tones.length];
 }
 
 function classNames(...values: Array<string | false | null | undefined>) {
@@ -554,6 +587,12 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         severity: supportedLog ? "Info" : "Critical",
         rawLines: supportedLog ? [`刚刚 INFO [UPLOAD] ${action.fileName} accepted for analysis`] : [],
         capturedAt: "刚刚",
+        reportId: `RPT-UP-${String(state.logs.length + 1).padStart(3, "0")}`,
+        source: supportedLog ? "Manual Upload" : "Unsupported Upload",
+        fileSizeMB: supportedLog ? 1.8 : 0,
+        updatedAt: "刚刚",
+        updatedAtIso: new Date().toISOString(),
+        submittedBy: activeRoleLabel(state.activeRoleId),
         failureReason: supportedLog ? undefined : "格式不支持。请上传 .log / .txt / .json 文本日志。"
       };
 
@@ -791,6 +830,175 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     case "ADD_NOTIFICATION":
       return { ...state, notifications: [action.message, ...state.notifications] };
+    case "LOG_ADMIN_REANALYZE_LOG": {
+      const target = state.logs.find((log) => log.id === action.logId);
+      if (!target) {
+        return state;
+      }
+
+      return {
+        ...state,
+        logs: state.logs.map((log) =>
+          log.id === action.logId
+            ? {
+                ...log,
+                status: "Processing",
+                stage: "parse",
+                confidence: Math.max(log.confidence, 24),
+                updatedAt: "刚刚",
+                updatedAtIso: new Date().toISOString()
+              }
+            : log
+        ),
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: `重新分析 ${target.reportId}`,
+          severity: "Medium"
+        }),
+        notifications: [`${target.fileName} 已重新加入分析队列`, ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_ARCHIVE_LOG": {
+      const target = state.logs.find((log) => log.id === action.logId);
+      if (!target) {
+        return state;
+      }
+      const alreadyArchived = state.archivedLogIds.includes(action.logId);
+
+      return {
+        ...state,
+        archivedLogIds: alreadyArchived ? state.archivedLogIds : [...state.archivedLogIds, action.logId],
+        auditEvents: alreadyArchived
+          ? state.auditEvents
+          : addAuditEvent(state, {
+              app: "log-admin",
+              action: `归档 ${target.reportId}`,
+              severity: "Low"
+            }),
+        notifications: alreadyArchived ? state.notifications : [`${target.fileName} 已归档`, ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_UNARCHIVE_LOG": {
+      const target = state.logs.find((log) => log.id === action.logId);
+      if (!target || !state.archivedLogIds.includes(action.logId)) {
+        return state;
+      }
+
+      return {
+        ...state,
+        archivedLogIds: state.archivedLogIds.filter((id) => id !== action.logId),
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: `撤销归档 ${target.reportId}`,
+          severity: "Low"
+        }),
+        notifications: [`${target.fileName} 已恢复`, ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_ADD_USER": {
+      const userIndex = state.logAdminUsers.length;
+      const newUser = {
+        id: `log-admin-user-${userIndex + 1}`,
+        name: action.input.name,
+        title: action.input.title || "Log Admin User",
+        role: action.input.role,
+        avatarInitials: initialsOf(action.input.name),
+        avatarTone: pickAvatarTone(userIndex),
+        lastActive: "刚刚",
+        lastActiveIso: new Date().toISOString()
+      };
+
+      return {
+        ...state,
+        logAdminUsers: [...state.logAdminUsers, newUser],
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: `新增用户 ${newUser.name}`,
+          severity: "Medium"
+        }),
+        notifications: [`已新增 ${newUser.name} 为 ${newUser.role}`, ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_UPDATE_USER_ROLE": {
+      const target = state.logAdminUsers.find((user) => user.id === action.userId);
+      if (!target || target.role === action.role) {
+        return state;
+      }
+
+      return {
+        ...state,
+        logAdminUsers: state.logAdminUsers.map((user) =>
+          user.id === action.userId ? { ...user, role: action.role, lastActive: "刚刚", lastActiveIso: new Date().toISOString() } : user
+        ),
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: `更新 ${target.name} 权限为 ${action.role}`,
+          severity: action.role === "Admin" ? "High" : "Medium"
+        }),
+        notifications: [`${target.name} 权限已更新为 ${action.role}`, ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_REMOVE_USER": {
+      const target = state.logAdminUsers.find((user) => user.id === action.userId);
+      if (!target) {
+        return state;
+      }
+
+      return {
+        ...state,
+        logAdminUsers: state.logAdminUsers.filter((user) => user.id !== action.userId),
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: `移除用户 ${target.name}`,
+          severity: "Medium"
+        }),
+        notifications: [`${target.name} 已移出日志后台`, ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_SYNC_LOGS": {
+      const now = new Date();
+      let promoted = false;
+
+      return {
+        ...state,
+        logs: state.logs.map((log, index) => {
+          const shouldPromote = !promoted && log.status === "Processing";
+          if (shouldPromote) {
+            promoted = true;
+          }
+          const updatedAtMs = Math.max(Date.parse(log.updatedAtIso), now.getTime() - index * 60_000);
+          return {
+            ...log,
+            updatedAt: index === 0 ? "刚刚" : log.updatedAt,
+            updatedAtIso: new Date(updatedAtMs).toISOString(),
+            status: shouldPromote ? "Complete" : log.status,
+            stage: shouldPromote ? "report" : log.stage,
+            confidence: shouldPromote ? Math.max(log.confidence, 94) : log.confidence
+          };
+        }),
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: "同步日志分析记录",
+          severity: "Low"
+        }),
+        notifications: ["日志分析记录已同步", ...state.notifications]
+      };
+    }
+    case "LOG_ADMIN_EXPORT_REPORT":
+      return {
+        ...state,
+        auditEvents: addAuditEvent(state, {
+          app: "log-admin",
+          action: `导出日志后台报表 ${action.timeWindow}`,
+          severity: "Low"
+        }),
+        notifications: [`已生成 ${action.timeWindow} 日志后台报表`, ...state.notifications]
+      };
+    case "OPEN_AGENT_WITH_PRESET":
+      return {
+        ...state,
+        notifications: [`Agent 已打开预设：${action.preset}`, ...state.notifications]
+      };
     default:
       return state;
   }
@@ -3194,26 +3402,6 @@ function LogsAuxPanel({
   );
 }
 
-function LogAdminPage({ state }: PageProps) {
-  return (
-    <AdminPageScaffold
-      title="日志分析管理后台"
-      subtitle="查看日志分析应用指标、处理记录、失败文件和后台权限配置。"
-      metrics={[
-        ["今日分析", "42", "较昨日 +18%"],
-        ["平均置信度", "91%", "完成记录均值"],
-        ["失败文件", `${state.logs.filter((log) => log.status === "Failed").length}`, "格式或大小异常"],
-        ["吞吐峰值", "1.2GB", "nginx_access.log.gz"]
-      ]}
-    >
-      <section className="admin-grid two">
-        <LibraryPanel title="分析记录概览" items={state.logs.map((log) => [log.fileName, STAGE_LABELS[log.stage], log.status])} />
-        <AuditPanel events={state.auditEvents.filter((event) => event.app === "logs" || event.app === "log-admin")} />
-      </section>
-    </AdminPageScaffold>
-  );
-}
-
 function DebuggingAdminPage({ state, dispatch }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.debugParameters[0]?.id ?? "");
   const selectedParameter =
@@ -3844,42 +4032,6 @@ function ConfirmDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  );
-}
-
-function LibraryPanel({ title, items }: { title: string; items: string[][] }) {
-  return (
-    <div className="library-panel">
-      <PanelHeader title={title} meta={`${items.length} 项`} />
-      <div className="library-list">
-        {items.map(([main, sub, meta]) => (
-          <div className="library-row" key={`${main}-${sub}`}>
-            <div>
-              <strong>{main}</strong>
-              <span>{sub}</span>
-            </div>
-            <Badge tone={meta === "High" ? "secondary" : "neutral"}>{displayTag(meta)}</Badge>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function AuditPanel({ events }: { events: AuditEvent[] }) {
-  return (
-    <div className="library-panel">
-      <PanelHeader title="审计事件" meta={`${events.length} 条事件`} />
-      {events.map((event) => (
-        <div className="audit-row" key={event.id}>
-          <RiskBadge risk={event.severity} />
-          <div>
-            <strong>{event.action}</strong>
-            <span>{event.actor} · {event.time}</span>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }
 

@@ -48,8 +48,23 @@ export type AIFeedbackEntry = {
 export { REVIEW_MOCK_NOW };
 export type RequestStatus = "待审阅" | "自动检查通过" | "等待合入" | "已合入" | "已打回";
 export type LogStageId = "parse" | "pattern" | "rootcause" | "report";
+export type LogStatus = "Processing" | "Complete" | "Failed";
 export type LogSeverity = "Critical" | "Warning" | "Info";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
+export type LogAdminRole = "Admin" | "Editor" | "Viewer";
+export type LogAdminUserAvatarTone = "blue" | "teal" | "violet" | "slate";
+export type TimeWindow = "today" | "7d" | "30d";
+
+export type LogAdminUser = {
+  id: string;
+  name: string;
+  title: string;
+  role: LogAdminRole;
+  avatarInitials: string;
+  avatarTone: LogAdminUserAvatarTone;
+  lastActive: string;
+  lastActiveIso: string;
+};
 
 export type LogEvidence = {
   id: string;
@@ -150,9 +165,12 @@ export type ParameterSubmissionRound = {
 
 export type LogRecord = {
   id: string;
+  reportId: string;
   fileName: string;
   projectId: string;
-  status: "Processing" | "Complete" | "Failed";
+  source: string;
+  fileSizeMB: number;
+  status: LogStatus;
   stage: LogStageId;
   confidence: number;
   conclusion: string;
@@ -162,6 +180,9 @@ export type LogRecord = {
   severity: LogSeverity;
   rawLines: string[];
   capturedAt: string;
+  updatedAt: string;
+  updatedAtIso: string;
+  submittedBy: string;
   relatedParameterId?: string;
   device?: string;
   failureReason?: string;
@@ -216,6 +237,8 @@ export type PrototypeState = {
   aiFeedback: AIFeedbackEntry[];
   parameterSubmissionRounds: ParameterSubmissionRound[];
   logs: LogRecord[];
+  logAdminUsers: LogAdminUser[];
+  archivedLogIds: string[];
   devices: Device[];
   debugParameters: DebugParameter[];
   auditEvents: AuditEvent[];
@@ -354,6 +377,59 @@ const failedLogRawLines = [
   "00:00:00 INFO [PARSER] action=export_text_log_required"
 ];
 
+const logAdminUsers: LogAdminUser[] = [
+  {
+    id: "js",
+    name: "Jane Smith",
+    title: "Lead Architect",
+    role: "Admin",
+    avatarInitials: "JS",
+    avatarTone: "blue",
+    lastActive: "刚刚",
+    lastActiveIso: "2026-05-11T10:28:00+08:00"
+  },
+  {
+    id: "mk",
+    name: "Mike Kruger",
+    title: "Ops Engineer",
+    role: "Editor",
+    avatarInitials: "MK",
+    avatarTone: "teal",
+    lastActive: "2 小时前",
+    lastActiveIso: "2026-05-11T08:42:00+08:00"
+  },
+  {
+    id: "al",
+    name: "Ana Lin",
+    title: "Analyst",
+    role: "Viewer",
+    avatarInitials: "AL",
+    avatarTone: "violet",
+    lastActive: "昨天",
+    lastActiveIso: "2026-05-10T17:12:00+08:00"
+  },
+  {
+    id: "rp",
+    name: "Rui Peng",
+    title: "Platform PM",
+    role: "Editor",
+    avatarInitials: "RP",
+    avatarTone: "slate",
+    lastActive: "3 天前",
+    lastActiveIso: "2026-05-08T13:30:00+08:00"
+  },
+  {
+    id: "xw",
+    name: "Xiao Wang",
+    title: "QA Owner",
+    role: "Viewer",
+    avatarInitials: "XW",
+    avatarTone: "blue",
+    lastActive: "5 天前",
+    lastActiveIso: "2026-05-06T09:16:00+08:00"
+  }
+];
+
 export function createPrototypeState(configDraft: PowerManagementConfig = clonePowerManagementConfig(bundledPowerManagementConfig)): PrototypeState {
   const runtime = derivePowerManagementRuntimeState(configDraft);
 
@@ -413,8 +489,11 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     logs: [
       {
         id: "log-active",
+        reportId: "RPT-9092",
         fileName: "charging_thermal_trace_20260504.log",
         projectId: "aurora",
+        source: "Battery Thermal",
+        fileSizeMB: 48.2,
         status: "Processing",
         stage: "rootcause",
         confidence: 92,
@@ -449,13 +528,19 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         severity: "Warning",
         rawLines: activeLogRawLines,
         capturedAt: "10:24:05",
+        updatedAt: "18 分钟前",
+        updatedAtIso: "2026-05-11T10:24:05+08:00",
+        submittedBy: "H. Zhao",
         relatedParameterId: "aurora-battery-temp-target",
         device: "ChargeLab_X01"
       },
       {
         id: "log-auth",
+        reportId: "RPT-9091",
         fileName: "usb_pd_negotiation_20260503.log",
         projectId: "aurora",
+        source: "PD Negotiation",
+        fileSizeMB: 12.6,
         status: "Complete",
         stage: "report",
         confidence: 88,
@@ -490,12 +575,18 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         severity: "Info",
         rawLines: authLogRawLines,
         capturedAt: "09:18:19",
+        updatedAt: "3 小时前",
+        updatedAtIso: "2026-05-11T07:18:19+08:00",
+        submittedBy: "L. Chen",
         device: "ChargeLab_X01"
       },
       {
         id: "log-failed",
+        reportId: "RPT-9090",
         fileName: "thermal_snapshot.bin",
         projectId: "nebula",
+        source: "Thermal Snapshot",
+        fileSizeMB: 12.4,
         status: "Failed",
         stage: "parse",
         confidence: 0,
@@ -522,9 +613,14 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         severity: "Critical",
         rawLines: failedLogRawLines,
         capturedAt: "刚刚",
+        updatedAt: "刚刚",
+        updatedAtIso: "2026-05-11T10:29:00+08:00",
+        submittedBy: "Xiao Wang",
         failureReason: "二进制格式不支持。请导出 .log / .txt / .json 文本日志。"
       }
     ],
+    logAdminUsers,
+    archivedLogIds: [],
     devices: [
       {
         id: "device-x01",
