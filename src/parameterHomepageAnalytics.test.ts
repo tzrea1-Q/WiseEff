@@ -53,6 +53,24 @@ describe("parameter homepage analytics", () => {
     expect(analytics.hotspots[0].suggestedPath).toMatch(/^\/(parameters|parameter-comparison|parameter-review|parameter-admin)/);
   });
 
+  it("injects hotspot presentation metadata for leaderboard rendering", () => {
+    const analytics = deriveParameterHomepageAnalytics(initialState, "30d");
+    const sevenDays = deriveParameterHomepageAnalytics(initialState, "7d");
+
+    expect(analytics.hotspots.length).toBeGreaterThan(0);
+    analytics.hotspots.forEach((hotspot) => {
+      expect(["alert", "watch", "healthy"]).toContain(hotspot.statusLevel);
+      expect(["up", "down", "flat"]).toContain(hotspot.trend.direction);
+      expect(hotspot.trend.delta).toBeGreaterThanOrEqual(-25);
+      expect(hotspot.trend.delta).toBeLessThanOrEqual(25);
+    });
+    expect(analytics.hotspots.some((hotspot) => hotspot.lastChangedAt)).toBe(true);
+    expect(new Set(analytics.hotspots.map((hotspot) => hotspot.statusLevel)).size).toBeGreaterThanOrEqual(2);
+    expect(sevenDays.hotspots.map((hotspot) => hotspot.trend.delta)).not.toEqual(
+      analytics.hotspots.map((hotspot) => hotspot.trend.delta)
+    );
+  });
+
   it("returns key parameter changes sorted by drift and risk", () => {
     const analytics = deriveParameterHomepageAnalytics(initialState, "30d");
 

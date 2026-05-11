@@ -55,24 +55,24 @@ describe("ParameterManagementHomePage", () => {
     expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/^\/(parameters|parameter-review)/));
   });
 
-  it("expands hotspot explanations", () => {
+  it("shows hotspot leaderboard with AI detail panel", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
-    fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /查看评分/ })[0]);
+    fireEvent.click(within(hotspotRegion).getByRole("button", { name: /选择热区 #2/ }));
 
-    expect(screen.getByText("AI 评分拆解")).toBeInTheDocument();
-    expect(screen.getByText("变更频次")).toBeInTheDocument();
-    expect(screen.getByText("风险权重")).toBeInTheDocument();
-    expect(screen.getByText("影响范围")).toBeInTheDocument();
-    expect(screen.getByText("流程堆积")).toBeInTheDocument();
-    expect(screen.getByText("异常偏离")).toBeInTheDocument();
-    expect(screen.getByText("统计所选窗口内参数与审阅请求的变更密度。")).toBeInTheDocument();
-    expect(screen.getByText("按高、中、低风险参数数量换算治理优先级。")).toBeInTheDocument();
-    expect(screen.getByText("结合参数定义覆盖面与日志命中信号评估影响面。")).toBeInTheDocument();
-    expect(screen.getByText("反映审阅请求和高风险项在流程中的堆积程度。")).toBeInTheDocument();
-    expect(screen.getByText("衡量当前值相对推荐值的偏离幅度。")).toBeInTheDocument();
-    expect(screen.getByText("关联证据")).toBeInTheDocument();
+    const panel = within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ });
+
+    expect(within(hotspotRegion).getByText("排名")).toBeInTheDocument();
+    expect(document.querySelectorAll(".hotspot-row")).toHaveLength(5);
+    expect(within(hotspotRegion).getByRole("button", { name: /选择热区 #2/ })).toHaveAttribute("aria-current", "true");
+    expect(panel).toBeInTheDocument();
+    expect(within(panel).getByText("关联证据")).toBeInTheDocument();
+    expect(within(panel).getByText("维度得分")).toBeInTheDocument();
+    expect(within(panel).getByText("AI 建议动作")).toBeInTheDocument();
+    expect(within(panel).getByRole("progressbar", { name: "变更频次" })).toBeInTheDocument();
+    expect(within(panel).getByRole("progressbar", { name: "风险权重" })).toBeInTheDocument();
+    expect(within(panel).queryByText("统计所选窗口内参数与审阅请求的变更密度。")).not.toBeInTheDocument();
   });
 
   it("removes the hero time window panel from the parameter homepage", () => {
@@ -100,7 +100,7 @@ describe("ParameterManagementHomePage", () => {
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
 
     expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
-    expect(within(hotspotRegion).getAllByText(/分/).length).toBeGreaterThan(0);
+    expect(within(hotspotRegion).getAllByText(/^\d+(\.\d+)?$/).length).toBeGreaterThan(0);
   });
 
   it("switches hotspot ranking between project and module dimensions", () => {
@@ -135,7 +135,10 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".homepage-main-grid")).toBeInTheDocument();
     expect(document.querySelector(".homepage-metric-card")).toBeInTheDocument();
     expect(document.querySelector(".homepage-panel")).toBeInTheDocument();
-    expect(document.querySelector(".hotspot-card")).toBeInTheDocument();
+    expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
+    expect(document.querySelector(".hotspot-row")).toBeInTheDocument();
+    expect(document.querySelector(".hotspot-list")).toBeInTheDocument();
+    expect(document.querySelector(".hotspot-panel")).toBeInTheDocument();
     expect(document.querySelector(".key-change-row")).toBeInTheDocument();
     expect(document.querySelector(".breakdown-row")).toBeInTheDocument();
   });
@@ -153,5 +156,21 @@ describe("ParameterManagementHomePage", () => {
     expect(metricCardCss).toContain("min-height: 96px;");
     expect(pageCardCss).toContain("padding: 12px 14px;");
     expect(metricValueCss).toContain("font-size: 22px;");
+  });
+
+  it("defines leaderboard hotspot styles and removes legacy hotspot-card rules", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+
+    expect(css).toContain("--risk-high: var(--danger);");
+    expect(css).toContain("--risk-low: var(--success);");
+    expect(css).toContain(".hotspot-list {");
+    expect(css).toContain(".hotspot-row-select {");
+    expect(css).toContain(".hotspot-panel {");
+    expect(css).toContain(".action-btn--primary {");
+    expect(css).toContain("@media (max-width: 768px)");
+    expect(css).not.toContain(".hotspot-card {");
+    expect(css).not.toContain(".hotspot-card.selected");
+    expect(css).not.toContain(".parameter-homepage-hotspot-head");
+    expect(css).not.toContain(".parameter-homepage-hotspot-stats");
   });
 });
