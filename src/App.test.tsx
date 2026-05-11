@@ -262,6 +262,33 @@ describe("WiseEff app shell", () => {
     expect(window.location.search).toMatch(/module=|project=/);
   });
 
+  it("renders parameter homepage hotspots as leaderboard with AI panel instead of legacy cards", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+
+    expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
+    expect(within(hotspotRegion).queryByRole("button", { name: /查看评分/ })).not.toBeInTheDocument();
+    expect(document.querySelector(".hotspot-row")).toBeInTheDocument();
+    expect(document.querySelector(".hotspot-list")).toBeInTheDocument();
+    expect(within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ })).toBeInTheDocument();
+    expect(within(hotspotRegion).getByText("AI 建议动作")).toBeInTheDocument();
+  });
+
+  it("navigates from a hotspot AI primary action with contextual query strings", () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /创建高风险专项审阅/ }));
+
+    expect(window.location.pathname).toBe("/parameter-review");
+    expect(window.location.search).toContain("filter=high-risk");
+    expect(window.location.search).toContain("module=");
+  });
+
   it("uses dropdown controls for project, importance, and module filters", () => {
     window.history.replaceState(null, "", "/parameters");
 

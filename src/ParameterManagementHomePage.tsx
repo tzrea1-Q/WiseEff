@@ -1,11 +1,12 @@
-import { useMemo, useState } from "react";
-import type { ComponentType } from "react";
-import { ArrowRight, BarChart3, Flame, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import type { ComponentType, KeyboardEvent, ReactNode } from "react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronRight, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
 import { roles, type PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
+import { computeEyebrow, generateHotspotActions } from "./hotspotPresentation";
+import { useIsAccordionMode } from "./components/hotspots/useIsAccordionMode";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type ParameterManagementHomePageProps = {
@@ -20,16 +21,24 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
 ];
 
 const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
+const SCORE_CEILING = 250;
+const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"]; label: string }> = [
+  { key: "frequency", label: "变更频次" },
+  { key: "risk", label: "风险权重" },
+  { key: "impact", label: "影响范围" },
+  { key: "workflow", label: "流程堆积" },
+  { key: "drift", label: "异常偏离" }
+];
 
 export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("module");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
+  const isAccordionMode = useIsAccordionMode(1099);
 
   const analytics = useMemo(
     () => deriveParameterHomepageAnalytics(state, timeWindow, hotspotDimension),
     [state, timeWindow, hotspotDimension]
   );
-  const selectedHotspot = analytics.hotspots.find((hotspot) => hotspot.id === selectedHotspotId) ?? analytics.hotspots[0] ?? null;
   const developerCount = roles.filter((role) => role.id.includes("developer") || role.name.includes("开发")).length;
 
   return (
@@ -56,22 +65,23 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
               {analytics.timeWindowLabel} · {analytics.hotspots.length} 个热区
             </span>
           </div>
-          <HotspotDimensionSelect value={hotspotDimension} onChange={setHotspotDimension} />
+          <HotspotDimensionSelect
+            value={hotspotDimension}
+            onChange={(nextDimension) => {
+              setHotspotDimension(nextDimension);
+              setSelectedHotspotId(null);
+            }}
+          />
         </div>
-        <div className="parameter-homepage-hotspot-layout">
-          <div className="parameter-homepage-hotspot-list">
-            {analytics.hotspots.map((hotspot) => (
-              <HotspotCard
-                key={hotspot.id}
-                hotspot={hotspot}
-                selected={hotspot.id === selectedHotspot?.id}
-                onSelect={() => setSelectedHotspotId(hotspot.id)}
-                onNavigate={onNavigate}
-              />
-            ))}
-          </div>
-          <HotspotExplanation hotspot={selectedHotspot} />
-        </div>
+        <HotspotLeaderboard
+          hotspots={analytics.hotspots}
+          selectedId={selectedHotspotId}
+          sectionId="parameter-home-hotspots"
+          state={state}
+          isAccordionMode={isAccordionMode}
+          onNavigate={onNavigate}
+          onSelectionChange={setSelectedHotspotId}
+        />
       </section>
 
       <section className="parameter-homepage-insights">
@@ -167,90 +177,321 @@ function MetricCard({
   );
 }
 
-function HotspotCard({
-  hotspot,
-  selected,
-  onSelect,
-  onNavigate
+export function HotspotLeaderboard({
+  hotspots,
+  selectedId,
+  sectionId,
+  state,
+  isAccordionMode,
+  onNavigate,
+  onSelectionChange
 }: {
-  hotspot: ParameterHotspot;
-  selected: boolean;
-  onSelect: () => void;
+  hotspots: ParameterHotspot[];
+  selectedId: string | null;
+  sectionId: string;
+  state: PrototypeState;
+  isAccordionMode: boolean;
   onNavigate: (path: string) => void;
+  onSelectionChange: (id: string) => void;
 }) {
-  const navigationLabel = hotspot.module === "项目参数" ? hotspot.projectCode : hotspot.module;
-  const eyebrow = hotspot.module === "项目参数" ? "项目维度" : hotspot.projectCode;
+  const rowRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const effectiveSelected = hotspots.find((hotspot) => hotspot.id === selectedId) ?? hotspots[0] ?? null;
+  const dimensionCeiling = getDimensionCeiling(hotspots);
 
-  return (
-    <Card className={selected ? "parameter-homepage-card hotspot-card selected" : "parameter-homepage-card hotspot-card"}>
-      <div className="parameter-homepage-hotspot-head">
-        <div>
-          <span>{eyebrow}</span>
-          <strong>{hotspot.title}</strong>
-        </div>
-        <Flame size={16} aria-hidden="true" />
-      </div>
-      <p>{hotspot.explanation}</p>
-      <div className="parameter-homepage-hotspot-stats">
-        <span>{hotspot.status}</span>
-        <strong>{hotspot.score} 分</strong>
-      </div>
-      <div className="parameter-homepage-hotspot-actions">
-        <Button type="button" variant="outline" onClick={onSelect}>
-          查看评分
-        </Button>
-        <Button type="button" variant="outline" onClick={() => onNavigate(hotspot.suggestedPath)}>
-          进入 {navigationLabel}
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function HotspotExplanation({ hotspot }: { hotspot: ParameterHotspot | null }) {
-  if (!hotspot) {
+  if (!effectiveSelected) {
     return (
-      <Card className="parameter-homepage-card homepage-panel parameter-homepage-explanation">
-        <h3>AI 评分拆解</h3>
-        <p>暂无可展示的热区。</p>
-      </Card>
+      <div className="parameter-homepage-hotspot-layout">
+        <div className="hotspot-empty">暂无可展示的热区。</div>
+      </div>
     );
   }
 
-  const dimensions = [
-    { label: "变更频次", value: hotspot.scoreBreakdown.frequency, description: "统计所选窗口内参数与审阅请求的变更密度。" },
-    { label: "风险权重", value: hotspot.scoreBreakdown.risk, description: "按高、中、低风险参数数量换算治理优先级。" },
-    { label: "影响范围", value: hotspot.scoreBreakdown.impact, description: "结合参数定义覆盖面与日志命中信号评估影响面。" },
-    { label: "流程堆积", value: hotspot.scoreBreakdown.workflow, description: "反映审阅请求和高风险项在流程中的堆积程度。" },
-    { label: "异常偏离", value: hotspot.scoreBreakdown.drift, description: "衡量当前值相对推荐值的偏离幅度。" }
-  ];
+  const selectByIndex = (index: number) => {
+    const hotspot = hotspots[index];
+
+    if (hotspot) {
+      onSelectionChange(hotspot.id);
+    }
+  };
+
+  const onKeyDownFor =
+    (index: number) =>
+    (event: KeyboardEvent<HTMLButtonElement>) => {
+      const lastIndex = hotspots.length - 1;
+      const focusIndex = (nextIndex: number) => {
+        event.preventDefault();
+        rowRefs.current[nextIndex]?.focus();
+      };
+
+      if (event.key === "ArrowDown") {
+        focusIndex(Math.min(index + 1, lastIndex));
+      } else if (event.key === "ArrowUp") {
+        focusIndex(Math.max(index - 1, 0));
+      } else if (event.key === "Home") {
+        focusIndex(0);
+      } else if (event.key === "End") {
+        focusIndex(lastIndex);
+      } else if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectByIndex(index);
+      }
+    };
 
   return (
-    <Card className="parameter-homepage-card homepage-panel parameter-homepage-explanation">
-      <h3>AI 评分拆解</h3>
-      <p>{hotspot.explanation}</p>
-      <Separator />
-      <div className="parameter-homepage-evidence">
+    <div className="parameter-homepage-hotspot-layout" data-accordion={isAccordionMode ? "true" : "false"}>
+      <div className="hotspot-leaderboard">
+        <div className="hotspot-list-head" role="presentation">
+          <span>排名</span>
+          <span>模块</span>
+          <span>状态</span>
+          <span>热度</span>
+          <span>趋势</span>
+          <span aria-hidden="true">·</span>
+        </div>
+        <ul className="hotspot-list" role="list">
+          {hotspots.map((hotspot, index) => {
+            const selected = hotspot.id === effectiveSelected.id;
+            const panelId = `${sectionId}-panel`;
+
+            return (
+              <HotspotRow
+                key={hotspot.id}
+                hotspot={hotspot}
+                rank={index + 1}
+                eyebrow={computeEyebrow(hotspot, state)}
+                selected={selected}
+                panelId={panelId}
+                isAccordionMode={isAccordionMode}
+                tabIndex={selected ? 0 : -1}
+                rowSelectRef={(element) => {
+                  rowRefs.current[index] = element;
+                }}
+                onSelect={() => onSelectionChange(hotspot.id)}
+                onNavigate={onNavigate}
+                onKeyDown={onKeyDownFor(index)}
+              >
+                {isAccordionMode && selected ? (
+                  <HotspotDetailPanel
+                    hotspot={hotspot}
+                    dimensionCeiling={dimensionCeiling}
+                    sectionId={sectionId}
+                    variant="accordion"
+                    onNavigate={onNavigate}
+                  />
+                ) : null}
+              </HotspotRow>
+            );
+          })}
+        </ul>
+      </div>
+      {!isAccordionMode ? (
+        <HotspotDetailPanel
+          hotspot={effectiveSelected}
+          dimensionCeiling={dimensionCeiling}
+          sectionId={sectionId}
+          variant="desktop"
+          onNavigate={onNavigate}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function HotspotRow({
+  hotspot,
+  rank,
+  eyebrow,
+  selected,
+  panelId,
+  isAccordionMode,
+  tabIndex,
+  rowSelectRef,
+  onSelect,
+  onNavigate,
+  onKeyDown,
+  children
+}: {
+  hotspot: ParameterHotspot;
+  rank: number;
+  eyebrow: string;
+  selected: boolean;
+  panelId: string;
+  isAccordionMode: boolean;
+  tabIndex: number;
+  rowSelectRef: (element: HTMLButtonElement | null) => void;
+  onSelect: () => void;
+  onNavigate: (path: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
+  children?: ReactNode;
+}) {
+  const navigationLabel = hotspot.module === "项目参数" ? hotspot.projectCode : hotspot.title;
+
+  return (
+    <li className="hotspot-row" data-selected={selected ? "true" : "false"} data-rank={rank}>
+      <button
+        ref={rowSelectRef}
+        type="button"
+        className="hotspot-row-select"
+        aria-current={selected ? "true" : undefined}
+        aria-controls={panelId}
+        aria-expanded={isAccordionMode ? selected : undefined}
+        aria-label={`选择热区 #${rank} ${hotspot.title}`}
+        tabIndex={tabIndex}
+        onClick={onSelect}
+        onKeyDown={onKeyDown}
+      >
+        <RankCell rank={rank} />
+        <span className="hotspot-col-identity">
+          <span className="hotspot-title">{hotspot.title}</span>
+          <span className="hotspot-eyebrow">{eyebrow}</span>
+        </span>
+        <span className="hotspot-col-status">
+          <StatusTag hotspot={hotspot} />
+        </span>
+        <span className="hotspot-col-score">
+          <ScoreBar value={hotspot.score} />
+          <span className="hotspot-score-num">{hotspot.score.toFixed(1)}</span>
+        </span>
+        <span className="hotspot-col-trend">
+          <TrendIndicator hotspot={hotspot} />
+        </span>
+      </button>
+      <button type="button" className="hotspot-row-enter" aria-label={`进入 ${navigationLabel}`} onClick={() => onNavigate(hotspot.suggestedPath)}>
+        <ChevronRight size={16} aria-hidden="true" />
+      </button>
+      {children}
+    </li>
+  );
+}
+
+function RankCell({ rank }: { rank: number }) {
+  return (
+    <span className="hotspot-col-rank">
+      <span className="hotspot-rank-dot" aria-hidden="true" />
+      <span className="hotspot-rank-num">#{rank}</span>
+    </span>
+  );
+}
+
+function StatusTag({ hotspot }: { hotspot: ParameterHotspot }) {
+  return (
+    <span className="status-tag" data-level={hotspot.statusLevel}>
+      {hotspot.status}
+    </span>
+  );
+}
+
+function ScoreBar({ value }: { value: number }) {
+  const width = Math.min(100, (value / SCORE_CEILING) * 100);
+  const tone = value >= 200 ? "high" : value >= 140 ? "watch" : "normal";
+
+  return (
+    <span className="score-bar" data-tone={tone} aria-hidden="true">
+      <span className="score-bar-fill" style={{ width: `${width}%` }} />
+    </span>
+  );
+}
+
+function TrendIndicator({ hotspot }: { hotspot: ParameterHotspot }) {
+  const Icon =
+    hotspot.trend.direction === "up" ? ArrowUpRight : hotspot.trend.direction === "down" ? ArrowDownRight : ArrowRight;
+  const prefix = hotspot.trend.delta > 0 ? "+" : "";
+
+  return (
+    <span className="trend-indicator" data-direction={hotspot.trend.direction}>
+      <Icon size={15} aria-hidden="true" />
+      <span>{prefix}{hotspot.trend.delta}%</span>
+    </span>
+  );
+}
+
+function HotspotDetailPanel({
+  hotspot,
+  dimensionCeiling,
+  sectionId,
+  variant,
+  onNavigate
+}: {
+  hotspot: ParameterHotspot;
+  dimensionCeiling: number;
+  sectionId: string;
+  variant: "desktop" | "accordion";
+  onNavigate: (path: string) => void;
+}) {
+  const titleId = `${sectionId}-panel-title`;
+
+  return (
+    <aside
+      id={`${sectionId}-panel`}
+      className="hotspot-panel"
+      data-variant={variant}
+      role="region"
+      aria-live="polite"
+      aria-labelledby={titleId}
+    >
+      <header>
+        <h3 id={titleId}>AI 评分拆解 · {hotspot.title}</h3>
+      </header>
+      <section className="hotspot-panel-evidence">
         <h4>关联证据</h4>
         <ul>
           {hotspot.evidence.map((evidence) => (
             <li key={evidence}>{evidence}</li>
           ))}
         </ul>
-      </div>
-      <div className="parameter-homepage-dimension-list">
-        {dimensions.map((dimension) => (
-          <div className="breakdown-row" key={dimension.label}>
-            <span>
-              {dimension.label}
-              <small>{dimension.description}</small>
-            </span>
-            <strong>{dimension.value} 项</strong>
-          </div>
-        ))}
-      </div>
-    </Card>
+      </section>
+      <section className="hotspot-panel-dimensions">
+        <h4>维度得分</h4>
+        <ul className="dimension-bars">
+          {HOTSPOT_DIMENSIONS.map((dimension) => {
+            const value = hotspot.scoreBreakdown[dimension.key];
+            return (
+              <li key={dimension.key}>
+                <span className="dim-label">{dimension.label}</span>
+                <span
+                  className="dim-bar"
+                  role="progressbar"
+                  aria-label={dimension.label}
+                  aria-valuemin={0}
+                  aria-valuemax={dimensionCeiling}
+                  aria-valuenow={value}
+                >
+                  <span style={{ width: `${Math.min(100, (value / dimensionCeiling) * 100)}%` }} />
+                </span>
+                <span className="dim-value">{value}</span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+      <section className="hotspot-panel-actions">
+        <h4>AI 建议动作</h4>
+        <RecommendedActions hotspot={hotspot} onNavigate={onNavigate} />
+      </section>
+    </aside>
   );
+}
+
+function RecommendedActions({ hotspot, onNavigate }: { hotspot: ParameterHotspot; onNavigate: (path: string) => void }) {
+  const actions = generateHotspotActions(hotspot);
+
+  return (
+    <div className="hotspot-actions">
+      <button type="button" className="action-btn action-btn--primary" onClick={() => onNavigate(actions.primary.path)}>
+        {actions.primary.label} <ArrowRight size={14} aria-hidden="true" />
+      </button>
+      {actions.secondary ? (
+        <button type="button" className="action-btn action-btn--secondary" onClick={() => onNavigate(actions.secondary?.path ?? "")}>
+          {actions.secondary.label}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function getDimensionCeiling(hotspots: ParameterHotspot[]) {
+  const maxValue = Math.max(10, ...hotspots.flatMap((hotspot) => Object.values(hotspot.scoreBreakdown)));
+  return Math.ceil(maxValue * 1.1);
 }
 
 function FlowStat({ label, value }: { label: string; value: number }) {

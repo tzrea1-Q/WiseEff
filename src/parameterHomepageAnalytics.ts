@@ -1,4 +1,5 @@
 import type { ParameterRecord, PrototypeState, RequestStatus, RiskLevel } from "./mockData";
+import { deriveHotspotTrend, mapHotspotStatus, type HotspotStatusLevel, type HotspotTrend } from "./hotspotPresentation";
 
 export type HomepageTimeWindow = "7d" | "30d" | "180d";
 export type HotspotDimension = "module" | "project";
@@ -42,6 +43,9 @@ export type ParameterHotspot = {
   projectCode: string;
   module: string;
   status: string;
+  statusLevel: HotspotStatusLevel;
+  trend: HotspotTrend;
+  lastChangedAt?: string;
   changeCount: number;
   highRiskCount: number;
   score: number;
@@ -163,7 +167,7 @@ export function deriveParameterHomepageAnalytics(
   const windowedAuditEvents = takeWindowedItems(state.auditEvents, profile.auditRatio);
   const cycleSignalCount = profile.cycleSignals ? state.logs.length : 0;
   const changeEvents = Math.max(1, Math.round(windowedChangeRequests.length * profile.requestWeight + windowedAuditEvents.length * profile.auditWeight)) + cycleSignalCount;
-  const hotspots = deriveHotspots(state, projectCodes, timeWindowLabel, profile, windowedChangeRequests, hotspotDimension);
+  const hotspots = deriveHotspots(state, projectCodes, timeWindow, timeWindowLabel, profile, windowedChangeRequests, hotspotDimension);
   const flowHealth = deriveFlowHealth(state);
   const summary: HomepageSummary = {
     totalParameters: state.parameters.length,
@@ -255,6 +259,7 @@ function deriveEntryCards(state: PrototypeState, summary: HomepageSummary, flowH
 function deriveHotspots(
   state: PrototypeState,
   projectCodes: Map<string, string>,
+  timeWindow: HomepageTimeWindow,
   timeWindowLabel: string,
   profile: (typeof timeWindowProfiles)[HomepageTimeWindow],
   windowedChangeRequests: PrototypeState["changeRequests"],
@@ -276,6 +281,7 @@ function deriveHotspots(
       const relatedRequests = windowedChangeRequests.filter(
         (request) => parameters.some((parameter) => parameter.id === request.parameterId)
       );
+      const lastChangedAt = relatedRequests[0]?.createdAt;
       const highRiskCount = parameters.filter((parameter) => parameter.risk === "High").length;
       const driftValue = parameters.reduce((total, parameter) => total + driftScore(parameter), 0);
       const logSignals =
@@ -304,15 +310,21 @@ function deriveHotspots(
             ? `/parameter-review?project=${encodeURIComponent(projectId)}`
             : `/parameter-comparison?project=${encodeURIComponent(projectId)}`;
 
+      const roundedScore = Math.round(score * 10) / 10;
+      const status = mapHotspotStatus({ highRiskCount, score: roundedScore });
+
       return {
         id,
         title,
         projectCode,
         module,
-        status: highRiskCount > 0 || relatedRequests.length > 0 ? "需要关注" : "持续观察",
+        status: status.label,
+        statusLevel: status.level,
+        trend: deriveHotspotTrend({ id }, timeWindow),
+        lastChangedAt,
         changeCount: relatedRequests.length,
         highRiskCount,
-        score: Math.round(score * 10) / 10,
+        score: roundedScore,
         scoreBreakdown,
         explanation,
         evidence: [
