@@ -1085,6 +1085,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-left: auto;
   white-space: nowrap;
 }
 
@@ -3876,6 +3877,7 @@ td small {
   .page-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
+    margin-left: 0;
   }
 
   .filter-panel,
