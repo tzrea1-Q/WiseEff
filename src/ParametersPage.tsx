@@ -406,7 +406,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             title="修改草稿"
             footer={
               <div className="draft-sheet-footer">
-                <span>{validPendingSubmissionItems.length} 项可提交</span>
+                <span>
+                  提交后将进入参数管理员审阅队列 ·{" "}
+                  <button className="link-button" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+                    查看我的提交
+                  </button>
+                </span>
                 <button className="button primary" type="button" disabled={!allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
                   {submitButtonText}
                 </button>

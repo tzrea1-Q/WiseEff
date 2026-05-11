@@ -8,17 +8,17 @@ beforeEach(() => {
   cleanup();
 });
 
-function renderPage(dispatch = vi.fn()) {
+function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
   const result = render(
       <ParametersPage
         state={initialState}
         dispatch={dispatch}
-        onNavigate={() => {}}
+        onNavigate={onNavigate}
         search=""
       />
   );
 
-  return { ...result, dispatch };
+  return { ...result, dispatch, onNavigate };
 }
 
 describe("ParametersPage (抽出后的模块)", () => {
@@ -42,6 +42,24 @@ describe("ParametersPage (抽出后的模块)", () => {
 });
 
 describe("ParametersPage draft edge cases", () => {
+  it("does not show the old hard-coded timeline inside the draft sheet", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));
+
+    const sheet = screen.getByRole("dialog");
+    expect(within(sheet).queryByText("管理员合入")).not.toBeInTheDocument();
+  });
+
+  it("navigates to my submissions from the draft sheet footer", () => {
+    const onNavigate = vi.fn();
+    renderPage(vi.fn(), onNavigate);
+    fireEvent.click(screen.getByRole("checkbox", { name: /fast_charge_current_limit_ma/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: "查看我的提交" }));
+
+    expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions");
+  });
+
   it("does not render an editable draft card for a focused unselected row", () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
