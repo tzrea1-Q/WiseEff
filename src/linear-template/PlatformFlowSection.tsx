@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type PreviewKey = "parameters" | "logs" | "debugging";
 
@@ -65,14 +65,47 @@ const tabs: TabConfig[] = [
   }
 ];
 
+const AUTO_INTERVAL = 6000;
+
 export function PlatformFlowSection() {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [progress, setProgress] = useState(0);
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const activeTab = tabs[activeIndex];
+
+  const clearTimers = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (progressRef.current) clearInterval(progressRef.current);
+    timerRef.current = null;
+    progressRef.current = null;
+  }, []);
+
+  const startAutoRotation = useCallback(() => {
+    clearTimers();
+    setProgress(0);
+    const step = 50;
+    progressRef.current = setInterval(() => {
+      setProgress((p) => Math.min(p + step / AUTO_INTERVAL, 1));
+    }, step);
+    timerRef.current = setInterval(() => {
+      setActiveIndex((i) => (i + 1) % tabs.length);
+      setProgress(0);
+    }, AUTO_INTERVAL);
+  }, [clearTimers]);
+
+  useEffect(() => {
+    if (!isPaused) startAutoRotation();
+    return clearTimers;
+  }, [isPaused, activeIndex, startAutoRotation, clearTimers]);
 
   const selectTab = (nextIndex: number, shouldFocus = false) => {
     const normalizedIndex = (nextIndex + tabs.length) % tabs.length;
     setActiveIndex(normalizedIndex);
+    setIsPaused(true);
+    setTimeout(() => setIsPaused(false), AUTO_INTERVAL * 2);
 
     if (shouldFocus) {
       window.requestAnimationFrame(() => tabRefs.current[normalizedIndex]?.focus());
@@ -86,7 +119,13 @@ export function PlatformFlowSection() {
           <h2 id="platform-flow-title">一条可审阅工作流，三种场景接入</h2>
           <p>把参数、日志和设备调试压缩进同一个可核对视图，保留 Agent 辅助与人工确认的边界。</p>
         </div>
-        <div className="platform-flow-tablist" role="tablist" aria-label="WiseEff 工作流场景">
+        <div
+          className="platform-flow-tablist"
+          role="tablist"
+          aria-label="WiseEff 工作流场景"
+          onMouseEnter={() => setIsPaused(true)}
+          onMouseLeave={() => setIsPaused(false)}
+        >
           {tabs.map((tab, index) => (
             <button
               type="button"
@@ -116,11 +155,18 @@ export function PlatformFlowSection() {
               }}
             >
               {tab.label}
+              {index === activeIndex && (
+                <span
+                  className="platform-flow-tab-progress"
+                  style={{ transform: `scaleX(${progress})` }}
+                />
+              )}
             </button>
           ))}
         </div>
         <div
           className="platform-flow-panel"
+          key={activeTab.key}
           id={`platform-flow-panel-${activeTab.key}`}
           role="tabpanel"
           aria-labelledby={`platform-flow-tab-${activeTab.key}`}

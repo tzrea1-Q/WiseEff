@@ -45,8 +45,8 @@ export function SubAppEntryRow({ state }: SubAppEntryRowProps) {
 
   return (
     <div className="sub-app-entry-row" role="list" aria-label="子应用入口">
-      {cards.map((card) => (
-        <div role="listitem" key={card.title}>
+      {cards.map((card, index) => (
+        <div role="listitem" key={card.title} className={`linear-fade-item delay-${index + 3}`}>
           <SubAppCard {...card} />
         </div>
       ))}
