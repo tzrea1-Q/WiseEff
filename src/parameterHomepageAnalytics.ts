@@ -56,20 +56,6 @@ export type ParameterHotspot = {
   suggestedPath: string;
 };
 
-export type KeyParameterChange = {
-  id: string;
-  parameterName: string;
-  module: string;
-  projectCode: string;
-  currentValue: string;
-  recommendedValue: string;
-  driftLabel: string;
-  reason: string;
-  risk: RiskLevel;
-  status: string;
-  suggestedPath: string;
-};
-
 export type ParameterHomepageAnalytics = {
   timeWindow: HomepageTimeWindow;
   timeWindowLabel: string;
@@ -78,12 +64,9 @@ export type ParameterHomepageAnalytics = {
   flowHealth: HomepageFlowHealth;
   entryCards: HomepageEntryCard[];
   hotspots: ParameterHotspot[];
-  keyChanges: KeyParameterChange[];
-  aiSummary: {
-    title: string;
-    body: string;
-    dimensions: Array<{ label: string; value: string }>;
-  };
+  updateTrend: UpdateTrendPoint[];
+  riskBuckets: ProjectRiskBucket[];
+  opsHeadline: string;
 };
 
 const timeWindowLabels: Record<HomepageTimeWindow, string> = {
@@ -108,7 +91,6 @@ const timeWindowProfiles: Record<
     logWeight: number;
     parameterWeight: number;
     hotspotLimit: number;
-    keyChangeLimit: number;
     cycleSignals: boolean;
   }
 > = {
@@ -120,7 +102,6 @@ const timeWindowProfiles: Record<
     logWeight: 0.65,
     parameterWeight: 0.75,
     hotspotLimit: 4,
-    keyChangeLimit: 3,
     cycleSignals: false
   },
   "30d": {
@@ -131,7 +112,6 @@ const timeWindowProfiles: Record<
     logWeight: 1,
     parameterWeight: 1,
     hotspotLimit: 5,
-    keyChangeLimit: 4,
     cycleSignals: false
   },
   "180d": {
@@ -142,7 +122,6 @@ const timeWindowProfiles: Record<
     logWeight: 1.2,
     parameterWeight: 1.15,
     hotspotLimit: 6,
-    keyChangeLimit: 5,
     cycleSignals: true
   }
 };
@@ -178,7 +157,7 @@ export function deriveParameterHomepageAnalytics(
     activeHotspots: hotspots.length
   };
 
-  return {
+  const analytics: ParameterHomepageAnalytics = {
     timeWindow,
     timeWindowLabel,
     hotspotDimension,
@@ -186,19 +165,13 @@ export function deriveParameterHomepageAnalytics(
     flowHealth,
     entryCards: deriveEntryCards(state, summary, flowHealth),
     hotspots,
-    keyChanges: deriveKeyChanges(state, projectCodes, profile),
-    aiSummary: {
-      title: "AI 参数治理摘要",
-      body: "系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。",
-      dimensions: [
-        { label: "变更频次", value: `${summary.changeEvents} 个事件` },
-        { label: "风险权重", value: `${summary.highRiskParameters} 个高风险参数` },
-        { label: "影响范围", value: `${summary.parameterDefinitions} 类参数定义` },
-        { label: "流程堆积", value: `${flowHealth.reviewQueue} 个待处理请求` },
-        { label: "异常偏离", value: `${Math.round(averageDrift(state.parameters))}% 平均偏离` }
-      ]
-    }
+    updateTrend: deriveUpdateTrendSeries(timeWindow),
+    riskBuckets: deriveProjectRiskDistribution(state, timeWindow),
+    opsHeadline: ""
   };
+
+  analytics.opsHeadline = generateOpsHeadline(analytics);
+  return analytics;
 }
 
 function takeWindowedItems<T>(items: T[], ratio: number) {
@@ -340,36 +313,6 @@ function deriveHotspots(
     .slice(0, Math.max(3, Math.min(profile.hotspotLimit, groups.size)));
 }
 
-function deriveKeyChanges(
-  state: PrototypeState,
-  projectCodes: Map<string, string>,
-  profile: (typeof timeWindowProfiles)[HomepageTimeWindow]
-): KeyParameterChange[] {
-  return [...state.parameters]
-    .sort((first, second) => {
-      const priorityDelta = riskWeight[second.risk] - riskWeight[first.risk];
-      return priorityDelta === 0 ? driftScore(second) - driftScore(first) : priorityDelta;
-    })
-    .slice(0, profile.keyChangeLimit)
-    .map((parameter) => {
-      const drift = driftScore(parameter);
-
-      return {
-        id: parameter.id,
-        parameterName: parameter.name,
-        module: parameter.module,
-        projectCode: projectCodes.get(parameter.projectId) ?? parameter.projectId,
-        currentValue: formatParameterValue(parameter.currentValue, parameter.unit),
-        recommendedValue: formatParameterValue(parameter.recommendedValue, parameter.unit),
-        driftLabel: `${Math.round(drift)}% 偏离`,
-        reason: parameter.explanation || parameter.description,
-        risk: parameter.risk,
-        status: drift > 10 || parameter.risk === "High" ? "建议优先处理" : "建议复核",
-        suggestedPath: `/parameters?project=${encodeURIComponent(parameter.projectId)}&module=${encodeURIComponent(parameter.module)}&parameter=${encodeURIComponent(parameter.id)}`
-      };
-    });
-}
-
 function mentionsModule(log: PrototypeState["logs"][number], module: string) {
   const evidenceText = log.evidence.flatMap((evidence) => [
     evidence.inference,
@@ -381,10 +324,6 @@ function mentionsModule(log: PrototypeState["logs"][number], module: string) {
     .toLowerCase()
     .split(/\s+/)
     .some((part) => part.length > 2 && haystack.includes(part));
-}
-
-function averageDrift(parameters: ParameterRecord[]) {
-  return parameters.length === 0 ? 0 : parameters.reduce((total, parameter) => total + driftScore(parameter), 0) / parameters.length;
 }
 
 function driftScore(parameter: ParameterRecord) {
@@ -399,6 +338,147 @@ function driftScore(parameter: ParameterRecord) {
   return (Math.abs(current - recommended) / baseline) * 100;
 }
 
-function formatParameterValue(value: string, unit: string) {
-  return unit ? `${value}${unit}` : value;
+export type UpdateTrendPoint = {
+  label: string;
+  value: number;
+  date: string;
+};
+
+const TREND_REFERENCE_DATE = new Date(Date.UTC(2026, 4, 10));
+
+const TREND_CONFIG: Record<
+  HomepageTimeWindow,
+  { count: number; granularity: "day" | "week"; seed: number }
+> = {
+  "7d": { count: 7, granularity: "day", seed: 70071 },
+  "30d": { count: 30, granularity: "day", seed: 300301 },
+  "180d": { count: 26, granularity: "week", seed: 1801801 }
+};
+
+function lcg(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 0x100000000;
+  };
+}
+
+export function deriveUpdateTrendSeries(
+  timeWindow: HomepageTimeWindow,
+  referenceDate: Date = TREND_REFERENCE_DATE
+): UpdateTrendPoint[] {
+  const { count, granularity, seed } = TREND_CONFIG[timeWindow];
+  const rand = lcg(seed);
+  const peakIndex = Math.floor(count * 0.55);
+  const upwardStart = Math.floor((count * 2) / 3);
+  const series: UpdateTrendPoint[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    let value = Math.floor(rand() * 6);
+    if (index >= upwardStart) value += 1;
+    if (index === peakIndex) value = 7 + Math.floor(rand() * 2);
+    value = Math.max(0, Math.min(8, value));
+
+    const offset = count - 1 - index;
+    const date = new Date(referenceDate);
+    if (granularity === "day") {
+      date.setUTCDate(date.getUTCDate() - offset);
+    } else {
+      date.setUTCDate(date.getUTCDate() - offset * 7);
+    }
+
+    const month = date.getUTCMonth() + 1;
+    const day = date.getUTCDate();
+    const label = granularity === "day" ? `${month}/${day}` : `第${index + 1}周`;
+
+    series.push({ label, value, date: date.toISOString() });
+  }
+
+  return series;
+}
+
+export type ProjectRiskBucket = {
+  projectId: string;
+  projectCode: string;
+  projectName: string;
+  high: number;
+  medium: number;
+  low: number;
+  total: number;
+};
+
+const RISK_WINDOW_SCALE: Record<HomepageTimeWindow, number> = {
+  "7d": 0.35,
+  "30d": 1,
+  "180d": 1.6
+};
+
+const RISK_MULTIPLIERS = { high: 2, medium: 3, low: 2 } as const;
+
+function projectSeedFromId(id: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < id.length; index += 1) {
+    hash = (hash ^ id.charCodeAt(index)) >>> 0;
+    hash = (hash * 16777619) >>> 0;
+  }
+  return hash;
+}
+
+export function deriveProjectRiskDistribution(
+  state: PrototypeState,
+  timeWindow: HomepageTimeWindow
+): ProjectRiskBucket[] {
+  const windowScale = RISK_WINDOW_SCALE[timeWindow];
+  const windowSeed = TREND_CONFIG[timeWindow].seed;
+
+  return state.configDraft.projects.map((project) => {
+    const parameters = state.parameters.filter(
+      (parameter) => parameter.projectId === project.id
+    );
+    const rand = lcg(projectSeedFromId(project.id) ^ windowSeed);
+    const jitter = () => 0.9 + rand() * 0.3;
+
+    const highSource = parameters.filter((parameter) => parameter.risk === "High").length;
+    const mediumSource = parameters.filter((parameter) => parameter.risk === "Medium").length;
+    const lowSource = parameters.filter((parameter) => parameter.risk === "Low").length;
+
+    const high = Math.max(
+      0,
+      Math.round(highSource * RISK_MULTIPLIERS.high * windowScale * jitter())
+    );
+    const medium = Math.max(
+      0,
+      Math.round(mediumSource * RISK_MULTIPLIERS.medium * windowScale * jitter())
+    );
+    const low = Math.max(
+      0,
+      Math.round(lowSource * RISK_MULTIPLIERS.low * windowScale * jitter())
+    );
+
+    return {
+      projectId: project.id,
+      projectCode: project.code,
+      projectName: project.name,
+      high,
+      medium,
+      low,
+      total: high + medium + low
+    };
+  });
+}
+
+export function generateOpsHeadline(analytics: ParameterHomepageAnalytics): string {
+  const { timeWindowLabel, hotspots, riskBuckets, hotspotDimension } = analytics;
+  const topHotspot = hotspots[0];
+  const highRiskLeader = [...riskBuckets].sort((first, second) => second.high - first.high)[0];
+
+  if (!topHotspot || !highRiskLeader || highRiskLeader.high === 0) {
+    return `${timeWindowLabel}参数库运行平稳，暂无需优先处理的高风险热点。`;
+  }
+
+  if (hotspotDimension === "module") {
+    return `${timeWindowLabel}参数修改集中在 ${topHotspot.title}，${highRiskLeader.projectCode} 待治理高风险参数最多（${highRiskLeader.high} 项），建议优先关注。`;
+  }
+
+  return `${timeWindowLabel}${topHotspot.title} 修改最活跃，待治理高风险参数 ${highRiskLeader.high} 项，建议优先关注。`;
 }

@@ -120,7 +120,11 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
     expect(screen.getByText("热门模块")).toBeInTheDocument();
-    expect(screen.getByText("关键参数变化")).toBeInTheDocument();
+    expect(screen.getByTestId("parameter-home-headline")).toBeInTheDocument();
+    expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
+    expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
+    expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
+    expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
@@ -289,7 +293,8 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector(".hotspot-row")).toBeInTheDocument();
     expect(document.querySelector(".hotspot-list")).toBeInTheDocument();
     expect(within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ })).toBeInTheDocument();
-    expect(within(hotspotRegion).getByText("AI 建议动作")).toBeInTheDocument();
+    expect(within(hotspotRegion).queryByText("AI 建议动作")).not.toBeInTheDocument();
+    expect(within(hotspotRegion).getByRole("button", { name: /创建高风险专项审阅/ })).toBeInTheDocument();
   });
 
   it("navigates from a hotspot AI primary action with contextual query strings", () => {
@@ -745,8 +750,15 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热门模块", "关键参数变化", "参数工作台", "参数合入审核"],
-        absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
+        present: ["热门模块", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "项目参数工作台", "参数合入审核"],
+        absent: [
+          "WiseEff Prototype",
+          "Linear is a better way",
+          "Powering the world's best product teams",
+          "Issue tracking you'll enjoy using",
+          "关键参数变化",
+          "审核合入情况"
+        ]
       },
       {
         path: "/parameters",

@@ -30,12 +30,18 @@ describe("ParameterManagementHomePage", () => {
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("管理项目总数")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("3")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("开发人员总数")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("2")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.developers.length))).toBeInTheDocument();
     expect(screen.queryByText("共享参数定义")).not.toBeInTheDocument();
     expect(screen.queryByText("关键风险参数")).not.toBeInTheDocument();
+    expect(screen.getByTestId("parameter-home-headline")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
+    expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
+    expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
+    expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
+    expect(document.querySelector(".project-risk-bar-chart")).toBeInTheDocument();
     expect(screen.getByText("热门模块")).toBeInTheDocument();
-    expect(screen.getByText("关键参数变化")).toBeInTheDocument();
-    expect(screen.getByText("审核合入情况")).toBeInTheDocument();
+    expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
+    expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(screen.queryByText("治理流健康度")).not.toBeInTheDocument();
   });
 
@@ -69,7 +75,8 @@ describe("ParameterManagementHomePage", () => {
     expect(panel).toBeInTheDocument();
     expect(within(panel).getByText("关联证据")).toBeInTheDocument();
     expect(within(panel).getByText("维度得分")).toBeInTheDocument();
-    expect(within(panel).getByText("AI 建议动作")).toBeInTheDocument();
+    expect(within(panel).queryByText("AI 建议动作")).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: /创建高风险专项审阅/ })).toBeInTheDocument();
     expect(within(panel).getByRole("progressbar", { name: "变更频次" })).toBeInTheDocument();
     expect(within(panel).getByRole("progressbar", { name: "风险权重" })).toBeInTheDocument();
     expect(within(panel).queryByText("统计所选窗口内参数与审阅请求的变更密度。")).not.toBeInTheDocument();
@@ -111,14 +118,20 @@ describe("ParameterManagementHomePage", () => {
     const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块" });
     const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目" });
 
+    expect(document.querySelector(".parameter-homepage-dimension-switch")).toBeInTheDocument();
+    expect(moduleToggle).toHaveClass("parameter-homepage-dimension-option");
+    expect(projectToggle).toHaveClass("parameter-homepage-dimension-option");
     expect(moduleToggle).toHaveAttribute("aria-checked", "true");
     expect(projectToggle).toHaveAttribute("aria-checked", "false");
+    expect(moduleToggle).toHaveAttribute("data-state", "on");
+    expect(projectToggle).toHaveAttribute("data-state", "off");
     expect(within(hotspotRegion).getByText("Charging Policy")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("AUR-Prod · Charging Policy")).not.toBeInTheDocument();
 
     fireEvent.click(projectToggle);
 
     expect(projectToggle).toHaveAttribute("aria-checked", "true");
+    expect(projectToggle).toHaveAttribute("data-state", "on");
     expect(within(hotspotRegion).getByText("AUR-Prod")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("Charging Policy")).not.toBeInTheDocument();
   });
@@ -130,17 +143,24 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".parameter-homepage-hero")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-window-switcher")).not.toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-select")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-dimension-switch")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-dimension-option")).toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).not.toBeInTheDocument();
-    expect(document.querySelector(".homepage-main-grid")).toBeInTheDocument();
+    expect(document.querySelector(".homepage-main-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-metric-card")).toBeInTheDocument();
     expect(document.querySelector(".homepage-panel")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-headline")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-charts")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-chart-card")).toBeInTheDocument();
+    expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
+    expect(document.querySelector(".project-risk-bar-chart")).toBeInTheDocument();
     expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
     expect(document.querySelector(".hotspot-row")).toBeInTheDocument();
     expect(document.querySelector(".hotspot-list")).toBeInTheDocument();
     expect(document.querySelector(".hotspot-panel")).toBeInTheDocument();
-    expect(document.querySelector(".key-change-row")).toBeInTheDocument();
-    expect(document.querySelector(".breakdown-row")).toBeInTheDocument();
+    expect(document.querySelector(".key-change-row")).not.toBeInTheDocument();
+    expect(document.querySelector(".breakdown-row")).not.toBeInTheDocument();
   });
 
   it("keeps the metric strip visually compact", () => {
@@ -161,11 +181,19 @@ describe("ParameterManagementHomePage", () => {
   it("defines leaderboard hotspot styles and removes legacy hotspot-card rules", () => {
     const css = readFileSync("src/styles.css", "utf8");
 
-    expect(css).toContain("--risk-high: var(--danger);");
-    expect(css).toContain("--risk-low: var(--success);");
+    expect(css).toContain("--risk-high: #d23c3c;");
+    expect(css).toContain("--risk-medium: #e4953a;");
+    expect(css).toContain("--risk-low: #6a8ad6;");
+    expect(css).toContain(".parameter-homepage-headline {");
+    expect(css).toContain(".parameter-homepage-charts {");
+    expect(css).toContain(".update-trend-chart {");
+    expect(css).toContain(".project-risk-bar-chart {");
     expect(css).toContain(".hotspot-list {");
     expect(css).toContain(".hotspot-row-select {");
     expect(css).toContain(".hotspot-panel {");
+    expect(css).toContain(".parameter-homepage-dimension-switch {");
+    expect(css).toContain(".parameter-homepage-dimension-option[data-state=\"on\"]");
+    expect(css).toContain(".parameter-homepage-select-label {");
     expect(css).toContain(".action-btn--primary {");
     expect(css).toContain("@media (max-width: 768px)");
     expect(css).not.toContain(".hotspot-card {");

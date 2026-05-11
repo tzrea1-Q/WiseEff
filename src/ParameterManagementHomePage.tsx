@@ -1,11 +1,12 @@
 import { useMemo, useRef, useState } from "react";
 import type { ComponentType, KeyboardEvent, ReactNode } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronRight, Layers3, ShieldAlert, TrendingUp } from "lucide-react";
-import { roles, type PrototypeState } from "./mockData";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronRight, Layers3, TrendingUp, Users } from "lucide-react";
+import type { PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
+import { ProjectRiskBarChart } from "./components/ProjectRiskBarChart";
+import { UpdateTrendChart } from "./components/UpdateTrendChart";
 import { computeEyebrow, generateHotspotActions } from "./hotspotPresentation";
 import { useIsAccordionMode } from "./components/hotspots/useIsAccordionMode";
-import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
@@ -20,7 +21,7 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
   { value: "project", label: "项目" }
 ];
 
-const metricIcons = [BarChart3, Layers3, TrendingUp, ShieldAlert] as const;
+const metricIcons = [BarChart3, Layers3, TrendingUp, Users] as const;
 const SCORE_CEILING = 250;
 const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"]; label: string }> = [
   { key: "frequency", label: "变更频次" },
@@ -39,22 +40,58 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
     () => deriveParameterHomepageAnalytics(state, timeWindow, hotspotDimension),
     [state, timeWindow, hotspotDimension]
   );
-  const developerCount = roles.filter((role) => role.id.includes("developer") || role.name.includes("开发")).length;
+  const metrics = [
+    { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
+    { title: "管理项目总数", value: state.configDraft.projects.length, detail: "纳入治理项目" },
+    { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
+    { title: "开发人员总数", value: state.developers.length, detail: "参数协作角色" }
+  ];
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
-      <section className="homepage-main-grid">
-        <section className="parameter-homepage-metrics" aria-label="核心指标">
-          {[
-            { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
-            { title: "管理项目总数", value: state.configDraft.projects.length, detail: "纳入治理项目" },
-            { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
-            { title: "开发人员总数", value: developerCount, detail: "参数协作角色" }
-          ].map((metric, index) => {
-            const Icon = metricIcons[index];
-            return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
-          })}
-        </section>
+      <p className="parameter-homepage-headline homepage-panel" data-testid="parameter-home-headline">
+        <span>{analytics.opsHeadline}</span>
+      </p>
+
+      <section className="parameter-homepage-metrics" aria-label="核心指标">
+        {metrics.map((metric, index) => {
+          const Icon = metricIcons[index];
+          return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
+        })}
+      </section>
+
+      <section className="parameter-homepage-charts" aria-label="参数态势图表">
+        <div className="homepage-panel parameter-homepage-chart-card">
+          <div className="parameter-homepage-section-head">
+            <div>
+              <h2>参数更新趋势</h2>
+              <span>{analytics.timeWindowLabel}</span>
+            </div>
+          </div>
+          <UpdateTrendChart series={analytics.updateTrend} timeWindow={timeWindow} />
+        </div>
+        <div className="homepage-panel parameter-homepage-chart-card">
+          <div className="parameter-homepage-section-head">
+            <div>
+              <h2>各项目参数更新情况</h2>
+              <ul className="project-risk-legend" aria-label="各项目参数更新情况颜色说明">
+                <li>
+                  <span className="project-risk-legend-dot risk-high" aria-hidden="true" />
+                  红色 高风险
+                </li>
+                <li>
+                  <span className="project-risk-legend-dot risk-medium" aria-hidden="true" />
+                  橙色 中风险
+                </li>
+                <li>
+                  <span className="project-risk-legend-dot risk-low" aria-hidden="true" />
+                  蓝色 低风险
+                </li>
+              </ul>
+            </div>
+          </div>
+          <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
+        </div>
       </section>
 
       <section className="parameter-homepage-hotspots homepage-panel" aria-label="热门模块">
@@ -83,44 +120,6 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
           onSelectionChange={setSelectedHotspotId}
         />
       </section>
-
-      <section className="parameter-homepage-insights">
-        <div className="parameter-homepage-card homepage-panel">
-          <div className="parameter-homepage-section-head">
-            <h2>关键参数变化</h2>
-            <span>优先关注推荐值偏离</span>
-          </div>
-          <ul className="parameter-homepage-change-list">
-            {analytics.keyChanges.map((change) => (
-              <li className="key-change-row" key={change.id}>
-                <div>
-                  <strong>{change.parameterName}</strong>
-                  <span>
-                    {change.projectCode} · {change.module} · {change.driftLabel}
-                  </span>
-                </div>
-                <Button type="button" variant="outline" onClick={() => onNavigate(change.suggestedPath)}>
-                  进入 <ArrowRight size={14} aria-hidden="true" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="parameter-homepage-card homepage-panel">
-          <div className="parameter-homepage-section-head">
-            <h2>审核合入情况</h2>
-            <span>当前审核与合并流转</span>
-          </div>
-          <div className="parameter-homepage-flow">
-            <FlowStat label="待审" value={analytics.flowHealth.reviewQueue} />
-            <FlowStat label="自动通过" value={analytics.flowHealth.autoChecked} />
-            <FlowStat label="待合并" value={analytics.flowHealth.waitingMerge} />
-            <FlowStat label="已合并" value={analytics.flowHealth.merged} />
-            <FlowStat label="需人工确认" value={analytics.flowHealth.needsHumanConfirmation} />
-          </div>
-        </div>
-      </section>
     </section>
   );
 }
@@ -133,8 +132,8 @@ function HotspotDimensionSelect({
   onChange: (value: HotspotDimension) => void;
 }) {
   return (
-    <div className="parameter-homepage-inline-select">
-      <span>热榜维度</span>
+    <div className="parameter-homepage-inline-select parameter-homepage-dimension-switch">
+      <span className="parameter-homepage-select-label">热榜维度</span>
       <ToggleGroup
         aria-label="热榜维度"
         className="parameter-homepage-select"
@@ -147,7 +146,7 @@ function HotspotDimensionSelect({
         }}
       >
         {hotspotDimensionOptions.map((option) => (
-          <ToggleGroupItem key={option.value} value={option.value}>
+          <ToggleGroupItem key={option.value} className="parameter-homepage-dimension-option" value={option.value}>
             {option.label}
           </ToggleGroupItem>
         ))}
@@ -465,7 +464,6 @@ function HotspotDetailPanel({
         </ul>
       </section>
       <section className="hotspot-panel-actions">
-        <h4>AI 建议动作</h4>
         <RecommendedActions hotspot={hotspot} onNavigate={onNavigate} />
       </section>
     </aside>
@@ -492,13 +490,4 @@ function RecommendedActions({ hotspot, onNavigate }: { hotspot: ParameterHotspot
 function getDimensionCeiling(hotspots: ParameterHotspot[]) {
   const maxValue = Math.max(10, ...hotspots.flatMap((hotspot) => Object.values(hotspot.scoreBreakdown)));
   return Math.ceil(maxValue * 1.1);
-}
-
-function FlowStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="parameter-homepage-flow-stat breakdown-row">
-      <span>{label}</span>
-      <strong>{value} 项</strong>
-    </div>
-  );
 }
