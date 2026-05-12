@@ -52,7 +52,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByRole("region", { name: "入口卡片" })).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "进入 项目参数工作台" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });

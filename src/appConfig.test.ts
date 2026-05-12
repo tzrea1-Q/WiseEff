@@ -10,10 +10,10 @@ describe("WiseEff prototype configuration", () => {
       "/parameter-comparison",
       "/parameter-review",
       "/parameter-admin",
-      "/logs",
-      "/log-admin",
       "/debugging",
-      "/debugging-admin"
+      "/debugging-admin",
+      "/logs",
+      "/log-admin"
     ]);
   });
 

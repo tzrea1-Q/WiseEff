@@ -129,23 +129,20 @@ describe("WiseEff app shell", () => {
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
     const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
-    const searchInput = within(topbar).getByRole("textbox", { name: "搜索" });
 
-    expect(screen.queryByRole("button", { name: "进入 项目参数工作台" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "进入 参数合入审核" })).not.toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "项目参数工作台" })).toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "项目参数对比分析" })).toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "参数合入审核" })).toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "项目参数管理后台" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "进入 参数审阅" })).not.toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "参数修改" })).toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "对比分析" })).toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "参数审阅" })).toBeInTheDocument();
+    expect(within(topbarEntries).getByRole("button", { name: "管理后台" })).toBeInTheDocument();
     expectSelectValue(timeWindowSelect, "30d");
     expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toBe(topbarEntries);
     expect(
       Boolean(topbarEntries.compareDocumentPosition(timeWindowSelect) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
-    expect(
-      Boolean(timeWindowSelect.compareDocumentPosition(searchInput) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ).toBe(true);
-    expect(screen.getByRole("button", { name: "参数首页" })).toHaveClass("active");
+    const activeNavButtons = screen.getAllByRole("button", { name: "首页" }).filter((btn) => btn.classList.contains("active"));
+    expect(activeNavButtons.length).toBe(1);
   });
 
   it("updates parameter homepage analytics from the topbar time range selector", () => {
@@ -255,7 +252,7 @@ describe("WiseEff app shell", () => {
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
 
-    fireEvent.click(within(topbarEntries).getByRole("button", { name: "项目参数工作台" }));
+    fireEvent.click(within(topbarEntries).getByRole("button", { name: "参数修改" }));
     expect(window.location.pathname).toBe("/parameters");
 
     window.history.replaceState(null, "", "/parameter-home");
@@ -265,7 +262,7 @@ describe("WiseEff app shell", () => {
     const rerenderedTopbar = document.querySelector(".topbar") as HTMLElement;
     const rerenderedEntries = within(rerenderedTopbar).getByRole("navigation", { name: "参数管理快捷入口" });
 
-    fireEvent.click(within(rerenderedEntries).getByRole("button", { name: "参数合入审核" }));
+    fireEvent.click(within(rerenderedEntries).getByRole("button", { name: "参数审阅" }));
     expect(window.location.pathname).toBe("/parameter-review");
   });
 
@@ -748,7 +745,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热门模块", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "项目参数工作台", "参数合入审核"],
+        present: ["热门模块", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
         absent: [
           "WiseEff Prototype",
           "Linear is a better way",
@@ -832,8 +829,6 @@ describe("WiseEff app shell", () => {
     window.history.replaceState(null, "", "/parameters");
 
     render(<App />);
-
-    expect(screen.getByPlaceholderText("搜索...")).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
 
@@ -1050,7 +1045,7 @@ describe("WiseEff app shell", () => {
     expect(within(sharedDefinition).getByLabelText("参数推荐值")).toHaveValue("3200");
     expect(within(projectValues).queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "项目参数对比分析" }));
+    fireEvent.click(screen.getByRole("button", { name: "对比分析" }));
 
     const fastChargeRow = Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
       row.textContent?.includes("fast_charge_current_limit_ma")
@@ -1170,7 +1165,7 @@ describe("WiseEff app shell", () => {
 
     expect(document.body).toHaveTextContent('"targetValue": "3650"');
 
-    fireEvent.click(screen.getByRole("button", { name: "参数调试平台" }));
+    fireEvent.click(screen.getByRole("button", { name: "参数调试" }));
 
     expect(screen.getByDisplayValue("3650")).toBeInTheDocument();
   });
