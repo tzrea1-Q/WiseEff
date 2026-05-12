@@ -151,7 +151,7 @@ describe("ParametersTable", () => {
   });
 
   it("renders current and recommended values as one diff column", () => {
-    setup();
+    setup({ modifiedIds: new Set(["p1"]) });
 
     expect(screen.getByRole("columnheader", { name: "当前 → 推荐" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "当前值" })).not.toBeInTheDocument();
@@ -164,11 +164,11 @@ describe("ParametersTable", () => {
     expect(diffCell?.querySelector(".parameter-value-diff")).toHaveTextContent("3200");
   });
 
-  it("adds high-risk row styling and module badge hooks", () => {
-    setup();
-    const highRiskRow = screen.getByRole("checkbox", { name: /fast_charge/ }).closest("tr");
+  it("adds modified row styling and module badge hooks", () => {
+    setup({ modifiedIds: new Set(["p1"]) });
+    const modifiedRow = screen.getByRole("checkbox", { name: /fast_charge/ }).closest("tr");
 
-    expect(highRiskRow).toHaveClass("row-risk-high");
+    expect(modifiedRow).toHaveClass("row-modified");
     expect(document.querySelector(".module-badge")).toHaveTextContent("Charging Policy");
   });
 
@@ -192,7 +192,7 @@ describe("ParametersTable", () => {
   });
 
   it("selects one row without focusing the row", () => {
-    const { onFocusRow, onSelectedIdsChange } = setup();
+    const { onFocusRow, onSelectedIdsChange } = setup({ modifiedIds: new Set(["p1", "p2", "p3"]) });
 
     fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge/ }));
 
@@ -201,28 +201,28 @@ describe("ParametersTable", () => {
     expect(onFocusRow).not.toHaveBeenCalled();
   });
 
-  it("selects all rows in the current view from the header checkbox", () => {
-    const { onSelectedIdsChange } = setup();
+  it("selects all modified rows in the current view from the header checkbox", () => {
+    const { onSelectedIdsChange } = setup({ modifiedIds: new Set(["p1", "p2", "p3"]) });
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前视图" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选已修改项" }));
 
     expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
     expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1", "p2", "p3"]));
   });
 
   it("removes all visible rows when the current view is already fully selected", () => {
-    const { onSelectedIdsChange } = setup({ selectedIds: new Set(["p1", "p2", "p3"]) });
+    const { onSelectedIdsChange } = setup({ selectedIds: new Set(["p1", "p2", "p3"]), modifiedIds: new Set(["p1", "p2", "p3"]) });
 
-    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前视图" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选已修改项" }));
 
     expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
     expect(onSelectedIdsChange.mock.calls[0][0].size).toBe(0);
   });
 
   it("marks the header checkbox indeterminate when some visible rows are selected", () => {
-    setup({ selectedIds: new Set(["p1"]) });
+    setup({ selectedIds: new Set(["p1"]), modifiedIds: new Set(["p1", "p2", "p3"]) });
 
-    expect(screen.getByRole("checkbox", { name: "全选当前视图" })).toHaveProperty("indeterminate", true);
+    expect(screen.getByRole("checkbox", { name: "全选已修改项" })).toHaveProperty("indeterminate", true);
   });
 
   it("clicking a row calls onFocusRow with that row id", () => {
@@ -233,11 +233,11 @@ describe("ParametersTable", () => {
     expect(onFocusRow).toHaveBeenCalledWith("p2");
   });
 
-  it("selects only filtered visible rows from the header checkbox", () => {
-    const { onSelectedIdsChange } = setup();
+  it("selects only filtered visible modified rows from the header checkbox", () => {
+    const { onSelectedIdsChange } = setup({ modifiedIds: new Set(["p1", "p2", "p3"]) });
 
     fireEvent.change(screen.getByLabelText("按名称 / 描述 / 模块搜索"), { target: { value: "charge" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "全选当前视图" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "全选已修改项" }));
 
     expect(onSelectedIdsChange).toHaveBeenCalledTimes(1);
     expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1"]));

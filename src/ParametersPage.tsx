@@ -31,7 +31,8 @@ type ParameterDraftItem = {
 
 type ParametersPageAction =
   | { type: "SET_PROJECT"; projectId: string }
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] };
+  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
+  | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] };
 
 type ParametersPageProps = {
   state: PrototypeState;
@@ -165,6 +166,20 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
         .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
     [drafts, parameterById, selectedIds]
   );
+  const modifiedIds = useMemo(
+    () => new Set(Object.keys(drafts)),
+    [drafts]
+  );
+  const stashedIds = useMemo(
+    () => {
+      const ids = new Set<string>();
+      state.parameterSubmissionRounds
+        .filter((round) => round.status === "已暂存" && round.projectId === state.activeProjectId)
+        .forEach((round) => round.items.forEach((item) => ids.add(item.parameterId)));
+      return ids;
+    },
+    [state.parameterSubmissionRounds, state.activeProjectId]
+  );
   const validPendingSubmissionItems = useMemo(
     () => pendingSubmissionItems.filter((item) => item.targetValue.trim()),
     [pendingSubmissionItems]
@@ -267,10 +282,10 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   }, [projectParameters]);
 
   useEffect(() => {
-    if (selectedIds.size === 0 && !contextQuery.logId) {
+    if (selectedIds.size === 0 && !contextQuery.logId && Object.keys(drafts).length === 0) {
       setSheetOpen(false);
     }
-  }, [contextQuery.logId, selectedIds.size]);
+  }, [contextQuery.logId, selectedIds.size, drafts]);
 
   const handleFocusRow = (id: string) => {
     const parameter = parameterById.get(id);
@@ -281,15 +296,33 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setFocusedId(parameter.id);
   };
 
+  const handleEditRow = (id: string) => {
+    const parameter = parameterById.get(id);
+    if (!parameter) {
+      return;
+    }
+    setSelectedId(parameter.id);
+    setFocusedId(parameter.id);
+    setSelectedIds((ids) => {
+      if (ids.has(id)) return ids;
+      return new Set([...ids, id]);
+    });
+    setDrafts((items) => {
+      if (items[id]) return items;
+      return {
+        ...items,
+        [id]: {
+          targetValue: parameter.recommendedValue,
+          reason: ""
+        }
+      };
+    });
+    setSheetOpen(true);
+  };
+
   const handleSelectedIdsChange = (next: Set<string>) => {
     const addedIds = Array.from(next).filter((id) => !selectedIds.has(id));
     const removedIds = Array.from(selectedIds).filter((id) => !next.has(id));
-    const firstAddedParameter = addedIds.map((id) => parameterById.get(id)).find((parameter): parameter is ParameterRecord => Boolean(parameter));
-
-    if (firstAddedParameter) {
-      setSelectedId(firstAddedParameter.id);
-      setFocusedId(firstAddedParameter.id);
-    }
 
     setSelectedIds(next);
     setDrafts((items) => {
@@ -311,12 +344,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
 
       return nextDrafts;
     });
-
-    if (next.size > 0) {
-      setSheetOpen(true);
-    } else {
-      setSheetOpen(false);
-    }
   };
 
   const updateDraft = (parameter: ParameterRecord, patch: Partial<{ targetValue: string; reason: string }>) => {
@@ -369,6 +396,16 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setDrafts({});
     setSheetOpen(false);
     setConfirmOpen(false);
+  };
+  const stashRound = () => {
+    const itemsToStash = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
+    if (itemsToStash.length === 0) {
+      return;
+    }
+    dispatch({ type: "STASH_PARAMETER_SUBMISSION_ROUND", items: itemsToStash });
+    setSelectedIds(new Set());
+    setDrafts({});
+    setSheetOpen(false);
   };
   const previewItems = pendingSubmissionItems;
   const handleAiAuditClick = () => {
@@ -444,13 +481,13 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
       }
       actions={
         <>
-          <button className="link-button" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
+          <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(parameters, activeProject.code)}>
             导出 Excel
           </button>
-          <button className="link-button" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
             历史提交
           </button>
-          <button className="link-button" type="button" onClick={() => onNavigate("/parameter-comparison")}>
+          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
             跨项目对比
           </button>
           <button className="button primary" type="button" onClick={handleAiAuditClick}>
@@ -473,15 +510,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
         ) : null}
         <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
-            {selected ? (
-              <div className="detail-panel parameter-focus-summary" aria-label="当前参数">
-                <div>
-                  <span>当前参数</span>
-                  <strong>{selected.name}</strong>
-                </div>
-                <RiskBadge risk={selected.risk} />
-              </div>
-            ) : null}
             <ParametersTable
               rows={parameters}
               totalRows={projectParameters.length}
@@ -490,19 +518,15 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
               onClearFilters={clearFilters}
               filters={
                 <>
-                  <div className="risk-chip-group" role="group" aria-label="风险等级">
-                    {(["High", "Medium", "Low"] as const).map((risk) => (
-                      <button
-                        key={risk}
-                        type="button"
-                        className={riskFilters.has(risk) ? "chip chip-active" : "chip"}
-                        aria-pressed={riskFilters.has(risk)}
-                        onClick={() => toggleRiskFilter(risk)}
-                      >
-                        {riskLabels[risk]} {projectParameters.filter((parameter) => parameter.risk === risk).length}
-                      </button>
-                    ))}
-                  </div>
+                  <MultiSelectDropdown
+                    label="重要性"
+                    value={Array.from(riskFilters)}
+                    options={(["High", "Medium", "Low"] as const).map((risk) => ({
+                      value: risk,
+                      label: `${riskLabels[risk]} ${projectParameters.filter((p) => p.risk === risk).length}`
+                    }))}
+                    onChange={(next) => setRiskFilters(new Set(next as ParameterRiskFilter[]))}
+                  />
                   <MultiSelectDropdown
                     label="模块"
                     value={Array.from(moduleFilters)}
@@ -515,23 +539,21 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
               onSelectedIdsChange={handleSelectedIdsChange}
               focusedId={focusedId}
               onFocusRow={handleFocusRow}
+              modifiedIds={modifiedIds}
+              onEditRow={handleEditRow}
+              stashedIds={stashedIds}
             />
-            {selectedIds.size === 0 ? (
-              <div className="parameters-empty-submit">
-                <button className="button primary" type="button" disabled>
-                  提交本轮
-                </button>
-              </div>
-            ) : !sheetOpen ? (
-              <div className="parameters-empty-submit">
-                <button className="button primary" type="button" onClick={() => setSheetOpen(true)}>
-                  重新打开草稿 ({selectedIds.size} 项)
-                </button>
-              </div>
-            ) : null}
+            <div className="parameters-bottom-actions">
+              <button className="button subtle" type="button" disabled={pendingSubmissionItems.length === 0} onClick={stashRound}>
+                暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
+              </button>
+              <button className="button primary" type="button" disabled={!allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
+                {submitButtonText}
+              </button>
+            </div>
           </section>
         </div>
-        {selectedIds.size > 0 && sheetOpen ? (
+        {Object.keys(drafts).length > 0 && sheetOpen ? (
           <WorkbenchSheet
             open
             onClose={() => setSheetOpen(false)}
@@ -545,9 +567,14 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                     查看我的提交
                   </button>
                 </span>
-                <button className="button primary" type="button" disabled={!allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
-                  {submitButtonText}
-                </button>
+                <div className="draft-sheet-footer-actions">
+                  <button className="button subtle" type="button" onClick={stashRound}>
+                    暂存本轮
+                  </button>
+                  <button className="button primary" type="button" disabled={!allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
+                    {submitButtonText}
+                  </button>
+                </div>
               </div>
             }
           >
@@ -664,7 +691,13 @@ function ParameterSubmissionDialog({
                 <span>→</span>
                 <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
               </div>
-              <p>{item.reason}</p>
+              {item.parameter.configFormat ? (
+                <div className="submission-config-format">
+                  <code className="config-before">{item.parameter.configFormat}</code>
+                  <code className="config-after">{item.parameter.configFormat.replace(/=.*$/, `=${item.targetValue}`)}</code>
+                </div>
+              ) : null}
+              {item.reason ? <p>{item.reason}</p> : null}
             </article>
           ))}
         </div>

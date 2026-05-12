@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "../mockData";
@@ -17,6 +17,9 @@ export type ParametersTableProps = {
   onSelectedIdsChange: (ids: Set<string>) => void;
   focusedId: string | null;
   onFocusRow: (id: string) => void;
+  modifiedIds?: Set<string>;
+  onEditRow?: (id: string) => void;
+  stashedIds?: Set<string>;
 };
 
 const riskScores: Record<ParameterRecord["risk"], number> = {
@@ -112,7 +115,10 @@ export function ParametersTable({
   selectedIds,
   onSelectedIdsChange,
   focusedId,
-  onFocusRow
+  onFocusRow,
+  modifiedIds,
+  onEditRow,
+  stashedIds
 }: ParametersTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -146,27 +152,31 @@ export function ParametersTable({
     });
   };
   const visibleIds = useMemo(() => visibleRows.map((row) => row.id), [visibleRows]);
-  const selectedVisibleCount = useMemo(
-    () => visibleIds.reduce((count, id) => count + (selectedIds.has(id) ? 1 : 0), 0),
-    [selectedIds, visibleIds]
+  const modifiedVisibleIds = useMemo(
+    () => (modifiedIds ? visibleIds.filter((id) => modifiedIds.has(id)) : visibleIds),
+    [modifiedIds, visibleIds]
   );
-  const hasVisibleRows = visibleIds.length > 0;
-  const allVisibleSelected = hasVisibleRows && selectedVisibleCount === visibleIds.length;
+  const selectedVisibleCount = useMemo(
+    () => modifiedVisibleIds.reduce((count, id) => count + (selectedIds.has(id) ? 1 : 0), 0),
+    [selectedIds, modifiedVisibleIds]
+  );
+  const hasModifiedVisible = modifiedVisibleIds.length > 0;
+  const allModifiedVisibleSelected = hasModifiedVisible && selectedVisibleCount === modifiedVisibleIds.length;
   const rowCountTotal = totalRows ?? rows.length;
 
   useEffect(() => {
     if (selectAllRef.current) {
-      selectAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+      selectAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < modifiedVisibleIds.length;
     }
-  }, [selectedVisibleCount, visibleIds.length]);
+  }, [selectedVisibleCount, modifiedVisibleIds.length]);
 
   const updateVisibleSelection = () => {
     const nextSelectedIds = new Set(selectedIds);
 
-    if (allVisibleSelected) {
-      visibleIds.forEach((id) => nextSelectedIds.delete(id));
+    if (allModifiedVisibleSelected) {
+      modifiedVisibleIds.forEach((id) => nextSelectedIds.delete(id));
     } else {
-      visibleIds.forEach((id) => nextSelectedIds.add(id));
+      modifiedVisibleIds.forEach((id) => nextSelectedIds.add(id));
     }
 
     onSelectedIdsChange(nextSelectedIds);
@@ -213,9 +223,9 @@ export function ParametersTable({
                 <input
                   ref={selectAllRef}
                   type="checkbox"
-                  aria-label="全选当前视图"
-                  checked={allVisibleSelected}
-                  disabled={!hasVisibleRows}
+                  aria-label="全选已修改项"
+                  checked={allModifiedVisibleSelected}
+                  disabled={!hasModifiedVisible}
                   onChange={updateVisibleSelection}
                 />
               </th>
@@ -226,39 +236,47 @@ export function ParametersTable({
                   </button>
                 </th>
               ))}
+              <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>
-            {visibleRows.map((row) => (
+            {visibleRows.map((row) => {
+              const isModified = modifiedIds ? modifiedIds.has(row.id) : false;
+              const isStashed = stashedIds ? stashedIds.has(row.id) : false;
+              return (
               <tr
                 key={row.id}
                 className={[
                   focusedId === row.id ? "parameters-table-row-focused" : "",
-                  row.risk === "High" ? "row-risk-high" : "",
+                  isModified ? "row-modified" : "",
+                  isStashed ? "row-stashed" : "",
                   row.currentValue === row.recommendedValue ? "row-value-same" : ""
                 ].filter(Boolean).join(" ")}
                 onClick={() => onFocusRow(row.id)}
               >
                 <td data-label="选择">
-                  <input
-                    type="checkbox"
-                    aria-label={`勾选 ${row.name}`}
-                    checked={selectedIds.has(row.id)}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={() => {
-                      const nextSelectedIds = new Set(selectedIds);
-                      if (nextSelectedIds.has(row.id)) {
-                        nextSelectedIds.delete(row.id);
-                      } else {
-                        nextSelectedIds.add(row.id);
-                      }
-                      onSelectedIdsChange(nextSelectedIds);
-                    }}
-                  />
+                  {isModified ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`勾选 ${row.name}`}
+                      checked={selectedIds.has(row.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => {
+                        const nextSelectedIds = new Set(selectedIds);
+                        if (nextSelectedIds.has(row.id)) {
+                          nextSelectedIds.delete(row.id);
+                        } else {
+                          nextSelectedIds.add(row.id);
+                        }
+                        onSelectedIdsChange(nextSelectedIds);
+                      }}
+                    />
+                  ) : null}
                 </td>
                 <td data-label="参数名称">
                   <strong>{row.name}</strong>
                   <small>{row.description}</small>
+                  {isStashed ? <span className="stash-badge">已暂存</span> : null}
                 </td>
                 <td data-label="模块">
                   <span className={`module-badge module-tone-${getModuleToneIndex(row.module)}`}>{row.module}</span>
@@ -276,8 +294,22 @@ export function ParametersTable({
                 </td>
                 <td data-label="重要性">{row.risk}</td>
                 <td data-label="更新时间">{row.updatedAt}</td>
+                <td data-label="操作">
+                  <button
+                    type="button"
+                    className="edit-row-button"
+                    aria-label={`编辑 ${row.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onEditRow?.(row.id);
+                    }}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

@@ -131,6 +131,7 @@ export type AppAction =
   | { type: "SET_ROLE"; roleId: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
   | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason?: string }
+  | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
@@ -471,6 +472,51 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           ...state.parameterSubmissionRounds
         ],
         notifications: [`已提交 ${roundId}，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
+      };
+    }
+    case "STASH_PARAMETER_SUBMISSION_ROUND": {
+      const draftItems = action.items
+        .map((item) => {
+          const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
+          return parameter ? { parameter, item } : null;
+        })
+        .filter((item): item is { parameter: ParameterRecord; item: ParameterDraftItem } => Boolean(item));
+
+      if (draftItems.length === 0) {
+        return state;
+      }
+
+      const project = projects.find((item) => item.id === draftItems[0].parameter.projectId);
+      const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+      const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
+      const submissionItems = draftItems.map(({ parameter, item }): ParameterSubmissionItem => ({
+        requestId: "",
+        parameterId: parameter.id,
+        name: parameter.name,
+        module: parameter.module,
+        currentValue: parameter.currentValue,
+        targetValue: item.targetValue,
+        unit: parameter.unit,
+        risk: parameter.risk,
+        reason: item.reason || ""
+      }));
+
+      return {
+        ...state,
+        parameterSubmissionRounds: [
+          {
+            id: roundId,
+            projectId: draftItems[0].parameter.projectId,
+            projectName: project?.name ?? draftItems[0].parameter.projectId,
+            submitter,
+            createdAt: "刚刚",
+            status: "已暂存",
+            summary: `本轮暂存包含 ${submissionItems.length} 个参数修改。`,
+            items: submissionItems
+          },
+          ...state.parameterSubmissionRounds
+        ],
+        notifications: [`已暂存 ${roundId}，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
       };
     }
     case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":

@@ -172,7 +172,7 @@ export type ParameterSubmissionRound = {
   projectName: string;
   submitter: string;
   createdAt: string;
-  status: RequestStatus | "已撤回";
+  status: RequestStatus | "已撤回" | "已暂存";
   summary: string;
   items: ParameterSubmissionItem[];
 };
