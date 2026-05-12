@@ -23,7 +23,6 @@ describe("ComparisonHeader", () => {
     );
 
     expect(screen.getByRole("navigation", { name: "参数对比路径" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: `${projects[0].code} vs ${projects[1].code}` })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(`基准项目 ${projects[0].code}`) })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(`对比项目 ${projects[1].code}`) })).toBeInTheDocument();
   });

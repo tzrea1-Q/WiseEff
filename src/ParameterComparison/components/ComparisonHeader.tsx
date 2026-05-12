@@ -34,7 +34,7 @@ export function ComparisonHeader({
       </nav>
 
       <div className="comparison-header--v2__titlebar">
-        <h1 className="comparison-header--v2__title" aria-label={`${baseProject.code} vs ${targetProject.code}`}>
+        <div className="comparison-header--v2__title">
           <ProjectChip
             label="基准项目"
             tone="base"
@@ -54,8 +54,7 @@ export function ComparisonHeader({
             disabledProjectId={baseProject.id}
             onSelect={onTargetProjectChange}
           />
-          <span>{`${baseProject.code} vs ${targetProject.code}`}</span>
-        </h1>
+        </div>
         <div className="comparison-header--v2__actions">
           <button className="button subtle" type="button" aria-label="导出对比结果" onClick={onExport}>
             <Download size={16} aria-hidden="true" />

@@ -26,7 +26,7 @@ export function ComparisonMetrics({ total, drift, synced, highRisk, onShowDrift,
       </article>
 
       <button className="metric-card metric-card--button" data-tone={drift > 0 ? "warn" : "success"} type="button" onClick={onShowDrift}>
-        <header>漂移参数</header>
+        <header>差异参数</header>
         <strong>{drift}</strong>
         <small>{ratio}% 需要审阅</small>
         <div className="metric-card__progress" aria-hidden="true">
@@ -43,7 +43,7 @@ export function ComparisonMetrics({ total, drift, synced, highRisk, onShowDrift,
       >
         <header>高重要性差异</header>
         <strong>{highRisk}</strong>
-        <small>{highRisk > 0 ? "建议优先处理" : "暂无高风险漂移"}</small>
+        <small>{highRisk > 0 ? "建议优先处理" : "暂无高风险差异"}</small>
         <div className="metric-card__progress" aria-hidden="true">
           <span style={{ width: total > 0 ? `${Math.round((highRisk / total) * 100)}%` : "0%" }} />
         </div>

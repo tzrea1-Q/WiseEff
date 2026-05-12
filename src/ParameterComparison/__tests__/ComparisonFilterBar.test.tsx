@@ -33,7 +33,7 @@ describe("ComparisonFilterBar", () => {
     );
 
     fireEvent.change(screen.getByPlaceholderText("搜索参数键、模块或含义"), { target: { value: "voltage" } });
-    fireEvent.click(screen.getByRole("switch", { name: "仅看漂移" }));
+    fireEvent.click(screen.getByRole("switch", { name: "仅看差异" }));
 
     expect(onQueryChange).toHaveBeenCalledWith("voltage");
     expect(onDriftOnlyChange).toHaveBeenCalledWith(false);

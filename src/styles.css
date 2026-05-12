@@ -6212,12 +6212,8 @@ td small {
 .comparison-header--v2__title {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 12px;
   margin: 0;
-  font-size: 22px;
-  font-weight: 650;
-  letter-spacing: 0;
 }
 
 .comparison-header--v2__swap {
@@ -6594,9 +6590,9 @@ td small {
 .comparison-matrix--v2__head,
 .comparison-row--v2 {
   display: grid;
-  grid-template-columns: 4px minmax(260px, 1fr) 180px 260px 168px;
+  grid-template-columns: 4px minmax(180px, 1.5fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(140px, 1fr) 140px;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 12px 16px;
 }
 
@@ -6694,13 +6690,23 @@ td small {
   min-width: 0;
 }
 
+.comparison-row--v2__desc {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 .comparison-row--v2__key-button {
   border: 0;
   background: transparent;
   padding: 0;
   text-align: left;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 650;
+  font-weight: 700;
   font-size: 14px;
   color: #0f172a;
   cursor: pointer;
@@ -6724,7 +6730,6 @@ td small {
   display: inline-flex;
   gap: 8px;
   align-items: center;
-  justify-self: end;
 }
 
 .comparison-row--v2__value[data-side="target"] {
@@ -6772,19 +6777,19 @@ td small {
 .comparison-row--v2__actions {
   display: inline-flex;
   gap: 6px;
-  justify-self: end;
 }
 
 .comparison-row--v2__action-primary,
 .comparison-row--v2__action-secondary {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  min-height: 32px;
-  padding: 6px 10px;
-  border-radius: 8px;
+  gap: 3px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 6px;
   border: 1px solid transparent;
   font: inherit;
+  font-size: 12px;
   cursor: pointer;
 }
 
@@ -6802,6 +6807,89 @@ td small {
 .comparison-row--v2__synced-label {
   color: #64748b;
   font-size: 12px;
+}
+
+.comparison-row--v2__expand-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #94a3b8;
+  flex-shrink: 0;
+  transition: color 150ms;
+}
+
+.comparison-row--v2:hover .comparison-row--v2__expand-indicator {
+  color: #475569;
+}
+
+.comparison-row--v2--expanded .comparison-row--v2__expand-indicator {
+  color: #0f172a;
+}
+
+.comparison-row--v2 {
+  cursor: pointer;
+}
+
+.comparison-row--v2--expanded {
+  background: #f8fafc;
+}
+
+.comparison-row--v2__diff-panel {
+  padding: 12px 16px 16px 36px;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fafbfc;
+}
+
+.simple-diff-container {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.simple-diff-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.simple-diff-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.simple-diff-before .simple-diff-label { color: hsl(0 60% 40%); }
+.simple-diff-after .simple-diff-label { color: hsl(140 50% 30%); }
+
+.simple-diff-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+}
+
+.simple-diff-before .simple-diff-value { background: hsl(0 80% 95%); color: hsl(0 60% 35%); }
+.simple-diff-after .simple-diff-value { background: hsl(140 60% 93%); color: hsl(140 50% 25%); }
+
+.simple-diff-arrow {
+  font-size: 18px;
+  color: #94a3b8;
+  margin-top: 16px;
+}
+
+.simple-diff-delta {
+  margin-top: 16px;
+  font-size: 13px;
+  font-weight: 650;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: #fef3c7;
+  color: #92400e;
 }
 
 .param-tooltip {
@@ -6959,6 +7047,17 @@ td small {
   min-height: 100%;
   padding: 24px 28px 32px;
   color: var(--text);
+}
+
+.param-admin-shell > .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 28, 45, 0.32);
+  backdrop-filter: blur(6px);
 }
 
 .param-admin-shell :focus-visible,

@@ -11,7 +11,7 @@ describe("ComparisonMetrics", () => {
     render(<ComparisonMetrics total={12} drift={5} synced={7} highRisk={2} onShowDrift={() => undefined} onShowHighRisk={() => undefined} />);
 
     expect(screen.getByText("对比范围")).toBeInTheDocument();
-    expect(screen.getByText("漂移参数")).toBeInTheDocument();
+    expect(screen.getByText("差异参数")).toBeInTheDocument();
     expect(screen.getByText("高重要性差异")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("5")).toBeInTheDocument();
@@ -23,7 +23,7 @@ describe("ComparisonMetrics", () => {
     const onShowHighRisk = vi.fn();
     render(<ComparisonMetrics total={12} drift={5} synced={7} highRisk={2} onShowDrift={onShowDrift} onShowHighRisk={onShowHighRisk} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /漂移参数/ }));
+    fireEvent.click(screen.getByRole("button", { name: /差异参数/ }));
     fireEvent.click(screen.getByRole("button", { name: /高重要性差异/ }));
 
     expect(onShowDrift).toHaveBeenCalledTimes(1);
