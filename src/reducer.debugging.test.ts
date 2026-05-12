@@ -206,6 +206,8 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
     const draft = {
       name: "修改后的名称",
       key: target.key,
+      description: target.description,
+      module: target.module,
       currentValue: "1234",
       targetValue: "5678",
       unit: target.unit,
@@ -243,6 +245,8 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
     const draft = {
       name: target.name,
       key: target.key,
+      description: target.description,
+      module: target.module,
       currentValue: target.currentValue,
       targetValue: target.targetValue,
       unit: target.unit,
@@ -268,6 +272,8 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
     const draft = {
       name: "x",
       key: "x",
+      description: "",
+      module: "",
       currentValue: "0",
       targetValue: "0",
       unit: "v",
@@ -358,6 +364,8 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
     const draft = {
       name: "pid_kp_coefficient",
       key: "debug.pid.kp",
+      description: "",
+      module: "",
       currentValue: "0.8",
       targetValue: "1.0",
       unit: "",
@@ -379,6 +387,8 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
     const draft = {
       name: "x",
       key: "x.y",
+      description: "",
+      module: "",
       currentValue: "1",
       targetValue: "2",
       unit: "",

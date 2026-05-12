@@ -7,6 +7,8 @@ function makeParam(overrides: Partial<PowerManagementDebugParameter> = {}): Powe
     id: "p1",
     name: "fast_charge_current",
     key: "debug.fast_charge_current",
+    description: "",
+    module: "",
     currentValue: "3800",
     targetValue: "3200",
     unit: "mA",

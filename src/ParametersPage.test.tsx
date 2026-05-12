@@ -84,7 +84,7 @@ describe("ParametersPage draft edge cases", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看高风险" }));
 
-    expect(screen.getByRole("button", { name: "高 4" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "重要性 (1) ▾" })).toBeInTheDocument();
     const table = screen.getByRole("table");
     expect(within(table).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(table).queryByText("battery_temp_target_c")).not.toBeInTheDocument();

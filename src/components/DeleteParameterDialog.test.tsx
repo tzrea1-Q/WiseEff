@@ -26,7 +26,7 @@ describe("DeleteParameterDialog", () => {
   it("renders orphan copy when no projects use the parameter", () => {
     render(<DeleteParameterDialog open parameterName="orphan_p" usedByProjects={[]} onCancel={vi.fn()} onConfirm={vi.fn()} />);
 
-    expect(screen.getByText(/孤儿/)).toBeInTheDocument();
+    expect(screen.getByText(/闲置参数/)).toBeInTheDocument();
   });
 
   it("confirms, cancels, and closes on Escape", () => {

@@ -42,6 +42,8 @@ describe("deriveDebugParameterStatus", () => {
     id: "dbg-x",
     name: "x",
     key: "charger.x",
+    description: "",
+    module: "",
     currentValue: "10",
     targetValue: "10",
     unit: "A",

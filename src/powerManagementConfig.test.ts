@@ -85,6 +85,8 @@ describe("addDebugParameterFromDraft", () => {
     const draft = {
       name: "pid_kp_coefficient",
       key: "debug.pid.kp",
+      description: "",
+      module: "",
       currentValue: "0.8",
       targetValue: "1.0",
       unit: "",
@@ -112,6 +114,8 @@ describe("addDebugParameterFromDraft", () => {
     const draft = {
       name: "test",
       key: "test.key",
+      description: "",
+      module: "",
       currentValue: "0",
       targetValue: "0",
       unit: "",
@@ -132,6 +136,8 @@ describe("addDebugParameterFromDraft", () => {
     const draft = {
       name: "status_test",
       key: "status.test",
+      description: "",
+      module: "",
       currentValue: "1",
       targetValue: "1",
       unit: "",

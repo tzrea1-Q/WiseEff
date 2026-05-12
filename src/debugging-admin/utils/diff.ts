@@ -20,6 +20,8 @@ export type DebugParameterDiff = {
 const FIELD_LABELS: Record<Exclude<keyof PowerManagementDebugParameter, "id" | "status">, string> = {
   name: "展示名称",
   key: "参数 key",
+  description: "描述",
+  module: "模块",
   currentValue: "默认值",
   targetValue: "推荐值",
   range: "有效区间",
