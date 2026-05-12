@@ -8,7 +8,7 @@ export type ComparisonEmptyStateProps = {
 const copy = {
   "all-synced": {
     title: "项目参数已同步",
-    body: "当前项目组合没有发现漂移参数。"
+    body: "当前项目组合没有发现差异参数。"
   },
   filtered: {
     title: "没有匹配参数",

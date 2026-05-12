@@ -7,7 +7,7 @@ describe("ComparisonEmptyState", () => {
     render(<ComparisonEmptyState kind="all-synced" />);
 
     expect(screen.getByRole("heading", { name: "项目参数已同步" })).toBeInTheDocument();
-    expect(screen.getByText("当前项目组合没有发现漂移参数。")).toBeInTheDocument();
+    expect(screen.getByText("当前项目组合没有发现差异参数。")).toBeInTheDocument();
   });
 
   it("lets users clear filters when no results match", () => {

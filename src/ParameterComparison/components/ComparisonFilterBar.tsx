@@ -97,7 +97,7 @@ export function ComparisonFilterBar({
           type="button"
           onClick={() => onDriftOnlyChange(!filters.driftOnly)}
         >
-          仅看漂移
+          仅看差异
         </button>
         <MultiSelect label="重要性" selectedCount={filters.risk.length} options={riskOptions} selected={filters.risk} onChange={(values) => onRiskChange(values as RiskLevel[])} />
         <MultiSelect label="模块" selectedCount={filters.modules.length} options={moduleOptions} selected={filters.modules} onChange={onModulesChange} />

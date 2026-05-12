@@ -30,6 +30,7 @@ export function ComparisonMatrix({
       <div className="comparison-matrix--v2__head" role="row">
         <span className="comparison-matrix--v2__color-slot" aria-hidden="true" />
         <span role="columnheader">参数键 / 模块</span>
+        <span role="columnheader">说明</span>
         <span className="comparison-matrix--v2__cell" role="columnheader">
           <i className="env-dot env-dot--base" aria-hidden="true" />
           {baseProjectCode}

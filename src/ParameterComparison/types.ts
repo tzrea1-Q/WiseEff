@@ -13,6 +13,7 @@ export type ComparisonRow = {
   unit: string;
   status: ComparisonRowStatus;
   risk: RiskLevel;
+  structuredDiff?: { before: Record<string, unknown>; after: Record<string, unknown> };
 };
 
 export type ComparisonProjectSelection = {
