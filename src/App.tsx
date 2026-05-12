@@ -272,6 +272,16 @@ const logStatusLabels: Record<LogRecord["status"], string> = {
   Failed: "失败"
 };
 
+const LOG_LINE_RE = /^(\S+)\s+(\w+)\s+\[([^\]]+)\]\s*(.*)/;
+
+function parseLogLine(line: string) {
+  const m = LOG_LINE_RE.exec(line);
+  if (m) {
+    return { time: m[1], module: `${m[2]} [${m[3]}]`, content: m[4] };
+  }
+  return { time: "", module: "", content: line };
+}
+
 function buildRuntimeReviewFields(summary: string, module: string) {
   const suggestion = buildAISuggestion({
     recommendation: "needs-review",
@@ -2396,6 +2406,7 @@ function UploadLogDialog({
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFileName, setSelectedFileName] = useState("");
   const [supported, setSupported] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -2440,15 +2451,34 @@ function UploadLogDialog({
   };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const fileName = event.target.files?.[0]?.name;
-    if (!fileName) {
+    const files = event.target.files;
+    if (!files || files.length === 0) {
       setSelectedFileName("");
       setSupported(false);
       setPhase("idle");
       return;
     }
+    if (files.length > 1) {
+      for (let i = 0; i < files.length; i++) {
+        onUpload(files[i].name, isSupportedLogFile(files[i].name));
+      }
+      return;
+    }
+    validateFile(files[0].name);
+  };
 
-    validateFile(fileName);
+  const handleDrop = (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragging(false);
+    const files = event.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    if (files.length > 1) {
+      for (let i = 0; i < files.length; i++) {
+        onUpload(files[i].name, isSupportedLogFile(files[i].name));
+      }
+      return;
+    }
+    validateFile(files[0].name);
   };
 
   const resetSelection = () => {
@@ -2473,16 +2503,21 @@ function UploadLogDialog({
       <div className="confirm-dialog upload-dialog">
         <div className="upload-dialog__header">
           <div>
-            <h2 id="upload-dialog-title">上传日志</h2>
+            <h2 id="upload-dialog-title"><strong>上传日志</strong></h2>
             <p>选择 .log、.txt 或 .json 文本日志，WiseEff 会模拟创建分析任务。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
-        <label className="upload-file-field">
-          <span>选择日志文件</span>
-          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept=".log,.txt,.json" onChange={handleFileChange} />
+        <label
+          className={classNames("upload-file-field", dragging && "upload-file-field--dragging")}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+        >
+          <span>选择日志文件（支持拖放多份）</span>
+          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept=".log,.txt,.json" multiple onChange={handleFileChange} />
         </label>
         <div className={classNames("upload-dialog__state", phase === "unsupported" && "upload-dialog__state--error")}>
           {phase === "idle" ? (
@@ -2589,7 +2624,7 @@ function LogConclusionCard({
       <div className="logs-conclusion-head">
         <SeverityBadge severity={log.severity} processing={log.status === "Processing"} />
         <div>
-          <h2 id="log-conclusion-title">{log.status === "Processing" ? "AI 正在分析..." : log.conclusion}</h2>
+          <h2 id="log-conclusion-title" className={log.status === "Processing" ? "logs-analyzing-anim" : undefined}>{log.status === "Processing" ? "AI 正在分析..." : log.conclusion}</h2>
           <p>{log.status === "Complete" ? log.impact : log.conclusion}</p>
         </div>
       </div>
@@ -2752,43 +2787,60 @@ function RawLogViewer({
         ) : null}
       </div>
       <div className="rawlog-viewer__body" id="rawlog-content">
-        {rawLines.map((line, index) => {
-          const lineNumber = index + 1;
-          const evidence = evidenceByLine.get(lineNumber) ?? [];
-          const isHoverAnchor = evidence.some((item) => item.id === hoveredEvidenceId);
-          const isFocusAnchor = evidence.some((item) => item.id === focusedEvidenceId);
-          const isHoveredLine = hoveredLine === lineNumber && evidence.length > 0;
-          const isMatch = matchLineSet.has(lineNumber);
-          const isCurrentMatch = activeMatchLine === lineNumber;
+        <table className="rawlog-table" role="grid">
+          <thead>
+            <tr>
+              <th className="rawlog-table__th-num">#</th>
+              <th className="rawlog-table__th-time">时间</th>
+              <th className="rawlog-table__th-module">模块</th>
+              <th className="rawlog-table__th-content">内容</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rawLines.map((line, index) => {
+              const lineNumber = index + 1;
+              const evidence = evidenceByLine.get(lineNumber) ?? [];
+              const isHoverAnchor = evidence.some((item) => item.id === hoveredEvidenceId);
+              const isFocusAnchor = evidence.some((item) => item.id === focusedEvidenceId);
+              const isHoveredLine = hoveredLine === lineNumber && evidence.length > 0;
+              const isMatch = matchLineSet.has(lineNumber);
+              const isCurrentMatch = activeMatchLine === lineNumber;
+              const parsed = parseLogLine(line);
 
-          return (
-            <div
-              className={classNames(
-                "rawlog-line",
-                isHoverAnchor && "rawlog-line--anchor-hover",
-                isFocusAnchor && "rawlog-line--anchor-focus",
-                isHoveredLine && "rawlog-line--line-hover",
-                isMatch && "rawlog-line--match",
-                isCurrentMatch && "rawlog-line--match-current"
-              )}
-              data-testid={`rawlog-line-${lineNumber}`}
-              key={`${lineNumber}-${line}`}
-            >
-              <button
-                aria-label={evidence.length ? `跳转到第 ${lineNumber} 行对应证据` : undefined}
-                className="rawlog-line__num"
-                disabled={evidence.length === 0}
-                type="button"
-                onClick={() => onClickLine(lineNumber)}
-                onMouseEnter={() => onHoverLine(lineNumber)}
-                onMouseLeave={() => onHoverLine(null)}
-              >
-                {lineNumber}
-              </button>
-              <code>{line}</code>
-            </div>
-          );
-        })}
+              return (
+                <tr
+                  className={classNames(
+                    "rawlog-line",
+                    isHoverAnchor && "rawlog-line--anchor-hover",
+                    isFocusAnchor && "rawlog-line--anchor-focus",
+                    isHoveredLine && "rawlog-line--line-hover",
+                    isMatch && "rawlog-line--match",
+                    isCurrentMatch && "rawlog-line--match-current"
+                  )}
+                  data-testid={`rawlog-line-${lineNumber}`}
+                  key={`${lineNumber}-${line}`}
+                >
+                  <td>
+                    <button
+                      aria-label={evidence.length ? `跳转到第 ${lineNumber} 行对应证据` : undefined}
+                      className="rawlog-line__num"
+                      disabled={evidence.length === 0}
+                      type="button"
+                      onClick={() => onClickLine(lineNumber)}
+                      onMouseEnter={() => onHoverLine(lineNumber)}
+                      onMouseLeave={() => onHoverLine(null)}
+                    >
+                      {lineNumber}
+                    </button>
+                  </td>
+                  <td className="rawlog-table__time"><code>{parsed.time}</code></td>
+                  <td className="rawlog-table__module"><code>{parsed.module}</code></td>
+                  <td className="rawlog-table__content"><code>{parsed.content}</code></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </section>
   );
