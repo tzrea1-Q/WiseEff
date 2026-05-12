@@ -1110,6 +1110,255 @@ body {
   flex-wrap: wrap;
 }
 
+.debugging-page .parameters-table-toolbar {
+  width: 100%;
+  padding: 6px 14px 0 0;
+  margin-bottom: 4px;
+}
+
+.debugging-page .parameters-table-search {
+  flex: 0 1 260px;
+  min-width: 180px;
+}
+
+.debugging-action-buttons {
+  display: flex;
+  gap: 9px;
+}
+
+.debugging-deploy-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  min-width: 116px;
+  padding: 8px 14px;
+  color: #fff;
+  background: var(--app-primary);
+  border: 1px solid var(--app-primary);
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(0, 61, 155, 0.16);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.debugging-deploy-button:hover:not(:disabled) {
+  background: #0052cc;
+  box-shadow: 0 10px 24px rgba(0, 61, 155, 0.24);
+}
+
+.debugging-deploy-button:active:not(:disabled) {
+  background: #002d73;
+  box-shadow: 0 4px 10px rgba(0, 61, 155, 0.12);
+  transform: translateY(1px);
+}
+
+.debugging-deploy-button:disabled {
+  color: #5e6e95;
+  background: #e9eefb;
+  border-color: #bec9df;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.debugging-stash-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 8px 14px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.debugging-stash-button:hover:not(:disabled) {
+  background: var(--surface-low);
+  border-color: var(--outline-strong);
+}
+
+.debugging-stash-button:active:not(:disabled) {
+  background: var(--surface-mid);
+  transform: translateY(1px);
+}
+
+.debugging-stash-button:disabled {
+  color: var(--outline-strong);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.session-summary-snapshot .button.subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 14px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.session-summary-snapshot .button.subtle:hover:not(:disabled) {
+  background: var(--surface-low);
+  border-color: var(--outline-strong);
+  box-shadow: 0 4px 12px rgba(16, 28, 45, 0.08);
+}
+
+.session-summary-snapshot .button.subtle:active:not(:disabled) {
+  background: var(--surface-mid);
+  box-shadow: none;
+  transform: translateY(1px);
+}
+
+.session-summary-snapshot .button.subtle:disabled {
+  color: var(--outline-strong);
+  background: var(--surface-low);
+  border-color: var(--outline);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.debugging-page .parameters-submit-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #f2fbff;
+  border: 1px solid rgba(0, 104, 123, 0.25);
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.debugging-page .parameters-submit-bar div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.debugging-page .parameters-submit-bar strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.debugging-page .parameters-submit-bar span {
+  color: var(--outline-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.debug-detail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.debug-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.debug-detail-head strong {
+  display: block;
+  font-size: 15px;
+}
+
+.debug-detail-head code {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.debug-detail-description {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.debug-detail-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--surface-low);
+  border-radius: 8px;
+}
+
+.debug-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.debug-detail-row span {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.debug-detail-row strong {
+  font-size: 13px;
+}
+
+.debug-detail-card input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  outline: 0;
+  font: inherit;
+  font-size: 14px;
+}
+
+.debug-detail-card input:focus {
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
+}
+
+.debug-table .parameters-table-grid td input[aria-label*="目标设定值"] {
+  width: 100%;
+  min-width: 80px;
+  padding: 6px 8px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 6px;
+  outline: 0;
+  font: inherit;
+  font-size: 13px;
+}
+
+.debug-table .parameters-table-grid td input[aria-label*="目标设定值"]:focus {
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
+}
+
 .disconnected-banner {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) auto;

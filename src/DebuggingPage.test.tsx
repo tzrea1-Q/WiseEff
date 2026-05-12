@@ -97,7 +97,7 @@ describe("回滚链路端到端", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
 
-    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input");
+    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input[aria-label*='目标设定值']");
     if (!firstTargetInput) {
       throw new Error("找不到第一行目标值输入");
     }
@@ -120,7 +120,7 @@ describe("回滚链路端到端", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
-    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input");
+    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input[aria-label*='目标设定值']");
     if (!firstTargetInput) {
       throw new Error("找不到输入");
     }
@@ -144,7 +144,7 @@ describe("OperationHistoryPanel 集成", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
-    const input = document.querySelector<HTMLInputElement>("tbody tr:first-child input");
+    const input = document.querySelector<HTMLInputElement>("tbody tr:first-child input[aria-label*='目标设定值']");
     if (!input) {
       throw new Error("找不到输入");
     }
