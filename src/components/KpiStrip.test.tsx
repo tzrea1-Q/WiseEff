@@ -11,7 +11,7 @@ function sampleItems(): KpiItem[] {
     { id: "shared", label: "共享参数", value: 10 },
     { id: "high-risk", label: "高风险", value: 4, interactive: true, onClick: vi.fn(), tone: "warning" },
     { id: "today", label: "今日变更", value: 3, interactive: true, onClick: vi.fn() },
-    { id: "orphan", label: "孤儿参数", value: 2, interactive: true, onClick: vi.fn(), tone: "warning" },
+    { id: "orphan", label: "闲置参数", value: 2, interactive: true, onClick: vi.fn(), tone: "warning" },
     { id: "last-import", label: "最近导入", value: "2h 前", interactive: true, onClick: vi.fn() }
   ];
 }
@@ -23,7 +23,7 @@ describe("KpiStrip", () => {
     expect(screen.getByText("共享参数")).toBeInTheDocument();
     expect(screen.getByText("10")).toBeInTheDocument();
     expect(screen.getByText("高风险")).toBeInTheDocument();
-    expect(screen.getByText("孤儿参数")).toBeInTheDocument();
+    expect(screen.getByText("闲置参数")).toBeInTheDocument();
     expect(screen.getByText("2h 前")).toBeInTheDocument();
   });
 
@@ -45,6 +45,6 @@ describe("KpiStrip", () => {
   it("sets the tone attribute", () => {
     render(<KpiStrip items={sampleItems()} />);
 
-    expect(screen.getByRole("button", { name: /孤儿参数/ })).toHaveAttribute("data-tone", "warning");
+    expect(screen.getByRole("button", { name: /闲置参数/ })).toHaveAttribute("data-tone", "warning");
   });
 });

@@ -22,7 +22,7 @@ const COVERAGE_OPTIONS: Array<{ value: ParamAdminSearch["coverage"]; label: stri
   { value: "all", label: "全部" },
   { value: "full", label: "3 个项目都有" },
   { value: "partial", label: "缺某个项目" },
-  { value: "orphan", label: "孤儿参数" }
+  { value: "orphan", label: "闲置参数" }
 ];
 
 const COVERAGE_LABEL = Object.fromEntries(COVERAGE_OPTIONS.map((option) => [option.value, option.label])) as Record<
@@ -247,7 +247,7 @@ export function ParameterLibraryList({
         </div>
       ) : (
         <div className="library-empty">
-          {search.coverage === "orphan" ? "所有参数都被项目使用中 · 没有孤儿" : "没有匹配的参数。"}
+          {search.coverage === "orphan" ? "所有参数都被项目使用中 · 没有闲置参数" : "没有匹配的参数。"}
         </div>
       )}
     </div>

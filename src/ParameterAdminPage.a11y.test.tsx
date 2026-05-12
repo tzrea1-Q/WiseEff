@@ -38,7 +38,7 @@ describe("ParameterAdminPage · a11y", () => {
     expect(screen.getByRole("button", { name: "高", pressed: true })).toBeInTheDocument();
   });
 
-  it("孤儿视角没有结果时展示庆祝空态", () => {
+  it("闲置视角没有结果时展示庆祝空态", () => {
     const stateWithoutOrphans = {
       ...initialState,
       configDraft: {
@@ -52,7 +52,7 @@ describe("ParameterAdminPage · a11y", () => {
 
     render(<ParameterAdminPage state={stateWithoutOrphans} dispatch={() => {}} onNavigate={() => {}} search="coverage=orphan" />);
 
-    expect(screen.getByText("所有参数都被项目使用中 · 没有孤儿")).toBeInTheDocument();
+    expect(screen.getByText("所有参数都被项目使用中 · 没有闲置参数")).toBeInTheDocument();
   });
 
   it("参数库为空时详情区提供新增和批量导入入口", () => {

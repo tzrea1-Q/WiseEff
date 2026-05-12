@@ -153,6 +153,33 @@ export function addProjectParameter(config: PowerManagementConfig) {
   };
 }
 
+export function addProjectParameterFromDraft(
+  config: PowerManagementConfig,
+  draft: { name: string; module: string; unit: string; risk: PowerManagementRisk; description: string }
+) {
+  const nextIndex = config.parameterLibrary.length + 1;
+  const values = config.projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
+    acc[project.id] = { currentValue: "0", recommendedValue: "0", updatedAt: "刚刚" };
+    return acc;
+  }, {} as PowerManagementParameterTemplate["values"]);
+
+  return {
+    ...config,
+    parameterLibrary: [...config.parameterLibrary, {
+      id: `new-power-parameter-${nextIndex}`,
+      name: draft.name,
+      description: draft.description,
+      explanation: "",
+      configFormat: "",
+      module: draft.module,
+      range: "",
+      unit: draft.unit,
+      risk: draft.risk,
+      values
+    }]
+  };
+}
+
 export function deleteProjectParameter(config: PowerManagementConfig, parameterId: string) {
   return {
     ...config,

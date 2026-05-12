@@ -2,6 +2,7 @@ import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
+import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
 import { DirtyIndicator } from "./components/DirtyIndicator";
 import { ExportDiffDialog, type ExportDiff } from "./components/ExportDiffDialog";
@@ -21,6 +22,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
   const [saving, setSaving] = useState(false);
   const urlSearch = useParamAdminSearch();
@@ -44,10 +46,10 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
           {
             id: "high-risk-orphans",
             tone: "warning",
-            headline: `参数库里有 ${highRiskOrphans.length} 个高风险孤儿参数，建议复核`,
-            meta: `孤儿合计 ${orphanCount} · 其中高风险 ${highRiskOrphans.length}`,
+            headline: `参数库里有 ${highRiskOrphans.length} 个高风险闲置参数，建议复核`,
+            meta: `闲置合计 ${orphanCount} · 其中高风险 ${highRiskOrphans.length}`,
             actions: [
-              { id: "view-orphans", label: "查看孤儿参数", onClick: () => updateSearch({ coverage: "orphan" }) },
+              { id: "view-orphans", label: "查看闲置参数", onClick: () => updateSearch({ coverage: "orphan" }) },
               {
                 id: "draft-cleanup",
                 label: "生成清理建议",
@@ -146,7 +148,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
     },
     {
       id: "orphan",
-      label: "孤儿参数",
+      label: "闲置参数",
       value: orphanCount,
       interactive: orphanCount > 0,
       tone: "warning",
@@ -284,10 +286,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
               <button
                 className="button subtle"
                 type="button"
-                onClick={() => {
-                  dispatch({ type: "ADD_PROJECT_PARAMETER" });
-                  setSelectedParameterId(`new-power-parameter-${state.configDraft.parameterLibrary.length + 1}`);
-                }}
+                onClick={() => setCreateDialogOpen(true)}
               >
                 新增参数
               </button>
@@ -354,6 +353,17 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         usedByProjects={deleteTargetProjects}
         onCancel={() => setDeleteTargetId(null)}
         onConfirm={confirmDelete}
+      />
+      <CreateParameterDialog
+        open={createDialogOpen}
+        existingModules={library.map((p) => p.module)}
+        existingNames={library.map((p) => p.name)}
+        onCancel={() => setCreateDialogOpen(false)}
+        onConfirm={(draft) => {
+          dispatch({ type: "ADD_PROJECT_PARAMETER_FROM_DRAFT", draft });
+          setSelectedParameterId(`new-power-parameter-${library.length + 1}`);
+          setCreateDialogOpen(false);
+        }}
       />
       {state._undoStack ? (
         <UndoableToast

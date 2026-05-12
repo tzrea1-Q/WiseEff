@@ -67,7 +67,7 @@ describe("ParameterAdminPage", () => {
 
     expect(within(strip).getByText("共享参数")).toBeInTheDocument();
     expect(within(strip).getByText("高风险")).toBeInTheDocument();
-    expect(within(strip).getByText("孤儿参数")).toBeInTheDocument();
+    expect(within(strip).getByText("闲置参数")).toBeInTheDocument();
     expect(within(strip).getByText("最近导入")).toBeInTheDocument();
   });
 

@@ -107,7 +107,7 @@ describe("ParameterLibraryList search and risk filters", () => {
   it("filters by coverage", () => {
     render(<ParameterLibraryList {...defaultProps({ search: { ...baseSearch, coverage: "orphan" } })} />);
 
-    expect(screen.getByText("所有参数都被项目使用中 · 没有孤儿")).toBeInTheDocument();
+    expect(screen.getByText("所有参数都被项目使用中 · 没有闲置参数")).toBeInTheDocument();
     expect(queryLibraryRows()).toHaveLength(0);
   });
 
@@ -116,7 +116,7 @@ describe("ParameterLibraryList search and risk filters", () => {
     render(<ParameterLibraryList {...props} />);
 
     fireEvent.click(screen.getByRole("button", { name: /覆盖/ }));
-    fireEvent.click(screen.getByRole("radio", { name: "孤儿参数" }));
+    fireEvent.click(screen.getByRole("radio", { name: "闲置参数" }));
 
     expect(props.onUpdateSearch).toHaveBeenCalledWith({ coverage: "orphan" });
   });

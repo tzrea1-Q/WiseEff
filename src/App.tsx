@@ -79,12 +79,14 @@ import {
   addDebugParameter,
   addDebugParameterFromDraft,
   addProjectParameter,
+  addProjectParameterFromDraft,
   deleteDebugParameter,
   deleteProjectParameter,
   serializePowerManagementConfig,
   updateDebugParameter,
   updateProjectParameter,
-  updateProjectParameterMetadata
+  updateProjectParameterMetadata,
+  type PowerManagementRisk
 } from "./powerManagementConfig";
 import { Button } from "@/components/ui/button";
 import {
@@ -151,6 +153,7 @@ export type AppAction =
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
   | { type: "DISCARD_ALL_DEBUG_DIRTY" }
   | { type: "ADD_PROJECT_PARAMETER" }
+  | { type: "ADD_PROJECT_PARAMETER_FROM_DRAFT"; draft: { name: string; module: string; unit: string; risk: PowerManagementRisk; description: string } }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
@@ -803,6 +806,14 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     }
     case "ADD_PROJECT_PARAMETER": {
       const configDraft = addProjectParameter(state.configDraft);
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "ADD_PROJECT_PARAMETER_FROM_DRAFT": {
+      const configDraft = addProjectParameterFromDraft(state.configDraft, action.draft);
       return {
         ...state,
         configDraft,
@@ -3329,10 +3340,10 @@ function UnifiedAgent({
           ).length;
           updateParameterAdminQuery({ coverage: "orphan" });
           dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id, metadata: { orphanCount } });
-          setMessages((items) => [`WiseAgent 已切换到孤儿参数视角，当前命中 ${orphanCount} 项。`, ...items]);
+          setMessages((items) => [`WiseAgent 已切换到闲置参数视角，当前命中 ${orphanCount} 项。`, ...items]);
           break;
         }
-        setMessages((items) => ["当前页面暂不支持孤儿参数扫描。", ...items]);
+        setMessages((items) => ["当前页面暂不支持闲置参数扫描。", ...items]);
         break;
       }
       case "draft-cleanup": {
@@ -3342,7 +3353,7 @@ function UnifiedAgent({
             .map((parameter) => parameter.id);
           updateParameterAdminQuery({ coverage: "orphan" });
           dispatch({ type: "AGENT_ACTION_EXECUTED", actionId: id, metadata: { orphanIds } });
-          setMessages((items) => [`WiseAgent 已生成孤儿清理建议，包含 ${orphanIds.length} 个候选参数。`, ...items]);
+          setMessages((items) => [`WiseAgent 已生成闲置清理建议，包含 ${orphanIds.length} 个候选参数。`, ...items]);
           break;
         }
         setMessages((items) => ["当前页面暂不支持清理建议。", ...items]);

@@ -1,4 +1,4 @@
-﻿@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -4619,6 +4619,11 @@ td small {
 
 .confirm-dialog {
   width: min(460px, 100%);
+  padding: 22px;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 16px;
+  box-shadow: 0 24px 70px rgba(16, 28, 45, 0.28);
 }
 
 .rejection-dialog {
@@ -7165,6 +7170,17 @@ td small {
   backdrop-filter: blur(6px);
 }
 
+.param-admin-shell > .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 28, 45, 0.32);
+  backdrop-filter: blur(6px);
+}
+
 .param-admin-shell :focus-visible,
 .param-admin-shell button:focus-visible,
 .param-admin-shell input:focus-visible,
@@ -7657,7 +7673,7 @@ td small {
   background: #f4f7ff;
 }
 
-.library-row-main {
+.param-admin-shell .library-row-main {
   display: grid;
   gap: 4px;
   min-width: 0;
@@ -7665,6 +7681,7 @@ td small {
 
 .library-row-main strong,
 .library-row-main small {
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7708,7 +7725,77 @@ td small {
 }
 
 .param-def-form {
-  align-items: start;
+  display: grid;
+  gap: 0;
+  padding: 0;
+}
+
+.def-group {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+}
+
+.def-group:last-child {
+  border-bottom: 0;
+}
+
+.def-group legend {
+  padding: 12px 16px 0;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.def-group-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 10px 16px 16px;
+}
+
+.def-group-fields--stack {
+  grid-template-columns: 1fr;
+}
+
+.def-group-fields label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
+.def-group-fields input,
+.def-group-fields textarea {
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+}
+
+.def-group-fields input:focus,
+.def-group-fields textarea:focus {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.def-group-fields textarea {
+  resize: vertical;
+  line-height: 1.55;
 }
 
 .label-hint {
@@ -7936,6 +8023,76 @@ td small {
 
 .delete-parameter-dialog {
   width: min(500px, 100%);
+}
+
+.create-parameter-dialog {
+  width: min(480px, 100%);
+  display: grid;
+  gap: 16px;
+}
+
+.create-param-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.create-param-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.create-param-fields label.wide {
+  grid-column: 1 / -1;
+}
+
+.create-param-fields .required {
+  color: var(--danger);
+}
+
+.create-param-fields input,
+.create-param-fields textarea,
+.create-param-fields select {
+  width: 100%;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+}
+
+.create-param-fields input:focus,
+.create-param-fields textarea:focus,
+.create-param-fields select:focus {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.create-param-fields textarea {
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.link-button {
+  padding: 0;
+  color: var(--app-primary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.link-button:hover {
+  text-decoration: underline;
 }
 
 .export-diff-dialog p,

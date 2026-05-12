@@ -48,7 +48,7 @@ export function DeleteParameterDialog({
             </ul>
           </>
         ) : (
-          <p>此参数目前没有任何项目使用，是一个孤儿参数。</p>
+          <p>此参数目前没有任何项目使用，是一个闲置参数。</p>
         )}
         <ul className="del-consequences">
           <li>所有项目的当前值会从配置草稿中移除。</li>

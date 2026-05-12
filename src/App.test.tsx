@@ -1080,6 +1080,10 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
 
+    expect(screen.getByRole("dialog", { name: "新增参数" })).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText("例如 battery_temp_limit_c"), { target: { value: "new_power_parameter_11" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建参数" }));
+
     expect(screen.getByDisplayValue("new_power_parameter_11")).toBeInTheDocument();
 
     expect(screen.getByText("new_power_parameter_11")).toBeInTheDocument();
@@ -1122,16 +1126,16 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
     const agentActions = document.querySelector(".agent-actions") as HTMLElement;
-    fireEvent.click(within(agentActions).getByRole("button", { name: /扫描孤儿参数/ }));
+    fireEvent.click(within(agentActions).getByRole("button", { name: /扫描闲置参数/ }));
 
     expect(window.location.search).toContain("coverage=orphan");
-    expect(document.body).toHaveTextContent("WiseAgent 已切换到孤儿参数视角");
+    expect(document.body).toHaveTextContent("WiseAgent 已切换到闲置参数视角");
 
     fireEvent.click(within(agentActions).getByRole("button", { name: /生成清理建议/ }));
     fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
 
     expect(window.location.search).toContain("coverage=orphan");
-    expect(document.body).toHaveTextContent("WiseAgent 已生成孤儿清理建议");
+    expect(document.body).toHaveTextContent("WiseAgent 已生成闲置清理建议");
   });
 
   it("saves project admin edits to the local JSON config endpoint", () => {
