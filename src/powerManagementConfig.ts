@@ -28,6 +28,8 @@ export type PowerManagementDebugParameter = {
   id: string;
   name: string;
   key: string;
+  description: string;
+  module: string;
   currentValue: string;
   targetValue: string;
   unit: string;
@@ -193,6 +195,8 @@ export function addDebugParameter(config: PowerManagementConfig) {
     id: `dbg-new-parameter-${nextIndex}`,
     name: `new_debug_parameter_${nextIndex}`,
     key: `debug.new_parameter_${nextIndex}`,
+    description: "",
+    module: "Charging Policy",
     currentValue: "0",
     targetValue: "0",
     unit: "value",
@@ -233,7 +237,7 @@ export function deleteDebugParameter(config: PowerManagementConfig, parameterId:
 export function updateDebugParameter(
   config: PowerManagementConfig,
   parameterId: string,
-  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "unit" | "range" | "risk" | "status">>
+  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "module" | "unit" | "range" | "risk" | "status">>
 ) {
   return {
     ...config,

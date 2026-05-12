@@ -249,6 +249,8 @@ export type ParameterEditorDraft = {
 type DebugParameterEditorDraft = {
   name: string;
   key: string;
+  description: string;
+  module: string;
   currentValue: string;
   targetValue: string;
   unit: string;
