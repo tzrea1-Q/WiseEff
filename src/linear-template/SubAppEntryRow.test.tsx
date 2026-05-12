@@ -10,7 +10,7 @@ describe("SubAppEntryRow", () => {
     render(<SubAppEntryRow state={initialState} />);
 
     const headings = screen.getAllByRole("heading", { level: 3 }).map((heading) => heading.textContent);
-    expect(headings).toEqual(["参数管理", "日志分析", "参数调试"]);
+    expect(headings).toEqual(["参数管理", "调试平台", "日志分析"]);
   });
 
   it("uses the badges derived from initial mock state", () => {

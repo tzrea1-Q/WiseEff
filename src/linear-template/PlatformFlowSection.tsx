@@ -30,6 +30,23 @@ const tabs: TabConfig[] = [
     ]
   },
   {
+    key: "debugging",
+    label: "调试平台",
+    headline: "ChargeLab_X01",
+    meta: "connected",
+    previewRows: [
+      ["当前值", "3850 mA", "快照已保留"],
+      ["目标值", "3200 mA", "等待确认"],
+      ["回滚值", "3850 mA", "可撤回"]
+    ],
+    features: [
+      { title: "调试目标进入。", text: "从参数或日志直接进入 ChargeLab_X01 场景。" },
+      { title: "多步 Workflow。", text: "把假设、参数建议、验证结果和确认动作串成路径。" },
+      { title: "Agent 协同。", text: "Agent 给出候选操作，人负责确认是否下发。" },
+      { title: "回滚准备。", text: "危险操作前保留原值、目标值和撤回说明。" }
+    ]
+  },
+  {
     key: "logs",
     label: "日志分析",
     headline: "Evidence Chain",
@@ -44,23 +61,6 @@ const tabs: TabConfig[] = [
       { title: "上下文聚合。", text: "按设备、项目、参数和 Workflow 节点还原事件现场。" },
       { title: "异常定位。", text: "Agent 标注高风险片段，人工确认后进入后续调试。" },
       { title: "查询留痕。", text: "关键筛选条件、命中记录和导出动作进入审计链。" }
-    ]
-  },
-  {
-    key: "debugging",
-    label: "参数调试",
-    headline: "ChargeLab_X01",
-    meta: "connected",
-    previewRows: [
-      ["当前值", "3850 mA", "快照已保留"],
-      ["目标值", "3200 mA", "等待确认"],
-      ["回滚值", "3850 mA", "可撤回"]
-    ],
-    features: [
-      { title: "调试目标进入。", text: "从参数或日志直接进入 ChargeLab_X01 场景。" },
-      { title: "多步 Workflow。", text: "把假设、参数建议、验证结果和确认动作串成路径。" },
-      { title: "Agent 协同。", text: "Agent 给出候选操作，人负责确认是否下发。" },
-      { title: "回滚准备。", text: "危险操作前保留原值、目标值和撤回说明。" }
     ]
   }
 ];

@@ -184,8 +184,8 @@ describe("WiseEff app shell", () => {
     const homepage = screen.getByRole("main", { name: "WiseEff homepage" });
 
     expect(within(homepage).getByRole("heading", { name: "参数管理", level: 3 })).toBeInTheDocument();
+    expect(within(homepage).getByRole("heading", { name: "调试平台", level: 3 })).toBeInTheDocument();
     expect(within(homepage).getByRole("heading", { name: "日志分析", level: 3 })).toBeInTheDocument();
-    expect(within(homepage).getByRole("heading", { name: "参数调试", level: 3 })).toBeInTheDocument();
 
     expect(within(homepage).getByRole("link", { name: /进入参数首页/ })).toHaveAttribute("href", "/parameter-home");
     expect(within(homepage).getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
@@ -220,13 +220,13 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("tab", { name: "参数管理" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("tab", { name: "调试平台" }));
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("ChargeLab_X01")).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
     expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("battery_pack_temp=46.8C")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("tab", { name: "参数调试" }));
-    expect(screen.getByRole("tab", { name: "参数调试" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("ChargeLab_X01")).toBeInTheDocument();
   });
 
   it("moves the platform flow tab selection by keyboard", () => {
@@ -238,9 +238,9 @@ describe("WiseEff app shell", () => {
 
     firstTab.focus();
     fireEvent.keyDown(firstTab, { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "日志分析" }), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "调试平台" }), { key: "ArrowLeft" });
     expect(firstTab).toHaveAttribute("aria-selected", "true");
   });
 
@@ -732,7 +732,7 @@ describe("WiseEff app shell", () => {
     const pageChecks = [
       {
         path: "/",
-        present: ["让业务流程更智能更高效", "WiseEff 把参数管理、日志分析、设备调试和审阅治理连接到同一平台。", "参数管理", "日志分析", "参数调试"],
+        present: ["让业务流程更智能更高效", "WiseEff 把参数管理、日志分析、设备调试和审阅治理连接到同一平台。", "参数管理", "日志分析", "调试平台"],
         absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
       },
       {

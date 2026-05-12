@@ -8,8 +8,8 @@ import "./linear-template.css";
 
 const navItems = [
   { label: "参数管理", href: "/parameter-home" },
-  { label: "日志分析", href: "/logs" },
-  { label: "参数调试", href: "/debugging" }
+  { label: "调试平台", href: "/debugging" },
+  { label: "日志分析", href: "/logs" }
 ] as const;
 
 const footerColumns = [
@@ -17,8 +17,8 @@ const footerColumns = [
     title: "Platform",
     links: [
       { label: "参数管理", href: "/parameter-home" },
-      { label: "日志分析", href: "/logs" },
-      { label: "参数调试", href: "/debugging" }
+      { label: "调试平台", href: "/debugging" },
+      { label: "日志分析", href: "/logs" }
     ]
   },
   {

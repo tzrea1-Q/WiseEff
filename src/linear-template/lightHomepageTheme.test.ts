@@ -69,8 +69,8 @@ describe("WiseEff light homepage theme", () => {
 
     expect(links).toEqual([
       { label: "参数管理", href: "/parameter-home" },
-      { label: "日志分析", href: "/logs" },
-      { label: "参数调试", href: "/debugging" }
+      { label: "调试平台", href: "/debugging" },
+      { label: "日志分析", href: "/logs" }
     ]);
     expect(nav?.querySelector('a[href="#platform"]')).not.toBeInTheDocument();
     expect(nav?.querySelector('a[href="#workflow"]')).not.toBeInTheDocument();
