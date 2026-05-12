@@ -2901,6 +2901,8 @@ td small {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
   gap: 18px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .sr-only {
@@ -2961,7 +2963,7 @@ td small {
 
 .logs-v2-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
   gap: 16px;
   min-height: 520px;
   padding: 18px;
@@ -2991,6 +2993,54 @@ td small {
   flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+}
+
+.logs-v2 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 14px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.logs-v2 .button.primary {
+  color: #fff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
+}
+
+.logs-v2 .button.primary:active {
+  background: #002d73;
+}
+
+.logs-v2 .button.subtle {
+  color: #334155;
+  background: #fff;
+}
+
+.logs-v2 .button.subtle:hover {
+  background: #f1f5f9;
+}
+
+.logs-v2 .button.danger {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.logs-v2 .button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .logs-conclusion-meta span {
@@ -3185,6 +3235,7 @@ td small {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  margin-top: 12px;
   margin-bottom: 10px;
 }
 
@@ -3232,16 +3283,50 @@ td small {
   max-height: 520px;
   overflow: auto;
   padding: 10px;
-  color: #ebf1ff;
-  background: #1f2a3a;
+  color: #1e293b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
 }
 
+.rawlog-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.rawlog-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f1f5f9;
+}
+
+.rawlog-table th {
+  padding: 6px 8px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.rawlog-table__th-num { width: 42px; }
+.rawlog-table__th-time { width: 110px; }
+.rawlog-table__th-module { width: 130px; }
+
+.rawlog-table__time code { color: #0369a1; }
+.rawlog-table__module code { color: #15803d; }
+.rawlog-table__content code { color: #334155; }
+
+.rawlog-viewer .rawlog-line td {
+  padding: 3px 8px;
+  vertical-align: top;
+}
+
 .rawlog-viewer .rawlog-line {
-  grid-template-columns: 42px minmax(0, 1fr);
-  padding: 3px 4px;
   border-left: 3px solid transparent;
-  border-radius: 6px;
 }
 
 .rawlog-line__num {
@@ -3258,8 +3343,8 @@ td small {
 }
 
 .rawlog-line__num:disabled {
-  color: #92a1b6;
-  background: #334056;
+  color: #94a3b8;
+  background: #f1f5f9;
 }
 
 .rawlog-line code {
@@ -3271,16 +3356,16 @@ td small {
 
 .rawlog-line--anchor-hover,
 .rawlog-line--line-hover {
-  background: rgba(80, 220, 255, 0.14);
+  background: rgba(14, 165, 233, 0.08);
 }
 
 .rawlog-line--anchor-focus {
-  background: rgba(0, 82, 204, 0.2);
-  border-left-color: var(--secondary-container);
+  background: rgba(0, 82, 204, 0.08);
+  border-left-color: var(--app-primary);
 }
 
 .rawlog-line--match {
-  background: rgba(255, 237, 194, 0.18);
+  background: rgba(250, 204, 21, 0.15);
 }
 
 .rawlog-line--match-current {
@@ -3451,6 +3536,10 @@ td small {
   gap: 16px;
 }
 
+.upload-dialog__header h2 {
+  font-weight: 900;
+}
+
 .upload-file-field {
   display: grid;
   gap: 8px;
@@ -3466,6 +3555,13 @@ td small {
   background: var(--surface-low);
   border: 1px solid var(--outline);
   border-radius: 8px;
+}
+
+.upload-file-field--dragging {
+  border: 2px dashed var(--app-primary);
+  background: rgba(0, 61, 155, 0.04);
+  border-radius: 10px;
+  padding: 8px;
 }
 
 .upload-dialog__state {
@@ -3511,6 +3607,15 @@ td small {
   50% {
     opacity: 1;
   }
+}
+
+.logs-analyzing-anim {
+  animation: analyzingPulse 2s ease-in-out infinite;
+}
+
+@keyframes analyzingPulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 @media (max-width: 1100px) {

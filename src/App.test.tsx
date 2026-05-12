@@ -732,7 +732,7 @@ describe("WiseEff app shell", () => {
     expect(within(analysis).getByText("证据 01")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 02")).toBeInTheDocument();
     expect(within(analysis).getByText("证据 03")).toBeInTheDocument();
-    expect(within(analysis).getByText("10:24:01 WARN [CHG_THERMAL] battery_pack_temp=46.8C over soft_limit=45C")).toBeInTheDocument();
+    expect(within(analysis).getByText("battery_pack_temp=46.8C over soft_limit=45C")).toBeInTheDocument();
     expect(within(analysis).getByText(/#20 10:24:01 WARN \[CHG_THERMAL\]/)).toBeInTheDocument();
     expect(within(analysis).getByText("电池包温度越过 45°C 软阈值，确认热异常触发点。")).toBeInTheDocument();
     expect(within(analysis).queryByText("建议动作")).not.toBeInTheDocument();
