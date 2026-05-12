@@ -29,7 +29,7 @@ export type PageConfig = {
   key: PageKey;
   path: string;
   label: string;
-  group: "平台总览" | "参数管理" | "日志分析" | "参数调试";
+  group: "平台总览" | "参数管理" | "调试平台" | "日志分析";
   icon: LucideIcon;
   title: string;
   subtitle: string;
@@ -61,7 +61,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-home",
     path: "/parameter-home",
-    label: "参数首页",
+    label: "首页",
     group: "参数管理",
     icon: Home,
     title: "智能参数管理",
@@ -70,7 +70,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameters",
     path: "/parameters",
-    label: "项目参数工作台",
+    label: "参数修改",
     group: "参数管理",
     icon: SlidersHorizontal,
     title: "项目参数用户工作台",
@@ -79,7 +79,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-comparison",
     path: "/parameter-comparison",
-    label: "项目参数对比分析",
+    label: "对比分析",
     group: "参数管理",
     icon: SlidersHorizontal,
     title: "项目参数对比分析",
@@ -88,7 +88,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-review",
     path: "/parameter-review",
-    label: "参数审阅工作台",
+    label: "参数审阅",
     group: "参数管理",
     icon: ShieldCheck,
     title: "参数管理员工作台",
@@ -97,16 +97,34 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-admin",
     path: "/parameter-admin",
-    label: "项目参数管理后台",
+    label: "管理后台",
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
     subtitle: "电池与充电参数数据库、批量导入、权限和审计管理"
   },
   {
+    key: "debugging",
+    path: "/debugging",
+    label: "参数调试",
+    group: "调试平台",
+    icon: TerminalSquare,
+    title: "参数调试平台",
+    subtitle: "连接样机、实时调节充电参数并准备回滚"
+  },
+  {
+    key: "debugging-admin",
+    path: "/debugging-admin",
+    label: "管理后台",
+    group: "调试平台",
+    icon: Gauge,
+    title: "参数调试管理后台",
+    subtitle: "设备接入、可调充电参数目录、指标和权限管理"
+  },
+  {
     key: "logs",
     path: "/logs",
-    label: "日志智能分析",
+    label: "智能分析",
     group: "日志分析",
     icon: FileText,
     title: "日志智能分析",
@@ -115,29 +133,11 @@ export const navigationItems: PageConfig[] = [
   {
     key: "log-admin",
     path: "/log-admin",
-    label: "日志分析管理后台",
+    label: "管理后台",
     group: "日志分析",
     icon: Activity,
     title: "日志分析管理后台",
     subtitle: "日志分析应用指标、记录和后台权限配置"
-  },
-  {
-    key: "debugging",
-    path: "/debugging",
-    label: "参数调试平台",
-    group: "参数调试",
-    icon: TerminalSquare,
-    title: "参数调试平台",
-    subtitle: "连接样机、实时调节充电参数并准备回滚"
-  },
-  {
-    key: "debugging-admin",
-    path: "/debugging-admin",
-    label: "参数调试管理后台",
-    group: "参数调试",
-    icon: Gauge,
-    title: "参数调试管理后台",
-    subtitle: "设备接入、可调充电参数目录、指标和权限管理"
   }
 ];
 

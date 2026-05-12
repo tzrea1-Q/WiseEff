@@ -185,10 +185,10 @@ const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: strin
 ];
 
 const parameterHomeQuickEntries = [
-  { title: "项目参数工作台", path: "/parameters" },
-  { title: "项目参数对比分析", path: "/parameter-comparison" },
-  { title: "参数合入审核", path: "/parameter-review" },
-  { title: "项目参数管理后台", path: "/parameter-admin" }
+  { title: "参数修改", path: "/parameters" },
+  { title: "对比分析", path: "/parameter-comparison" },
+  { title: "参数审阅", path: "/parameter-review" },
+  { title: "管理后台", path: "/parameter-admin" }
 ];
 
 type SelectOption<Value extends string = string> = {
@@ -1782,10 +1782,6 @@ function TopBar({
             </label>
           </>
         ) : null}
-        <div className="searchbox">
-          <Search size={17} />
-          <Input aria-label="搜索" placeholder="搜索..." />
-        </div>
         {showProjectSelector ? (
           <SelectControl
             ariaLabel="项目"
