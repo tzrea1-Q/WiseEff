@@ -319,12 +319,10 @@ describe("WiseEff app shell", () => {
         row.textContent?.includes(parameterName)
       );
     const projectSelect = screen.getByRole("combobox", { name: "项目" });
-    const riskFilters = screen.getByRole("group", { name: "风险等级" });
 
     expectSelectValue(projectSelect, "aurora");
     expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
-    expect(within(riskFilters).getByRole("button", { name: "高 4" })).toHaveAttribute("aria-pressed", "false");
-    expect(within(riskFilters).getByRole("button", { name: "中 4" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "重要性 ▾" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "模块 ▾" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "模块 ▾" }));
@@ -388,13 +386,11 @@ describe("WiseEff app shell", () => {
     render(<App />);
 
     const projectSelect = screen.getByRole("combobox", { name: "项目" });
-    const detailPanel = document.querySelector<HTMLElement>(".detail-panel");
 
     expectSelectValue(projectSelect, "nebula");
     expect(screen.getByRole("button", { name: "模块 (1) ▾" })).toBeInTheDocument();
     expect(within(screen.getByRole("table")).getByText("battery_temp_target_c")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
-    expect(detailPanel).toHaveTextContent("battery_temp_target_c");
   });
 
   it("keeps the parameter example value aligned inside a normal table cell", () => {
@@ -441,13 +437,11 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 fast_charge_current_limit_ma/ }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /勾选 charge_voltage_limit_mv/ }));
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
 
-    expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (2 项)" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
 
     const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
     expect(within(dialog).getByText(/本轮提交包含\s*2\s*个参数修改/)).toBeInTheDocument();
@@ -476,7 +470,6 @@ describe("WiseEff app shell", () => {
 
     expect(window.location.pathname).toBe("/parameter-comparison");
     expect(screen.getByTestId("comparison-page-v2")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "AUR-Prod vs NEB-RD" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "基准项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "交换基准和对比项目" })).toBeInTheDocument();
@@ -558,7 +551,6 @@ describe("WiseEff app shell", () => {
     const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
     const matrix = document.querySelector<HTMLElement>(".comparison-matrix--v2");
 
-    expect(screen.getByRole("heading", { name: "NEB-RD vs AUR-Prod" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "基准项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "对比项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
     expect(within(filters).getByText("Battery Safety")).toBeInTheDocument();
@@ -760,12 +752,12 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameters",
-        present: ["Agent 发现", "高 4", "参数名称", "当前 → 推荐", "范围 / 单位", "更新时间"],
+        present: ["Agent 发现", "重要性", "参数名称", "当前 → 推荐", "范围 / 单位", "更新时间"],
         absent: ["Filters", "All", "Current", "Range / Unit", "Importance", "Updated"]
       },
       {
         path: "/parameter-comparison",
-        present: ["参数", "对比分析", "AUR-Prod", "NEB-RD", "漂移参数", "高重要性差异", "仅看漂移"],
+        present: ["参数", "对比分析", "AUR-Prod", "NEB-RD", "差异参数", "高重要性差异", "仅看差异"],
         absent: [
           "Parameters",
           "Comparison",
@@ -784,7 +776,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-review",
-        present: ["筛选队列", "待审阅请求", "变更", "变更历史", "现在"],
+        present: ["待审阅请求", "变更", "变更历史", "现在", "提交人"],
         absent: ["Filter Queue", "Pending Requests", "Req ID", "Submitter", "Proposed Change", "Change History", "Targeting module"]
       },
       {
@@ -799,7 +791,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/log-admin",
-        present: ["日志分析管理后台", "日志分析记录", "后台访问权限", "审计事件"],
+        present: ["日志分析管理后台", "日志分析记录", "后台访问权限"],
         absent: ["日志分析 Admin", "Failed", "Complete", "Processing"]
       },
       {

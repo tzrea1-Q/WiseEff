@@ -4,12 +4,12 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   CircleOff,
   Copy,
   Download,
   FileText,
-  Filter,
   History,
   Info,
   Lightbulb,
@@ -1971,11 +1971,63 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
 }
 
 
+function ReviewMultiFilter({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="filter-multi">
+      <button className="filter-multi__trigger" type="button" onClick={() => setOpen((c) => !c)}>
+        {label}
+        {selected.length > 0 ? <span className="filter-multi__count">{selected.length}</span> : null}
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
+      {open ? (
+        <ul className="filter-multi__list" role="listbox" aria-label={`${label}筛选`}>
+          {options.map((opt) => (
+            <li key={opt} role="option" aria-selected={selected.includes(opt)} className="filter-multi__option" onClick={() => onChange(selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt])}>
+              <input type="checkbox" checked={selected.includes(opt)} readOnly tabIndex={-1} />
+              {opt}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const [selectedId, setSelectedId] = useState(state.changeRequests[0]?.id ?? "");
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [filterModules, setFilterModules] = useState<string[]>([]);
+  const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
+  const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const selected = state.changeRequests.find((request) => request.id === selectedId) ?? state.changeRequests[0];
+
+  const filteredRequests = useMemo(() => {
+    return state.changeRequests.filter((request) => {
+      if (filterModules.length && !filterModules.includes(request.module)) return false;
+      if (filterSubmitters.length && !filterSubmitters.includes(request.submitter)) return false;
+      if (filterProjects.length) {
+        const param = state.parameters.find((p) => p.id === request.parameterId);
+        const project = state.configDraft.projects.find((p) => p.id === param?.projectId);
+        if (!project || !filterProjects.includes(project.name)) return false;
+      }
+      return true;
+    });
+  }, [state.changeRequests, state.parameters, state.configDraft.projects, filterModules, filterSubmitters, filterProjects]);
+
+  const modules = useMemo(() => Array.from(new Set(state.changeRequests.map((r) => r.module))), [state.changeRequests]);
+  const submitters = useMemo(() => Array.from(new Set(state.changeRequests.map((r) => r.submitter))), [state.changeRequests]);
+  const projectOptions = useMemo(() => {
+    const ids = new Set(state.changeRequests.map((r) => state.parameters.find((p) => p.id === r.parameterId)?.projectId).filter(Boolean));
+    return state.configDraft.projects.filter((p) => ids.has(p.id));
+  }, [state.changeRequests, state.parameters, state.configDraft.projects]);
+
+  const selectedRound = useMemo(() => {
+    if (!selected?.submissionRoundId) return null;
+    return state.parameterSubmissionRounds.find((r) => r.id === selected.submissionRoundId) ?? null;
+  }, [selected, state.parameterSubmissionRounds]);
 
   useEffect(() => {
     if (!contextQuery.module && !contextQuery.projectId) {
@@ -2006,19 +2058,19 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   return (
     <WorkbenchLayout
       title="参数管理员工作台"
-      subtitle="审阅参数变更队列，结合 AI 摘要和时间线推进合入上库流程。"
-      actions={
-        <Button variant="outline" type="button">
-          <Filter size={16} />
-          筛选队列
-        </Button>
-      }
     >
       <section className="review-queue">
-        <PanelHeader title="待审阅请求" meta={`${state.changeRequests.length} 项操作`} />
+        <div className="review-queue-header">
+          <PanelHeader title="待审阅请求" meta={`${filteredRequests.length} 项操作`} />
+          <div className="review-queue-filters">
+            <ReviewMultiFilter label="模块" options={modules} selected={filterModules} onChange={setFilterModules} />
+            <ReviewMultiFilter label="提交人" options={submitters} selected={filterSubmitters} onChange={setFilterSubmitters} />
+            <ReviewMultiFilter label="项目" options={projectOptions.map((p) => p.name)} selected={filterProjects} onChange={setFilterProjects} />
+          </div>
+        </div>
         <DataTable
           headers={["请求编号", "模块", "提交人", "变更", "状态"]}
-          rows={state.changeRequests}
+          rows={filteredRequests}
           renderRow={(request) => (
             <TableRow
               className={request.id === selected?.id ? "selected-row" : ""}
@@ -2052,6 +2104,14 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
                 目标模块为 <strong>{selected.module}</strong>，由 {selected.submitter} 提交。
               </p>
             </div>
+            {selectedRound ? (
+              <div className="detail-card">
+                <Button variant="outline" type="button" className="full" onClick={() => setDetailOpen(true)}>
+                  <FileText size={16} />
+                  查看提交详情（{selectedRound.items.length} 项变更）
+                </Button>
+              </div>
+            ) : null}
             <div className="ai-summary-card">
               <SectionLabel icon={<Sparkles size={16} />} label="审阅摘要" />
               <p>{selected.aiSummary}</p>
@@ -2089,6 +2149,38 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       </aside>
       {rejectOpen && selected ? (
         <RejectReviewDialog request={selected} onCancel={() => setRejectOpen(false)} onSubmit={rejectSelected} />
+      ) : null}
+      {detailOpen && selectedRound ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-detail-title">
+          <div className="submission-dialog">
+            <div className="submission-dialog-head">
+              <div>
+                <span className="eyebrow">{selectedRound.id} · {selectedRound.projectName}</span>
+                <h2 id="submission-detail-title">提交详情</h2>
+                <p>本轮提交包含 {selectedRound.items.length} 个参数修改，由 {selectedRound.submitter} 提交。</p>
+              </div>
+            </div>
+            <div className="submission-diff-list">
+              {selectedRound.items.map((item) => (
+                <article className="submission-diff-card" key={item.requestId}>
+                  <div>
+                    <strong>{item.name}</strong>
+                    <small>{item.module} · {riskLabels[item.risk]}</small>
+                  </div>
+                  <div className="diff-values">
+                    <span className="diff-before">{item.currentValue}{item.unit}</span>
+                    <span>→</span>
+                    <span className="diff-after">{item.targetValue}{item.unit}</span>
+                  </div>
+                  {item.reason ? <p className="submission-reason">修改原因：{item.reason}</p> : null}
+                </article>
+              ))}
+            </div>
+            <div className="dialog-actions">
+              <button className="button subtle" type="button" onClick={() => setDetailOpen(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </WorkbenchLayout>
   );

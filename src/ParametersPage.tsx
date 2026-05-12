@@ -418,17 +418,6 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     });
   };
   const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
-  const toggleRiskFilter = (risk: ParameterRiskFilter) => {
-    setRiskFilters((current) => {
-      const next = new Set(current);
-      if (next.has(risk)) {
-        next.delete(risk);
-      } else {
-        next.add(risk);
-      }
-      return next;
-    });
-  };
   const clearFilters = () => {
     setSearchQuery("");
     setRiskFilters(new Set());

@@ -2528,6 +2528,65 @@ td small {
   grid-column: span 2;
 }
 
+.review-queue-header {
+  display: flex;
+  flex-direction: column;
+}
+
+.review-queue-filters {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px 12px;
+  border-bottom: 1px solid var(--outline);
+}
+
+.submission-detail-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.submission-detail-card .submission-detail-summary {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.submission-detail-card .submission-diff-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.submission-detail-card .submission-diff-card {
+  padding: 10px 12px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.submission-detail-card .submission-diff-card strong {
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+}
+
+.submission-detail-card .submission-diff-card small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.submission-detail-card .submission-reason {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  padding-left: 8px;
+  border-left: 2px solid var(--outline);
+}
+
 .review-detail {
   grid-column: span 1;
 }
@@ -6000,7 +6059,7 @@ td small {
 }
 
 .parameter-homepage-charts {
-  grid-template-columns: 3fr 2fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
 }
 
@@ -7229,7 +7288,7 @@ td small {
 .comparison-matrix--v2__head,
 .comparison-row--v2 {
   display: grid;
-  grid-template-columns: 4px minmax(220px, 2fr) minmax(100px, 1fr) minmax(100px, 0.8fr) minmax(140px, 1fr) 140px;
+  grid-template-columns: 4px minmax(160px, 1fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(140px, 1fr) 140px;
   align-items: center;
   gap: 12px;
   padding: 12px 16px;

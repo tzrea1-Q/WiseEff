@@ -93,7 +93,7 @@ describe("WiseEff light homepage theme", () => {
 
     expect(card).toContain("min-height: 320px");
     expect(card).toContain("border-radius: 8px");
-    expect(card).toContain("linear-gradient");
+    expect(card).toContain("radial-gradient");
     expect(title).toContain("font-size: 22px");
     expect(title).toContain("letter-spacing: 0");
     expect(primary).toContain("background: var(--sub-app-accent)");

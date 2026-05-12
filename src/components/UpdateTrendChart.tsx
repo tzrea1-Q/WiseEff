@@ -112,7 +112,7 @@ export function UpdateTrendChart({ series, timeWindow }: UpdateTrendChartProps) 
     <div className="update-trend-chart" aria-label="参数更新趋势">
       <svg
         viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
-        preserveAspectRatio="none"
+        preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label="参数更新趋势折线图"
       >
