@@ -10,7 +10,7 @@ describe("PlatformFlowSection", () => {
 
     expect(screen.getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeInTheDocument();
     const tabs = screen.getAllByRole("tab");
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["参数管理", "日志分析", "参数调试"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["参数管理", "调试平台", "日志分析"]);
   });
 
   it("selects the parameter-management tab by default and shows fast_charge_current_limit_ma", () => {
@@ -33,9 +33,9 @@ describe("PlatformFlowSection", () => {
   it("shows the debugging preview meta when the debugging tab is selected", () => {
     render(<PlatformFlowSection />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "参数调试" }));
+    fireEvent.click(screen.getByRole("tab", { name: "调试平台" }));
 
-    expect(screen.getByRole("tab", { name: "参数调试" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("ChargeLab_X01")).toBeInTheDocument();
   });
 
@@ -45,21 +45,21 @@ describe("PlatformFlowSection", () => {
     const firstTab = screen.getByRole("tab", { name: "参数管理" });
     firstTab.focus();
     fireEvent.keyDown(firstTab, { key: "ArrowRight" });
-    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
 
-    fireEvent.keyDown(screen.getByRole("tab", { name: "日志分析" }), { key: "ArrowLeft" });
+    fireEvent.keyDown(screen.getByRole("tab", { name: "调试平台" }), { key: "ArrowLeft" });
     expect(firstTab).toHaveAttribute("aria-selected", "true");
   });
 
   it("moves from the focused tab instead of the previously selected tab", () => {
     render(<PlatformFlowSection />);
 
-    fireEvent.click(screen.getByRole("tab", { name: "参数调试" }));
+    fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
     const firstTab = screen.getByRole("tab", { name: "参数管理" });
 
     firstTab.focus();
     fireEvent.keyDown(firstTab, { key: "ArrowRight" });
 
-    expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
   });
 });

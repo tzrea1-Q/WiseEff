@@ -22,6 +22,16 @@ export function SubAppEntryRow({ state }: SubAppEntryRowProps) {
       badge: badges.parameterManagement
     },
     {
+      accent: "#7C3AED",
+      icon: TerminalSquare,
+      title: "调试平台",
+      description: "连接样机、实时下发调试值，保留快照与回滚入口。",
+      chips: ["设备接入", "实时下发", "快照回滚"],
+      primary: { label: "进入调试工作台", href: "/debugging" },
+      secondary: { label: "打开调试管理后台", href: "/debugging-admin" },
+      badge: badges.parameterDebugging
+    },
+    {
       accent: "#00B8D4",
       icon: FileText,
       title: "日志分析",
@@ -30,16 +40,6 @@ export function SubAppEntryRow({ state }: SubAppEntryRowProps) {
       primary: { label: "进入日志分析", href: "/logs" },
       secondary: { label: "打开日志分析后台", href: "/log-admin" },
       badge: badges.logAnalysis
-    },
-    {
-      accent: "#7C3AED",
-      icon: TerminalSquare,
-      title: "参数调试",
-      description: "连接样机、实时下发调试值，保留快照与回滚入口。",
-      chips: ["设备接入", "实时下发", "快照回滚"],
-      primary: { label: "进入调试工作台", href: "/debugging" },
-      secondary: { label: "打开调试管理后台", href: "/debugging-admin" },
-      badge: badges.parameterDebugging
     }
   ];
 
