@@ -2298,15 +2298,6 @@ function ConfigExportActions({ configJson }: { configJson: string }) {
   );
 }
 
-function ConfigExportPanel({ configJson }: { configJson: string }) {
-  return (
-    <div className="config-preview-panel">
-      <PanelHeader title="配置源预览" meta="src/config/power-management.json" />
-      <pre>{configJson}</pre>
-      <ConfigExportActions configJson={configJson} />
-    </div>
-  );
-}
 
 function LogsPage({ state, dispatch, onNavigate }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
@@ -3170,6 +3161,12 @@ function LogsAuxPanel({
 
 function DebuggingAdminPage({ state, dispatch }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.debugParameters[0]?.id ?? "");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterRisk, setFilterRisk] = useState<string[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string[]>([]);
+  const [filterModule, setFilterModule] = useState<string[]>([]);
+  const [jsonExpanded, setJsonExpanded] = useState(false);
+  const [saveFlash, setSaveFlash] = useState(false);
   const selectedParameter =
     state.configDraft.debugParameters.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.debugParameters[0];
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
@@ -3180,28 +3177,47 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
     }
   }, [selectedParameterId, state.configDraft.debugParameters]);
 
+  const filteredParameters = useMemo(() => {
+    return state.configDraft.debugParameters.filter((p) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        if (!p.name.toLowerCase().includes(q) && !p.key.toLowerCase().includes(q)) return false;
+      }
+      if (filterRisk.length && !filterRisk.includes(p.risk)) return false;
+      if (filterStatus.length && !filterStatus.includes(p.status)) return false;
+      if (filterModule.length && !filterModule.includes(p.module)) return false;
+      return true;
+    });
+  }, [state.configDraft.debugParameters, searchQuery, filterRisk, filterStatus, filterModule]);
+
+  const moduleOptions = useMemo(
+    () => Array.from(new Set(state.configDraft.debugParameters.map((p) => p.module).filter(Boolean))),
+    [state.configDraft.debugParameters]
+  );
+
   const updateDebug = (patch: Partial<DebugParameterEditorDraft>) => {
-    if (!selectedParameter) {
-      return;
-    }
+    if (!selectedParameter) return;
     dispatch({ type: "UPDATE_DEBUG_PARAMETER", parameterId: selectedParameter.id, patch });
+    setSaveFlash(true);
+    setTimeout(() => setSaveFlash(false), 1500);
   };
 
+  const highRiskCount = state.debugParameters.filter((p) => p.risk === "High").length;
+
   return (
-    <AdminPageScaffold
-      title="参数调试管理后台"
-      subtitle="编辑可调参数配置源，调试平台会同步读取当前草稿。"
-      metrics={[
-        ["在线设备", `${state.devices.filter((device) => device.status === "已连接").length}/${state.devices.length}`, "演示样机池"],
-        ["可调参数", `${state.debugParameters.length}`, "由配置源生成"],
-        ["高风险策略", `${state.debugParameters.filter((parameter) => parameter.risk === "High").length}`, "需要二次确认"],
-        ["配置草稿", "可写入", "可直接保存到 JSON 文件"]
-      ]}
-    >
-      <section className="config-admin-grid">
-        <div className="library-panel config-list-panel">
-          <PanelHeader title="可调参数目录" meta={`${state.configDraft.debugParameters.length} 项`} />
-          <div className="config-list-actions">
+    <div className="debug-admin-page">
+      <div className="debug-admin-strip">
+        <span className="debug-admin-stat">可调参数 <strong>{state.debugParameters.length}</strong></span>
+        <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
+        <span className="debug-admin-stat">在线设备 <strong>{state.devices.filter((d) => d.status === "已连接").length}/{state.devices.length}</strong></span>
+        <span className={`debug-admin-save-indicator${saveFlash ? " visible" : ""}`}>✓ 已自动保存</span>
+      </div>
+
+      <section className="debug-admin-grid">
+        <div className="debug-admin-list">
+          <div className="debug-admin-list-title-row">
+            <strong>可调参数目录</strong>
+            <small>{filteredParameters.length} 项</small>
             <Button
               variant="outline"
               type="button"
@@ -3210,109 +3226,152 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
                 setSelectedParameterId(`dbg-new-parameter-${state.configDraft.debugParameters.length + 1}`);
               }}
             >
-              新增可调参数
-            </Button>
-            <Button
-              variant="destructive"
-              type="button"
-              disabled={!selectedParameter || state.configDraft.debugParameters.length <= 1}
-              onClick={() => {
-                if (!selectedParameter) {
-                  return;
-                }
-                dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: selectedParameter.id });
-                setSelectedParameterId(state.configDraft.debugParameters.find((parameter) => parameter.id !== selectedParameter.id)?.id ?? "");
-              }}
-            >
-              删除可调参数
+              + 新增
             </Button>
           </div>
-          <div className="library-list">
-            {state.configDraft.debugParameters.map((parameter) => (
-              <Button
-                className={parameter.id === selectedParameter?.id ? "config-list-row selected" : "config-list-row"}
+          <div className="debug-admin-list-filters">
+            <div className="debug-admin-list-search">
+              <Search size={14} aria-hidden />
+              <input
+                type="search"
+                placeholder="搜索参数名 / key"
+                aria-label="搜索可调参数"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <ReviewMultiFilter label="风险" options={["High", "Medium", "Low"]} selected={filterRisk} onChange={setFilterRisk} />
+            <ReviewMultiFilter label="状态" options={["已同步", "待下发", "下发成功"]} selected={filterStatus} onChange={setFilterStatus} />
+            <ReviewMultiFilter label="模块" options={moduleOptions} selected={filterModule} onChange={setFilterModule} />
+          </div>
+          <ul className="debug-admin-param-list" role="listbox" aria-label="可调参数目录">
+            {filteredParameters.map((parameter) => (
+              <li
                 key={parameter.id}
-                type="button"
-                variant="ghost"
+                role="option"
+                aria-selected={parameter.id === selectedParameter?.id}
+                className={`debug-admin-param-row${parameter.id === selectedParameter?.id ? " selected" : ""}`}
                 onClick={() => setSelectedParameterId(parameter.id)}
               >
-                <span>
+                <span className="debug-admin-param-row-main">
                   <strong>{parameter.name}</strong>
                   <small>{parameter.key}</small>
                 </span>
-                <RiskBadge risk={parameter.risk} />
-              </Button>
+                <span className="debug-admin-param-row-meta">
+                  <span className={`debug-status-tag ${parameter.status === "待下发" ? "pending" : parameter.status === "下发成功" ? "success" : ""}`}>{parameter.status}</span>
+                  <RiskBadge risk={parameter.risk} />
+                </span>
+                <button
+                  type="button"
+                  className="debug-admin-row-delete"
+                  aria-label={`删除 ${parameter.name}`}
+                  disabled={state.configDraft.debugParameters.length <= 1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: parameter.id });
+                    if (parameter.id === selectedParameterId) {
+                      setSelectedParameterId(state.configDraft.debugParameters.find((p) => p.id !== parameter.id)?.id ?? "");
+                    }
+                  }}
+                >
+                  ×
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
 
-        <div className="config-editor-panel">
-          <PanelHeader title="调试参数编辑" meta="实时下发目录" />
+        <div className="debug-admin-editor">
           {selectedParameter ? (
-            <div className="config-form-grid">
-              <Label>
-                参数名称
-                <Input value={selectedParameter.name} onChange={(event) => updateDebug({ name: event.target.value })} />
-              </Label>
-              <Label>
-                参数 key
-                <Input value={selectedParameter.key} onChange={(event) => updateDebug({ key: event.target.value })} />
-              </Label>
-              <Label>
-                当前值
-                <Input value={selectedParameter.currentValue} onChange={(event) => updateDebug({ currentValue: event.target.value })} />
-              </Label>
-              <Label>
-                目标值
-                <Input
-                  aria-label="调试目标值"
-                  value={selectedParameter.targetValue}
-                  onChange={(event) => updateDebug({ targetValue: event.target.value })}
-                />
-              </Label>
-              <Label>
-                范围
-                <Input value={selectedParameter.range} onChange={(event) => updateDebug({ range: event.target.value })} />
-              </Label>
-              <Label>
-                单位
-                <Input value={selectedParameter.unit} onChange={(event) => updateDebug({ unit: event.target.value })} />
-              </Label>
-              <Label>
-                重要性
-                <SelectControl
-                  value={selectedParameter.risk}
-                  onValueChange={(risk) => updateDebug({ risk })}
-                  options={[
-                    { value: "High", label: "高" },
-                    { value: "Medium", label: "中" },
-                    { value: "Low", label: "低" }
-                  ]}
-                />
-              </Label>
-              <Label>
-                状态
-                <SelectControl
-                  value={selectedParameter.status}
-                  onValueChange={(status) => updateDebug({ status })}
-                  options={[
-                    { value: "已同步", label: "已同步" },
-                    { value: "待下发", label: "待下发" },
-                    { value: "下发成功", label: "下发成功" }
-                  ]}
-                />
-              </Label>
-            </div>
+            <>
+              <div className="debug-admin-form-section">
+                <h3 className="debug-admin-form-group-title">标识信息</h3>
+                <div className="debug-admin-form-fields">
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">参数名称</span>
+                    <Input value={selectedParameter.name} onChange={(e) => updateDebug({ name: e.target.value })} />
+                  </label>
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">参数 key</span>
+                    <Input value={selectedParameter.key} onChange={(e) => updateDebug({ key: e.target.value })} />
+                  </label>
+                </div>
+              </div>
+              <div className="debug-admin-form-section">
+                <h3 className="debug-admin-form-group-title">值与范围</h3>
+                <div className="debug-admin-form-fields">
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">当前值</span>
+                    <Input value={selectedParameter.currentValue} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
+                  </label>
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">目标值</span>
+                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
+                  </label>
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">范围</span>
+                    <Input value={selectedParameter.range} onChange={(e) => updateDebug({ range: e.target.value })} />
+                  </label>
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">单位</span>
+                    <Input value={selectedParameter.unit} onChange={(e) => updateDebug({ unit: e.target.value })} />
+                  </label>
+                </div>
+              </div>
+              <div className="debug-admin-form-section">
+                <h3 className="debug-admin-form-group-title">分类与状态</h3>
+                <div className="debug-admin-form-fields">
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">重要性</span>
+                    <SelectControl
+                      value={selectedParameter.risk}
+                      onValueChange={(risk) => updateDebug({ risk })}
+                      options={[
+                        { value: "High", label: "高" },
+                        { value: "Medium", label: "中" },
+                        { value: "Low", label: "低" }
+                      ]}
+                    />
+                  </label>
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">状态</span>
+                    <SelectControl
+                      value={selectedParameter.status}
+                      onValueChange={(status) => updateDebug({ status })}
+                      options={[
+                        { value: "已同步", label: "已同步" },
+                        { value: "待下发", label: "待下发" },
+                        { value: "下发成功", label: "下发成功" }
+                      ]}
+                    />
+                  </label>
+                </div>
+              </div>
+            </>
           ) : (
             <EmptyState text="请选择一个调试参数。" />
           )}
         </div>
-
-        <ConfigExportPanel
-          configJson={configJson}
-        />
       </section>
-    </AdminPageScaffold>
+
+      <section className="debug-admin-json-section">
+        <button
+          type="button"
+          className="debug-admin-json-toggle"
+          aria-expanded={jsonExpanded}
+          onClick={() => setJsonExpanded((v) => !v)}
+        >
+          <span>{jsonExpanded ? "▾" : "▸"} 配置源预览</span>
+          <small>src/config/power-management.json</small>
+        </button>
+        {jsonExpanded ? (
+          <div className="debug-admin-json-content">
+            <pre>{configJson}</pre>
+            <ConfigExportActions configJson={configJson} />
+          </div>
+        ) : null}
+      </section>
+    </div>
   );
 }
 
@@ -3327,38 +3386,6 @@ function WorkbenchLayout({ title, subtitle, actions, children }: { title: string
         {actions ? <div className="page-actions">{actions}</div> : null}
       </header>
       <div className="workbench-grid">{children}</div>
-    </div>
-  );
-}
-
-function AdminPageScaffold({
-  title,
-  subtitle,
-  metrics,
-  action,
-  children
-}: {
-  title: string;
-  subtitle: string;
-  metrics: [string, string, string][];
-  action?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="admin-page">
-      <header className="page-header">
-        <div>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-        </div>
-        {action ? <div className="page-actions">{action}</div> : null}
-      </header>
-      <section className="metric-grid admin-metrics">
-        {metrics.map(([label, value, trend]) => (
-          <MetricCard key={label} title={label} value={value} trend={trend} tone="blue" />
-        ))}
-      </section>
-      {children}
     </div>
   );
 }

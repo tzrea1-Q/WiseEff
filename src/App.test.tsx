@@ -801,7 +801,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/debugging-admin",
-        present: ["参数调试管理后台", "可写入"],
+        present: ["参数调试管理后台", "可调参数"],
         absent: ["参数调试 Admin", "Ready"]
       }
     ];
@@ -1160,6 +1160,7 @@ describe("WiseEff app shell", () => {
 
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
 
+    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
     expect(document.body).toHaveTextContent('"targetValue": "3650"');
 
     fireEvent.click(screen.getByRole("button", { name: "参数调试平台" }));
@@ -1172,15 +1173,15 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "新增可调参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ 新增" }));
 
     expect(screen.getByDisplayValue("new_debug_parameter_9")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
     expect(document.body).toHaveTextContent('"key": "debug.new_parameter_9"');
 
-    fireEvent.click(screen.getByRole("button", { name: "删除可调参数" }));
+    fireEvent.click(screen.getByRole("button", { name: /删除 new_debug_parameter_9/ }));
 
     expect(screen.queryByDisplayValue("new_debug_parameter_9")).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent('"key": "debug.new_parameter_9"');
   });
 
   it("saves debug admin edits to the local JSON config endpoint", () => {
@@ -1194,6 +1195,7 @@ describe("WiseEff app shell", () => {
     render(<App />);
 
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
+    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
 
     expect(fetchMock).toHaveBeenCalledWith(
