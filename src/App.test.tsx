@@ -438,6 +438,7 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
 
     fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
 

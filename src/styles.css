@@ -1910,6 +1910,29 @@ td small {
   gap: 12px;
 }
 
+.parameters-table-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.parameters-table-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 850;
+  letter-spacing: 0;
+}
+
+.parameters-table-heading p {
+  margin: 4px 0 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .parameters-table-toolbar {
   display: flex;
   align-items: center;
@@ -5003,14 +5026,22 @@ td small {
 }
 
 .draft-sheet-footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
   width: 100%;
-  flex-wrap: wrap;
-  justify-content: space-between;
+}
+
+.draft-sheet-footer > span {
+  min-width: 0;
+  line-height: 1.45;
 }
 
 .draft-sheet-footer .button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   width: auto;
   flex: 0 1 auto;
@@ -5020,6 +5051,7 @@ td small {
   font-size: 13px;
   font-weight: 700;
   line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -5050,7 +5082,10 @@ td small {
 
 .draft-sheet-footer-actions {
   display: flex;
+  grid-row: 2;
+  justify-content: flex-start;
   gap: 8px;
+  min-width: 0;
 }
 
 .draft-sheet-footer .link-button {

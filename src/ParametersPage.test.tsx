@@ -44,6 +44,32 @@ describe("ParametersPage (抽出后的模块)", () => {
 });
 
 describe("ParametersPage draft edge cases", () => {
+  it("moves edited rows into the current-round modified table only after submitting the parameter draft", () => {
+    renderPage();
+
+    const searchTable = screen.getByRole("region", { name: "检索参数表" });
+    expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(searchTable).getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+
+    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
+    expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+
+    const modifiedTable = screen.getByRole("region", { name: "本轮已修改参数表" });
+    expect(within(modifiedTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(searchTable).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+
+    fireEvent.click(within(modifiedTable).getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "移除本项" }));
+
+    expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
+    expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+  });
+
   it("shows breadcrumb context in the page header", () => {
     renderPage();
 
@@ -96,7 +122,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: "一键加入草稿" }));
 
     expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "提交本轮 (3 项)" })[0]).toBeEnabled();
+    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
     expect(screen.getByDisplayValue("参考 Agent 巡检建议（-16.9%）")).toBeInTheDocument();
   });
 
@@ -118,6 +144,34 @@ describe("ParametersPage draft edge cases", () => {
     expect(onNavigate).toHaveBeenCalledWith("/parameter-submissions");
   });
 
+  it("uses the draft sheet submit-parameter action to keep the item in the modified table", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+
+    const searchTable = screen.getByRole("region", { name: "检索参数表" });
+    const footer = container.querySelector<HTMLElement>(".draft-sheet-footer");
+    const styles = readFileSync("src/styles.css", "utf8");
+    expect(footer).not.toBeNull();
+    expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
+    expect(within(footer!).queryByRole("button", { name: /暂存本轮/ })).not.toBeInTheDocument();
+    expect(within(footer!).queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
+    expect(styles).toMatch(/\.draft-sheet-footer\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
+    expect(styles).toMatch(/\.draft-sheet-footer-actions\s*\{[^}]*grid-row:\s*2;/s);
+    expect(styles).toMatch(/\.draft-sheet-footer-actions\s*\{[^}]*justify-content:\s*flex-start;/s);
+
+    const submitParameter = within(footer!).getByRole("button", { name: "提交参数" });
+    expect(submitParameter).toBeEnabled();
+    fireEvent.click(submitParameter);
+
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /提交本轮参数/ })).not.toBeInTheDocument();
+    const modifiedTable = screen.getByRole("region", { name: "本轮已修改参数表" });
+    expect(within(modifiedTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(searchTable).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+    expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeEnabled();
+  });
+
   it("does not render an editable draft card for a focused unselected row", () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
@@ -136,7 +190,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(targetInput).not.toBeNull();
     fireEvent.change(targetInput!, { target: { value: "   " } });
 
-    const submitButton = container.querySelector<HTMLButtonElement>(".draft-sheet-footer .button.primary");
+    const submitButton = container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary");
     expect(submitButton).not.toBeNull();
     expect(submitButton).toBeDisabled();
     fireEvent.click(submitButton!);
@@ -170,6 +224,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "99999" } });
 
     expect(screen.getByText(/超出 2500 - 4500 mA/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     expect(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]).toBeEnabled();
   });
 
@@ -183,9 +238,8 @@ describe("ParametersPage draft edge cases", () => {
       target: { value: "submit cleanup reason" }
     });
 
-    const submitButton = container.querySelector<HTMLButtonElement>(".draft-sheet-footer .button.primary");
-    expect(submitButton).not.toBeNull();
-    fireEvent.click(submitButton!);
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
     const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
     expect(confirmButton).not.toBeNull();
     fireEvent.click(confirmButton!);
@@ -238,6 +292,7 @@ describe("ParametersPage · 提交契约", () => {
   it("勾选 1 行后，按钮文案变为『提交本轮 (1 项)』并可点", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     const btns = screen.getAllByRole("button", { name: "提交本轮 (1 项)" });
     expect(btns[0]).toBeEnabled();
   });
@@ -251,6 +306,7 @@ describe("ParametersPage · 提交契约", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
     expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
@@ -270,6 +326,7 @@ describe("ParametersPage · 提交契约", () => {
     const reasonInputs = screen.getAllByLabelText(/修改原因/);
     const secondReason = reasonInputs.find((el) => (el as HTMLTextAreaElement).value === "");
     expect(secondReason).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
 
@@ -312,13 +369,13 @@ describe("ParametersPage · 布局与 Sheet", () => {
     expect(bottomSubmit).toBeDisabled();
   });
 
-  it("bottom actions remain enabled after closing the sheet with drafts", () => {
+  it("bottom actions stay disabled after closing unsubmitted drafts", () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
 
     const bottomStash = container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.subtle");
-    expect(bottomStash).toBeEnabled();
+    expect(bottomStash).toBeDisabled();
     expect(bottomStash?.textContent).toContain("暂存本轮");
   });
 });

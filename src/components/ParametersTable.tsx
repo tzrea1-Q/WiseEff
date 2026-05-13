@@ -9,6 +9,11 @@ type SortState = { key: SortKey; dir: "asc" | "desc" };
 export type ParametersTableProps = {
   rows: ParameterRecord[];
   totalRows?: number;
+  ariaLabel?: string;
+  title?: string;
+  description?: string;
+  showToolbar?: boolean;
+  valueColumnLabel?: string;
   searchQuery?: string;
   onSearchQueryChange?: (query: string) => void;
   onClearFilters?: () => void;
@@ -28,14 +33,16 @@ const riskScores: Record<ParameterRecord["risk"], number> = {
   Low: 1
 };
 
-const sortableHeaders: Array<{ key: SortKey; label: string }> = [
-  { key: "name", label: "参数名称" },
-  { key: "module", label: "模块" },
-  { key: "valueDiff", label: "当前 → 推荐" },
-  { key: "range", label: "范围 / 单位" },
-  { key: "risk", label: "重要性" },
-  { key: "updatedAtTs", label: "更新时间" }
-];
+function getSortableHeaders(valueColumnLabel: string): Array<{ key: SortKey; label: string }> {
+  return [
+    { key: "name", label: "参数名称" },
+    { key: "module", label: "模块" },
+    { key: "valueDiff", label: valueColumnLabel },
+    { key: "range", label: "范围 / 单位" },
+    { key: "risk", label: "重要性" },
+    { key: "updatedAtTs", label: "更新时间" }
+  ];
+}
 
 function matchesQuery(row: ParameterRecord, query: string) {
   if (!query) {
@@ -108,6 +115,11 @@ function compareRows(left: ParameterRecord, right: ParameterRecord, sort: SortSt
 export function ParametersTable({
   rows,
   totalRows,
+  ariaLabel = "参数表",
+  title,
+  description,
+  showToolbar = true,
+  valueColumnLabel = "当前 → 推荐",
   searchQuery,
   onSearchQueryChange,
   onClearFilters,
@@ -122,6 +134,7 @@ export function ParametersTable({
 }: ParametersTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
+  const sortableHeaders = useMemo(() => getSortableHeaders(valueColumnLabel), [valueColumnLabel]);
   const controlledSearch = searchQuery !== undefined;
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const activeSearchQuery = controlledSearch ? searchQuery : internalSearchQuery;
@@ -199,21 +212,33 @@ export function ParametersTable({
   };
 
   return (
-    <section className="parameters-table" aria-label="参数表">
-      <div className="parameters-table-toolbar">
-        <label className="parameters-table-search">
-          <Search size={16} aria-hidden="true" />
-          <input
-            type="search"
-            placeholder="按名称 / 描述 / 模块搜索"
-            aria-label="按名称 / 描述 / 模块搜索"
-            value={activeSearchQuery}
-            onChange={(event) => handleSearchChange(event.target.value)}
-          />
-        </label>
-        {filters ? <div className="parameters-table-filters">{filters}</div> : null}
-        <span className="parameters-table-count">Showing {visibleRows.length} of {rowCountTotal}</span>
-      </div>
+    <section className="parameters-table" aria-label={ariaLabel}>
+      {title || description ? (
+        <div className="parameters-table-heading">
+          <div>
+            {title ? <h2>{title}</h2> : null}
+            {description ? <p>{description}</p> : null}
+          </div>
+          {!showToolbar ? <span className="parameters-table-count">Showing {visibleRows.length} of {rowCountTotal}</span> : null}
+        </div>
+      ) : null}
+
+      {showToolbar ? (
+        <div className="parameters-table-toolbar">
+          <label className="parameters-table-search">
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              placeholder="按名称 / 描述 / 模块搜索"
+              aria-label="按名称 / 描述 / 模块搜索"
+              value={activeSearchQuery}
+              onChange={(event) => handleSearchChange(event.target.value)}
+            />
+          </label>
+          {filters ? <div className="parameters-table-filters">{filters}</div> : null}
+          <span className="parameters-table-count">Showing {visibleRows.length} of {rowCountTotal}</span>
+        </div>
+      ) : null}
 
       <div className="parameters-table-scroll">
         <table className="parameters-table-grid">
@@ -281,7 +306,7 @@ export function ParametersTable({
                 <td data-label="模块">
                   <span className={`module-badge module-tone-${getModuleToneIndex(row.module)}`}>{row.module}</span>
                 </td>
-                <td className="mono" data-label="当前 → 推荐">
+                <td className="mono" data-label={valueColumnLabel}>
                   <span className={`parameter-value-diff diff-${getValueDiffDirection(row)}`}>
                     <span>{row.currentValue}</span>
                     <span aria-hidden="true">{getValueDiffIcon(row)}</span>
