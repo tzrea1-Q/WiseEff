@@ -2,7 +2,8 @@ import type { ParameterRecord, PrototypeState, RequestStatus, RiskLevel } from "
 import { deriveHotspotTrend, mapHotspotStatus, type HotspotStatusLevel, type HotspotTrend } from "./hotspotPresentation";
 
 export type HomepageTimeWindow = "7d" | "30d" | "180d";
-export type HotspotDimension = "module" | "project";
+export type HotspotKind = "module" | "project" | "parameter";
+export type HotspotDimension = "overall" | HotspotKind;
 
 export type HomepageSummary = {
   totalParameters: number;
@@ -39,7 +40,10 @@ export type HotspotScoreBreakdown = {
 
 export type ParameterHotspot = {
   id: string;
+  kind: HotspotKind;
   title: string;
+  parameterId?: string;
+  projectId?: string;
   projectCode: string;
   module: string;
   status: string;
@@ -137,7 +141,7 @@ const knownWorkflowStatuses = {
 export function deriveParameterHomepageAnalytics(
   state: PrototypeState,
   timeWindow: HomepageTimeWindow = "30d",
-  hotspotDimension: HotspotDimension = "module"
+  hotspotDimension: HotspotDimension = "overall"
 ): ParameterHomepageAnalytics {
   const timeWindowLabel = timeWindowLabels[timeWindow];
   const profile = timeWindowProfiles[timeWindow];
@@ -238,79 +242,196 @@ function deriveHotspots(
   windowedChangeRequests: PrototypeState["changeRequests"],
   hotspotDimension: HotspotDimension
 ): ParameterHotspot[] {
+  if (hotspotDimension === "overall") {
+    return deriveOverallHotspots(state, projectCodes, timeWindow, timeWindowLabel, profile, windowedChangeRequests);
+  }
+
   const groups = new Map<string, ParameterRecord[]>();
 
   for (const parameter of state.parameters) {
-    const id = hotspotDimension === "module" ? parameter.module : parameter.projectId;
+    const id = groupIdForHotspotKind(parameter, hotspotDimension);
     groups.set(id, [...(groups.get(id) ?? []), parameter]);
   }
 
-  return Array.from(groups.entries())
-    .map(([id, parameters]) => {
-      const firstParameter = parameters[0];
-      const projectId = hotspotDimension === "project" ? id : firstParameter?.projectId ?? "";
-      const module = hotspotDimension === "module" ? id : "项目参数";
-      const projectCode = hotspotDimension === "project" ? projectCodes.get(projectId) ?? projectId : `${new Set(parameters.map((parameter) => parameter.projectId)).size} 个项目`;
-      const relatedRequests = windowedChangeRequests.filter(
-        (request) => parameters.some((parameter) => parameter.id === request.parameterId)
-      );
-      const lastChangedAt = relatedRequests[0]?.createdAt;
-      const highRiskCount = parameters.filter((parameter) => parameter.risk === "High").length;
-      const driftValue = parameters.reduce((total, parameter) => total + driftScore(parameter), 0);
-      const logSignals =
-        hotspotDimension === "project"
-          ? state.logs.filter((log) => log.projectId === projectId).length
-          : state.logs.filter((log) => mentionsModule(log, module)).length;
-      const scoreBreakdown: HotspotScoreBreakdown = {
-        frequency: Math.round((parameters.length * 4 * profile.parameterWeight + relatedRequests.length * 10 * profile.requestWeight) * 10) / 10,
-        risk: parameters.reduce((total, parameter) => total + riskWeight[parameter.risk] * 6, 0),
-        impact: Math.round((new Set(parameters.map((parameter) => parameter.name)).size * 5 + logSignals * 8 * profile.logWeight) * 10) / 10,
-        workflow: Math.round((relatedRequests.length * 14 * profile.requestWeight + highRiskCount * 3) * 10) / 10,
-        drift: Math.round(driftValue * 10) / 10
-      };
-      const score = Object.values(scoreBreakdown).reduce((total, value) => total + value, 0);
-      const title = hotspotDimension === "module" ? module : projectCode;
-      const explanation =
-        hotspotDimension === "module"
-          ? `${timeWindowLabel}内，${module} 跨 ${projectCode}累计 ${parameters.length} 个参数信号、${relatedRequests.length} 个流程事件。`
-          : `${timeWindowLabel}内，${projectCode} 累计 ${parameters.length} 个参数信号、${relatedRequests.length} 个流程事件。`;
-      const suggestedPath =
-        hotspotDimension === "module"
-          ? relatedRequests.length > 0
-            ? `/parameter-review?module=${encodeURIComponent(module)}`
-            : `/parameter-comparison?module=${encodeURIComponent(module)}`
-          : relatedRequests.length > 0
-            ? `/parameter-review?project=${encodeURIComponent(projectId)}`
-            : `/parameter-comparison?project=${encodeURIComponent(projectId)}`;
-
-      const roundedScore = Math.round(score * 10) / 10;
-      const status = mapHotspotStatus({ highRiskCount, score: roundedScore });
-
-      return {
+  return rankHotspots(
+    Array.from(groups.entries()).map(([id, parameters]) =>
+      buildHotspotForGroup(
+        state,
+        projectCodes,
+        timeWindow,
+        timeWindowLabel,
+        profile,
+        windowedChangeRequests,
+        hotspotDimension,
         id,
-        title,
-        projectCode,
-        module,
-        status: status.label,
-        statusLevel: status.level,
-        trend: deriveHotspotTrend({ id }, timeWindow),
-        lastChangedAt,
-        changeCount: relatedRequests.length,
-        highRiskCount,
-        score: roundedScore,
-        scoreBreakdown,
-        explanation,
-        evidence: [
-          `${highRiskCount} 个高风险参数`,
-          `${Math.round(driftValue)}% 累计推荐偏离`,
-          `${relatedRequests.length} 个审核或变更请求`
-        ],
-        suggestedAction: relatedRequests.length > 0 ? "优先推进审核并回写参数库" : "复核参数偏离并生成对比分析",
-        suggestedPath
-      };
-    })
-    .sort((first, second) => second.score - first.score)
-    .slice(0, Math.max(3, Math.min(profile.hotspotLimit, groups.size)));
+        parameters
+      )
+    )
+  ).slice(0, Math.max(3, Math.min(profile.hotspotLimit, groups.size)));
+}
+
+function deriveOverallHotspots(
+  state: PrototypeState,
+  projectCodes: Map<string, string>,
+  timeWindow: HomepageTimeWindow,
+  timeWindowLabel: string,
+  profile: (typeof timeWindowProfiles)[HomepageTimeWindow],
+  windowedChangeRequests: PrototypeState["changeRequests"]
+): ParameterHotspot[] {
+  const candidatePools = (["module", "project", "parameter"] as const).map((kind) =>
+    deriveHotspots(state, projectCodes, timeWindow, timeWindowLabel, profile, windowedChangeRequests, kind)
+  );
+  const limit = Math.max(3, profile.hotspotLimit);
+  const requiredKinds = new Set<HotspotKind>(["module", "project", "parameter"]);
+  const picked: ParameterHotspot[] = [];
+  const pickedIds = new Set<string>();
+
+  for (const kind of requiredKinds) {
+    const bestInKind = candidatePools.flat().find((hotspot) => hotspot.kind === kind);
+
+    if (bestInKind) {
+      picked.push(bestInKind);
+      pickedIds.add(bestInKind.id);
+    }
+  }
+
+  for (const candidate of rankHotspots(candidatePools.flat())) {
+    if (picked.length >= limit) break;
+    if (!pickedIds.has(candidate.id)) {
+      picked.push(candidate);
+      pickedIds.add(candidate.id);
+    }
+  }
+
+  return rankHotspots(picked).slice(0, limit);
+}
+
+function groupIdForHotspotKind(parameter: ParameterRecord, hotspotKind: HotspotKind) {
+  switch (hotspotKind) {
+    case "module":
+      return parameter.module;
+    case "project":
+      return parameter.projectId;
+    case "parameter":
+      return parameter.id;
+  }
+}
+
+function buildHotspotForGroup(
+  state: PrototypeState,
+  projectCodes: Map<string, string>,
+  timeWindow: HomepageTimeWindow,
+  timeWindowLabel: string,
+  profile: (typeof timeWindowProfiles)[HomepageTimeWindow],
+  windowedChangeRequests: PrototypeState["changeRequests"],
+  hotspotKind: HotspotKind,
+  id: string,
+  parameters: ParameterRecord[]
+): ParameterHotspot {
+  const firstParameter = parameters[0];
+  const projectId = hotspotKind === "project" ? id : firstParameter?.projectId ?? "";
+  const module = hotspotKind === "module" ? id : hotspotKind === "parameter" ? firstParameter?.module ?? "" : "项目参数";
+  const projectCode =
+    hotspotKind === "project"
+      ? projectCodes.get(projectId) ?? projectId
+      : hotspotKind === "parameter"
+        ? projectCodes.get(projectId) ?? projectId
+        : `${new Set(parameters.map((parameter) => parameter.projectId)).size} 个项目`;
+  const relatedRequests = windowedChangeRequests.filter(
+    (request) => parameters.some((parameter) => parameter.id === request.parameterId)
+  );
+  const lastChangedAt = relatedRequests[0]?.createdAt;
+  const highRiskCount = parameters.filter((parameter) => parameter.risk === "High").length;
+  const driftValue = parameters.reduce((total, parameter) => total + driftScore(parameter), 0);
+  const logSignals =
+    hotspotKind === "project" || hotspotKind === "parameter"
+      ? state.logs.filter((log) => log.projectId === projectId).length
+      : state.logs.filter((log) => mentionsModule(log, module)).length;
+  const scoreBreakdown: HotspotScoreBreakdown = {
+    frequency: Math.round((parameters.length * 4 * profile.parameterWeight + relatedRequests.length * 10 * profile.requestWeight) * 10) / 10,
+    risk: parameters.reduce((total, parameter) => total + riskWeight[parameter.risk] * 6, 0),
+    impact: Math.round((new Set(parameters.map((parameter) => parameter.name)).size * 5 + logSignals * 8 * profile.logWeight) * 10) / 10,
+    workflow: Math.round((relatedRequests.length * 14 * profile.requestWeight + highRiskCount * 3) * 10) / 10,
+    drift: Math.round(driftValue * 10) / 10
+  };
+  const score = Object.values(scoreBreakdown).reduce((total, value) => total + value, 0);
+  const title = hotspotKind === "module" ? module : hotspotKind === "project" ? projectCode : firstParameter?.name ?? id;
+  const explanation = buildHotspotExplanation(timeWindowLabel, hotspotKind, title, module, projectCode, parameters.length, relatedRequests.length);
+  const suggestedPath = buildHotspotPath(hotspotKind, id, projectId, module, relatedRequests.length);
+  const roundedScore = Math.round(score * 10) / 10;
+  const status = mapHotspotStatus({ highRiskCount, score: roundedScore });
+
+  return {
+    id: `${hotspotKind}:${id}`,
+    kind: hotspotKind,
+    title,
+    parameterId: hotspotKind === "parameter" ? id : undefined,
+    projectId: projectId || undefined,
+    projectCode,
+    module,
+    status: status.label,
+    statusLevel: status.level,
+    trend: deriveHotspotTrend({ id: `${hotspotKind}:${id}` }, timeWindow),
+    lastChangedAt,
+    changeCount: relatedRequests.length,
+    highRiskCount,
+    score: roundedScore,
+    scoreBreakdown,
+    explanation,
+    evidence: [
+      `${highRiskCount} 个高风险参数`,
+      `${Math.round(driftValue)}% 累计推荐偏离`,
+      `${relatedRequests.length} 个审核或变更请求`
+    ],
+    suggestedAction: relatedRequests.length > 0 ? "优先推进审核并回写参数库" : "复核参数偏离并生成对比分析",
+    suggestedPath
+  };
+}
+
+function rankHotspots(hotspots: ParameterHotspot[]) {
+  return [...hotspots].sort((first, second) => second.score - first.score);
+}
+
+function buildHotspotExplanation(
+  timeWindowLabel: string,
+  hotspotKind: HotspotKind,
+  title: string,
+  module: string,
+  projectCode: string,
+  parameterCount: number,
+  requestCount: number
+) {
+  if (hotspotKind === "module") {
+    return `${timeWindowLabel}内，${module} 跨 ${projectCode}累计 ${parameterCount} 个参数信号、${requestCount} 个流程事件。`;
+  }
+  if (hotspotKind === "project") {
+    return `${timeWindowLabel}内，${projectCode} 累计 ${parameterCount} 个参数信号、${requestCount} 个流程事件。`;
+  }
+
+  return `${timeWindowLabel}内，${title} 在 ${projectCode} · ${module} 累计 ${parameterCount} 个参数信号、${requestCount} 个流程事件。`;
+}
+
+function buildHotspotPath(
+  hotspotKind: HotspotKind,
+  id: string,
+  projectId: string,
+  module: string,
+  requestCount: number
+) {
+  if (hotspotKind === "module") {
+    return requestCount > 0
+      ? `/parameter-review?module=${encodeURIComponent(module)}`
+      : `/parameter-comparison?module=${encodeURIComponent(module)}`;
+  }
+  if (hotspotKind === "project") {
+    return requestCount > 0
+      ? `/parameter-review?project=${encodeURIComponent(projectId)}`
+      : `/parameter-comparison?project=${encodeURIComponent(projectId)}`;
+  }
+
+  return requestCount > 0
+    ? `/parameter-review?project=${encodeURIComponent(projectId)}&parameter=${encodeURIComponent(id)}`
+    : `/parameters?project=${encodeURIComponent(projectId)}&parameter=${encodeURIComponent(id)}`;
 }
 
 function mentionsModule(log: PrototypeState["logs"][number], module: string) {

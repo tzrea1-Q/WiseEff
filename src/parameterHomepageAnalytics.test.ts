@@ -12,6 +12,7 @@ describe("parameter homepage analytics", () => {
     const analytics = deriveParameterHomepageAnalytics(initialState, "30d");
 
     expect(analytics.timeWindowLabel).toBe("近 30 天");
+    expect(analytics.hotspotDimension).toBe("overall");
     expect(analytics.summary.totalParameters).toBe(30);
     expect(analytics.summary.parameterDefinitions).toBe(10);
     expect(analytics.summary.debugParameters).toBe(8);
@@ -113,18 +114,38 @@ describe("parameter homepage analytics", () => {
     expect(oneHundredEightyDays.hotspots.length).toBeGreaterThanOrEqual(thirtyDays.hotspots.length);
   });
 
-  it("aggregates hotspots by module or project dimension", () => {
+  it("aggregates hotspots by module, project, or parameter dimension", () => {
     const moduleAnalytics = deriveParameterHomepageAnalytics(initialState, "30d", "module");
     const projectAnalytics = deriveParameterHomepageAnalytics(initialState, "30d", "project");
+    const parameterAnalytics = deriveParameterHomepageAnalytics(initialState, "30d", "parameter");
 
     expect(moduleAnalytics.hotspotDimension).toBe("module");
+    expect(moduleAnalytics.hotspots.every((hotspot) => hotspot.kind === "module")).toBe(true);
     expect(moduleAnalytics.hotspots[0].title).not.toContain("·");
     expect(moduleAnalytics.hotspots.map((hotspot) => hotspot.title)).toContain("Charging Policy");
     expect(moduleAnalytics.hotspots.every((hotspot) => hotspot.suggestedPath.includes("module="))).toBe(true);
 
     expect(projectAnalytics.hotspotDimension).toBe("project");
+    expect(projectAnalytics.hotspots.every((hotspot) => hotspot.kind === "project")).toBe(true);
     expect(projectAnalytics.hotspots.map((hotspot) => hotspot.title)).toEqual(expect.arrayContaining(["AUR-Prod", "NEB-RD", "ATL-Intl"]));
     expect(projectAnalytics.hotspots.every((hotspot) => hotspot.suggestedPath.includes("project="))).toBe(true);
+
+    expect(parameterAnalytics.hotspotDimension).toBe("parameter");
+    expect(parameterAnalytics.hotspots.every((hotspot) => hotspot.kind === "parameter")).toBe(true);
+    expect(parameterAnalytics.hotspots.map((hotspot) => hotspot.title)).toContain("fast_charge_current_limit_ma");
+    expect(parameterAnalytics.hotspots.every((hotspot) => hotspot.suggestedPath.includes("parameter="))).toBe(true);
+  });
+
+  it("builds the overall leaderboard from module, project, and parameter candidates", () => {
+    const analytics = deriveParameterHomepageAnalytics(initialState, "30d", "overall");
+    const kinds = new Set(analytics.hotspots.map((hotspot) => hotspot.kind));
+
+    expect(analytics.hotspotDimension).toBe("overall");
+    expect(kinds).toEqual(new Set(["module", "project", "parameter"]));
+    expect(analytics.hotspots).toHaveLength(5);
+    analytics.hotspots.slice(1).forEach((hotspot, index) => {
+      expect(analytics.hotspots[index].score).toBeGreaterThanOrEqual(hotspot.score);
+    });
   });
 });
 
