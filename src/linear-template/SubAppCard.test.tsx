@@ -8,12 +8,12 @@ afterEach(cleanup);
 const baseProps = {
   accent: "#2857FF",
   icon: SlidersHorizontal,
+  kicker: "配置治理",
   title: "参数管理",
   description: "跨项目统一查询、对比充电/电池参数，提交并审阅变更。",
   chips: ["查询对比", "提交变更", "审阅合入"],
   primary: { label: "进入参数首页", href: "/parameter-home" },
-  secondary: { label: "打开参数管理后台", href: "/parameter-admin" },
-  badge: { count: 1, label: "1 条待审阅" }
+  secondary: { label: "打开参数管理后台", href: "/parameter-admin" }
 };
 
 describe("SubAppCard", () => {
@@ -22,6 +22,7 @@ describe("SubAppCard", () => {
 
     expect(screen.getByRole("heading", { name: "参数管理", level: 3 })).toBeInTheDocument();
     expect(screen.getByText("跨项目统一查询、对比充电/电池参数，提交并审阅变更。")).toBeInTheDocument();
+    expect(screen.getByText("配置治理")).toBeInTheDocument();
     const chips = screen.getAllByRole("listitem");
     expect(chips.map((item) => item.textContent)).toEqual(["查询对比", "提交变更", "审阅合入"]);
   });
@@ -42,19 +43,20 @@ describe("SubAppCard", () => {
     expect(secondary).toHaveClass("sub-app-card-secondary");
   });
 
-  it("renders the active badge with aria-label", () => {
+  it("does not render a status badge in the card header", () => {
     render(<SubAppCard {...baseProps} />);
 
-    const badge = screen.getByLabelText("1 条待审阅");
-    expect(badge).toHaveClass("sub-app-card-badge");
-    expect(badge).not.toHaveClass("sub-app-card-badge-empty");
+    expect(screen.queryByLabelText(/当前状态/)).not.toBeInTheDocument();
+    expect(screen.queryByText("条待审阅")).not.toBeInTheDocument();
   });
 
-  it("applies the empty modifier when badge count is 0", () => {
-    render(<SubAppCard {...baseProps} badge={{ count: 0, label: "暂无待办" }} />);
+  it("groups the primary and secondary actions under the card operation area", () => {
+    render(<SubAppCard {...baseProps} />);
 
-    const badge = screen.getByLabelText("暂无待办");
-    expect(badge).toHaveClass("sub-app-card-badge-empty");
+    const actions = screen.getByLabelText("参数管理 操作");
+    expect(actions).toHaveClass("sub-app-card-ctas");
+    expect(actions).toContainElement(screen.getByRole("link", { name: /进入参数首页/ }));
+    expect(actions).toContainElement(screen.getByRole("link", { name: /打开参数管理后台/ }));
   });
 
   it("exposes the accent color as a CSS custom property", () => {

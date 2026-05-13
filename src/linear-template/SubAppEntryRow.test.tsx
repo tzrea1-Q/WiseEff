@@ -13,12 +13,21 @@ describe("SubAppEntryRow", () => {
     expect(headings).toEqual(["参数管理", "调试平台", "日志分析"]);
   });
 
-  it("uses the badges derived from initial mock state", () => {
+  it("does not show derived status badges on the entry cards", () => {
     render(<SubAppEntryRow state={initialState} />);
 
-    expect(screen.getByLabelText("1 条待审阅")).toBeInTheDocument();
-    expect(screen.getByLabelText("已分析 1 份")).toBeInTheDocument();
-    expect(screen.getByLabelText("1 台样机在线")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/当前状态/)).not.toBeInTheDocument();
+    expect(screen.queryByText("条待审阅")).not.toBeInTheDocument();
+    expect(screen.queryByText("台样机在线")).not.toBeInTheDocument();
+    expect(screen.queryByText("份已分析")).not.toBeInTheDocument();
+  });
+
+  it("shows the business positioning labels for all cards", () => {
+    render(<SubAppEntryRow state={initialState} />);
+
+    expect(screen.getByText("配置治理")).toBeInTheDocument();
+    expect(screen.getByText("在线调试")).toBeInTheDocument();
+    expect(screen.getByText("证据链路")).toBeInTheDocument();
   });
 
   it("links the primary CTAs to the expected routes", () => {
@@ -45,13 +54,13 @@ describe("SubAppEntryRow", () => {
     expect(cards).toHaveLength(3);
   });
 
-  it("renders empty-state badges when counts are zero", () => {
+  it("keeps the cards free of empty-state badge labels", () => {
     const emptyState = { ...initialState, parameterSubmissionRounds: [], logs: [], devices: [] };
 
     render(<SubAppEntryRow state={emptyState} />);
 
-    expect(screen.getByLabelText("暂无待办")).toBeInTheDocument();
-    expect(screen.getByLabelText("暂无记录")).toBeInTheDocument();
-    expect(screen.getByLabelText("暂无在线设备")).toBeInTheDocument();
+    expect(screen.queryByText("暂无待办")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无记录")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无在线设备")).not.toBeInTheDocument();
   });
 });

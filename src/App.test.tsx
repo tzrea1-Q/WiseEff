@@ -79,7 +79,7 @@ describe("WiseEff app shell", () => {
     expect(homeRoot).toHaveAttribute("data-theme", "light");
     expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon")).toBeInTheDocument();
     expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-spark")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "让业务流程更智能更高效" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByText("智能参数管理")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
@@ -198,7 +198,8 @@ describe("WiseEff app shell", () => {
     expect(within(homepage).queryByRole("heading", { name: "日志分析，不只给结论" })).not.toBeInTheDocument();
     expect(within(homepage).queryByRole("heading", { name: "调试动作，保留控制权" })).not.toBeInTheDocument();
 
-    expect(homepage).toHaveTextContent("fast_charge_current_limit_ma");
+    expect(homepage).toHaveTextContent("参数目录");
+    expect(homepage).not.toHaveTextContent(/Aurora|Nebula|Atlas|ChargeLab_X01|charging_thermal_trace|battery_pack_temp|关键温度/);
   });
 
   it("links the localized homepage CTAs into the WiseEff parameter homepage", () => {
@@ -218,15 +219,15 @@ describe("WiseEff app shell", () => {
     render(<App />);
 
     expect(screen.getByRole("tab", { name: "参数管理" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel")).getByText("参数目录")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "调试平台" }));
     expect(screen.getByRole("tab", { name: "调试平台" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("ChargeLab_X01")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel")).getByText("调试场景")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "日志分析" }));
     expect(screen.getByRole("tab", { name: "日志分析" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("battery_pack_temp=46.8C")).toBeInTheDocument();
+    expect(within(screen.getByRole("tabpanel")).getByText("证据链路")).toBeInTheDocument();
   });
 
   it("moves the platform flow tab selection by keyboard", () => {
@@ -732,7 +733,13 @@ describe("WiseEff app shell", () => {
     const pageChecks = [
       {
         path: "/",
-        present: ["让业务流程更智能更高效", "WiseEff 把参数管理、日志分析、设备调试和审阅治理连接到同一平台。", "参数管理", "日志分析", "调试平台"],
+        present: [
+          "让业务流程更智能、更高效、更可控",
+          "WiseEff 把参数管理、设备调试和日志分析连接成一条可审阅工作流",
+          "参数管理",
+          "日志分析",
+          "调试平台"
+        ],
         absent: ["WiseEff Prototype", "Linear is a better way", "Powering the world's best product teams", "Issue tracking you'll enjoy using"]
       },
       {
@@ -887,7 +894,7 @@ describe("WiseEff app shell", () => {
   it("keeps the platform homepage as the root surface", () => {
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "让业务流程更智能更高效" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
   });
 
@@ -1001,7 +1008,7 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "让业务流程更智能更高效" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "项目参数演示脚本" })).not.toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
   });

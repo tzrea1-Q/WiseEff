@@ -35,24 +35,55 @@ function getMediaRule(mediaQuery: string, selector: string) {
   return rule[1];
 }
 
-describe("WiseEff light homepage theme", () => {
-  it("defines a light page foundation instead of a dark Linear background", () => {
+describe("WiseEff mature homepage theme", () => {
+  it("keeps the page foundation light and the three entry cards restrained", () => {
     const root = getCssRule(".linear-template-home");
     const page = getCssRule(".linear-page-gradient");
+    const card = getCssRule(".sub-app-card");
+    const hoverCard = getCssRule(".sub-app-card:hover");
+    const icon = getCssRule(".sub-app-card-icon");
+    const kicker = getCssRule(".sub-app-card-kicker");
+    const ctas = getCssRule(".sub-app-card-ctas");
+    const primary = getCssRule(".sub-app-card-primary");
+    const secondary = getCssRule(".sub-app-card-secondary");
 
     expect(root).toContain("--linear-bg: #fbfcff");
     expect(root).toContain("--linear-surface: #ffffff");
     expect(root).toContain("--linear-soft-surface: #f0f3ff");
-    expect(root).not.toContain("--linear-bg: #000212");
-    expect(page).toContain("#fbfcff");
-    expect(page).toContain("#f7faff");
-    expect(page).not.toContain("var(--linear-bg)");
+    expect(page).toContain("linear-gradient(180deg, #fbfcff 0%, #f4f7ff 56%, #fbfcff 100%)");
+    expect(card).toContain("border-radius: 8px");
+    expect(card).toContain("#ffffff");
+    expect(card).toContain("box-shadow");
+    expect(card).toContain("min-height: 328px");
+    expect(card).toContain("transform 180ms ease");
+    expect(hoverCard).toContain("translateY(-4px)");
+    expect(hoverCard).toContain("var(--sub-app-accent)");
+    expect(icon).toContain("box-shadow");
+    expect(kicker).toContain("background: #ffffff");
+    expect(ctas).toContain("border-top: 1px solid");
+    expect(ctas).toContain("flex-direction: column");
+    expect(primary).toContain("background: linear-gradient(180deg, #075cd8 0%, var(--linear-primary-blue) 100%)");
+    expect(secondary).toContain("font-weight: 600");
+  });
+
+  it("keeps the workflow band and footer on light surfaces", () => {
+    const section = getCssRule(".platform-flow-section");
+    const tablist = getCssRule(".platform-flow-tablist");
+    const preview = getCssRule(".platform-flow-preview");
+    const footer = getCssRule(".linear-footer");
+
+    expect(section).toContain("#f4f7ff");
+    expect(section).not.toContain("#0e111a");
+    expect(tablist).toContain("background: rgba(255, 255, 255, 0.66)");
+    expect(preview).toContain("#ffffff");
+    expect(footer).toContain("#ffffff");
   });
 
   it("renders three sub-app entry cards before the merged platform flow section", () => {
     const { container } = render(createElement(LinearTemplateHome));
 
     expect(container.querySelectorAll(".sub-app-card")).toHaveLength(3);
+    expect(container.querySelector(".sub-app-card-badge")).not.toBeInTheDocument();
     expect(container.querySelector(".sub-app-entry-row")).toBeInTheDocument();
     expect(container.querySelector("#platform-flow")).toBeInTheDocument();
     expect(container.querySelector(".linear-product-section")).not.toBeInTheDocument();
@@ -86,40 +117,14 @@ describe("WiseEff light homepage theme", () => {
     expect(container.querySelectorAll('.linear-footer a[href="#platform-flow"]')).toHaveLength(3);
   });
 
-  it("styles sub-app cards as compact dark entry surfaces", () => {
-    const card = getCssRule(".sub-app-card");
-    const title = getCssRule(".sub-app-card-title");
-    const primary = getCssRule(".sub-app-card-primary");
-
-    expect(card).toContain("min-height: 320px");
-    expect(card).toContain("border-radius: 8px");
-    expect(card).toContain("radial-gradient");
-    expect(title).toContain("font-size: 22px");
-    expect(title).toContain("letter-spacing: 0");
-    expect(primary).toContain("background: var(--sub-app-accent)");
-    expect(primary).toContain("color: #ffffff");
-  });
-
-  it("styles platform flow tabs with focus and selected states", () => {
-    const section = getCssRule(".platform-flow-section");
-    const tab = getCssRule(".platform-flow-tab");
-    const activeTab = getCssRule(".platform-flow-tab.active");
-    const focusTab = getCssRule(".platform-flow-tab:focus-visible");
-
-    expect(section).toContain("background: #0e111a");
-    expect(tab).toContain("min-height: 40px");
-    expect(activeTab).toContain("rgba(40, 87, 255, 0.24)");
-    expect(focusTab).toContain("outline: 2px solid #50dcff");
-  });
-
   it("keeps the hero headline compact for the shortened homepage", () => {
     const heroTitle = getCssRule(".linear-hero h1");
     const mobileHeroTitle = getMediaRule("@media (max-width: 760px)", ".linear-hero h1");
 
-    expect(heroTitle).toContain("font-size: 64px");
+    expect(heroTitle).toContain("font-size: 56px");
     expect(heroTitle).toContain("line-height: 1.08");
     expect(heroTitle).toContain("letter-spacing: 0");
-    expect(mobileHeroTitle).toContain("font-size: 40px");
+    expect(mobileHeroTitle).toContain("font-size: 36px");
   });
 
   it("removes retired marketing and carousel components from the homepage source", () => {

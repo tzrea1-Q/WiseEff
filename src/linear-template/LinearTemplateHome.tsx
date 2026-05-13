@@ -14,7 +14,7 @@ const navItems = [
 
 const footerColumns = [
   {
-    title: "Platform",
+    title: "平台",
     links: [
       { label: "参数管理", href: "/parameter-home" },
       { label: "调试平台", href: "/debugging" },
@@ -22,18 +22,18 @@ const footerColumns = [
     ]
   },
   {
-    title: "Workflow",
+    title: "流程",
     links: [
       { label: "一条可审阅链路", href: "#platform-flow" },
       { label: "人工确认", href: "#platform-flow" }
     ]
   },
   {
-    title: "Scope",
+    title: "范围",
     links: [{ label: "模拟边界", href: "#platform-flow" }]
   },
   {
-    title: "Access",
+    title: "访问",
     links: [
       { label: "进入工作台", href: "/parameter-home" },
       { label: "查看配置", href: "/parameter-admin" }
@@ -127,10 +127,11 @@ function TemplateHeader() {
 function Hero() {
   return (
     <div className="linear-hero">
-      <h1 className="linear-fade-item delay-1">让业务流程更智能更高效</h1>
+      <h1 className="linear-fade-item delay-1">让业务流程更智能、更高效、更可控</h1>
       <p className="linear-hero-subtitle linear-fade-item delay-2">
-        WiseEff 把参数管理、日志分析、设备调试和审阅治理连接到同一平台。Agent
-        辅助检索、分析、填表和流转，关键变更保留确认、权限和审计。
+        WiseEff 把参数管理、设备调试和日志分析连接成一条可审阅工作流，
+        <br />
+        让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
       </p>
       <SubAppEntryRow state={initialState} />
     </div>
@@ -144,7 +145,7 @@ function TemplateFooter() {
         <div className="linear-footer-brand">
           <div>
             <LinearLogo />
-            <span>WiseEff · AI-driven workflow system</span>
+            <span>WiseEff · 工作流平台</span>
           </div>
         </div>
         <div className="linear-footer-links">

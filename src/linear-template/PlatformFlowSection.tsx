@@ -15,16 +15,16 @@ const tabs: TabConfig[] = [
   {
     key: "parameters",
     label: "参数管理",
-    headline: "Parameter Matrix",
-    meta: "fast_charge_current_limit_ma",
+    headline: "参数目录",
+    meta: "统一口径",
     previewRows: [
-      ["Aurora", "3850 mA", "生产策略"],
-      ["Nebula", "4200 mA", "研发策略"],
-      ["Atlas", "3000 mA", "国际策略"]
+      ["业务项目", "共享参数", "独立读取"],
+      ["变更记录", "差异留痕", "可回滚"],
+      ["审阅状态", "待确认", "可追溯"]
     ],
     features: [
-      { title: "共享参数目录。", text: "Aurora、Nebula、Atlas 可独立读取同一业务参数。" },
-      { title: "实时调参。", text: "关键参数在下发前保留确认。" },
+      { title: "全量参数与全项目覆盖。", text: "覆盖全部业务参数与项目范围，统一检索、对比和审阅入口。" },
+      { title: "Agent 参数建议。", text: "Agent 基于上下文生成候选参数，人负责确认、审阅和下发。" },
       { title: "版本化配置。", text: "每次变更记录目标、来源、差异和回滚入口。" },
       { title: "证据绑定。", text: "参数变更可挂接日志、调试记录与 PRQ 审阅。" }
     ]
@@ -32,15 +32,15 @@ const tabs: TabConfig[] = [
   {
     key: "debugging",
     label: "调试平台",
-    headline: "ChargeLab_X01",
-    meta: "connected",
+    headline: "调试场景",
+    meta: "在线连接",
     previewRows: [
-      ["当前值", "3850 mA", "快照已保留"],
-      ["目标值", "3200 mA", "等待确认"],
-      ["回滚值", "3850 mA", "可撤回"]
+      ["当前状态", "已连接", "快照已保留"],
+      ["目标动作", "等待确认", "人工下发"],
+      ["回滚入口", "已准备", "可撤回"]
     ],
     features: [
-      { title: "调试目标进入。", text: "从参数或日志直接进入 ChargeLab_X01 场景。" },
+      { title: "调试目标进入。", text: "从参数变更或日志证据直接进入对应调试场景。" },
       { title: "多步 Workflow。", text: "把假设、参数建议、验证结果和确认动作串成路径。" },
       { title: "Agent 协同。", text: "Agent 给出候选操作，人负责确认是否下发。" },
       { title: "回滚准备。", text: "危险操作前保留原值、目标值和撤回说明。" }
@@ -49,15 +49,15 @@ const tabs: TabConfig[] = [
   {
     key: "logs",
     label: "日志分析",
-    headline: "Evidence Chain",
-    meta: "battery_pack_temp=46.8C",
+    headline: "证据链路",
+    meta: "异常事件",
     previewRows: [
-      ["阶段 1", "上传 charging_thermal_trace_20260504.log", "可审阅"],
-      ["阶段 2", "命中高温充电片段", "soft_limit=45C"],
+      ["阶段 1", "上传日志文件", "可审阅"],
+      ["阶段 2", "命中异常片段", "待确认"],
       ["阶段 3", "关联参数与 PRQ 草稿", "可追溯"]
     ],
     features: [
-      { title: "日志入链。", text: "围绕关键温度信号组织可审阅证据。" },
+      { title: "日志入链。", text: "围绕异常事件和关键证据组织可审阅链路。" },
       { title: "上下文聚合。", text: "按设备、项目、参数和 Workflow 节点还原事件现场。" },
       { title: "异常定位。", text: "Agent 标注高风险片段，人工确认后进入后续调试。" },
       { title: "查询留痕。", text: "关键筛选条件、命中记录和导出动作进入审计链。" }
