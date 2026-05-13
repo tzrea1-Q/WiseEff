@@ -143,9 +143,13 @@ export function generateHotspotActions(
 }
 
 export function computeEyebrow(
-  hotspot: Pick<ParameterHotspot, "module" | "projectCode" | "lastChangedAt">,
+  hotspot: Pick<ParameterHotspot, "module" | "projectCode" | "lastChangedAt"> & Partial<Pick<ParameterHotspot, "kind">>,
   state: Pick<PrototypeState, "parameters">
 ): string {
+  if (hotspot.kind === "parameter") {
+    return `${hotspot.projectCode} · ${hotspot.module}`;
+  }
+
   if (hotspot.module !== "项目参数") {
     const projectCount = new Set(
       state.parameters.filter((parameter) => parameter.module === hotspot.module).map((parameter) => parameter.projectId)

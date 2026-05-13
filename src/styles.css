@@ -6246,6 +6246,7 @@ td small {
 }
 
 .parameter-homepage-select {
+  flex-wrap: wrap;
   min-width: 112px;
   padding: 3px;
   color: var(--app-muted);
@@ -6264,6 +6265,7 @@ td small {
 }
 
 .parameter-homepage-dimension-switch {
+  flex-wrap: wrap;
   padding: 4px 5px 4px 10px;
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid var(--outline);

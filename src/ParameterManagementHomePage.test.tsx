@@ -110,21 +110,43 @@ describe("ParameterManagementHomePage", () => {
     expect(within(hotspotRegion).getAllByText(/^\d+(\.\d+)?$/).length).toBeGreaterThan(0);
   });
 
-  it("switches hotspot ranking between project and module dimensions", () => {
+  it("defaults to the overall hotspot leaderboard and exposes four ranking tabs", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
-    const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块" });
-    const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目" });
+    const overallToggle = within(dimensionGroup).getByRole("radio", { name: "总榜" });
+
+    expect(overallToggle).toHaveAttribute("aria-checked", "true");
+    expect(within(dimensionGroup).getByRole("radio", { name: "模块榜" })).toBeInTheDocument();
+    expect(within(dimensionGroup).getByRole("radio", { name: "项目榜" })).toBeInTheDocument();
+    expect(within(dimensionGroup).getByRole("radio", { name: "参数榜" })).toBeInTheDocument();
+    expect(within(hotspotRegion).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(hotspotRegion).getByText("AUR-Prod")).toBeInTheDocument();
+    expect(within(hotspotRegion).getByText("Charging Policy")).toBeInTheDocument();
+  });
+
+  it("switches hotspot ranking between project, module, and parameter dimensions", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
+
+    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
+    const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块榜" });
+    const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目榜" });
+    const parameterToggle = within(dimensionGroup).getByRole("radio", { name: "参数榜" });
 
     expect(document.querySelector(".parameter-homepage-dimension-switch")).toBeInTheDocument();
     expect(moduleToggle).toHaveClass("parameter-homepage-dimension-option");
     expect(projectToggle).toHaveClass("parameter-homepage-dimension-option");
-    expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    expect(moduleToggle).toHaveAttribute("aria-checked", "false");
     expect(projectToggle).toHaveAttribute("aria-checked", "false");
-    expect(moduleToggle).toHaveAttribute("data-state", "on");
+    expect(moduleToggle).toHaveAttribute("data-state", "off");
     expect(projectToggle).toHaveAttribute("data-state", "off");
+
+    fireEvent.click(moduleToggle);
+
+    expect(moduleToggle).toHaveAttribute("aria-checked", "true");
+    expect(moduleToggle).toHaveAttribute("data-state", "on");
     expect(within(hotspotRegion).getByText("Charging Policy")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("AUR-Prod · Charging Policy")).not.toBeInTheDocument();
 
@@ -134,6 +156,13 @@ describe("ParameterManagementHomePage", () => {
     expect(projectToggle).toHaveAttribute("data-state", "on");
     expect(within(hotspotRegion).getByText("AUR-Prod")).toBeInTheDocument();
     expect(within(hotspotRegion).queryByText("Charging Policy")).not.toBeInTheDocument();
+
+    fireEvent.click(parameterToggle);
+
+    expect(parameterToggle).toHaveAttribute("aria-checked", "true");
+    expect(parameterToggle).toHaveAttribute("data-state", "on");
+    expect(within(hotspotRegion).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(hotspotRegion).getAllByText(/AUR-Prod · Charging Policy/).length).toBeGreaterThan(0);
   });
 
   it("uses stable class hooks for responsive homepage layout", () => {
@@ -192,6 +221,8 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain(".hotspot-row-select {");
     expect(css).toContain(".hotspot-panel {");
     expect(css).toContain(".parameter-homepage-dimension-switch {");
+    expect(readCssBlock(css, ".parameter-homepage-dimension-switch")).toContain("flex-wrap: wrap;");
+    expect(readCssBlock(css, ".parameter-homepage-select")).toContain("flex-wrap: wrap;");
     expect(css).toContain(".parameter-homepage-dimension-option[data-state=\"on\"]");
     expect(css).toContain(".parameter-homepage-select-label {");
     expect(css).toContain(".action-btn--primary {");

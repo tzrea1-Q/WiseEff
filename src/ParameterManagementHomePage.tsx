@@ -17,8 +17,10 @@ type ParameterManagementHomePageProps = {
 };
 
 const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }> = [
-  { value: "module", label: "模块" },
-  { value: "project", label: "项目" }
+  { value: "overall", label: "总榜" },
+  { value: "module", label: "模块榜" },
+  { value: "project", label: "项目榜" },
+  { value: "parameter", label: "参数榜" }
 ];
 
 const metricIcons = [BarChart3, Layers3, TrendingUp, Users] as const;
@@ -32,7 +34,7 @@ const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"];
 ];
 
 export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
-  const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("module");
+  const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("overall");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const isAccordionMode = useIsAccordionMode(1099);
 
@@ -241,7 +243,7 @@ export function HotspotLeaderboard({
       <div className="hotspot-leaderboard">
         <div className="hotspot-list-head" role="presentation">
           <span>排名</span>
-          <span>模块</span>
+          <span>对象</span>
           <span>状态</span>
           <span>热度</span>
           <span>趋势</span>
@@ -323,7 +325,7 @@ function HotspotRow({
   onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
   children?: ReactNode;
 }) {
-  const navigationLabel = hotspot.module === "项目参数" ? hotspot.projectCode : hotspot.title;
+  const navigationLabel = hotspot.kind === "project" ? hotspot.projectCode : hotspot.title;
 
   return (
     <li className="hotspot-row" data-selected={selected ? "true" : "false"} data-rank={rank}>
