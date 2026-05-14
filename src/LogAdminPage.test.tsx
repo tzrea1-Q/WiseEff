@@ -31,13 +31,13 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(screen.getByRole("heading", { level: 1, name: "日志分析管理后台" })).toBeInTheDocument();
   });
 
-  it("renders four metric cards with labels", () => {
+  it("keeps dashboard metric cards out of the admin backend", () => {
     renderPage();
 
-    expect(screen.getByText("今日分析")).toBeInTheDocument();
-    expect(screen.getByText("平均置信度")).toBeInTheDocument();
-    expect(screen.getByText("失败文件")).toBeInTheDocument();
-    expect(screen.getByText("吞吐峰值")).toBeInTheDocument();
+    expect(screen.queryByText("今日分析")).not.toBeInTheDocument();
+    expect(screen.queryByText("平均置信度")).not.toBeInTheDocument();
+    expect(screen.queryByText("失败文件")).not.toBeInTheDocument();
+    expect(screen.queryByText("吞吐峰值")).not.toBeInTheDocument();
   });
 
   it("renders DataTable with log records", () => {
@@ -57,12 +57,10 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(within(group).getByRole("button", { name: "30 日" })).toBeInTheDocument();
   });
 
-  it("filters table when 失败文件 metric is clicked", async () => {
+  it("filters table when 状态 filter is set to 失败", async () => {
     renderPage();
-    const failedCard = screen.getAllByRole("button").find((button) => button.textContent?.includes("失败文件"));
 
-    expect(failedCard).toBeDefined();
-    await userEvent.click(failedCard as HTMLElement);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "状态" }), "Failed");
 
     const table = screen.getByRole("table", { name: "日志分析记录" });
     expect(within(table).getByText(/thermal_snapshot\.bin/)).toBeInTheDocument();

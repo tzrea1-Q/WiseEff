@@ -26,6 +26,18 @@ describe("reducer · SIMULATE_LOG_UPLOAD", () => {
     expect(next.logs[0].status).toBe("Failed");
     expect(next.logs[0].failureReason).toMatch(/不支持/);
   });
+
+  it("上传时可保存用户问题", () => {
+    const next = reducer(initialState, {
+      type: "SIMULATE_LOG_UPLOAD",
+      fileName: "question.log",
+      supported: true,
+      question: "为什么充电后段降频？"
+    });
+
+    expect(next.logs[0].analysisQuestion).toBe("为什么充电后段降频？");
+    expect(next.logs[0].rawLines[0]).toContain("question.log");
+  });
 });
 
 describe("LogsPage · 上传日志对话框", () => {
@@ -62,6 +74,27 @@ describe("LogsPage · 上传日志对话框", () => {
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(history).getByRole("button", { name: /fresh\.log/ })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("dialog", { name: "上传日志" })).not.toBeInTheDocument();
+  });
+
+  it("上传时可输入可选问题，新建分析任务展示该问题", () => {
+    vi.useFakeTimers();
+    window.history.replaceState(null, "", "/logs");
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [new File(["x"], "question.log")] } });
+    fireEvent.change(screen.getByLabelText("分析问题（可选）"), {
+      target: { value: "为什么充电后段降频？" }
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "确认上传" }));
+
+    expect(screen.getByText("用户问题")).toBeInTheDocument();
+    expect(screen.getByText("为什么充电后段降频？")).toBeInTheDocument();
   });
 
   it("选择不支持格式后显示警示，仍然上传会创建 Failed 日志", () => {

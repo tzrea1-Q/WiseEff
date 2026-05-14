@@ -24,6 +24,8 @@ describe("LogsPage · Header", () => {
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
 
+    expect(screen.getByText("AI置信度")).toBeInTheDocument();
+    expect(screen.queryByText("置信度")).not.toBeInTheDocument();
     expect(screen.getByRole("progressbar", { name: "分析置信度" })).toHaveAttribute("aria-valuenow", "88");
     expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeEnabled();
   });
@@ -88,6 +90,35 @@ describe("LogsPage · Header", () => {
 
     expect(document.querySelector(".agent-panel")).toBeInTheDocument();
     expect(screen.getByText("WiseAgent")).toBeInTheDocument();
+  });
+
+  it("Processing 结论卡不再展示文件名、阶段、时间和设备胶囊标签", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+
+    const conclusionCard = screen.getByRole("region", { name: "AI 正在分析..." });
+    expect(conclusionCard).not.toHaveTextContent("charging_thermal_trace_20260504.log");
+    expect(conclusionCard).not.toHaveTextContent("根因推断");
+    expect(conclusionCard).not.toHaveTextContent("10:24:05");
+    expect(conclusionCard).not.toHaveTextContent("ChargeLab_X01");
+  });
+
+  it("每份日志可通过弹窗反馈置信度和可能问题", () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "反馈分析质量" });
+    expect(within(dialog).getByText(/charging_thermal_trace/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("置信度反馈"), { target: { value: "low" } });
+    fireEvent.change(within(dialog).getByLabelText("可能存在的问题"), { target: { value: "证据链缺少温控阈值来源" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
+
+    expect(screen.queryByRole("dialog", { name: "反馈分析质量" })).not.toBeInTheDocument();
+    expect(screen.getByText(/反馈已记录/)).toBeInTheDocument();
   });
 
   it("切换日志时 Live Region 播报文件名和状态", () => {
