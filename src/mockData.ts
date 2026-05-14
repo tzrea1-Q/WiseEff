@@ -200,6 +200,7 @@ export type LogRecord = {
   relatedParameterId?: string;
   device?: string;
   failureReason?: string;
+  analysisQuestion?: string;
 };
 
 export type Device = {

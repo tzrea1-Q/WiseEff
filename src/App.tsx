@@ -44,6 +44,7 @@ import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
 import { LogAdminPage } from "./LogAdminPage";
+import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ParametersPage as UserParametersPage } from "./ParametersPage";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
@@ -141,7 +142,7 @@ export type AppAction =
   | { type: "UNDO_REVIEW_ACTION"; requestId: string; previousStatus: RequestStatus }
   | { type: "AI_FEEDBACK"; requestId: string; feedback: "up" | "down"; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
-  | { type: "SIMULATE_LOG_UPLOAD"; fileName: string; supported: boolean }
+  | { type: "SIMULATE_LOG_UPLOAD"; fileName: string; supported: boolean; question?: string }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
   | { type: "PUSH_DEBUG_VALUES"; parameterIds: string[] }
@@ -658,6 +659,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     }
     case "SIMULATE_LOG_UPLOAD": {
       const supportedLog = action.supported;
+      const analysisQuestion = action.question?.trim();
       const newLog: LogRecord = {
         id: `log-upload-${Date.now()}`,
         fileName: action.fileName,
@@ -678,7 +680,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         updatedAt: "刚刚",
         updatedAtIso: new Date().toISOString(),
         submittedBy: activeRoleLabel(state.activeRoleId),
-        failureReason: supportedLog ? undefined : "格式不支持。请上传 .log / .txt / .json 文本日志。"
+        failureReason: supportedLog ? undefined : "格式不支持。请上传 .log / .txt / .json 文本日志。",
+        analysisQuestion: analysisQuestion || undefined
       };
 
       return {
@@ -1463,6 +1466,8 @@ function PageRouter({
       return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-admin":
       return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+    case "log-dashboard":
+      return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
       return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "log-admin":
@@ -1474,6 +1479,318 @@ function PageRouter({
     default:
       return <HomePage />;
   }
+}
+
+function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavigate: (path: string) => void }) {
+  const visibleLogs = useMemo(
+    () => state.logs.filter((log) => !state.archivedLogIds.includes(log.id)),
+    [state.archivedLogIds, state.logs]
+  );
+  const todayLogs = useMemo(() => applyTimeWindow(visibleLogs, "today"), [visibleLogs]);
+  const metrics = useMemo(() => deriveMetrics(todayLogs, "today", visibleLogs), [todayLogs, visibleLogs]);
+  const sortedByUpdate = useMemo(
+    () => [...todayLogs].sort((a, b) => Date.parse(b.updatedAtIso) - Date.parse(a.updatedAtIso)),
+    [todayLogs]
+  );
+  const sortedBySize = useMemo(() => [...todayLogs].sort((a, b) => b.fileSizeMB - a.fileSizeMB), [todayLogs]);
+  const completeCount = todayLogs.filter((log) => log.status === "Complete").length;
+  const processingCount = todayLogs.filter((log) => log.status === "Processing").length;
+  const failedLogs = todayLogs.filter((log) => log.status === "Failed");
+  const lowConfidenceLogs = todayLogs.filter((log) => log.status !== "Failed" && log.confidence > 0 && log.confidence < 90);
+  const confidenceLogs = todayLogs.filter((log) => log.status !== "Failed" && log.confidence > 0);
+  const totalCount = Math.max(todayLogs.length, 1);
+  const statusSegments = [
+    { label: "完成", value: completeCount, percent: Math.round((completeCount / totalCount) * 100), className: "is-complete" },
+    { label: "处理中", value: processingCount, percent: Math.round((processingCount / totalCount) * 100), className: "is-processing" },
+    { label: "失败", value: failedLogs.length, percent: Math.round((failedLogs.length / totalCount) * 100), className: "is-failed" }
+  ];
+  const qualityBands = [
+    { label: "高置信", value: confidenceLogs.filter((log) => log.confidence >= 90).length, className: "is-strong" },
+    { label: "需复核", value: confidenceLogs.filter((log) => log.confidence >= 80 && log.confidence < 90).length, className: "is-watch" },
+    { label: "低置信", value: confidenceLogs.filter((log) => log.confidence > 0 && log.confidence < 80).length, className: "is-risk" }
+  ];
+  const totalFileSize = todayLogs.reduce((sum, log) => sum + log.fileSizeMB, 0);
+  const latestLog = sortedByUpdate[0];
+  const qualityFloor = confidenceLogs.length > 0 ? Math.min(...confidenceLogs.map((log) => log.confidence)) : 0;
+  const peakShare = totalFileSize > 0 ? Math.round((metrics.throughputPeak.sizeMB / totalFileSize) * 100) : 0;
+  const formatSize = (sizeMB: number) => (sizeMB >= 100 ? `${(sizeMB / 1024).toFixed(1)}GB` : `${sizeMB.toFixed(1)}MB`);
+  const compactLogLabel = (log?: LogRecord) => (log ? `${log.reportId} · ${log.source}` : "暂无样本");
+  const reviewQueue = (lowConfidenceLogs.length > 0 ? lowConfidenceLogs : confidenceLogs).slice(0, 2);
+  const peakLog = sortedBySize[0];
+  const trendDateLabels = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - index));
+    return `${date.getMonth() + 1}月${date.getDate()}日`;
+  });
+  const topActions = Array.from(
+    new Set(
+      [...failedLogs, ...lowConfidenceLogs, ...sortedByUpdate]
+        .flatMap((log) => log.suggestedActions)
+        .filter(Boolean)
+    )
+  ).slice(0, 3);
+
+  return (
+    <div className="log-dashboard-page">
+      <header className="logs-v2-header log-dashboard-header">
+        <div>
+          <div className="breadcrumb">
+            <button type="button" onClick={() => onNavigate("/")}>
+              首页
+            </button>
+            <ChevronRight size={13} />
+            <strong>日志分析看板</strong>
+          </div>
+          <h1>日志分析看板</h1>
+          <p>聚合日志分析应用的处理量、置信度、失败记录和吞吐表现。</p>
+        </div>
+        <div className="log-dashboard-actions">
+          <button className="button subtle" type="button" onClick={() => onNavigate("/log-admin")}>
+            查看管理后台
+          </button>
+          <button className="button primary" type="button" onClick={() => onNavigate("/logs")}>
+            进入智能分析
+          </button>
+        </div>
+      </header>
+
+      <section className="log-dashboard-topic-grid" aria-label="日志分析核心指标">
+        <article className="log-dashboard-topic-card topic-throughput" aria-label="今日分析">
+          <div className="topic-card-head">
+            <div>
+              <span>处理节奏</span>
+              <h2>今日分析</h2>
+            </div>
+            <div className="topic-primary-metric">
+              <strong>{metrics.todayCount.value}</strong>
+              <span>份</span>
+            </div>
+          </div>
+
+          <div className="topic-decision-panel">
+            <CheckCircle2 size={18} />
+            <div>
+              <span>关键判断</span>
+              <strong>处理队列稳定</strong>
+              <p>今日覆盖 {totalCount} 份日志，最新样本 {compactLogLabel(latestLog)} 已进入看板监控。</p>
+            </div>
+          </div>
+
+          <div className="topic-evidence-grid">
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>趋势洞察</strong>
+                <span>较昨日 {metrics.todayCount.trendPct >= 0 ? "+" : ""}{metrics.todayCount.trendPct}%</span>
+              </div>
+              <div className="topic-line-chart" aria-hidden="true">
+                {metrics.todayCount.sparkline.map((value, index) => (
+                  <span className="topic-line-chart__bar" key={`${value}-${index}`}>
+                    <strong className="topic-line-chart__value">{value}</strong>
+                    <i style={{ height: `${Math.max(8, value * 10)}px` }} />
+                    <small className="topic-line-chart__time">{trendDateLabels[index] ?? ""}</small>
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>状态构成</strong>
+                <span>{completeCount} 完成 / {processingCount} 处理中 / {failedLogs.length} 失败</span>
+              </div>
+              <div className="topic-stack-bar" aria-hidden="true">
+                {statusSegments.map((item) => (
+                  <i key={item.label} className={item.className} style={{ width: `${Math.max(8, item.percent)}%` }} />
+                ))}
+              </div>
+              <div className="topic-segmented-summary" aria-label="今日状态拆分">
+                {statusSegments.map((item) => (
+                  <div key={item.label}>
+                    <span>{item.label}</span>
+                    <strong>{item.value}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+        </article>
+
+        <article className="log-dashboard-topic-card topic-confidence" aria-label="平均置信度">
+          <div className="topic-card-head">
+            <div>
+              <span>完成质量</span>
+              <h2>平均置信度</h2>
+            </div>
+            <div className="topic-primary-metric">
+              <strong>{metrics.avgConfidence.value}</strong>
+              <span>%</span>
+            </div>
+          </div>
+
+          <div className="topic-decision-panel is-quality">
+            <Info size={18} />
+            <div>
+              <span>关键判断</span>
+              <strong>{lowConfidenceLogs.length > 0 ? "存在复核样本" : "质量表现稳定"}</strong>
+              <p>平均置信度 {metrics.avgConfidence.value}%，最低样本 {qualityFloor}%，较昨日 {metrics.avgConfidence.trendPct >= 0 ? "+" : ""}{metrics.avgConfidence.trendPct} pts。</p>
+            </div>
+          </div>
+
+          <div className="topic-evidence-grid">
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>质量分布</strong>
+                <span>{lowConfidenceLogs.length} 份需关注</span>
+              </div>
+              <div className="topic-quality-panel">
+                <div className="topic-score-meter" style={{ "--score": `${metrics.avgConfidence.value}%` } as CSSProperties}>
+                  <span />
+                  <strong>{metrics.avgConfidence.value}%</strong>
+                </div>
+                <div className="topic-quality-bands">
+                  {qualityBands.map((band) => (
+                    <div key={band.label}>
+                      <span>{band.label}</span>
+                      <i className={band.className} style={{ width: `${Math.max(8, (band.value / Math.max(confidenceLogs.length, 1)) * 100)}%` }} />
+                      <strong>{band.value}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>复核队列</strong>
+                <span>{reviewQueue.length} 份样本</span>
+              </div>
+              <div className="topic-review-queue" aria-label="置信度复核队列">
+                {reviewQueue.map((log) => (
+                  <div key={log.id}>
+                    <span>{compactLogLabel(log)}</span>
+                    <strong>{log.confidence}%</strong>
+                    <p>{log.conclusion}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+        </article>
+
+        <article className="log-dashboard-topic-card topic-failures" aria-label="失败文件">
+          <div className="topic-card-head">
+            <div>
+              <span>失败影响</span>
+              <h2>失败文件</h2>
+            </div>
+            <div className="topic-primary-metric">
+              <strong>{metrics.failedCount.value}</strong>
+              <span>份</span>
+            </div>
+          </div>
+
+          <div className="topic-decision-panel is-risk">
+            <AlertTriangle size={18} />
+            <div>
+              <span>关键判断</span>
+              <strong>{failedLogs.length > 0 ? "需要人工介入" : "无需人工介入"}</strong>
+              <p>{failedLogs[0]?.failureReason ?? "所有日志均进入正常分析流程。"}</p>
+            </div>
+          </div>
+
+          <div className="topic-evidence-grid">
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>失败记录</strong>
+                <span>{failedLogs[0]?.reportId ?? "无失败记录"}</span>
+              </div>
+              <div className="topic-failure-record">
+                <span>{compactLogLabel(failedLogs[0])}</span>
+                <strong>{failedLogs[0]?.stage ? STAGE_LABELS[failedLogs[0].stage] : "当前队列正常"}</strong>
+                <p>{failedLogs[0]?.source ?? "解析流程未发现阻断项"}</p>
+              </div>
+            </section>
+
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>建议动作</strong>
+                <span>按优先级处理</span>
+              </div>
+              <ol className="topic-action-list" aria-label="失败处理建议">
+                {(topActions.length > 0 ? topActions : ["继续监控上传格式", "保留失败原件以便复查"]).map((action, index) => (
+                  <li key={action}>
+                    <span>{index + 1}</span>
+                    {action}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </div>
+
+        </article>
+
+        <article className="log-dashboard-topic-card topic-capacity" aria-label="吞吐峰值">
+          <div className="topic-card-head">
+            <div>
+              <span>大文件压力</span>
+              <h2>吞吐峰值</h2>
+            </div>
+            <div className="topic-primary-metric">
+              <strong>{formatSize(metrics.throughputPeak.sizeMB)}</strong>
+            </div>
+          </div>
+
+          <div className="topic-decision-panel is-capacity">
+            <FileText size={18} />
+            <div>
+              <span>关键判断</span>
+              <strong>峰值占比 {peakShare}%</strong>
+              <p>今日总解析容量 {formatSize(totalFileSize)}，峰值样本来自 {compactLogLabel(peakLog)}。</p>
+            </div>
+          </div>
+
+          <div className="topic-evidence-grid">
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>容量结构</strong>
+                <span>峰值 / 总量</span>
+              </div>
+              <div className="topic-capacity-structure">
+                <div>
+                  <span>峰值占比</span>
+                  <strong>{peakShare}%</strong>
+                </div>
+                <i>
+                  <span style={{ width: `${Math.max(8, peakShare)}%` }} />
+                </i>
+                <p>{formatSize(metrics.throughputPeak.sizeMB)} / {formatSize(totalFileSize)}</p>
+              </div>
+            </section>
+
+            <section className="topic-evidence-block">
+              <div className="topic-section-head">
+                <strong>容量排行</strong>
+                <span>Top {Math.min(sortedBySize.length, 3)}</span>
+              </div>
+              <div className="topic-capacity-rank" aria-label="文件容量排行">
+                {sortedBySize.slice(0, 3).map((log) => (
+                  <div key={log.id}>
+                    <span title={compactLogLabel(log)}>{compactLogLabel(log)}</span>
+                    <strong>{formatSize(log.fileSizeMB)}</strong>
+                    <i style={{ width: `${Math.max(10, (log.fileSizeMB / Math.max(metrics.throughputPeak.sizeMB, 1)) * 100)}%` }} />
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+        </article>
+      </section>
+
+    </div>
+  );
 }
 
 function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (path: string) => void }) {
@@ -2401,6 +2718,8 @@ function ConfigExportActions({ configJson }: { configJson: string }) {
 function LogsPage({ state, dispatch, onNavigate }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
+  const [feedbackToast, setFeedbackToast] = useState("");
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
   const [hoveredEvidenceId, setHoveredEvidenceId] = useState<string | null>(null);
   const [focusedEvidenceId, setFocusedEvidenceId] = useState<string | null>(null);
@@ -2568,6 +2887,8 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
     dispatch({ type: "ADD_NOTIFICATION", message: "WiseAgent 已展开" });
   };
 
+  const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
+
   return (
     <div className="logs-v2">
       <div role="status" aria-live="polite" aria-label="日志切换状态" className="sr-only" data-testid="log-live-region">
@@ -2580,6 +2901,7 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
           onAskAgent={onAskAgent}
           onCopyLink={onCopyLink}
           onExport={onExport}
+          onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
           onRetry={() => setUploadDialogOpen(true)}
         />
@@ -2623,11 +2945,30 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
       {uploadDialogOpen ? (
         <UploadLogDialog
           onClose={() => setUploadDialogOpen(false)}
-          onUpload={(fileName, supported) => {
-            dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName, supported });
+          onUpload={(fileName, supported, question) => {
+            dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName, supported, question });
             setUploadDialogOpen(false);
           }}
         />
+      ) : null}
+      {selectedFeedbackLog ? (
+        <LogAnalysisFeedbackDialog
+          log={selectedFeedbackLog}
+          onClose={() => setFeedbackLogId(null)}
+          onSubmit={(confidence, issue) => {
+            dispatch({
+              type: "ADD_NOTIFICATION",
+              message: `已记录 ${selectedFeedbackLog.reportId} 的分析反馈：${confidence}${issue ? `，${issue}` : ""}`
+            });
+            setFeedbackToast("反馈已记录，感谢补充分析质量线索。");
+            setFeedbackLogId(null);
+          }}
+        />
+      ) : null}
+      {feedbackToast ? (
+        <div className="logs-feedback-toast" role="status" aria-live="polite">
+          {feedbackToast}
+        </div>
       ) : null}
     </div>
   );
@@ -2642,10 +2983,11 @@ function UploadLogDialog({
   onUpload
 }: {
   onClose: () => void;
-  onUpload: (fileName: string, supported: boolean) => void;
+  onUpload: (fileName: string, supported: boolean, question?: string) => void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
   const [selectedFileName, setSelectedFileName] = useState("");
+  const [question, setQuestion] = useState("");
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -2701,7 +3043,7 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        onUpload(files[i].name, isSupportedLogFile(files[i].name));
+        onUpload(files[i].name, isSupportedLogFile(files[i].name), question);
       }
       return;
     }
@@ -2715,7 +3057,7 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        onUpload(files[i].name, isSupportedLogFile(files[i].name));
+        onUpload(files[i].name, isSupportedLogFile(files[i].name), question);
       }
       return;
     }
@@ -2726,6 +3068,7 @@ function UploadLogDialog({
     setPhase("idle");
     setSelectedFileName("");
     setSupported(false);
+    setQuestion("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
       fileInputRef.current.focus();
@@ -2736,7 +3079,7 @@ function UploadLogDialog({
     if (!selectedFileName) {
       return;
     }
-    onUpload(selectedFileName, supported);
+    onUpload(selectedFileName, supported, question);
   };
 
   return (
@@ -2759,6 +3102,16 @@ function UploadLogDialog({
         >
           <span>选择日志文件（支持拖放多份）</span>
           <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept=".log,.txt,.json" multiple onChange={handleFileChange} />
+        </label>
+        <label className="upload-question-field" htmlFor="upload-analysis-question">
+          <span>分析问题（可选）</span>
+          <textarea
+            id="upload-analysis-question"
+            value={question}
+            placeholder="例如：为什么充电后段降频？"
+            rows={3}
+            onChange={(event) => setQuestion(event.target.value)}
+          />
         </label>
         <div className={classNames("upload-dialog__state", phase === "unsupported" && "upload-dialog__state--error")}>
           {phase === "idle" ? (
@@ -2831,7 +3184,7 @@ function ConfidenceBar({ value, status }: { value: number; status: LogRecord["st
   return (
     <div className={classNames("confidence-bar", `confidence-bar--${tone}`)}>
       <div>
-        <span>置信度</span>
+        <span>AI置信度</span>
         <strong>{value}%</strong>
       </div>
       <div aria-label="分析置信度" aria-valuemax={100} aria-valuemin={0} aria-valuenow={value} role="progressbar">
@@ -2847,6 +3200,7 @@ function LogConclusionCard({
   onPrimary,
   onExport,
   onCopyLink,
+  onFeedback,
   onRetry
 }: {
   log: LogRecord;
@@ -2854,6 +3208,7 @@ function LogConclusionCard({
   onPrimary: () => void;
   onExport: () => void;
   onCopyLink: () => void;
+  onFeedback: () => void;
   onRetry: () => void;
 }) {
   if (log.status === "Failed") {
@@ -2869,12 +3224,12 @@ function LogConclusionCard({
           <p>{log.status === "Complete" ? log.impact : log.conclusion}</p>
         </div>
       </div>
-      <div className="logs-conclusion-meta">
-        <span>{log.fileName}</span>
-        <span>{STAGE_LABELS[log.stage]}</span>
-        <span>{log.capturedAt}</span>
-        {log.device ? <span>{log.device}</span> : null}
-      </div>
+      {log.analysisQuestion ? (
+        <div className="logs-analysis-question">
+          <strong>用户问题</strong>
+          <span>{log.analysisQuestion}</span>
+        </div>
+      ) : null}
       <ConfidenceBar value={log.confidence} status={log.status} />
       <div className="logs-conclusion-actions">
         <button className="button primary" disabled={log.status !== "Complete"} type="button" onClick={onPrimary}>
@@ -2893,8 +3248,74 @@ function LogConclusionCard({
           <Bot size={16} />
           问 Agent 关于此结论
         </button>
+        <button className="button subtle" type="button" onClick={onFeedback}>
+          <MessageSquareText size={16} />
+          反馈分析质量
+        </button>
       </div>
     </section>
+  );
+}
+
+function LogAnalysisFeedbackDialog({
+  log,
+  onClose,
+  onSubmit
+}: {
+  log: LogRecord;
+  onClose: () => void;
+  onSubmit: (confidence: string, issue: string) => void;
+}) {
+  const [confidence, setConfidence] = useState("medium");
+  const [issue, setIssue] = useState("");
+
+  const submitFeedback = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSubmit(confidence, issue.trim());
+  };
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="log-feedback-title">
+      <form className="confirm-dialog log-feedback-dialog" onSubmit={submitFeedback}>
+        <div className="upload-dialog__header">
+          <div>
+            <h2 id="log-feedback-title">
+              <strong>反馈分析质量</strong>
+            </h2>
+            <p>{log.fileName}</p>
+          </div>
+          <button className="icon-button" type="button" aria-label="关闭反馈分析质量" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <label className="upload-question-field" htmlFor="log-feedback-confidence">
+          <span>置信度反馈</span>
+          <select id="log-feedback-confidence" value={confidence} onChange={(event) => setConfidence(event.target.value)}>
+            <option value="high">高：判断可信</option>
+            <option value="medium">中：需要复核</option>
+            <option value="low">低：可能误判</option>
+          </select>
+        </label>
+        <label className="upload-question-field" htmlFor="log-feedback-issue">
+          <span>可能存在的问题</span>
+          <textarea
+            id="log-feedback-issue"
+            value={issue}
+            placeholder="例如：证据链不足、根因误判、缺少关键日志片段"
+            rows={4}
+            onChange={(event) => setIssue(event.target.value)}
+          />
+        </label>
+        <div className="upload-dialog__actions">
+          <button className="button subtle" type="button" onClick={onClose}>
+            取消
+          </button>
+          <button className="button primary" type="submit">
+            提交反馈
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

@@ -1,6 +1,7 @@
 import {
   Activity,
   Bot,
+  ChartNoAxesCombined,
   Database,
   FileText,
   Gauge,
@@ -20,6 +21,7 @@ export type PageKey =
   | "parameter-comparison"
   | "parameter-review"
   | "parameter-admin"
+  | "log-dashboard"
   | "logs"
   | "log-admin"
   | "debugging"
@@ -120,6 +122,15 @@ export const navigationItems: PageConfig[] = [
     icon: Gauge,
     title: "参数调试管理后台",
     subtitle: "设备接入、可调充电参数目录、指标和权限管理"
+  },
+  {
+    key: "log-dashboard",
+    path: "/log-dashboard",
+    label: "看板",
+    group: "日志分析",
+    icon: ChartNoAxesCombined,
+    title: "日志分析看板",
+    subtitle: "日志分析应用态势、处理质量、失败分布和吞吐表现"
   },
   {
     key: "logs",

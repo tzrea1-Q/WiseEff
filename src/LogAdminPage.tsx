@@ -5,7 +5,6 @@ import {
   AddUserDialog,
   DataTable,
   LogRecordDrawer,
-  MetricBentoCard,
   PageInsightBar,
   TimeWindowSelect,
   type Column
@@ -22,8 +21,6 @@ export type LogAdminPageProps = {
   onNavigate: (path: string) => void;
   search: string;
 };
-
-type MetricKey = "today" | "confidence" | "failed" | "peak";
 
 const statusLabels: Record<LogStatus, string> = {
   Processing: "处理中",
@@ -74,7 +71,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   const [statusFilter, setStatusFilter] = useState<LogStatus | "all">("all");
   const [moduleFilter, setModuleFilter] = useState<string | "all">("all");
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
-  const [activeMetricKey, setActiveMetricKey] = useState<MetricKey | null>(null);
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
   const [addUserOpen, setAddUserOpen] = useState(false);
@@ -168,42 +164,11 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     }
   ];
 
-  const handleMetricClick = (key: MetricKey) => {
-    if (activeMetricKey === key) {
-      setActiveMetricKey(null);
-      setStatusFilter("all");
-      setSortBy({ key: "updatedAtIso", dir: "desc" });
-      return;
-    }
-
-    setActiveMetricKey(key);
-    if (key === "today") {
-      setStatusFilter("all");
-      setModuleFilter("all");
-      setTableQuery("");
-      setSortBy({ key: "updatedAtIso", dir: "desc" });
-      return;
-    }
-    if (key === "confidence") {
-      setStatusFilter("Complete");
-      setSortBy({ key: "confidence", dir: "asc" });
-      return;
-    }
-    if (key === "failed") {
-      setStatusFilter("Failed");
-      setSortBy({ key: "updatedAtIso", dir: "desc" });
-      return;
-    }
-    setStatusFilter("all");
-    setSortBy({ key: "fileSizeMB", dir: "desc" });
-  };
-
   const resetFilters = () => {
     setTableQuery("");
     setStatusFilter("all");
     setModuleFilter("all");
     setSortBy({ key: "updatedAtIso", dir: "desc" });
-    setActiveMetricKey(null);
   };
 
   const handleInsightAction = (kind: "locate-failures" | "send-to-agent" | "dismiss") => {
@@ -217,7 +182,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     }
     if (kind === "locate-failures") {
       setStatusFilter("Failed");
-      setActiveMetricKey("failed");
       return;
     }
 
@@ -291,49 +255,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
           </Button>
         </div>
       </header>
-
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <MetricBentoCard
-          variant="spark"
-          label="今日分析"
-          value={String(metrics.todayCount.value)}
-          caption={`较昨日 ${metrics.todayCount.trendPct >= 0 ? "+" : ""}${metrics.todayCount.trendPct}%`}
-          trend={{
-            direction: metrics.todayCount.trendPct > 0 ? "up" : metrics.todayCount.trendPct < 0 ? "down" : "flat",
-            text: `${metrics.todayCount.trendPct >= 0 ? "+" : ""}${metrics.todayCount.trendPct}%`
-          }}
-          data={metrics.todayCount.sparkline}
-          onClick={() => handleMetricClick("today")}
-          active={activeMetricKey === "today"}
-        />
-        <MetricBentoCard
-          variant="radial"
-          label="平均置信度"
-          value={`${metrics.avgConfidence.value}%`}
-          caption="完成记录均值"
-          percent={metrics.avgConfidence.value}
-          onClick={() => handleMetricClick("confidence")}
-          active={activeMetricKey === "confidence"}
-        />
-        <MetricBentoCard
-          variant="pulse"
-          label="失败文件"
-          value={String(metrics.failedCount.value)}
-          caption="格式或大小异常"
-          severity={metrics.failedCount.severity === "ok" ? "neutral" : metrics.failedCount.severity === "warn" ? "warning" : "error"}
-          onClick={() => handleMetricClick("failed")}
-          active={activeMetricKey === "failed"}
-        />
-        <MetricBentoCard
-          variant="peak"
-          label="吞吐峰值"
-          value={`${metrics.throughputPeak.sizeMB.toFixed(1)}MB`}
-          caption={metrics.throughputPeak.fileName || "无数据"}
-          data={metrics.throughputPeak.bars}
-          onClick={() => handleMetricClick("peak")}
-          active={activeMetricKey === "peak"}
-        />
-      </section>
 
       {insight && !insightDismissed ? (
         <PageInsightBar

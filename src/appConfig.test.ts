@@ -12,6 +12,7 @@ describe("WiseEff prototype configuration", () => {
       "/parameter-admin",
       "/debugging",
       "/debugging-admin",
+      "/log-dashboard",
       "/logs",
       "/log-admin"
     ]);
@@ -36,6 +37,14 @@ describe("WiseEff prototype configuration", () => {
 
     expect(homePage.title).toBe("智效 WiseEff");
     expect(homePage.subtitle).toBe("业务流程里的 AI 协同工作系统");
+  });
+
+  it("exposes a dedicated log analysis dashboard route", () => {
+    const page = getPageByPath("/log-dashboard");
+
+    expect(page.key).toBe("log-dashboard");
+    expect(page.label).toBe("看板");
+    expect(page.group).toBe("日志分析");
   });
 });
 
