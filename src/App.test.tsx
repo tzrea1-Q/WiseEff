@@ -141,7 +141,7 @@ describe("WiseEff app shell", () => {
     expect(
       Boolean(topbarEntries.compareDocumentPosition(timeWindowSelect) & Node.DOCUMENT_POSITION_FOLLOWING)
     ).toBe(true);
-    const activeNavButtons = screen.getAllByRole("button", { name: "首页" }).filter((btn) => btn.classList.contains("active"));
+    const activeNavButtons = screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
   });
 
@@ -660,6 +660,58 @@ describe("WiseEff app shell", () => {
     expect(reviewDetail).toHaveTextContent("Charging Policy");
   });
 
+  it("omits the duplicate in-page header on the parameter review workbench", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    expect(document.querySelector(".workbench-page > .page-header")).not.toBeInTheDocument();
+    expect(document.querySelector(".topbar-title")).toHaveTextContent("参数管理员工作台");
+  });
+
+  it("styles the parameter review filters like the user parameter toolbar filters", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    const filterBar = document.querySelector(".review-queue-filters");
+
+    expect(filterBar).toBeInTheDocument();
+    expect(filterBar?.querySelectorAll(".dropdown-trigger")).toHaveLength(3);
+    expect(within(filterBar as HTMLElement).getByRole("button", { name: "模块 ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(filterBar as HTMLElement).getByRole("button", { name: "提交人 ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(filterBar as HTMLElement).getByRole("button", { name: "项目 ▾" })).toHaveClass("dropdown-trigger");
+
+    fireEvent.click(within(filterBar as HTMLElement).getByRole("button", { name: "提交人 ▾" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "H. Zhao" }));
+
+    expect(within(filterBar as HTMLElement).getByRole("button", { name: "提交人 (1) ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(screen.getByRole("table")).getByText("PRQ-9102")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).queryByText("PRQ-9101")).not.toBeInTheDocument();
+  });
+
+  it("switches the review table title between pending requests and merged submission history", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    const pendingTab = screen.getByRole("tab", { name: "待审阅" });
+    const historyTab = screen.getByRole("tab", { name: "历史提交" });
+    const pendingTable = screen.getByRole("table");
+
+    expect(pendingTab).toHaveAttribute("aria-selected", "true");
+    expect(within(pendingTable).getByText("PRQ-9102")).toBeInTheDocument();
+    expect(within(pendingTable).queryByText("PRQ-9085")).not.toBeInTheDocument();
+
+    fireEvent.click(historyTab);
+
+    const historyTable = screen.getByRole("table");
+    expect(historyTab).toHaveAttribute("aria-selected", "true");
+    expect(within(historyTable).getByText("PRQ-9085")).toBeInTheDocument();
+    expect(within(historyTable).queryByText("PRQ-9102")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("PRQ-9085");
+  });
+
   it("labels and aligns the review change column", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
@@ -672,6 +724,32 @@ describe("WiseEff app shell", () => {
 
     expect(changeCell).toBeInTheDocument();
     expect(changeCell?.firstElementChild).toHaveClass("value-change");
+  });
+
+  it("opens submission details from the review table change column", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    const row = screen.getByRole("row", { name: /PRQ-9102/ });
+    fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-9102 提交详情" }));
+
+    const dialog = screen.getByRole("dialog", { name: "提交详情" });
+    expect(dialog).toHaveTextContent("PRS-2405");
+    expect(dialog).toHaveTextContent("fast_charge_current_limit_ma");
+  });
+
+  it("opens synthesized submission details when a review row has no stored submission round", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    render(<App />);
+
+    const row = screen.getByRole("row", { name: /PRQ-9098/ });
+    fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-9098 提交详情" }));
+
+    const dialog = screen.getByRole("dialog", { name: "提交详情" });
+    expect(dialog).toHaveTextContent("PRS-2401");
+    expect(dialog).toHaveTextContent("预充阶段电压上限微调");
   });
 
   it("opens the log upload dialog only after upload simulation", () => {
@@ -781,7 +859,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-review",
-        present: ["待审阅请求", "变更", "变更历史", "现在", "提交人"],
+        present: ["待审阅", "历史提交", "变更", "变更历史", "现在", "提交人"],
         absent: ["Filter Queue", "Pending Requests", "Req ID", "Submitter", "Proposed Change", "Change History", "Targeting module"]
       },
       {

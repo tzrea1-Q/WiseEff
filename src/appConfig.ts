@@ -61,7 +61,7 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-home",
     path: "/parameter-home",
-    label: "首页",
+    label: "看板",
     group: "参数管理",
     icon: Home,
     title: "智能参数管理",

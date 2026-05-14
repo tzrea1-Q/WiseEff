@@ -45,6 +45,7 @@ import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
 import { LogAdminPage } from "./LogAdminPage";
 import { ParametersPage as UserParametersPage } from "./ParametersPage";
+import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -62,6 +63,7 @@ import {
   mockDataFingerprint,
   LogRecord,
   ParameterRecord,
+  ParameterSubmissionRound,
   ParameterSubmissionItem,
   REVIEW_MOCK_NOW,
   projects,
@@ -1994,14 +1996,17 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const [selectedId, setSelectedId] = useState(state.changeRequests[0]?.id ?? "");
   const [rejectOpen, setRejectOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [reviewMode, setReviewMode] = useState<ParameterReviewMode>("pending");
   const [filterModules, setFilterModules] = useState<string[]>([]);
   const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const selected = state.changeRequests.find((request) => request.id === selectedId) ?? state.changeRequests[0];
+  const pendingRequests = useMemo(() => state.changeRequests.filter((request) => request.status !== "已合入"), [state.changeRequests]);
+  const mergedRequests = useMemo(() => state.changeRequests.filter((request) => request.status === "已合入"), [state.changeRequests]);
+  const visibleRequests = reviewMode === "history" ? mergedRequests : pendingRequests;
 
   const filteredRequests = useMemo(() => {
-    return state.changeRequests.filter((request) => {
+    return visibleRequests.filter((request) => {
       if (filterModules.length && !filterModules.includes(request.module)) return false;
       if (filterSubmitters.length && !filterSubmitters.includes(request.submitter)) return false;
       if (filterProjects.length) {
@@ -2011,19 +2016,50 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       }
       return true;
     });
-  }, [state.changeRequests, state.parameters, state.configDraft.projects, filterModules, filterSubmitters, filterProjects]);
+  }, [visibleRequests, state.parameters, state.configDraft.projects, filterModules, filterSubmitters, filterProjects]);
+  const selected = filteredRequests.find((request) => request.id === selectedId) ?? filteredRequests[0] ?? null;
 
-  const modules = useMemo(() => Array.from(new Set(state.changeRequests.map((r) => r.module))), [state.changeRequests]);
-  const submitters = useMemo(() => Array.from(new Set(state.changeRequests.map((r) => r.submitter))), [state.changeRequests]);
+  const modules = useMemo(() => Array.from(new Set(visibleRequests.map((r) => r.module))), [visibleRequests]);
+  const submitters = useMemo(() => Array.from(new Set(visibleRequests.map((r) => r.submitter))), [visibleRequests]);
   const projectOptions = useMemo(() => {
-    const ids = new Set(state.changeRequests.map((r) => state.parameters.find((p) => p.id === r.parameterId)?.projectId).filter(Boolean));
+    const ids = new Set(visibleRequests.map((r) => state.parameters.find((p) => p.id === r.parameterId)?.projectId).filter(Boolean));
     return state.configDraft.projects.filter((p) => ids.has(p.id));
-  }, [state.changeRequests, state.parameters, state.configDraft.projects]);
+  }, [visibleRequests, state.parameters, state.configDraft.projects]);
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
     return state.parameterSubmissionRounds.find((r) => r.id === selected.submissionRoundId) ?? null;
   }, [selected, state.parameterSubmissionRounds]);
+  const selectedDetailRound = useMemo((): ParameterSubmissionRound | null => {
+    if (!selected) return null;
+    if (selectedRound) return selectedRound;
+
+    const parameter = state.parameters.find((item) => item.id === selected.parameterId);
+    const project = state.configDraft.projects.find((item) => item.id === (selected.projectId ?? parameter?.projectId));
+
+    return {
+      id: selected.submissionRoundId ?? selected.id,
+      projectId: selected.projectId ?? parameter?.projectId ?? "unknown",
+      projectName: project?.name ?? selected.projectId ?? "未关联项目",
+      submitter: selected.submitter,
+      createdAt: selected.createdAt,
+      status: selected.status,
+      summary: selected.title,
+      items: [
+        {
+          requestId: selected.id,
+          parameterId: selected.parameterId,
+          name: parameter?.name ?? selected.title,
+          module: selected.module,
+          currentValue: selected.currentValue,
+          targetValue: selected.targetValue,
+          unit: parameter?.unit ?? "",
+          risk: parameter?.risk ?? "Medium",
+          reason: selected.aiSummary
+        }
+      ]
+    };
+  }, [selected, selectedRound, state.parameters, state.configDraft.projects]);
 
   useEffect(() => {
     if (!contextQuery.module && !contextQuery.projectId) {
@@ -2039,9 +2075,16 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     });
 
     if (matchingRequest) {
+      setReviewMode(matchingRequest.status === "已合入" ? "history" : "pending");
       setSelectedId(matchingRequest.id);
     }
   }, [contextQuery.module, contextQuery.projectId, state.changeRequests, state.parameters]);
+
+  useEffect(() => {
+    if (filteredRequests.length && !filteredRequests.some((request) => request.id === selectedId)) {
+      setSelectedId(filteredRequests[0].id);
+    }
+  }, [filteredRequests, selectedId]);
 
   const rejectSelected = (reason: string) => {
     if (!selected) {
@@ -2050,18 +2093,69 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     dispatch({ type: "REJECT_REVIEW", requestId: selected.id, reason });
     setRejectOpen(false);
   };
+  const openSubmissionDetail = (request: ChangeRequest) => {
+    setSelectedId(request.id);
+    setDetailOpen(true);
+  };
+  const selectReviewMode = (mode: ParameterReviewMode) => {
+    setReviewMode(mode);
+    setFilterModules([]);
+    setFilterSubmitters([]);
+    setFilterProjects([]);
+    setDetailOpen(false);
+  };
+  const reviewMeta = reviewMode === "history" ? `${filteredRequests.length} 项已合入` : `${filteredRequests.length} 项操作`;
 
   return (
     <WorkbenchLayout
       title="参数管理员工作台"
+      hideHeader
     >
       <section className="review-queue">
         <div className="review-queue-header">
-          <PanelHeader title="待审阅请求" meta={`${filteredRequests.length} 项操作`} />
+          <PanelHeader
+            title={
+              <div className="review-view-tabs" role="tablist" aria-label="审阅视角">
+                {[
+                  { mode: "pending" as const, label: "待审阅", count: pendingRequests.length },
+                  { mode: "history" as const, label: "历史提交", count: mergedRequests.length }
+                ].map((item) => (
+                  <button
+                    className={reviewMode === item.mode ? "active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-label={item.label}
+                    aria-selected={reviewMode === item.mode}
+                    key={item.mode}
+                    onClick={() => selectReviewMode(item.mode)}
+                  >
+                    {item.label}
+                    <span>{item.count}</span>
+                  </button>
+                ))}
+              </div>
+            }
+            meta={reviewMeta}
+          />
           <div className="review-queue-filters">
-            <ReviewMultiFilter label="模块" options={modules} selected={filterModules} onChange={setFilterModules} />
-            <ReviewMultiFilter label="提交人" options={submitters} selected={filterSubmitters} onChange={setFilterSubmitters} />
-            <ReviewMultiFilter label="项目" options={projectOptions.map((p) => p.name)} selected={filterProjects} onChange={setFilterProjects} />
+            <MultiSelectDropdown
+              label="模块"
+              value={filterModules}
+              options={modules.map((module) => ({ value: module, label: module }))}
+              onChange={setFilterModules}
+            />
+            <MultiSelectDropdown
+              label="提交人"
+              value={filterSubmitters}
+              options={submitters.map((submitter) => ({ value: submitter, label: submitter }))}
+              onChange={setFilterSubmitters}
+            />
+            <MultiSelectDropdown
+              label="项目"
+              value={filterProjects}
+              options={projectOptions.map((project) => ({ value: project.name, label: project.name }))}
+              onChange={setFilterProjects}
+            />
           </div>
         </div>
         <DataTable
@@ -2077,11 +2171,19 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
               <TableCell>{request.module}</TableCell>
               <TableCell>{request.submitter}</TableCell>
               <TableCell className="change-cell">
-                <span className="value-change">
+                <button
+                  className="value-change value-change-button"
+                  type="button"
+                  aria-label={`查看 ${request.id} 提交详情`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openSubmissionDetail(request);
+                  }}
+                >
                   <span className="strike">{request.currentValue}</span>
                   <ArrowRight size={14} />
                   <strong>{request.targetValue}</strong>
-                </span>
+                </button>
               </TableCell>
               <TableCell>
                 <StatusBadge status={request.status} />
@@ -2100,11 +2202,11 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
                 目标模块为 <strong>{selected.module}</strong>，由 {selected.submitter} 提交。
               </p>
             </div>
-            {selectedRound ? (
+            {selectedDetailRound ? (
               <div className="detail-card">
-                <Button variant="outline" type="button" className="full" onClick={() => setDetailOpen(true)}>
+                <Button variant="outline" type="button" className="full" onClick={() => openSubmissionDetail(selected)}>
                   <FileText size={16} />
-                  查看提交详情（{selectedRound.items.length} 项变更）
+                  查看提交详情（{selectedDetailRound.items.length} 项变更）
                 </Button>
               </div>
             ) : null}
@@ -2140,24 +2242,25 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
             </div>
           </>
         ) : (
-          <EmptyState text="当前没有待审阅请求。" />
+          <EmptyState text={reviewMode === "history" ? "当前没有历史提交。" : "当前没有待审阅请求。"} />
         )}
       </aside>
       {rejectOpen && selected ? (
         <RejectReviewDialog request={selected} onCancel={() => setRejectOpen(false)} onSubmit={rejectSelected} />
       ) : null}
-      {detailOpen && selectedRound ? (
+      {detailOpen && selectedDetailRound ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-detail-title">
           <div className="submission-dialog">
             <div className="submission-dialog-head">
               <div>
-                <span className="eyebrow">{selectedRound.id} · {selectedRound.projectName}</span>
+                <span className="eyebrow">{selectedDetailRound.id} · {selectedDetailRound.projectName}</span>
                 <h2 id="submission-detail-title">提交详情</h2>
-                <p>本轮提交包含 {selectedRound.items.length} 个参数修改，由 {selectedRound.submitter} 提交。</p>
+                <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
+                {selectedDetailRound.summary ? <p>{selectedDetailRound.summary}</p> : null}
               </div>
             </div>
             <div className="submission-diff-list">
-              {selectedRound.items.map((item) => (
+              {selectedDetailRound.items.map((item) => (
                 <article className="submission-diff-card" key={item.requestId}>
                   <div>
                     <strong>{item.name}</strong>
@@ -3371,16 +3474,30 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
   );
 }
 
-function WorkbenchLayout({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: ReactNode; children: ReactNode }) {
+function WorkbenchLayout({
+  title,
+  subtitle,
+  actions,
+  hideHeader = false,
+  children
+}: {
+  title: string;
+  subtitle?: string;
+  actions?: ReactNode;
+  hideHeader?: boolean;
+  children: ReactNode;
+}) {
   return (
     <div className="workbench-page">
-      <header className="page-header">
-        <div>
-          <h1>{title}</h1>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
-        {actions ? <div className="page-actions">{actions}</div> : null}
-      </header>
+      {hideHeader ? null : (
+        <header className="page-header">
+          <div>
+            <h1>{title}</h1>
+            {subtitle ? <p>{subtitle}</p> : null}
+          </div>
+          {actions ? <div className="page-actions">{actions}</div> : null}
+        </header>
+      )}
       <div className="workbench-grid">{children}</div>
     </div>
   );
@@ -3404,6 +3521,8 @@ type AgentDragState = {
   startBottom: number;
   moved: boolean;
 };
+
+type ParameterReviewMode = "pending" | "history";
 
 function clampAgentOffset(value: number, viewportSize: number) {
   return Math.min(Math.max(value, agentDragInset), Math.max(agentDragInset, viewportSize - agentFabSize - agentDragInset));
@@ -3791,7 +3910,7 @@ function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
   );
 }
 
-function PanelHeader({ title, meta }: { title: string; meta?: string }) {
+function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
   return (
     <div className="panel-header">
       <strong>{title}</strong>
