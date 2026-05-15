@@ -11,6 +11,7 @@ describe("WiseEff prototype configuration", () => {
       "/parameter-review",
       "/parameter-admin",
       "/debugging",
+      "/node-debugging",
       "/debugging-admin",
       "/log-dashboard",
       "/logs",
@@ -45,6 +46,16 @@ describe("WiseEff prototype configuration", () => {
     expect(page.key).toBe("log-dashboard");
     expect(page.label).toBe("看板");
     expect(page.group).toBe("日志分析");
+  });
+
+  it("exposes a dedicated node debugging route", () => {
+    const page = getPageByPath("/node-debugging");
+    expect(page.key).toBe("node-debugging");
+    expect(page.label).toBe("节点调试");
+    expect(page.group).toBe("调试平台");
+
+    const plan = createAgentPlan("/node-debugging");
+    expect(plan.contextTitle).toContain("节点");
   });
 });
 

@@ -1474,6 +1474,8 @@ function PageRouter({
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging":
       return <DebuggingPage state={state} dispatch={dispatch} />;
+    case "node-debugging":
+      return <div className="workbench-page node-debugging-page">节点调试平台</div>;
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
