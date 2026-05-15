@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 
@@ -158,5 +159,23 @@ describe("OperationHistoryPanel 集成", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
     expect(screen.queryByRole("button", { name: /一键回滚充电策略/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("/debugging-admin 节点元数据", () => {
+  it("在调试管理页暴露并保存节点路径与访问模式字段", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("节点路径"), {
+      target: { value: "/sys/class/power_supply/battery/test_node" }
+    });
+    await userEvent.click(screen.getByLabelText("访问模式"));
+    await userEvent.click(screen.getByRole("option", { name: "WO · 只写" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
+
+    expect(document.body).toHaveTextContent('"nodePath": "/sys/class/power_supply/battery/test_node"');
+    expect(document.body).toHaveTextContent('"accessMode": "WO"');
   });
 });
