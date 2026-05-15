@@ -43,6 +43,7 @@ import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
+import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { LogAdminPage } from "./LogAdminPage";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ParametersPage as UserParametersPage } from "./ParametersPage";
@@ -1475,7 +1476,7 @@ function PageRouter({
     case "debugging":
       return <DebuggingPage state={state} dispatch={dispatch} />;
     case "node-debugging":
-      return <div className="workbench-page node-debugging-page">节点调试平台</div>;
+      return <NodeDebuggingPage state={state} />;
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
