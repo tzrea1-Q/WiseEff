@@ -1,4 +1,4 @@
-import { ChevronRight, Pencil, Search, Send } from "lucide-react";
+import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "./App";
 import { DisconnectedBanner } from "./components/DisconnectedBanner";
@@ -7,6 +7,7 @@ import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { SessionSummaryCard } from "./components/SessionSummaryCard";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
+import { useTopBarActions } from "./components/layout";
 import type { DebugParameter, PrototypeState } from "./mockData";
 import { RiskBadge, Badge, riskLabels } from "./workbenchUi";
 
@@ -179,29 +180,19 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     setStatusFilters(new Set());
     setModuleFilters(new Set());
   };
+  useTopBarActions(
+    <div className="device-pill">
+      <span className={connected ? "live-dot" : "idle-dot"} />
+      {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
+      <button className="link-button" type="button" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
+        连接
+      </button>
+    </div>,
+    [activeDevice.id, activeDevice.name, connected]
+  );
 
   return (
     <div className="workbench-page debugging-page">
-      <header className="page-header">
-        <div>
-          <nav className="breadcrumb" aria-label="面包屑">
-            <span>参数管理</span>
-            <ChevronRight size={14} aria-hidden="true" />
-            <strong>参数调试平台</strong>
-          </nav>
-          <p className="workbench-page-subtitle">连接调试样机后执行实时充电参数调节，所有下发动作都保留确认和回滚准备。</p>
-        </div>
-        <div className="page-actions">
-          <div className="device-pill">
-            <span className={connected ? "live-dot" : "idle-dot"} />
-            {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
-            <button className="link-button" type="button" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
-              连接
-            </button>
-          </div>
-        </div>
-      </header>
-
       <div className="workbench-one-col">
         <DisconnectedBanner
           device={activeDevice}

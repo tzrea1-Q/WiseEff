@@ -8,7 +8,7 @@ describe("ComparisonHeader", () => {
     cleanup();
   });
 
-  it("renders breadcrumb, dynamic title, and project chips", () => {
+  it("renders topbar project controls without a page header", () => {
     render(
       <ComparisonHeader
         projects={projects}
@@ -22,7 +22,7 @@ describe("ComparisonHeader", () => {
       />
     );
 
-    expect(screen.getByRole("navigation", { name: "参数对比路径" })).toBeInTheDocument();
+    expect(screen.queryByRole("banner", { name: "参数对比工作区" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(`基准项目 ${projects[0].code}`) })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: new RegExp(`对比项目 ${projects[1].code}`) })).toBeInTheDocument();
   });

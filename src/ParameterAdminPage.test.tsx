@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { TopBarActionsContext } from "./components/layout";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { initialState } from "./mockData";
 
@@ -8,14 +10,35 @@ afterEach(() => {
   window.history.replaceState(null, "", "/parameter-admin");
 });
 
-function renderPage(search = "") {
+function TopBarActionsHarness({ children }: { children: ReactNode }) {
+  const [actions, setActions] = useState<ReactNode | null>(null);
+  const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
+    setActions(nextActions);
+  }, []);
+  const contextValue = useMemo(() => ({ setActions: setStableActions }), [setStableActions]);
+
+  return (
+    <TopBarActionsContext.Provider value={contextValue}>
+      <header className="topbar">
+        <div className="topbar-page-actions" role="toolbar" aria-label="参数管理后台页面操作">
+          {actions}
+        </div>
+      </header>
+      {children}
+    </TopBarActionsContext.Provider>
+  );
+}
+
+function renderPage(search = "", state = initialState, dispatch = vi.fn()) {
   return render(
-    <ParameterAdminPage
-      state={initialState}
-      dispatch={vi.fn()}
-      onNavigate={vi.fn()}
-      search={search}
-    />
+    <TopBarActionsHarness>
+      <ParameterAdminPage
+        state={state}
+        dispatch={dispatch}
+        onNavigate={vi.fn()}
+        search={search}
+      />
+    </TopBarActionsHarness>
   );
 }
 
@@ -33,10 +56,12 @@ function buildDirtyState() {
 }
 
 describe("ParameterAdminPage", () => {
-  it("renders the page heading", () => {
+  it("renders topbar actions without a dedicated page header", () => {
     renderPage();
 
-    expect(screen.getByRole("heading", { level: 1, name: /项目参数管理后台/ })).toBeInTheDocument();
+    expect(document.querySelector(".param-admin-header")).not.toBeInTheDocument();
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "参数管理后台页面操作" })).toBeInTheDocument();
   });
 
   it("renders at least one parameter list item", () => {
@@ -48,12 +73,13 @@ describe("ParameterAdminPage", () => {
   it("renders a single page heading", () => {
     renderPage();
 
-    expect(screen.getAllByRole("heading", { name: /项目参数管理后台/ })).toHaveLength(1);
+    expect(screen.queryByRole("heading", { level: 1, name: /项目参数管理后台/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("toolbar", { name: "参数管理后台页面操作" })).toHaveTextContent("批量参数导入");
   });
 
   it("renders the header action placeholders", () => {
     renderPage();
-    const toolbar = screen.getByRole("toolbar", { name: "管理后台动作" });
+    const toolbar = screen.getByRole("toolbar", { name: "参数管理后台页面操作" });
 
     expect(within(toolbar).getByRole("button", { name: /批量参数导入/ })).toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: /导出/ })).toBeInTheDocument();
@@ -83,7 +109,11 @@ describe("ParameterAdminPage", () => {
 
     expect(screen.queryByText(/未导出/)).toBeNull();
 
-    rerender(<ParameterAdminPage state={buildDirtyState()} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    rerender(
+      <TopBarActionsHarness>
+        <ParameterAdminPage state={buildDirtyState()} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
 
     expect(screen.getByText(/1 处未导出/)).toBeInTheDocument();
   });
@@ -94,9 +124,9 @@ describe("ParameterAdminPage", () => {
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
-    render(<ParameterAdminPage state={buildDirtyState()} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+    renderPage("", buildDirtyState(), dispatch);
 
-    const toolbar = screen.getByRole("toolbar", { name: "管理后台动作" });
+    const toolbar = screen.getByRole("toolbar", { name: "参数管理后台页面操作" });
 
     fireEvent.click(within(toolbar).getByRole("button", { name: /导出 JSON/ }));
     fireEvent.click(screen.getByRole("menuitem", { name: /下载/ }));
@@ -112,7 +142,7 @@ describe("ParameterAdminPage", () => {
   it("opens delete confirmation and dispatches DELETE_PROJECT_PARAMETER", () => {
     const dispatch = vi.fn();
     const parameter = initialState.configDraft.parameterLibrary[0];
-    render(<ParameterAdminPage state={initialState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+    renderPage("", initialState, dispatch);
 
     fireEvent.click(screen.getByRole("button", { name: `删除 ${parameter.name}` }));
 
@@ -138,7 +168,7 @@ describe("ParameterAdminPage", () => {
       }
     };
 
-    render(<ParameterAdminPage state={undoState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+    renderPage("", undoState, dispatch);
 
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByText("已删除 x")).toBeInTheDocument();

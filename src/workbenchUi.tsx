@@ -23,9 +23,6 @@ export function escapeExcelCell(value: string) {
 
 export function WorkbenchLayout({
   title,
-  subtitle,
-  header,
-  actions,
   children
 }: {
   title: string;
@@ -34,21 +31,8 @@ export function WorkbenchLayout({
   actions?: ReactNode;
   children: ReactNode;
 }) {
-  const hasHeader = Boolean(header || subtitle || actions);
-
   return (
     <section className="workbench-page" aria-label={title}>
-      {hasHeader ? (
-        <header className="page-header">
-          {header || subtitle ? (
-            <div>
-              {header}
-              {subtitle ? <p className="workbench-page-subtitle">{subtitle}</p> : null}
-            </div>
-          ) : null}
-          {actions ? <div className="page-actions">{actions}</div> : null}
-        </header>
-      ) : null}
       <div className="workbench-grid">{children}</div>
     </section>
   );

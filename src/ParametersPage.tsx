@@ -1,6 +1,5 @@
 import {
   ArrowRight,
-  ChevronRight,
   Sparkles
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -20,6 +19,7 @@ import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { ParameterInsightBar } from "./components/ParameterInsightBar";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
+import { useTopBarActions } from "./components/layout";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -491,34 +491,28 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setSheetOpen(true);
     setInsightCollapsed(true);
   };
+  useTopBarActions(
+    <>
+      <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(filteredParameters, activeProject.code)}>
+        导出 Excel
+      </button>
+      <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+        历史提交
+      </button>
+      <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
+        跨项目对比
+      </button>
+      <button className="button primary" type="button" onClick={handleAiAuditClick}>
+        <Sparkles size={16} />
+        AI 巡检
+      </button>
+    </>,
+    [activeProject.code, filteredParameters]
+  );
 
   return (
     <WorkbenchLayout
       title="项目参数用户工作台"
-      header={
-        <nav className="breadcrumb" aria-label="面包屑">
-          <span>参数管理</span>
-          <ChevronRight size={14} aria-hidden="true" />
-          <strong>项目参数工作台</strong>
-        </nav>
-      }
-      actions={
-        <>
-          <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(filteredParameters, activeProject.code)}>
-            导出 Excel
-          </button>
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
-            历史提交
-          </button>
-          <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
-            跨项目对比
-          </button>
-          <button className="button primary" type="button" onClick={handleAiAuditClick}>
-            <Sparkles size={16} />
-            AI 巡检
-          </button>
-        </>
-      }
     >
       <div className="parameters-page-layout">
         {!insightDismissed ? (

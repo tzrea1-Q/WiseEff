@@ -127,8 +127,8 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
     const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
+    const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
 
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数审阅" })).not.toBeInTheDocument();
@@ -137,10 +137,7 @@ describe("WiseEff app shell", () => {
     expect(within(topbarEntries).getByRole("button", { name: "参数审阅" })).toBeInTheDocument();
     expect(within(topbarEntries).getByRole("button", { name: "管理后台" })).toBeInTheDocument();
     expectSelectValue(timeWindowSelect, "30d");
-    expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toBe(topbarEntries);
-    expect(
-      Boolean(topbarEntries.compareDocumentPosition(timeWindowSelect) & Node.DOCUMENT_POSITION_FOLLOWING)
-    ).toBe(true);
+    expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toBe(topbarEntries.closest(".topbar-page-actions"));
     const activeNavButtons = screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
   });
@@ -250,18 +247,16 @@ describe("WiseEff app shell", () => {
 
     render(<App />);
 
-    const topbar = document.querySelector(".topbar") as HTMLElement;
-    const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
+    const workspaceEntries = within(document.querySelector(".topbar") as HTMLElement).getByRole("navigation", { name: "参数管理快捷入口" });
 
-    fireEvent.click(within(topbarEntries).getByRole("button", { name: "参数修改" }));
+    fireEvent.click(within(workspaceEntries).getByRole("button", { name: "参数修改" }));
     expect(window.location.pathname).toBe("/parameters");
 
     window.history.replaceState(null, "", "/parameter-home");
     cleanup();
     render(<App />);
 
-    const rerenderedTopbar = document.querySelector(".topbar") as HTMLElement;
-    const rerenderedEntries = within(rerenderedTopbar).getByRole("navigation", { name: "参数管理快捷入口" });
+    const rerenderedEntries = within(document.querySelector(".topbar") as HTMLElement).getByRole("navigation", { name: "参数管理快捷入口" });
 
     fireEvent.click(within(rerenderedEntries).getByRole("button", { name: "参数审阅" }));
     expect(window.location.pathname).toBe("/parameter-review");
@@ -426,7 +421,9 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     expect(window.location.pathname).toBe("/parameter-submissions");
-    expect(screen.getByRole("heading", { name: "我的历史提交" })).toBeInTheDocument();
+    expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(within(document.querySelector(".topbar") as HTMLElement).getByRole("button", { name: "返回工作台" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
   });
 
@@ -451,7 +448,8 @@ describe("WiseEff app shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交本轮" }));
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
-    expect(screen.getByRole("heading", { name: "我的历史提交" })).toBeInTheDocument();
+    expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     expect(screen.getAllByText(/PRS-/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/本轮提交包含\s*2\s*个参数/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
@@ -1141,9 +1139,10 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("项目参数值矩阵")).toBeInTheDocument();
     expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
     expect(document.querySelector(".config-preview-panel")).not.toBeInTheDocument();
-    expect(document.querySelector(".config-toolbar-actions")).toHaveTextContent("批量参数导入");
-    expect(document.querySelector(".config-toolbar-actions")).toHaveTextContent("保存到 JSON 文件");
-    expect(document.querySelector(".config-toolbar-actions")).toHaveTextContent("导出 JSON");
+    const adminActions = screen.getByRole("toolbar", { name: "项目参数管理后台页面操作" });
+    expect(adminActions).toHaveTextContent("批量参数导入");
+    expect(adminActions).toHaveTextContent("保存到 JSON 文件");
+    expect(adminActions).toHaveTextContent("导出 JSON");
     const configFormLabelCss = readCssBlock(readFileSync("src/styles.css", "utf8"), ".config-form-grid label");
     expect(configFormLabelCss).toContain("align-items: flex-start;");
     expect(configFormLabelCss).toContain("text-align: left;");
@@ -1265,6 +1264,18 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByDisplayValue("new_debug_parameter_9")).not.toBeInTheDocument();
   });
 
+  it("renders the debugging admin context in a normalized workspace header", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App />);
+
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(topbar).toHaveTextContent("可调参数");
+    expect(topbar).toHaveTextContent("在线设备");
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(within(topbar).queryByRole("heading", { level: 1, name: "参数调试管理后台" })).not.toBeInTheDocument();
+  });
+
   it("saves debug admin edits to the local JSON config endpoint", () => {
     window.history.replaceState(null, "", "/debugging-admin");
     const fetchMock = vi.fn().mockResolvedValue({
@@ -1311,6 +1322,6 @@ describe("WiseEff app shell", () => {
     window.history.pushState(null, "", "/logs");
     fireEvent.popState(window);
 
-    expect(screen.getByRole("heading", { name: "日志智能分析" })).toBeInTheDocument();
+    expect(within(document.querySelector(".topbar") as HTMLElement).getByRole("button", { name: "上传新日志" })).toBeInTheDocument();
   });
 });
