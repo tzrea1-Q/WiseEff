@@ -2,6 +2,8 @@ import powerManagementConfigJson from "./config/power-management.json";
 
 export type PowerManagementRisk = "High" | "Medium" | "Low";
 
+export type NodeAccessMode = "RO" | "WO" | "RW";
+
 export type PowerManagementProjectId = "aurora" | "nebula" | "atlas";
 
 export type PowerManagementParameterTemplate = {
@@ -36,6 +38,8 @@ export type PowerManagementDebugParameter = {
   range: string;
   risk: PowerManagementRisk;
   status: "已同步" | "待下发" | "下发成功";
+  nodePath: string;
+  accessMode: NodeAccessMode;
 };
 
 export type PowerManagementProject = {
@@ -202,7 +206,9 @@ export function addDebugParameter(config: PowerManagementConfig) {
     unit: "value",
     range: "0 - 100",
     risk: "Medium",
-    status: "待下发"
+    status: "待下发",
+    nodePath: `/data/local/tmp/wiseeff/debug/new_parameter_${nextIndex}`,
+    accessMode: "RW"
   };
 
   return {
@@ -237,7 +243,7 @@ export function deleteDebugParameter(config: PowerManagementConfig, parameterId:
 export function updateDebugParameter(
   config: PowerManagementConfig,
   parameterId: string,
-  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "module" | "unit" | "range" | "risk" | "status">>
+  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "module" | "unit" | "range" | "risk" | "status" | "nodePath" | "accessMode">>
 ) {
   return {
     ...config,

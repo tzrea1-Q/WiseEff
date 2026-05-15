@@ -310,7 +310,9 @@
       "unit": "mA",
       "range": "2000 - 5000",
       "risk": "High",
-      "status": "下发成功"
+      "status": "下发成功",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+      "accessMode": "RW"
     },
     {
       "id": "dbg-cell-temp-limit",
@@ -323,7 +325,9 @@
       "unit": "°C",
       "range": "38 - 46",
       "risk": "High",
-      "status": "已同步"
+      "status": "已同步",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/battery/cell_temp_limit_c",
+      "accessMode": "RW"
     },
     {
       "id": "dbg-charge-pump-enable",
@@ -336,7 +340,9 @@
       "unit": "bool",
       "range": "0 - 1",
       "risk": "Medium",
-      "status": "已同步"
+      "status": "已同步",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/charger/charge_pump_enable",
+      "accessMode": "RW"
     },
     {
       "id": "dbg-battery-impedance",
@@ -349,7 +355,9 @@
       "unit": "mΩ",
       "range": "55 - 90",
       "risk": "Medium",
-      "status": "下发成功"
+      "status": "下发成功",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/battery/impedance_mohm",
+      "accessMode": "RO"
     },
     {
       "id": "dbg-thermal-foldback",
@@ -362,7 +370,9 @@
       "unit": "%",
       "range": "75 - 90",
       "risk": "Low",
-      "status": "已同步"
+      "status": "已同步",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/battery/thermal_foldback_pct",
+      "accessMode": "RW"
     },
     {
       "id": "dbg-trickle-start",
@@ -375,7 +385,9 @@
       "unit": "%",
       "range": "88 - 98",
       "risk": "Medium",
-      "status": "已同步"
+      "status": "已同步",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/charger/trickle_switch_soc",
+      "accessMode": "WO"
     },
     {
       "id": "dbg-wireless-coil-temp",
@@ -388,7 +400,9 @@
       "unit": "°C",
       "range": "42 - 52",
       "risk": "High",
-      "status": "下发成功"
+      "status": "下发成功",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/wireless/coil_temp_limit_c",
+      "accessMode": "RW"
     },
     {
       "id": "dbg-pmic-boost-voltage",
@@ -401,7 +415,9 @@
       "unit": "mV",
       "range": "4700 - 5600",
       "risk": "Medium",
-      "status": "已同步"
+      "status": "已同步",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/pmic/boost_voltage_mv",
+      "accessMode": "RW"
     }
   ]
 }
