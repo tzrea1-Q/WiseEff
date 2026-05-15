@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { WorkbenchLayout } from "./workbenchUi";
 
@@ -16,7 +15,7 @@ describe("WorkbenchLayout", () => {
     expect(screen.getByText("child")).toBeInTheDocument();
   });
 
-  it("renders header slot content with actions", () => {
+  it("ignores legacy header slot content and actions", () => {
     render(
       <WorkbenchLayout
         title="项目参数用户工作台"
@@ -27,24 +26,18 @@ describe("WorkbenchLayout", () => {
       </WorkbenchLayout>
     );
 
-    expect(screen.getByRole("navigation", { name: "面包屑" })).toHaveTextContent("参数管理 › 项目参数工作台");
-    expect(screen.getByRole("button", { name: "主按钮" })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "面包屑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "主按钮" })).not.toBeInTheDocument();
   });
 
-  it("keeps actions aligned when no header copy is provided", () => {
+  it("does not render a standalone header for actions-only usage", () => {
     render(
       <WorkbenchLayout title="Actions only" actions={<button>Primary</button>}>
         <div>child</div>
       </WorkbenchLayout>
     );
 
-    const actions = screen.getByRole("button", { name: "Primary" }).closest(".page-actions");
-    const pageHeader = actions?.closest(".page-header");
-    const styles = readFileSync("src/styles.css", "utf8");
-
-    expect(pageHeader).toBeInTheDocument();
-    expect(pageHeader?.children).toHaveLength(1);
-    expect(actions).toBeInTheDocument();
-    expect(styles).toMatch(/\.page-actions\s*{[^}]*margin-left:\s*auto;/s);
+    expect(screen.queryByRole("button", { name: "Primary" })).not.toBeInTheDocument();
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ import { ParameterDefinitionForm } from "./components/ParameterDefinitionForm";
 import { ParameterLibraryList } from "./components/ParameterLibraryList";
 import { ProjectValueMatrix } from "./components/ProjectValueMatrix";
 import { UndoableToast } from "./components/UndoableToast";
+import { useTopBarActions } from "./components/layout";
 import { useBeforeUnload } from "./hooks/useBeforeUnload";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
@@ -221,49 +222,41 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
     setSelectedParameterId(library.find((parameter) => parameter.id !== deleteTargetId)?.id ?? "");
     setDeleteTargetId(null);
   };
+  useTopBarActions(
+    <>
+      <DirtyIndicator count={dirtyCount} onInspect={() => openExportFlow("preview")} />
+      <button className="button primary" type="button" onClick={() => console.info("m2: open import wizard")}>
+        <Upload size={16} />
+        批量参数导入
+      </button>
+      <button className="button subtle" type="button" onClick={saveConfig} disabled={saving} title={syncMessage}>
+        <FileText size={16} />
+        {saving ? "保存中" : "保存到 JSON 文件"}
+      </button>
+      <ExportMenu
+        onCopy={() => openExportFlow("copy")}
+        onDownload={() => openExportFlow("download")}
+        onViewDiff={() => openExportFlow("preview")}
+      />
+      <button className="button subtle" type="button" onClick={() => console.info("m2: open permissions")}>
+        <ShieldCheck size={16} />
+        权限
+      </button>
+      <button
+        className="button ghost"
+        type="button"
+        aria-pressed={search.audit === "open"}
+        onClick={() => updateSearch({ audit: search.audit === "open" ? undefined : "open" })}
+      >
+        <History size={16} />
+        审计
+      </button>
+    </>,
+    [dirtyCount, saving, search.audit, syncMessage]
+  );
 
   return (
     <div className="param-admin-shell" data-audit={search.audit === "open" ? "open" : "closed"}>
-      <header className="param-admin-header">
-        <div className="param-admin-header-text">
-          <nav className="breadcrumb" aria-label="面包屑">
-            <span>参数管理</span>
-            <span aria-hidden="true">›</span>
-            <span aria-current="page">项目参数管理后台</span>
-          </nav>
-          <h1>项目参数管理后台</h1>
-          <p className="subtitle">电池与充电参数数据库 · 批量导入 · 权限和审计管理</p>
-        </div>
-        <div className="param-admin-header-actions config-toolbar-actions" role="toolbar" aria-label="管理后台动作">
-          <DirtyIndicator count={dirtyCount} onInspect={() => openExportFlow("preview")} />
-          <button className="button primary" type="button" onClick={() => console.info("m2: open import wizard")}>
-            <Upload size={16} />
-            批量参数导入
-          </button>
-          <button className="button subtle" type="button" onClick={saveConfig} disabled={saving} title={syncMessage}>
-            <FileText size={16} />
-            {saving ? "保存中" : "保存到 JSON 文件"}
-          </button>
-          <ExportMenu
-            onCopy={() => openExportFlow("copy")}
-            onDownload={() => openExportFlow("download")}
-            onViewDiff={() => openExportFlow("preview")}
-          />
-          <button className="button subtle" type="button" onClick={() => console.info("m2: open permissions")}>
-            <ShieldCheck size={16} />
-            权限
-          </button>
-          <button
-            className="button ghost"
-            type="button"
-            aria-pressed={search.audit === "open"}
-            onClick={() => updateSearch({ audit: search.audit === "open" ? undefined : "open" })}
-          >
-            <History size={16} />
-            审计
-          </button>
-        </div>
-      </header>
       <KpiStrip items={kpiItems} />
       <AgentInsightBar
         dismissedIds={state.insightDismissedIds}

@@ -13,8 +13,10 @@ describe("LogsPage · Header", () => {
 
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "日志智能分析" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /上传新日志/ })).toBeInTheDocument();
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(within(topbar).getByRole("button", { name: /上传新日志/ })).toBeInTheDocument();
+    expect(within(topbar).queryByRole("heading", { name: "日志智能分析" })).not.toBeInTheDocument();
   });
 
   it("Complete 日志结论卡显示置信度且主按钮可用", async () => {

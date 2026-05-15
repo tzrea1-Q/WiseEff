@@ -13,7 +13,10 @@ describe("LogDashboardPage", () => {
 
     const { container } = render(<App />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "日志分析看板" })).toBeInTheDocument();
+    const topbar = container.querySelector(".topbar") as HTMLElement;
+    expect(screen.queryByRole("heading", { level: 1, name: "日志分析看板" })).not.toBeInTheDocument();
+    expect(container.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(within(topbar).getByRole("button", { name: "进入智能分析" })).toBeInTheDocument();
     expect(container.querySelector(".log-dashboard-topic-grid")).toBeInTheDocument();
     expect(container.querySelectorAll(".log-dashboard-topic-card")).toHaveLength(4);
     expect(screen.getByRole("article", { name: "今日分析" })).toBeInTheDocument();
@@ -32,8 +35,9 @@ describe("LogDashboardPage", () => {
     expect(container.querySelectorAll(".topic-line-chart__time")).toHaveLength(7);
     expect(screen.queryByText("00:00")).not.toBeInTheDocument();
     expect(screen.queryByText("现在")).not.toBeInTheDocument();
-    expect(screen.getByText("5月8日")).toBeInTheDocument();
-    expect(screen.getByText("5月14日")).toBeInTheDocument();
+    const trendLabels = Array.from(container.querySelectorAll(".topic-line-chart__time")).map((node) => node.textContent ?? "");
+    expect(trendLabels).toHaveLength(7);
+    expect(trendLabels.every((label) => /^\d+月\d+日$/.test(label))).toBe(true);
     expect(screen.getByText("趋势洞察")).toBeInTheDocument();
     expect(screen.getByText("质量分布")).toBeInTheDocument();
     expect(screen.getByText("建议动作")).toBeInTheDocument();

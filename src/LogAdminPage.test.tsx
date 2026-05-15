@@ -1,6 +1,8 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { TopBarActionsContext } from "./components/layout";
 import { LogAdminPage } from "./LogAdminPage";
 import { createPrototypeState } from "./mockData";
 
@@ -9,11 +11,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function TopBarActionsHarness({ children }: { children: ReactNode }) {
+  const [actions, setActions] = useState<ReactNode | null>(null);
+  const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
+    setActions(nextActions);
+  }, []);
+  const contextValue = useMemo(() => ({ setActions: setStableActions }), [setStableActions]);
+
+  return (
+    <TopBarActionsContext.Provider value={contextValue}>
+      <header className="topbar">
+        <div className="topbar-page-actions" role="toolbar" aria-label="日志分析管理后台页面操作">
+          {actions}
+        </div>
+      </header>
+      {children}
+    </TopBarActionsContext.Provider>
+  );
+}
+
 function renderPage() {
   const state = { ...createPrototypeState(), activeRoleId: "parameter-admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
-  const utils = render(<LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search="" />);
+  const utils = render(
+    <TopBarActionsHarness>
+      <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search="" />
+    </TopBarActionsHarness>
+  );
 
   return { ...utils, state, dispatch, onNavigate };
 }
@@ -24,11 +49,13 @@ function getLogRow(fileName: RegExp) {
 }
 
 describe("LogAdminPage M3 skeleton", () => {
-  it("renders page header with breadcrumb and title", () => {
+  it("moves page actions into the topbar instead of rendering a page header", () => {
     renderPage();
 
-    expect(screen.getByText("LOGS · ADMIN")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "日志分析管理后台" })).toBeInTheDocument();
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /导出报表/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /同步日志/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "日志分析管理后台" })).not.toBeInTheDocument();
   });
 
   it("keeps dashboard metric cards out of the admin backend", () => {
@@ -121,7 +148,11 @@ describe("LogAdminPage · row click + drawer actions", () => {
     const state = createPrototypeState();
     const viewerState = { ...state, activeRoleId: "hardware" };
     const dispatch = vi.fn();
-    render(<LogAdminPage state={viewerState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={viewerState} dispatch={dispatch} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
     const row = getLogRow(/charging_thermal_trace/);
 
     await userEvent.click(row);
@@ -135,7 +166,11 @@ describe("LogAdminPage · access control", () => {
   it("renders 5 admin users in the panel", () => {
     const state = createPrototypeState();
     const adminState = { ...state, activeRoleId: "admin" };
-    render(<LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
 
     expect(screen.getByText("Jane Smith")).toBeInTheDocument();
     expect(screen.getByText("Mike Kruger")).toBeInTheDocument();
@@ -147,7 +182,11 @@ describe("LogAdminPage · access control", () => {
   it("opens AddUserDialog on 添加 button click (Admin role)", async () => {
     const state = createPrototypeState();
     const adminState = { ...state, activeRoleId: "admin" };
-    render(<LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /添加/ }));
 
@@ -158,7 +197,11 @@ describe("LogAdminPage · access control", () => {
     const state = createPrototypeState();
     const adminState = { ...state, activeRoleId: "admin" };
     const dispatch = vi.fn();
-    render(<LogAdminPage state={adminState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={adminState} dispatch={dispatch} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
 
     await userEvent.click(screen.getByRole("button", { name: /添加/ }));
     await userEvent.type(screen.getByLabelText("姓名"), "New Admin");
@@ -175,7 +218,11 @@ describe("LogAdminPage · access control", () => {
   it("disables 添加 button for non-Admin role", () => {
     const state = createPrototypeState();
     const hardwareState = { ...state, activeRoleId: "hardware" };
-    render(<LogAdminPage state={hardwareState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={hardwareState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
 
     expect(screen.getByRole("button", { name: /添加/ })).toBeDisabled();
   });
@@ -184,7 +231,11 @@ describe("LogAdminPage · access control", () => {
     const state = createPrototypeState();
     const adminState = { ...state, activeRoleId: "admin" };
     const dispatch = vi.fn();
-    render(<LogAdminPage state={adminState} dispatch={dispatch} onNavigate={vi.fn()} search="" />);
+    render(
+      <TopBarActionsHarness>
+        <LogAdminPage state={adminState} dispatch={dispatch} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
     const mkRow = screen.getByText("Mike Kruger").closest("li")!;
     const select = within(mkRow).getByRole("combobox");
 

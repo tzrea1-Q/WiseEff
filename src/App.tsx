@@ -5,7 +5,6 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
   CircleOff,
   Copy,
   Download,
@@ -26,7 +25,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   ChangeEvent,
   ClipboardEvent as ReactClipboardEvent,
@@ -44,6 +43,7 @@ import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
 import { LogAdminPage } from "./LogAdminPage";
+import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ParametersPage as UserParametersPage } from "./ParametersPage";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
@@ -125,7 +125,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
@@ -185,13 +184,6 @@ const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: strin
   { value: "7d", label: "7天" },
   { value: "30d", label: "30天" },
   { value: "180d", label: "180天" }
-];
-
-const parameterHomeQuickEntries = [
-  { title: "参数修改", path: "/parameters" },
-  { title: "对比分析", path: "/parameter-comparison" },
-  { title: "参数审阅", path: "/parameter-review" },
-  { title: "管理后台", path: "/parameter-admin" }
 ];
 
 type SelectOption<Value extends string = string> = {
@@ -1282,6 +1274,7 @@ function AppShell() {
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
+  const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [comparisonSelection, setComparisonSelection] = useState<ComparisonProjectSelection>(() => {
     const contextProjectId =
       getPageByPath(window.location.pathname).key === "parameter-comparison" ? getContextQuery(window.location.search).projectId : "";
@@ -1294,6 +1287,7 @@ function AppShell() {
   });
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
+  const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
 
@@ -1337,7 +1331,7 @@ function AppShell() {
     });
   }, [page.key, search, state.activeProjectId]);
 
-  const navigate = (nextPath: string) => {
+  const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
     const nextPage = getPageByPath(url.pathname);
     const nextUrl = `${nextPage.path}${url.search}`;
@@ -1351,9 +1345,9 @@ function AppShell() {
     window.history.pushState(null, "", nextUrl);
     setPath(nextPage.path);
     setSearch(url.search);
-  };
+  }, []);
 
-  const updateSearch = (nextSearch: string) => {
+  const updateSearch = useCallback((nextSearch: string) => {
     const nextUrl = `${page.path}${nextSearch}`;
     const currentUrl = `${window.location.pathname}${window.location.search}`;
 
@@ -1362,7 +1356,7 @@ function AppShell() {
     }
 
     setSearch(nextSearch);
-  };
+  }, [page.path]);
 
   return (
     <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
@@ -1373,40 +1367,42 @@ function AppShell() {
             state={state}
             dispatch={dispatch}
             page={page}
+            pageActions={topBarActions}
             parameterHomeTimeWindow={parameterHomeTimeWindow}
             onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
-            onNavigate={navigate}
           />
         ) : null}
-        {isPlatformHome ? (
-          <div className="main-content home-content">
-            <PageRouter
-              page={page}
-              state={state}
-              dispatch={dispatch}
-              onNavigate={navigate}
-              search={search}
-              parameterHomeTimeWindow={parameterHomeTimeWindow}
-              comparisonSelection={comparisonSelection}
-              onComparisonSelectionChange={setComparisonSelection}
-              onSearchChange={updateSearch}
-            />
-          </div>
-        ) : (
-          <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
-            <PageRouter
-              page={page}
-              state={state}
-              dispatch={dispatch}
-              onNavigate={navigate}
-              search={search}
-              parameterHomeTimeWindow={parameterHomeTimeWindow}
-              comparisonSelection={comparisonSelection}
-              onComparisonSelectionChange={setComparisonSelection}
-              onSearchChange={updateSearch}
-            />
-          </main>
-        )}
+        <TopBarActionsContext.Provider value={topBarActionsContextValue}>
+          {isPlatformHome ? (
+            <div className="main-content home-content">
+              <PageRouter
+                page={page}
+                state={state}
+                dispatch={dispatch}
+                onNavigate={navigate}
+                search={search}
+                parameterHomeTimeWindow={parameterHomeTimeWindow}
+                comparisonSelection={comparisonSelection}
+                onComparisonSelectionChange={setComparisonSelection}
+                onSearchChange={updateSearch}
+              />
+            </div>
+          ) : (
+            <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+              <PageRouter
+                page={page}
+                state={state}
+                dispatch={dispatch}
+                onNavigate={navigate}
+                search={search}
+                parameterHomeTimeWindow={parameterHomeTimeWindow}
+                comparisonSelection={comparisonSelection}
+                onComparisonSelectionChange={setComparisonSelection}
+                onSearchChange={updateSearch}
+              />
+            </main>
+          )}
+        </TopBarActionsContext.Provider>
       </div>
       {!isPlatformHome ? (
         <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
@@ -1529,31 +1525,20 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
         .filter(Boolean)
     )
   ).slice(0, 3);
+  useTopBarActions(
+    <>
+      <button className="button subtle" type="button" onClick={() => onNavigate("/log-admin")}>
+        查看管理后台
+      </button>
+      <button className="button primary" type="button" onClick={() => onNavigate("/logs")}>
+        进入智能分析
+      </button>
+    </>,
+    [onNavigate]
+  );
 
   return (
     <div className="log-dashboard-page">
-      <header className="logs-v2-header log-dashboard-header">
-        <div>
-          <div className="breadcrumb">
-            <button type="button" onClick={() => onNavigate("/")}>
-              首页
-            </button>
-            <ChevronRight size={13} />
-            <strong>日志分析看板</strong>
-          </div>
-          <h1>日志分析看板</h1>
-          <p>聚合日志分析应用的处理量、置信度、失败记录和吞吐表现。</p>
-        </div>
-        <div className="log-dashboard-actions">
-          <button className="button subtle" type="button" onClick={() => onNavigate("/log-admin")}>
-            查看管理后台
-          </button>
-          <button className="button primary" type="button" onClick={() => onNavigate("/logs")}>
-            进入智能分析
-          </button>
-        </div>
-      </header>
-
       <section className="log-dashboard-topic-grid" aria-label="日志分析核心指标">
         <article className="log-dashboard-topic-card topic-throughput" aria-label="今日分析">
           <div className="topic-card-head">
@@ -2056,16 +2041,16 @@ function TopBar({
   state,
   dispatch,
   page,
+  pageActions,
   parameterHomeTimeWindow,
-  onParameterHomeTimeWindowChange,
-  onNavigate
+  onParameterHomeTimeWindowChange
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
   page: PageConfig;
+  pageActions?: ReactNode;
   parameterHomeTimeWindow: HomepageTimeWindow;
   onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
-  onNavigate: (path: string) => void;
 }) {
   const showProjectSelector =
     page.group === "参数管理" &&
@@ -2081,25 +2066,21 @@ function TopBar({
         <div className="topbar-subtitle">{page.subtitle}</div>
       </div>
       <div className="topbar-actions">
+        {pageActions ? (
+          <div className="topbar-page-actions" role="toolbar" aria-label={`${page.title}页面操作`}>
+            {pageActions}
+          </div>
+        ) : null}
         {page.key === "parameter-home" ? (
-          <>
-            <nav className="parameter-homepage-topbar-nav" aria-label="参数管理快捷入口">
-              {parameterHomeQuickEntries.map((entry) => (
-                <Button key={entry.path} type="button" variant="outline" onClick={() => onNavigate(entry.path)}>
-                  {entry.title}
-                </Button>
-              ))}
-            </nav>
-            <label className="topbar-time-window-control">
-              <span>时间范围</span>
-              <SelectControl
-                ariaLabel="时间范围"
-                value={parameterHomeTimeWindow}
-                onValueChange={onParameterHomeTimeWindowChange}
-                options={homepageTimeWindowOptions}
-              />
-            </label>
-          </>
+          <label className="topbar-time-window-control">
+            <span>时间范围</span>
+            <SelectControl
+              ariaLabel="时间范围"
+              value={parameterHomeTimeWindow}
+              onValueChange={onParameterHomeTimeWindowChange}
+              options={homepageTimeWindowOptions}
+            />
+          </label>
         ) : null}
         {showProjectSelector ? (
           <SelectControl
@@ -2183,32 +2164,16 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
       setSelectedRoundId(myRounds[0]?.id ?? "");
     }
   }, [myRounds, selectedRoundId]);
+  useTopBarActions(
+    <Button variant="outline" type="button" onClick={() => onNavigate("/parameters")}>
+      <ArrowRight size={16} />
+      返回工作台
+    </Button>,
+    [onNavigate]
+  );
 
   return (
     <div className="submission-history-page">
-      <header className="page-header">
-        <div>
-          <Breadcrumb className="breadcrumb" aria-label="历史提交路径">
-            <BreadcrumbList>
-              <BreadcrumbItem>
-                <Button type="button" variant="link" onClick={() => onNavigate("/parameters")}>参数工作台</Button>
-              </BreadcrumbItem>
-              <BreadcrumbSeparator />
-              <BreadcrumbItem>
-                <BreadcrumbPage>历史提交</BreadcrumbPage>
-              </BreadcrumbItem>
-            </BreadcrumbList>
-          </Breadcrumb>
-          <h1>我的历史提交</h1>
-          <p>以“一轮提交”为单位查看你发起的参数修改，待审阅轮次可模拟撤回。</p>
-        </div>
-        <div className="page-actions">
-          <Button variant="outline" type="button" onClick={() => onNavigate("/parameters")}>
-            <ArrowRight size={16} />
-            返回工作台
-          </Button>
-        </div>
-      </header>
       <section className="comparison-summary">
         <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
         <MetricCard title="待审阅轮次" value={`${myRounds.filter((round) => round.status === "待审阅").length}`} trend="可撤回或等待处理" tone="teal" />
@@ -2888,6 +2853,7 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
   };
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
+  const openUploadDialog = useCallback(() => setUploadDialogOpen(true), []);
 
   return (
     <div className="logs-v2">
@@ -2895,7 +2861,7 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
         {liveMessage}
       </div>
       <div className="logs-v2-main">
-        <LogsPageHeader onNavigate={onNavigate} onUpload={() => setUploadDialogOpen(true)} />
+        <LogsPageHeader onNavigate={onNavigate} onUpload={openUploadDialog} />
         <LogConclusionCard
           log={activeLog}
           onAskAgent={onAskAgent}
@@ -3151,23 +3117,20 @@ function UploadLogDialog({
 }
 
 function LogsPageHeader({ onNavigate, onUpload }: { onNavigate: (path: string) => void; onUpload: () => void }) {
-  return (
-    <header className="logs-v2-header">
-      <div>
-        <div className="breadcrumb">
-          <button type="button" onClick={() => onNavigate("/")}>首页</button>
-          <ChevronRight size={13} />
-          <strong>日志分析</strong>
-        </div>
-        <h1>日志智能分析</h1>
-        <p>上传日志并观察 AI 自动化分析过程、证据链和处置线索。</p>
-      </div>
+  useTopBarActions(
+    <>
+      <button className="button subtle" type="button" onClick={() => onNavigate("/")}>
+        首页
+      </button>
       <button className="button primary" type="button" onClick={onUpload}>
         <Upload size={16} />
         上传新日志
       </button>
-    </header>
+    </>,
+    [onNavigate, onUpload]
   );
+
+  return null;
 }
 
 function SeverityBadge({ severity, processing }: { severity: LogRecord["severity"]; processing: boolean }) {
@@ -3723,16 +3686,18 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
   };
 
   const highRiskCount = state.debugParameters.filter((p) => p.risk === "High").length;
+  useTopBarActions(
+    <div className="debug-admin-strip debug-admin-strip--topbar">
+      <span className="debug-admin-stat">可调参数 <strong>{state.debugParameters.length}</strong></span>
+      <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
+      <span className="debug-admin-stat">在线设备 <strong>{state.devices.filter((d) => d.status === "已连接").length}/{state.devices.length}</strong></span>
+      <span className={`debug-admin-save-indicator${saveFlash ? " visible" : ""}`}>✓ 已自动保存</span>
+    </div>,
+    [highRiskCount, saveFlash, state.debugParameters.length, state.devices]
+  );
 
   return (
     <div className="debug-admin-page">
-      <div className="debug-admin-strip">
-        <span className="debug-admin-stat">可调参数 <strong>{state.debugParameters.length}</strong></span>
-        <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
-        <span className="debug-admin-stat">在线设备 <strong>{state.devices.filter((d) => d.status === "已连接").length}/{state.devices.length}</strong></span>
-        <span className={`debug-admin-save-indicator${saveFlash ? " visible" : ""}`}>✓ 已自动保存</span>
-      </div>
-
       <section className="debug-admin-grid">
         <div className="debug-admin-list">
           <div className="debug-admin-list-title-row">
@@ -3896,10 +3861,6 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
 }
 
 function WorkbenchLayout({
-  title,
-  subtitle,
-  actions,
-  hideHeader = false,
   children
 }: {
   title: string;
@@ -3910,15 +3871,6 @@ function WorkbenchLayout({
 }) {
   return (
     <div className="workbench-page">
-      {hideHeader ? null : (
-        <header className="page-header">
-          <div>
-            <h1>{title}</h1>
-            {subtitle ? <p>{subtitle}</p> : null}
-          </div>
-          {actions ? <div className="page-actions">{actions}</div> : null}
-        </header>
-      )}
       <div className="workbench-grid">{children}</div>
     </div>
   );

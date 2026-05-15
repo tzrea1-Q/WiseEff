@@ -1,21 +1,44 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParametersPage } from "./ParametersPage";
+import { TopBarActionsContext } from "./components/layout";
 import { initialState } from "./mockData";
 
 beforeEach(() => {
   cleanup();
 });
 
+function TopBarActionsHarness({ children }: { children: ReactNode }) {
+  const [actions, setActions] = useState<ReactNode | null>(null);
+  const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {
+    setActions(nextActions);
+  }, []);
+  const contextValue = useMemo(() => ({ setActions: setStableActions }), [setStableActions]);
+
+  return (
+    <TopBarActionsContext.Provider value={contextValue}>
+      <header className="topbar">
+        <div className="topbar-page-actions" role="toolbar" aria-label="项目参数用户工作台页面操作">
+          {actions}
+        </div>
+      </header>
+      {children}
+    </TopBarActionsContext.Provider>
+  );
+}
+
 function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
   const result = render(
+    <TopBarActionsHarness>
       <ParametersPage
         state={initialState}
         dispatch={dispatch}
         onNavigate={onNavigate}
         search=""
       />
+    </TopBarActionsHarness>
   );
 
   return { ...result, dispatch, onNavigate };
@@ -70,26 +93,25 @@ describe("ParametersPage draft edge cases", () => {
     expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
   });
 
-  it("shows breadcrumb context in the page header", () => {
+  it("does not render a dedicated breadcrumb page header", () => {
     renderPage();
 
-    const breadcrumb = screen.getByRole("navigation", { name: "面包屑" });
-
-    expect(within(breadcrumb).getByText("参数管理")).toBeInTheDocument();
-    expect(within(breadcrumb).getByText("项目参数工作台")).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "面包屑" })).not.toBeInTheDocument();
+    expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
+    expect(document.querySelector(".page-header")).not.toBeInTheDocument();
   });
 
-  it("uses subtle-style header actions with AI audit as the only primary action", () => {
+  it("uses subtle-style topbar actions with AI audit as the only primary action", () => {
     const { container } = renderPage();
-    const header = container.querySelector(".page-header");
+    const topbar = container.querySelector(".topbar");
 
-    expect(header).not.toBeNull();
+    expect(topbar).not.toBeNull();
     ["导出 Excel", "历史提交", "跨项目对比"].forEach((label) => {
-      const action = within(header as HTMLElement).getByRole("button", { name: label });
+      const action = within(topbar as HTMLElement).getByRole("button", { name: label });
       expect(action).toHaveClass("button", "subtle");
     });
 
-    const primaryActions = Array.from(header!.querySelectorAll<HTMLButtonElement>(".button.primary"));
+    const primaryActions = Array.from(topbar!.querySelectorAll<HTMLButtonElement>(".button.primary"));
     expect(primaryActions).toHaveLength(1);
     expect(primaryActions[0]).toHaveAccessibleName("AI 巡检");
   });

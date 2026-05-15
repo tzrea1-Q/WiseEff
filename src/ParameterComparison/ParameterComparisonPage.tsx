@@ -1,5 +1,6 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, type Dispatch, type SetStateAction } from "react";
 import { projects, type PrototypeState } from "../mockData";
+import { useTopBarActions } from "../components/layout";
 import { ComparisonFilterBar } from "./components/ComparisonFilterBar";
 import { ComparisonHeader } from "./components/ComparisonHeader";
 import { ComparisonMatrix } from "./components/ComparisonMatrix";
@@ -33,12 +34,16 @@ export function ParameterComparisonPage({
   const baseProject = projects.find((project) => project.id === comparisonSelection.baseProjectId) ?? projects[0];
   const targetProject = projects.find((project) => project.id === comparisonSelection.targetProjectId) ?? projects[1] ?? projects[0];
   const { filters, setDriftOnly, setQuery, setRisk, setModules, resetFilters } = useComparisonFilters({ search, onSearchChange });
-  const comparisonData = useComparisonData({
-    state,
-    baseProjectId: baseProject.id,
-    targetProjectId: targetProject.id,
-    filters
-  });
+  const comparisonData = useMemo(
+    () =>
+      useComparisonData({
+        state,
+        baseProjectId: baseProject.id,
+        targetProjectId: targetProject.id,
+        filters
+      }),
+    [baseProject.id, filters.driftOnly, filters.modules, filters.query, filters.risk, state.parameters, targetProject.id]
+  );
 
   const chooseBaseProject = (projectId: string) => {
     onComparisonSelectionChange((current) => ({
@@ -65,19 +70,22 @@ export function ParameterComparisonPage({
     setDriftOnly(true);
     setRisk(["High"]);
   };
+  useTopBarActions(
+    <ComparisonHeader
+      projects={projects}
+      baseProject={baseProject}
+      targetProject={targetProject}
+      onNavigate={onNavigate}
+      onBaseProjectChange={chooseBaseProject}
+      onTargetProjectChange={chooseTargetProject}
+      onSwap={swapProjects}
+      onExport={() => exportComparisonRowsAsExcel(comparisonData.filteredRows, baseProject.code, targetProject.code)}
+    />,
+    [baseProject.id, comparisonData.filteredRows, targetProject.id]
+  );
 
   return (
     <div className="comparison-page comparison-page--v2" data-testid="comparison-page-v2">
-      <ComparisonHeader
-        projects={projects}
-        baseProject={baseProject}
-        targetProject={targetProject}
-        onNavigate={onNavigate}
-        onBaseProjectChange={chooseBaseProject}
-        onTargetProjectChange={chooseTargetProject}
-        onSwap={swapProjects}
-        onExport={() => exportComparisonRowsAsExcel(comparisonData.filteredRows, baseProject.code, targetProject.code)}
-      />
       <ComparisonMetrics
         total={comparisonData.metrics.total}
         drift={comparisonData.metrics.drift}

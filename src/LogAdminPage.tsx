@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveLogAdminRole, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
+import { useTopBarActions } from "@/components/layout";
 import type { AppAction } from "./App";
 
 export type LogAdminPageProps = {
@@ -235,27 +236,23 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   };
 
   const hasActiveFilters = tableQuery !== "" || statusFilter !== "all" || moduleFilter !== "all";
+  useTopBarActions(
+    <>
+      <TimeWindowSelect value={timeWindow} onChange={setTimeWindow} />
+      <Button variant="outline" size="sm" onClick={handleExport}>
+        <Download data-icon="inline-start" />
+        导出报表
+      </Button>
+      <Button size="sm" onClick={handleSync}>
+        <RefreshCw data-icon="inline-start" />
+        同步日志
+      </Button>
+    </>,
+    [filteredRows, metrics, timeWindow]
+  );
+
   return (
     <div className="log-admin-page flex flex-col gap-5 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-border pb-4">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase text-primary">LOGS · ADMIN</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">日志分析管理后台</h1>
-          <p className="mt-1 text-sm text-muted-foreground">查看指标、处理记录、管理后台人员权限</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <TimeWindowSelect value={timeWindow} onChange={setTimeWindow} />
-          <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download data-icon="inline-start" />
-            导出报表
-          </Button>
-          <Button size="sm" onClick={handleSync}>
-            <RefreshCw data-icon="inline-start" />
-            同步日志
-          </Button>
-        </div>
-      </header>
-
       {insight && !insightDismissed ? (
         <PageInsightBar
           severity={insight.severity}

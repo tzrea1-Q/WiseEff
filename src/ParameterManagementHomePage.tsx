@@ -5,8 +5,10 @@ import type { PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
 import { ProjectRiskBarChart } from "./components/ProjectRiskBarChart";
 import { UpdateTrendChart } from "./components/UpdateTrendChart";
+import { useTopBarActions } from "./components/layout";
 import { computeEyebrow, generateHotspotActions } from "./hotspotPresentation";
 import { useIsAccordionMode } from "./components/hotspots/useIsAccordionMode";
+import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
@@ -33,6 +35,13 @@ const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"];
   { key: "drift", label: "异常偏离" }
 ];
 
+const parameterHomeQuickEntries = [
+  { title: "参数修改", path: "/parameters" },
+  { title: "对比分析", path: "/parameter-comparison" },
+  { title: "参数审阅", path: "/parameter-review" },
+  { title: "管理后台", path: "/parameter-admin" }
+];
+
 export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("overall");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
@@ -41,6 +50,16 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
   const analytics = useMemo(
     () => deriveParameterHomepageAnalytics(state, timeWindow, hotspotDimension),
     [state, timeWindow, hotspotDimension]
+  );
+  useTopBarActions(
+    <nav className="parameter-homepage-quick-nav" aria-label="参数管理快捷入口">
+      {parameterHomeQuickEntries.map((entry) => (
+        <Button key={entry.path} type="button" variant="outline" onClick={() => onNavigate(entry.path)}>
+          {entry.title}
+        </Button>
+      ))}
+    </nav>,
+    []
   );
   const metrics = [
     { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
