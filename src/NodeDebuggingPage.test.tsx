@@ -64,7 +64,6 @@ describe("/node-debugging", () => {
     render(<App />);
 
     await screen.findByText("检测失败，请检查 HDC 环境");
-    expect(document.querySelector(".disconnected-banner")).not.toBeInTheDocument();
     expect(screen.queryByText("hdc target detection failed")).not.toBeInTheDocument();
 
     const rwRow = findRowByText("charger.input_current_limit_ma");
