@@ -5650,6 +5650,70 @@ td small {
   line-height: 1.6;
 }
 
+@media (min-width: 761px) {
+  .node-debugging-page .parameters-table-grid {
+    table-layout: fixed;
+  }
+
+  .node-debugging-page .parameters-table-grid th:first-child,
+  .node-debugging-page .parameters-table-grid td:first-child {
+    width: 260px;
+    min-width: 260px;
+    max-width: 320px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .node-debugging-page .parameters-table-grid th:nth-child(2),
+  .node-debugging-page .parameters-table-grid td:nth-child(2) {
+    width: 88px;
+    min-width: 88px;
+    left: 260px;
+    text-align: center;
+  }
+
+  .node-debugging-page .parameters-table-grid th:last-child,
+  .node-debugging-page .parameters-table-grid td:last-child {
+    width: 196px;
+    min-width: 196px;
+    text-align: left;
+  }
+
+  .node-debugging-page .parameters-table-grid td:first-child {
+    padding-left: 14px;
+  }
+
+  .node-debugging-page .parameters-table-grid td:first-child strong {
+    display: block;
+  }
+
+  .node-debugging-page .parameters-table-grid td:first-child small {
+    display: block;
+    margin-top: 4px;
+    color: var(--app-muted);
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.45;
+    word-break: break-word;
+  }
+
+  .node-debugging-page .parameters-table-grid td {
+    max-width: none;
+  }
+
+  .node-debugging-page .parameter-row-actions-stack {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .node-debugging-page .parameter-row-actions-stack .button,
+  .node-debugging-page .parameter-row-actions-stack .debugging-deploy-button {
+    width: 100%;
+  }
+}
+
 .link-button {
   padding: 0;
   font-weight: 850;

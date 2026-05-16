@@ -312,28 +312,30 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                       <td data-label="风险"><RiskBadge risk={row.risk} /></td>
                       <td data-label="状态"><Badge tone={statusTone(row.runtimeStatus)}>{row.runtimeStatus}</Badge></td>
                       <td className="parameter-row-actions" data-label="操作">
-                        {canRead(row) ? (
-                          <button
-                            className="button subtle"
-                            type="button"
-                            disabled={!connected || row.runtimeStatus === "读取中"}
-                            onClick={() => void readRow(row)}
-                          >
-                            <Terminal size={14} />
-                            读取
-                          </button>
-                        ) : null}
-                        {canWrite(row) ? (
-                          <button
-                            className="submit-round-button debugging-deploy-button"
-                            type="button"
-                            disabled={!connected || row.runtimeStatus === "写入中" || row.runtimeStatus === "回读校验中"}
-                            onClick={() => setPendingWrite({ row, readBack: row.accessMode === "RW" })}
-                          >
-                            {row.accessMode === "RW" ? <RotateCw size={14} /> : <Send size={14} />}
-                            {row.accessMode === "RW" ? "写入并回读" : "写入"}
-                          </button>
-                        ) : null}
+                        <div className="parameter-row-actions-stack">
+                          {canRead(row) ? (
+                            <button
+                              className="button subtle"
+                              type="button"
+                              disabled={!connected || row.runtimeStatus === "读取中"}
+                              onClick={() => void readRow(row)}
+                            >
+                              <Terminal size={14} />
+                              读取
+                            </button>
+                          ) : null}
+                          {canWrite(row) ? (
+                            <button
+                              className="submit-round-button debugging-deploy-button"
+                              type="button"
+                              disabled={!connected || row.runtimeStatus === "写入中" || row.runtimeStatus === "回读校验中"}
+                              onClick={() => setPendingWrite({ row, readBack: row.accessMode === "RW" })}
+                            >
+                              {row.accessMode === "RW" ? <RotateCw size={14} /> : <Send size={14} />}
+                              {row.accessMode === "RW" ? "写入并回读" : "写入"}
+                            </button>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   ))}
