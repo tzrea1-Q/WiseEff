@@ -1,5 +1,3 @@
-import type { PageKey } from "@/appConfig";
-
 export type AgentToolName =
   | "parameter.scanOrphans"
   | "parameter.draftCleanupPlan"
@@ -12,12 +10,10 @@ export type AgentToolName =
   | "audit.summarizeRecentEvents";
 
 export type AgentContext = {
-  app: PageKey;
+  path: string;
+  pageKey: string;
   projectId?: string;
-  userId?: string;
   roleId?: string;
-  selectedIds?: string[];
-  metadata?: Record<string, unknown>;
 };
 
 export type AgentMessage = {
