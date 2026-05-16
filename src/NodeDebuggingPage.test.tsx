@@ -46,6 +46,17 @@ describe("/node-debugging", () => {
     expect(document.body).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
   });
 
+  it("omits risk filtering and the risk column", async () => {
+    mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
+    render(<App />);
+
+    await screen.findByText(/已连接：target-a/);
+
+    expect(screen.queryByRole("button", { name: /风险等级/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "风险" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /访问模式/ })).toBeInTheDocument();
+  });
+
   it("applies RO WO RW action rules", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
     render(<App />);

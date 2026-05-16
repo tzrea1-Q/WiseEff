@@ -4,9 +4,8 @@ import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import type { DebugParameter, PrototypeState } from "./mockData";
-import { Badge, RiskBadge, riskLabels } from "./workbenchUi";
+import { Badge, riskLabels } from "./workbenchUi";
 
-const riskFilterValues = ["High", "Medium", "Low"] as const;
 const accessModeOptions = ["RO", "WO", "RW"] as const;
 
 type NodeRuntimeStatus =
@@ -71,7 +70,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   const [events, setEvents] = useState<NodeOperationEvent[]>([]);
   const [pendingWrite, setPendingWrite] = useState<PendingWrite>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [riskFilters, setRiskFilters] = useState<string[]>([]);
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
   const [modeFilters, setModeFilters] = useState<string[]>([]);
@@ -123,13 +121,12 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
         !normalizedQuery ||
         row.name.toLowerCase().includes(normalizedQuery) ||
         row.key.toLowerCase().includes(normalizedQuery);
-      const matchesRisk = riskFilters.length === 0 || riskFilters.includes(row.risk);
       const matchesStatus = statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus);
       const matchesModule = moduleFilters.length === 0 || moduleFilters.includes(row.module);
       const matchesMode = modeFilters.length === 0 || modeFilters.includes(row.accessMode);
-      return matchesSearch && matchesRisk && matchesStatus && matchesModule && matchesMode;
+      return matchesSearch && matchesStatus && matchesModule && matchesMode;
     });
-  }, [modeFilters, moduleFilters, normalizedQuery, riskFilters, rows, statusFilters]);
+  }, [modeFilters, moduleFilters, normalizedQuery, rows, statusFilters]);
 
   const moduleOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.module))).map((module) => ({ value: module, label: module })),
@@ -137,10 +134,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   );
   const statusOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.runtimeStatus))).map((status) => ({ value: status, label: status })),
-    [rows]
-  );
-  const riskOptions = useMemo(
-    () => riskFilterValues.map((risk) => ({ value: risk, label: `${riskLabels[risk]} (${rows.filter((row) => row.risk === risk).length})` })),
     [rows]
   );
   const modeOptions = useMemo(
@@ -263,7 +256,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                 />
               </label>
               <div className="parameters-table-filters">
-                <MultiSelectDropdown label="风险等级" value={riskFilters} options={riskOptions} onChange={setRiskFilters} />
                 <MultiSelectDropdown label="状态" value={statusFilters} options={statusOptions} onChange={setStatusFilters} />
                 <MultiSelectDropdown label="模块" value={moduleFilters} options={moduleOptions} onChange={setModuleFilters} />
                 <MultiSelectDropdown label="访问模式" value={modeFilters} options={modeOptions} onChange={setModeFilters} />
@@ -280,7 +272,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                     <th scope="col">当前值</th>
                     <th scope="col">目标写入值</th>
                     <th scope="col">范围</th>
-                    <th scope="col">风险</th>
                     <th scope="col">状态</th>
                     <th scope="col">操作</th>
                   </tr>
@@ -309,7 +300,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                         )}
                       </td>
                       <td data-label="范围">{row.range} {row.unit}</td>
-                      <td data-label="风险"><RiskBadge risk={row.risk} /></td>
                       <td data-label="状态"><Badge tone={statusTone(row.runtimeStatus)}>{row.runtimeStatus}</Badge></td>
                       <td className="parameter-row-actions" data-label="操作">
                         <div className="parameter-row-actions-stack">
