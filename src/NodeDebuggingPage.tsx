@@ -1,9 +1,10 @@
-import { ChevronRight, Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
+import { Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
+import { useTopBarActions } from "./components/layout";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 const accessModeOptions = ["RO", "WO", "RW"] as const;
@@ -437,28 +438,19 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
 
   const batchTargetRows = selectedIds.size > 0 ? pendingSelectedRows : pendingRows;
 
+  useTopBarActions(
+    <div className="device-pill">
+      <span className={connected ? "live-dot" : "idle-dot"} />
+      {connected ? `已连接：${target}` : detecting ? "检测中..." : "未连接 HDC 设备"}
+      <button className="link-button" type="button" onClick={() => void detect()}>
+        重新检测
+      </button>
+    </div>,
+    [connected, detecting, target]
+  );
+
   return (
     <div className="workbench-page node-debugging-page">
-      <header className="page-header">
-        <div>
-          <nav className="breadcrumb" aria-label="面包屑">
-            <span>调试平台</span>
-            <ChevronRight size={14} aria-hidden="true" />
-            <strong>节点调试平台</strong>
-          </nav>
-          <p className="workbench-page-subtitle">通过 HDC 读写设备节点，完成调试参数验证。</p>
-        </div>
-        <div className="page-actions">
-          <div className="device-pill">
-            <span className={connected ? "live-dot" : "idle-dot"} />
-            {connected ? `已连接：${target}` : detecting ? "检测中..." : "未连接 HDC 设备"}
-            <button className="link-button" type="button" onClick={() => void detect()}>
-              重新检测
-            </button>
-          </div>
-        </div>
-      </header>
-
       <div className="workbench-one-col">
         <NodeSessionSummaryCard
           connected={connected}
