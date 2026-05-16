@@ -61,6 +61,28 @@ describe("powerManagementConfig", () => {
     expect(flattenDebugParameters(bundledPowerManagementConfig)).toHaveLength(8);
   });
 
+  it("ships node metadata for every debug parameter", () => {
+    expect(bundledPowerManagementConfig.debugParameters.length).toBeGreaterThan(0);
+    for (const parameter of bundledPowerManagementConfig.debugParameters) {
+      expect(parameter.nodePath).toMatch(/^\//);
+      expect(["RO", "WO", "RW"]).toContain(parameter.accessMode);
+    }
+  });
+
+  it("round-trips node metadata through debug helpers", () => {
+    const draft = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const edited = updateDebugParameter(draft, "dbg-charge-input-current", {
+      nodePath: "/sys/class/power_supply/battery/input_current_limit",
+      accessMode: "RW"
+    });
+
+    expect(edited.debugParameters.find((parameter) => parameter.id === "dbg-charge-input-current")).toMatchObject({
+      nodePath: "/sys/class/power_supply/battery/input_current_limit",
+      accessMode: "RW"
+    });
+    expect(serializePowerManagementConfig(edited)).toContain('"accessMode": "RW"');
+  });
+
   it("adds and deletes project and debug parameters", () => {
     const draft = clonePowerManagementConfig(bundledPowerManagementConfig);
     const withProjectParameter = addProjectParameter(draft);
@@ -92,7 +114,9 @@ describe("addDebugParameterFromDraft", () => {
       unit: "",
       range: "0.1 - 2.0",
       risk: "Medium" as const,
-      status: "待下发" as const
+      status: "待下发" as const,
+      nodePath: "/sys/devices/platform/wiseeff/test",
+      accessMode: "RW" as const
     };
     const fixedNow = new Date("2026-05-10T23:45:00.000Z");
 
@@ -121,7 +145,9 @@ describe("addDebugParameterFromDraft", () => {
       unit: "",
       range: "",
       risk: "Low" as const,
-      status: "待下发" as const
+      status: "待下发" as const,
+      nodePath: "/sys/devices/platform/wiseeff/test",
+      accessMode: "RW" as const
     };
 
     const next = addDebugParameterFromDraft(base, draft, new Date("2026-05-10T00:00:00.000Z"));
@@ -143,7 +169,9 @@ describe("addDebugParameterFromDraft", () => {
       unit: "",
       range: "",
       risk: "Low" as const,
-      status: "已同步" as const
+      status: "已同步" as const,
+      nodePath: "/sys/devices/platform/wiseeff/test",
+      accessMode: "RW" as const
     };
 
     const next = addDebugParameterFromDraft(base, draft, new Date("2026-05-10T00:00:00.000Z"));

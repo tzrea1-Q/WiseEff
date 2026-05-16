@@ -25,6 +25,7 @@ export type PageKey =
   | "logs"
   | "log-admin"
   | "debugging"
+  | "node-debugging"
   | "debugging-admin";
 
 export type PageConfig = {
@@ -113,6 +114,15 @@ export const navigationItems: PageConfig[] = [
     icon: TerminalSquare,
     title: "参数调试平台",
     subtitle: "连接样机、实时调节充电参数并准备回滚"
+  },
+  {
+    key: "node-debugging",
+    path: "/node-debugging",
+    label: "节点调试",
+    group: "调试平台",
+    icon: TerminalSquare,
+    title: "节点调试平台",
+    subtitle: "通过 HDC 读写设备节点，完成调试参数验证"
   },
   {
     key: "debugging-admin",
@@ -234,6 +244,17 @@ export function createAgentPlan(path: string): AgentPlan {
         actions: [
           { id: "connect-device", label: "连接推荐样机", requiresConfirm: false },
           { id: "push-debug-value", label: "下发调试值", requiresConfirm: true }
+        ]
+      };
+    case "node-debugging":
+      return {
+        ...shared,
+        contextTitle: "节点调试 Agent",
+        contextSummary: "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。",
+        prompts: ["检查设备连接", "汇总回读异常", "筛选可写节点"],
+        actions: [
+          { id: "connect-device", label: "重新检测设备", requiresConfirm: false },
+          { id: "audit-scan", label: "汇总节点调试风险", requiresConfirm: false }
         ]
       };
     case "parameter-admin":

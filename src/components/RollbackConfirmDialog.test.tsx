@@ -26,7 +26,9 @@ const parameters: DebugParameter[] = [
     unit: "",
     range: "0.1 - 5.0",
     risk: "Medium",
-    status: "下发成功"
+    status: "下发成功",
+    nodePath: "/data/local/tmp/wiseeff_nodes/debug/pid_p",
+    accessMode: "RW"
   },
   {
     id: "dbg-fast-current",
@@ -39,7 +41,9 @@ const parameters: DebugParameter[] = [
     unit: "mA",
     range: "2500 - 4500",
     risk: "High",
-    status: "下发成功"
+    status: "下发成功",
+    nodePath: "/data/local/tmp/wiseeff_nodes/debug/fast_current",
+    accessMode: "RW"
   }
 ];
 

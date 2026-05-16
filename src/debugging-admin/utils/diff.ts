@@ -26,7 +26,9 @@ const FIELD_LABELS: Record<Exclude<keyof PowerManagementDebugParameter, "id" | "
   targetValue: "推荐值",
   range: "有效区间",
   unit: "单位",
-  risk: "风险等级"
+  risk: "风险等级",
+  nodePath: "节点路径",
+  accessMode: "访问模式"
 };
 
 const FIELDS_TO_COMPARE: Array<Exclude<keyof PowerManagementDebugParameter, "id" | "status">> = [
@@ -36,7 +38,9 @@ const FIELDS_TO_COMPARE: Array<Exclude<keyof PowerManagementDebugParameter, "id"
   "targetValue",
   "unit",
   "range",
-  "risk"
+  "risk",
+  "nodePath",
+  "accessMode"
 ];
 
 export function computeDirtyDiff(

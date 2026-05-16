@@ -42,6 +42,7 @@ import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { DebuggingPage } from "./DebuggingPage";
+import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { LogAdminPage } from "./LogAdminPage";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
@@ -253,6 +254,8 @@ type DebugParameterEditorDraft = {
   range: string;
   risk: DebugParameter["risk"];
   status: DebugParameter["status"];
+  nodePath: string;
+  accessMode: DebugParameter["accessMode"];
 };
 
 type ParameterDraftItem = {
@@ -1470,6 +1473,8 @@ function PageRouter({
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging":
       return <DebuggingPage state={state} dispatch={dispatch} />;
+    case "node-debugging":
+      return <NodeDebuggingPage state={state} />;
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
@@ -3827,6 +3832,32 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
                         { value: "已同步", label: "已同步" },
                         { value: "待下发", label: "待下发" },
                         { value: "下发成功", label: "下发成功" }
+                      ]}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="debug-admin-form-section">
+                <h3 className="debug-admin-form-group-title">节点调试</h3>
+                <div className="debug-admin-form-fields">
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">节点路径</span>
+                    <Input
+                      aria-label="节点路径"
+                      value={selectedParameter.nodePath}
+                      onChange={(e) => updateDebug({ nodePath: e.target.value })}
+                    />
+                  </label>
+                  <label className="debug-admin-field">
+                    <span className="debug-admin-field-label">访问模式</span>
+                    <SelectControl
+                      ariaLabel="访问模式"
+                      value={selectedParameter.accessMode}
+                      onValueChange={(accessMode) => updateDebug({ accessMode })}
+                      options={[
+                        { value: "RO", label: "RO · 只读" },
+                        { value: "WO", label: "WO · 只写" },
+                        { value: "RW", label: "RW · 读写" }
                       ]}
                     />
                   </label>

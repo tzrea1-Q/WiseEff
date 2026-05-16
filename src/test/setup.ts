@@ -10,6 +10,10 @@ class ResizeObserverMock {
 
 globalThis.ResizeObserver = globalThis.ResizeObserver ?? (ResizeObserverMock as typeof ResizeObserver);
 
+HTMLElement.prototype.hasPointerCapture = HTMLElement.prototype.hasPointerCapture ?? (() => false);
+HTMLElement.prototype.setPointerCapture = HTMLElement.prototype.setPointerCapture ?? (() => {});
+HTMLElement.prototype.releasePointerCapture = HTMLElement.prototype.releasePointerCapture ?? (() => {});
+
 beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");

@@ -650,10 +650,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                       <label className="field-label" htmlFor={targetInputId}>
                         {isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
                       </label>
-                      <input
+                      <textarea
                         id={targetInputId}
                         aria-label={isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
+                        className="parameter-target-editor"
                         value={item.targetValue}
+                        rows={6}
                         onChange={(event) => {
                           updateDraft(item.parameter, { targetValue: event.target.value });
                         }}

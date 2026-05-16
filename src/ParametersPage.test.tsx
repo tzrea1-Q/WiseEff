@@ -208,7 +208,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
 
-    const targetInput = container.querySelector<HTMLInputElement>(".draft-card input");
+    const targetInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea[aria-label*='目标值']");
     expect(targetInput).not.toBeNull();
     fireEvent.change(targetInput!, { target: { value: "   " } });
 
@@ -250,11 +250,24 @@ describe("ParametersPage draft edge cases", () => {
     expect(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]).toBeEnabled();
   });
 
+  it("uses a multiline target value editor in the parameter draft sheet", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+
+    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
+    const targetEditor = within(sheet).getByLabelText("目标值");
+    const multilineValue = "profile=thermal\nlimit_ma=4200";
+
+    expect(targetEditor.tagName).toBe("TEXTAREA");
+    fireEvent.change(targetEditor, { target: { value: multilineValue } });
+    expect(targetEditor).toHaveValue(multilineValue);
+  });
+
   it("cleans up selection, drafts, and sheet state after submit", () => {
     const dispatch = vi.fn();
     const { container } = renderPage(dispatch);
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
-    const reasonInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea");
+    const reasonInput = container.querySelector<HTMLTextAreaElement>(".draft-card textarea[aria-label*='修改原因']");
     expect(reasonInput).not.toBeNull();
     fireEvent.change(reasonInput!, {
       target: { value: "submit cleanup reason" }

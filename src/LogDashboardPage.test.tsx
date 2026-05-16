@@ -1,14 +1,17 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   window.history.replaceState(null, "", "/");
 });
 
 describe("LogDashboardPage", () => {
   it("renders a senior UX dashboard with four decision-oriented modules", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-14T12:00:00+08:00"));
     window.history.replaceState(null, "", "/log-dashboard");
 
     const { container } = render(<App />);

@@ -940,8 +940,11 @@ describe("WiseEff app shell", () => {
 
     expect(row).toBeDefined();
     expect(within(row as HTMLElement).getByText("已同步")).toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByLabelText(`${parameterKey} 目标设定值`)).not.toBeInTheDocument();
 
-    fireEvent.change(within(row as HTMLElement).getByLabelText(`${parameterKey} 目标设定值`), { target: { value: "0" } });
+    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "编辑 充电泵使能" }));
+    fireEvent.change(screen.getByLabelText("目标设定值"), { target: { value: "0" } });
+    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
 
     expect(within(findDebugRow(parameterKey) as HTMLElement).getByText("待下发")).toBeInTheDocument();
     expect(document.body).toHaveTextContent("1 项参数等待应用");
@@ -1245,7 +1248,11 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "参数调试" }));
 
-    expect(screen.getByDisplayValue("3650")).toBeInTheDocument();
+    const row = Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((item) =>
+      item.textContent?.includes("charger.input_current_limit_ma")
+    );
+    expect(row).toBeDefined();
+    expect(row?.querySelector("td[data-label='目标设定值']")).toHaveTextContent("3650");
   });
 
   it("adds and deletes debug parameters from the debugging admin config", () => {

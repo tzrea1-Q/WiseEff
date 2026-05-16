@@ -5,6 +5,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Plugin } from "vite";
+import { hdcApiBridge } from "./viteHdcApi";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -52,7 +53,7 @@ function powerManagementConfigWriter(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), powerManagementConfigWriter()],
+  plugins: [react(), tailwindcss(), powerManagementConfigWriter(), hdcApiBridge()],
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "./src")

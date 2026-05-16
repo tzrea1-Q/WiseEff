@@ -213,7 +213,9 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
       unit: target.unit,
       range: target.range,
       risk: "High" as const,
-      status: target.status
+      status: target.status,
+      nodePath: "/data/local/tmp/wiseeff_nodes/debug/input_current",
+      accessMode: "RW" as const
     };
 
     const next = reducer(base, {
@@ -252,7 +254,9 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
       unit: target.unit,
       range: target.range,
       risk: target.risk,
-      status: originalStatus === "待下发" ? "下发成功" : "待下发"
+      status: originalStatus === "待下发" ? "下发成功" : "待下发",
+      nodePath: target.nodePath,
+      accessMode: target.accessMode
     } as const;
 
     const next = reducer(base, {
@@ -279,7 +283,9 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
       unit: "v",
       range: "0 - 1",
       risk: "Low" as const,
-      status: "待下发" as const
+      status: "待下发" as const,
+      nodePath: "/data/local/tmp/wiseeff_nodes/debug/missing",
+      accessMode: "RO" as const
     };
 
     const next = reducer(base, {
@@ -290,6 +296,36 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
 
     expect(next.configDraft).toEqual(base.configDraft);
     expect(next.debugParameters).toEqual(base.debugParameters);
+  });
+
+  it("持久化 nodePath 与 accessMode", () => {
+    const base = createPrototypeState();
+    const target = base.debugParameters[0];
+    const draft = {
+      name: target.name,
+      key: target.key,
+      description: target.description,
+      module: target.module,
+      currentValue: target.currentValue,
+      targetValue: target.targetValue,
+      unit: target.unit,
+      range: target.range,
+      risk: target.risk,
+      status: target.status,
+      nodePath: "/sys/class/power_supply/battery/input_current_limit",
+      accessMode: "RW" as const
+    };
+
+    const next = reducer(base, {
+      type: "COMMIT_DEBUG_PARAMETER_DRAFT",
+      parameterId: target.id,
+      draft
+    });
+
+    expect(next.configDraft.debugParameters.find((parameter) => parameter.id === target.id)).toMatchObject({
+      nodePath: "/sys/class/power_supply/battery/input_current_limit",
+      accessMode: "RW"
+    });
   });
 });
 
@@ -371,7 +407,9 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
       unit: "",
       range: "0.1 - 2.0",
       risk: "Medium" as const,
-      status: "待下发" as const
+      status: "待下发" as const,
+      nodePath: "/data/local/tmp/wiseeff_nodes/debug/pid_kp",
+      accessMode: "RW" as const
     };
 
     const next = reducer(base, { type: "ADD_DEBUG_PARAMETER", initialDraft: draft });
@@ -394,7 +432,9 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
       unit: "",
       range: "",
       risk: "Low" as const,
-      status: "待下发" as const
+      status: "待下发" as const,
+      nodePath: "/data/local/tmp/wiseeff_nodes/debug/x_y",
+      accessMode: "RW" as const
     };
 
     const next = reducer(base, { type: "ADD_DEBUG_PARAMETER", initialDraft: draft });

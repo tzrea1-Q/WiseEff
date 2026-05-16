@@ -15,6 +15,8 @@ function makeParam(overrides: Partial<PowerManagementDebugParameter> = {}): Powe
     range: "1500 - 4500",
     risk: "High",
     status: "待下发",
+    nodePath: "/data/local/tmp/wiseeff_nodes/debug/fast_charge_current",
+    accessMode: "RW",
     ...overrides
   };
 }
@@ -109,6 +111,8 @@ describe("computeDirtyDiff", () => {
     expect(names).toContain("unit");
     expect(names).toContain("range");
     expect(names).toContain("risk");
+    expect(names).toContain("nodePath");
+    expect(names).toContain("accessMode");
     expect(names).not.toContain("status");
   });
 

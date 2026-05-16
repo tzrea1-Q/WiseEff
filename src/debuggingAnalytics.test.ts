@@ -49,7 +49,9 @@ describe("deriveDebugParameterStatus", () => {
     unit: "A",
     range: "0 - 100",
     risk: "Medium",
-    status: "已同步"
+    status: "已同步",
+    nodePath: "/data/local/tmp/wiseeff_nodes/debug/x",
+    accessMode: "RW"
   };
 
   it("当前值等于目标值 → 已同步", () => {
