@@ -46,6 +46,19 @@ describe("/node-debugging", () => {
     expect(await screen.findByText(/已连接：target-a/)).toBeInTheDocument();
   });
 
+  it("moves hdc connection controls into the topbar and removes the standalone page header", async () => {
+    mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
+    render(<App />);
+
+    await screen.findByText("检测失败，请检查 HDC 环境");
+
+    const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement | null;
+    expect(topbarActions).toBeInTheDocument();
+    await waitFor(() => expect(topbarActions).toHaveTextContent("未连接 HDC 设备"));
+    expect(within(topbarActions as HTMLElement).getByRole("button", { name: "重新检测" })).toBeInTheDocument();
+    expect(document.querySelector(".node-debugging-page > .page-header")).not.toBeInTheDocument();
+  });
+
   it("does not show seeded values as current values before readable nodes are read", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
     render(<App />);
