@@ -1619,40 +1619,6 @@ body {
   overflow-wrap: anywhere;
 }
 
-.disconnected-banner {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  color: #4f3300;
-  background: #fff6e6;
-  border: 1px solid rgba(160, 91, 0, 0.22);
-  border-radius: 12px;
-  box-shadow: inset 4px 0 0 var(--amber);
-}
-
-.disconnected-banner strong,
-.disconnected-banner span {
-  display: block;
-}
-
-.disconnected-banner span {
-  margin-top: 4px;
-  color: var(--app-muted);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.disconnected-banner svg {
-  color: var(--amber);
-}
-
-.disconnected-banner .button.subtle {
-  white-space: nowrap;
-  border-color: rgba(160, 91, 0, 0.3);
-}
-
 .session-summary-card {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.4fr) minmax(240px, 1fr);
