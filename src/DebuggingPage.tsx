@@ -1,7 +1,6 @@
 import { ChevronRight, Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "./App";
-import { DisconnectedBanner } from "./components/DisconnectedBanner";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
@@ -203,10 +202,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
       </header>
 
       <div className="workbench-one-col">
-        <DisconnectedBanner
-          device={activeDevice}
-          onConnect={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}
-        />
         <SessionSummaryCard
           state={state}
           now={nowTick}
@@ -299,11 +294,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
                       </td>
                       <td className="mono" data-label="当前值">{p.currentValue}</td>
                       <td data-label="目标设定值">
-                        <input
-                          aria-label={`${p.key} 目标设定值`}
-                          value={p.targetValue}
-                          onChange={(e) => updateTargetValue(p, e.target.value)}
-                        />
+                        <span className="debug-target-value-display">{p.targetValue || "未设置"}</span>
                       </td>
                       <td data-label="范围">{p.range} {p.unit}</td>
                       <td data-label="风险"><RiskBadge risk={p.risk} /></td>
@@ -336,7 +327,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           <div className="parameters-submit-bar parameters-submit-bar-active" aria-label="下发操作栏">
             <div>
               <strong>{selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : `${pendingParameters.length} 项参数等待应用`}</strong>
-              <span>{selectedIds.size > 0 ? `其中 ${pendingSelected.length} 项为待下发状态` : "勾选参数后可批量下发，或直接修改目标值后一键下发。"}</span>
+              <span>{selectedIds.size > 0 ? `其中 ${pendingSelected.length} 项为待下发状态` : "勾选参数后可批量下发，或在详情中修改目标值后下发。"}</span>
             </div>
             <div className="debugging-action-buttons">
               <button
@@ -421,10 +412,12 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
                 </div>
               </div>
               <label className="field-label" htmlFor={`debug-target-${editingParameter.id}`}>目标设定值</label>
-              <input
+              <textarea
                 id={`debug-target-${editingParameter.id}`}
                 aria-label="目标设定值"
+                className="parameter-target-editor"
                 value={editingParameter.targetValue}
+                rows={8}
                 onChange={(e) => updateTargetValue(editingParameter, e.target.value)}
               />
             </div>

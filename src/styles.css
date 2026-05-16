@@ -1269,7 +1269,8 @@ body {
   opacity: 0.6;
 }
 
-.debugging-page .parameters-submit-bar {
+.debugging-page .parameters-submit-bar,
+.node-debugging-page .parameters-submit-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1281,18 +1282,21 @@ body {
   margin-top: 12px;
 }
 
-.debugging-page .parameters-submit-bar div:first-child {
+.debugging-page .parameters-submit-bar div:first-child,
+.node-debugging-page .parameters-submit-bar div:first-child {
   display: grid;
   min-width: 0;
   gap: 2px;
 }
 
-.debugging-page .parameters-submit-bar strong {
+.debugging-page .parameters-submit-bar strong,
+.node-debugging-page .parameters-submit-bar strong {
   color: var(--text);
   font-size: 13px;
 }
 
-.debugging-page .parameters-submit-bar span {
+.debugging-page .parameters-submit-bar span,
+.node-debugging-page .parameters-submit-bar span {
   color: var(--outline-strong);
   font-size: 12px;
   line-height: 1.4;
@@ -1356,7 +1360,8 @@ body {
   font-size: 13px;
 }
 
-.debug-detail-card input {
+.debug-detail-card input,
+.debug-detail-card textarea {
   width: 100%;
   min-width: 0;
   padding: 9px 10px;
@@ -1369,27 +1374,37 @@ body {
   font-size: 14px;
 }
 
-.debug-detail-card input:focus {
+.debug-detail-card input:focus,
+.debug-detail-card textarea:focus {
   border-color: var(--primary-container);
   box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
 }
 
-.debug-table .parameters-table-grid td input[aria-label*="目标设定值"] {
-  width: 100%;
-  min-width: 80px;
-  padding: 6px 8px;
+.debug-detail-card textarea {
+  min-height: 156px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.parameter-target-editor {
+  min-height: 124px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.debug-target-value-display {
+  display: block;
+  max-width: 220px;
   color: var(--text);
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 6px;
-  outline: 0;
-  font: inherit;
+  font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
-}
-
-.debug-table .parameters-table-grid td input[aria-label*="目标设定值"]:focus {
-  border-color: var(--primary-container);
-  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.12);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .disconnected-banner {
@@ -5645,6 +5660,150 @@ td small {
   margin-top: 4px;
 }
 
+.node-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: 58px;
+  min-height: 24px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.node-status-untested {
+  color: #475569;
+  background: #f1f5f9;
+  border-color: #dbe3ee;
+}
+
+.node-status-pending {
+  color: #7a4100;
+  background: #fff3cf;
+  border-color: #f6d580;
+}
+
+.node-status-running {
+  color: #064a8f;
+  background: #dbeafe;
+  border-color: #93c5fd;
+}
+
+.node-status-success {
+  color: #066046;
+  background: #d7f8e8;
+  border-color: #9be6c5;
+}
+
+.node-status-failed {
+  color: #9f1239;
+  background: #ffe4e6;
+  border-color: #fda4af;
+}
+
+.node-status-unavailable {
+  color: #59606a;
+  background: #e5e7eb;
+  border-color: #cbd5e1;
+}
+
+.node-write-format-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: #f8fafc;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.node-write-format-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.node-write-format-head h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.node-write-format-head span {
+  padding: 3px 8px;
+  color: #064a8f;
+  background: #dbeafe;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.node-write-format-panel p,
+.node-write-format-panel span {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.node-write-format-panel dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.node-write-format-panel dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.node-write-format-panel dt {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.node-write-format-panel dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+  text-align: right;
+}
+
+.node-write-format-example {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e7ecf7;
+  border-radius: 8px;
+}
+
+.node-write-format-example strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.node-write-format-example code {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px 8px;
+  color: #0f172a;
+  background: #eef2ff;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
 .node-write-confirm-dialog p {
   color: var(--muted-foreground);
   line-height: 1.6;
@@ -5657,37 +5816,55 @@ td small {
 
   .node-debugging-page .parameters-table-grid th:first-child,
   .node-debugging-page .parameters-table-grid td:first-child {
-    width: 260px;
-    min-width: 260px;
-    max-width: 320px;
-    text-align: left;
-    vertical-align: top;
+    width: 48px;
+    min-width: 48px;
+    max-width: 48px;
+    text-align: center;
+    vertical-align: middle;
   }
 
   .node-debugging-page .parameters-table-grid th:nth-child(2),
   .node-debugging-page .parameters-table-grid td:nth-child(2) {
+    width: 260px;
+    min-width: 260px;
+    max-width: 320px;
+    left: 48px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .node-debugging-page .parameters-table-grid th:nth-child(3),
+  .node-debugging-page .parameters-table-grid td:nth-child(3) {
+    position: sticky;
     width: 88px;
     min-width: 88px;
-    left: 260px;
+    left: 308px;
+    z-index: 3;
+    background: #fff;
     text-align: center;
+  }
+
+  .node-debugging-page .parameters-table-grid th:nth-child(3) {
+    z-index: 5;
+    background: var(--surface-low);
   }
 
   .node-debugging-page .parameters-table-grid th:last-child,
   .node-debugging-page .parameters-table-grid td:last-child {
-    width: 196px;
-    min-width: 196px;
-    text-align: left;
+    width: 72px;
+    min-width: 72px;
+    text-align: center;
   }
 
-  .node-debugging-page .parameters-table-grid td:first-child {
+  .node-debugging-page .parameters-table-grid td:nth-child(2) {
     padding-left: 14px;
   }
 
-  .node-debugging-page .parameters-table-grid td:first-child strong {
+  .node-debugging-page .parameters-table-grid td:nth-child(2) strong {
     display: block;
   }
 
-  .node-debugging-page .parameters-table-grid td:first-child small {
+  .node-debugging-page .parameters-table-grid td:nth-child(2) small {
     display: block;
     margin-top: 4px;
     color: var(--app-muted);

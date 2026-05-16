@@ -8,6 +8,23 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+function getDebugRow(parameterKey: string) {
+  const row = Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((item) =>
+    item.textContent?.includes(parameterKey)
+  );
+  if (!row) {
+    throw new Error(`找不到参数行：${parameterKey}`);
+  }
+  return row;
+}
+
+function changeTargetFromDetail(parameterName: string, nextValue: string) {
+  fireEvent.click(screen.getByRole("button", { name: `编辑 ${parameterName}` }));
+  const detailEditor = screen.getByLabelText("目标设定值");
+  fireEvent.change(detailEditor, { target: { value: nextValue } });
+  fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+}
+
 describe("/debugging 单栏骨架", () => {
   it("渲染为单栏布局，不再出现筛选侧栏或右侧调试时间轴", () => {
     window.history.replaceState(null, "", "/debugging");
@@ -33,17 +50,36 @@ describe("/debugging 单栏骨架", () => {
     render(<App />);
 
     const parameterKey = "charger.charge_pump.enable";
-    fireEvent.change(screen.getByLabelText(`${parameterKey} 目标设定值`), { target: { value: "0" } });
+    changeTargetFromDetail("充电泵使能", "0");
     expect(document.body).toHaveTextContent("1 项参数等待应用");
 
     fireEvent.click(screen.getByRole("button", { name: "连接" }));
     fireEvent.click(screen.getByRole("button", { name: "下发调试值" }));
 
-    const row = Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((item) =>
-      item.textContent?.includes(parameterKey)
-    );
-    expect(row).toBeDefined();
+    const row = getDebugRow(parameterKey);
     expect(row).toHaveTextContent("0");
+  });
+
+  it("目标设定值在表格中只读显示，只允许在详情弹窗中多行编辑", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App />);
+
+    const parameterKey = "charger.charge_pump.enable";
+    const multilineValue = "mode=diagnostic\nenable=0";
+    const row = getDebugRow(parameterKey);
+    const targetCell = row.querySelector<HTMLElement>("td[data-label='目标设定值']");
+
+    expect(screen.queryByLabelText(`${parameterKey} 目标设定值`)).not.toBeInTheDocument();
+    expect(targetCell).toHaveTextContent("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 充电泵使能" }));
+
+    const detailEditor = screen.getByLabelText("目标设定值");
+    expect(detailEditor.tagName).toBe("TEXTAREA");
+    fireEvent.change(detailEditor, { target: { value: multilineValue } });
+    expect(detailEditor).toHaveValue(multilineValue);
+    expect(targetCell).toHaveTextContent("mode=diagnostic");
+    expect(targetCell).toHaveTextContent("enable=0");
   });
 
   it("不再渲染硬编码的示例时间条目（10:45:02 / 10:50:11 / 10:52:30）", () => {
@@ -57,17 +93,12 @@ describe("/debugging 单栏骨架", () => {
   });
 });
 
-describe("DisconnectedBanner 集成", () => {
-  it("默认设备 aurora 未连接时显示 banner", () => {
+describe("离线提示条", () => {
+  it("参数调试页不再渲染离线 banner", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
-    expect(screen.getByRole("status")).toHaveTextContent(/ChargeLab_X01/);
-  });
-
-  it("点击 banner 的连接样机后 banner 消失", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText(/设备离线/)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });
@@ -84,7 +115,7 @@ describe("SessionSummaryCard 集成", () => {
   it("连接后按钮仍 disabled（尚无快照）但 title 文案改变", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    fireEvent.click(screen.getByRole("button", { name: "连接" }));
     const button = screen.getByRole("button", { name: /回滚到上次快照/ });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", expect.stringMatching(/尚无快照/));
@@ -96,14 +127,15 @@ describe("回滚链路端到端", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
+    fireEvent.click(screen.getByRole("button", { name: "连接" }));
 
-    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input[aria-label*='目标设定值']");
-    if (!firstTargetInput) {
-      throw new Error("找不到第一行目标值输入");
+    const firstRow = screen.getByRole("table").querySelector<HTMLElement>("tbody tr:first-child");
+    if (!firstRow) {
+      throw new Error("找不到第一行");
     }
-    const originalCurrentText = firstTargetInput.closest("tr")?.querySelector("td.mono")?.textContent ?? "";
-    fireEvent.change(firstTargetInput, { target: { value: "999" } });
+    const originalCurrentText = firstRow.querySelector("td.mono")?.textContent ?? "";
+    const firstParameterName = firstRow.querySelector("td[data-label='参数名称'] strong")?.textContent ?? "";
+    changeTargetFromDetail(firstParameterName, "999");
     fireEvent.click(screen.getByRole("button", { name: /下发调试值/ }));
 
     expect(screen.getByText(/snap-/)).toBeInTheDocument();
@@ -113,19 +145,20 @@ describe("回滚链路端到端", () => {
 
     expect(screen.queryByText(/snap-/)).not.toBeInTheDocument();
 
-    const restoredCurrent = firstTargetInput.closest("tr")?.querySelector("td.mono")?.textContent ?? "";
+    const restoredCurrent = firstRow.querySelector("td.mono")?.textContent ?? "";
     expect(restoredCurrent).toBe(originalCurrentText);
   });
 
   it("点击取消保留快照", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
-    const firstTargetInput = document.querySelector<HTMLInputElement>("tbody tr:first-child input[aria-label*='目标设定值']");
-    if (!firstTargetInput) {
-      throw new Error("找不到输入");
+    fireEvent.click(screen.getByRole("button", { name: "连接" }));
+    const firstRow = screen.getByRole("table").querySelector<HTMLElement>("tbody tr:first-child");
+    const firstParameterName = firstRow?.querySelector("td[data-label='参数名称'] strong")?.textContent ?? "";
+    if (!firstParameterName) {
+      throw new Error("找不到第一行参数名称");
     }
-    fireEvent.change(firstTargetInput, { target: { value: "999" } });
+    changeTargetFromDetail(firstParameterName, "999");
     fireEvent.click(screen.getByRole("button", { name: /下发调试值/ }));
     fireEvent.click(screen.getByRole("button", { name: /回滚到上次快照/ }));
     fireEvent.click(screen.getByRole("button", { name: "取消" }));
@@ -144,12 +177,13 @@ describe("OperationHistoryPanel 集成", () => {
   it("下发后展开面板能看到 push 事件", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "连接样机" }));
-    const input = document.querySelector<HTMLInputElement>("tbody tr:first-child input[aria-label*='目标设定值']");
-    if (!input) {
-      throw new Error("找不到输入");
+    fireEvent.click(screen.getByRole("button", { name: "连接" }));
+    const firstRow = screen.getByRole("table").querySelector<HTMLElement>("tbody tr:first-child");
+    const firstParameterName = firstRow?.querySelector("td[data-label='参数名称'] strong")?.textContent ?? "";
+    if (!firstParameterName) {
+      throw new Error("找不到第一行参数名称");
     }
-    fireEvent.change(input, { target: { value: "999" } });
+    changeTargetFromDetail(firstParameterName, "999");
     fireEvent.click(screen.getByRole("button", { name: /下发调试值/ }));
     fireEvent.click(screen.getByRole("button", { name: /调试操作记录/ }));
     expect(screen.getByText(/下发 1 项/)).toBeInTheDocument();

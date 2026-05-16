@@ -1,26 +1,19 @@
-import { ChevronRight, RotateCw, Search, Send, Terminal } from "lucide-react";
+import { ChevronRight, Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
+import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import type { DebugParameter, PrototypeState } from "./mockData";
-import { Badge, riskLabels } from "./workbenchUi";
 
 const accessModeOptions = ["RO", "WO", "RW"] as const;
 
 type NodeRuntimeStatus =
   | "未检测"
-  | "可读取"
   | "待写入"
-  | "读取中"
-  | "读取成功"
-  | "读取失败"
-  | "写入中"
-  | "写入成功"
-  | "回读校验中"
-  | "回读一致"
-  | "回读不一致"
-  | "写入失败"
+  | "执行中"
+  | "成功"
+  | "失败"
   | "不可用";
 
 type RuntimeRow = DebugParameter & {
@@ -30,11 +23,6 @@ type RuntimeRow = DebugParameter & {
   error?: string;
   lastReadValue?: string;
 };
-
-type PendingWrite = {
-  row: RuntimeRow;
-  readBack: boolean;
-} | null;
 
 function canRead(row: Pick<DebugParameter, "accessMode" | "nodePath">) {
   return Boolean(row.nodePath) && (row.accessMode === "RO" || row.accessMode === "RW");
@@ -49,17 +37,159 @@ function initialStatus(row: DebugParameter): NodeRuntimeStatus {
   return row.accessMode === "WO" ? "待写入" : "未检测";
 }
 
-function statusTone(status: NodeRuntimeStatus): "neutral" | "tertiary" | "secondary" {
-  if (status.includes("失败") || status === "回读不一致") return "secondary";
-  if (status.includes("成功") || status === "回读一致" || status === "可读取") return "tertiary";
-  return "neutral";
+function statusClass(status: NodeRuntimeStatus) {
+  const classMap: Record<NodeRuntimeStatus, string> = {
+    "未检测": "node-status-untested",
+    "待写入": "node-status-pending",
+    "执行中": "node-status-running",
+    "成功": "node-status-success",
+    "失败": "node-status-failed",
+    "不可用": "node-status-unavailable"
+  };
+  return `node-status-badge ${classMap[status]}`;
+}
+
+function displayCurrentValue(row: RuntimeRow) {
+  if (row.accessMode === "WO") return "写入后不可回读";
+  if (!row.nodePath) return "节点不可用";
+  if (row.lastReadValue !== undefined) return row.runtimeCurrentValue;
+  return row.runtimeStatus === "执行中" ? "读取中..." : "等待读取";
+}
+
+function formatSessionDuration(startedAt: string | null, now: Date) {
+  if (!startedAt) return "—";
+  const startTime = new Date(startedAt).getTime();
+  if (!Number.isFinite(startTime)) return "—";
+  return `${Math.max(0, Math.floor((now.getTime() - startTime) / 60_000))} 分钟`;
+}
+
+function isSuccessfulWriteEvent(event: NodeOperationEvent) {
+  return (event.action === "write" || event.action === "write-readback") &&
+    (event.status === "写入成功" || event.status === "回读一致");
+}
+
+function compactNodeEventStatus(status: string) {
+  if (status.includes("失败") || status.includes("不一致")) return "失败";
+  if (status.includes("成功") || status.includes("一致") || status.includes("已连接")) return "成功";
+  return status;
+}
+
+function NodeSessionSummaryCard({
+  connected,
+  target,
+  detecting,
+  connectionError,
+  sessionStartedAt,
+  now,
+  writtenCount,
+  pendingCount,
+  failedCount,
+  latestEvent,
+  onDetect
+}: {
+  connected: boolean;
+  target?: string;
+  detecting: boolean;
+  connectionError: string;
+  sessionStartedAt: string | null;
+  now: Date;
+  writtenCount: number;
+  pendingCount: number;
+  failedCount: number;
+  latestEvent: NodeOperationEvent | null;
+  onDetect: () => void;
+}) {
+  const statusLabel = connected ? `在线 · ${target}` : detecting ? "检测中 · HDC 设备" : "离线 · HDC 设备";
+  const detailLabel = connected
+    ? "通过 HDC 读写 Linux 节点"
+    : connectionError ? "检测失败，请检查 HDC 环境" : "等待设备检测";
+
+  return (
+    <section className="session-summary-card" aria-label="调试会话摘要">
+      <div className="session-summary-primary">
+        <span className={connected ? "live-dot" : "idle-dot"} aria-hidden="true" />
+        <div>
+          <strong>{statusLabel}</strong>
+          <small>{detailLabel}</small>
+        </div>
+      </div>
+      <div className="session-summary-metrics">
+        <div>
+          <span>会话时长</span>
+          <strong>{formatSessionDuration(sessionStartedAt, now)}</strong>
+        </div>
+        <div>
+          <span>已写入</span>
+          <strong>{writtenCount}</strong>
+        </div>
+        <div>
+          <span>待写入</span>
+          <strong>{pendingCount}</strong>
+        </div>
+        <div>
+          <span>失败</span>
+          <strong>{failedCount}</strong>
+        </div>
+      </div>
+      <div className="session-summary-snapshot">
+        {latestEvent ? (
+          <>
+            <span>最近操作</span>
+            <strong>{latestEvent.parameterName}</strong>
+            <small>{compactNodeEventStatus(latestEvent.status)}</small>
+          </>
+        ) : (
+          <span>尚无操作 · 检测或写入后自动记录</span>
+        )}
+        <button className="button subtle" type="button" disabled={detecting} onClick={onDetect}>
+          <RotateCw size={16} aria-hidden="true" />
+          {detecting ? "检测中" : "重新检测"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
+  const titleId = `node-write-format-${row.id}`;
+  const exampleValue = row.targetValue || row.currentValue || "value";
+  const rangeText = `${row.range} ${row.unit}`.trim();
+
+  return (
+    <section className="node-write-format-panel" role="region" aria-labelledby={titleId}>
+      <div className="node-write-format-head">
+        <h3 id={titleId}>写入格式</h3>
+        <span>{row.accessMode}</span>
+      </div>
+      <p>输入内容会作为原始字符串写入设备端调试节点。</p>
+      <dl>
+        <div>
+          <dt>取值范围</dt>
+          <dd>{rangeText}</dd>
+        </div>
+        <div>
+          <dt>单位</dt>
+          <dd>{row.unit || "无单位"}</dd>
+        </div>
+        <div>
+          <dt>写入方式</dt>
+          <dd>{row.accessMode === "RW" ? "写入后自动回读并校验" : "仅写入，设备不支持回读确认"}</dd>
+        </div>
+      </dl>
+      <div className="node-write-format-example">
+        <strong>示例</strong>
+        <code>{exampleValue}</code>
+        <span>例如输入 {exampleValue}，系统会通过 HDC 将该值写入当前节点。</span>
+      </div>
+    </section>
+  );
 }
 
 export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => ({
       ...parameter,
-      runtimeCurrentValue: parameter.currentValue,
+      runtimeCurrentValue: canRead(parameter) ? "" : parameter.currentValue,
       draftValue: parameter.targetValue,
       runtimeStatus: initialStatus(parameter)
     }))
@@ -68,12 +198,16 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   const [detecting, setDetecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [events, setEvents] = useState<NodeOperationEvent[]>([]);
-  const [pendingWrite, setPendingWrite] = useState<PendingWrite>(null);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [moduleFilters, setModuleFilters] = useState<string[]>([]);
   const [modeFilters, setModeFilters] = useState<string[]>([]);
+  const [nowTick, setNowTick] = useState(() => new Date());
+  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const didAutoDetectRef = useRef(false);
+  const selectAllRef = useRef<HTMLInputElement>(null);
 
   const appendEvent = (event: Omit<NodeOperationEvent, "id" | "at">) => {
     setEvents((current) => [
@@ -82,38 +216,13 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
     ]);
   };
 
-  const detect = async () => {
-    setDetecting(true);
-    try {
-      const result = await detectHdcTargets();
-      setTarget(result.activeTarget);
-      setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");
-      appendEvent({
-        parameterName: "HDC 设备",
-        parameterKey: "hdc.list.targets",
-        accessMode: "RO",
-        action: "detect",
-        status: result.ok ? "已连接" : "检测失败",
-        returncode: result.ok ? 0 : 1,
-        stdout: result.targets.join("\n"),
-        stderr: result.stderr
-      });
-    } catch (error) {
-      setTarget(undefined);
-      setConnectionError(error instanceof Error ? error.message : "检测失败");
-    } finally {
-      setDetecting(false);
-    }
-  };
-
-  useEffect(() => {
-    if (didAutoDetectRef.current) return;
-    didAutoDetectRef.current = true;
-    void detect();
-  }, []);
-
   const connected = Boolean(target);
   const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(new Date()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const visibleRows = useMemo(() => {
     return rows.filter((row) => {
@@ -140,24 +249,81 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
     () => accessModeOptions.map((mode) => ({ value: mode, label: `${mode} (${rows.filter((row) => row.accessMode === mode).length})` })),
     [rows]
   );
+  const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null;
+  const selectableVisibleIds = useMemo(
+    () => visibleRows.filter((row) => canWrite(row)).map((row) => row.id),
+    [visibleRows]
+  );
+  const selectedVisibleCount = useMemo(
+    () => selectableVisibleIds.filter((id) => selectedIds.has(id)).length,
+    [selectableVisibleIds, selectedIds]
+  );
+  const allVisibleSelected = selectableVisibleIds.length > 0 && selectedVisibleCount === selectableVisibleIds.length;
+  const pendingRows = useMemo(
+    () => rows.filter((row) => canWrite(row) && row.runtimeStatus === "待写入"),
+    [rows]
+  );
+  const pendingSelectedRows = useMemo(
+    () => rows.filter((row) => selectedIds.has(row.id) && canWrite(row) && row.runtimeStatus === "待写入"),
+    [rows, selectedIds]
+  );
+  const writtenCount = useMemo(
+    () => events.filter(isSuccessfulWriteEvent).length,
+    [events]
+  );
+  const failedCount = useMemo(
+    () => rows.filter((row) => row.runtimeStatus === "失败").length,
+    [rows]
+  );
+  const latestEvent = events.at(-1) ?? null;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < selectableVisibleIds.length;
+    }
+  }, [selectableVisibleIds.length, selectedVisibleCount]);
 
   const updateRow = (id: string, patch: Partial<RuntimeRow>) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
   };
 
-  const readRow = async (row: RuntimeRow) => {
-    if (!target || !canRead(row)) return;
-    updateRow(row.id, { runtimeStatus: "读取中", error: undefined });
-    const result = await readNodeValue({ target, nodePath: row.nodePath });
+  const toggleSelectAll = () => {
+    const next = new Set(selectedIds);
+    if (allVisibleSelected) {
+      selectableVisibleIds.forEach((id) => next.delete(id));
+    } else {
+      selectableVisibleIds.forEach((id) => next.add(id));
+    }
+    setSelectedIds(next);
+  };
+
+  const toggleSelect = (id: string) => {
+    const next = new Set(selectedIds);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelectedIds(next);
+  };
+
+  const stashRow = (row: RuntimeRow) => {
+    updateRow(row.id, { runtimeStatus: "待写入" });
+    setSelectedIds((current) => new Set([...current, row.id]));
+    setEditingRowId(null);
+  };
+
+  const readRowWithTarget = async (row: RuntimeRow, activeTarget?: string) => {
+    if (!activeTarget || !canRead(row)) return;
+    updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
+    const result = await readNodeValue({ target: activeTarget, nodePath: row.nodePath });
     if (result.ok) {
+      const value = result.value ?? result.stdout?.trim() ?? "";
       updateRow(row.id, {
-        runtimeCurrentValue: result.value ?? "",
-        lastReadValue: result.value,
-        runtimeStatus: "读取成功"
+        runtimeCurrentValue: value,
+        lastReadValue: value,
+        runtimeStatus: "成功"
       });
     } else {
       updateRow(row.id, {
-        runtimeStatus: "读取失败",
+        runtimeStatus: "失败",
         error: result.error || result.stderr || "读取失败"
       });
     }
@@ -174,24 +340,71 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
     });
   };
 
-  const confirmWrite = async () => {
-    if (!pendingWrite || !target) return;
-    const { row, readBack } = pendingWrite;
-    setPendingWrite(null);
-    updateRow(row.id, { runtimeStatus: readBack ? "回读校验中" : "写入中", error: undefined });
+  const readReadableRows = async (activeTarget: string, currentRows: RuntimeRow[]) => {
+    for (const row of currentRows) {
+      if (canRead(row)) {
+        await readRowWithTarget(row, activeTarget);
+      }
+    }
+  };
+
+  const detect = async () => {
+    setDetecting(true);
+    try {
+      const result = await detectHdcTargets();
+      setTarget(result.activeTarget);
+      setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");
+      appendEvent({
+        parameterName: "HDC 设备",
+        parameterKey: "hdc.list.targets",
+        accessMode: "RO",
+        action: "detect",
+        status: result.ok ? "已连接" : "检测失败",
+        returncode: result.ok ? 0 : 1,
+        stdout: result.targets.join("\n"),
+        stderr: result.stderr
+      });
+      if (result.ok && result.activeTarget) {
+        setSessionStartedAt((current) => current ?? new Date().toISOString());
+        await readReadableRows(result.activeTarget, rows);
+      }
+    } catch (error) {
+      setTarget(undefined);
+      setConnectionError(error instanceof Error ? error.message : "检测失败");
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (didAutoDetectRef.current) return;
+    didAutoDetectRef.current = true;
+    void detect();
+  }, []);
+
+  const writeRow = async (row: RuntimeRow) => {
+    if (!target || !canWrite(row)) return;
+    const readBack = row.accessMode === "RW";
+    updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
     const result = await writeNodeValue({ target, nodePath: row.nodePath, value: row.draftValue, readBack });
 
     if (!result.ok) {
       updateRow(row.id, {
-        runtimeStatus: "写入失败",
+        runtimeStatus: "失败",
         error: result.error || result.writeResult?.stderr || "写入失败"
       });
     } else if (readBack && result.verified) {
-      updateRow(row.id, { runtimeCurrentValue: result.value ?? row.draftValue, runtimeStatus: "回读一致" });
+      const value = result.value ?? result.readResult?.stdout?.trim() ?? row.draftValue;
+      updateRow(row.id, { runtimeCurrentValue: value, lastReadValue: value, runtimeStatus: "成功" });
     } else if (readBack) {
-      updateRow(row.id, { runtimeCurrentValue: result.value ?? row.runtimeCurrentValue, runtimeStatus: "回读不一致" });
+      const value = result.value ?? result.readResult?.stdout?.trim();
+      updateRow(row.id, {
+        runtimeCurrentValue: value ?? row.runtimeCurrentValue,
+        lastReadValue: value ?? row.lastReadValue,
+        runtimeStatus: "失败"
+      });
     } else {
-      updateRow(row.id, { runtimeStatus: "写入成功" });
+      updateRow(row.id, { runtimeStatus: "成功" });
     }
 
     appendEvent({
@@ -206,6 +419,23 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
       nodePath: row.nodePath
     });
   };
+
+  const bulkWriteRows = async () => {
+    const rowsToWrite = selectedIds.size > 0 ? pendingSelectedRows : pendingRows;
+    if (!connected || rowsToWrite.length === 0) return;
+
+    for (const row of rowsToWrite) {
+      await writeRow(row);
+    }
+
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      rowsToWrite.forEach((row) => next.delete(row.id));
+      return next;
+    });
+  };
+
+  const batchTargetRows = selectedIds.size > 0 ? pendingSelectedRows : pendingRows;
 
   return (
     <div className="workbench-page node-debugging-page">
@@ -230,12 +460,19 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
       </header>
 
       <div className="workbench-one-col">
-        {connectionError ? (
-          <div className="disconnected-banner" role="status">
-            <Terminal size={18} aria-hidden="true" />
-            <span>{connectionError}</span>
-          </div>
-        ) : null}
+        <NodeSessionSummaryCard
+          connected={connected}
+          target={target}
+          detecting={detecting}
+          connectionError={connectionError}
+          sessionStartedAt={sessionStartedAt}
+          now={nowTick}
+          writtenCount={writtenCount}
+          pendingCount={pendingRows.length}
+          failedCount={failedCount}
+          latestEvent={latestEvent}
+          onDetect={() => void detect()}
+        />
 
         <section className="debug-table">
           <div className="panel-header">
@@ -267,6 +504,16 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
               <table className="parameters-table-grid">
                 <thead>
                   <tr>
+                    <th scope="col">
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        aria-label="全选当前可写节点"
+                        checked={allVisibleSelected}
+                        disabled={selectableVisibleIds.length === 0}
+                        onChange={toggleSelectAll}
+                      />
+                    </th>
                     <th scope="col">参数名称</th>
                     <th scope="col">访问模式</th>
                     <th scope="col">当前值</th>
@@ -279,53 +526,39 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                 <tbody>
                   {visibleRows.map((row) => (
                     <tr key={row.id}>
+                      <td data-label="选择">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${row.name}`}
+                          checked={selectedIds.has(row.id)}
+                          disabled={!canWrite(row)}
+                          onChange={() => toggleSelect(row.id)}
+                        />
+                      </td>
                       <td data-label="参数名称">
                         <strong>{row.name}</strong>
                         <small>{row.key}</small>
                       </td>
                       <td data-label="访问模式">{row.accessMode}</td>
                       <td className="mono" data-label="当前值">
-                        {row.accessMode === "WO" ? "写入后不可回读" : row.runtimeCurrentValue}
+                        {displayCurrentValue(row)}
                         {row.error ? <small className="node-row-error">{row.error}</small> : null}
                       </td>
                       <td data-label="目标写入值">
-                        {canWrite(row) ? (
-                          <input
-                            aria-label={`${row.key} 目标写入值`}
-                            value={row.draftValue}
-                            onChange={(event) => updateRow(row.id, { draftValue: event.target.value, runtimeStatus: "待写入" })}
-                          />
-                        ) : (
-                          <span>只读</span>
-                        )}
+                        {canWrite(row) ? row.draftValue : <span>只读</span>}
                       </td>
                       <td data-label="范围">{row.range} {row.unit}</td>
-                      <td data-label="状态"><Badge tone={statusTone(row.runtimeStatus)}>{row.runtimeStatus}</Badge></td>
+                      <td data-label="状态"><span className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
                       <td className="parameter-row-actions" data-label="操作">
-                        <div className="parameter-row-actions-stack">
-                          {canRead(row) ? (
-                            <button
-                              className="button subtle"
-                              type="button"
-                              disabled={!connected || row.runtimeStatus === "读取中"}
-                              onClick={() => void readRow(row)}
-                            >
-                              <Terminal size={14} />
-                              读取
-                            </button>
-                          ) : null}
-                          {canWrite(row) ? (
-                            <button
-                              className="submit-round-button debugging-deploy-button"
-                              type="button"
-                              disabled={!connected || row.runtimeStatus === "写入中" || row.runtimeStatus === "回读校验中"}
-                              onClick={() => setPendingWrite({ row, readBack: row.accessMode === "RW" })}
-                            >
-                              {row.accessMode === "RW" ? <RotateCw size={14} /> : <Send size={14} />}
-                              {row.accessMode === "RW" ? "写入并回读" : "写入"}
-                            </button>
-                          ) : null}
-                        </div>
+                        <button
+                          className="icon-button parameter-row-edit"
+                          type="button"
+                          aria-label={`${canWrite(row) ? "查看/修改" : "查看详情"} ${row.name}`}
+                          title={canWrite(row) ? "查看/修改" : "查看详情"}
+                          onClick={() => setEditingRowId(row.id)}
+                        >
+                          {canWrite(row) ? <Pencil size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -333,22 +566,118 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
               </table>
             </div>
           </section>
+
+          <div className="parameters-submit-bar parameters-submit-bar-active" aria-label="节点批量下发操作栏">
+            <div>
+              <strong>{selectedIds.size > 0 ? `已选 ${selectedIds.size} 项` : `${pendingRows.length} 项节点等待写入`}</strong>
+              <span>{selectedIds.size > 0 ? `其中 ${pendingSelectedRows.length} 项为待写入状态` : "可先在节点详情中暂存目标值，再批量下发到设备。"}</span>
+            </div>
+            <div className="debugging-action-buttons">
+              <button
+                className="submit-round-button debugging-deploy-button"
+                type="button"
+                disabled={!connected || batchTargetRows.length === 0}
+                onClick={() => void bulkWriteRows()}
+              >
+                <Send size={16} aria-hidden="true" />
+                {selectedIds.size > 0 ? `下发选中 (${pendingSelectedRows.length})` : "批量下发节点"}
+              </button>
+            </div>
+          </div>
         </section>
 
         <NodeOperationHistoryPanel events={events} />
       </div>
 
-      {pendingWrite ? (
-        <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="node-write-confirm-title">
-          <div className="confirm-dialog node-write-confirm-dialog">
-            <h2 id="node-write-confirm-title">确认写入节点</h2>
-            <p>{pendingWrite.row.name} 将写入目标值 {pendingWrite.row.draftValue}。风险等级：{riskLabels[pendingWrite.row.risk]}。</p>
-            <div className="dialog-actions">
-              <button className="button subtle" type="button" onClick={() => setPendingWrite(null)}>取消</button>
-              <button className="button danger" type="button" onClick={() => void confirmWrite()}>确认写入</button>
+      {editingRow ? (
+        <WorkbenchSheet
+          open
+          onClose={() => setEditingRowId(null)}
+          title="节点详情"
+          description={`${editingRow.name} · ${editingRow.key}`}
+          footer={
+            canWrite(editingRow) ? (
+              <div className="draft-sheet-footer">
+                <span>
+                  {editingRow.accessMode === "RW"
+                    ? "写入后将自动回读并校验设备返回值。"
+                    : "该节点仅支持写入，写入后不可回读。"}
+                </span>
+                <div className="draft-sheet-footer-actions">
+                  <button
+                    className="button subtle"
+                    type="button"
+                    disabled={editingRow.runtimeStatus === "执行中"}
+                    onClick={() => stashRow(editingRow)}
+                  >
+                    暂存
+                  </button>
+                  <button
+                    className="submit-round-button debugging-deploy-button"
+                    type="button"
+                    disabled={!connected || editingRow.runtimeStatus === "执行中"}
+                    onClick={() => void writeRow(editingRow)}
+                  >
+                    {editingRow.accessMode === "RW" ? <RotateCw size={14} aria-hidden="true" /> : <Send size={14} aria-hidden="true" />}
+                    {editingRow.accessMode === "RW" ? "写入并回读" : "写入"}
+                  </button>
+                </div>
+              </div>
+            ) : undefined
+          }
+        >
+          <div className="draft-sheet-stack">
+            <div className="debug-detail-card node-detail-card">
+              <div className="debug-detail-head">
+                <div>
+                  <strong>{editingRow.name}</strong>
+                  <code>{editingRow.key}</code>
+                </div>
+                <span className={statusClass(editingRow.runtimeStatus)}>{editingRow.runtimeStatus}</span>
+              </div>
+              {editingRow.description ? (
+                <p className="debug-detail-description">{editingRow.description}</p>
+              ) : null}
+              <div className="debug-detail-fields">
+                <div className="debug-detail-row">
+                  <span>访问模式</span>
+                  <strong>{editingRow.accessMode}</strong>
+                </div>
+                <div className="debug-detail-row">
+                  <span>当前值</span>
+                  <strong className="mono">{displayCurrentValue(editingRow)} {editingRow.lastReadValue !== undefined ? editingRow.unit : ""}</strong>
+                </div>
+                <div className="debug-detail-row">
+                  <span>目标写入值</span>
+                  <strong className="mono">{canWrite(editingRow) ? `${editingRow.draftValue} ${editingRow.unit}` : "只读"}</strong>
+                </div>
+                <div className="debug-detail-row">
+                  <span>有效范围</span>
+                  <strong>{editingRow.range} {editingRow.unit}</strong>
+                </div>
+                <div className="debug-detail-row">
+                  <span>模块</span>
+                  <strong>{editingRow.module}</strong>
+                </div>
+              </div>
+              {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
+              {canWrite(editingRow) ? (
+                <>
+                  <NodeWriteFormatPanel row={editingRow} />
+                  <label className="field-label" htmlFor={`node-target-${editingRow.id}`}>目标写入值</label>
+                  <textarea
+                    id={`node-target-${editingRow.id}`}
+                    aria-label="目标写入值"
+                    className="node-target-editor"
+                    rows={8}
+                    value={editingRow.draftValue}
+                    onChange={(event) => updateRow(editingRow.id, { draftValue: event.target.value, runtimeStatus: "待写入" })}
+                  />
+                </>
+              ) : null}
             </div>
           </div>
-        </div>
+        </WorkbenchSheet>
       ) : null}
     </div>
   );
