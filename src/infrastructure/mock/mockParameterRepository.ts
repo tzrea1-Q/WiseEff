@@ -16,25 +16,51 @@ function matchesQuery(parameter: ParameterRecord, query?: ParameterListQuery) {
   return true;
 }
 
+function cloneParameterRecord(parameter: ParameterRecord): ParameterRecord {
+  return {
+    ...parameter,
+    history: parameter.history.map((entry) => ({ ...entry }))
+  };
+}
+
+function cloneChangeRequest(request: ChangeRequest): ChangeRequest {
+  return {
+    ...request,
+    aiSuggestion: {
+      ...request.aiSuggestion,
+      reasons: [...request.aiSuggestion.reasons],
+      similarRequests: [...request.aiSuggestion.similarRequests]
+    },
+    impact: request.impact.map((item) => ({ ...item }))
+  };
+}
+
+function cloneSubmissionRound(round: ParameterSubmissionRound): ParameterSubmissionRound {
+  return {
+    ...round,
+    items: round.items.map((item) => ({ ...item }))
+  };
+}
+
 export function createMockParameterRepository(runtime: MockRuntimeState): ParameterRepository {
   return {
     async listProjects(): Promise<Project[]> {
       return [...projects];
     },
     async listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]> {
-      return readMockState(runtime).parameters.filter((parameter) => matchesQuery(parameter, query));
+      return readMockState(runtime).parameters.filter((parameter) => matchesQuery(parameter, query)).map(cloneParameterRecord);
     },
     async listChangeRequests(): Promise<ChangeRequest[]> {
-      return [...readMockState(runtime).changeRequests];
+      return readMockState(runtime).changeRequests.map(cloneChangeRequest);
     },
     async listSubmissionRounds(): Promise<ParameterSubmissionRound[]> {
-      return [...readMockState(runtime).parameterSubmissionRounds];
+      return readMockState(runtime).parameterSubmissionRounds.map(cloneSubmissionRound);
     },
     async submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound> {
       const before = readMockState(runtime);
       const next = appReducer(before, { type: "ADD_PARAMETER_SUBMISSION_ROUND", items: input.items, reason: input.reason });
       writeMockState(runtime, next);
-      return next.parameterSubmissionRounds[0];
+      return cloneSubmissionRound(next.parameterSubmissionRounds[0]);
     }
   };
 }
