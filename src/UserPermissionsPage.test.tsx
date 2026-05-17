@@ -10,12 +10,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderPage() {
+function renderPage(search = "") {
   const state = { ...createPrototypeState(), activeRoleId: "admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
 
-  const utils = render(<UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search="" />);
+  const utils = render(<UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />);
 
   return { ...utils, state, dispatch, onNavigate };
 }
@@ -28,6 +28,12 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByRole("heading", { name: "User permissions" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Guest" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Committer" })).toBeInTheDocument();
+    expect(screen.getByText("Xu Yun")).toBeInTheDocument();
+  });
+
+  it("ignores unrelated URL search params when filtering users", () => {
+    renderPage("?foo=bar");
+
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
@@ -48,6 +54,20 @@ describe("UserPermissionsPage", () => {
       title: "Validation Engineer",
       roleId: "user"
     });
+  });
+
+  it("keeps the add user dialog open when trimmed name or email is empty", async () => {
+    const { dispatch } = renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add user" }));
+    await userEvent.type(screen.getByLabelText("Name"), "   ");
+    await userEvent.type(screen.getByLabelText("Email"), "demo@chargelab.cn");
+    await userEvent.type(screen.getByLabelText("Title"), "Validation Engineer");
+    await userEvent.click(screen.getByRole("button", { name: "Create user" }));
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Add user" })).toBeInTheDocument();
+    expect(screen.getByText("Name and email are required.")).toBeInTheDocument();
   });
 
   it("dispatches role and status changes from the user table", async () => {

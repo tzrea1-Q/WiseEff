@@ -19,7 +19,7 @@ const statusOptions = [
 
 type StatusFilter = (typeof statusOptions)[number]["value"];
 
-export function UserPermissionsPage({ state, dispatch, search }: UserPermissionsPageProps) {
+export function UserPermissionsPage({ state, dispatch, search: _search }: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -27,9 +27,10 @@ export function UserPermissionsPage({ state, dispatch, search }: UserPermissions
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
+  const [addUserError, setAddUserError] = useState("");
   const [initialRoleId, setInitialRoleId] = useState<PlatformRoleId>("user");
 
-  const normalizedQuery = `${search} ${query}`.trim().toLowerCase();
+  const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = useMemo(
     () =>
       state.users.filter((user) => {
@@ -47,17 +48,27 @@ export function UserPermissionsPage({ state, dispatch, search }: UserPermissions
 
   function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const trimmedTitle = title.trim();
+
+    if (!trimmedName || !trimmedEmail) {
+      setAddUserError("Name and email are required.");
+      return;
+    }
+
     dispatch({
       type: "ADD_USER",
-      name: name.trim(),
-      email: email.trim(),
-      title: title.trim(),
+      name: trimmedName,
+      email: trimmedEmail,
+      title: trimmedTitle,
       roleId: initialRoleId
     });
     setAddUserOpen(false);
     setName("");
     setEmail("");
     setTitle("");
+    setAddUserError("");
     setInitialRoleId("user");
   }
 
@@ -188,11 +199,26 @@ export function UserPermissionsPage({ state, dispatch, search }: UserPermissions
             <h3 id="add-user-title">Add user</h3>
             <label>
               Name
-              <input value={name} onChange={(event) => setName(event.target.value)} required />
+              <input
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  setAddUserError("");
+                }}
+                required
+              />
             </label>
             <label>
               Email
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setAddUserError("");
+                }}
+                required
+              />
             </label>
             <label>
               Title
@@ -208,6 +234,7 @@ export function UserPermissionsPage({ state, dispatch, search }: UserPermissions
                 ))}
               </select>
             </label>
+            {addUserError ? <p role="alert">{addUserError}</p> : null}
             <div className="user-permissions-modal-actions">
               <button className="button" type="button" onClick={() => setAddUserOpen(false)}>
                 Cancel
