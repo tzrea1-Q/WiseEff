@@ -1,6 +1,7 @@
 import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { AppAction, PageProps, ParameterEditorDraft, ParameterValueDraft } from "./App";
+import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
+import type { PageProps } from "./app/routes";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";

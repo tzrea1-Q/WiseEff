@@ -1283,6 +1283,19 @@ describe("WiseEff app shell", () => {
     expect(within(topbar).queryByRole("heading", { level: 1, name: "参数调试管理后台" })).not.toBeInTheDocument();
   });
 
+  it("keeps the debugging admin list stretched to the editor height", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const gridBlock = readCssBlock(styles, ".debug-admin-grid");
+    const listBlock = readCssBlock(styles, ".debug-admin-list");
+    const paramListBlock = readCssBlock(styles, ".debug-admin-param-list");
+
+    expect(gridBlock).toContain("align-items: stretch;");
+    expect(listBlock).toContain("height: 100%;");
+    expect(listBlock).toContain("min-height: 0;");
+    expect(listBlock).not.toContain("max-height:");
+    expect(paramListBlock).toContain("min-height: 0;");
+  });
+
   it("saves debug admin edits to the local JSON config endpoint", () => {
     window.history.replaceState(null, "", "/debugging-admin");
     const fetchMock = vi.fn().mockResolvedValue({

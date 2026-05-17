@@ -1,12 +1,15 @@
-import { useMemo, type Dispatch, type SetStateAction } from "react";
-import { projects, type PrototypeState } from "../mockData";
+import { type Dispatch, type SetStateAction } from "react";
+import type { PrototypeState } from "../mockData";
 import { useTopBarActions } from "../components/layout";
 import { ComparisonFilterBar } from "./components/ComparisonFilterBar";
 import { ComparisonHeader } from "./components/ComparisonHeader";
 import { ComparisonMatrix } from "./components/ComparisonMatrix";
 import { ComparisonMetrics } from "./components/ComparisonMetrics";
-import { useComparisonData } from "./hooks/useComparisonData";
 import { useComparisonFilters } from "./hooks/useComparisonFilters";
+import {
+  fallbackComparisonProjectId,
+  useParameterComparisonViewModel
+} from "@/features/parameter-comparison/useParameterComparisonViewModel";
 import type { ComparisonProjectSelection } from "./types";
 import { exportComparisonRowsAsExcel } from "./utils/exportToExcel";
 
@@ -19,10 +22,6 @@ export type ParameterComparisonPageProps = {
   onSearchChange?: (search: string) => void;
 };
 
-function fallbackProjectId(projectId: string) {
-  return projects.find((project) => project.id !== projectId)?.id ?? projectId;
-}
-
 export function ParameterComparisonPage({
   state,
   onNavigate,
@@ -31,30 +30,19 @@ export function ParameterComparisonPage({
   onComparisonSelectionChange,
   onSearchChange = () => undefined
 }: ParameterComparisonPageProps) {
-  const baseProject = projects.find((project) => project.id === comparisonSelection.baseProjectId) ?? projects[0];
-  const targetProject = projects.find((project) => project.id === comparisonSelection.targetProjectId) ?? projects[1] ?? projects[0];
   const { filters, setDriftOnly, setQuery, setRisk, setModules, resetFilters } = useComparisonFilters({ search, onSearchChange });
-  const comparisonData = useMemo(
-    () =>
-      useComparisonData({
-        state,
-        baseProjectId: baseProject.id,
-        targetProjectId: targetProject.id,
-        filters
-      }),
-    [baseProject.id, filters.driftOnly, filters.modules, filters.query, filters.risk, state.parameters, targetProject.id]
-  );
+  const { projects, baseProject, targetProject, comparisonData } = useParameterComparisonViewModel({ state, comparisonSelection, filters });
 
   const chooseBaseProject = (projectId: string) => {
     onComparisonSelectionChange((current) => ({
       baseProjectId: projectId,
-      targetProjectId: current.targetProjectId === projectId ? fallbackProjectId(projectId) : current.targetProjectId
+      targetProjectId: current.targetProjectId === projectId ? fallbackComparisonProjectId(projectId) : current.targetProjectId
     }));
   };
 
   const chooseTargetProject = (projectId: string) => {
     onComparisonSelectionChange((current) => ({
-      baseProjectId: current.baseProjectId === projectId ? fallbackProjectId(projectId) : current.baseProjectId,
+      baseProjectId: current.baseProjectId === projectId ? fallbackComparisonProjectId(projectId) : current.baseProjectId,
       targetProjectId: projectId
     }));
   };
