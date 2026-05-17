@@ -1,28 +1,24 @@
-import type { DebugParameter, Device } from "@/domain/debugging/types";
-
 export type DeviceTarget = {
-  target?: string;
-  deviceId?: string;
+  id: string;
+  label: string;
 };
 
 export type ReadNodeInput = {
-  target?: DeviceTarget;
+  target?: string;
   nodePath: string;
 };
 
 export type NodeReadResult = {
   ok: boolean;
-  command?: string[];
-  returncode?: number;
+  value?: string;
   stdout?: string;
   stderr?: string;
-  durationMs?: number;
-  value?: string;
   error?: string;
+  durationMs?: number;
 };
 
 export type WriteNodeInput = {
-  target?: DeviceTarget;
+  target?: string;
   nodePath: string;
   value: string;
   readBack: boolean;
@@ -30,16 +26,15 @@ export type WriteNodeInput = {
 
 export type NodeWriteResult = {
   ok: boolean;
-  writeResult?: NodeReadResult;
-  readResult?: NodeReadResult;
   value?: string;
   verified?: boolean;
   error?: string;
+  writeResult?: NodeReadResult;
+  readResult?: NodeReadResult;
 };
 
 export interface DebuggingGateway {
-  listDevices(projectId?: string): Promise<Device[]>;
-  listDebugParameters(projectId?: string): Promise<DebugParameter[]>;
+  detectTargets(): Promise<DeviceTarget[]>;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;
   writeNode(input: WriteNodeInput): Promise<NodeWriteResult>;
 }
