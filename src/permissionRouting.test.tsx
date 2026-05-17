@@ -1,5 +1,6 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { canAccessPage } from "./app/permissions";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
 
@@ -51,5 +52,20 @@ describe("permission-aware routing", () => {
     render(<App />);
 
     expect(document.querySelector(".permission-denied-page")).toBeInTheDocument();
+  });
+});
+
+describe("permission route matrix", () => {
+  it("keeps User out of review and admin pages", () => {
+    expect(canAccessPage("user", "parameter-review")).toBe(false);
+    expect(canAccessPage("user", "parameter-admin")).toBe(false);
+    expect(canAccessPage("user", "logs")).toBe(true);
+    expect(canAccessPage("user", "debugging")).toBe(true);
+  });
+
+  it("keeps Committer out of admin pages while allowing review", () => {
+    expect(canAccessPage("committer", "parameter-review")).toBe(true);
+    expect(canAccessPage("committer", "debugging-admin")).toBe(false);
+    expect(canAccessPage("committer", "user-permissions")).toBe(false);
   });
 });

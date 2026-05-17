@@ -8,8 +8,9 @@ import {
   type Column
 } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
-import { applyTableFilters, applyTimeWindow, deriveInsight, deriveLogAdminRole, deriveMetrics } from "@/logAdminAnalytics";
+import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
 import type { AppAction } from "./App";
@@ -95,8 +96,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   );
   const availableModules = useMemo(() => Array.from(new Set(windowLogs.map((log) => log.source))).sort(), [windowLogs]);
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
-  const role = deriveLogAdminRole(state.activeRoleId);
-  const canAct = role !== "Viewer";
+  const canAct = canPerform(state.activeRoleId, "admin.access");
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
   const projectName = (projectId: string): string => state.configDraft.projects.find((project) => project.id === projectId)?.name ?? projectId;

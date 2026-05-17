@@ -1,26 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { applyTableFilters, applyTimeWindow, deriveInsight, deriveLogAdminRole, deriveMetrics } from "./logAdminAnalytics";
+import { canAccessPage } from "./app/permissions";
+import * as logAdminAnalytics from "./logAdminAnalytics";
+import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "./logAdminAnalytics";
 import type { LogRecord } from "./mockData";
 
-describe("deriveLogAdminRole", () => {
-  it("maps admin to Admin", () => {
-    expect(deriveLogAdminRole("admin")).toBe("Admin");
+describe("log admin role policy compatibility", () => {
+  it("uses Admin-only page access for log admin", () => {
+    expect(canAccessPage("admin", "log-admin")).toBe(true);
+    expect(canAccessPage("committer", "log-admin")).toBe(false);
+    expect(canAccessPage("user", "log-admin")).toBe(false);
+    expect(canAccessPage("guest", "log-admin")).toBe(false);
   });
 
-  it("maps parameter-admin to Editor", () => {
-    expect(deriveLogAdminRole("parameter-admin")).toBe("Editor");
-  });
-
-  it("maps hardware to Viewer by default", () => {
-    expect(deriveLogAdminRole("hardware")).toBe("Viewer");
-  });
-
-  it("maps unknown role to Viewer", () => {
-    expect(deriveLogAdminRole("unknown-id")).toBe("Viewer");
-  });
-
-  it("handles empty string as Viewer", () => {
-    expect(deriveLogAdminRole("")).toBe("Viewer");
+  it("does not expose a private log admin role helper", () => {
+    expect((logAdminAnalytics as Record<string, unknown>).deriveLogAdminRole).toBeUndefined();
   });
 });
 

@@ -1,14 +1,4 @@
-import type { LogAdminRole, LogRecord, LogStatus, TimeWindow } from "./mockData";
-
-export function deriveLogAdminRole(activeRoleId: string): LogAdminRole {
-  if (activeRoleId === "admin") {
-    return "Admin";
-  }
-  if (activeRoleId === "parameter-admin") {
-    return "Editor";
-  }
-  return "Viewer";
-}
+import type { LogRecord, LogStatus, TimeWindow } from "./mockData";
 
 function startOfDay(date: Date): Date {
   const copy = new Date(date.getTime());

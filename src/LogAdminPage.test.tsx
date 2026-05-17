@@ -31,7 +31,7 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
 }
 
 function renderPage() {
-  const state = { ...createPrototypeState(), activeRoleId: "parameter-admin" };
+  const state = { ...createPrototypeState(), activeRoleId: "admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
   const utils = render(
@@ -144,7 +144,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_UNARCHIVE_LOG" }));
   });
 
-  it("disables drawer action buttons for Viewer role", async () => {
+  it("disables drawer action buttons for non-admin roles", async () => {
     const state = createPrototypeState();
     const viewerState = { ...state, activeRoleId: "hardware" };
     const dispatch = vi.fn();
