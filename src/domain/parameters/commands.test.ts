@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPrototypeState } from "@/mockData";
+import { createPrototypeState, projects, roles } from "@/mockData";
 import { submitParameterRound } from "./commands";
 
 describe("submitParameterRound", () => {
@@ -8,6 +8,8 @@ describe("submitParameterRound", () => {
     const parameter = state.parameters.find((item) => item.projectId === "aurora")!;
 
     const next = submitParameterRound(state, {
+      projects,
+      roles,
       items: [
         {
           parameterId: parameter.id,
@@ -33,6 +35,8 @@ describe("submitParameterRound", () => {
     const state = createPrototypeState();
 
     const next = submitParameterRound(state, {
+      projects,
+      roles,
       items: [{ parameterId: "missing-parameter", targetValue: "3650", reason: "ignored" }]
     });
 
@@ -44,6 +48,8 @@ describe("submitParameterRound", () => {
     const parameter = state.parameters.find((item) => item.projectId === "aurora")!;
 
     const next = submitParameterRound(state, {
+      projects,
+      roles,
       items: [
         {
           parameterId: parameter.id,
@@ -56,5 +62,26 @@ describe("submitParameterRound", () => {
 
     expect(next.parameterSubmissionRounds[0].items[0].reason).toBe("单项原因");
     expect(next.changeRequests[0].aiSummary).toBe("单项原因");
+  });
+
+  it("uses caller-provided project and role context", () => {
+    const state = createPrototypeState();
+    const parameter = state.parameters.find((item) => item.projectId === "aurora")!;
+
+    const next = submitParameterRound(state, {
+      projects: [{ id: parameter.projectId, name: "Injected Project Name" }],
+      roles: [{ id: state.activeRoleId, name: "Injected Submitter" }],
+      items: [
+        {
+          parameterId: parameter.id,
+          targetValue: "3650",
+          reason: "Injected context reason"
+        }
+      ]
+    });
+
+    expect(next.parameterSubmissionRounds[0].projectName).toBe("Injected Project Name");
+    expect(next.parameterSubmissionRounds[0].submitter).toBe("Injected Submitter");
+    expect(next.changeRequests[0].submitter).toBe("Injected Submitter");
   });
 });

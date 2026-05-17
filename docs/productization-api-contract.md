@@ -94,3 +94,14 @@ Tool Governance: agent tool calls must be scoped by page context, user role, and
 - Index `DebugEvent.deviceId`, `DebugEvent.snapshotId`, and `DebugEvent.at` for operation history.
 - Index `AgentSession.context.pageKey`, `AgentSession.context.projectId`, and `AgentSession.context.roleId` for scoped assistant sessions.
 - Index `AgentToolCall.sessionId`, `AgentToolCall.name`, and `AgentToolCall.requiresApproval` for governance and audit review.
+
+## Frontend Boundary Migration Status
+
+- Domain type boundaries exist.
+- Application ports exist.
+- Mock runtime state exists.
+- Parameter comparison derivation is available as a domain selector.
+- Parameter comparison has a feature view model.
+- HDC access is wrapped behind `DebuggingGateway`.
+- WiseAgent has a mock `AgentGateway` boundary.
+- DTO mapper skeleton exists for parameter and log records.

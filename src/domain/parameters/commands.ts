@@ -1,6 +1,11 @@
-import { projects, roles, type PrototypeState } from "@/mockData";
 import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
-import type { ChangeRequest, ParameterDraftItem, ParameterRecord, ParameterSubmissionItem } from "./types";
+import type {
+  ChangeRequest,
+  ParameterDraftItem,
+  ParameterRecord,
+  ParameterSubmissionItem,
+  ParameterSubmissionRound
+} from "./types";
 
 function buildRuntimeReviewFields(summary: string, module: string) {
   const suggestion = buildAISuggestion({
@@ -21,9 +26,32 @@ function buildRuntimeReviewFields(summary: string, module: string) {
   };
 }
 
-export type SubmitParameterRoundInput = { items: ParameterDraftItem[]; reason?: string };
+type ProjectSummary = {
+  id: string;
+  name: string;
+};
 
-export function submitParameterRound(state: PrototypeState, input: SubmitParameterRoundInput): PrototypeState {
+type SubmitterRole = {
+  id: string;
+  name: string;
+};
+
+type ParameterRoundState = {
+  parameters: ParameterRecord[];
+  activeRoleId: string;
+  changeRequests: ChangeRequest[];
+  parameterSubmissionRounds: ParameterSubmissionRound[];
+  notifications: string[];
+};
+
+export type SubmitParameterRoundInput = {
+  items: ParameterDraftItem[];
+  reason?: string;
+  projects: ProjectSummary[];
+  roles: SubmitterRole[];
+};
+
+export function submitParameterRound<TState extends ParameterRoundState>(state: TState, input: SubmitParameterRoundInput): TState {
   const draftItems = input.items
     .map((item) => {
       const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
@@ -35,8 +63,8 @@ export function submitParameterRound(state: PrototypeState, input: SubmitParamet
     return state;
   }
 
-  const project = projects.find((item) => item.id === draftItems[0].parameter.projectId);
-  const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+  const project = input.projects.find((item) => item.id === draftItems[0].parameter.projectId);
+  const submitter = input.roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
   const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
   const requestSeed = 8910 + state.changeRequests.length;
   const requests = draftItems.map(({ parameter, item }, index): ChangeRequest => {
@@ -86,5 +114,5 @@ export function submitParameterRound(state: PrototypeState, input: SubmitParamet
       ...state.parameterSubmissionRounds
     ],
     notifications: [`已提交 ${roundId}，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
-  };
+  } as TState;
 }
