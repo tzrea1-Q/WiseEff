@@ -3114,7 +3114,7 @@ td small {
   display: grid;
   grid-template-columns: 380px 1fr;
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .debug-admin-list {
@@ -3124,7 +3124,8 @@ td small {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 520px;
+  height: 100%;
+  min-height: 0;
 }
 
 .debug-admin-list-title-row {
@@ -3188,6 +3189,7 @@ td small {
   padding: 0;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
 .debug-admin-param-row {
