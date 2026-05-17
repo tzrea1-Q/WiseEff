@@ -88,6 +88,8 @@ stitch_ai_driven_business_synergy_platform/
 
 当前原型不依赖外部 API key、后端服务或数据库。
 
+产品化边界规划见 docs/productization-api-contract.md。该文档描述后续接入后端、数据库、设备网关和真实 Agent 时的前端契约方向。
+
 ## 仓库规范
 
 `node_modules/`、`dist/`、本地开发日志、Codex/Superpowers 临时状态、视觉 QA 截图等生成内容不会提交到 Git。请提交源码、配置、测试、产品/设计文档和 lockfile。
