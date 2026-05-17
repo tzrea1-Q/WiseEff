@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAgentPlan, getPageByPath, navigationItems } from "./appConfig";
+import { createAgentPlan, getPageByPath, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
   it("exposes the full PRD route map", () => {
@@ -56,6 +56,19 @@ describe("WiseEff prototype configuration", () => {
 
     const plan = createAgentPlan("/node-debugging");
     expect(plan.contextTitle).toContain("节点");
+  });
+  it("resolves the shared user permissions route outside the main navigation map", () => {
+    const page = getPageByPath("/user-permissions");
+
+    expect(page.key).toBe("user-permissions");
+    expect(page.path).toBe("/user-permissions");
+    expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
+  });
+
+  it("makes system settings a utility route to user permissions", () => {
+    const systemSettings = utilityItems.find((item) => item.label.includes("系统设置") || item.label.includes("绯荤粺璁剧疆"));
+
+    expect(systemSettings?.path).toBe("/user-permissions");
   });
 });
 

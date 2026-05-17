@@ -163,9 +163,9 @@ export const navigationItems: PageConfig[] = [
   }
 ];
 
-export const utilityItems = [
+export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
   { label: "Agent 能力", icon: Bot },
-  { label: "系统设置", icon: Settings2 }
+  { label: "系统设置", icon: Settings2, path: "/user-permissions" }
 ];
 
 export function getPageByPath(path: string): PageConfig {
@@ -178,6 +178,18 @@ export function getPageByPath(path: string): PageConfig {
       icon: FileText,
       title: "我的历史提交",
       subtitle: "查看、撤回和追踪当前用户发起的参数提交轮次"
+    };
+  }
+
+  if (path === "/user-permissions") {
+    return {
+      key: "user-permissions",
+      path: "/user-permissions",
+      label: "用户权限",
+      group: "平台总览",
+      icon: Settings2,
+      title: "用户权限管理",
+      subtitle: "统一管理 WiseEff 平台用户、四档角色和访问权限"
     };
   }
 

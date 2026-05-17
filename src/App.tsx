@@ -32,9 +32,9 @@ import type {
 } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { PageRouter, type PageProps } from "@/app/routes";
-import { canPerform } from "@/app/permissions";
+import { canAccessPage, canPerform } from "@/app/permissions";
 import { submitParameterRound } from "@/domain/parameters/commands";
-import type { PlatformRoleId } from "@/domain/users/types";
+import { migrateLegacyRoleId, type PlatformRoleId } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
@@ -353,6 +353,7 @@ function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const auditActor = currentUser?.name ?? "system";
+  const activeRoleId = migrateLegacyRoleId(state.activeRoleId);
 
   switch (action.type) {
     case "SET_PROJECT":
@@ -360,6 +361,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "SET_ROLE":
       return { ...state, activeRoleId: action.roleId };
     case "ADD_CHANGE_REQUEST": {
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
       const parameter = state.parameters.find((item) => item.id === action.parameterId);
       if (!parameter) {
         return state;
@@ -415,8 +417,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PARAMETER_SUBMISSION_ROUND":
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
       return submitParameterRound(state, { items: action.items, reason: action.reason, projects, roles, buildRuntimeReviewFields });
     case "STASH_PARAMETER_SUBMISSION_ROUND": {
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
       const draftItems = action.items
         .map((item) => {
           const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
@@ -475,6 +479,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [`${action.roundId} 已撤回`, ...state.notifications]
       };
     case "ADVANCE_REVIEW":
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
@@ -499,6 +504,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     case "REJECT_REVIEW":
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
@@ -518,6 +524,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     case "TRANSFER_REVIEW": {
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       const exists = state.changeRequests.some((request) => request.id === action.requestId);
       if (!exists) {
         return state;
@@ -539,6 +546,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UNDO_REVIEW_ACTION": {
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       const exists = state.changeRequests.some((request) => request.id === action.requestId);
       if (!exists) {
         return state;
@@ -597,6 +605,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "SIMULATE_LOG_UPLOAD": {
+      if (!canPerform(activeRoleId, "logs.upload")) return state;
       const supportedLog = action.supported;
       const analysisQuestion = action.question?.trim();
       const newLog: LogRecord = {
@@ -633,6 +642,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "CONNECT_DEVICE": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const now = new Date().toISOString();
       return {
         ...state,
@@ -648,8 +658,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "PUSH_DEBUG_VALUE":
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       return reducer(state, { type: "PUSH_DEBUG_VALUES", parameterIds: [action.parameterId] });
     case "PUSH_DEBUG_VALUES": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const pushIds = new Set(action.parameterIds);
       if (pushIds.size === 0) {
         return state;
@@ -742,6 +754,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UPDATE_PROJECT_PARAMETER_METADATA": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = updateProjectParameterMetadata(state.configDraft, action.projectId as never, action.parameterId, action.patch);
       return {
         ...state,
@@ -750,6 +763,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UPDATE_PROJECT_PARAMETER_VALUE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = updateProjectParameter(state.configDraft, action.projectId as never, action.parameterId, action.patch);
       return {
         ...state,
@@ -758,6 +772,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UPDATE_DEBUG_PARAMETER": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const configDraft = updateDebugParameter(state.configDraft, action.parameterId, action.patch);
       return {
         ...state,
@@ -797,6 +812,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PROJECT_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = addProjectParameter(state.configDraft);
       return {
         ...state,
@@ -805,6 +821,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PROJECT_PARAMETER_FROM_DRAFT": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = addProjectParameterFromDraft(state.configDraft, action.draft);
       return {
         ...state,
@@ -813,6 +830,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DELETE_PROJECT_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const removed = state.configDraft.parameterLibrary.find((parameter) => parameter.id === action.parameterId);
       if (!removed) {
         return state;
@@ -844,6 +862,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_DEBUG_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       if (action.initialDraft) {
         const configDraft = addDebugParameterFromDraft(
           state.configDraft,
@@ -864,6 +883,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DELETE_DEBUG_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = deleteDebugParameter(state.configDraft, action.parameterId);
       return {
         ...state,
@@ -872,6 +892,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "MARK_CONFIG_PERSISTED": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         persistedConfigSnapshot: JSON.parse(JSON.stringify(state.configDraft)) as typeof state.configDraft,
@@ -1267,6 +1288,7 @@ function AppShell() {
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
+  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1337,7 +1359,7 @@ function AppShell() {
 
   return (
     <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
-      {!isPlatformHome ? <Sidebar activePath={page.path} onNavigate={navigate} /> : null}
+      {!isPlatformHome ? <Sidebar activePath={page.path} currentRoleId={currentRoleId} onNavigate={navigate} /> : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
         {!isPlatformHome ? (
           <TopBar
@@ -1701,10 +1723,19 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
   );
 }
 
-function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (path: string) => void }) {
+function Sidebar({
+  activePath,
+  currentRoleId,
+  onNavigate
+}: {
+  activePath: string;
+  currentRoleId: string;
+  onNavigate: (path: string) => void;
+}) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
-  const groups = navigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
+  const visibleNavigationItems = navigationItems.filter((item) => canAccessPage(currentRoleId, item.key));
+  const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
     return acc;
   }, {});
@@ -1758,20 +1789,29 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
             <small>内测收集 · 当前页</small>
           </span>
         </Button>
-        {utilityItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Tooltip key={item.label}>
-              <TooltipTrigger asChild>
-                <Button className="nav-item compact" type="button" variant="ghost">
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{item.label}</TooltipContent>
-            </Tooltip>
-          );
-        })}
+        {utilityItems
+          .filter((item) => !item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key))
+          .map((item) => {
+            const Icon = item.icon;
+            const button = (
+              <Button
+                className={item.path === activePath ? "nav-item compact active" : "nav-item compact"}
+                type="button"
+                variant="ghost"
+                onClick={() => item.path && onNavigate(item.path)}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </Button>
+            );
+
+            return (
+              <Tooltip key={item.label}>
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            );
+          })}
       </div>
       <FeedbackDialog open={feedbackOpen} pagePath={activePath} pageTitle={pageTitle} onOpenChange={setFeedbackOpen} />
     </aside>
