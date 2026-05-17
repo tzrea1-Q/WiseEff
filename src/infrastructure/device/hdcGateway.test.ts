@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createHdcGateway } from "./hdcGateway";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "@/hdcClient";
 
@@ -9,6 +9,10 @@ vi.mock("@/hdcClient", () => ({
 }));
 
 describe("createHdcGateway", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("normalizes detected hdc targets for the debugging port", async () => {
     vi.mocked(detectHdcTargets).mockResolvedValueOnce({
       ok: true,
@@ -20,6 +24,17 @@ describe("createHdcGateway", () => {
       { id: "target-a", label: "target-a（当前）" },
       { id: "target-b", label: "target-b" }
     ]);
+  });
+
+  it("surfaces failed hdc target detection responses", async () => {
+    vi.mocked(detectHdcTargets).mockResolvedValueOnce({
+      ok: false,
+      targets: [],
+      error: "hdc missing",
+      stderr: "not found"
+    });
+
+    await expect(createHdcGateway().detectTargets()).rejects.toThrow("hdc missing");
   });
 
   it("passes read requests through to the hdc client", async () => {

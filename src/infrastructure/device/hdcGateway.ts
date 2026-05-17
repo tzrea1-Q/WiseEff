@@ -12,6 +12,10 @@ export function createHdcGateway(): DebuggingGateway {
   return {
     async detectTargets(): Promise<DeviceTarget[]> {
       const response = await detectHdcTargets();
+      if (response.ok === false) {
+        throw new Error(response.error || response.stderr || "HDC target detection failed");
+      }
+
       return response.targets.map((target) => ({
         id: target,
         label: target === response.activeTarget ? `${target}（当前）` : target
