@@ -36,17 +36,12 @@ import type {
   ReactNode
 } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
+import { PageRouter, type PageProps } from "@/app/routes";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
-import { ParameterManagementHomePage } from "./ParameterManagementHomePage";
-import { ParameterComparisonPage } from "./ParameterComparison";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
-import { ParameterAdminPage } from "./ParameterAdminPage";
-import { DebuggingPage } from "./DebuggingPage";
-import { NodeDebuggingPage } from "./NodeDebuggingPage";
-import { LogAdminPage } from "./LogAdminPage";
+import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
-import { ParametersPage as UserParametersPage } from "./ParametersPage";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
@@ -128,6 +123,8 @@ import { Badge as UiBadge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+
+export type { PageProps } from "@/app/routes";
 
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
@@ -1388,6 +1385,12 @@ function AppShell() {
                 comparisonSelection={comparisonSelection}
                 onComparisonSelectionChange={setComparisonSelection}
                 onSearchChange={updateSearch}
+                HomePage={HomePage}
+                ParameterSubmissionsPage={ParameterSubmissionsPage}
+                ParameterReviewPage={ParameterReviewPage}
+                LogDashboardPage={LogDashboardPage}
+                LogsPage={LogsPage}
+                DebuggingAdminPage={DebuggingAdminPage}
               />
             </div>
           ) : (
@@ -1402,6 +1405,12 @@ function AppShell() {
                 comparisonSelection={comparisonSelection}
                 onComparisonSelectionChange={setComparisonSelection}
                 onSearchChange={updateSearch}
+                HomePage={HomePage}
+                ParameterSubmissionsPage={ParameterSubmissionsPage}
+                ParameterReviewPage={ParameterReviewPage}
+                LogDashboardPage={LogDashboardPage}
+                LogsPage={LogsPage}
+                DebuggingAdminPage={DebuggingAdminPage}
               />
             </main>
           )}
@@ -1412,74 +1421,6 @@ function AppShell() {
       ) : null}
     </div>
   );
-}
-
-type ComparisonProjectSelection = {
-  baseProjectId: string;
-  targetProjectId: string;
-};
-
-export type PageProps = {
-  state: PrototypeState;
-  dispatch: React.Dispatch<AppAction>;
-  onNavigate: (path: string) => void;
-  search: string;
-  parameterHomeTimeWindow?: HomepageTimeWindow;
-};
-
-function PageRouter({
-  page,
-  state,
-  dispatch,
-  onNavigate,
-  search,
-  parameterHomeTimeWindow,
-  comparisonSelection,
-  onComparisonSelectionChange,
-  onSearchChange
-}: PageProps & {
-  page: PageConfig;
-  comparisonSelection: ComparisonProjectSelection;
-  onComparisonSelectionChange: React.Dispatch<React.SetStateAction<ComparisonProjectSelection>>;
-  onSearchChange: (search: string) => void;
-}) {
-  switch (page.key) {
-    case "parameters":
-      return <UserParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    case "parameter-submissions":
-      return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    case "parameter-home":
-      return <ParameterManagementHomePage state={state} onNavigate={onNavigate} timeWindow={parameterHomeTimeWindow} />;
-    case "parameter-comparison":
-      return (
-        <ParameterComparisonPage
-          state={state}
-          onNavigate={onNavigate}
-          search={search}
-          comparisonSelection={comparisonSelection}
-          onComparisonSelectionChange={onComparisonSelectionChange}
-          onSearchChange={onSearchChange}
-        />
-      );
-    case "parameter-review":
-      return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    case "parameter-admin":
-      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    case "log-dashboard":
-      return <LogDashboardPage state={state} onNavigate={onNavigate} />;
-    case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    case "log-admin":
-      return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    case "debugging":
-      return <DebuggingPage state={state} dispatch={dispatch} />;
-    case "node-debugging":
-      return <NodeDebuggingPage state={state} />;
-    case "debugging-admin":
-      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
-    default:
-      return <HomePage />;
-  }
 }
 
 function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavigate: (path: string) => void }) {
