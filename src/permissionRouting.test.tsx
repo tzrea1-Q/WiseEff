@@ -59,12 +59,17 @@ describe("permission route matrix", () => {
   it("keeps User out of review and admin pages", () => {
     expect(canAccessPage("user", "parameter-review")).toBe(false);
     expect(canAccessPage("user", "parameter-admin")).toBe(false);
+    expect(canAccessPage("user", "log-admin")).toBe(false);
+    expect(canAccessPage("user", "debugging-admin")).toBe(false);
+    expect(canAccessPage("user", "user-permissions")).toBe(false);
     expect(canAccessPage("user", "logs")).toBe(true);
     expect(canAccessPage("user", "debugging")).toBe(true);
   });
 
   it("keeps Committer out of admin pages while allowing review", () => {
     expect(canAccessPage("committer", "parameter-review")).toBe(true);
+    expect(canAccessPage("committer", "parameter-admin")).toBe(false);
+    expect(canAccessPage("committer", "log-admin")).toBe(false);
     expect(canAccessPage("committer", "debugging-admin")).toBe(false);
     expect(canAccessPage("committer", "user-permissions")).toBe(false);
   });
