@@ -28,10 +28,25 @@ function toolNameForAction(actionId: string): AgentToolCall["name"] {
       return "parameter.scanOrphans";
     case "draft-cleanup":
       return "parameter.draftCleanupPlan";
+    case "summarize-review":
+    case "filter-high-risk":
+    case "advance-review":
+      return "parameter.summarizeReviewQueue";
+    case "draft-parameter-change":
+      return "parameter.submitChangeDraft";
     case "advance-log":
       return "log.explainRootCause";
+    case "make-checklist":
+      return "log.generateChecklist";
+    case "sync-comparison":
+    case "connect-device":
     case "push-debug-value":
       return "debugging.recommendTargetValues";
+    case "audit-scan":
+    case "summarize-audit":
+    case "preview-import":
+    case "summarize-comparison":
+    case "platform-tour":
     default:
       return "audit.summarizeRecentEvents";
   }
