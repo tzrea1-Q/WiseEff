@@ -37,6 +37,14 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
+  it("uses the operational permissions layout classes", () => {
+    render(<UserPermissionsPage state={{ ...createPrototypeState(), activeRoleId: "admin" }} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+
+    expect(document.querySelector(".user-permissions-page")).toBeInTheDocument();
+    expect(document.querySelector(".user-permissions-grid")).toBeInTheDocument();
+    expect(document.querySelector(".user-permissions-table-card")).toBeInTheDocument();
+  });
+
   it("dispatches ADD_USER from the add user dialog", async () => {
     const { dispatch } = renderPage();
 

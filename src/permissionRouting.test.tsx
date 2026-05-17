@@ -44,4 +44,12 @@ describe("permission-aware routing", () => {
     expect(screen.getByText(/Current role: Guest/)).toBeInTheDocument();
     expect(screen.getByText(/Required role: Admin/)).toBeInTheDocument();
   });
+
+  it("uses a stable permission denied layout", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App />);
+
+    expect(document.querySelector(".permission-denied-page")).toBeInTheDocument();
+  });
 });
