@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { reducer, type AppAction } from "./App";
 import { initialState } from "./mockData";
 
+const reviewerState = { ...initialState, activeRoleId: "committer" };
+
 describe("review reducer existing actions", () => {
   it("ADVANCE_REVIEW preserves fastTrack and reviewer note metadata", () => {
-    const target = initialState.changeRequests.find((request) => request.status === "待审阅")!;
+    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
     const action: AppAction = {
       type: "ADVANCE_REVIEW",
       requestId: target.id,
@@ -12,7 +14,7 @@ describe("review reducer existing actions", () => {
       note: "AI 高置信快速推进"
     };
 
-    const next = reducer(initialState, action);
+    const next = reducer(reviewerState, action);
     const updated = next.changeRequests.find((request) => request.id === target.id)!;
 
     expect(updated.status).toBe("自动检查通过");
@@ -23,7 +25,7 @@ describe("review reducer existing actions", () => {
   });
 
   it("REJECT_REVIEW preserves fastTrack metadata", () => {
-    const target = initialState.changeRequests.find((request) => request.status === "待审阅")!;
+    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
     const action: AppAction = {
       type: "REJECT_REVIEW",
       requestId: target.id,
@@ -31,7 +33,7 @@ describe("review reducer existing actions", () => {
       fastTrack: true
     };
 
-    const next = reducer(initialState, action);
+    const next = reducer(reviewerState, action);
     const updated = next.changeRequests.find((request) => request.id === target.id)!;
 
     expect(updated.status).toBe("已打回");
@@ -44,7 +46,7 @@ describe("review reducer existing actions", () => {
 
 describe("TRANSFER_REVIEW", () => {
   it("updates the request assignee and keeps status unchanged", () => {
-    const existing = initialState.changeRequests[0];
+    const existing = reviewerState.changeRequests[0];
     const action: AppAction = {
       type: "TRANSFER_REVIEW",
       requestId: existing.id,
@@ -52,7 +54,7 @@ describe("TRANSFER_REVIEW", () => {
       note: "请协助审查新型号"
     };
 
-    const next = reducer(initialState, action);
+    const next = reducer(reviewerState, action);
     const updated = next.changeRequests.find((request) => request.id === existing.id);
 
     expect(updated?.assignedTo).toBe("specialist-wang");
@@ -77,8 +79,8 @@ describe("TRANSFER_REVIEW", () => {
 
 describe("UNDO_REVIEW_ACTION", () => {
   it("rolls the request status back to previousStatus", () => {
-    const target = initialState.changeRequests.find((request) => request.status === "待审阅")!;
-    const afterAdvance = reducer(initialState, { type: "ADVANCE_REVIEW", requestId: target.id });
+    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
+    const afterAdvance = reducer(reviewerState, { type: "ADVANCE_REVIEW", requestId: target.id });
     const advanced = afterAdvance.changeRequests.find((request) => request.id === target.id)!;
     expect(advanced.status).toBe("自动检查通过");
 
@@ -93,8 +95,8 @@ describe("UNDO_REVIEW_ACTION", () => {
   });
 
   it("clears rejectReason when undoing a rejection", () => {
-    const target = initialState.changeRequests.find((request) => request.status === "待审阅")!;
-    const afterReject = reducer(initialState, {
+    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
+    const afterReject = reducer(reviewerState, {
       type: "REJECT_REVIEW",
       requestId: target.id,
       reason: "测试打回"

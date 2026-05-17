@@ -4,7 +4,7 @@ import { createPrototypeState } from "./mockData";
 
 describe("shared user permission reducer actions", () => {
   it("adds a platform user with title and role", () => {
-    const state = createPrototypeState();
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
     const next = appReducer(state, {
       type: "ADD_USER",
       name: "Demo Engineer",
@@ -25,7 +25,7 @@ describe("shared user permission reducer actions", () => {
   });
 
   it("blocks duplicate or invalid email addresses", () => {
-    const state = createPrototypeState();
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
 
     expect(
       appReducer(state, {
@@ -49,7 +49,7 @@ describe("shared user permission reducer actions", () => {
   });
 
   it("prevents the current Admin from disabling themselves", () => {
-    const state = createPrototypeState();
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
     const next = appReducer(state, {
       type: "TOGGLE_USER_ACTIVE",
       userId: state.currentUserId,
@@ -60,7 +60,7 @@ describe("shared user permission reducer actions", () => {
   });
 
   it("prevents the current Admin from downgrading themselves", () => {
-    const state = createPrototypeState();
+    const state = { ...createPrototypeState(), activeRoleId: "admin" };
     const next = appReducer(state, {
       type: "ASSIGN_USER_ROLE",
       userId: state.currentUserId,
@@ -74,6 +74,7 @@ describe("shared user permission reducer actions", () => {
     const base = createPrototypeState();
     const state = {
       ...base,
+      activeRoleId: "admin",
       users: base.users.map((user) =>
         user.id === base.currentUserId
           ? user
@@ -85,6 +86,41 @@ describe("shared user permission reducer actions", () => {
       type: "ASSIGN_USER_ROLE",
       userId: state.currentUserId,
       roleId: "committer"
+    });
+
+    expect(next).toBe(state);
+  });
+
+  it("prevents default Guest from adding users even when the current account is active", () => {
+    const state = createPrototypeState();
+    const next = appReducer(state, {
+      type: "ADD_USER",
+      name: "Guest Attempt",
+      email: "guest-attempt@chargelab.cn",
+      title: "Guest",
+      roleId: "user"
+    });
+
+    expect(next).toBe(state);
+  });
+
+  it("prevents default Guest from assigning user roles", () => {
+    const state = createPrototypeState();
+    const next = appReducer(state, {
+      type: "ASSIGN_USER_ROLE",
+      userId: "u-zhao-heng",
+      roleId: "committer"
+    });
+
+    expect(next).toBe(state);
+  });
+
+  it("prevents default Guest from toggling active users", () => {
+    const state = createPrototypeState();
+    const next = appReducer(state, {
+      type: "TOGGLE_USER_ACTIVE",
+      userId: "u-liu-min",
+      isActive: false
     });
 
     expect(next).toBe(state);

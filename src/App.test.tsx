@@ -4,6 +4,9 @@ import { existsSync, readFileSync } from "node:fs";
 import App from "./App";
 import { initialState } from "./mockData";
 
+const userState = { ...initialState, activeRoleId: "user" };
+const adminState = { ...initialState, activeRoleId: "admin" };
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -430,7 +433,7 @@ describe("WiseEff app shell", () => {
   it("submits a round with multiple parameter changes and shows it in personal history", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
@@ -615,7 +618,7 @@ describe("WiseEff app shell", () => {
   it("requires a rejection reason when an admin sends a parameter request back", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
     const advanceButton = within(reviewDetail).getByRole("button", { name: "推进流程" });
@@ -929,7 +932,7 @@ describe("WiseEff app shell", () => {
   it("edits and pushes debugging target values on the debug route", () => {
     window.history.replaceState(null, "", "/debugging");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const findDebugRow = (parameterKey: string) =>
       Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((row) =>
@@ -1112,7 +1115,7 @@ describe("WiseEff app shell", () => {
   it("edits project parameter config and reflects it in comparison data", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     const projectValues = screen.getByRole("region", { name: "项目参数值矩阵" });
     const sharedDefinition = screen.getByRole("region", { name: "共享参数定义" });
@@ -1135,7 +1138,7 @@ describe("WiseEff app shell", () => {
   it("adds and deletes shared project parameters from the project admin config", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     expect(screen.getByText("项目共享参数库")).toBeInTheDocument();
     expect(screen.getByText("共享参数定义")).toBeInTheDocument();
@@ -1221,7 +1224,7 @@ describe("WiseEff app shell", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     const projectValues = screen.getByRole("region", { name: "项目参数值矩阵" });
     fireEvent.change(within(projectValues).getByLabelText("AUR-Prod 当前值"), { target: { value: "3650" } });
@@ -1239,7 +1242,7 @@ describe("WiseEff app shell", () => {
   it("edits debug parameter config and reflects it in the debugging workspace", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
 
@@ -1258,7 +1261,7 @@ describe("WiseEff app shell", () => {
   it("adds and deletes debug parameters from the debugging admin config", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     fireEvent.click(screen.getByRole("button", { name: "+ 新增" }));
 
@@ -1304,7 +1307,7 @@ describe("WiseEff app shell", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));

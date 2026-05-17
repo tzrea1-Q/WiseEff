@@ -343,7 +343,7 @@ function isValidEmail(email: string) {
 
 function canManageUsers(state: PrototypeState) {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  return Boolean(currentUser?.isActive) && canPerform(currentUser?.roleId ?? "guest", "users.manage");
+  return Boolean(currentUser?.isActive) && canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage");
 }
 
 function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
@@ -1259,16 +1259,16 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 
 export const appReducer = reducer;
 
-function App() {
+function App({ initialAppState = initialState }: { initialAppState?: PrototypeState } = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell key={mockDataFingerprint} />
+      <AppShell initialAppState={initialAppState} key={mockDataFingerprint} />
     </TooltipProvider>
   );
 }
 
-function AppShell() {
-  const [state, dispatch] = useReducer(reducer, initialState);
+function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
+  const [state, dispatch] = useReducer(reducer, initialAppState);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
@@ -1796,6 +1796,7 @@ function Sidebar({
             const button = (
               <Button
                 className={item.path === activePath ? "nav-item compact active" : "nav-item compact"}
+                disabled={!item.path}
                 type="button"
                 variant="ghost"
                 onClick={() => item.path && onNavigate(item.path)}
