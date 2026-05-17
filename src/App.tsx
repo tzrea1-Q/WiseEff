@@ -32,6 +32,7 @@ import type {
 } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { PageRouter, type PageProps } from "@/app/routes";
+import { submitParameterRound } from "@/domain/parameters/commands";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
@@ -398,71 +399,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [`已提交 ${request.id}，等待参数管理员审阅`, ...state.notifications]
       };
     }
-    case "ADD_PARAMETER_SUBMISSION_ROUND": {
-      const draftItems = action.items
-        .map((item) => {
-          const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
-          return parameter ? { parameter, item } : null;
-        })
-        .filter((item): item is { parameter: ParameterRecord; item: ParameterDraftItem } => Boolean(item));
-
-      if (draftItems.length === 0) {
-        return state;
-      }
-
-      const project = projects.find((item) => item.id === draftItems[0].parameter.projectId);
-      const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
-      const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
-      const requestSeed = 8910 + state.changeRequests.length;
-      const requests = draftItems.map(({ parameter, item }, index): ChangeRequest => {
-        const summary = item.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。";
-
-        return {
-          id: `PRQ-${requestSeed + index}`,
-          submissionRoundId: roundId,
-          projectId: parameter.projectId,
-          parameterId: parameter.id,
-          module: parameter.module,
-          title: parameter.name,
-          currentValue: parameter.currentValue,
-          targetValue: item.targetValue,
-          submitter,
-          createdAt: "刚刚",
-          status: "待审阅",
-          ...buildRuntimeReviewFields(summary, parameter.module)
-        };
-      });
-      const submissionItems = draftItems.map(({ parameter, item }, index): ParameterSubmissionItem => ({
-        requestId: requests[index].id,
-        parameterId: parameter.id,
-        name: parameter.name,
-        module: parameter.module,
-        currentValue: parameter.currentValue,
-        targetValue: item.targetValue,
-        unit: parameter.unit,
-        risk: parameter.risk,
-        reason: item.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
-      }));
-
-      return {
-        ...state,
-        changeRequests: [...requests, ...state.changeRequests],
-        parameterSubmissionRounds: [
-          {
-            id: roundId,
-            projectId: draftItems[0].parameter.projectId,
-            projectName: project?.name ?? draftItems[0].parameter.projectId,
-            submitter,
-            createdAt: "刚刚",
-            status: "待审阅",
-            summary: `本轮提交包含 ${submissionItems.length} 个参数修改。`,
-            items: submissionItems
-          },
-          ...state.parameterSubmissionRounds
-        ],
-        notifications: [`已提交 ${roundId}，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
-      };
-    }
+    case "ADD_PARAMETER_SUBMISSION_ROUND":
+      return submitParameterRound(state, { items: action.items, reason: action.reason });
     case "STASH_PARAMETER_SUBMISSION_ROUND": {
       const draftItems = action.items
         .map((item) => {
