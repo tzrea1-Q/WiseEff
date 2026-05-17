@@ -9,11 +9,13 @@ export type PermissionKey =
   | "admin:access"
   | "users:manage";
 
+export type RoleCapability = "view" | "edit" | "publish" | "manage-permissions";
+
 export type PlatformRole = {
   id: PlatformRoleId;
   name: "Guest" | "User" | "Committer" | "Admin";
   description: string;
-  permissions: PermissionKey[];
+  permissions: readonly PermissionKey[];
 };
 
 export type UserAccount = {
@@ -27,7 +29,7 @@ export type UserAccount = {
   lastActive: string;
 };
 
-export const platformRoles: PlatformRole[] = [
+export const platformRoles = [
   {
     id: "guest",
     name: "Guest",
@@ -52,7 +54,7 @@ export const platformRoles: PlatformRole[] = [
     description: "Can perform Committer actions and access application admin pages and user management.",
     permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review", "admin:access", "users:manage"]
   }
-];
+] as const satisfies readonly PlatformRole[];
 
 const roleRank: Record<PlatformRoleId, number> = {
   guest: 0,

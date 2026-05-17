@@ -6,6 +6,9 @@ import {
   platformRoles,
   roleHasPermission
 } from "./types";
+import type { RoleCapability } from "./types";
+
+type IsReadonlyArray<T> = T extends readonly unknown[] ? (T extends unknown[] ? false : true) : false;
 
 describe("platform user roles", () => {
   it("defines the four approved platform roles in privilege order", () => {
@@ -36,5 +39,19 @@ describe("platform user roles", () => {
 
   it("returns Guest for unknown role lookups", () => {
     expect(getPlatformRole("not-a-role").id).toBe("guest");
+  });
+
+  it("keeps legacy RoleCapability exports available for compatibility", () => {
+    const capability: RoleCapability = "manage-permissions";
+
+    expect(capability).toBe("manage-permissions");
+  });
+
+  it("exposes readonly role and permission policy definitions", () => {
+    const rolesAreReadonly: IsReadonlyArray<typeof platformRoles> = true;
+    const permissionsAreReadonly: IsReadonlyArray<(typeof platformRoles)[number]["permissions"]> = true;
+
+    expect(rolesAreReadonly).toBe(true);
+    expect(permissionsAreReadonly).toBe(true);
   });
 });
