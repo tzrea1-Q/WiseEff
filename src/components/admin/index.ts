@@ -14,7 +14,3 @@ export { AuditTimeline } from "./AuditTimeline";
 export type { AuditTimelineProps } from "./AuditTimeline";
 export { LogRecordDrawer } from "./LogRecordDrawer";
 export type { LogRecordDrawerProps } from "./LogRecordDrawer";
-export { AccessControlPanel } from "./AccessControlPanel";
-export type { AccessControlPanelProps } from "./AccessControlPanel";
-export { AddUserDialog } from "./AddUserDialog";
-export type { AddUserDialogProps } from "./AddUserDialog";

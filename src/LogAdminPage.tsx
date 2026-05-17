@@ -1,8 +1,6 @@
 import { Download, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AccessControlPanel,
-  AddUserDialog,
   DataTable,
   LogRecordDrawer,
   PageInsightBar,
@@ -74,7 +72,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
-  const [addUserOpen, setAddUserOpen] = useState(false);
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
 
   useEffect(() => {
@@ -100,7 +97,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
   const role = deriveLogAdminRole(state.activeRoleId);
   const canAct = role !== "Viewer";
-  const canManage = role === "Admin";
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
   const projectName = (projectId: string): string => state.configDraft.projects.find((project) => project.id === projectId)?.name ?? projectId;
@@ -346,13 +342,16 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         </section>
       </div>
 
-      <AccessControlPanel
-        users={state.logAdminUsers}
-        canManage={canManage}
-        onAddClick={() => setAddUserOpen(true)}
-        onRoleChange={(userId, newRole) => dispatch({ type: "LOG_ADMIN_UPDATE_USER_ROLE", userId, role: newRole })}
-        onRemove={(userId) => dispatch({ type: "LOG_ADMIN_REMOVE_USER", userId })}
-      />
+      <section className="shared-permissions-entry">
+        <span className="sr-only">后台访问权限</span>
+        <div>
+          <h3>Shared user permissions</h3>
+          <p>User roles are managed once for the whole WiseEff platform.</p>
+        </div>
+        <Button variant="outline" onClick={() => onNavigate("/user-permissions")}>
+          Manage user permissions
+        </Button>
+      </section>
 
       <LogRecordDrawer
         record={selectedRecord}
@@ -377,8 +376,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         }}
         canAct={canAct}
       />
-
-      <AddUserDialog open={addUserOpen} onOpenChange={setAddUserOpen} onSubmit={(input) => dispatch({ type: "LOG_ADMIN_ADD_USER", input })} />
 
       {undoArchive ? (
         <div

@@ -37,7 +37,9 @@ describe("normalized workspace headers", () => {
     expect(within(topbar).getByRole("button", { name: "批量参数导入" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { level: 1, name: "项目参数管理后台" })).not.toBeInTheDocument();
     expect(within(topbarActions).getByRole("button", { name: "保存到 JSON 文件" })).toBeInTheDocument();
-    expect(within(topbarActions).getByRole("button", { name: "权限" })).toBeInTheDocument();
+    const permissionsButton = within(topbarActions).getByRole("button", { name: "权限" });
+    expect(permissionsButton).toBeInTheDocument();
+    expect(permissionsButton).toHaveAttribute("data-route", "/user-permissions");
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 
