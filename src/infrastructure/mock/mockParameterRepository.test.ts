@@ -12,6 +12,16 @@ describe("mock parameter repository", () => {
     expect(rows.every((row) => row.projectId === "aurora")).toBe(true);
   });
 
+  it("lists module-filtered parameters", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const [auroraParameter] = await repository.listParameters({ projectId: "aurora" });
+
+    const rows = await repository.listParameters({ module: auroraParameter.module });
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.module === auroraParameter.module)).toBe(true);
+  });
+
   it("treats an empty risk filter as non-restrictive", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 
@@ -19,6 +29,15 @@ describe("mock parameter repository", () => {
     const rows = await repository.listParameters({ risk: [] });
 
     expect(rows).toHaveLength(allRows.length);
+  });
+
+  it("lists risk-filtered parameters", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    const rows = await repository.listParameters({ risk: ["High"] });
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.risk === "High")).toBe(true);
   });
 
   it("returns parameter copies that cannot mutate runtime state", async () => {
