@@ -9,6 +9,8 @@ import {
   PowerManagementProjectId
 } from "./powerManagementConfig";
 import { buildParameterHistory, buildReviewMockRequests, REVIEW_MOCK_NOW } from "./reviewMockData";
+import type { PlatformRole, UserAccount } from "@/domain/users/types";
+import { migrateLegacyRoleId, platformRoles } from "@/domain/users/types";
 
 export type RiskLevel = "High" | "Medium" | "Low";
 export type AIConfidence = "high" | "mid" | "low";
@@ -94,23 +96,9 @@ export type Project = {
   code: string;
 };
 
-export type Role = {
-  id: string;
-  name: string;
-  capabilities: RoleCapability[];
-  description: string;
-};
-
-export type RoleCapability = "view" | "edit" | "publish" | "manage-permissions";
-
-export type User = {
-  id: string;
-  name: string;
-  email: string;
-  roleId: string;
-  isActive: boolean;
-  createdAt: string;
-};
+export type Role = PlatformRole;
+export type RoleCapability = PlatformRole["permissions"][number];
+export type User = UserAccount;
 
 export type ParameterRecord = {
   id: string;
@@ -265,6 +253,7 @@ export type AuditEvent = {
     newValue?: string;
     previousRole?: string;
     newRole?: string;
+    isActive?: boolean;
     affectedIds?: string[];
     diffSummary?: { added: number; updated: number; deleted: number };
     snapshotName?: string;
@@ -353,42 +342,17 @@ export const projects: Project[] = bundledPowerManagementConfig.projects.map((pr
   code: project.code
 }));
 
-export const roles: Role[] = [
-  {
-    id: "hardware",
-    name: "硬件开发",
-    capabilities: ["view"],
-    description: "只读参数库，用于研发阶段查阅和对比。"
-  },
-  {
-    id: "project",
-    name: "项目开发",
-    capabilities: ["view", "edit"],
-    description: "可编辑参数与项目取值，发起修改提交。"
-  },
-  {
-    id: "parameter-admin",
-    name: "参数管理员",
-    capabilities: ["view", "edit", "publish"],
-    description: "负责审阅和发布变更，管理参数库。"
-  },
-  {
-    id: "admin",
-    name: "平台管理员",
-    capabilities: ["view", "edit", "publish", "manage-permissions"],
-    description: "全部权限，可管理他人权限与全平台配置。"
-  }
-];
+export const roles: Role[] = [...platformRoles];
 
 export const users: User[] = [
-  { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z" },
-  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", roleId: "hardware", isActive: true, createdAt: "2025-01-14T03:12:00.000Z" },
-  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", roleId: "project", isActive: true, createdAt: "2025-02-03T08:04:00.000Z" },
-  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", roleId: "parameter-admin", isActive: true, createdAt: "2024-12-20T12:00:00.000Z" },
-  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", roleId: "project", isActive: true, createdAt: "2025-03-10T10:00:00.000Z" },
-  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", roleId: "hardware", isActive: true, createdAt: "2025-03-22T11:00:00.000Z" },
-  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", roleId: "parameter-admin", isActive: true, createdAt: "2025-04-01T09:00:00.000Z" },
-  { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", roleId: "hardware", isActive: false, createdAt: "2025-04-15T14:00:00.000Z" }
+  { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", title: "Platform Owner", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z", lastActive: "just now" },
+  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", title: "Hardware Engineer", roleId: "guest", isActive: true, createdAt: "2025-01-14T03:12:00.000Z", lastActive: "2h ago" },
+  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", title: "Project Engineer", roleId: "user", isActive: true, createdAt: "2025-02-03T08:04:00.000Z", lastActive: "today 09:12" },
+  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", title: "Parameter Reviewer", roleId: "committer", isActive: true, createdAt: "2024-12-20T12:00:00.000Z", lastActive: "yesterday" },
+  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", title: "Project Engineer", roleId: "user", isActive: true, createdAt: "2025-03-10T10:00:00.000Z", lastActive: "today 10:00" },
+  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", title: "Hardware Viewer", roleId: "guest", isActive: true, createdAt: "2025-03-22T11:00:00.000Z", lastActive: "3d ago" },
+  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", title: "Parameter Reviewer", roleId: "committer", isActive: true, createdAt: "2025-04-01T09:00:00.000Z", lastActive: "5h ago" },
+  { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", title: "External Viewer", roleId: "guest", isActive: false, createdAt: "2025-04-15T14:00:00.000Z", lastActive: "disabled" }
 ];
 
 function recentIso(minutesAgo: number): string {
@@ -701,7 +665,7 @@ function buildAuditEvents(): AuditEvent[] {
       time: "2 天前",
       severity: "Medium",
       userId: "u-wang-jie",
-      metadata: { previousRole: "project", newRole: "parameter-admin" }
+      metadata: { previousRole: migrateLegacyRoleId("project"), newRole: migrateLegacyRoleId("parameter-admin") }
     },
     {
       id: "ae-010",
@@ -826,7 +790,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
 
   return {
     activeProjectId: "aurora",
-    activeRoleId: "hardware",
+    activeRoleId: "guest",
     configDraft: clonePowerManagementConfig(configDraft),
     parameters: runtime.parameters,
     changeRequests: buildReviewMockRequests(),

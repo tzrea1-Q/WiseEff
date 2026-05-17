@@ -32,7 +32,9 @@ import type {
 } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { PageRouter, type PageProps } from "@/app/routes";
+import { canPerform } from "@/app/permissions";
 import { submitParameterRound } from "@/domain/parameters/commands";
+import type { PlatformRoleId } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
@@ -153,9 +155,9 @@ export type AppAction =
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
-  | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: string }
+  | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: PlatformRoleId }
   | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
-  | { type: "ADD_USER"; name: string; email: string; roleId: string }
+  | { type: "ADD_USER"; name: string; email: string; title: string; roleId: PlatformRoleId }
   | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
   | { type: "DISMISS_INSIGHT"; insightId: string }
   | { type: "SET_AI_FLAGGED_IMPORT_IDS"; ids: string[] }
@@ -333,6 +335,19 @@ function pickAvatarTone(index: number): LogAdminUserAvatarTone {
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function canManageUsers(state: PrototypeState) {
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  return Boolean(currentUser?.isActive) && canPerform(currentUser?.roleId ?? "guest", "users.manage");
+}
+
+function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
+  return nextUsers.some((user) => user.isActive && user.roleId === "admin");
 }
 
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
@@ -867,17 +882,27 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ASSIGN_USER_ROLE": {
-      if (action.userId === state.currentUserId) {
+      if (!canManageUsers(state)) {
         return state;
       }
+      if (action.userId === state.currentUserId && action.roleId !== "admin") {
+        return state;
+      }
+
       const user = state.users.find((item) => item.id === action.userId);
       if (!user || user.roleId === action.roleId || !roles.some((role) => role.id === action.roleId)) {
         return state;
       }
+
+      const nextUsers = state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item));
+      if (!wouldHaveActiveAdmin(state, nextUsers)) {
+        return state;
+      }
+
       const event = buildAuditEvent({
         kind: "user-role-change",
         actor: auditActor,
-        action: `${user.name} 角色从 ${user.roleId} 改为 ${action.roleId}`,
+        action: `${user.name} role changed from ${user.roleId} to ${action.roleId}`,
         severity: "Medium",
         userId: user.id,
         metadata: { previousRole: user.roleId, newRole: action.roleId }
@@ -885,53 +910,73 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 
       return {
         ...state,
-        users: state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item)),
+        users: nextUsers,
         auditEvents: [event, ...state.auditEvents]
       };
     }
     case "TOGGLE_USER_ACTIVE": {
-      const user = state.users.find((item) => item.id === action.userId);
-      if (!user || user.id === state.currentUserId || user.isActive === action.isActive) {
+      if (!canManageUsers(state)) {
         return state;
       }
+      if (action.userId === state.currentUserId && !action.isActive) {
+        return state;
+      }
+
+      const user = state.users.find((item) => item.id === action.userId);
+      if (!user || user.isActive === action.isActive) {
+        return state;
+      }
+
+      const nextUsers = state.users.map((item) => (item.id === user.id ? { ...item, isActive: action.isActive } : item));
+      if (!wouldHaveActiveAdmin(state, nextUsers)) {
+        return state;
+      }
+
       const event = buildAuditEvent({
         kind: "user-toggle",
         actor: auditActor,
-        action: `${action.isActive ? "启用" : "停用"} 用户 ${user.name}`,
+        action: `${action.isActive ? "Enabled" : "Disabled"} user ${user.name}`,
         severity: "Medium",
         userId: user.id,
-        metadata: {
-          previousValue: user.isActive ? "active" : "inactive",
-          newValue: action.isActive ? "active" : "inactive"
-        }
+        metadata: { isActive: action.isActive }
       });
 
       return {
         ...state,
-        users: state.users.map((item) => (item.id === user.id ? { ...item, isActive: action.isActive } : item)),
+        users: nextUsers,
         auditEvents: [event, ...state.auditEvents]
       };
     }
     case "ADD_USER": {
-      if (state.users.some((user) => user.email.toLowerCase() === action.email.toLowerCase())) {
+      if (!canManageUsers(state)) {
         return state;
       }
+
+      const email = action.email.trim().toLowerCase();
+      const name = action.name.trim();
+      if (!name || !isValidEmail(email) || state.users.some((user) => user.email.toLowerCase() === email)) {
+        return state;
+      }
+
       const role = roles.find((item) => item.id === action.roleId);
       if (!role) {
         return state;
       }
+
       const newUser: User = {
-        id: `u-${Date.now().toString(36)}`,
-        name: action.name,
-        email: action.email,
+        id: `user-${state.users.length + 1}`,
+        name,
+        email,
+        title: action.title.trim() || "Platform user",
         roleId: action.roleId,
         isActive: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        lastActive: "just now"
       };
       const event = buildAuditEvent({
         kind: "user-add",
         actor: auditActor,
-        action: `添加用户 ${newUser.name}（${role.name}）`,
+        action: `Added user ${newUser.name} (${role.name})`,
         severity: "Low",
         userId: newUser.id
       });

@@ -7,21 +7,21 @@ describe("parameter-admin reducer actions", () => {
     const next = appReducer(initialState, {
       type: "ASSIGN_USER_ROLE",
       userId: "u-zhao-heng",
-      roleId: "parameter-admin"
+      roleId: "committer"
     });
 
-    expect(next.users.find((user) => user.id === "u-zhao-heng")?.roleId).toBe("parameter-admin");
+    expect(next.users.find((user) => user.id === "u-zhao-heng")?.roleId).toBe("committer");
     expect(next.auditEvents[0].kind).toBe("user-role-change");
     expect(next.auditEvents[0].userId).toBe("u-zhao-heng");
-    expect(next.auditEvents[0].metadata?.previousRole).toBe("hardware");
-    expect(next.auditEvents[0].metadata?.newRole).toBe("parameter-admin");
+    expect(next.auditEvents[0].metadata?.previousRole).toBe("guest");
+    expect(next.auditEvents[0].metadata?.newRole).toBe("committer");
   });
 
   it("does not let the current user assign their own role", () => {
     const next = appReducer(initialState, {
       type: "ASSIGN_USER_ROLE",
       userId: initialState.currentUserId,
-      roleId: "hardware"
+      roleId: "guest"
     });
 
     expect(next).toBe(initialState);
@@ -43,7 +43,8 @@ describe("parameter-admin reducer actions", () => {
       type: "ADD_USER",
       name: "Demo Engineer",
       email: "demo@chargelab.cn",
-      roleId: "project"
+      title: "Prototype User",
+      roleId: "user"
     });
 
     expect(added.users).toHaveLength(initialState.users.length + 1);
@@ -55,7 +56,8 @@ describe("parameter-admin reducer actions", () => {
       type: "ADD_USER",
       name: "Fake",
       email: "xu@chargelab.cn",
-      roleId: "hardware"
+      title: "Fake",
+      roleId: "guest"
     });
 
     expect(duplicate).toBe(initialState);

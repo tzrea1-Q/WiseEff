@@ -3,16 +3,16 @@ import { auditEvents, initialState, roles, users } from "./mockData";
 import type { AuditEventKind, ImportBatch, RoleCapability, UndoEntry } from "./mockData";
 
 describe("parameter admin data contracts", () => {
-  it("extends every role with capabilities and description", () => {
+  it("extends every role with permissions and description", () => {
     for (const role of roles) {
-      expect(Array.isArray(role.capabilities)).toBe(true);
-      expect(role.capabilities.length).toBeGreaterThan(0);
+      expect(Array.isArray(role.permissions)).toBe(true);
+      expect(role.permissions.length).toBeGreaterThan(0);
       expect(typeof role.description).toBe("string");
       expect(role.description.length).toBeGreaterThan(0);
     }
 
-    expect(roles.find((role) => role.id === "admin")?.capabilities).toContain("manage-permissions");
-    expect(roles.find((role) => role.id === "hardware")?.capabilities).toEqual(["view"]);
+    expect(roles.find((role) => role.id === "admin")?.permissions).toContain("users:manage");
+    expect(roles.find((role) => role.id === "guest")?.permissions).toEqual(["parameter:view"]);
   });
 
   it("exports at least eight users with valid role bindings", () => {
@@ -27,7 +27,7 @@ describe("parameter admin data contracts", () => {
     }
 
     expect(users.filter((user) => user.roleId === "admin").length).toBeGreaterThanOrEqual(1);
-    expect(users.filter((user) => user.roleId === "hardware").length).toBeGreaterThanOrEqual(2);
+    expect(users.filter((user) => user.roleId === "guest").length).toBeGreaterThanOrEqual(2);
     expect(users.some((user) => !user.isActive)).toBe(true);
   });
 
@@ -93,8 +93,8 @@ describe("parameter admin data contracts", () => {
     expect(batch.summary.added + batch.summary.updated).toBe(8);
   });
 
-  it("defines the four role capability levels", () => {
-    const caps: RoleCapability[] = ["view", "edit", "publish", "manage-permissions"];
+  it("defines the shared role permission levels", () => {
+    const caps: RoleCapability[] = ["parameter:view", "parameter:edit", "parameter:review", "users:manage"];
     expect(caps.length).toBe(4);
   });
 });
