@@ -34,4 +34,14 @@ describe("permission-aware routing", () => {
 
     expect(next).toBe(initialState);
   });
+
+  it("shows permission denied when Guest opens an Admin URL directly", () => {
+    window.history.replaceState(null, "", "/log-admin");
+
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.getByText(/Current role: Guest/)).toBeInTheDocument();
+    expect(screen.getByText(/Required role: Admin/)).toBeInTheDocument();
+  });
 });
