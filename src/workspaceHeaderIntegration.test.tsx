@@ -1,6 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { initialState } from "./mockData";
+
+const userState = { ...initialState, activeRoleId: "user" };
+const adminState = { ...initialState, activeRoleId: "admin" };
 
 afterEach(() => {
   cleanup();
@@ -11,7 +15,7 @@ describe("normalized workspace headers", () => {
   it("moves log dashboard page actions into the topbar and removes the duplicate content h1", () => {
     window.history.replaceState(null, "", "/log-dashboard");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
@@ -25,7 +29,7 @@ describe("normalized workspace headers", () => {
   it("moves parameter admin management actions into the topbar and removes the duplicated page title", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const topbarActions = within(topbar).getByRole("toolbar", { name: "项目参数管理后台页面操作" });
@@ -40,7 +44,7 @@ describe("normalized workspace headers", () => {
   it("exposes normalized topbar action hooks for legacy buttons and compact status controls", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     const parameterAdminTopbar = document.querySelector(".topbar") as HTMLElement;
     const legacyPrimary = within(parameterAdminTopbar).getByRole("button", { name: "批量参数导入" });
@@ -54,7 +58,7 @@ describe("normalized workspace headers", () => {
     cleanup();
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     const debuggingTopbar = document.querySelector(".topbar") as HTMLElement;
     const compactMetrics = debuggingTopbar.querySelector(".debug-admin-strip--topbar");

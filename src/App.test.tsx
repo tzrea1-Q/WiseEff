@@ -5,6 +5,7 @@ import App from "./App";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
+const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
 
 afterEach(() => {
@@ -46,6 +47,29 @@ function readCssBlock(css: string, selector: string) {
   return css.slice(start, end);
 }
 
+function stateForCurrentPath() {
+  switch (window.location.pathname) {
+    case "/parameter-review":
+      return committerState;
+    case "/parameter-admin":
+    case "/log-admin":
+    case "/debugging-admin":
+      return adminState;
+    case "/logs":
+    case "/log-dashboard":
+    case "/debugging":
+    case "/node-debugging":
+    case "/parameter-submissions":
+      return userState;
+    default:
+      return initialState;
+  }
+}
+
+function renderAppForCurrentPath() {
+  return render(<App initialAppState={stateForCurrentPath()} />);
+}
+
 describe("WiseEff app shell", () => {
   it("declares the WiseEff favicon assets in the document shell", () => {
     const indexHtml = readFileSync("index.html", "utf8");
@@ -72,7 +96,7 @@ describe("WiseEff app shell", () => {
   it("renders the WiseEff platform homepage on the home route", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const homeRoot = document.querySelector(".linear-template-home");
     expect(screen.getByRole("main", { name: "WiseEff homepage" })).toBeInTheDocument();
@@ -91,7 +115,7 @@ describe("WiseEff app shell", () => {
   it("keeps the platform homepage inside the app scroll container", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("main", { name: "WiseEff homepage" }).closest(".main-content.home-content")).toBeInTheDocument();
   });
@@ -99,7 +123,7 @@ describe("WiseEff app shell", () => {
   it("provides two parameter-home workbench shortcuts plus the sub-app card entry", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const workbenchShortcut = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href="/parameter-home"]')).filter(
       (link) => link.className.includes("linear-button") || link.getAttribute("aria-label") === "进入 WiseEff 工作台"
@@ -116,7 +140,7 @@ describe("WiseEff app shell", () => {
   it("adds a parameter management homepage without replacing the platform homepage", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("main", { name: "参数管理首页" })).toBeInTheDocument();
     expect(screen.getAllByRole("main")).toHaveLength(1);
@@ -148,7 +172,7 @@ describe("WiseEff app shell", () => {
   it("updates parameter homepage analytics from the topbar time range selector", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
@@ -165,7 +189,7 @@ describe("WiseEff app shell", () => {
   it("keeps the WiseEff workbench shell on non-home routes", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const workbenchBrand = document.querySelector(".brand-mark .wiseeff-icon");
     expect(workbenchBrand).toBeInTheDocument();
@@ -179,7 +203,7 @@ describe("WiseEff app shell", () => {
   it("exposes the three sub-app entries on the homepage main region", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const homepage = screen.getByRole("main", { name: "WiseEff homepage" });
 
@@ -205,7 +229,7 @@ describe("WiseEff app shell", () => {
   it("links the localized homepage CTAs into the WiseEff parameter homepage", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getAllByRole("link", { name: /打开我的工作台|进入 WiseEff 工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
     expect(screen.getByRole("link", { name: "查看演示" })).toHaveAttribute("href", "#platform-flow");
@@ -216,7 +240,7 @@ describe("WiseEff app shell", () => {
   it("switches the platform flow tabs across WiseEff applications", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("tab", { name: "参数管理" })).toHaveAttribute("aria-selected", "true");
     expect(within(screen.getByRole("tabpanel")).getByText("参数目录")).toBeInTheDocument();
@@ -233,7 +257,7 @@ describe("WiseEff app shell", () => {
   it("moves the platform flow tab selection by keyboard", () => {
     window.history.replaceState(null, "", "/");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const firstTab = screen.getByRole("tab", { name: "参数管理" });
 
@@ -248,7 +272,7 @@ describe("WiseEff app shell", () => {
   it("navigates from parameter homepage entries into parameter management routes", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const workspaceEntries = within(document.querySelector(".topbar") as HTMLElement).getByRole("navigation", { name: "参数管理快捷入口" });
 
@@ -257,7 +281,7 @@ describe("WiseEff app shell", () => {
 
     window.history.replaceState(null, "", "/parameter-home");
     cleanup();
-    render(<App />);
+    renderAppForCurrentPath();
 
     const rerenderedEntries = within(document.querySelector(".topbar") as HTMLElement).getByRole("navigation", { name: "参数管理快捷入口" });
 
@@ -268,7 +292,7 @@ describe("WiseEff app shell", () => {
   it("preserves contextual query strings when navigating from parameter homepage hotspots", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
@@ -280,7 +304,7 @@ describe("WiseEff app shell", () => {
   it("renders parameter homepage hotspots as leaderboard with AI panel instead of legacy cards", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
 
@@ -296,7 +320,7 @@ describe("WiseEff app shell", () => {
   it("navigates from a hotspot AI primary action with contextual query strings", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByRole("button", { name: /创建高风险专项审阅/ }));
 
@@ -308,7 +332,7 @@ describe("WiseEff app shell", () => {
   it("uses the TopBar project selector and operation-bar risk/module filters", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const getTableRow = (parameterName: string) =>
       Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((row) =>
@@ -340,7 +364,7 @@ describe("WiseEff app shell", () => {
     const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByRole("button", { name: "模块 ▾" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
@@ -365,7 +389,7 @@ describe("WiseEff app shell", () => {
   it("labels the parameter value column as a current-to-recommended diff", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("columnheader", { name: "当前 → 推荐" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "推荐值" })).not.toBeInTheDocument();
@@ -379,7 +403,7 @@ describe("WiseEff app shell", () => {
       "/parameters?project=nebula&module=Battery%20Safety&parameter=nebula-battery-temp-target"
     );
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const projectSelect = screen.getByRole("combobox", { name: "项目" });
 
@@ -392,7 +416,7 @@ describe("WiseEff app shell", () => {
   it("keeps the parameter example value aligned inside a normal table cell", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const fastChargeRow = Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find(
       (row) => row.textContent?.includes("fast_charge_current_limit_ma")
@@ -407,7 +431,7 @@ describe("WiseEff app shell", () => {
   it("removes the parameter page header subtitle and submit-change shortcut", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.queryByText(/当前项目：/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交变更" })).not.toBeInTheDocument();
@@ -417,7 +441,7 @@ describe("WiseEff app shell", () => {
   it("opens a hidden personal submission history page from the parameter workbench", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
 
@@ -462,7 +486,7 @@ describe("WiseEff app shell", () => {
   it("opens a parameter comparison workspace from the compare action", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.queryByRole("button", { name: "对比参数" })).not.toBeInTheDocument();
 
@@ -490,7 +514,7 @@ describe("WiseEff app shell", () => {
     const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
     const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByRole("button", { name: "导出对比结果" }));
 
@@ -514,7 +538,7 @@ describe("WiseEff app shell", () => {
   it("compares parameter values between two real projects with project chips and delta badges", () => {
     window.history.replaceState(null, "", "/parameter-comparison");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const getComparisonRow = (parameterName: string) =>
       Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
@@ -546,7 +570,7 @@ describe("WiseEff app shell", () => {
   it("consumes parameter comparison context from query strings", () => {
     window.history.replaceState(null, "", "/parameter-comparison?project=nebula&module=Battery%20Safety");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
     const matrix = document.querySelector<HTMLElement>(".comparison-matrix--v2");
@@ -563,7 +587,7 @@ describe("WiseEff app shell", () => {
   it("filters the parameter comparison matrix and shows parameter meanings", () => {
     window.history.replaceState(null, "", "/parameter-comparison");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
     const getComparisonRow = (parameterName: string) =>
@@ -597,7 +621,7 @@ describe("WiseEff app shell", () => {
   it("keeps comparison insights inside the floating WiseAgent after opening it", () => {
     window.history.replaceState(null, "", "/parameter-comparison");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(document.querySelector(".comparison-insights")).not.toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
@@ -642,7 +666,7 @@ describe("WiseEff app shell", () => {
   it("consumes parameter review context from project and module query strings", () => {
     window.history.replaceState(null, "", "/parameter-review?project=aurora&module=Battery%20Safety");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
 
@@ -653,7 +677,7 @@ describe("WiseEff app shell", () => {
   it("falls back to module-only matching for parameter review query strings", () => {
     window.history.replaceState(null, "", "/parameter-review?module=Charging%20Policy");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
 
@@ -664,7 +688,7 @@ describe("WiseEff app shell", () => {
   it("omits the duplicate in-page header on the parameter review workbench", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(document.querySelector(".workbench-page > .page-header")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar-title")).toHaveTextContent("参数管理员工作台");
@@ -673,7 +697,7 @@ describe("WiseEff app shell", () => {
   it("styles the parameter review filters like the user parameter toolbar filters", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const filterBar = document.querySelector(".review-queue-filters");
 
@@ -694,7 +718,7 @@ describe("WiseEff app shell", () => {
   it("switches the review table title between pending requests and merged submission history", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const pendingTab = screen.getByRole("tab", { name: "待审阅" });
     const historyTab = screen.getByRole("tab", { name: "历史提交" });
@@ -716,7 +740,7 @@ describe("WiseEff app shell", () => {
   it("labels and aligns the review change column", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("columnheader", { name: "变更" })).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "建议变更" })).not.toBeInTheDocument();
@@ -730,7 +754,7 @@ describe("WiseEff app shell", () => {
   it("opens submission details from the review table change column", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const row = screen.getByRole("row", { name: /PRQ-9102/ });
     fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-9102 提交详情" }));
@@ -743,7 +767,7 @@ describe("WiseEff app shell", () => {
   it("opens synthesized submission details when a review row has no stored submission round", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const row = screen.getByRole("row", { name: /PRQ-9098/ });
     fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-9098 提交详情" }));
@@ -756,7 +780,7 @@ describe("WiseEff app shell", () => {
   it("opens the log upload dialog only after upload simulation", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.queryByRole("dialog", { name: "上传日志" })).not.toBeInTheDocument();
 
@@ -768,7 +792,7 @@ describe("WiseEff app shell", () => {
   it("switches log analysis content from clickable history records", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(history).getByRole("button", { name: /charging_thermal_trace_20260504\.log/ })).toHaveAttribute(
@@ -794,7 +818,7 @@ describe("WiseEff app shell", () => {
   it("shows a log analysis evidence chain instead of suggested actions", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const analysis = screen.getByRole("region", { name: "分析结果" });
     expect(within(analysis).getByText("原始日志")).toBeInTheDocument();
@@ -893,7 +917,7 @@ describe("WiseEff app shell", () => {
     pageChecks.forEach(({ path, present, absent }) => {
       cleanup();
       window.history.replaceState(null, "", path);
-      render(<App />);
+      renderAppForCurrentPath();
 
       present.forEach((text) => {
         expect(document.body).toHaveTextContent(text);
@@ -907,7 +931,7 @@ describe("WiseEff app shell", () => {
   it("uses Chinese helper copy in the global chrome and WiseAgent panel", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
 
@@ -921,7 +945,7 @@ describe("WiseEff app shell", () => {
   it("keeps the debug route on a single column without a filter panel", () => {
     window.history.replaceState(null, "", "/debugging");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
     expect(screen.queryByText("当前筛选命中 8 条参数。")).not.toBeInTheDocument();
@@ -966,7 +990,7 @@ describe("WiseEff app shell", () => {
     ["/parameter-review", "/parameter-admin"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
-      render(<App />);
+      renderAppForCurrentPath();
 
       const topbar = document.querySelector<HTMLElement>(".topbar");
       expect(topbar).not.toBeNull();
@@ -975,7 +999,7 @@ describe("WiseEff app shell", () => {
   });
 
   it("keeps the platform homepage as the root surface", () => {
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
@@ -984,7 +1008,7 @@ describe("WiseEff app shell", () => {
   it("provides a left-bottom feedback entry for internal testing feedback", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const feedbackEntry = screen.getByRole("button", { name: "问题反馈" });
     expect(feedbackEntry).toBeInTheDocument();
@@ -1015,7 +1039,7 @@ describe("WiseEff app shell", () => {
   it("keeps the feedback dialog wide enough for form and screenshot capture columns", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
 
@@ -1051,7 +1075,7 @@ describe("WiseEff app shell", () => {
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:pasted-feedback-screenshot");
     vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
@@ -1074,7 +1098,7 @@ describe("WiseEff app shell", () => {
     window.history.replaceState(null, "", "/parameter-home");
     const pastedText = new File(["not an image"], "notes.txt", { type: "text/plain" });
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
     const dialog = screen.getByRole("dialog", { name: "问题反馈" });
@@ -1089,7 +1113,7 @@ describe("WiseEff app shell", () => {
   it("resolves direct tutorial urls back to the home surface", () => {
     window.history.replaceState(null, "", "/tutorial/parameters");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "项目参数演示脚本" })).not.toBeInTheDocument();
@@ -1200,7 +1224,7 @@ describe("WiseEff app shell", () => {
   it("runs parameter admin Agent actions against the current page", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
     const agentActions = document.querySelector(".agent-actions") as HTMLElement;
@@ -1277,7 +1301,7 @@ describe("WiseEff app shell", () => {
   it("renders the debugging admin context in a normalized workspace header", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(topbar).toHaveTextContent("可调参数");
@@ -1325,13 +1349,13 @@ describe("WiseEff app shell", () => {
   it("removes reset-to-code-version actions from both config admin pages", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.queryByRole("button", { name: "重置为代码版本" })).not.toBeInTheDocument();
 
     cleanup();
     window.history.replaceState(null, "", "/debugging-admin");
-    render(<App />);
+    renderAppForCurrentPath();
 
     expect(screen.queryByRole("button", { name: "重置为代码版本" })).not.toBeInTheDocument();
   });
@@ -1339,7 +1363,7 @@ describe("WiseEff app shell", () => {
   it("keeps browser history navigation synced with rendered pages", () => {
     window.history.replaceState(null, "", "/parameters");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
 
     window.history.pushState(null, "", "/logs");

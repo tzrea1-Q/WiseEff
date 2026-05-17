@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { initialState } from "./mockData";
+
+const userState = { ...initialState, activeRoleId: "user" };
 
 afterEach(() => {
   cleanup();
@@ -11,7 +14,7 @@ describe("LogsPage · Header", () => {
   it("显示标题与上传按钮", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
@@ -22,7 +25,7 @@ describe("LogsPage · Header", () => {
   it("Complete 日志结论卡显示置信度且主按钮可用", async () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
 
@@ -35,7 +38,7 @@ describe("LogsPage · Header", () => {
   it("Processing 日志主按钮禁用", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     expect(screen.getByRole("button", { name: /生成参数修改请求/ })).toBeDisabled();
   });
@@ -43,7 +46,7 @@ describe("LogsPage · Header", () => {
   it("Failed 日志结论卡替换为 ErrorAlert", async () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
 
@@ -54,7 +57,7 @@ describe("LogsPage · Header", () => {
   it("Failed 日志时间线：失败步红色标记且后续步骤灰化", async () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /thermal_snapshot/ }));
 
@@ -65,7 +68,7 @@ describe("LogsPage · Header", () => {
   it("Processing 日志时间线当前步有 current 标记", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     expect(document.querySelector(".log-timeline__step--current")).toBeInTheDocument();
   });
@@ -73,7 +76,7 @@ describe("LogsPage · Header", () => {
   it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和项目", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const auxPanel = screen.getByRole("complementary", { name: "历史日志记录" });
     expect(within(auxPanel).getByRole("tab", { name: "历史", selected: true })).toBeInTheDocument();
@@ -86,7 +89,7 @@ describe("LogsPage · Header", () => {
   it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开 WiseAgent", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     fireEvent.click(screen.getByRole("button", { name: /问 Agent/ }));
 
@@ -97,7 +100,7 @@ describe("LogsPage · Header", () => {
   it("Processing 结论卡不再展示文件名、阶段、时间和设备胶囊标签", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const conclusionCard = screen.getByRole("region", { name: "AI 正在分析..." });
     expect(conclusionCard).not.toHaveTextContent("charging_thermal_trace_20260504.log");
@@ -109,7 +112,7 @@ describe("LogsPage · Header", () => {
   it("每份日志可通过弹窗反馈置信度和可能问题", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     fireEvent.click(screen.getByRole("button", { name: /反馈分析质量/ }));
 
@@ -126,7 +129,7 @@ describe("LogsPage · Header", () => {
   it("切换日志时 Live Region 播报文件名和状态", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
 
