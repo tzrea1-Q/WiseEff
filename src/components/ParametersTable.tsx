@@ -342,7 +342,7 @@ export function ParametersTable({
                       <Pencil size={15} />
                     </button>
                   ) : (
-                    <span className="parameters-table-readonly-action">Read only</span>
+                    <span className="permission-muted-action">Read only</span>
                   )}
                 </td>
               </tr>

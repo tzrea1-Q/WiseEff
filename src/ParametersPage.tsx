@@ -268,7 +268,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   }, [contextQuery.parameterId, projectParameters]);
 
   useEffect(() => {
-    if (!contextQuery.logId) {
+    if (!canEdit || !contextQuery.logId) {
       return;
     }
 
@@ -292,7 +292,17 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
 
       return nextDrafts;
     });
-  }, [contextQuery.logId, contextQuery.parameterId, parameterById, projectParameters, selected, state.logs]);
+  }, [canEdit, contextQuery.logId, contextQuery.parameterId, parameterById, projectParameters, selected, state.logs]);
+
+  useEffect(() => {
+    if (canEdit) {
+      return;
+    }
+    setSelectedIds(new Set());
+    setDrafts({});
+    setSheetOpen(false);
+    setConfirmOpen(false);
+  }, [canEdit]);
 
   useEffect(() => {
     if (!selected) {
