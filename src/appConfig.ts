@@ -26,7 +26,8 @@ export type PageKey =
   | "log-admin"
   | "debugging"
   | "node-debugging"
-  | "debugging-admin";
+  | "debugging-admin"
+  | "user-permissions";
 
 export type PageConfig = {
   key: PageKey;
