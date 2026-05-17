@@ -10,6 +10,29 @@ beforeEach(() => {
   cleanup();
 });
 
+describe("ParametersPage read-only access", () => {
+  it("renders guest parameter workspace without edit controls when editing is not allowed", () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const guestState = { ...initialState, activeRoleId: "guest" };
+    const { container } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={guestState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
+    expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
+  });
+});
+
 function TopBarActionsHarness({ children }: { children: ReactNode }) {
   const [actions, setActions] = useState<ReactNode | null>(null);
   const setStableActions = useCallback((nextActions: ReactNode | null | ((current: ReactNode | null) => ReactNode | null)) => {

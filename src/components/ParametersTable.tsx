@@ -25,6 +25,7 @@ export type ParametersTableProps = {
   modifiedIds?: Set<string>;
   onEditRow?: (id: string) => void;
   stashedIds?: Set<string>;
+  canEdit?: boolean;
 };
 
 const riskScores: Record<ParameterRecord["risk"], number> = {
@@ -130,7 +131,8 @@ export function ParametersTable({
   onFocusRow,
   modifiedIds,
   onEditRow,
-  stashedIds
+  stashedIds,
+  canEdit = true
 }: ParametersTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -184,6 +186,9 @@ export function ParametersTable({
   }, [selectedVisibleCount, modifiedVisibleIds.length]);
 
   const updateVisibleSelection = () => {
+    if (!canEdit) {
+      return;
+    }
     const nextSelectedIds = new Set(selectedIds);
 
     if (allModifiedVisibleSelected) {
@@ -250,7 +255,7 @@ export function ParametersTable({
                   type="checkbox"
                   aria-label="全选已修改项"
                   checked={allModifiedVisibleSelected}
-                  disabled={!hasModifiedVisible}
+                  disabled={!canEdit || !hasModifiedVisible}
                   onChange={updateVisibleSelection}
                 />
               </th>
@@ -285,8 +290,12 @@ export function ParametersTable({
                       type="checkbox"
                       aria-label={`勾选 ${row.name}`}
                       checked={selectedIds.has(row.id)}
+                      disabled={!canEdit}
                       onClick={(event) => event.stopPropagation()}
                       onChange={() => {
+                        if (!canEdit) {
+                          return;
+                        }
                         const nextSelectedIds = new Set(selectedIds);
                         if (nextSelectedIds.has(row.id)) {
                           nextSelectedIds.delete(row.id);
@@ -320,17 +329,21 @@ export function ParametersTable({
                 <td data-label="重要性">{row.risk}</td>
                 <td data-label="更新时间">{row.updatedAt}</td>
                 <td data-label="操作">
-                  <button
-                    type="button"
-                    className="edit-row-button"
-                    aria-label={`编辑 ${row.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onEditRow?.(row.id);
-                    }}
-                  >
-                    <Pencil size={15} />
-                  </button>
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      className="edit-row-button"
+                      aria-label={`编辑 ${row.name}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEditRow?.(row.id);
+                      }}
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  ) : (
+                    <span className="parameters-table-readonly-action">Read only</span>
+                  )}
                 </td>
               </tr>
               );

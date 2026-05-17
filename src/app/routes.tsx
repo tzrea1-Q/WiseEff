@@ -1,7 +1,7 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 import type { AppAction } from "@/App";
-import { canAccessPage, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
+import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import { DebuggingPage } from "@/DebuggingPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
@@ -72,7 +72,15 @@ export function PageRouter({
 
   switch (page.key) {
     case "parameters":
-      return <UserParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return (
+        <UserParametersPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          canEdit={canPerform(currentRoleId, "parameter.edit")}
+        />
+      );
     case "parameter-submissions":
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-home":

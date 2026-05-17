@@ -39,6 +39,7 @@ type ParametersPageProps = {
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
   search: string;
+  canEdit?: boolean;
 };
 
 function parseRange(range: string) {
@@ -98,7 +99,7 @@ function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: st
   URL.revokeObjectURL(url);
 }
 
-export function ParametersPage({ state, dispatch, onNavigate, search }: ParametersPageProps) {
+export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = true }: ParametersPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
   const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
@@ -328,6 +329,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const handleEditRow = (id: string) => {
+    if (!canEdit) {
+      return;
+    }
     const parameter = parameterById.get(id);
     if (!parameter) {
       return;
@@ -348,6 +352,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const handleSelectedIdsChange = (next: Set<string>) => {
+    if (!canEdit) {
+      return;
+    }
     const addedIds = Array.from(next).filter((id) => !selectedIds.has(id));
     const removedIds = Array.from(selectedIds).filter((id) => !next.has(id));
 
@@ -404,6 +411,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const openSubmitPreview = () => {
+    if (!canEdit) {
+      return;
+    }
     if (!allSelectedDraftsHaveTargets) {
       return;
     }
@@ -411,6 +421,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const submitParameterToModifiedTable = () => {
+    if (!canEdit) {
+      return;
+    }
     if (!allDraftsHaveTargets) {
       return;
     }
@@ -419,6 +432,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
   };
 
   const submitRound = () => {
+    if (!canEdit) {
+      return;
+    }
     if (!allSelectedDraftsHaveTargets) {
       return;
     }
@@ -433,6 +449,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     setConfirmOpen(false);
   };
   const stashRound = () => {
+    if (!canEdit) {
+      return;
+    }
     const itemsToStash = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
     if (itemsToStash.length === 0) {
       return;
@@ -468,6 +487,9 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
     document.querySelector(".parameters-table")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
   const addInsightItemsToDraft = () => {
+    if (!canEdit) {
+      return;
+    }
     const insightIds = insightSnapshot.topParameters.map((parameter) => parameter.id);
     if (insightIds.length === 0) {
       return;
@@ -525,6 +547,12 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
             onDismiss={dismissInsightForToday}
           />
         ) : null}
+        {!canEdit ? (
+          <div className="permission-inline-note" role="status">
+            <strong>Read-only access</strong>
+            <span>Requires User role to edit, draft, or submit parameter changes.</span>
+          </div>
+        ) : null}
         <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
             {modifiedParameters.length > 0 ? (
@@ -543,6 +571,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
                 modifiedIds={modifiedIds}
                 onEditRow={handleEditRow}
                 stashedIds={stashedIds}
+                canEdit={canEdit}
               />
             ) : null}
             <ParametersTable
@@ -580,18 +609,19 @@ export function ParametersPage({ state, dispatch, onNavigate, search }: Paramete
               modifiedIds={modifiedIds}
               onEditRow={handleEditRow}
               stashedIds={stashedIds}
+              canEdit={canEdit}
             />
             <div className="parameters-bottom-actions">
-              <button className="button subtle" type="button" disabled={pendingSubmissionItems.length === 0} onClick={stashRound}>
+              <button className="button subtle" type="button" disabled={!canEdit || pendingSubmissionItems.length === 0} onClick={stashRound}>
                 暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
               </button>
-              <button className="button primary" type="button" disabled={!allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
+              <button className="button primary" type="button" disabled={!canEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
                 {submitButtonText}
               </button>
             </div>
           </section>
         </div>
-        {draftItems.length > 0 && sheetOpen ? (
+        {canEdit && draftItems.length > 0 && sheetOpen ? (
           <WorkbenchSheet
             open
             onClose={() => setSheetOpen(false)}
