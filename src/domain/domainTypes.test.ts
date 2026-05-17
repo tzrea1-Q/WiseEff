@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentToolName } from "./agent/types";
+import type { AgentToolName, AgentTurn } from "./agent/types";
 import type { DebugParameter } from "./debugging/types";
 import type { LogStageId } from "./logs/types";
 import type { RequestStatus, RiskLevel } from "./parameters/types";
@@ -52,5 +52,61 @@ describe("domain type modules", () => {
 
     expect(parameter.nodePath).toBe("/sys/test/value");
     expect(parameter.accessMode).toBe("RW");
+  });
+
+  it("keeps the planned agent turn shape", () => {
+    const turn = {
+      session: {
+        id: "session-1",
+        context: {
+          path: "/parameters",
+          pageKey: "parameters",
+          projectId: "project-1",
+          roleId: "engineer"
+        },
+        messages: [
+          {
+            id: "message-1",
+            role: "user",
+            content: "Review pending cleanup",
+            createdAt: "2026-05-17T00:00:00.000Z"
+          }
+        ]
+      },
+      messages: [
+        {
+          id: "message-2",
+          role: "assistant",
+          content: "I found one cleanup draft.",
+          createdAt: "2026-05-17T00:00:01.000Z"
+        }
+      ],
+      toolCalls: [
+        {
+          id: "tool-call-1",
+          name: "parameter.draftCleanupPlan",
+          label: "Draft cleanup plan",
+          payload: { includeOrphans: true },
+          requiresApproval: true
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-1",
+          toolCallId: "tool-call-1",
+          title: "Apply cleanup draft",
+          message: "Approve the generated parameter cleanup draft."
+        }
+      ]
+    } satisfies AgentTurn;
+
+    expect(turn.session.id).toBe("session-1");
+    expect(turn.messages[0].role).toBe("assistant");
+    expect(turn.toolCalls[0]).toMatchObject({
+      label: "Draft cleanup plan",
+      payload: { includeOrphans: true },
+      requiresApproval: true
+    });
+    expect(turn.approvals[0].toolCallId).toBe("tool-call-1");
   });
 });

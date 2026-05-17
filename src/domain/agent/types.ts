@@ -18,7 +18,7 @@ export type AgentContext = {
 
 export type AgentMessage = {
   id: string;
-  role: "user" | "agent" | "system" | "tool";
+  role: "user" | "assistant" | "system";
   content: string;
   createdAt: string;
 };
@@ -26,38 +26,27 @@ export type AgentMessage = {
 export type AgentToolCall = {
   id: string;
   name: AgentToolName;
-  arguments: Record<string, unknown>;
-  status: "pending" | "running" | "succeeded" | "failed";
-  result?: unknown;
-  error?: string;
+  label: string;
+  payload: Record<string, unknown>;
+  requiresApproval: boolean;
 };
 
 export type AgentApproval = {
   id: string;
   toolCallId: string;
-  status: "requested" | "approved" | "rejected";
-  requestedAt: string;
-  resolvedAt?: string;
-  resolvedBy?: string;
-  note?: string;
+  title: string;
+  message: string;
 };
 
 export type AgentSession = {
   id: string;
   context: AgentContext;
-  startedAt: string;
-  updatedAt: string;
   messages: AgentMessage[];
-  toolCalls: AgentToolCall[];
-  approvals: AgentApproval[];
 };
 
 export type AgentTurn = {
-  id: string;
-  sessionId: string;
-  input: AgentMessage;
-  response?: AgentMessage;
+  session: AgentSession;
+  messages: AgentMessage[];
   toolCalls: AgentToolCall[];
   approvals: AgentApproval[];
-  createdAt: string;
 };
