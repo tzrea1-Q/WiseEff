@@ -400,7 +400,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PARAMETER_SUBMISSION_ROUND":
-      return submitParameterRound(state, { items: action.items, reason: action.reason, projects, roles });
+      return submitParameterRound(state, { items: action.items, reason: action.reason, projects, roles, buildRuntimeReviewFields });
     case "STASH_PARAMETER_SUBMISSION_ROUND": {
       const draftItems = action.items
         .map((item) => {

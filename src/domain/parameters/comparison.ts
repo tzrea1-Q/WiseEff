@@ -1,7 +1,79 @@
-import { parseNumeric } from "@/ParameterComparison/utils/deltaCalc";
-import { sortComparisonRows } from "@/ParameterComparison/utils/rowSort";
-import type { ComparisonFilters, ComparisonRow } from "@/ParameterComparison/types";
-import type { ParameterRecord } from "./types";
+import type { ParameterRecord, RiskLevel } from "./types";
+
+export type ComparisonRowStatus = "drift" | "synced";
+
+export type ComparisonRow = {
+  key: string;
+  module: string;
+  description: string;
+  baseValue: string;
+  targetValue: string;
+  baseNumeric: number | null;
+  targetNumeric: number | null;
+  unit: string;
+  status: ComparisonRowStatus;
+  risk: RiskLevel;
+  structuredDiff?: { before: Record<string, unknown>; after: Record<string, unknown> };
+};
+
+export type RiskFilter = "All" | RiskLevel;
+
+export type ComparisonFilters = {
+  driftOnly: boolean;
+  risk: RiskLevel[];
+  modules: string[];
+  query: string;
+};
+
+const riskRank: Record<RiskLevel, number> = {
+  High: 0,
+  Medium: 1,
+  Low: 2
+};
+
+function isMissing(value: string | null | undefined) {
+  return value === null || value === undefined || value.trim() === "";
+}
+
+export function parseNumeric(value: string | null): number | null {
+  if (value === null || isMissing(value)) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getDeltaMagnitude(row: ComparisonRow) {
+  if (row.baseNumeric === null || row.targetNumeric === null) {
+    return -1;
+  }
+  if (row.baseNumeric === 0) {
+    return Math.abs(row.targetNumeric - row.baseNumeric);
+  }
+
+  return Math.abs(((row.targetNumeric - row.baseNumeric) / Math.abs(row.baseNumeric)) * 100);
+}
+
+export function sortComparisonRows(rows: ComparisonRow[]) {
+  return [...rows].sort((left, right) => {
+    if (left.status !== right.status) {
+      return left.status === "drift" ? -1 : 1;
+    }
+
+    const riskDelta = riskRank[left.risk] - riskRank[right.risk];
+    if (riskDelta !== 0) {
+      return riskDelta;
+    }
+
+    const magnitudeDelta = getDeltaMagnitude(right) - getDeltaMagnitude(left);
+    if (magnitudeDelta !== 0) {
+      return magnitudeDelta;
+    }
+
+    return left.key.localeCompare(right.key);
+  });
+}
 
 const STRUCTURED_DIFFS: Record<string, ComparisonRow["structuredDiff"]> = {
   fast_charge_current_limit_ma: {

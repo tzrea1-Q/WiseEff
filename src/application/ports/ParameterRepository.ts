@@ -1,5 +1,10 @@
 import type { ChangeRequest, ParameterRecord, ParameterSubmissionRound } from "@/domain/parameters/types";
-import type { Project } from "@/mockData";
+
+export type ProjectSummary = {
+  id: string;
+  name: string;
+  code: string;
+};
 
 export type ParameterListQuery = {
   projectId?: string;
@@ -13,7 +18,7 @@ export type SubmitParameterChangesInput = {
 };
 
 export interface ParameterRepository {
-  listProjects(): Promise<Project[]>;
+  listProjects(): Promise<ProjectSummary[]>;
   listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]>;
   listChangeRequests(): Promise<ChangeRequest[]>;
   listSubmissionRounds(): Promise<ParameterSubmissionRound[]>;

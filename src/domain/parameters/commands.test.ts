@@ -1,6 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { createPrototypeState, projects, roles } from "@/mockData";
-import { submitParameterRound } from "./commands";
+import { submitParameterRound, type BuildRuntimeReviewFields } from "./commands";
+
+const buildRuntimeReviewFields: BuildRuntimeReviewFields = (summary, module) => ({
+  createdAtTs: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  waitingHours: 0,
+  aiSummary: summary,
+  aiSuggestion: {
+    recommendation: "needs-review",
+    confidence: "mid",
+    summary,
+    reasons: ["deterministic-test-builder"],
+    similarRequests: []
+  },
+  impact: [{ kind: "module", name: module, note: "deterministic impact", risk: "Medium" }]
+});
 
 describe("submitParameterRound", () => {
   it("submits a parameter round and creates linked requests", () => {
@@ -10,6 +25,7 @@ describe("submitParameterRound", () => {
     const next = submitParameterRound(state, {
       projects,
       roles,
+      buildRuntimeReviewFields,
       items: [
         {
           parameterId: parameter.id,
@@ -37,6 +53,7 @@ describe("submitParameterRound", () => {
     const next = submitParameterRound(state, {
       projects,
       roles,
+      buildRuntimeReviewFields,
       items: [{ parameterId: "missing-parameter", targetValue: "3650", reason: "ignored" }]
     });
 
@@ -50,6 +67,7 @@ describe("submitParameterRound", () => {
     const next = submitParameterRound(state, {
       projects,
       roles,
+      buildRuntimeReviewFields,
       items: [
         {
           parameterId: parameter.id,
@@ -71,6 +89,7 @@ describe("submitParameterRound", () => {
     const next = submitParameterRound(state, {
       projects: [{ id: parameter.projectId, name: "Injected Project Name" }],
       roles: [{ id: state.activeRoleId, name: "Injected Submitter" }],
+      buildRuntimeReviewFields,
       items: [
         {
           parameterId: parameter.id,

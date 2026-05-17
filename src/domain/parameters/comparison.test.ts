@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialState, projects } from "@/mockData";
 import { buildComparisonData } from "./comparison";
-import type { ComparisonFilters } from "@/ParameterComparison/types";
+import type { ComparisonFilters } from "./comparison";
 
 const baseFilters: ComparisonFilters = {
   driftOnly: true,

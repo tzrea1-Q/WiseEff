@@ -1,4 +1,3 @@
-import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
 import type {
   ChangeRequest,
   ParameterDraftItem,
@@ -7,24 +6,12 @@ import type {
   ParameterSubmissionRound
 } from "./types";
 
-function buildRuntimeReviewFields(summary: string, module: string) {
-  const suggestion = buildAISuggestion({
-    recommendation: "needs-review",
-    confidence: "mid",
-    summary,
-    reasons: ["运行时提交需要管理员复核", "AI 尚未拿到完整审阅证据", "建议结合参数历史与影响范围确认"],
-    similarRequests: []
-  });
+type RuntimeReviewFields = Pick<
+  ChangeRequest,
+  "createdAtTs" | "updatedAt" | "waitingHours" | "aiSummary" | "aiSuggestion" | "impact"
+>;
 
-  return {
-    createdAtTs: REVIEW_MOCK_NOW,
-    updatedAt: REVIEW_MOCK_NOW,
-    waitingHours: 0,
-    aiSummary: suggestion.summary,
-    aiSuggestion: suggestion,
-    impact: buildImpactItems(module)
-  };
-}
+export type BuildRuntimeReviewFields = (summary: string, module: string) => RuntimeReviewFields;
 
 type ProjectSummary = {
   id: string;
@@ -49,6 +36,7 @@ export type SubmitParameterRoundInput = {
   reason?: string;
   projects: ProjectSummary[];
   roles: SubmitterRole[];
+  buildRuntimeReviewFields: BuildRuntimeReviewFields;
 };
 
 export function submitParameterRound<TState extends ParameterRoundState>(state: TState, input: SubmitParameterRoundInput): TState {
@@ -82,7 +70,7 @@ export function submitParameterRound<TState extends ParameterRoundState>(state: 
       submitter,
       createdAt: "刚刚",
       status: "待审阅",
-      ...buildRuntimeReviewFields(summary, parameter.module)
+      ...input.buildRuntimeReviewFields(summary, parameter.module)
     };
   });
   const submissionItems = draftItems.map(({ parameter, item }, index): ParameterSubmissionItem => ({
