@@ -24,12 +24,26 @@ function renderPage(search = "") {
 describe("UserPermissionsPage", () => {
   it("renders user permissions, role names, and platform users", () => {
     renderPage();
-    const capabilities = screen.getByLabelText("Role capabilities");
+    const capabilities = screen.getByLabelText("角色权限说明");
 
     expect(screen.getByRole("heading", { name: "User permissions" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Guest" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Committer" })).toBeInTheDocument();
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
+  });
+
+  it("explains role capabilities in Chinese without exposing raw permission keys", () => {
+    renderPage();
+    const capabilities = screen.getByLabelText("角色权限说明");
+
+    expect(within(capabilities).getByText("仅可查看参数页面。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("可查看并修改参数，使用参数调试和节点调试，并上传日志进行智能分析。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("包含 User 权限，并可审阅参数提交。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("包含 Committer 权限，并可访问各应用后台和用户管理。")).toBeInTheDocument();
+    expect(within(capabilities).getAllByText("查看参数").length).toBeGreaterThan(0);
+    expect(within(capabilities).getByText("管理用户权限")).toBeInTheDocument();
+    expect(within(capabilities).queryByText("parameter:view")).not.toBeInTheDocument();
+    expect(within(capabilities).queryByText("users:manage")).not.toBeInTheDocument();
   });
 
   it("ignores unrelated URL search params when filtering users", () => {

@@ -2,7 +2,7 @@ import { useMemo, useState, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/App";
-import { migrateLegacyRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
+import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState } from "@/mockData";
 
 type UserPermissionsPageProps = {
@@ -19,6 +19,23 @@ const statusOptions = [
 ] as const;
 
 type StatusFilter = (typeof statusOptions)[number]["value"];
+
+const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
+  guest: "仅可查看参数页面。",
+  user: "可查看并修改参数，使用参数调试和节点调试，并上传日志进行智能分析。",
+  committer: "包含 User 权限，并可审阅参数提交。",
+  admin: "包含 Committer 权限，并可访问各应用后台和用户管理。"
+};
+
+const permissionLabels: Record<PermissionKey, string> = {
+  "parameter:view": "查看参数",
+  "parameter:edit": "修改参数",
+  "debugging:use": "使用调试平台",
+  "logs:upload": "上传日志智能分析",
+  "parameter:review": "审阅参数提交",
+  "admin:access": "访问应用后台",
+  "users:manage": "管理用户权限"
+};
 
 export function UserPermissionsPage({ state, dispatch, search: _search }: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
@@ -184,14 +201,14 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
           </table>
         </div>
 
-        <aside className="user-permissions-capabilities" aria-label="Role capabilities">
+        <aside className="user-permissions-capabilities" aria-label="角色权限说明">
           {platformRoles.map((role) => (
             <section key={role.id}>
               <h3>{role.name}</h3>
-              <p>{role.description}</p>
+              <p>{roleCapabilityDescriptions[role.id]}</p>
               <ul>
                 {role.permissions.map((permission) => (
-                  <li key={permission}>{permission}</li>
+                  <li key={permission}>{permissionLabels[permission]}</li>
                 ))}
               </ul>
             </section>
