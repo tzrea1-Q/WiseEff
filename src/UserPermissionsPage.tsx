@@ -140,7 +140,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
               <tr>
                 <th scope="col">User</th>
                 <th scope="col">Title</th>
-                <th scope="col">Role</th>
+                <th scope="col" className="user-permissions-role-header">Role</th>
                 <th scope="col">Status</th>
                 <th scope="col">Last active</th>
               </tr>
@@ -157,8 +157,9 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
                       <div>{user.email}</div>
                     </td>
                     <td>{user.title}</td>
-                    <td>
+                    <td className="user-permissions-role-cell">
                       <select
+                        className="user-permissions-role-select"
                         aria-label={`Role for ${user.name}`}
                         value={normalizedRoleId}
                         disabled={isCurrentUser}

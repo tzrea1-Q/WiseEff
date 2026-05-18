@@ -3356,6 +3356,46 @@ td small {
   border-bottom: 0;
 }
 
+.user-permissions-role-header,
+.user-permissions-role-cell {
+  width: 148px;
+}
+
+.user-permissions-role-select {
+  display: block;
+  width: 128px;
+  min-height: 32px;
+  padding: 0 10px;
+  color: #0f172a;
+  background: #f8fafc;
+  border: 1px solid #dfe5f3;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.user-permissions-role-select:hover {
+  border-color: #b8c5dc;
+  background: #fff;
+}
+
+.user-permissions-role-select:focus-visible {
+  border-color: var(--app-primary);
+  outline: 2px solid rgba(0, 93, 224, 0.16);
+  outline-offset: 1px;
+}
+
+.user-permissions-role-select:disabled {
+  color: #475569;
+  background: #eef3fb;
+  border-color: #dbe4f2;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .user-permissions-capabilities {
   display: grid;
   gap: 12px;

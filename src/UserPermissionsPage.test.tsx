@@ -155,6 +155,17 @@ describe("UserPermissionsPage", () => {
     });
   });
 
+  it("uses compact table styling for row role selectors", () => {
+    renderPage();
+    const row = screen.getByText("Liu Min").closest("tr")!;
+    const roleCell = within(row).getByRole("combobox", { name: "Role for Liu Min" }).closest("td");
+    const roleSelect = within(row).getByRole("combobox", { name: "Role for Liu Min" });
+
+    expect(screen.getByRole("columnheader", { name: "Role" })).toHaveClass("user-permissions-role-header");
+    expect(roleCell).toHaveClass("user-permissions-role-cell");
+    expect(roleSelect).toHaveClass("user-permissions-role-select");
+  });
+
   it("renders and filters legacy role ids under their migrated platform role", async () => {
     const base = createPrototypeState();
     const state = {
