@@ -91,6 +91,26 @@ describe("ParameterInsightBar", () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  it("hides the one-click draft action when draft changes are not allowed", () => {
+    const onAddToDraft = vi.fn();
+    render(
+      <ParameterInsightBar
+        snapshot={snapshot}
+        collapsed={false}
+        onExpand={vi.fn()}
+        onViewHighRisk={vi.fn()}
+        onAddToDraft={onAddToDraft}
+        canAddToDraft={false}
+        addToDraftDisabledReason="Requires User role to edit, draft, or submit parameter changes."
+        onDismiss={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Requires User role to edit, draft, or submit parameter changes.")).toBeInTheDocument();
+    expect(onAddToDraft).not.toHaveBeenCalled();
+  });
+
   it("renders nothing when there are no drifted parameters", () => {
     const { container } = render(
       <ParameterInsightBar

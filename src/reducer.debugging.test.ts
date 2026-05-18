@@ -4,6 +4,26 @@ import { createPrototypeState } from "./mockData";
 
 const createDebuggingState = () => ({ ...createPrototypeState(), activeRoleId: "user" });
 const createAdminState = () => ({ ...createPrototypeState(), activeRoleId: "admin" });
+const createGuestState = () => ({ ...createPrototypeState(), activeRoleId: "guest" });
+
+const createDebugDraft = (base = createPrototypeState()) => {
+  const target = base.debugParameters[0];
+
+  return {
+    name: target.name,
+    key: target.key,
+    description: target.description,
+    module: target.module,
+    currentValue: "1234",
+    targetValue: "5678",
+    unit: target.unit,
+    range: target.range,
+    risk: "High" as const,
+    status: target.status,
+    nodePath: target.nodePath,
+    accessMode: target.accessMode
+  };
+};
 
 describe("CONNECT_DEVICE（改写）", () => {
   beforeEach(() => {
@@ -445,5 +465,68 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
     expect(next.debugParameters).toHaveLength(base.debugParameters.length + 1);
     const added = next.debugParameters.at(-1);
     expect(added?.key).toBe("x.y");
+  });
+});
+
+describe("debug workflow permission boundaries", () => {
+  it("requires debugging.use for push actions", () => {
+    const base = createGuestState();
+    const target = base.debugParameters[0];
+    const stateWithDraft = {
+      ...base,
+      debugParameters: base.debugParameters.map((parameter) =>
+        parameter.id === target.id ? { ...parameter, targetValue: "9.9" } : parameter
+      )
+    };
+
+    expect(reducer(stateWithDraft, { type: "PUSH_DEBUG_VALUES", parameterIds: [target.id] })).toBe(stateWithDraft);
+    expect(reducer(stateWithDraft, { type: "PUSH_DEBUG_VALUE", parameterId: target.id })).toBe(stateWithDraft);
+  });
+
+  it("requires debugging.use for rollback actions", () => {
+    const base = createDebuggingState();
+    const target = base.debugParameters[0];
+    const pushed = reducer(
+      {
+        ...base,
+        debugParameters: base.debugParameters.map((parameter) =>
+          parameter.id === target.id ? { ...parameter, targetValue: "42" } : parameter
+        )
+      },
+      { type: "PUSH_DEBUG_VALUES", parameterIds: [target.id] }
+    );
+    const guestState = { ...pushed, activeRoleId: "guest" };
+
+    expect(reducer(guestState, { type: "ROLLBACK_LAST_SNAPSHOT" })).toBe(guestState);
+    expect(reducer(guestState, { type: "ROLLBACK_UNDO_PUSH" })).toBe(guestState);
+  });
+
+  it("requires debugging.use for clearing pushed debug ids", () => {
+    const state = {
+      ...createGuestState(),
+      pushedDebugIds: ["a", "b", "c"]
+    };
+
+    expect(reducer(state, { type: "CLEAR_PUSHED_DEBUG_IDS", parameterIds: ["b"] })).toBe(state);
+  });
+
+  it("requires debugging.use for debug parameter draft mutations", () => {
+    const base = createGuestState();
+    const target = base.debugParameters[0];
+    const dirtyState = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter) =>
+          parameter.id === target.id ? { ...parameter, currentValue: "9999" } : parameter
+        )
+      }
+    };
+
+    expect(reducer(base, { type: "UPDATE_DEBUG_PARAMETER", parameterId: target.id, patch: { currentValue: "9999" } }))
+      .toBe(base);
+    expect(reducer(base, { type: "COMMIT_DEBUG_PARAMETER_DRAFT", parameterId: target.id, draft: createDebugDraft(base) }))
+      .toBe(base);
+    expect(reducer(dirtyState, { type: "DISCARD_ALL_DEBUG_DIRTY" })).toBe(dirtyState);
   });
 });

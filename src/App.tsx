@@ -343,7 +343,10 @@ function isValidEmail(email: string) {
 
 function canManageUsers(state: PrototypeState) {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  return Boolean(currentUser?.isActive) && canPerform(migrateLegacyRoleId(state.activeRoleId), "users.manage");
+  if (!currentUser?.isActive) {
+    return false;
+  }
+  return canPerform(migrateLegacyRoleId(currentUser.roleId), "users.manage");
 }
 
 function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
@@ -585,6 +588,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADVANCE_LOG": {
+      if (!canPerform(activeRoleId, "logs.upload")) return state;
       const order: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
       return {
         ...state,
@@ -707,6 +711,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     }
     case "ROLLBACK_LAST_SNAPSHOT":
     case "ROLLBACK_UNDO_PUSH": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       if (!state.lastDebugSnapshot) {
         return state;
       }
@@ -747,6 +752,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "CLEAR_PUSHED_DEBUG_IDS": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const removeIds = new Set(action.parameterIds);
       return {
         ...state,
@@ -781,6 +787,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "COMMIT_DEBUG_PARAMETER_DRAFT": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const exists = state.configDraft.debugParameters.some(
         (parameter) => parameter.id === action.parameterId
       );
@@ -798,6 +805,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DISCARD_ALL_DEBUG_DIRTY": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const restoredDebugParameters = state.persistedConfigSnapshot.debugParameters.map(
         (parameter) => ({ ...parameter })
       );
@@ -1084,6 +1092,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "ADD_NOTIFICATION":
       return { ...state, notifications: [action.message, ...state.notifications] };
     case "LOG_ADMIN_REANALYZE_LOG": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
       if (!target) {
         return state;
@@ -1112,6 +1121,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_ARCHIVE_LOG": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
       if (!target) {
         return state;
@@ -1132,6 +1142,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_UNARCHIVE_LOG": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
       if (!target || !state.archivedLogIds.includes(action.logId)) {
         return state;
@@ -1149,6 +1160,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_ADD_USER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const userIndex = state.logAdminUsers.length;
       const newUser = {
         id: `log-admin-user-${userIndex + 1}`,
@@ -1173,6 +1185,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_UPDATE_USER_ROLE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logAdminUsers.find((user) => user.id === action.userId);
       if (!target || target.role === action.role) {
         return state;
@@ -1192,6 +1205,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_REMOVE_USER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logAdminUsers.find((user) => user.id === action.userId);
       if (!target) {
         return state;
@@ -1209,6 +1223,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_SYNC_LOGS": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const now = new Date();
       let promoted = false;
 
@@ -1238,6 +1253,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_EXPORT_REPORT":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         auditEvents: addAuditEvent(state, {

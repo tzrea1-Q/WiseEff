@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UserPermissionsPage } from "./UserPermissionsPage";
 import { createPrototypeState } from "./mockData";
+import type { PlatformRoleId } from "./domain/users/types";
 
 afterEach(() => {
   cleanup();
@@ -64,6 +65,23 @@ describe("UserPermissionsPage", () => {
     });
   });
 
+  it("allows the add user title to be omitted so the reducer fallback can apply", async () => {
+    const { dispatch } = renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add user" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Demo Engineer");
+    await userEvent.type(screen.getByLabelText("Email"), "demo@chargelab.cn");
+    await userEvent.click(screen.getByRole("button", { name: "Create user" }));
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_USER",
+      name: "Demo Engineer",
+      email: "demo@chargelab.cn",
+      title: "",
+      roleId: "user"
+    });
+  });
+
   it("keeps the add user dialog open when trimmed name or email is empty", async () => {
     const { dispatch } = renderPage();
 
@@ -95,5 +113,45 @@ describe("UserPermissionsPage", () => {
       userId: "u-liu-min",
       isActive: false
     });
+  });
+
+  it("renders and filters legacy role ids under their migrated platform role", async () => {
+    const base = createPrototypeState();
+    const state = {
+      ...base,
+      users: [
+        ...base.users,
+        {
+          id: "u-legacy-param-admin",
+          name: "Legacy Reviewer",
+          email: "legacy-reviewer@chargelab.cn",
+          title: "Legacy role",
+          roleId: "parameter-admin" as PlatformRoleId,
+          isActive: true,
+          createdAt: "2025-01-01T00:00:00.000Z",
+          lastActive: "today"
+        },
+        {
+          id: "u-legacy-hardware",
+          name: "Legacy Viewer",
+          email: "legacy-viewer@chargelab.cn",
+          title: "Legacy role",
+          roleId: "hardware" as PlatformRoleId,
+          isActive: true,
+          createdAt: "2025-01-01T00:00:00.000Z",
+          lastActive: "today"
+        }
+      ]
+    };
+
+    render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
+
+    expect(screen.getByRole("combobox", { name: "Role for Legacy Reviewer" })).toHaveValue("committer");
+    expect(screen.getByRole("combobox", { name: "Role for Legacy Viewer" })).toHaveValue("guest");
+
+    await userEvent.selectOptions(screen.getByLabelText("Role"), "committer");
+
+    expect(screen.getByText("Legacy Reviewer")).toBeInTheDocument();
+    expect(screen.queryByText("Legacy Viewer")).not.toBeInTheDocument();
   });
 });

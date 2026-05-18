@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { reducer } from "./App";
 import { createPrototypeState } from "./mockData";
 
+const createLogAdminState = () => ({ ...createPrototypeState(), activeRoleId: "admin" });
+
 describe("reducer · LOG_ADMIN_REANALYZE_LOG", () => {
   it("sets log.status to Processing and stage to 日志解析", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logs[1].id;
     const next = reducer(state, { type: "LOG_ADMIN_REANALYZE_LOG", logId: targetId });
     const log = next.logs.find((item) => item.id === targetId)!;
@@ -14,7 +16,7 @@ describe("reducer · LOG_ADMIN_REANALYZE_LOG", () => {
   });
 
   it("writes AuditEvent with app=log-admin severity=Medium", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const before = state.auditEvents.length;
     const next = reducer(state, { type: "LOG_ADMIN_REANALYZE_LOG", logId: state.logs[0].id });
 
@@ -26,7 +28,7 @@ describe("reducer · LOG_ADMIN_REANALYZE_LOG", () => {
   });
 
   it("is a no-op when logId does not exist", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, { type: "LOG_ADMIN_REANALYZE_LOG", logId: "nonexistent" });
 
     expect(next.logs).toEqual(state.logs);
@@ -36,7 +38,7 @@ describe("reducer · LOG_ADMIN_REANALYZE_LOG", () => {
 
 describe("reducer · LOG_ADMIN_ARCHIVE_LOG", () => {
   it("adds logId to archivedLogIds", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logs[0].id;
     const next = reducer(state, { type: "LOG_ADMIN_ARCHIVE_LOG", logId: targetId });
 
@@ -44,7 +46,7 @@ describe("reducer · LOG_ADMIN_ARCHIVE_LOG", () => {
   });
 
   it("writes AuditEvent severity=Low", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, { type: "LOG_ADMIN_ARCHIVE_LOG", logId: state.logs[0].id });
     const event = next.auditEvents[next.auditEvents.length - 1];
 
@@ -54,7 +56,7 @@ describe("reducer · LOG_ADMIN_ARCHIVE_LOG", () => {
   });
 
   it("does not archive twice", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logs[0].id;
     const once = reducer(state, { type: "LOG_ADMIN_ARCHIVE_LOG", logId: targetId });
     const twice = reducer(once, { type: "LOG_ADMIN_ARCHIVE_LOG", logId: targetId });
@@ -65,7 +67,7 @@ describe("reducer · LOG_ADMIN_ARCHIVE_LOG", () => {
 
 describe("reducer · LOG_ADMIN_UNARCHIVE_LOG", () => {
   it("removes logId from archivedLogIds", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logs[0].id;
     const archived = reducer(state, { type: "LOG_ADMIN_ARCHIVE_LOG", logId: targetId });
     const unarchived = reducer(archived, { type: "LOG_ADMIN_UNARCHIVE_LOG", logId: targetId });
@@ -74,7 +76,7 @@ describe("reducer · LOG_ADMIN_UNARCHIVE_LOG", () => {
   });
 
   it("writes AuditEvent with action containing 撤销归档", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logs[0].id;
     const archived = reducer(state, { type: "LOG_ADMIN_ARCHIVE_LOG", logId: targetId });
     const unarchived = reducer(archived, { type: "LOG_ADMIN_UNARCHIVE_LOG", logId: targetId });
@@ -86,7 +88,7 @@ describe("reducer · LOG_ADMIN_UNARCHIVE_LOG", () => {
 
 describe("reducer · LOG_ADMIN_ADD_USER", () => {
   it("appends new user to logAdminUsers with generated id/avatar", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const before = state.logAdminUsers.length;
     const next = reducer(state, {
       type: "LOG_ADMIN_ADD_USER",
@@ -103,7 +105,7 @@ describe("reducer · LOG_ADMIN_ADD_USER", () => {
   });
 
   it("writes AuditEvent severity=Medium", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const before = state.auditEvents.length;
     const next = reducer(state, {
       type: "LOG_ADMIN_ADD_USER",
@@ -121,7 +123,7 @@ describe("reducer · LOG_ADMIN_ADD_USER", () => {
 
 describe("reducer · LOG_ADMIN_UPDATE_USER_ROLE", () => {
   it("updates role of target user", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logAdminUsers[1].id;
     const next = reducer(state, {
       type: "LOG_ADMIN_UPDATE_USER_ROLE",
@@ -134,7 +136,7 @@ describe("reducer · LOG_ADMIN_UPDATE_USER_ROLE", () => {
   });
 
   it("writes AuditEvent severity=High", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logAdminUsers[1].id;
     const next = reducer(state, {
       type: "LOG_ADMIN_UPDATE_USER_ROLE",
@@ -148,7 +150,7 @@ describe("reducer · LOG_ADMIN_UPDATE_USER_ROLE", () => {
   });
 
   it("is a no-op when userId does not exist", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, {
       type: "LOG_ADMIN_UPDATE_USER_ROLE",
       userId: "nonexistent",
@@ -162,7 +164,7 @@ describe("reducer · LOG_ADMIN_UPDATE_USER_ROLE", () => {
 
 describe("reducer · LOG_ADMIN_REMOVE_USER", () => {
   it("removes user and writes AuditEvent severity=Medium", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const targetId = state.logAdminUsers[2].id;
     const next = reducer(state, { type: "LOG_ADMIN_REMOVE_USER", userId: targetId });
 
@@ -175,7 +177,7 @@ describe("reducer · LOG_ADMIN_REMOVE_USER", () => {
 
 describe("reducer · LOG_ADMIN_SYNC_LOGS", () => {
   it("bumps updatedAtIso of all logs toward now", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const originalIsos = state.logs.map((log) => log.updatedAtIso);
     const next = reducer(state, { type: "LOG_ADMIN_SYNC_LOGS" });
 
@@ -185,7 +187,7 @@ describe("reducer · LOG_ADMIN_SYNC_LOGS", () => {
   });
 
   it("writes AuditEvent severity=Low", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, { type: "LOG_ADMIN_SYNC_LOGS" });
     const event = next.auditEvents[next.auditEvents.length - 1];
 
@@ -195,7 +197,7 @@ describe("reducer · LOG_ADMIN_SYNC_LOGS", () => {
   });
 
   it("promotes at least one Processing log to Complete when present", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const beforeCount = state.logs.filter((log) => log.status === "Processing").length;
     const next = reducer(state, { type: "LOG_ADMIN_SYNC_LOGS" });
     const afterCount = next.logs.filter((log) => log.status === "Processing").length;
@@ -208,7 +210,7 @@ describe("reducer · LOG_ADMIN_SYNC_LOGS", () => {
 
 describe("reducer · LOG_ADMIN_EXPORT_REPORT", () => {
   it("writes AuditEvent severity=Low with timeWindow info", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, { type: "LOG_ADMIN_EXPORT_REPORT", timeWindow: "7d" });
     const event = next.auditEvents[next.auditEvents.length - 1];
 
@@ -218,7 +220,7 @@ describe("reducer · LOG_ADMIN_EXPORT_REPORT", () => {
   });
 
   it("does not modify logs", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, { type: "LOG_ADMIN_EXPORT_REPORT", timeWindow: "today" });
 
     expect(next.logs).toEqual(state.logs);
@@ -227,7 +229,7 @@ describe("reducer · LOG_ADMIN_EXPORT_REPORT", () => {
 
 describe("reducer · OPEN_AGENT_WITH_PRESET", () => {
   it("appends a notification describing the preset", () => {
-    const state = createPrototypeState();
+    const state = createLogAdminState();
     const next = reducer(state, {
       type: "OPEN_AGENT_WITH_PRESET",
       preset: "log-admin-failures"
@@ -235,5 +237,38 @@ describe("reducer · OPEN_AGENT_WITH_PRESET", () => {
 
     expect(next.notifications.length).toBe(state.notifications.length + 1);
     expect(next.notifications[0]).toMatch(/Agent/);
+  });
+});
+
+describe("log mutation permission boundaries", () => {
+  it("requires logs.upload to advance a log", () => {
+    const guestState = createPrototypeState();
+    const userState = { ...createPrototypeState(), activeRoleId: "user" };
+    const logId = guestState.logs[0].id;
+
+    expect(reducer(guestState, { type: "ADVANCE_LOG", logId })).toBe(guestState);
+    expect(reducer(userState, { type: "ADVANCE_LOG", logId }).logs.find((log) => log.id === logId)?.stage)
+      .not.toBe(userState.logs.find((log) => log.id === logId)?.stage);
+  });
+
+  it.each([
+    ["LOG_ADMIN_REANALYZE_LOG", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_REANALYZE_LOG" as const, logId: state.logs[0].id })],
+    ["LOG_ADMIN_ARCHIVE_LOG", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_ARCHIVE_LOG" as const, logId: state.logs[0].id })],
+    ["LOG_ADMIN_UNARCHIVE_LOG", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_UNARCHIVE_LOG" as const, logId: state.logs[0].id })],
+    ["LOG_ADMIN_ADD_USER", () => ({ type: "LOG_ADMIN_ADD_USER" as const, input: { name: "Blocked User", title: "Viewer", role: "Viewer" as const } })],
+    ["LOG_ADMIN_UPDATE_USER_ROLE", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_UPDATE_USER_ROLE" as const, userId: state.logAdminUsers[1].id, role: "Admin" as const })],
+    ["LOG_ADMIN_REMOVE_USER", (state: ReturnType<typeof createPrototypeState>) => ({ type: "LOG_ADMIN_REMOVE_USER" as const, userId: state.logAdminUsers[2].id })],
+    ["LOG_ADMIN_SYNC_LOGS", () => ({ type: "LOG_ADMIN_SYNC_LOGS" as const })],
+    ["LOG_ADMIN_EXPORT_REPORT", () => ({ type: "LOG_ADMIN_EXPORT_REPORT" as const, timeWindow: "7d" as const })]
+  ])("requires admin.access for %s", (_name, buildAction) => {
+    const state = createPrototypeState();
+    const guestState = {
+      ...state,
+      archivedLogIds: state.archivedLogIds.includes(state.logs[0].id)
+        ? state.archivedLogIds
+        : [...state.archivedLogIds, state.logs[0].id]
+    };
+
+    expect(reducer(guestState, buildAction(guestState))).toBe(guestState);
   });
 });

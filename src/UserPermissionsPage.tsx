@@ -1,7 +1,7 @@
 import { useMemo, useState, type Dispatch, type FormEvent } from "react";
 
 import type { AppAction } from "@/App";
-import { platformRoles, type PlatformRoleId } from "@/domain/users/types";
+import { migrateLegacyRoleId, platformRoles, type PlatformRoleId } from "@/domain/users/types";
 import type { PrototypeState } from "@/mockData";
 
 type UserPermissionsPageProps = {
@@ -37,7 +37,8 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
         const matchesQuery =
           normalizedQuery.length === 0 ||
           [user.name, user.email, user.title].some((value) => value.toLowerCase().includes(normalizedQuery));
-        const matchesRole = roleFilter === "all" || user.roleId === roleFilter;
+        const normalizedRoleId = migrateLegacyRoleId(user.roleId);
+        const matchesRole = roleFilter === "all" || normalizedRoleId === roleFilter;
         const matchesStatus =
           statusFilter === "all" || (statusFilter === "active" ? user.isActive : !user.isActive);
 
@@ -126,6 +127,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
             <tbody>
               {filteredUsers.map((user) => {
                 const isCurrentUser = user.id === state.currentUserId;
+                const normalizedRoleId = migrateLegacyRoleId(user.roleId);
 
                 return (
                   <tr key={user.id}>
@@ -137,7 +139,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
                     <td>
                       <select
                         aria-label={`Role for ${user.name}`}
-                        value={user.roleId}
+                        value={normalizedRoleId}
                         disabled={isCurrentUser}
                         onChange={(event) =>
                           dispatch({
@@ -222,7 +224,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
             </label>
             <label>
               Title
-              <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+              <input value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
             <label>
               Initial role

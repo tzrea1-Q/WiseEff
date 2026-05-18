@@ -32,6 +32,27 @@ describe("ParametersPage read-only access", () => {
     expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
   });
 
+  it("does not expose the Agent insight one-click draft action to Guest", () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const guestState = { ...initialState, activeRoleId: "guest" };
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={guestState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Requires User role to edit, draft, or submit parameter changes.").length)
+      .toBeGreaterThan(0);
+  });
+
   it("does not retain a log-linked draft created while read-only after editing becomes available", async () => {
     const dispatch = vi.fn();
     const onNavigate = vi.fn();

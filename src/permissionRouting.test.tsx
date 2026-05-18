@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { canAccessPage } from "./app/permissions";
 import App, { appReducer } from "./App";
@@ -22,9 +22,19 @@ describe("permission-aware routing", () => {
     expect(screen.queryByRole("button", { name: /系统设置|绯荤粺璁剧疆/ })).not.toBeInTheDocument();
   });
 
-  it("lets Admin see the shared user permissions utility entry", () => {
-    const adminState = { ...initialState, activeRoleId: "admin" };
-    expect(adminState.activeRoleId).toBe("admin");
+  it("lets Admin see the shared user permissions utility entry", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "admin" }} />);
+
+    const settingsEntry = screen.getByRole("button", { name: /系统设置/ });
+    expect(settingsEntry).toBeInTheDocument();
+
+    fireEvent.click(settingsEntry);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "User permissions" })).toBeInTheDocument();
+    });
   });
 
   it("prevents Guest from mutating parameter values in the reducer", () => {

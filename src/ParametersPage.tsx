@@ -554,6 +554,8 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
             onExpand={() => setInsightCollapsed(false)}
             onViewHighRisk={viewHighRiskFromInsight}
             onAddToDraft={addInsightItemsToDraft}
+            canAddToDraft={canEdit}
+            addToDraftDisabledReason="Requires User role to edit, draft, or submit parameter changes."
             onDismiss={dismissInsightForToday}
           />
         ) : null}
