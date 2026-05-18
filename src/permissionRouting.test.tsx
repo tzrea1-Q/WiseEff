@@ -21,7 +21,7 @@ describe("permission-aware routing", () => {
     expect(navigation.getByRole("button", { name: /参数修改|鍙傛暟淇敼/ })).toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /参数审阅|鍙傛暟瀹￠槄/ })).not.toBeInTheDocument();
     expect(navigation.queryByRole("button", { name: /参数调试|鍙傛暟璋冭瘯/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /系统设置|绯荤粺璁剧疆/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /用户管理|鐢ㄦ埛绠＄悊/ })).not.toBeInTheDocument();
   });
 
   it("lets Admin see the shared user permissions utility entry", async () => {
@@ -29,7 +29,7 @@ describe("permission-aware routing", () => {
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "admin" }} />);
 
-    const settingsEntry = screen.getByRole("button", { name: /系统设置/ });
+    const settingsEntry = screen.getByRole("button", { name: /用户管理/ });
     expect(settingsEntry).toBeInTheDocument();
 
     fireEvent.click(settingsEntry);

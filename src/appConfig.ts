@@ -167,7 +167,7 @@ export const navigationItems: PageConfig[] = [
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
   { label: "Agent 能力", icon: Bot },
-  { label: "系统设置", icon: Settings2, path: "/user-permissions" }
+  { label: "用户管理", icon: Settings2, path: "/user-permissions" }
 ];
 
 export function getPageByPath(path: string): PageConfig {

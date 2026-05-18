@@ -65,10 +65,10 @@ describe("WiseEff prototype configuration", () => {
     expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
   });
 
-  it("makes system settings a utility route to user permissions", () => {
-    const systemSettings = utilityItems.find((item) => item.label.includes("系统设置") || item.label.includes("绯荤粺璁剧疆"));
+  it("makes user management a utility route to user permissions", () => {
+    const userManagement = utilityItems.find((item) => item.label.includes("用户管理") || item.label.includes("鐢ㄦ埛绠＄悊"));
 
-    expect(systemSettings?.path).toBe("/user-permissions");
+    expect(userManagement?.path).toBe("/user-permissions");
   });
 });
 
