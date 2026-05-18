@@ -7549,14 +7549,16 @@ td small {
   width: min(900px, calc(100vw - 48px));
   max-width: min(900px, calc(100vw - 48px));
   max-height: min(820px, calc(100vh - 48px));
-  overflow: auto;
+  overflow: hidden;
   padding: 0;
 }
 
 .feedback-dialog form {
   display: grid;
   gap: 16px;
+  width: 100%;
   min-width: 0;
+  overflow: hidden;
 }
 
 .feedback-dialog-header {
@@ -7591,7 +7593,8 @@ td small {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin: 0 24px;
+  justify-self: center;
+  width: calc(100% - 48px);
   padding: 12px 14px;
   background: #f6f8ff;
   border: 1px solid rgba(115, 118, 133, 0.2);
@@ -7625,6 +7628,8 @@ td small {
   display: grid;
   grid-template-columns: minmax(300px, 1fr) minmax(280px, 360px);
   gap: 16px;
+  min-width: 0;
+  overflow: hidden;
   padding: 0 24px;
 }
 
@@ -7658,12 +7663,13 @@ td small {
 
 .feedback-section [data-slot="textarea"] {
   min-height: 156px;
-  resize: vertical;
+  resize: none;
   line-height: 1.55;
 }
 
 .feedback-capture-panel {
   padding: 14px;
+  min-width: 0;
   background: #fbfcff;
   border: 1px solid rgba(115, 118, 133, 0.2);
   border-radius: 8px;
@@ -7745,7 +7751,8 @@ td small {
 }
 
 .feedback-success {
-  margin: 0 24px;
+  justify-self: center;
+  width: calc(100% - 48px);
   padding: 10px 12px;
   color: var(--success);
   background: rgba(15, 124, 85, 0.1);
@@ -7764,7 +7771,10 @@ td small {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  width: 100%;
+  margin: 0;
   padding: 16px 24px 24px;
+  overflow: hidden;
   border-top: 1px solid rgba(115, 118, 133, 0.18);
 }
 
@@ -7849,14 +7859,63 @@ td small {
     max-height: calc(100vh - 24px);
   }
 
+  .feedback-dialog form {
+    gap: 10px;
+  }
+
+  .feedback-dialog-header {
+    padding: 18px 18px 0;
+  }
+
+  .feedback-dialog-header h2 {
+    margin-bottom: 4px;
+    font-size: 20px;
+  }
+
+  .feedback-dialog-header p {
+    font-size: 12px;
+    line-height: 1.42;
+  }
+
   .feedback-layout {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .feedback-context {
     align-items: flex-start;
     flex-direction: column;
     gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .feedback-section {
+    gap: 8px;
+  }
+
+  .feedback-section [data-slot="textarea"] {
+    min-height: 112px;
+  }
+
+  .feedback-capture-panel {
+    padding: 12px;
+  }
+
+  .feedback-screenshot-preview {
+    min-height: 132px;
+  }
+
+  .feedback-screenshot-preview div {
+    gap: 6px;
+    padding: 12px;
+  }
+
+  .feedback-screenshot-preview span {
+    line-height: 1.42;
+  }
+
+  .feedback-dialog .dialog-actions {
+    padding: 12px 18px 16px;
   }
 
   .parameters-table-toolbar,
@@ -8236,8 +8295,6 @@ td small {
   .feedback-layout,
   .feedback-dialog .dialog-actions,
   .feedback-success {
-    margin-right: 14px;
-    margin-left: 14px;
     padding-right: 0;
     padding-left: 0;
   }
@@ -8247,10 +8304,8 @@ td small {
   }
 
   .feedback-context,
-  .feedback-layout,
   .feedback-success {
-    margin-right: 14px;
-    margin-left: 14px;
+    width: calc(100% - 28px);
   }
 
   .feedback-layout {

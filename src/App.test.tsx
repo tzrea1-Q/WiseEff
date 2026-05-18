@@ -1065,12 +1065,23 @@ describe("WiseEff app shell", () => {
     const css = readFileSync("src/styles.css", "utf8");
     const feedbackDialogCss = readCssBlock(css, ".feedback-dialog");
     const feedbackDialogFormCss = readCssBlock(css, ".feedback-dialog form");
+    const feedbackContextCss = readCssBlock(css, ".feedback-context");
     const feedbackLayoutCss = readCssBlock(css, ".feedback-layout");
+    const feedbackActionsCss = readCssBlock(css, ".feedback-dialog .dialog-actions");
 
     expect(feedbackDialogCss).toContain("max-width: min(900px, calc(100vw - 48px));");
+    expect(feedbackDialogCss).toContain("overflow: hidden;");
     expect(feedbackDialogCss).toContain("padding: 0;");
     expect(feedbackDialogFormCss).toContain("display: grid;");
+    expect(feedbackDialogFormCss).toContain("overflow: hidden;");
+    expect(feedbackContextCss).toContain("justify-self: center;");
+    expect(feedbackContextCss).toContain("width: calc(100% - 48px);");
     expect(feedbackLayoutCss).toContain("grid-template-columns: minmax(300px, 1fr) minmax(280px, 360px);");
+    expect(feedbackLayoutCss).toContain("overflow: hidden;");
+    expect(feedbackActionsCss).toContain("margin: 0;");
+    expect(feedbackActionsCss).toContain("overflow: hidden;");
+    expect(css).toContain(".feedback-section [data-slot=\"textarea\"] {\n    min-height: 112px;");
+    expect(css).toContain(".feedback-screenshot-preview {\n    min-height: 132px;");
   });
 
   it("includes responsive and reduced-motion styles for the log analysis workbench", () => {
