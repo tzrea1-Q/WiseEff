@@ -163,7 +163,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
 });
 
 describe("LogAdminPage · access control", () => {
-  it("routes admins to the shared user permissions page", async () => {
+  it("does not render the shared user permissions entry", () => {
     const state = createPrototypeState();
     const adminState = { ...state, activeRoleId: "admin" };
     const onNavigate = vi.fn();
@@ -175,12 +175,9 @@ describe("LogAdminPage · access control", () => {
 
     expect(screen.queryByText("Jane Smith")).not.toBeInTheDocument();
 
-    const managePermissions = screen.getByRole("button", { name: "Manage user permissions" });
-    expect(managePermissions).toBeInTheDocument();
-
-    await userEvent.click(managePermissions);
-
-    expect(onNavigate).toHaveBeenCalledWith("/user-permissions");
+    expect(screen.queryByText("Shared user permissions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Manage user permissions" })).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 });
 

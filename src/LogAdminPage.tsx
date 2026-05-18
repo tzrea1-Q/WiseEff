@@ -342,17 +342,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         </section>
       </div>
 
-      <section className="shared-permissions-entry">
-        <span className="sr-only">后台访问权限</span>
-        <div>
-          <h3>Shared user permissions</h3>
-          <p>User roles are managed once for the whole WiseEff platform.</p>
-        </div>
-        <Button variant="outline" onClick={() => onNavigate("/user-permissions")}>
-          Manage user permissions
-        </Button>
-      </section>
-
       <LogRecordDrawer
         record={selectedRecord}
         open={!!selectedRecord}

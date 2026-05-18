@@ -913,7 +913,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/log-admin",
-        present: ["日志分析管理后台", "日志分析记录", "后台访问权限"],
+        present: ["日志分析管理后台", "日志分析记录"],
         absent: ["日志分析 Admin", "Failed", "Complete", "Processing"]
       },
       {

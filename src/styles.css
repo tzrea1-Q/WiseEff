@@ -3212,8 +3212,7 @@ td small {
 .permission-denied-page p,
 .user-permissions-summary p,
 .user-permissions-capabilities p,
-.role-capability-card p,
-.shared-permissions-entry p {
+.role-capability-card p {
   color: var(--app-muted);
   font-size: 13px;
   line-height: 1.55;
@@ -3288,8 +3287,7 @@ td small {
 .user-permissions-dialog,
 .user-permissions-modal form,
 .role-capability-card,
-.user-permissions-capabilities > section,
-.shared-permissions-entry {
+.user-permissions-capabilities > section {
   min-width: 0;
   background: var(--surface);
   border: 1px solid var(--outline);
@@ -3432,26 +3430,6 @@ td small {
   gap: 8px;
 }
 
-.shared-permissions-entry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
-}
-
-.shared-permissions-entry > div {
-  min-width: 0;
-}
-
-.shared-permissions-entry h3 {
-  margin: 0 0 4px;
-}
-
-.shared-permissions-entry .button {
-  flex: 0 0 auto;
-}
-
 @media (max-width: 1024px) {
   .user-permissions-grid {
     grid-template-columns: 1fr;
@@ -3478,8 +3456,7 @@ td small {
     width: 100%;
   }
 
-  .permission-inline-note,
-  .shared-permissions-entry {
+  .permission-inline-note {
     flex-direction: column;
     align-items: stretch;
   }
