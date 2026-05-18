@@ -268,10 +268,14 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
               {addUserError ? <p role="alert" className="user-permissions-modal-error">{addUserError}</p> : null}
             </div>
             <div className="user-permissions-modal-actions">
-              <button className="button" type="button" onClick={() => setAddUserOpen(false)}>
+              <button
+                className="button user-permissions-modal-action user-permissions-modal-action--secondary"
+                type="button"
+                onClick={() => setAddUserOpen(false)}
+              >
                 Cancel
               </button>
-              <button className="button primary" type="submit">
+              <button className="button primary user-permissions-modal-action user-permissions-modal-action--primary" type="submit">
                 Create user
               </button>
             </div>

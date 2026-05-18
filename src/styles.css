@@ -3564,10 +3564,55 @@ td small {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 10px;
   padding: 14px 20px 18px;
   border-top: 1px solid #e7ecf7;
   background: #f8fafc;
+}
+
+.user-permissions-modal-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 104px;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.user-permissions-modal-action--secondary {
+  color: #334155;
+  background: #fff;
+  border: 1px solid #d7dfec;
+}
+
+.user-permissions-modal-action--secondary:hover {
+  color: #0f172a;
+  border-color: #b8c5dc;
+  background: #f8fafc;
+}
+
+.user-permissions-modal-action--primary {
+  color: #fff;
+  background: var(--app-primary);
+  border: 1px solid var(--app-primary);
+  box-shadow: 0 10px 22px rgba(0, 61, 155, 0.18);
+}
+
+.user-permissions-modal-action--primary:hover {
+  background: #004bb8;
+  border-color: #004bb8;
+}
+
+.user-permissions-modal-action:focus-visible {
+  outline: 2px solid rgba(0, 93, 224, 0.2);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1024px) {

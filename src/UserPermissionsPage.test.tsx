@@ -154,6 +154,10 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByLabelText("Name")).toHaveClass("user-permissions-modal-control");
     expect(screen.getByLabelText("Initial role")).toHaveClass("user-permissions-modal-control");
     expect(dialog.querySelector(".user-permissions-modal-actions")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass("user-permissions-modal-action");
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass("user-permissions-modal-action--secondary");
+    expect(screen.getByRole("button", { name: "Create user" })).toHaveClass("user-permissions-modal-action");
+    expect(screen.getByRole("button", { name: "Create user" })).toHaveClass("user-permissions-modal-action--primary");
   });
 
   it("dispatches role and status changes from the user table", async () => {
