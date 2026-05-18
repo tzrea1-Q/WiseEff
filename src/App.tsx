@@ -1087,6 +1087,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "CLEAR_UNDO":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return { ...state, _undoStack: null };
     case "IMPORT_PARAMETERS":
       if (!canPerform(activeRoleId, "admin.access")) return state;

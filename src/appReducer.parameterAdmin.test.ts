@@ -169,6 +169,7 @@ describe("parameter-admin reducer actions", () => {
       })
     ],
     ["UNDO_LAST_DESTRUCTIVE", () => ({ type: "UNDO_LAST_DESTRUCTIVE" as const })],
+    ["CLEAR_UNDO", () => ({ type: "CLEAR_UNDO" as const })],
     ["IMPORT_PARAMETERS", () => ({ type: "IMPORT_PARAMETERS" as const })]
   ])("requires admin.access for %s", (_name, buildAction) => {
     const deleted = appReducer(adminState, {
