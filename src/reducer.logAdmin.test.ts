@@ -242,7 +242,7 @@ describe("reducer · OPEN_AGENT_WITH_PRESET", () => {
 
 describe("log mutation permission boundaries", () => {
   it("requires logs.upload to advance a log", () => {
-    const guestState = createPrototypeState();
+    const guestState = { ...createPrototypeState(), activeRoleId: "guest" };
     const userState = { ...createPrototypeState(), activeRoleId: "user" };
     const logId = guestState.logs[0].id;
 
@@ -261,7 +261,7 @@ describe("log mutation permission boundaries", () => {
     ["LOG_ADMIN_SYNC_LOGS", () => ({ type: "LOG_ADMIN_SYNC_LOGS" as const })],
     ["LOG_ADMIN_EXPORT_REPORT", () => ({ type: "LOG_ADMIN_EXPORT_REPORT" as const, timeWindow: "7d" as const })]
   ])("requires admin.access for %s", (_name, buildAction) => {
-    const state = createPrototypeState();
+    const state = { ...createPrototypeState(), activeRoleId: "guest" };
     const guestState = {
       ...state,
       archivedLogIds: state.archivedLogIds.includes(state.logs[0].id)

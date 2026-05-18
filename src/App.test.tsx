@@ -200,6 +200,20 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
   });
 
+  it("switches the prototype role from the topbar user menu", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "guest" }} />);
+
+    expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
+
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    fireEvent.click(within(topbar).getByRole("button", { name: "Open user role switcher" }));
+    changeSelectValue(within(topbar).getByRole("combobox", { name: "Prototype role" }), "Admin");
+
+    expect(screen.queryByRole("heading", { name: "Permission denied" })).not.toBeInTheDocument();
+  });
+
   it("exposes the three sub-app entries on the homepage main region", () => {
     window.history.replaceState(null, "", "/");
 

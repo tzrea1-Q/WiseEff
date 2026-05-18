@@ -119,7 +119,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge as UiBadge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
@@ -2039,12 +2038,16 @@ function TopBar({
   parameterHomeTimeWindow: HomepageTimeWindow;
   onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
 }) {
+  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
     page.key !== "parameter-comparison" &&
     page.key !== "parameter-review" &&
     page.key !== "parameter-admin";
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const currentRole = roles.find((role) => role.id === currentRoleId);
 
   return (
     <header className="topbar">
@@ -2081,11 +2084,47 @@ function TopBar({
           <MessageSquareText size={18} />
           <span className="notification-dot" />
         </Button>
-        <Avatar className="avatar">
-          <AvatarFallback>
-            <UserRound size={17} />
-          </AvatarFallback>
-        </Avatar>
+        <div className="topbar-user-switcher">
+          <button
+            aria-expanded={roleSwitcherOpen}
+            aria-haspopup="dialog"
+            aria-label="Open user role switcher"
+            className="topbar-user-trigger"
+            type="button"
+            onClick={() => setRoleSwitcherOpen((open) => !open)}
+          >
+            <span className="avatar topbar-user-avatar" aria-hidden="true">
+              <UserRound size={17} />
+            </span>
+            <span className="topbar-user-summary">
+              <strong>{currentUser?.name ?? "Prototype user"}</strong>
+              <small>{currentRole?.name ?? "Guest"}</small>
+            </span>
+            <ChevronDown size={14} />
+          </button>
+          {roleSwitcherOpen ? (
+            <div className="topbar-user-menu" aria-label="User role switcher">
+              <div className="topbar-user-menu__identity">
+                <strong>{currentUser?.name ?? "Prototype user"}</strong>
+                <span>{currentUser?.email ?? "No user selected"}</span>
+              </div>
+              <label className="topbar-user-menu__field">
+                Role
+                <select
+                  aria-label="Prototype role"
+                  value={currentRoleId}
+                  onChange={(event) => dispatch({ type: "SET_ROLE", roleId: event.target.value })}
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );

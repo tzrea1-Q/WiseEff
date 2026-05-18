@@ -619,6 +619,124 @@ body {
   border-radius: 50%;
 }
 
+.topbar-user-switcher {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.topbar-user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  max-width: 220px;
+  padding: 4px 10px 4px 4px;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  box-shadow: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.topbar-user-trigger:hover,
+.topbar-user-trigger[aria-expanded="true"] {
+  background: #f7f9fd;
+  border-color: #cbd5e1;
+}
+
+.topbar-user-avatar {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+}
+
+.topbar-user-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+.topbar-user-summary strong,
+.topbar-user-summary small {
+  max-width: 126px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-user-summary strong {
+  font-size: 12px;
+  font-weight: 760;
+}
+
+.topbar-user-summary small {
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.topbar-user-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  display: grid;
+  gap: 12px;
+  width: 260px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #dfe5f3;
+  border-radius: 8px;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.16);
+}
+
+.topbar-user-menu__identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.topbar-user-menu__identity strong,
+.topbar-user-menu__identity span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-user-menu__identity strong {
+  color: #111827;
+  font-size: 13px;
+}
+
+.topbar-user-menu__identity span {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.topbar-user-menu__field {
+  display: grid;
+  gap: 6px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.topbar-user-menu__field select {
+  width: 100%;
+  height: 34px;
+  padding: 0 10px;
+  color: #1f2937;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+}
+
 .main-content {
   min-height: 0;
   flex: 1 1 auto;
@@ -7736,7 +7854,8 @@ td small {
   .topbar-subtitle,
   .searchbox,
   .topbar-actions .icon-button,
-  .avatar {
+  .avatar,
+  .topbar-user-switcher {
     display: none;
   }
 

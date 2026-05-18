@@ -4,6 +4,8 @@ import { canAccessPage } from "./app/permissions";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
 
+const guestState = { ...initialState, activeRoleId: "guest" };
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -13,7 +15,7 @@ describe("permission-aware routing", () => {
   it("hides admin and operational navigation for Guest", () => {
     window.history.replaceState(null, "", "/parameter-home");
 
-    render(<App />);
+    render(<App initialAppState={guestState} />);
 
     const navigation = within(screen.getByRole("navigation", { name: /主导航|涓诲鑸?/ }));
     expect(navigation.getByRole("button", { name: /参数修改|鍙傛暟淇敼/ })).toBeInTheDocument();
@@ -38,18 +40,18 @@ describe("permission-aware routing", () => {
   });
 
   it("prevents Guest from mutating parameter values in the reducer", () => {
-    const next = appReducer(initialState, {
+    const next = appReducer(guestState, {
       type: "ADD_PARAMETER_SUBMISSION_ROUND",
-      items: [{ parameterId: initialState.parameters[0].id, targetValue: "123", reason: "guest attempt" }]
+      items: [{ parameterId: guestState.parameters[0].id, targetValue: "123", reason: "guest attempt" }]
     });
 
-    expect(next).toBe(initialState);
+    expect(next).toBe(guestState);
   });
 
   it("shows permission denied when Guest opens an Admin URL directly", () => {
     window.history.replaceState(null, "", "/log-admin");
 
-    render(<App />);
+    render(<App initialAppState={guestState} />);
 
     expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
     expect(screen.getByText(/Current role: Guest/)).toBeInTheDocument();
@@ -68,7 +70,7 @@ describe("permission-aware routing", () => {
   it("uses a stable permission denied layout", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App />);
+    render(<App initialAppState={guestState} />);
 
     expect(document.querySelector(".permission-denied-page")).toBeInTheDocument();
   });

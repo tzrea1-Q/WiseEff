@@ -787,10 +787,12 @@ function buildAuditEvents(): AuditEvent[] {
 
 export function createPrototypeState(configDraft: PowerManagementConfig = clonePowerManagementConfig(bundledPowerManagementConfig)): PrototypeState {
   const runtime = derivePowerManagementRuntimeState(configDraft);
+  const currentUserId = "u-xu-yun";
+  const currentUser = users.find((user) => user.id === currentUserId);
 
   return {
     activeProjectId: "aurora",
-    activeRoleId: "guest",
+    activeRoleId: currentUser?.roleId ?? "guest",
     configDraft: clonePowerManagementConfig(configDraft),
     parameters: runtime.parameters,
     changeRequests: buildReviewMockRequests(),
@@ -1017,7 +1019,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     debuggingSessionStartedAt: null,
     persistedConfigSnapshot: clonePowerManagementConfig(configDraft),
     users,
-    currentUserId: "u-xu-yun",
+    currentUserId,
     lastExportedSnapshot: JSON.stringify(configDraft),
     _undoStack: null,
     insightDismissedIds: [],

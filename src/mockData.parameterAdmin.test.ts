@@ -35,6 +35,7 @@ describe("parameter admin data contracts", () => {
     expect(initialState.users).toBe(users);
     expect(typeof initialState.currentUserId).toBe("string");
     expect(users.find((user) => user.id === initialState.currentUserId)?.roleId).toBe("admin");
+    expect(initialState.activeRoleId).toBe(users.find((user) => user.id === initialState.currentUserId)?.roleId);
     expect(initialState.lastExportedSnapshot).toBe(JSON.stringify(initialState.configDraft));
     expect(initialState._undoStack).toBeNull();
     expect(initialState.insightDismissedIds).toEqual([]);
