@@ -106,12 +106,12 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
       </div>
 
       <div className="user-permissions-filters" role="search" aria-label="User filters">
-        <label>
-          Search
+        <label className="user-permissions-filter-field user-permissions-filter-field--search">
+          <span className="user-permissions-filter-label">Search</span>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search users" />
         </label>
-        <label>
-          Role
+        <label className="user-permissions-filter-field">
+          <span className="user-permissions-filter-label">Role</span>
           <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
             <option value="all">All roles</option>
             {platformRoles.map((role) => (
@@ -121,8 +121,8 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
             ))}
           </select>
         </label>
-        <label>
-          Status
+        <label className="user-permissions-filter-field">
+          <span className="user-permissions-filter-label">Status</span>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
             {statusOptions.map((option) => (
               <option key={option.value} value={option.value}>

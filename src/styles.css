@@ -3389,25 +3389,52 @@ td small {
 }
 
 .user-permissions-filters {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(160px, 220px) minmax(160px, 220px);
+  align-items: end;
   gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.user-permissions-filter-field {
+  display: grid;
+  gap: 6px;
   min-width: 0;
 }
 
-.user-permissions-filters label {
-  display: grid;
-  gap: 6px;
-  flex: 1 1 220px;
-  min-width: 0;
+.user-permissions-filter-label {
   color: var(--outline-strong);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 .user-permissions-filters input,
 .user-permissions-filters select {
+  width: 100%;
   min-width: 0;
+  min-height: 38px;
+  padding: 0 11px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid #dfe5f3;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.user-permissions-filters input:focus-visible,
+.user-permissions-filters select:focus-visible {
+  border-color: var(--app-primary);
+  outline: 2px solid rgba(0, 93, 224, 0.16);
+  outline-offset: 1px;
 }
 
 .user-permissions-modal {
@@ -3480,6 +3507,10 @@ td small {
 
   .user-permissions-summary .button {
     width: 100%;
+  }
+
+  .user-permissions-filters {
+    grid-template-columns: 1fr;
   }
 
   .permission-inline-note {

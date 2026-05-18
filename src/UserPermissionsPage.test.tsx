@@ -60,6 +60,20 @@ describe("UserPermissionsPage", () => {
     expect(document.querySelector(".user-permissions-table-card")).toBeInTheDocument();
   });
 
+  it("renders user filters as grouped toolbar fields", () => {
+    renderPage();
+
+    const filters = screen.getByRole("search", { name: "User filters" });
+    const fields = filters.querySelectorAll(".user-permissions-filter-field");
+
+    expect(filters).toHaveClass("user-permissions-filters");
+    expect(fields).toHaveLength(3);
+    expect(fields[0]).toHaveClass("user-permissions-filter-field--search");
+    expect(within(fields[0] as HTMLElement).getByText("Search")).toHaveClass("user-permissions-filter-label");
+    expect(within(fields[1] as HTMLElement).getByText("Role")).toHaveClass("user-permissions-filter-label");
+    expect(within(fields[2] as HTMLElement).getByText("Status")).toHaveClass("user-permissions-filter-label");
+  });
+
   it("keeps the page title grouped away from the add user action", () => {
     renderPage();
 
