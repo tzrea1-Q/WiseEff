@@ -18,7 +18,7 @@ const parameterPlan = {
   prompts: [],
   actions: [
     { id: "filter-high-risk", label: "Filter high risk", requiresConfirm: false },
-    { id: "draft-parameter-change", label: "Draft parameter change", requiresConfirm: true }
+    { id: "draft-parameter-change", label: "Draft parameter change", requiresConfirm: true, requiredPermission: "parameter.edit" }
   ]
 } satisfies ReturnType<typeof createAgentPlan>;
 

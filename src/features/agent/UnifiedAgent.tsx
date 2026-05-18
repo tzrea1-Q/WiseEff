@@ -2,7 +2,7 @@ import { AlertTriangle, Bot, Info, Lightbulb, ListChecks, LockKeyhole, Play, Sen
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, Dispatch, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AppAction } from "@/App";
-import { canPerform, getDisabledReason, type ActionKey } from "@/app/permissions";
+import { canPerform, getDisabledReason } from "@/app/permissions";
 import type { createAgentPlan } from "@/appConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,28 +91,6 @@ function updateParameterAdminQuery(patch: Record<string, string | undefined>) {
   }
 }
 
-function getAgentActionPermission(actionId: string, path: string): ActionKey | null {
-  switch (actionId) {
-    case "draft-parameter-change":
-      return "parameter.edit";
-    case "advance-review":
-      return "parameter.review";
-    case "advance-log":
-      return path === "/log-admin" ? "admin.access" : "logs.upload";
-    case "connect-device":
-    case "push-debug-value":
-      return "debugging.use";
-    case "scan-orphans":
-    case "draft-cleanup":
-    case "preview-import":
-    case "summarize-audit":
-    case "import-parameters":
-      return "admin.access";
-    default:
-      return null;
-  }
-}
-
 export function UnifiedAgent({
   path,
   plan,
@@ -178,7 +156,7 @@ export function UnifiedAgent({
   }, [dragging]);
 
   const executeAction = (id: string) => {
-    const requiredAction = getAgentActionPermission(id, path);
+    const requiredAction = plan.actions.find((action) => action.id === id)?.requiredPermission;
     if (requiredAction && !canPerform(state.activeRoleId, requiredAction)) {
       setMessages((items) => [getDisabledReason(state.activeRoleId, requiredAction) ?? "Action unavailable for current role", ...items]);
       return;
@@ -280,7 +258,7 @@ export function UnifiedAgent({
   };
   const comparisonInsights = path === "/parameter-comparison" ? createComparisonInsights(state, comparisonSelection) : null;
   const visibleActions = plan.actions.filter((action) => {
-    const requiredAction = getAgentActionPermission(action.id, path);
+    const requiredAction = action.requiredPermission;
     return !requiredAction || canPerform(state.activeRoleId, requiredAction);
   });
 

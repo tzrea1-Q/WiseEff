@@ -149,4 +149,34 @@ describe("parameter-admin reducer actions", () => {
     expect(appReducer(expired, { type: "UNDO_LAST_DESTRUCTIVE" })).toBe(expired);
     expect(appReducer(deleted, { type: "CLEAR_UNDO" })._undoStack).toBeNull();
   });
+
+  it.each([
+    [
+      "MARK_EXPORTED",
+      () => ({
+        type: "MARK_EXPORTED" as const,
+        snapshotName: "params-demo.json",
+        timestamp: "2026-05-10T22:00:00.000Z"
+      })
+    ],
+    ["SET_AI_FLAGGED_IMPORT_IDS", () => ({ type: "SET_AI_FLAGGED_IMPORT_IDS" as const, ids: ["p1", "p2"] })],
+    [
+      "AGENT_ACTION_EXECUTED",
+      () => ({
+        type: "AGENT_ACTION_EXECUTED" as const,
+        actionId: "scan-orphans",
+        metadata: { foundOrphans: 2 }
+      })
+    ],
+    ["UNDO_LAST_DESTRUCTIVE", () => ({ type: "UNDO_LAST_DESTRUCTIVE" as const })],
+    ["IMPORT_PARAMETERS", () => ({ type: "IMPORT_PARAMETERS" as const })]
+  ])("requires admin.access for %s", (_name, buildAction) => {
+    const deleted = appReducer(adminState, {
+      type: "DELETE_PROJECT_PARAMETER",
+      parameterId: adminState.configDraft.parameterLibrary[0].id
+    });
+    const guestState = { ...deleted, activeRoleId: "guest" };
+
+    expect(appReducer(guestState, buildAction())).toBe(guestState);
+  });
 });

@@ -56,6 +56,15 @@ describe("permission-aware routing", () => {
     expect(screen.getByText(/Required role: Admin/)).toBeInTheDocument();
   });
 
+  it("does not render WiseAgent on permission denied pages", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "user" }} />);
+
+    expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开 WiseAgent" })).not.toBeInTheDocument();
+  });
+
   it("uses a stable permission denied layout", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 

@@ -91,4 +91,37 @@ describe("parameter-admin agent plan", () => {
 
     expect(plan.actions.find((action) => action.id === "draft-cleanup")?.requiresConfirm).toBe(true);
   });
+
+  it("declares permissions for configured mutating Agent actions", () => {
+    const plans = [
+      { path: "/parameters", plan: createAgentPlan("/parameters") },
+      { path: "/parameter-review", plan: createAgentPlan("/parameter-review") },
+      { path: "/logs", plan: createAgentPlan("/logs") },
+      { path: "/debugging", plan: createAgentPlan("/debugging") },
+      { path: "/node-debugging", plan: createAgentPlan("/node-debugging") },
+      { path: "/parameter-admin", plan: createAgentPlan("/parameter-admin") },
+      { path: "/log-admin", plan: createAgentPlan("/log-admin") },
+      { path: "/debugging-admin", plan: createAgentPlan("/debugging-admin") }
+    ];
+    const expectedPermissions = new Map([
+      ["draft-parameter-change", "parameter.edit"],
+      ["advance-review", "parameter.review"],
+      ["connect-device", "debugging.use"],
+      ["push-debug-value", "debugging.use"],
+      ["scan-orphans", "admin.access"],
+      ["draft-cleanup", "admin.access"],
+      ["preview-import", "admin.access"],
+      ["summarize-audit", "admin.access"]
+    ]);
+
+    for (const { path, plan } of plans) {
+      const advanceLogPermission = path === "/log-admin" ? "admin.access" : "logs.upload";
+      for (const action of plan.actions) {
+        const expectedPermission = action.id === "advance-log" ? advanceLogPermission : expectedPermissions.get(action.id);
+        if (expectedPermission) {
+          expect((action as { requiredPermission?: string }).requiredPermission).toBe(expectedPermission);
+        }
+      }
+    }
+  });
 });

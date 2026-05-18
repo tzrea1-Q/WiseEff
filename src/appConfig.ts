@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
   TerminalSquare
 } from "lucide-react";
+import type { ActionKey } from "@/app/permissions";
 
 export type PageKey =
   | "home"
@@ -49,6 +50,7 @@ export type AgentPlan = {
     id: string;
     label: string;
     requiresConfirm: boolean;
+    requiredPermission?: ActionKey;
   }>;
 };
 
@@ -212,7 +214,7 @@ export function createAgentPlan(path: string): AgentPlan {
         prompts: ["筛查高风险充电参数", "解释项目间差异", "生成修改理由"],
         actions: [
           { id: "filter-high-risk", label: "筛出高风险参数", requiresConfirm: false },
-          { id: "draft-parameter-change", label: "生成参数修改草稿", requiresConfirm: true }
+          { id: "draft-parameter-change", label: "生成参数修改草稿", requiresConfirm: true, requiredPermission: "parameter.edit" }
         ]
       };
     case "parameter-comparison":
@@ -234,7 +236,7 @@ export function createAgentPlan(path: string): AgentPlan {
         prompts: ["总结审阅队列", "生成审阅意见", "检查高风险变更"],
         actions: [
           { id: "summarize-review", label: "生成审阅摘要", requiresConfirm: false },
-          { id: "advance-review", label: "推进当前流程", requiresConfirm: true }
+          { id: "advance-review", label: "推进当前流程", requiresConfirm: true, requiredPermission: "parameter.review" }
         ]
       };
     case "logs":
@@ -244,7 +246,7 @@ export function createAgentPlan(path: string): AgentPlan {
         contextSummary: "正在跟踪充电日志解析、温升模式匹配、根因推断和证据链。",
         prompts: ["解释当前根因", "生成排查清单", "关联历史记录"],
         actions: [
-          { id: "advance-log", label: "推进分析阶段", requiresConfirm: false },
+          { id: "advance-log", label: "推进分析阶段", requiresConfirm: false, requiredPermission: "logs.upload" },
           { id: "make-checklist", label: "生成排查清单", requiresConfirm: false }
         ]
       };
@@ -255,8 +257,8 @@ export function createAgentPlan(path: string): AgentPlan {
         contextSummary: "正在关注样机连接、待下发充电参数和回滚准备状态。",
         prompts: ["推荐调试值", "检查连接状态", "准备回滚方案"],
         actions: [
-          { id: "connect-device", label: "连接推荐样机", requiresConfirm: false },
-          { id: "push-debug-value", label: "下发调试值", requiresConfirm: true }
+          { id: "connect-device", label: "连接推荐样机", requiresConfirm: false, requiredPermission: "debugging.use" },
+          { id: "push-debug-value", label: "下发调试值", requiresConfirm: true, requiredPermission: "debugging.use" }
         ]
       };
     case "node-debugging":
@@ -266,7 +268,7 @@ export function createAgentPlan(path: string): AgentPlan {
         contextSummary: "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。",
         prompts: ["检查设备连接", "汇总回读异常", "筛选可写节点"],
         actions: [
-          { id: "connect-device", label: "重新检测设备", requiresConfirm: false },
+          { id: "connect-device", label: "重新检测设备", requiresConfirm: false, requiredPermission: "debugging.use" },
           { id: "audit-scan", label: "汇总节点调试风险", requiresConfirm: false }
         ]
       };
@@ -277,10 +279,10 @@ export function createAgentPlan(path: string): AgentPlan {
         contextSummary: "正在关注参数库健康、闲置参数、权限异常和导入风险。",
         prompts: ["扫描闲置参数", "预审下次导入风险", "汇总本周审计", "生成闲置清理建议"],
         actions: [
-          { id: "scan-orphans", label: "扫描闲置参数", requiresConfirm: false },
-          { id: "preview-import", label: "预审导入风险", requiresConfirm: false },
-          { id: "summarize-audit", label: "汇总本周审计", requiresConfirm: false },
-          { id: "draft-cleanup", label: "生成清理建议", requiresConfirm: true }
+          { id: "scan-orphans", label: "扫描闲置参数", requiresConfirm: false, requiredPermission: "admin.access" },
+          { id: "preview-import", label: "预审导入风险", requiresConfirm: false, requiredPermission: "admin.access" },
+          { id: "summarize-audit", label: "汇总本周审计", requiresConfirm: false, requiredPermission: "admin.access" },
+          { id: "draft-cleanup", label: "生成清理建议", requiresConfirm: true, requiredPermission: "admin.access" }
         ]
       };
     case "log-admin":
@@ -291,7 +293,7 @@ export function createAgentPlan(path: string): AgentPlan {
         prompts: ["查看失败原因", "汇总本周吞吐", "检查后台权限"],
         actions: [
           { id: "audit-scan", label: "生成治理摘要", requiresConfirm: false },
-          { id: "advance-log", label: "刷新处理指标", requiresConfirm: false }
+          { id: "advance-log", label: "刷新处理指标", requiresConfirm: false, requiredPermission: "admin.access" }
         ]
       };
     case "debugging-admin":
@@ -301,7 +303,7 @@ export function createAgentPlan(path: string): AgentPlan {
         contextSummary: "正在关注设备在线率、充电参数目录覆盖和高风险下发策略。",
         prompts: ["检查离线设备", "汇总可调参数", "生成权限建议"],
         actions: [
-          { id: "connect-device", label: "模拟设备接入", requiresConfirm: false },
+          { id: "connect-device", label: "模拟设备接入", requiresConfirm: false, requiredPermission: "debugging.use" },
           { id: "audit-scan", label: "生成治理摘要", requiresConfirm: false }
         ]
       };

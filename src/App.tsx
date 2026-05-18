@@ -1017,6 +1017,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "MARK_EXPORTED": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const event = buildAuditEvent({
         kind: "export",
         actor: auditActor,
@@ -1041,11 +1042,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         insightDismissedIds: [...state.insightDismissedIds, action.insightId]
       };
     case "SET_AI_FLAGGED_IMPORT_IDS":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         aiFlaggedImportIds: [...action.ids]
       };
     case "AGENT_ACTION_EXECUTED": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const event = buildAuditEvent({
         kind: "agent-action",
         actor: auditActor,
@@ -1061,6 +1064,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UNDO_LAST_DESTRUCTIVE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const entry = state._undoStack;
       if (!entry || Date.now() > new Date(entry.expiresAt).getTime()) {
         return state;
@@ -1085,6 +1089,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "CLEAR_UNDO":
       return { ...state, _undoStack: null };
     case "IMPORT_PARAMETERS":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         notifications: ["批量参数导入完成：新增 24 项，冲突 2 项已进入审计队列", ...state.notifications]
@@ -1305,6 +1310,7 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1431,7 +1437,7 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
           )}
         </TopBarActionsContext.Provider>
       </div>
-      {!isPlatformHome ? (
+      {!isPlatformHome && canAccessCurrentPage ? (
         <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
       ) : null}
     </div>
