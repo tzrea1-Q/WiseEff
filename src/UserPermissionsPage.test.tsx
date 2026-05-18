@@ -136,6 +136,26 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByText("Name and email are required.")).toBeInTheDocument();
   });
 
+  it("renders the add user dialog with structured form styling", async () => {
+    renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "Add user" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Add user" });
+    const form = dialog.querySelector("form")!;
+    const fields = dialog.querySelector(".user-permissions-modal-fields")!;
+
+    expect(form).toHaveClass("user-permissions-modal-card");
+    expect(fields).toBeInTheDocument();
+    expect(screen.getByLabelText("Name").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("Email").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("Title").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("Initial role").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("Name")).toHaveClass("user-permissions-modal-control");
+    expect(screen.getByLabelText("Initial role")).toHaveClass("user-permissions-modal-control");
+    expect(dialog.querySelector(".user-permissions-modal-actions")).toBeInTheDocument();
+  });
+
   it("dispatches role and status changes from the user table", async () => {
     const { dispatch } = renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;

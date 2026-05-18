@@ -219,46 +219,54 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
 
       {addUserOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="add-user-title" className="user-permissions-modal">
-          <form onSubmit={handleAddUserSubmit}>
+          <form className="user-permissions-modal-card" onSubmit={handleAddUserSubmit}>
             <h3 id="add-user-title">Add user</h3>
-            <label>
-              Name
-              <input
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                  setAddUserError("");
-                }}
-                required
-              />
-            </label>
-            <label>
-              Email
-              <input
-                type="email"
-                value={email}
-                onChange={(event) => {
-                  setEmail(event.target.value);
-                  setAddUserError("");
-                }}
-                required
-              />
-            </label>
-            <label>
-              Title
-              <input value={title} onChange={(event) => setTitle(event.target.value)} />
-            </label>
-            <label>
-              Initial role
-              <select value={initialRoleId} onChange={(event) => setInitialRoleId(event.target.value as PlatformRoleId)}>
-                {platformRoles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {addUserError ? <p role="alert">{addUserError}</p> : null}
+            <div className="user-permissions-modal-fields">
+              <label className="user-permissions-modal-field">
+                <span>Name</span>
+                <input
+                  className="user-permissions-modal-control"
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setAddUserError("");
+                  }}
+                  required
+                />
+              </label>
+              <label className="user-permissions-modal-field">
+                <span>Email</span>
+                <input
+                  className="user-permissions-modal-control"
+                  type="email"
+                  value={email}
+                  onChange={(event) => {
+                    setEmail(event.target.value);
+                    setAddUserError("");
+                  }}
+                  required
+                />
+              </label>
+              <label className="user-permissions-modal-field">
+                <span>Title</span>
+                <input className="user-permissions-modal-control" value={title} onChange={(event) => setTitle(event.target.value)} />
+              </label>
+              <label className="user-permissions-modal-field">
+                <span>Initial role</span>
+                <select
+                  className="user-permissions-modal-control"
+                  value={initialRoleId}
+                  onChange={(event) => setInitialRoleId(event.target.value as PlatformRoleId)}
+                >
+                  {platformRoles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {addUserError ? <p role="alert" className="user-permissions-modal-error">{addUserError}</p> : null}
+            </div>
             <div className="user-permissions-modal-actions">
               <button className="button" type="button" onClick={() => setAddUserOpen(false)}>
                 Cancel

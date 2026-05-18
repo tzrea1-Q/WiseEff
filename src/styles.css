@@ -3312,7 +3312,7 @@ td small {
 .user-permissions-table-card,
 .user-permissions-capabilities,
 .user-permissions-dialog,
-.user-permissions-modal form,
+.user-permissions-modal-card,
 .role-capability-card,
 .user-permissions-capabilities > section {
   min-width: 0;
@@ -3488,14 +3488,14 @@ td small {
 }
 
 .user-permissions-dialog,
-.user-permissions-modal form {
-  width: min(100%, 440px);
-  padding: 18px;
+.user-permissions-modal-card {
+  width: min(100%, 460px);
 }
 
-.user-permissions-modal form {
+.user-permissions-modal-card {
   display: grid;
-  gap: 12px;
+  gap: 0;
+  overflow: hidden;
 }
 
 .user-permissions-modal h3,
@@ -3503,18 +3503,61 @@ td small {
   margin: 0;
 }
 
-.user-permissions-modal label {
+.user-permissions-modal h3 {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #e7ecf7;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 760;
+  line-height: 1.2;
+}
+
+.user-permissions-modal-fields {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px 18px;
+}
+
+.user-permissions-modal-field {
   display: grid;
   gap: 6px;
   color: var(--outline-strong);
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-.user-permissions-modal input,
-.user-permissions-modal select {
+.user-permissions-modal-control {
   width: 100%;
   min-width: 0;
+  min-height: 38px;
+  padding: 0 11px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid #dfe5f3;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.user-permissions-modal-control:focus-visible {
+  border-color: var(--app-primary);
+  outline: 2px solid rgba(0, 93, 224, 0.16);
+  outline-offset: 1px;
+}
+
+.user-permissions-modal-error {
+  padding: 10px 12px;
+  color: #9f1239;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .user-permissions-modal-actions {
@@ -3522,6 +3565,9 @@ td small {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid #e7ecf7;
+  background: #f8fafc;
 }
 
 @media (max-width: 1024px) {
