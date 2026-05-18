@@ -46,6 +46,18 @@ describe("UserPermissionsPage", () => {
     expect(document.querySelector(".user-permissions-table-card")).toBeInTheDocument();
   });
 
+  it("keeps the page title grouped away from the add user action", () => {
+    renderPage();
+
+    const summaryCopy = document.querySelector(".user-permissions-summary__copy") as HTMLElement;
+    const addUserButton = screen.getByRole("button", { name: "Add user" });
+
+    expect(summaryCopy).toContainElement(screen.getByRole("heading", { name: "User permissions" }));
+    expect(summaryCopy).toContainElement(screen.getByText("8 platform users across 4 roles."));
+    expect(addUserButton).toHaveClass("user-permissions-primary-action");
+    expect(summaryCopy).not.toContainElement(addUserButton);
+  });
+
   it("dispatches ADD_USER from the add user dialog", async () => {
     const { dispatch } = renderPage();
 

@@ -3256,21 +3256,48 @@ td small {
 }
 
 .user-permissions-summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px 16px;
-  align-items: end;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   min-width: 0;
 }
 
-.user-permissions-summary .eyebrow,
-.user-permissions-summary p {
-  grid-column: 1;
+.user-permissions-summary__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
-.user-permissions-summary .button {
-  grid-column: 2;
-  grid-row: 2 / span 2;
+.user-permissions-primary-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 116px;
+  min-height: 38px;
+  padding: 0 14px;
+  color: #fff;
+  background: var(--app-primary);
+  border: 1px solid var(--app-primary);
+  border-radius: 8px;
+  box-shadow: 0 10px 22px rgba(0, 61, 155, 0.18);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.user-permissions-primary-action:hover {
+  background: #004bb8;
+  border-color: #004bb8;
+}
+
+.user-permissions-primary-action svg {
+  flex: 0 0 auto;
 }
 
 .user-permissions-grid {
@@ -3447,12 +3474,11 @@ td small {
   }
 
   .user-permissions-summary {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .user-permissions-summary .button {
-    grid-column: 1;
-    grid-row: auto;
     width: 100%;
   }
 
