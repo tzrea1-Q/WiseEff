@@ -1,8 +1,6 @@
 import { Download, RefreshCw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AccessControlPanel,
-  AddUserDialog,
   DataTable,
   LogRecordDrawer,
   PageInsightBar,
@@ -10,8 +8,9 @@ import {
   type Column
 } from "@/components/admin";
 import { Button } from "@/components/ui/button";
+import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
-import { applyTableFilters, applyTimeWindow, deriveInsight, deriveLogAdminRole, deriveMetrics } from "@/logAdminAnalytics";
+import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
 import type { AppAction } from "./App";
@@ -74,7 +73,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
-  const [addUserOpen, setAddUserOpen] = useState(false);
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
 
   useEffect(() => {
@@ -98,9 +96,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   );
   const availableModules = useMemo(() => Array.from(new Set(windowLogs.map((log) => log.source))).sort(), [windowLogs]);
   const insight = useMemo(() => deriveInsight(windowLogs, visibleLogs), [visibleLogs, windowLogs]);
-  const role = deriveLogAdminRole(state.activeRoleId);
-  const canAct = role !== "Viewer";
-  const canManage = role === "Admin";
+  const canAct = canPerform(state.activeRoleId, "admin.access");
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
   const projectName = (projectId: string): string => state.configDraft.projects.find((project) => project.id === projectId)?.name ?? projectId;
@@ -346,14 +342,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         </section>
       </div>
 
-      <AccessControlPanel
-        users={state.logAdminUsers}
-        canManage={canManage}
-        onAddClick={() => setAddUserOpen(true)}
-        onRoleChange={(userId, newRole) => dispatch({ type: "LOG_ADMIN_UPDATE_USER_ROLE", userId, role: newRole })}
-        onRemove={(userId) => dispatch({ type: "LOG_ADMIN_REMOVE_USER", userId })}
-      />
-
       <LogRecordDrawer
         record={selectedRecord}
         open={!!selectedRecord}
@@ -377,8 +365,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         }}
         canAct={canAct}
       />
-
-      <AddUserDialog open={addUserOpen} onOpenChange={setAddUserOpen} onSubmit={(input) => dispatch({ type: "LOG_ADMIN_ADD_USER", input })} />
 
       {undoArchive ? (
         <div

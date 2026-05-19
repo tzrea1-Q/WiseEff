@@ -1,6 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { initialState } from "./mockData";
+
+const userState = { ...initialState, activeRoleId: "user" };
+const adminState = { ...initialState, activeRoleId: "admin" };
 
 afterEach(() => {
   cleanup();
@@ -14,7 +18,7 @@ describe("LogDashboardPage", () => {
     vi.setSystemTime(new Date("2026-05-14T12:00:00+08:00"));
     window.history.replaceState(null, "", "/log-dashboard");
 
-    const { container } = render(<App />);
+    const { container } = render(<App initialAppState={userState} />);
 
     const topbar = container.querySelector(".topbar") as HTMLElement;
     expect(screen.queryByRole("heading", { level: 1, name: "日志分析看板" })).not.toBeInTheDocument();
@@ -63,7 +67,7 @@ describe("LogDashboardPage", () => {
     window.history.replaceState(null, "", "/log-dashboard");
     const user = await import("@testing-library/user-event").then((mod) => mod.default.setup());
 
-    render(<App />);
+    render(<App initialAppState={adminState} />);
 
     await user.click(screen.getByRole("button", { name: "查看管理后台" }));
     expect(window.location.pathname).toBe("/log-admin");
@@ -73,7 +77,7 @@ describe("LogDashboardPage", () => {
     window.history.replaceState(null, "", "/log-dashboard");
     const user = await import("@testing-library/user-event").then((mod) => mod.default.setup());
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await user.click(screen.getByRole("button", { name: "进入智能分析" }));
     expect(window.location.pathname).toBe("/logs");
@@ -83,7 +87,7 @@ describe("LogDashboardPage", () => {
     window.history.replaceState(null, "", "/logs");
     const user = await import("@testing-library/user-event").then((mod) => mod.default.setup());
 
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const logNavigation = screen.getAllByText("日志分析")[0].closest(".nav-group");
     expect(logNavigation).not.toBeNull();

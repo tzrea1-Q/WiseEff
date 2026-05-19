@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +8,139 @@ import { initialState } from "./mockData";
 
 beforeEach(() => {
   cleanup();
+});
+
+describe("ParametersPage read-only access", () => {
+  it("renders guest parameter workspace without edit controls when editing is not allowed", () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const guestState = { ...initialState, activeRoleId: "guest" };
+    const { container } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={guestState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
+    expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
+  });
+
+  it("does not expose the Agent insight one-click draft action to Guest", () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const guestState = { ...initialState, activeRoleId: "guest" };
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={guestState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Requires User role to edit, draft, or submit parameter changes.").length)
+      .toBeGreaterThan(0);
+  });
+
+  it("does not retain a log-linked draft created while read-only after editing becomes available", async () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const guestState = { ...initialState, activeRoleId: "guest" };
+    const { container, rerender } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={guestState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={`?logId=${initialState.logs[0].id}`}
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+
+    rerender(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears existing draft state when editing is revoked while mounted", async () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const { container, rerender } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+    const editButton = container.querySelector<HTMLButtonElement>(".edit-row-button");
+    expect(editButton).not.toBeNull();
+    fireEvent.click(editButton!);
+    expect(container.querySelector(".workbench-sheet")).toBeInTheDocument();
+
+    rerender(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={{ ...initialState, activeRoleId: "guest" }}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
+
+    rerender(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
 });
 
 function TopBarActionsHarness({ children }: { children: ReactNode }) {

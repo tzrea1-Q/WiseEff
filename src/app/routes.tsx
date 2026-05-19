@@ -1,7 +1,9 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 
 import type { AppAction } from "@/App";
+import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import { DebuggingPage } from "@/DebuggingPage";
+import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
@@ -9,6 +11,7 @@ import { ParameterComparisonPage } from "@/ParameterComparison";
 import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
 import { ParameterManagementHomePage } from "@/ParameterManagementHomePage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
+import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
 import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
@@ -51,9 +54,33 @@ export function PageRouter({
   LogsPage,
   DebuggingAdminPage
 }: PageRouterProps) {
+  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  if (!canAccessPage(currentRoleId, page.key)) {
+    const requiredRole = getRequiredRoleForPage(page.key);
+    return (
+      <section className="permission-denied-page" aria-label="Permission denied">
+        <span className="eyebrow">Access control</span>
+        <h2>Permission denied</h2>
+        <p>Current role: {getRequiredRoleLabel(currentRoleId)}</p>
+        <p>Required role: {getRequiredRoleLabel(requiredRole)}</p>
+        <button className="button primary" type="button" onClick={() => onNavigate(getAccessibleFallbackPath(currentRoleId))}>
+          Back to accessible workspace
+        </button>
+      </section>
+    );
+  }
+
   switch (page.key) {
     case "parameters":
-      return <UserParametersPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return (
+        <UserParametersPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          canEdit={canPerform(currentRoleId, "parameter.edit")}
+        />
+      );
     case "parameter-submissions":
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-home":
@@ -85,6 +112,8 @@ export function PageRouter({
       return <NodeDebuggingPage state={state} />;
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+    case "user-permissions":
+      return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
       return <HomePage />;
   }

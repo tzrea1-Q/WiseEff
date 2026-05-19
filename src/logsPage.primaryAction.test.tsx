@@ -2,6 +2,9 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
 import { getContextQuery } from "./App";
+import { initialState } from "./mockData";
+
+const userState = { ...initialState, activeRoleId: "user" };
 
 afterEach(() => {
   cleanup();
@@ -26,7 +29,7 @@ describe("getContextQuery", () => {
 describe("LogsPage · 主行动", () => {
   it("Complete 日志点击主按钮跳转到 /parameters 且 URL 带 logId", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
@@ -39,7 +42,7 @@ describe("LogsPage · 主行动", () => {
 
   it("从日志跳到参数页后，修改原因预填日志结论", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
@@ -51,7 +54,7 @@ describe("LogsPage · 主行动", () => {
 
   it("点击导出报告会创建 Markdown 下载", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const history = screen.getByRole("complementary", { name: "历史日志记录" });
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
@@ -62,7 +65,7 @@ describe("LogsPage · 主行动", () => {
 
   it("点击复制链接会写入包含 logId 的分享链接", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     fireEvent.click(screen.getByRole("button", { name: /复制链接/ }));
 

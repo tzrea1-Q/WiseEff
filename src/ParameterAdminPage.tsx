@@ -19,7 +19,7 @@ import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdmi
 import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
 import { serializePowerManagementConfig, type PowerManagementParameterTemplate } from "./powerManagementConfig";
 
-export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageProps) {
+export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
@@ -239,7 +239,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         onDownload={() => openExportFlow("download")}
         onViewDiff={() => openExportFlow("preview")}
       />
-      <button className="button subtle" type="button" onClick={() => console.info("m2: open permissions")}>
+      <button className="button subtle" type="button" data-route="/user-permissions" onClick={() => onNavigate("/user-permissions")}>
         <ShieldCheck size={16} />
         权限
       </button>
@@ -253,7 +253,7 @@ export function ParameterAdminPage({ state, dispatch, search: rawSearch }: PageP
         审计
       </button>
     </>,
-    [dirtyCount, saving, search.audit, syncMessage]
+    [dirtyCount, onNavigate, saving, search.audit, syncMessage]
   );
 
   return (

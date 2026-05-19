@@ -2,6 +2,29 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { reducer } from "./App";
 import { createPrototypeState } from "./mockData";
 
+const createDebuggingState = () => ({ ...createPrototypeState(), activeRoleId: "user" });
+const createAdminState = () => ({ ...createPrototypeState(), activeRoleId: "admin" });
+const createGuestState = () => ({ ...createPrototypeState(), activeRoleId: "guest" });
+
+const createDebugDraft = (base = createPrototypeState()) => {
+  const target = base.debugParameters[0];
+
+  return {
+    name: target.name,
+    key: target.key,
+    description: target.description,
+    module: target.module,
+    currentValue: "1234",
+    targetValue: "5678",
+    unit: target.unit,
+    range: target.range,
+    risk: "High" as const,
+    status: target.status,
+    nodePath: target.nodePath,
+    accessMode: target.accessMode
+  };
+};
+
 describe("CONNECT_DEVICE（改写）", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -11,7 +34,7 @@ describe("CONNECT_DEVICE（改写）", () => {
   afterEach(() => vi.useRealTimers());
 
   it("首次连接写入 debuggingSessionStartedAt 与 connect 事件", () => {
-    const state = createPrototypeState();
+    const state = createDebuggingState();
     const deviceId = state.devices[0].id;
     const next = reducer(state, { type: "CONNECT_DEVICE", deviceId });
 
@@ -26,7 +49,7 @@ describe("CONNECT_DEVICE（改写）", () => {
   });
 
   it("已连接过的会话再次 connect 不覆盖 startedAt", () => {
-    const base = createPrototypeState();
+    const base = createDebuggingState();
     const first = reducer(base, { type: "CONNECT_DEVICE", deviceId: base.devices[0].id });
     vi.setSystemTime(new Date("2026-05-10T20:45:00.000Z"));
     const second = reducer(first, { type: "CONNECT_DEVICE", deviceId: base.devices[0].id });
@@ -45,7 +68,7 @@ describe("PUSH_DEBUG_VALUES（改写）", () => {
   afterEach(() => vi.useRealTimers());
 
   it("生成快照、记录事件、填充 pushedDebugIds、更新 currentValue", () => {
-    const base = createPrototypeState();
+    const base = createDebuggingState();
     const target = base.debugParameters[0];
     const stateWithDraft = {
       ...base,
@@ -78,7 +101,7 @@ describe("PUSH_DEBUG_VALUES（改写）", () => {
   });
 
   it("批次中最高风险是 High 时快照 risk = High", () => {
-    const base = createPrototypeState();
+    const base = createDebuggingState();
     const lowRisk = base.debugParameters.find((parameter) => parameter.risk === "Low");
     const highRisk = base.debugParameters.find((parameter) => parameter.risk === "High");
     if (!lowRisk || !highRisk) {
@@ -103,7 +126,7 @@ describe("PUSH_DEBUG_VALUES（改写）", () => {
 
 describe("ROLLBACK_LAST_SNAPSHOT（新增）", () => {
   it("将快照里的 previousValue 写回 currentValue，清空快照与 pushedDebugIds，产出 rollback 事件", () => {
-    const base = createPrototypeState();
+    const base = createDebuggingState();
     const target = base.debugParameters[0];
     const pushed = reducer(
       {
@@ -127,7 +150,7 @@ describe("ROLLBACK_LAST_SNAPSHOT（新增）", () => {
   });
 
   it("没有快照时是 no-op（不抛异常、状态不变）", () => {
-    const base = createPrototypeState();
+    const base = createDebuggingState();
     const next = reducer(base, { type: "ROLLBACK_LAST_SNAPSHOT" });
     expect(next).toBe(base);
   });
@@ -135,7 +158,7 @@ describe("ROLLBACK_LAST_SNAPSHOT（新增）", () => {
 
 describe("ROLLBACK_UNDO_PUSH（新增）", () => {
   it("行为等价 ROLLBACK_LAST_SNAPSHOT，但事件类型为 rollback-undo", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const target = base.debugParameters[0];
     const pushed = reducer(
       {
@@ -157,7 +180,7 @@ describe("ROLLBACK_UNDO_PUSH（新增）", () => {
 
 describe("CLEAR_PUSHED_DEBUG_IDS（新增）", () => {
   it("从 pushedDebugIds 中移除指定 id", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const state = {
       ...base,
       pushedDebugIds: ["a", "b", "c"]
@@ -169,7 +192,7 @@ describe("CLEAR_PUSHED_DEBUG_IDS（新增）", () => {
 
 describe("MARK_CONFIG_PERSISTED", () => {
   it("把 persistedConfigSnapshot 更新为当前 configDraft 的深拷贝", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const modified = {
       ...base,
       configDraft: {
@@ -192,7 +215,7 @@ describe("MARK_CONFIG_PERSISTED", () => {
   });
 
   it("追加一条通知", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const next = reducer(base, { type: "MARK_CONFIG_PERSISTED" });
 
     expect(next.notifications[0]).toMatch(/持久化|已写入|已保存/);
@@ -201,7 +224,7 @@ describe("MARK_CONFIG_PERSISTED", () => {
 
 describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
   it("把 draft 写入 configDraft，并同步更新 debugParameters", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const target = base.debugParameters[0];
     const draft = {
       name: "修改后的名称",
@@ -240,7 +263,7 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
   });
 
   it("无视 draft 中的 status 字段，保持 configDraft 里原有的 status", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const target = base.debugParameters[0];
     const originalStatus = target.status;
 
@@ -272,7 +295,7 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
   });
 
   it("不存在的 parameterId 保持 state 不变", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const draft = {
       name: "x",
       key: "x",
@@ -299,7 +322,7 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
   });
 
   it("持久化 nodePath 与 accessMode", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const target = base.debugParameters[0];
     const draft = {
       name: target.name,
@@ -331,7 +354,7 @@ describe("COMMIT_DEBUG_PARAMETER_DRAFT", () => {
 
 describe("DISCARD_ALL_DEBUG_DIRTY", () => {
   it("把 configDraft.debugParameters 恢复到 persistedConfigSnapshot.debugParameters", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const modified = {
       ...base,
       configDraft: {
@@ -348,7 +371,7 @@ describe("DISCARD_ALL_DEBUG_DIRTY", () => {
   });
 
   it("不改动 parameterLibrary 和 projects", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const modified = {
       ...base,
       configDraft: {
@@ -364,7 +387,7 @@ describe("DISCARD_ALL_DEBUG_DIRTY", () => {
   });
 
   it("同步更新 derived debugParameters 运行时字段", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const modified = {
       ...base,
       configDraft: {
@@ -386,7 +409,7 @@ describe("DISCARD_ALL_DEBUG_DIRTY", () => {
 
 describe("ADD_DEBUG_PARAMETER initialDraft", () => {
   it("未传 initialDraft 时保持原有自动生成逻辑", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
 
     const next = reducer(base, { type: "ADD_DEBUG_PARAMETER" });
 
@@ -396,7 +419,7 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
   });
 
   it("传入 initialDraft 时将 draft 加入 configDraft.debugParameters", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const draft = {
       name: "pid_kp_coefficient",
       key: "debug.pid.kp",
@@ -421,7 +444,7 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
   });
 
   it("传入 initialDraft 时同步 derived debugParameters", () => {
-    const base = createPrototypeState();
+    const base = createAdminState();
     const draft = {
       name: "x",
       key: "x.y",
@@ -442,5 +465,68 @@ describe("ADD_DEBUG_PARAMETER initialDraft", () => {
     expect(next.debugParameters).toHaveLength(base.debugParameters.length + 1);
     const added = next.debugParameters.at(-1);
     expect(added?.key).toBe("x.y");
+  });
+});
+
+describe("debug workflow permission boundaries", () => {
+  it("requires debugging.use for push actions", () => {
+    const base = createGuestState();
+    const target = base.debugParameters[0];
+    const stateWithDraft = {
+      ...base,
+      debugParameters: base.debugParameters.map((parameter) =>
+        parameter.id === target.id ? { ...parameter, targetValue: "9.9" } : parameter
+      )
+    };
+
+    expect(reducer(stateWithDraft, { type: "PUSH_DEBUG_VALUES", parameterIds: [target.id] })).toBe(stateWithDraft);
+    expect(reducer(stateWithDraft, { type: "PUSH_DEBUG_VALUE", parameterId: target.id })).toBe(stateWithDraft);
+  });
+
+  it("requires debugging.use for rollback actions", () => {
+    const base = createDebuggingState();
+    const target = base.debugParameters[0];
+    const pushed = reducer(
+      {
+        ...base,
+        debugParameters: base.debugParameters.map((parameter) =>
+          parameter.id === target.id ? { ...parameter, targetValue: "42" } : parameter
+        )
+      },
+      { type: "PUSH_DEBUG_VALUES", parameterIds: [target.id] }
+    );
+    const guestState = { ...pushed, activeRoleId: "guest" };
+
+    expect(reducer(guestState, { type: "ROLLBACK_LAST_SNAPSHOT" })).toBe(guestState);
+    expect(reducer(guestState, { type: "ROLLBACK_UNDO_PUSH" })).toBe(guestState);
+  });
+
+  it("requires debugging.use for clearing pushed debug ids", () => {
+    const state = {
+      ...createGuestState(),
+      pushedDebugIds: ["a", "b", "c"]
+    };
+
+    expect(reducer(state, { type: "CLEAR_PUSHED_DEBUG_IDS", parameterIds: ["b"] })).toBe(state);
+  });
+
+  it("requires debugging.use for debug parameter draft mutations", () => {
+    const base = createGuestState();
+    const target = base.debugParameters[0];
+    const dirtyState = {
+      ...base,
+      configDraft: {
+        ...base.configDraft,
+        debugParameters: base.configDraft.debugParameters.map((parameter) =>
+          parameter.id === target.id ? { ...parameter, currentValue: "9999" } : parameter
+        )
+      }
+    };
+
+    expect(reducer(base, { type: "UPDATE_DEBUG_PARAMETER", parameterId: target.id, patch: { currentValue: "9999" } }))
+      .toBe(base);
+    expect(reducer(base, { type: "COMMIT_DEBUG_PARAMETER_DRAFT", parameterId: target.id, draft: createDebugDraft(base) }))
+      .toBe(base);
+    expect(reducer(dirtyState, { type: "DISCARD_ALL_DEBUG_DIRTY" })).toBe(dirtyState);
   });
 });

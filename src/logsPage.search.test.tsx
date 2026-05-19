@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { initialState } from "./mockData";
+
+const userState = { ...initialState, activeRoleId: "user" };
 
 afterEach(() => {
   cleanup();
@@ -10,7 +13,7 @@ afterEach(() => {
 describe("LogsPage · 原始日志搜索", () => {
   it("输入关键词后显示匹配数并标记当前匹配行", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     fireEvent.change(screen.getByRole("searchbox", { name: "在日志中搜索" }), { target: { value: "thermal" } });
 
@@ -20,7 +23,7 @@ describe("LogsPage · 原始日志搜索", () => {
 
   it("下一个匹配按钮推进当前匹配行，Esc 清空搜索", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const search = screen.getByRole("searchbox", { name: "在日志中搜索" });
     fireEvent.change(search, { target: { value: "thermal" } });
@@ -36,7 +39,7 @@ describe("LogsPage · 原始日志搜索", () => {
 
   it("Ctrl+F 将焦点移到日志搜索框", () => {
     window.history.replaceState(null, "", "/logs");
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const rawLog = screen.getByRole("region", { name: "原始日志" });
     fireEvent.keyDown(window, { key: "f", ctrlKey: true });

@@ -31,7 +31,7 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
 }
 
 function renderPage() {
-  const state = { ...createPrototypeState(), activeRoleId: "parameter-admin" };
+  const state = { ...createPrototypeState(), activeRoleId: "admin" };
   const dispatch = vi.fn();
   const onNavigate = vi.fn();
   const utils = render(
@@ -144,7 +144,7 @@ describe("LogAdminPage · row click + drawer actions", () => {
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_UNARCHIVE_LOG" }));
   });
 
-  it("disables drawer action buttons for Viewer role", async () => {
+  it("disables drawer action buttons for non-admin roles", async () => {
     const state = createPrototypeState();
     const viewerState = { ...state, activeRoleId: "hardware" };
     const dispatch = vi.fn();
@@ -163,91 +163,21 @@ describe("LogAdminPage · row click + drawer actions", () => {
 });
 
 describe("LogAdminPage · access control", () => {
-  it("renders 5 admin users in the panel", () => {
+  it("does not render the shared user permissions entry", () => {
     const state = createPrototypeState();
     const adminState = { ...state, activeRoleId: "admin" };
+    const onNavigate = vi.fn();
     render(
       <TopBarActionsHarness>
-        <LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
+        <LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={onNavigate} search="" />
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("Jane Smith")).toBeInTheDocument();
-    expect(screen.getByText("Mike Kruger")).toBeInTheDocument();
-    expect(screen.getByText("Ana Lin")).toBeInTheDocument();
-    expect(screen.getByText("Rui Peng")).toBeInTheDocument();
-    expect(screen.getByText("Xiao Wang")).toBeInTheDocument();
-  });
+    expect(screen.queryByText("Jane Smith")).not.toBeInTheDocument();
 
-  it("opens AddUserDialog on 添加 button click (Admin role)", async () => {
-    const state = createPrototypeState();
-    const adminState = { ...state, activeRoleId: "admin" };
-    render(
-      <TopBarActionsHarness>
-        <LogAdminPage state={adminState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
-      </TopBarActionsHarness>
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: /添加/ }));
-
-    expect(screen.getByRole("dialog", { name: /新增后台用户/ })).toBeInTheDocument();
-  });
-
-  it("dispatches LOG_ADMIN_ADD_USER on form submit", async () => {
-    const state = createPrototypeState();
-    const adminState = { ...state, activeRoleId: "admin" };
-    const dispatch = vi.fn();
-    render(
-      <TopBarActionsHarness>
-        <LogAdminPage state={adminState} dispatch={dispatch} onNavigate={vi.fn()} search="" />
-      </TopBarActionsHarness>
-    );
-
-    await userEvent.click(screen.getByRole("button", { name: /添加/ }));
-    await userEvent.type(screen.getByLabelText("姓名"), "New Admin");
-    await userEvent.click(screen.getByRole("button", { name: "添加" }));
-
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "LOG_ADMIN_ADD_USER",
-        input: expect.objectContaining({ name: "New Admin", role: "Editor" })
-      })
-    );
-  });
-
-  it("disables 添加 button for non-Admin role", () => {
-    const state = createPrototypeState();
-    const hardwareState = { ...state, activeRoleId: "hardware" };
-    render(
-      <TopBarActionsHarness>
-        <LogAdminPage state={hardwareState} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
-      </TopBarActionsHarness>
-    );
-
-    expect(screen.getByRole("button", { name: /添加/ })).toBeDisabled();
-  });
-
-  it("dispatches LOG_ADMIN_UPDATE_USER_ROLE on role change", async () => {
-    const state = createPrototypeState();
-    const adminState = { ...state, activeRoleId: "admin" };
-    const dispatch = vi.fn();
-    render(
-      <TopBarActionsHarness>
-        <LogAdminPage state={adminState} dispatch={dispatch} onNavigate={vi.fn()} search="" />
-      </TopBarActionsHarness>
-    );
-    const mkRow = screen.getByText("Mike Kruger").closest("li")!;
-    const select = within(mkRow).getByRole("combobox");
-
-    await userEvent.selectOptions(select, "Admin");
-
-    expect(dispatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "LOG_ADMIN_UPDATE_USER_ROLE",
-        userId: "mk",
-        role: "Admin"
-      })
-    );
+    expect(screen.queryByText("Shared user permissions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Manage user permissions" })).not.toBeInTheDocument();
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 });
 

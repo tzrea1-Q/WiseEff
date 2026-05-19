@@ -32,7 +32,9 @@ import type {
 } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { PageRouter, type PageProps } from "@/app/routes";
+import { canAccessPage, canPerform } from "@/app/permissions";
 import { submitParameterRound } from "@/domain/parameters/commands";
+import { migrateLegacyRoleId, type PlatformRoleId } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
@@ -117,7 +119,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge as UiBadge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 
@@ -153,9 +154,9 @@ export type AppAction =
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
-  | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: string }
+  | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: PlatformRoleId }
   | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
-  | { type: "ADD_USER"; name: string; email: string; roleId: string }
+  | { type: "ADD_USER"; name: string; email: string; title: string; roleId: PlatformRoleId }
   | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
   | { type: "DISMISS_INSIGHT"; insightId: string }
   | { type: "SET_AI_FLAGGED_IMPORT_IDS"; ids: string[] }
@@ -335,9 +336,26 @@ function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function canManageUsers(state: PrototypeState) {
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  if (!currentUser?.isActive) {
+    return false;
+  }
+  return canPerform(migrateLegacyRoleId(currentUser.roleId), "users.manage");
+}
+
+function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
+  return nextUsers.some((user) => user.isActive && user.roleId === "admin");
+}
+
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const auditActor = currentUser?.name ?? "system";
+  const activeRoleId = migrateLegacyRoleId(state.activeRoleId);
 
   switch (action.type) {
     case "SET_PROJECT":
@@ -345,6 +363,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "SET_ROLE":
       return { ...state, activeRoleId: action.roleId };
     case "ADD_CHANGE_REQUEST": {
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
       const parameter = state.parameters.find((item) => item.id === action.parameterId);
       if (!parameter) {
         return state;
@@ -400,8 +419,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PARAMETER_SUBMISSION_ROUND":
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
       return submitParameterRound(state, { items: action.items, reason: action.reason, projects, roles, buildRuntimeReviewFields });
     case "STASH_PARAMETER_SUBMISSION_ROUND": {
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
       const draftItems = action.items
         .map((item) => {
           const parameter = state.parameters.find((candidate) => candidate.id === item.parameterId);
@@ -460,6 +481,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [`${action.roundId} 已撤回`, ...state.notifications]
       };
     case "ADVANCE_REVIEW":
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
@@ -484,6 +506,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     case "REJECT_REVIEW":
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
@@ -503,6 +526,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     case "TRANSFER_REVIEW": {
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       const exists = state.changeRequests.some((request) => request.id === action.requestId);
       if (!exists) {
         return state;
@@ -524,6 +548,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UNDO_REVIEW_ACTION": {
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
       const exists = state.changeRequests.some((request) => request.id === action.requestId);
       if (!exists) {
         return state;
@@ -562,6 +587,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADVANCE_LOG": {
+      if (!canPerform(activeRoleId, "logs.upload")) return state;
       const order: LogStageId[] = ["parse", "pattern", "rootcause", "report"];
       return {
         ...state,
@@ -582,6 +608,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "SIMULATE_LOG_UPLOAD": {
+      if (!canPerform(activeRoleId, "logs.upload")) return state;
       const supportedLog = action.supported;
       const analysisQuestion = action.question?.trim();
       const newLog: LogRecord = {
@@ -618,6 +645,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "CONNECT_DEVICE": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const now = new Date().toISOString();
       return {
         ...state,
@@ -633,8 +661,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "PUSH_DEBUG_VALUE":
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       return reducer(state, { type: "PUSH_DEBUG_VALUES", parameterIds: [action.parameterId] });
     case "PUSH_DEBUG_VALUES": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const pushIds = new Set(action.parameterIds);
       if (pushIds.size === 0) {
         return state;
@@ -680,6 +710,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     }
     case "ROLLBACK_LAST_SNAPSHOT":
     case "ROLLBACK_UNDO_PUSH": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       if (!state.lastDebugSnapshot) {
         return state;
       }
@@ -720,6 +751,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "CLEAR_PUSHED_DEBUG_IDS": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const removeIds = new Set(action.parameterIds);
       return {
         ...state,
@@ -727,6 +759,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UPDATE_PROJECT_PARAMETER_METADATA": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = updateProjectParameterMetadata(state.configDraft, action.projectId as never, action.parameterId, action.patch);
       return {
         ...state,
@@ -735,6 +768,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UPDATE_PROJECT_PARAMETER_VALUE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = updateProjectParameter(state.configDraft, action.projectId as never, action.parameterId, action.patch);
       return {
         ...state,
@@ -743,6 +777,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UPDATE_DEBUG_PARAMETER": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const configDraft = updateDebugParameter(state.configDraft, action.parameterId, action.patch);
       return {
         ...state,
@@ -751,6 +786,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "COMMIT_DEBUG_PARAMETER_DRAFT": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const exists = state.configDraft.debugParameters.some(
         (parameter) => parameter.id === action.parameterId
       );
@@ -768,6 +804,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DISCARD_ALL_DEBUG_DIRTY": {
+      if (!canPerform(activeRoleId, "debugging.use")) return state;
       const restoredDebugParameters = state.persistedConfigSnapshot.debugParameters.map(
         (parameter) => ({ ...parameter })
       );
@@ -782,6 +819,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PROJECT_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = addProjectParameter(state.configDraft);
       return {
         ...state,
@@ -790,6 +828,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_PROJECT_PARAMETER_FROM_DRAFT": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = addProjectParameterFromDraft(state.configDraft, action.draft);
       return {
         ...state,
@@ -798,6 +837,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DELETE_PROJECT_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const removed = state.configDraft.parameterLibrary.find((parameter) => parameter.id === action.parameterId);
       if (!removed) {
         return state;
@@ -829,6 +869,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ADD_DEBUG_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       if (action.initialDraft) {
         const configDraft = addDebugParameterFromDraft(
           state.configDraft,
@@ -849,6 +890,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "DELETE_DEBUG_PARAMETER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const configDraft = deleteDebugParameter(state.configDraft, action.parameterId);
       return {
         ...state,
@@ -857,6 +899,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "MARK_CONFIG_PERSISTED": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         persistedConfigSnapshot: JSON.parse(JSON.stringify(state.configDraft)) as typeof state.configDraft,
@@ -867,17 +910,27 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "ASSIGN_USER_ROLE": {
-      if (action.userId === state.currentUserId) {
+      if (!canManageUsers(state)) {
         return state;
       }
+      if (action.userId === state.currentUserId && action.roleId !== "admin") {
+        return state;
+      }
+
       const user = state.users.find((item) => item.id === action.userId);
       if (!user || user.roleId === action.roleId || !roles.some((role) => role.id === action.roleId)) {
         return state;
       }
+
+      const nextUsers = state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item));
+      if (!wouldHaveActiveAdmin(state, nextUsers)) {
+        return state;
+      }
+
       const event = buildAuditEvent({
         kind: "user-role-change",
         actor: auditActor,
-        action: `${user.name} 角色从 ${user.roleId} 改为 ${action.roleId}`,
+        action: `${user.name} role changed from ${user.roleId} to ${action.roleId}`,
         severity: "Medium",
         userId: user.id,
         metadata: { previousRole: user.roleId, newRole: action.roleId }
@@ -885,53 +938,73 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 
       return {
         ...state,
-        users: state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item)),
+        users: nextUsers,
         auditEvents: [event, ...state.auditEvents]
       };
     }
     case "TOGGLE_USER_ACTIVE": {
-      const user = state.users.find((item) => item.id === action.userId);
-      if (!user || user.id === state.currentUserId || user.isActive === action.isActive) {
+      if (!canManageUsers(state)) {
         return state;
       }
+      if (action.userId === state.currentUserId && !action.isActive) {
+        return state;
+      }
+
+      const user = state.users.find((item) => item.id === action.userId);
+      if (!user || user.isActive === action.isActive) {
+        return state;
+      }
+
+      const nextUsers = state.users.map((item) => (item.id === user.id ? { ...item, isActive: action.isActive } : item));
+      if (!wouldHaveActiveAdmin(state, nextUsers)) {
+        return state;
+      }
+
       const event = buildAuditEvent({
         kind: "user-toggle",
         actor: auditActor,
-        action: `${action.isActive ? "启用" : "停用"} 用户 ${user.name}`,
+        action: `${action.isActive ? "Enabled" : "Disabled"} user ${user.name}`,
         severity: "Medium",
         userId: user.id,
-        metadata: {
-          previousValue: user.isActive ? "active" : "inactive",
-          newValue: action.isActive ? "active" : "inactive"
-        }
+        metadata: { isActive: action.isActive }
       });
 
       return {
         ...state,
-        users: state.users.map((item) => (item.id === user.id ? { ...item, isActive: action.isActive } : item)),
+        users: nextUsers,
         auditEvents: [event, ...state.auditEvents]
       };
     }
     case "ADD_USER": {
-      if (state.users.some((user) => user.email.toLowerCase() === action.email.toLowerCase())) {
+      if (!canManageUsers(state)) {
         return state;
       }
+
+      const email = action.email.trim().toLowerCase();
+      const name = action.name.trim();
+      if (!name || !isValidEmail(email) || state.users.some((user) => user.email.toLowerCase() === email)) {
+        return state;
+      }
+
       const role = roles.find((item) => item.id === action.roleId);
       if (!role) {
         return state;
       }
+
       const newUser: User = {
-        id: `u-${Date.now().toString(36)}`,
-        name: action.name,
-        email: action.email,
+        id: `user-${state.users.length + 1}`,
+        name,
+        email,
+        title: action.title.trim() || "Platform user",
         roleId: action.roleId,
         isActive: true,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        lastActive: "just now"
       };
       const event = buildAuditEvent({
         kind: "user-add",
         actor: auditActor,
-        action: `添加用户 ${newUser.name}（${role.name}）`,
+        action: `Added user ${newUser.name} (${role.name})`,
         severity: "Low",
         userId: newUser.id
       });
@@ -943,6 +1016,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "MARK_EXPORTED": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const event = buildAuditEvent({
         kind: "export",
         actor: auditActor,
@@ -967,11 +1041,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         insightDismissedIds: [...state.insightDismissedIds, action.insightId]
       };
     case "SET_AI_FLAGGED_IMPORT_IDS":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         aiFlaggedImportIds: [...action.ids]
       };
     case "AGENT_ACTION_EXECUTED": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const event = buildAuditEvent({
         kind: "agent-action",
         actor: auditActor,
@@ -987,6 +1063,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "UNDO_LAST_DESTRUCTIVE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const entry = state._undoStack;
       if (!entry || Date.now() > new Date(entry.expiresAt).getTime()) {
         return state;
@@ -1009,8 +1086,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "CLEAR_UNDO":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return { ...state, _undoStack: null };
     case "IMPORT_PARAMETERS":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         notifications: ["批量参数导入完成：新增 24 项，冲突 2 项已进入审计队列", ...state.notifications]
@@ -1018,6 +1097,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "ADD_NOTIFICATION":
       return { ...state, notifications: [action.message, ...state.notifications] };
     case "LOG_ADMIN_REANALYZE_LOG": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
       if (!target) {
         return state;
@@ -1046,6 +1126,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_ARCHIVE_LOG": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
       if (!target) {
         return state;
@@ -1066,6 +1147,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_UNARCHIVE_LOG": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
       if (!target || !state.archivedLogIds.includes(action.logId)) {
         return state;
@@ -1083,6 +1165,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_ADD_USER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const userIndex = state.logAdminUsers.length;
       const newUser = {
         id: `log-admin-user-${userIndex + 1}`,
@@ -1107,6 +1190,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_UPDATE_USER_ROLE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logAdminUsers.find((user) => user.id === action.userId);
       if (!target || target.role === action.role) {
         return state;
@@ -1126,6 +1210,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_REMOVE_USER": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logAdminUsers.find((user) => user.id === action.userId);
       if (!target) {
         return state;
@@ -1143,6 +1228,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_SYNC_LOGS": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       const now = new Date();
       let promoted = false;
 
@@ -1172,6 +1258,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       };
     }
     case "LOG_ADMIN_EXPORT_REPORT":
+      if (!canPerform(activeRoleId, "admin.access")) return state;
       return {
         ...state,
         auditEvents: addAuditEvent(state, {
@@ -1193,16 +1280,16 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 
 export const appReducer = reducer;
 
-function App() {
+function App({ initialAppState = initialState }: { initialAppState?: PrototypeState } = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell key={mockDataFingerprint} />
+      <AppShell initialAppState={initialAppState} key={mockDataFingerprint} />
     </TooltipProvider>
   );
 }
 
-function AppShell() {
-  const [state, dispatch] = useReducer(reducer, initialState);
+function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
+  const [state, dispatch] = useReducer(reducer, initialAppState);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
@@ -1222,6 +1309,8 @@ function AppShell() {
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
+  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1292,7 +1381,7 @@ function AppShell() {
 
   return (
     <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
-      {!isPlatformHome ? <Sidebar activePath={page.path} onNavigate={navigate} /> : null}
+      {!isPlatformHome ? <Sidebar activePath={page.path} currentRoleId={currentRoleId} onNavigate={navigate} /> : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
         {!isPlatformHome ? (
           <TopBar
@@ -1348,7 +1437,7 @@ function AppShell() {
           )}
         </TopBarActionsContext.Provider>
       </div>
-      {!isPlatformHome ? (
+      {!isPlatformHome && canAccessCurrentPage ? (
         <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
       ) : null}
     </div>
@@ -1656,10 +1745,19 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
   );
 }
 
-function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (path: string) => void }) {
+function Sidebar({
+  activePath,
+  currentRoleId,
+  onNavigate
+}: {
+  activePath: string;
+  currentRoleId: string;
+  onNavigate: (path: string) => void;
+}) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
-  const groups = navigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
+  const visibleNavigationItems = navigationItems.filter((item) => canAccessPage(currentRoleId, item.key));
+  const groups = visibleNavigationItems.reduce<Record<string, PageConfig[]>>((acc, item) => {
     acc[item.group] = [...(acc[item.group] ?? []), item];
     return acc;
   }, {});
@@ -1713,20 +1811,30 @@ function Sidebar({ activePath, onNavigate }: { activePath: string; onNavigate: (
             <small>内测收集 · 当前页</small>
           </span>
         </Button>
-        {utilityItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <Tooltip key={item.label}>
-              <TooltipTrigger asChild>
-                <Button className="nav-item compact" type="button" variant="ghost">
-                  <Icon size={18} />
-                  <span>{item.label}</span>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{item.label}</TooltipContent>
-            </Tooltip>
-          );
-        })}
+        {utilityItems
+          .filter((item) => !item.path || canAccessPage(currentRoleId, getPageByPath(item.path).key))
+          .map((item) => {
+            const Icon = item.icon;
+            const button = (
+              <Button
+                className={item.path === activePath ? "nav-item compact active" : "nav-item compact"}
+                disabled={!item.path}
+                type="button"
+                variant="ghost"
+                onClick={() => item.path && onNavigate(item.path)}
+              >
+                <Icon size={18} />
+                <span>{item.label}</span>
+              </Button>
+            );
+
+            return (
+              <Tooltip key={item.label}>
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipContent side="right">{item.label}</TooltipContent>
+              </Tooltip>
+            );
+          })}
       </div>
       <FeedbackDialog open={feedbackOpen} pagePath={activePath} pageTitle={pageTitle} onOpenChange={setFeedbackOpen} />
     </aside>
@@ -1930,12 +2038,16 @@ function TopBar({
   parameterHomeTimeWindow: HomepageTimeWindow;
   onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
 }) {
+  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
     page.key !== "parameter-comparison" &&
     page.key !== "parameter-review" &&
     page.key !== "parameter-admin";
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const currentRole = roles.find((role) => role.id === currentRoleId);
 
   return (
     <header className="topbar">
@@ -1972,11 +2084,47 @@ function TopBar({
           <MessageSquareText size={18} />
           <span className="notification-dot" />
         </Button>
-        <Avatar className="avatar">
-          <AvatarFallback>
-            <UserRound size={17} />
-          </AvatarFallback>
-        </Avatar>
+        <div className="topbar-user-switcher">
+          <button
+            aria-expanded={roleSwitcherOpen}
+            aria-haspopup="dialog"
+            aria-label="Open user role switcher"
+            className="topbar-user-trigger"
+            type="button"
+            onClick={() => setRoleSwitcherOpen((open) => !open)}
+          >
+            <span className="avatar topbar-user-avatar" aria-hidden="true">
+              <UserRound size={17} />
+            </span>
+            <span className="topbar-user-summary">
+              <strong>{currentUser?.name ?? "Prototype user"}</strong>
+              <small>{currentRole?.name ?? "Guest"}</small>
+            </span>
+            <ChevronDown size={14} />
+          </button>
+          {roleSwitcherOpen ? (
+            <div className="topbar-user-menu" aria-label="User role switcher">
+              <div className="topbar-user-menu__identity">
+                <strong>{currentUser?.name ?? "Prototype user"}</strong>
+                <span>{currentUser?.email ?? "No user selected"}</span>
+              </div>
+              <label className="topbar-user-menu__field">
+                Role
+                <select
+                  aria-label="Prototype role"
+                  value={currentRoleId}
+                  onChange={(event) => dispatch({ type: "SET_ROLE", roleId: event.target.value })}
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );

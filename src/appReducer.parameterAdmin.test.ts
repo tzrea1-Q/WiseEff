@@ -2,33 +2,35 @@ import { describe, expect, it } from "vitest";
 import { appReducer } from "./App";
 import { initialState } from "./mockData";
 
+const adminState = { ...initialState, activeRoleId: "admin" };
+
 describe("parameter-admin reducer actions", () => {
   it("assigns a user role and records audit metadata", () => {
-    const next = appReducer(initialState, {
+    const next = appReducer(adminState, {
       type: "ASSIGN_USER_ROLE",
       userId: "u-zhao-heng",
-      roleId: "parameter-admin"
+      roleId: "committer"
     });
 
-    expect(next.users.find((user) => user.id === "u-zhao-heng")?.roleId).toBe("parameter-admin");
+    expect(next.users.find((user) => user.id === "u-zhao-heng")?.roleId).toBe("committer");
     expect(next.auditEvents[0].kind).toBe("user-role-change");
     expect(next.auditEvents[0].userId).toBe("u-zhao-heng");
-    expect(next.auditEvents[0].metadata?.previousRole).toBe("hardware");
-    expect(next.auditEvents[0].metadata?.newRole).toBe("parameter-admin");
+    expect(next.auditEvents[0].metadata?.previousRole).toBe("guest");
+    expect(next.auditEvents[0].metadata?.newRole).toBe("committer");
   });
 
   it("does not let the current user assign their own role", () => {
-    const next = appReducer(initialState, {
+    const next = appReducer(adminState, {
       type: "ASSIGN_USER_ROLE",
-      userId: initialState.currentUserId,
-      roleId: "hardware"
+      userId: adminState.currentUserId,
+      roleId: "guest"
     });
 
-    expect(next).toBe(initialState);
+    expect(next).toBe(adminState);
   });
 
   it("toggles user active state and writes an audit event", () => {
-    const next = appReducer(initialState, {
+    const next = appReducer(adminState, {
       type: "TOGGLE_USER_ACTIVE",
       userId: "u-liu-min",
       isActive: false
@@ -39,33 +41,35 @@ describe("parameter-admin reducer actions", () => {
   });
 
   it("adds users and rejects duplicate emails", () => {
-    const added = appReducer(initialState, {
+    const added = appReducer(adminState, {
       type: "ADD_USER",
       name: "Demo Engineer",
       email: "demo@chargelab.cn",
-      roleId: "project"
+      title: "Prototype User",
+      roleId: "user"
     });
 
-    expect(added.users).toHaveLength(initialState.users.length + 1);
+    expect(added.users).toHaveLength(adminState.users.length + 1);
     expect(added.users.at(-1)?.name).toBe("Demo Engineer");
     expect(added.auditEvents[0].kind).toBe("user-add");
     expect(added.auditEvents[0].userId).toBe(added.users.at(-1)?.id);
 
-    const duplicate = appReducer(initialState, {
+    const duplicate = appReducer(adminState, {
       type: "ADD_USER",
       name: "Fake",
       email: "xu@chargelab.cn",
-      roleId: "hardware"
+      title: "Fake",
+      roleId: "guest"
     });
 
-    expect(duplicate).toBe(initialState);
+    expect(duplicate).toBe(adminState);
   });
 
   it("marks exports by snapshotting the current draft and writing audit metadata", () => {
-    const dirty = appReducer(initialState, {
+    const dirty = appReducer(adminState, {
       type: "UPDATE_PROJECT_PARAMETER_METADATA",
       projectId: "aurora",
-      parameterId: initialState.configDraft.parameterLibrary[0].id,
+      parameterId: adminState.configDraft.parameterLibrary[0].id,
       patch: { description: "dirty change" }
     });
     const cleared = appReducer(dirty, {
@@ -80,7 +84,7 @@ describe("parameter-admin reducer actions", () => {
   });
 
   it("dismisses insights idempotently and replaces AI flagged ids", () => {
-    const once = appReducer(initialState, { type: "DISMISS_INSIGHT", insightId: "high-risk-orphans" });
+    const once = appReducer(adminState, { type: "DISMISS_INSIGHT", insightId: "high-risk-orphans" });
     const twice = appReducer(once, { type: "DISMISS_INSIGHT", insightId: "high-risk-orphans" });
     const flagged = appReducer(twice, { type: "SET_AI_FLAGGED_IMPORT_IDS", ids: ["p1", "p2"] });
 
@@ -89,7 +93,7 @@ describe("parameter-admin reducer actions", () => {
   });
 
   it("records agent action execution with viaAgent metadata", () => {
-    const next = appReducer(initialState, {
+    const next = appReducer(adminState, {
       type: "AGENT_ACTION_EXECUTED",
       actionId: "scan-orphans",
       metadata: { foundOrphans: 2 }
@@ -102,8 +106,8 @@ describe("parameter-admin reducer actions", () => {
   });
 
   it("creates an undo entry for destructive parameter deletion", () => {
-    const paramId = initialState.configDraft.parameterLibrary[0].id;
-    const next = appReducer(initialState, {
+    const paramId = adminState.configDraft.parameterLibrary[0].id;
+    const next = appReducer(adminState, {
       type: "DELETE_PROJECT_PARAMETER",
       parameterId: paramId
     });
@@ -117,8 +121,8 @@ describe("parameter-admin reducer actions", () => {
   });
 
   it("undoes the last destructive action before expiry", () => {
-    const paramId = initialState.configDraft.parameterLibrary[0].id;
-    const deleted = appReducer(initialState, {
+    const paramId = adminState.configDraft.parameterLibrary[0].id;
+    const deleted = appReducer(adminState, {
       type: "DELETE_PROJECT_PARAMETER",
       parameterId: paramId
     });
@@ -130,8 +134,8 @@ describe("parameter-admin reducer actions", () => {
   });
 
   it("does not undo expired destructive actions and can clear undo manually", () => {
-    const paramId = initialState.configDraft.parameterLibrary[0].id;
-    const deleted = appReducer(initialState, {
+    const paramId = adminState.configDraft.parameterLibrary[0].id;
+    const deleted = appReducer(adminState, {
       type: "DELETE_PROJECT_PARAMETER",
       parameterId: paramId
     });
@@ -144,5 +148,36 @@ describe("parameter-admin reducer actions", () => {
 
     expect(appReducer(expired, { type: "UNDO_LAST_DESTRUCTIVE" })).toBe(expired);
     expect(appReducer(deleted, { type: "CLEAR_UNDO" })._undoStack).toBeNull();
+  });
+
+  it.each([
+    [
+      "MARK_EXPORTED",
+      () => ({
+        type: "MARK_EXPORTED" as const,
+        snapshotName: "params-demo.json",
+        timestamp: "2026-05-10T22:00:00.000Z"
+      })
+    ],
+    ["SET_AI_FLAGGED_IMPORT_IDS", () => ({ type: "SET_AI_FLAGGED_IMPORT_IDS" as const, ids: ["p1", "p2"] })],
+    [
+      "AGENT_ACTION_EXECUTED",
+      () => ({
+        type: "AGENT_ACTION_EXECUTED" as const,
+        actionId: "scan-orphans",
+        metadata: { foundOrphans: 2 }
+      })
+    ],
+    ["UNDO_LAST_DESTRUCTIVE", () => ({ type: "UNDO_LAST_DESTRUCTIVE" as const })],
+    ["CLEAR_UNDO", () => ({ type: "CLEAR_UNDO" as const })],
+    ["IMPORT_PARAMETERS", () => ({ type: "IMPORT_PARAMETERS" as const })]
+  ])("requires admin.access for %s", (_name, buildAction) => {
+    const deleted = appReducer(adminState, {
+      type: "DELETE_PROJECT_PARAMETER",
+      parameterId: adminState.configDraft.parameterLibrary[0].id
+    });
+    const guestState = { ...deleted, activeRoleId: "guest" };
+
+    expect(appReducer(guestState, buildAction())).toBe(guestState);
   });
 });

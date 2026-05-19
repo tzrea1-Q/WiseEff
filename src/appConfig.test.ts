@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAgentPlan, getPageByPath, navigationItems } from "./appConfig";
+import { createAgentPlan, getPageByPath, navigationItems, utilityItems } from "./appConfig";
 
 describe("WiseEff prototype configuration", () => {
   it("exposes the full PRD route map", () => {
@@ -57,6 +57,19 @@ describe("WiseEff prototype configuration", () => {
     const plan = createAgentPlan("/node-debugging");
     expect(plan.contextTitle).toContain("节点");
   });
+  it("resolves the shared user permissions route outside the main navigation map", () => {
+    const page = getPageByPath("/user-permissions");
+
+    expect(page.key).toBe("user-permissions");
+    expect(page.path).toBe("/user-permissions");
+    expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
+  });
+
+  it("makes user management a utility route to user permissions", () => {
+    const userManagement = utilityItems.find((item) => item.label.includes("用户管理") || item.label.includes("鐢ㄦ埛绠＄悊"));
+
+    expect(userManagement?.path).toBe("/user-permissions");
+  });
 });
 
 describe("parameter-admin agent plan", () => {
@@ -77,5 +90,38 @@ describe("parameter-admin agent plan", () => {
     const plan = createAgentPlan("/parameter-admin");
 
     expect(plan.actions.find((action) => action.id === "draft-cleanup")?.requiresConfirm).toBe(true);
+  });
+
+  it("declares permissions for configured mutating Agent actions", () => {
+    const plans = [
+      { path: "/parameters", plan: createAgentPlan("/parameters") },
+      { path: "/parameter-review", plan: createAgentPlan("/parameter-review") },
+      { path: "/logs", plan: createAgentPlan("/logs") },
+      { path: "/debugging", plan: createAgentPlan("/debugging") },
+      { path: "/node-debugging", plan: createAgentPlan("/node-debugging") },
+      { path: "/parameter-admin", plan: createAgentPlan("/parameter-admin") },
+      { path: "/log-admin", plan: createAgentPlan("/log-admin") },
+      { path: "/debugging-admin", plan: createAgentPlan("/debugging-admin") }
+    ];
+    const expectedPermissions = new Map([
+      ["draft-parameter-change", "parameter.edit"],
+      ["advance-review", "parameter.review"],
+      ["connect-device", "debugging.use"],
+      ["push-debug-value", "debugging.use"],
+      ["scan-orphans", "admin.access"],
+      ["draft-cleanup", "admin.access"],
+      ["preview-import", "admin.access"],
+      ["summarize-audit", "admin.access"]
+    ]);
+
+    for (const { path, plan } of plans) {
+      const advanceLogPermission = path === "/log-admin" ? "admin.access" : "logs.upload";
+      for (const action of plan.actions) {
+        const expectedPermission = action.id === "advance-log" ? advanceLogPermission : expectedPermissions.get(action.id);
+        if (expectedPermission) {
+          expect((action as { requiredPermission?: string }).requiredPermission).toBe(expectedPermission);
+        }
+      }
+    }
   });
 });

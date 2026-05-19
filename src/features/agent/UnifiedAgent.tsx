@@ -2,6 +2,7 @@ import { AlertTriangle, Bot, Info, Lightbulb, ListChecks, LockKeyhole, Play, Sen
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, Dispatch, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AppAction } from "@/App";
+import { canPerform, getDisabledReason } from "@/app/permissions";
 import type { createAgentPlan } from "@/appConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -155,6 +156,12 @@ export function UnifiedAgent({
   }, [dragging]);
 
   const executeAction = (id: string) => {
+    const requiredAction = plan.actions.find((action) => action.id === id)?.requiredPermission;
+    if (requiredAction && !canPerform(state.activeRoleId, requiredAction)) {
+      setMessages((items) => [getDisabledReason(state.activeRoleId, requiredAction) ?? "Action unavailable for current role", ...items]);
+      return;
+    }
+
     switch (id) {
       case "scan-orphans": {
         if (path === "/parameter-admin") {
@@ -250,6 +257,10 @@ export function UnifiedAgent({
     bottom: `${agentPosition.bottom}px`
   };
   const comparisonInsights = path === "/parameter-comparison" ? createComparisonInsights(state, comparisonSelection) : null;
+  const visibleActions = plan.actions.filter((action) => {
+    const requiredAction = action.requiredPermission;
+    return !requiredAction || canPerform(state.activeRoleId, requiredAction);
+  });
 
   const startDraggingAgent = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -358,7 +369,7 @@ export function UnifiedAgent({
           ))}
         </div>
         <div className="agent-actions">
-          {plan.actions.map((action) => (
+          {visibleActions.map((action) => (
             <Button
               className={action.requiresConfirm ? "requires-confirm" : ""}
               key={action.id}

@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { initialState } from "./mockData";
+
+const userState = { ...initialState, activeRoleId: "user" };
 
 function mockFetchSequence(responses: unknown[]) {
   vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async () => {
@@ -40,7 +43,7 @@ afterEach(() => {
 describe("/node-debugging", () => {
   it("auto-detects hdc targets on entry", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/targets"));
     expect(await screen.findByText(/已连接：target-a/)).toBeInTheDocument();
@@ -48,7 +51,7 @@ describe("/node-debugging", () => {
 
   it("moves hdc connection controls into the topbar and removes the standalone page header", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await screen.findByText("检测失败，请检查 HDC 环境");
 
@@ -61,7 +64,7 @@ describe("/node-debugging", () => {
 
   it("does not show seeded values as current values before readable nodes are read", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await screen.findByText("检测失败，请检查 HDC 环境");
     expect(screen.queryByText("hdc target detection failed")).not.toBeInTheDocument();
@@ -88,7 +91,7 @@ describe("/node-debugging", () => {
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5100", returncode: 0, stdout: "5100\n", stderr: "" }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await screen.findByText(/已连接：target-a/);
     const rwRow = await within(findRowByText("charger.input_current_limit_ma")).findByText("3651");
@@ -115,7 +118,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     const summary = await screen.findByRole("region", { name: "调试会话摘要" });
     await within(summary).findByText(/在线 · target-a/);
@@ -149,7 +152,7 @@ describe("/node-debugging", () => {
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5100", returncode: 0, stdout: "5100\n", stderr: "" }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await within(findRowByText("charger.input_current_limit_ma")).findByText("成功");
     const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("成功");
@@ -164,7 +167,7 @@ describe("/node-debugging", () => {
 
   it("does not expose node paths to normal users", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await screen.findByText(/已连接：target-a/);
     expect(document.body).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
@@ -172,7 +175,7 @@ describe("/node-debugging", () => {
 
   it("omits risk filtering and the risk column", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
 
     await screen.findByText(/已连接：target-a/);
 
@@ -183,7 +186,7 @@ describe("/node-debugging", () => {
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const roRow = findRowByText("battery.impedance_mohm");
@@ -209,7 +212,7 @@ describe("/node-debugging", () => {
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("battery.impedance_mohm");
@@ -240,7 +243,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -273,7 +276,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -296,7 +299,7 @@ describe("/node-debugging", () => {
 
   it("shows write format as an independent detail section", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -315,7 +318,7 @@ describe("/node-debugging", () => {
 
   it("places the target value input after the write format section", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -330,7 +333,7 @@ describe("/node-debugging", () => {
 
   it("keeps write format examples stable while editing the target value", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -348,7 +351,7 @@ describe("/node-debugging", () => {
 
   it("uses a multiline target value editor for complex writes", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -381,7 +384,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3600\n", stderr: "" }
       }
     ]);
-    render(<App />);
+    render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
