@@ -14,6 +14,7 @@ import {
 } from "./workbenchUi";
 import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
+import { roleSupportsWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
@@ -31,7 +32,15 @@ type ParameterDraftItem = {
 
 type ParametersPageAction =
   | { type: "SET_PROJECT"; projectId: string }
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
+  | {
+      type: "ADD_PARAMETER_SUBMISSION_ROUND";
+      items: ParameterDraftItem[];
+      assignees: {
+        hardwareCommitterId: string;
+        softwareCommitterId: string;
+        softwareUserId: string;
+      };
+    }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] };
 
 type ParametersPageProps = {
@@ -151,6 +160,15 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     projectParameters.find((parameter) => parameter.id === selectedId) ??
     projectParameters[0];
   const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
+  const activeUsers = useMemo(() => state.users.filter((user) => user.isActive), [state.users]);
+  const workflowCandidates = useMemo(
+    () => ({
+      hardwareCommitters: activeUsers.filter((user) => roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter")),
+      softwareCommitters: activeUsers.filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareCommitter")),
+      softwareUsers: activeUsers.filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareUser"))
+    }),
+    [activeUsers]
+  );
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const insightSnapshot = useMemo(
     () => deriveParameterWorkbenchInsightSnapshot(state, state.activeProjectId),
@@ -441,7 +459,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     setSheetOpen(false);
   };
 
-  const submitRound = () => {
+  const submitRound = (assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }) => {
     if (!canEdit) {
       return;
     }
@@ -452,7 +470,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     if (itemsToSubmit.length === 0) {
       return;
     }
-    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit });
+    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, assignees });
     setSelectedIds(new Set());
     setDrafts({});
     setSheetOpen(false);
@@ -730,6 +748,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
       {confirmOpen && previewItems.length > 0 ? (
         <ParameterSubmissionDialog
           items={previewItems}
+          candidates={workflowCandidates}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={submitRound}
         />
@@ -740,13 +759,30 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
 
 function ParameterSubmissionDialog({
   items,
+  candidates,
   onCancel,
   onConfirm
 }: {
   items: Array<ParameterDraftItem & { parameter: ParameterRecord }>;
+  candidates: {
+    hardwareCommitters: PrototypeState["users"];
+    softwareCommitters: PrototypeState["users"];
+    softwareUsers: PrototypeState["users"];
+  };
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }) => void;
 }) {
+  const [hardwareCommitterId, setHardwareCommitterId] = useState(candidates.hardwareCommitters[0]?.id ?? "");
+  const [softwareCommitterId, setSoftwareCommitterId] = useState(candidates.softwareCommitters[0]?.id ?? "");
+  const [softwareUserId, setSoftwareUserId] = useState(candidates.softwareUsers[0]?.id ?? "");
+  const canSubmit = Boolean(hardwareCommitterId && softwareCommitterId && softwareUserId);
+  const submitWithAssignees = () => {
+    if (!canSubmit) {
+      return;
+    }
+    onConfirm({ hardwareCommitterId, softwareCommitterId, softwareUserId });
+  };
+
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-preview-title">
       <div className="submission-dialog">
@@ -754,9 +790,41 @@ function ParameterSubmissionDialog({
           <div>
             <span className="eyebrow">参数提交预览</span>
             <h2 id="submission-preview-title">提交本轮参数</h2>
-            <p>本轮提交包含 {items.length} 个参数修改，确认后会按一轮提交进入历史记录，并拆分为管理员审阅队列中的参数项。</p>
+            <p>本轮提交包含 {items.length} 个参数修改，确认后进入硬件与软件协同审阅流程。</p>
           </div>
           <Badge tone="secondary">Diff 预览</Badge>
+        </div>
+        <div className="submission-assignee-grid" aria-label="后续流程处理人">
+          <label>
+            <span>硬件 MDE</span>
+            <select value={hardwareCommitterId} onChange={(event) => setHardwareCommitterId(event.target.value)} aria-label="硬件 MDE">
+              {candidates.hardwareCommitters.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>软件 MDE</span>
+            <select value={softwareCommitterId} onChange={(event) => setSoftwareCommitterId(event.target.value)} aria-label="软件 MDE">
+              {candidates.softwareCommitters.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>软件开发</span>
+            <select value={softwareUserId} onChange={(event) => setSoftwareUserId(event.target.value)} aria-label="软件开发">
+              {candidates.softwareUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.name}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="submission-diff-list">
           {items.map((item) => (
@@ -784,8 +852,8 @@ function ParameterSubmissionDialog({
           <button className="button subtle" type="button" onClick={onCancel}>
             返回修改
           </button>
-          <button className="button primary" type="button" onClick={onConfirm}>
-            确认提交本轮
+          <button className="button primary" type="button" disabled={!canSubmit} onClick={submitWithAssignees}>
+            确认提交
           </button>
         </div>
       </div>

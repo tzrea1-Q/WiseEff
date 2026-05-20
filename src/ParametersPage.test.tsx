@@ -412,7 +412,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(confirmButton).not.toBeNull();
     fireEvent.click(confirmButton!);
 
-    expect(dispatch).toHaveBeenCalledWith({
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
       type: "ADD_PARAMETER_SUBMISSION_ROUND",
       items: [
         expect.objectContaining({
@@ -420,7 +420,7 @@ describe("ParametersPage draft edge cases", () => {
           reason: "submit cleanup reason"
         })
       ]
-    });
+    }));
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
     expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
   });
@@ -480,6 +480,29 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
     expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("提交预览要求选择硬件 MDE、软件 MDE 和软件开发，且软件节点可选同一人", () => {
+    const dispatch = vi.fn();
+    renderPage(dispatch);
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    fireEvent.change(within(dialog).getByLabelText("硬件 MDE"), { target: { value: "u-wang-jie" } });
+    fireEvent.change(within(dialog).getByLabelText("软件 MDE"), { target: { value: "u-sun-mei" } });
+    fireEvent.change(within(dialog).getByLabelText("软件开发"), { target: { value: "u-sun-mei" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
+
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      type: "ADD_PARAMETER_SUBMISSION_ROUND",
+      assignees: {
+        hardwareCommitterId: "u-wang-jie",
+        softwareCommitterId: "u-sun-mei",
+        softwareUserId: "u-sun-mei"
+      }
+    }));
   });
 
   it("聚焦未勾选行后再勾选，不会继承上一行的修改原因", () => {

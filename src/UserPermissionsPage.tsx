@@ -22,9 +22,11 @@ type StatusFilter = (typeof statusOptions)[number]["value"];
 
 const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   guest: "仅可查看参数页面。",
-  user: "可查看并修改参数，使用参数调试和节点调试，并上传日志进行智能分析。",
-  committer: "包含 User 权限，并可审阅参数提交。",
-  admin: "包含 Committer 权限，并可访问各应用后台和用户管理。"
+  "hardware-user": "硬件侧可查看并提交参数修改，使用参数调试和日志分析。",
+  "software-user": "软件侧可查看并提交参数修改，使用参数调试和日志分析。",
+  "hardware-committer": "包含硬件 User 权限，并可执行硬件侧参数检视。",
+  "software-committer": "包含软件 User 权限，并可执行软件侧参数检视。",
+  admin: "包含全部 Committer 权限，并可访问各应用后台和用户管理。"
 };
 
 const permissionLabels: Record<PermissionKey, string> = {
@@ -46,7 +48,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
   const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
   const [addUserError, setAddUserError] = useState("");
-  const [initialRoleId, setInitialRoleId] = useState<PlatformRoleId>("user");
+  const [initialRoleId, setInitialRoleId] = useState<PlatformRoleId>("hardware-user");
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = useMemo(
@@ -88,7 +90,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
     setEmail("");
     setTitle("");
     setAddUserError("");
-    setInitialRoleId("user");
+    setInitialRoleId("hardware-user");
   }
 
   return (

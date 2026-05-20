@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { reducer, type AppAction } from "./App";
 import { initialState } from "./mockData";
 
-const reviewerState = { ...initialState, activeRoleId: "committer" };
+const reviewerState = { ...initialState, activeRoleId: "hardware-committer" };
 
 describe("review reducer existing actions", () => {
   it("ADVANCE_REVIEW preserves fastTrack and reviewer note metadata", () => {
-    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
+    const target = reviewerState.changeRequests.find((request) => request.status === "硬件Committer检视")!;
     const action: AppAction = {
       type: "ADVANCE_REVIEW",
       requestId: target.id,
@@ -17,7 +17,7 @@ describe("review reducer existing actions", () => {
     const next = reducer(reviewerState, action);
     const updated = next.changeRequests.find((request) => request.id === target.id)!;
 
-    expect(updated.status).toBe("自动检查通过");
+    expect(updated.status).toBe("软件Committer检视");
     expect(updated.fastTrack).toBe(true);
     expect(updated.reviewerNote).toBe("AI 高置信快速推进");
     expect(new Date(updated.updatedAt).getTime()).toBeGreaterThan(new Date(target.updatedAt).getTime());
@@ -25,7 +25,7 @@ describe("review reducer existing actions", () => {
   });
 
   it("REJECT_REVIEW preserves fastTrack metadata", () => {
-    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
+    const target = reviewerState.changeRequests.find((request) => request.status === "硬件Committer检视")!;
     const action: AppAction = {
       type: "REJECT_REVIEW",
       requestId: target.id,
@@ -79,23 +79,23 @@ describe("TRANSFER_REVIEW", () => {
 
 describe("UNDO_REVIEW_ACTION", () => {
   it("rolls the request status back to previousStatus", () => {
-    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
+    const target = reviewerState.changeRequests.find((request) => request.status === "硬件Committer检视")!;
     const afterAdvance = reducer(reviewerState, { type: "ADVANCE_REVIEW", requestId: target.id });
     const advanced = afterAdvance.changeRequests.find((request) => request.id === target.id)!;
-    expect(advanced.status).toBe("自动检查通过");
+    expect(advanced.status).toBe("软件Committer检视");
 
     const afterUndo = reducer(afterAdvance, {
       type: "UNDO_REVIEW_ACTION",
       requestId: target.id,
-      previousStatus: "待审阅"
+      previousStatus: "硬件Committer检视"
     });
     const undone = afterUndo.changeRequests.find((request) => request.id === target.id)!;
 
-    expect(undone.status).toBe("待审阅");
+    expect(undone.status).toBe("硬件Committer检视");
   });
 
   it("clears rejectReason when undoing a rejection", () => {
-    const target = reviewerState.changeRequests.find((request) => request.status === "待审阅")!;
+    const target = reviewerState.changeRequests.find((request) => request.status === "硬件Committer检视")!;
     const afterReject = reducer(reviewerState, {
       type: "REJECT_REVIEW",
       requestId: target.id,
@@ -107,11 +107,11 @@ describe("UNDO_REVIEW_ACTION", () => {
     const afterUndo = reducer(afterReject, {
       type: "UNDO_REVIEW_ACTION",
       requestId: target.id,
-      previousStatus: "待审阅"
+      previousStatus: "硬件Committer检视"
     });
     const undone = afterUndo.changeRequests.find((request) => request.id === target.id)!;
 
-    expect(undone.status).toBe("待审阅");
+    expect(undone.status).toBe("硬件Committer检视");
     expect(undone.rejectReason).toBeUndefined();
   });
 
@@ -119,10 +119,40 @@ describe("UNDO_REVIEW_ACTION", () => {
     const next = reducer(initialState, {
       type: "UNDO_REVIEW_ACTION",
       requestId: "PRQ-NOPE",
-      previousStatus: "待审阅"
+      previousStatus: "硬件Committer检视"
     });
 
     expect(next.changeRequests).toEqual(initialState.changeRequests);
+  });
+});
+
+describe("four-stage parameter review workflow", () => {
+  it("advances from hardware review through software review to software user merge closure", () => {
+    const target = reviewerState.changeRequests.find((request) => request.status === "硬件Committer检视")!;
+
+    const afterHardware = reducer(reviewerState, { type: "ADVANCE_REVIEW", requestId: target.id });
+    expect(afterHardware.changeRequests.find((request) => request.id === target.id)?.status).toBe("软件Committer检视");
+    expect(afterHardware.changeRequests.find((request) => request.id === target.id)?.assignedTo).toBe(
+      target.workflowAssignees?.softwareCommitterId
+    );
+
+    const afterSoftwareCommitter = reducer(
+      { ...afterHardware, activeRoleId: "software-committer" },
+      { type: "ADVANCE_REVIEW", requestId: target.id }
+    );
+    expect(afterSoftwareCommitter.changeRequests.find((request) => request.id === target.id)?.status).toBe("软件User合入");
+    expect(afterSoftwareCommitter.changeRequests.find((request) => request.id === target.id)?.assignedTo).toBe(
+      target.workflowAssignees?.softwareUserId
+    );
+
+    const afterSoftwareUser = reducer(
+      { ...afterSoftwareCommitter, activeRoleId: "software-user" },
+      { type: "ADVANCE_REVIEW", requestId: target.id }
+    );
+    expect(afterSoftwareUser.changeRequests.find((request) => request.id === target.id)?.status).toBe("已合入");
+    expect(afterSoftwareUser.parameterSubmissionRounds.find((round) => round.id === target.submissionRoundId)?.status).toBe(
+      "已合入"
+    );
   });
 });
 

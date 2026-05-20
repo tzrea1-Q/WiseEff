@@ -14,33 +14,35 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   home: "guest",
   "parameter-home": "guest",
   parameters: "guest",
-  "parameter-submissions": "user",
+  "parameter-submissions": "hardware-user",
   "parameter-comparison": "guest",
-  "parameter-review": "committer",
+  "parameter-review": "hardware-committer",
   "parameter-admin": "admin",
-  "log-dashboard": "user",
-  logs: "user",
+  "log-dashboard": "hardware-user",
+  logs: "hardware-user",
   "log-admin": "admin",
-  debugging: "user",
-  "node-debugging": "user",
+  debugging: "hardware-user",
+  "node-debugging": "hardware-user",
   "debugging-admin": "admin",
   "user-permissions": "admin"
 };
 
 const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
   "parameter.view": "guest",
-  "parameter.edit": "user",
-  "parameter.review": "committer",
-  "debugging.use": "user",
-  "logs.upload": "user",
+  "parameter.edit": "hardware-user",
+  "parameter.review": "hardware-committer",
+  "debugging.use": "hardware-user",
+  "logs.upload": "hardware-user",
   "admin.access": "admin",
   "users.manage": "admin"
 };
 
 const roleLabels: Record<PlatformRoleId, string> = {
   guest: "Guest",
-  user: "User",
-  committer: "Committer",
+  "hardware-user": "Hardware User",
+  "software-user": "Software User",
+  "hardware-committer": "Hardware Committer",
+  "software-committer": "Software Committer",
   admin: "Admin"
 };
 
