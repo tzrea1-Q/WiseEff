@@ -2,8 +2,10 @@ import { useMemo, useState, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/App";
+import { ColumnFilter } from "@/components/ColumnFilter";
+import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "@/components/tableFilterUtils";
 import { migrateLegacyRoleId, platformRoles, type PermissionKey, type PlatformRoleId } from "@/domain/users/types";
-import type { PrototypeState } from "@/mockData";
+import type { PrototypeState, User } from "@/mockData";
 
 type UserPermissionsPageProps = {
   state: PrototypeState;
@@ -39,10 +41,34 @@ const permissionLabels: Record<PermissionKey, string> = {
   "users:manage": "管理用户权限"
 };
 
+type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";
+
+function roleNameOf(roleId: PlatformRoleId) {
+  const normalizedRoleId = migrateLegacyRoleId(roleId);
+  return platformRoles.find((role) => role.id === normalizedRoleId)?.name ?? normalizedRoleId;
+}
+
+function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
+  if (key === "user") {
+    return user.name;
+  }
+  if (key === "title") {
+    return user.title;
+  }
+  if (key === "role") {
+    return roleNameOf(user.roleId);
+  }
+  if (key === "status") {
+    return user.isActive ? "Active" : "Disabled";
+  }
+  return user.lastActive;
+}
+
 export function UserPermissionsPage({ state, dispatch, search: _search }: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [columnFilters, setColumnFilters] = useState<HeaderFilterState>({});
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -61,11 +87,48 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
         const matchesRole = roleFilter === "all" || normalizedRoleId === roleFilter;
         const matchesStatus =
           statusFilter === "all" || (statusFilter === "active" ? user.isActive : !user.isActive);
+        const matchesColumnFilters = (["user", "title", "role", "status", "lastActive"] as UserColumnFilterKey[]).every((key) => {
+          const selectedValues = columnFilters[key] ?? [];
+          return selectedValues.length === 0 || selectedValues.includes(userColumnFilterValue(user, key));
+        });
 
-        return matchesQuery && matchesRole && matchesStatus;
+        return matchesQuery && matchesRole && matchesStatus && matchesColumnFilters;
       }),
-    [normalizedQuery, roleFilter, state.users, statusFilter]
+    [columnFilters, normalizedQuery, roleFilter, state.users, statusFilter]
   );
+
+  function toggleColumnFilter(key: UserColumnFilterKey, value: string) {
+    setColumnFilters((current) => ({
+      ...current,
+      [key]: toggleFilterValue(current[key] ?? [], value)
+    }));
+  }
+
+  function clearColumnFilter(key: UserColumnFilterKey) {
+    setColumnFilters((current) => ({ ...current, [key]: [] }));
+  }
+
+  function renderColumnFilter(key: UserColumnFilterKey, label: string) {
+    return (
+      <ColumnFilter
+        label={label}
+        groupLabel={`${label}筛选`}
+        values={uniqueFilterValues(state.users, (user) => userColumnFilterValue(user, key))}
+        selectedValues={columnFilters[key] ?? []}
+        onToggle={(value) => toggleColumnFilter(key, value)}
+        onClear={() => clearColumnFilter(key)}
+      />
+    );
+  }
+
+  function renderHeader(key: UserColumnFilterKey, label: string) {
+    return (
+      <div className="user-permissions-table-head">
+        <span>{label}</span>
+        {renderColumnFilter(key, label)}
+      </div>
+    );
+  }
 
   function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -140,11 +203,11 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
           <table aria-label="Platform users">
             <thead>
               <tr>
-                <th scope="col">User</th>
-                <th scope="col">Title</th>
-                <th scope="col" className="user-permissions-role-header">Role</th>
-                <th scope="col">Status</th>
-                <th scope="col">Last active</th>
+                <th scope="col">{renderHeader("user", "User")}</th>
+                <th scope="col">{renderHeader("title", "Title")}</th>
+                <th scope="col" className="user-permissions-role-header">{renderHeader("role", "Role")}</th>
+                <th scope="col">{renderHeader("status", "Status")}</th>
+                <th scope="col">{renderHeader("lastActive", "Last active")}</th>
               </tr>
             </thead>
             <tbody>

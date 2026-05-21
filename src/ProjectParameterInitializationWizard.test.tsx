@@ -174,6 +174,36 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(within(table).getByText("暂无可预览的候选参数。")).toBeInTheDocument();
   });
 
+  it("supports header filters on every initialization candidate data column", () => {
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+    selectAuroraSourceAndContinue();
+
+    const table = screen.getByRole("table", { name: "初始化候选参数" });
+    const checks: Array<[string, string, string]> = [
+      ["参数", "筛选参数", "battery_temp_target_c"],
+      ["模块", "筛选模块", "Battery Safety"],
+      ["风险", "筛选风险", "中"],
+      ["推荐值", "筛选推荐值", "35"],
+      ["来源", "筛选来源", "Aurora 量产平台 (主来源)"]
+    ];
+
+    for (const [headerName, buttonName, optionName] of checks) {
+      const header = within(table).getByRole("columnheader", { name: new RegExp(headerName) });
+      fireEvent.click(within(header).getByRole("button", { name: buttonName }));
+      expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
+      fireEvent.click(within(header).getByRole("button", { name: buttonName }));
+    }
+
+    const valueHeader = within(table).getByRole("columnheader", { name: /推荐值/ });
+    fireEvent.click(within(valueHeader).getByRole("button", { name: "筛选推荐值" }));
+    fireEvent.click(within(valueHeader).getByRole("checkbox", { name: "35" }));
+
+    expect(within(table).getByText("battery_temp_target_c")).toBeInTheDocument();
+    expect(within(table).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+  });
+
   it("collapses an open table filter when clicking outside it", () => {
     render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={() => {}} />);
 
@@ -194,21 +224,20 @@ describe("ProjectParameterInitializationWizard", () => {
 
   it("styles table filter menus as compact floating panels", () => {
     const styles = readFileSync("src/styles.css", "utf8");
-    const menuRule = styles.match(/\.project-init-column-filter__menu\s*\{[^}]*\}/)?.[0] ?? "";
-    const menuHeadRule = styles.match(/\.project-init-column-filter__menu-head\s*\{[^}]*\}/)?.[0] ?? "";
-    const optionLabelRule = styles.match(/\.project-init-column-filter__options label\s*\{[^}]*\}/)?.[0] ?? "";
-    const optionLabelHoverRule = styles.match(/\.project-init-column-filter__options label:hover\s*\{[^}]*\}/)?.[0] ?? "";
+    const menuRule = styles.match(/\.parameters-column-filter__menu\s*\{[^}]*\}/)?.[0] ?? "";
+    const menuHeadRule = styles.match(/\.parameters-column-filter__menu-head\s*\{[^}]*\}/)?.[0] ?? "";
+    const optionLabelRule = styles.match(/\.parameters-column-filter__options label\s*\{[^}]*\}/)?.[0] ?? "";
+    const optionLabelHoverRule = styles.match(/\.parameters-column-filter__options label:hover\s*\{[^}]*\}/)?.[0] ?? "";
 
     expect(menuRule).toMatch(/background:\s*#fff/);
-    expect(menuRule).toMatch(/border-radius:\s*10px/);
+    expect(menuRule).toMatch(/border-radius:\s*8px/);
     expect(menuRule).toMatch(/box-shadow:/);
-    expect(menuRule).toMatch(/outline:\s*1px solid/);
     expect(menuHeadRule).toMatch(/padding-bottom:\s*8px/);
     expect(menuHeadRule).toMatch(/border-bottom:/);
     expect(optionLabelRule).toMatch(/display:\s*flex/);
-    expect(optionLabelRule).toMatch(/border-radius:\s*7px/);
+    expect(optionLabelRule).toMatch(/border-radius:\s*6px/);
     expect(optionLabelRule).toMatch(/padding:\s*6px 8px/);
-    expect(optionLabelHoverRule).toMatch(/background:\s*#f1f5f9/);
+    expect(optionLabelHoverRule).toMatch(/background:\s*#f4f7ff/);
   });
 
   it("keeps the initialization parameter table columns readable", () => {

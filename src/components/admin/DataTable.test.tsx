@@ -263,6 +263,66 @@ describe("DataTable planned API", () => {
     expect(onToggle).toHaveBeenCalledWith("10");
   });
 
+  it("can generate and apply header filters from column config", async () => {
+    render(
+      <DataTable
+        aria-label="t"
+        rows={simpleRows}
+        rowKey={(row) => row.id}
+        columns={[
+          simpleColumns[0],
+          {
+            ...simpleColumns[1],
+            headerFilter: {
+              label: "分数",
+              groupLabel: "分数筛选",
+              values: ["10", "20", "30"],
+              getValue: (row) => String(row.score)
+            }
+          }
+        ]}
+      />
+    );
+
+    const scoreHeader = screen.getByRole("columnheader", { name: /Score/ });
+    await userEvent.click(within(scoreHeader).getByRole("button", { name: "筛选分数" }));
+    await userEvent.click(within(scoreHeader).getByRole("checkbox", { name: "10" }));
+
+    expect(within(scoreHeader).getByRole("button", { name: "筛选分数" })).toHaveClass("active");
+    expect(screen.getByText("Bravo")).toBeInTheDocument();
+    expect(screen.queryByText("Alpha")).not.toBeInTheDocument();
+    expect(screen.queryByText("Charlie")).not.toBeInTheDocument();
+  });
+
+  it("keeps header filters visible when a filter leaves no matching rows", async () => {
+    render(
+      <DataTable
+        aria-label="t"
+        rows={simpleRows}
+        rowKey={(row) => row.id}
+        columns={[
+          {
+            ...simpleColumns[0],
+            headerFilter: {
+              label: "Name",
+              values: ["Missing"],
+              getValue: (row) => row.name
+            }
+          },
+          simpleColumns[1]
+        ]}
+      />
+    );
+
+    const nameHeader = screen.getByRole("columnheader", { name: /Name/ });
+    await userEvent.click(within(nameHeader).getByRole("button", { name: "筛选Name" }));
+    await userEvent.click(within(nameHeader).getByRole("checkbox", { name: "Missing" }));
+
+    expect(screen.getByRole("table", { name: "t" })).toBeInTheDocument();
+    expect(within(nameHeader).getByRole("button", { name: "筛选Name" })).toHaveClass("active");
+    expect(screen.getByText("当前筛选条件下没有数据。")).toBeInTheDocument();
+  });
+
   it("keeps data table header filters adjacent to header labels", () => {
     const styles = readFileSync("src/styles.css", "utf8");
     const dataFilterRule = styles.match(/\.data-table-column-filter\s*\{[^}]*\}/)?.[0] ?? "";

@@ -1,11 +1,20 @@
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { ColumnFilter } from "../ColumnFilter";
+import {
+  isHeaderFilterConfig,
+  rowMatchesHeaderFilters,
+  toggleFilterValue,
+  uniqueFilterValues,
+  type HeaderFilterConfig,
+  type HeaderFilterState
+} from "../tableFilterUtils";
 
 export type Column<T> = {
   key: string;
   header: ReactNode;
-  headerFilter?: ReactNode;
+  headerFilter?: ReactNode | HeaderFilterConfig<T>;
   render: (row: T) => ReactNode;
   sortAccessor?: (row: T) => string | number;
   align?: "left" | "center" | "right";
@@ -80,24 +89,40 @@ export function DataTable<TData>({
   className
 }: DataTableProps<TData>) {
   const [sort, setSort] = useState<SortState>(null);
+  const [generatedFilters, setGeneratedFilters] = useState<HeaderFilterState>({});
   const [page, setPage] = useState(1);
   const activeSort = controlledSort ? { key: controlledSort.key, dir: controlledSort.direction } : sort;
   const tableLabel = ariaLabelProp ?? ariaLabel;
   const hasActions = Boolean(renderRowActions);
   const hasHeaderFilters = columns.some((column) => Boolean(column.headerFilter));
+  const columnCount = columns.length + (hasActions ? 1 : 0);
+  const generatedFilterConfigs = useMemo(
+    () =>
+      columns.flatMap((column) =>
+        isHeaderFilterConfig(column.headerFilter)
+          ? [{ key: column.key, ...column.headerFilter }]
+          : []
+      ),
+    [columns]
+  );
+
+  const filteredRows = useMemo(
+    () => rows.filter((row) => rowMatchesHeaderFilters(row, generatedFilters, generatedFilterConfigs)),
+    [generatedFilterConfigs, generatedFilters, rows]
+  );
 
   const sortedRows = useMemo(() => {
     if (!activeSort) {
-      return rows;
+      return filteredRows;
     }
     const column = columns.find((candidate) => candidate.key === activeSort.key);
     const accessor = column ? getColumnAccessor(column) : undefined;
 
     if (!accessor) {
-      return rows;
+      return filteredRows;
     }
 
-    return [...rows].sort((a, b) => {
+    return [...filteredRows].sort((a, b) => {
       const av = accessor(a);
       const bv = accessor(b);
       if (av < bv) {
@@ -108,7 +133,7 @@ export function DataTable<TData>({
       }
       return 0;
     });
-  }, [activeSort, columns, rows]);
+  }, [activeSort, columns, filteredRows]);
 
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -138,6 +163,46 @@ export function DataTable<TData>({
     });
   };
 
+  const toggleGeneratedFilter = (key: string, value: string) => {
+    setPage(1);
+    setGeneratedFilters((current) => ({
+      ...current,
+      [key]: toggleFilterValue(current[key] ?? [], value)
+    }));
+  };
+
+  const clearGeneratedFilter = (key: string) => {
+    setPage(1);
+    setGeneratedFilters((current) => ({ ...current, [key]: [] }));
+  };
+
+  const renderHeaderFilter = (column: Column<TData> | DataTableColumn<TData>) => {
+    if (!column.headerFilter) {
+      return null;
+    }
+
+    if (!isHeaderFilterConfig(column.headerFilter)) {
+      return column.headerFilter;
+    }
+
+    const config = column.headerFilter;
+    const label = config.label;
+    const selectedValues = config.selectedValues ?? generatedFilters[column.key] ?? [];
+
+    return (
+      <ColumnFilter
+        label={label}
+        groupLabel={config.groupLabel ?? `${label}筛选`}
+        values={config.values ?? uniqueFilterValues(rows, config.getValue)}
+        selectedValues={selectedValues}
+        renderLabel={config.renderLabel}
+        onToggle={config.onToggle ?? ((value) => toggleGeneratedFilter(column.key, value))}
+        onClear={config.onClear ?? (() => clearGeneratedFilter(column.key))}
+        align={config.align ?? (column.align === "right" ? "right" : "left")}
+      />
+    );
+  };
+
   const ariaSortOf = (column: Column<TData> | DataTableColumn<TData>): "none" | "ascending" | "descending" => {
     if (!activeSort || activeSort.key !== column.key) {
       return "none";
@@ -148,67 +213,64 @@ export function DataTable<TData>({
   return (
     <div className={cn("overflow-hidden rounded-lg border border-border bg-card", hasHeaderFilters && "overflow-visible", className)}>
       {toolbar ? <div className="border-b border-border p-3">{toolbar}</div> : null}
-      {sortedRows.length === 0 ? (
-        <div className="p-8 text-center">{emptyState ?? <p className="text-sm text-muted-foreground">{emptyMessage}</p>}</div>
-      ) : (
-        <>
-          <div className={cn("overflow-x-auto", hasHeaderFilters && "overflow-visible")}>
-            {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
-            <table aria-label={tableLabel} className="w-full min-w-[720px] border-collapse text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/40">
-                  {columns.map((column) => {
-                    const alignment = column.align ?? "left";
-                    const accessor = getColumnAccessor(column);
-                    const sortState = ariaSortOf(column);
+      <div className={cn("overflow-x-auto", hasHeaderFilters && "overflow-visible")}>
+        {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
+        <table aria-label={tableLabel} className="w-full min-w-[720px] border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border bg-muted/40">
+              {columns.map((column) => {
+                const alignment = column.align ?? "left";
+                const accessor = getColumnAccessor(column);
+                const sortState = ariaSortOf(column);
 
-                    return (
-                      <th
-                        key={column.key}
-                        scope="col"
+                return (
+                  <th
+                    key={column.key}
+                    scope="col"
+                    aria-sort={sortState}
+                    className={cn(
+                      "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground",
+                      alignClass[alignment],
+                      column.widthClass,
+                      column.className
+                    )}
+                  >
+                    {accessor ? (
+                      <button
+                        type="button"
                         aria-sort={sortState}
+                        onClick={() => handleSort(column)}
                         className={cn(
-                          "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground",
-                          alignClass[alignment],
-                          column.widthClass,
-                          column.className
+                          "inline-flex items-center gap-1 rounded-md transition-colors hover:text-foreground",
+                          alignment === "right" && "justify-end"
                         )}
                       >
-                        {accessor ? (
-                          <button
-                            type="button"
-                            aria-sort={sortState}
-                            onClick={() => handleSort(column)}
-                            className={cn(
-                              "inline-flex items-center gap-1 rounded-md transition-colors hover:text-foreground",
-                              alignment === "right" && "justify-end"
-                            )}
-                          >
-                            <span>{column.header}</span>
-                            {sortState === "ascending" ? (
-                              <ChevronUp className="size-3" />
-                            ) : sortState === "descending" ? (
-                              <ChevronDown className="size-3" />
-                            ) : (
-                              <ChevronsUpDown className="size-3 opacity-50" />
-                            )}
-                          </button>
+                        <span>{column.header}</span>
+                        {sortState === "ascending" ? (
+                          <ChevronUp className="size-3" />
+                        ) : sortState === "descending" ? (
+                          <ChevronDown className="size-3" />
                         ) : (
-                          <span>{column.header}</span>
+                          <ChevronsUpDown className="size-3 opacity-50" />
                         )}
-                        {column.headerFilter ? <span className="data-table-column-filter">{column.headerFilter}</span> : null}
-                      </th>
-                    );
-                  })}
-                  {hasActions ? (
-                    <th scope="col" aria-sort="none" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      操作
-                    </th>
-                  ) : null}
-                </tr>
-              </thead>
-              <tbody>
-                {pageRows.map((row) => {
+                      </button>
+                    ) : (
+                      <span>{column.header}</span>
+                    )}
+                    {column.headerFilter ? <span className="data-table-column-filter">{renderHeaderFilter(column)}</span> : null}
+                  </th>
+                );
+              })}
+              {hasActions ? (
+                <th scope="col" aria-sort="none" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  操作
+                </th>
+              ) : null}
+            </tr>
+          </thead>
+          <tbody>
+            {pageRows.length > 0 ? (
+              pageRows.map((row) => {
                   const key = rowKey(row);
                   const selected = selectedRowKey === key;
                   const clickable = Boolean(onRowClick);
@@ -251,39 +313,44 @@ export function DataTable<TData>({
                       {renderRowActions ? <td className="px-4 py-3 text-right align-middle">{renderRowActions(row)}</td> : null}
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
+                })
+            ) : (
+              <tr>
+                <td colSpan={columnCount} className="p-8 text-center">
+                  {emptyState ?? <p className="text-sm text-muted-foreground">{emptyMessage}</p>}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {totalPages > 1 ? (
+        <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
+          <span>
+            第 {currentPage} / {totalPages} 页 · 共 {sortedRows.length} 条
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              aria-label="上一页"
+              disabled={currentPage === 1}
+              onClick={() => setPage((value) => Math.max(1, value - 1))}
+              className="inline-flex size-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted disabled:opacity-40"
+            >
+              <ChevronLeft className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="下一页"
+              disabled={currentPage >= totalPages}
+              onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+              className="inline-flex size-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted disabled:opacity-40"
+            >
+              <ChevronRight className="size-3.5" />
+            </button>
           </div>
-          {totalPages > 1 ? (
-            <div className="flex items-center justify-between border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-              <span>
-                第 {currentPage} / {totalPages} 页 · 共 {sortedRows.length} 条
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  aria-label="上一页"
-                  disabled={currentPage === 1}
-                  onClick={() => setPage((value) => Math.max(1, value - 1))}
-                  className="inline-flex size-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted disabled:opacity-40"
-                >
-                  <ChevronLeft className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  aria-label="下一页"
-                  disabled={currentPage >= totalPages}
-                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
-                  className="inline-flex size-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-muted disabled:opacity-40"
-                >
-                  <ChevronRight className="size-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

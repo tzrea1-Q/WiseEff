@@ -243,6 +243,28 @@ describe("ParametersTable", () => {
     expect(onSelectedIdsChange.mock.calls[0][0]).toEqual(new Set(["p1"]));
   });
 
+  it("keeps filters only on module and importance while update time remains sortable", () => {
+    setup();
+
+    [
+      ["模块", "筛选模块", "Charging Policy"],
+      ["重要性", "筛选重要性", "High"]
+    ].forEach(([headerName, buttonName, optionName]) => {
+      const header = screen.getByRole("columnheader", { name: new RegExp(headerName) });
+      const button = within(header).getByRole("button", { name: buttonName });
+      fireEvent.click(button);
+      expect(within(header).getByRole("group", { name: `${headerName}筛选` })).toBeInTheDocument();
+      expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
+      fireEvent.click(button);
+    });
+
+    expect(screen.queryByRole("button", { name: "筛选参数名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选当前 → 推荐" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选范围 / 单位" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选更新时间" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "按 更新时间 排序" })).toBeInTheDocument();
+  });
+
   it("keeps sticky columns anchored and gives the search wrapper a focus ring", () => {
     const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
 

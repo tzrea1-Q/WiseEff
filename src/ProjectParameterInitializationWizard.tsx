@@ -1,9 +1,11 @@
-import { Eye, Funnel, X } from "lucide-react";
+import { Eye, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import type { AppAction } from "./App";
+import { ColumnFilter } from "./components/ColumnFilter";
+import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { getInitializationCandidateParameters } from "./domain/parameters/initialization";
-import type { RiskLevel } from "./domain/parameters/types";
+import type { ProjectParameterInitializationSnapshotItem, RiskLevel } from "./domain/parameters/types";
 import type { PrototypeState } from "./mockData";
 
 type Props = {
@@ -22,6 +24,8 @@ const sourceRoleLabels = {
   primary: "主来源",
   supplement: "补充来源"
 };
+
+type CandidateColumnFilterKey = "parameter" | "module" | "risk" | "recommendedValue" | "source";
 
 const wizardSteps = [
   {
@@ -61,7 +65,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [selectedRisks, setSelectedRisks] = useState<RiskLevel[]>([]);
   const [selectedParameterIds, setSelectedParameterIds] = useState<string[]>([]);
-  const [openTableFilter, setOpenTableFilter] = useState<"module" | "risk" | null>(null);
+  const [columnFilters, setColumnFilters] = useState<HeaderFilterState>({});
   const [detailParameterId, setDetailParameterId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
@@ -86,7 +90,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     [state.configDraft.parameterLibrary]
   );
   const supplementSourceProjectIds = sourceProjectIds.filter((projectId) => projectId !== primarySourceProjectId);
-  const candidates = useMemo(() => {
+  const candidatePool = useMemo(() => {
     if (!primarySourceProjectId) {
       return [];
     }
@@ -94,10 +98,25 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     return getInitializationCandidateParameters(state.configDraft, {
       primarySourceProjectId,
       supplementSourceProjectIds,
-      selectedModules,
-      selectedRisks
+      selectedModules: [],
+      selectedRisks: []
     });
-  }, [primarySourceProjectId, selectedModules, selectedRisks, state.configDraft, supplementSourceProjectIds]);
+  }, [primarySourceProjectId, state.configDraft, supplementSourceProjectIds]);
+  const candidates = useMemo(() => {
+    const selectedModuleSet = new Set(selectedModules);
+    const selectedRiskSet = new Set<RiskLevel>(selectedRisks);
+
+    return candidatePool.filter((candidate) => {
+      const matchesModule = selectedModuleSet.size === 0 || selectedModuleSet.has(candidate.module);
+      const matchesRisk = selectedRiskSet.size === 0 || selectedRiskSet.has(candidate.risk);
+      const matchesColumnFilters = (["parameter", "recommendedValue", "source"] as CandidateColumnFilterKey[]).every((key) => {
+        const selectedValues = columnFilters[key] ?? [];
+        return selectedValues.length === 0 || selectedValues.includes(getCandidateFilterValue(candidate, key));
+      });
+
+      return matchesModule && matchesRisk && matchesColumnFilters;
+    });
+  }, [candidatePool, columnFilters, parameterNameById, projectNameById, selectedModules, selectedRisks]);
   const availableCandidateIds = useMemo(() => {
     if (!primarySourceProjectId) {
       return new Set<string>();
@@ -129,29 +148,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
       previouslyFocusedElementRef.current?.focus();
     };
   }, []);
-
-  useEffect(() => {
-    if (!openTableFilter) {
-      return;
-    }
-
-    function closeTableFilterOnOutsideClick(event: MouseEvent) {
-      if (!(event.target instanceof Node)) {
-        return;
-      }
-      if (dialogRef.current?.querySelector(".project-init-column-filter__menu")?.contains(event.target)) {
-        return;
-      }
-      if (dialogRef.current?.querySelector(".project-init-column-filter__trigger[aria-expanded='true']")?.contains(event.target)) {
-        return;
-      }
-
-      setOpenTableFilter(null);
-    }
-
-    document.addEventListener("mousedown", closeTableFilterOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeTableFilterOnOutsideClick);
-  }, [openTableFilter]);
 
   function getFocusableElements() {
     return Array.from(
@@ -218,10 +214,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     toggleValue(parameterId, selectedParameterIds, setSelectedParameterIds);
   }
 
-  function toggleTableFilterMenu(filter: "module" | "risk") {
-    setOpenTableFilter((current) => (current === filter ? null : filter));
-  }
-
   function toggleAllCandidates() {
     setError("");
     setSelectedParameterIds((current) => {
@@ -285,7 +277,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     }
 
     setError("");
-    setOpenTableFilter(null);
     setCurrentStepIndex((stepIndex) => Math.min(stepIndex + 1, wizardSteps.length - 1));
   }
 
@@ -296,7 +287,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     }
 
     setError("");
-    setOpenTableFilter(null);
     setCurrentStepIndex((stepIndex) => Math.max(stepIndex - 1, 0));
   }
 
@@ -418,58 +408,74 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     );
   }
 
-  function renderColumnFilter<Value extends string>({
-    type,
-    label,
-    groupLabel,
-    values,
-    selectedValues,
-    renderLabel,
-    onToggle,
-    onClear
-  }: {
-    type: "module" | "risk";
-    label: string;
-    groupLabel: string;
-    values: Value[];
-    selectedValues: Value[];
-    renderLabel: (value: Value) => string;
-    onToggle: (value: Value) => void;
-    onClear: () => void;
-  }) {
-    const open = openTableFilter === type;
-    const selectedCount = selectedValues.length;
+  function getCandidateFilterValue(candidate: ProjectParameterInitializationSnapshotItem, key: CandidateColumnFilterKey) {
+    if (key === "parameter") {
+      return parameterNameById.get(candidate.parameterId) ?? candidate.parameterId;
+    }
+    if (key === "module") {
+      return candidate.module;
+    }
+    if (key === "risk") {
+      return candidate.risk;
+    }
+    if (key === "recommendedValue") {
+      return candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue;
+    }
+    return `${projectNameById.get(candidate.sourceProjectId) ?? candidate.sourceProjectId} (${sourceRoleLabels[candidate.sourceRole]})`;
+  }
+
+  function toggleColumnFilter(key: CandidateColumnFilterKey, value: string) {
+    setColumnFilters((current) => ({
+      ...current,
+      [key]: toggleFilterValue(current[key] ?? [], value)
+    }));
+  }
+
+  function clearColumnFilter(key: CandidateColumnFilterKey) {
+    setColumnFilters((current) => ({ ...current, [key]: [] }));
+  }
+
+  function renderColumnFilter(key: CandidateColumnFilterKey, label: string) {
+    const selectedValues = key === "module"
+      ? selectedModules
+      : key === "risk"
+        ? selectedRisks
+        : columnFilters[key] ?? [];
+    const onToggle = key === "module"
+      ? (value: string) => toggleValue(value, selectedModules, setSelectedModules)
+      : key === "risk"
+        ? (value: string) => toggleValue(value as RiskLevel, selectedRisks, setSelectedRisks)
+        : (value: string) => toggleColumnFilter(key, value);
+    const onClear = key === "module"
+      ? () => {
+          setError("");
+          setSelectedModules([]);
+        }
+      : key === "risk"
+        ? () => {
+            setError("");
+            setSelectedRisks([]);
+          }
+        : () => clearColumnFilter(key);
 
     return (
-      <div className="project-init-column-filter">
-        <button
-          aria-expanded={open}
-          aria-label={`筛选${label}`}
-          className={`project-init-column-filter__trigger${selectedCount > 0 ? " active" : ""}`}
-          type="button"
-          onClick={() => toggleTableFilterMenu(type)}
-        >
-          <Funnel size={13} />
-          {selectedCount > 0 ? <span>{selectedCount}</span> : null}
-        </button>
-        {open ? (
-          <div className="project-init-column-filter__menu" role="group" aria-label={groupLabel}>
-            <div className="project-init-column-filter__menu-head">
-              <strong>{label}</strong>
-              <button type="button" onClick={onClear} disabled={selectedCount === 0}>
-                清除
-              </button>
-            </div>
-            <div className="project-init-column-filter__options">
-              {values.map((value) => (
-                <label key={value}>
-                  <input type="checkbox" checked={selectedValues.includes(value)} onChange={() => onToggle(value)} />
-                  <span>{renderLabel(value)}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ) : null}
+      <ColumnFilter
+        label={label}
+        groupLabel={`${label}筛选`}
+        values={key === "module" ? modules : key === "risk" ? riskLevels : uniqueFilterValues(candidatePool, (candidate) => getCandidateFilterValue(candidate, key))}
+        selectedValues={selectedValues}
+        renderLabel={key === "risk" ? (risk) => riskLevelLabels[risk as RiskLevel] : undefined}
+        onToggle={onToggle}
+        onClear={onClear}
+      />
+    );
+  }
+
+  function renderHeader(key: CandidateColumnFilterKey, label: string) {
+    return (
+      <div className="project-init-table-head">
+        <span>{label}</span>
+        {renderColumnFilter(key, label)}
       </div>
     );
   }
@@ -495,7 +501,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
               </colgroup>
               <thead>
                 <tr>
-                  <th>
+                  <th aria-label="选择">
                     <input
                       type="checkbox"
                       aria-label="全选初始化候选参数"
@@ -504,45 +510,11 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                       onChange={toggleAllCandidates}
                     />
                   </th>
-                  <th>参数</th>
-                  <th>
-                    <div className="project-init-table-head">
-                      <span>模块</span>
-                      {renderColumnFilter({
-                        type: "module",
-                        label: "模块",
-                        groupLabel: "模块筛选",
-                        values: modules,
-                        selectedValues: selectedModules,
-                        renderLabel: (module) => module,
-                        onToggle: (module) => toggleValue(module, selectedModules, setSelectedModules),
-                        onClear: () => {
-                          setError("");
-                          setSelectedModules([]);
-                        }
-                      })}
-                    </div>
-                  </th>
-                  <th>
-                    <div className="project-init-table-head">
-                      <span>风险</span>
-                      {renderColumnFilter({
-                        type: "risk",
-                        label: "风险",
-                        groupLabel: "风险筛选",
-                        values: riskLevels,
-                        selectedValues: selectedRisks,
-                        renderLabel: (risk) => riskLevelLabels[risk],
-                        onToggle: (risk) => toggleValue(risk, selectedRisks, setSelectedRisks),
-                        onClear: () => {
-                          setError("");
-                          setSelectedRisks([]);
-                        }
-                      })}
-                    </div>
-                  </th>
-                  <th>推荐值</th>
-                  <th>来源</th>
+                  <th>{renderHeader("parameter", "参数")}</th>
+                  <th>{renderHeader("module", "模块")}</th>
+                  <th>{renderHeader("risk", "风险")}</th>
+                  <th>{renderHeader("recommendedValue", "推荐值")}</th>
+                  <th>{renderHeader("source", "来源")}</th>
                   <th>详情</th>
                 </tr>
               </thead>
@@ -582,7 +554,6 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                           type="button"
                           aria-label={`查看 ${parameterNameById.get(candidate.parameterId) ?? candidate.parameterId} 详情`}
                           onClick={() => {
-                            setOpenTableFilter(null);
                             setDetailParameterId(candidate.parameterId);
                           }}
                         >

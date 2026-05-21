@@ -173,7 +173,7 @@ describe("/node-debugging", () => {
     expect(document.body).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
   });
 
-  it("omits risk filtering and the risk column", async () => {
+  it("omits risk filtering, risk column, and access mode filtering", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
     render(<App initialAppState={userState} />);
 
@@ -181,10 +181,10 @@ describe("/node-debugging", () => {
 
     expect(screen.queryByRole("button", { name: /风险等级/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "风险" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "筛选访问模式" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选访问模式" })).not.toBeInTheDocument();
   });
 
-  it("将状态、模块和访问模式筛选合并到表头，搜索框仍独立存在", async () => {
+  it("仅将状态筛选合并到表头，搜索框仍独立存在", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
     render(<App initialAppState={userState} />);
 
@@ -193,11 +193,47 @@ describe("/node-debugging", () => {
     expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
     expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "筛选访问模式" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: /RO/ }));
+    expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选访问模式" })).not.toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: "筛选访问模式" })).toHaveClass("active");
-    expect(findRowByText("battery.impedance_mohm")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "筛选状态" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "待写入" }));
+
+    expect(screen.getByRole("button", { name: "筛选状态" })).toHaveClass("active");
+    expect(findRowByText("charger.trickle_switch_soc")).toBeInTheDocument();
+    expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
+  });
+
+  it("仅支持从状态表头筛选节点参数", async () => {
+    mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
+    render(<App initialAppState={userState} />);
+
+    await screen.findByText(/已连接：target-a/);
+
+    const headers: Array<[string, string, string | RegExp]> = [
+      ["状态", "筛选状态", "待写入"]
+    ];
+
+    for (const [headerName, buttonName, optionName] of headers) {
+      const header = screen.getByRole("columnheader", { name: new RegExp(headerName) });
+      const button = within(header).getByRole("button", { name: buttonName });
+      fireEvent.click(button);
+      expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
+      fireEvent.click(button);
+    }
+
+    expect(screen.queryByRole("button", { name: "筛选参数名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选访问模式" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选当前值" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选目标写入值" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选范围" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();
+
+    const statusHeader = screen.getByRole("columnheader", { name: /状态/ });
+    fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
+    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "待写入" }));
+
+    expect(findRowByText("charger.trickle_switch_soc")).toBeInTheDocument();
     expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
   });
 

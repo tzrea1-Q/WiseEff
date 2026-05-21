@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "../mockData";
 import { ColumnFilter } from "./ColumnFilter";
+import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./tableFilterUtils";
 
 type SortKey = "name" | "module" | "valueDiff" | "range" | "risk" | "updatedAtTs";
 type SortState = { key: SortKey; dir: "asc" | "desc" };
+type FilterableColumnKey = Extract<SortKey, "module" | "risk">;
 
 export type ParametersColumnFilter = {
   key: string;
@@ -47,6 +49,12 @@ const riskScores: Record<ParameterRecord["risk"], number> = {
   Low: 1
 };
 
+const filterableColumnKeys = new Set<SortKey>(["module", "risk"]);
+
+function isFilterableColumnKey(key: SortKey): key is FilterableColumnKey {
+  return filterableColumnKeys.has(key);
+}
+
 function getSortableHeaders(valueColumnLabel: string): Array<{ key: SortKey; label: string }> {
   return [
     { key: "name", label: "参数名称" },
@@ -56,6 +64,19 @@ function getSortableHeaders(valueColumnLabel: string): Array<{ key: SortKey; lab
     { key: "risk", label: "重要性" },
     { key: "updatedAtTs", label: "更新时间" }
   ];
+}
+
+function getColumnFilterValue(row: ParameterRecord, key: SortKey) {
+  if (key === "valueDiff") {
+    return `${row.currentValue} → ${row.recommendedValue}`;
+  }
+  if (key === "range") {
+    return `${row.range} ${row.unit}`.trim();
+  }
+  if (key === "updatedAtTs") {
+    return row.updatedAt;
+  }
+  return String(row[key]);
 }
 
 function matchesQuery(row: ParameterRecord, query: string) {
@@ -149,8 +170,10 @@ export function ParametersTable({
   canEdit = true
 }: ParametersTableProps) {
   const [sort, setSort] = useState<SortState | null>(null);
+  const [internalColumnFilters, setInternalColumnFilters] = useState<HeaderFilterState>({});
   const selectAllRef = useRef<HTMLInputElement>(null);
   const sortableHeaders = useMemo(() => getSortableHeaders(valueColumnLabel), [valueColumnLabel]);
+  const filterableHeaders = useMemo(() => sortableHeaders.filter((header) => isFilterableColumnKey(header.key)), [sortableHeaders]);
   const columnFilterByKey = useMemo(
     () => new Map(columnFilters.map((filter) => [filter.key, filter])),
     [columnFilters]
@@ -163,13 +186,24 @@ export function ParametersTable({
     () => (controlledSearch ? rows : rows.filter((row) => matchesQuery(row, normalizedQuery))),
     [controlledSearch, normalizedQuery, rows]
   );
+  const columnFilteredRows = useMemo(
+    () =>
+      filteredRows.filter((row) =>
+        filterableHeaders.every((header) => {
+          const providedFilter = columnFilterByKey.get(header.key);
+          const selectedValues = providedFilter?.selectedValues ?? internalColumnFilters[header.key] ?? [];
+          return selectedValues.length === 0 || selectedValues.includes(getColumnFilterValue(row, header.key));
+        })
+      ),
+    [columnFilterByKey, filterableHeaders, filteredRows, internalColumnFilters]
+  );
   const visibleRows = useMemo(() => {
     if (!sort) {
-      return filteredRows;
+      return columnFilteredRows;
     }
 
-    return [...filteredRows].sort((left, right) => compareRows(left, right, sort));
-  }, [filteredRows, sort]);
+    return [...columnFilteredRows].sort((left, right) => compareRows(left, right, sort));
+  }, [columnFilteredRows, sort]);
 
   const updateSort = (key: SortKey) => {
     setSort((current) => {
@@ -227,6 +261,7 @@ export function ParametersTable({
   };
 
   const clearFilters = () => {
+    setInternalColumnFilters({});
     if (controlledSearch) {
       onClearFilters?.();
       return;
@@ -234,9 +269,42 @@ export function ParametersTable({
     setInternalSearchQuery("");
   };
 
+  const toggleInternalColumnFilter = (key: SortKey, value: string) => {
+    setInternalColumnFilters((current) => ({
+      ...current,
+      [key]: toggleFilterValue(current[key] ?? [], value)
+    }));
+  };
+
+  const clearInternalColumnFilter = (key: SortKey) => {
+    setInternalColumnFilters((current) => ({ ...current, [key]: [] }));
+  };
+
+  const renderColumnFilter = (header: { key: SortKey; label: string }) => {
+    if (!isFilterableColumnKey(header.key)) {
+      return null;
+    }
+
+    const providedFilter = columnFilterByKey.get(header.key);
+    if (providedFilter) {
+      return <ColumnFilter {...providedFilter} />;
+    }
+
+    return (
+      <ColumnFilter
+        label={header.label}
+        groupLabel={`${header.label}筛选`}
+        values={uniqueFilterValues(rows, (row) => getColumnFilterValue(row, header.key))}
+        selectedValues={internalColumnFilters[header.key] ?? []}
+        onToggle={(value) => toggleInternalColumnFilter(header.key, value)}
+        onClear={() => clearInternalColumnFilter(header.key)}
+      />
+    );
+  };
+
   return (
     <section
-      className={`parameters-table${columnFilters.length > 0 ? " parameters-table--column-filters" : ""}`}
+      className="parameters-table parameters-table--column-filters"
       aria-label={ariaLabel}
     >
       {title || description ? (
@@ -286,7 +354,7 @@ export function ParametersTable({
                     <button type="button" className="parameters-table-sort-button" aria-label={`按 ${header.label} 排序`} onClick={() => updateSort(header.key)}>
                       {header.label}
                     </button>
-                    {columnFilterByKey.has(header.key) ? <ColumnFilter {...columnFilterByKey.get(header.key)!} /> : null}
+                    {renderColumnFilter(header)}
                   </div>
                 </th>
               ))}

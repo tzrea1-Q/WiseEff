@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import type { ComparisonRow as ComparisonRowType } from "../types";
 import { ColumnFilter, type ColumnFilterProps } from "../../components/ColumnFilter";
 import { ComparisonEmptyState } from "./EmptyStates";
@@ -32,8 +33,13 @@ export function ComparisonMatrix({
   onIgnore
 }: ComparisonMatrixProps) {
   const emptyKind = totalCount === 0 ? "all-synced" : "filtered";
-  const riskFilter = columnFilters.find((filter) => filter.key === "risk");
-  const moduleFilter = columnFilters.find((filter) => filter.key === "module");
+  const controlledFilterByKey = useMemo(
+    () => new Map(columnFilters.map((filter) => [filter.key, filter])),
+    [columnFilters]
+  );
+  const resetAllFilters = () => {
+    onResetFilters();
+  };
   const renderColumnFilter = (filter: ComparisonColumnFilter | undefined) => {
     if (!filter) return null;
     const { key, ...filterProps } = filter;
@@ -44,23 +50,27 @@ export function ComparisonMatrix({
     <section className={`comparison-matrix--v2${columnFilters.length > 0 ? " comparison-matrix--column-filters" : ""}`} aria-label="参数差异矩阵">
       <div className="comparison-matrix--v2__head" role="row">
         <span className="comparison-matrix--v2__color-slot" aria-hidden="true" />
-        <span role="columnheader">参数键</span>
+        <span className="comparison-matrix--v2__header-cell" role="columnheader" aria-label="参数键">
+          <span>参数键</span>
+        </span>
         <span className="comparison-matrix--v2__header-cell" role="columnheader" aria-label="模块">
           <span>模块</span>
-          <span className="comparison-matrix--v2__header-filters">{renderColumnFilter(moduleFilter)}</span>
+          <span className="comparison-matrix--v2__header-filters">{renderColumnFilter(controlledFilterByKey.get("module"))}</span>
         </span>
         <span className="comparison-matrix--v2__header-cell" role="columnheader" aria-label="重要性">
           <span>重要性</span>
-          <span className="comparison-matrix--v2__header-filters">{renderColumnFilter(riskFilter)}</span>
+          <span className="comparison-matrix--v2__header-filters">{renderColumnFilter(controlledFilterByKey.get("risk"))}</span>
         </span>
-        <span role="columnheader">说明</span>
-        <span className="comparison-matrix--v2__cell" role="columnheader">
+        <span className="comparison-matrix--v2__header-cell" role="columnheader" aria-label="说明">
+          <span>说明</span>
+        </span>
+        <span className="comparison-matrix--v2__cell comparison-matrix--v2__header-cell" role="columnheader" aria-label={baseProjectCode}>
           <i className="env-dot env-dot--base" aria-hidden="true" />
-          {baseProjectCode}
+          <span>{baseProjectCode}</span>
         </span>
-        <span className="comparison-matrix--v2__cell" role="columnheader">
+        <span className="comparison-matrix--v2__cell comparison-matrix--v2__header-cell" role="columnheader" aria-label={`${targetProjectCode} / Δ`}>
           <i className="env-dot env-dot--target" aria-hidden="true" />
-          {targetProjectCode} / Δ
+          <span>{targetProjectCode} / Δ</span>
         </span>
         <span role="columnheader">操作</span>
       </div>
@@ -68,7 +78,7 @@ export function ComparisonMatrix({
         {rows.length > 0 ? (
           rows.map((row) => <ComparisonRow key={row.key} row={row} query={query} onSync={onSync} onIgnore={onIgnore} />)
         ) : (
-          <ComparisonEmptyState kind={emptyKind} onReset={emptyKind === "filtered" ? onResetFilters : undefined} />
+          <ComparisonEmptyState kind={emptyKind} onReset={emptyKind === "filtered" ? resetAllFilters : undefined} />
         )}
       </div>
     </section>
