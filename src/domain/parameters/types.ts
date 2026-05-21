@@ -115,3 +115,56 @@ export type ParameterSubmissionRound = {
   workflowAssignees?: ParameterWorkflowAssignees;
   items: ParameterSubmissionItem[];
 };
+
+export type ProjectInitializationStatus =
+  | "not_initialized"
+  | "initialization_draft"
+  | "initialization_pending_review"
+  | "initialization_rejected"
+  | "initialized";
+
+export type ParameterInitializationSourceRole = "primary" | "supplement";
+
+export type ProjectParameterInitializationSnapshotItem = {
+  parameterId: string;
+  sourceProjectId: string;
+  sourceRole: ParameterInitializationSourceRole;
+  module: string;
+  risk: RiskLevel;
+  recommendedValue: string;
+  currentValueState: "pending_project_confirmation";
+  alternativeSourceProjectIds: string[];
+  needsRecommendedValueConfirmation: boolean;
+  notes?: string;
+};
+
+export type ProjectParameterInitializationDraft = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  projectCode: string;
+  ownerUserId: string;
+  sourceProjectIds: string[];
+  primarySourceProjectId: string;
+  supplementSourceProjectIds: string[];
+  selectedModules: string[];
+  selectedRisks: RiskLevel[];
+  selectedParameterIds: string[];
+  parameterSnapshots: ProjectParameterInitializationSnapshotItem[];
+  notes: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectParameterInitializationReview = {
+  id: string;
+  draftId: string;
+  projectId: string;
+  status: "pending" | "approved" | "rejected";
+  submittedBy: string;
+  submittedAt: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+};

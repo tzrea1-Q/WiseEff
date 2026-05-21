@@ -101,13 +101,13 @@ describe("ParameterInsightBar", () => {
         onViewHighRisk={vi.fn()}
         onAddToDraft={onAddToDraft}
         canAddToDraft={false}
-        addToDraftDisabledReason="Requires User role to edit, draft, or submit parameter changes."
+        addToDraftDisabledReason="需要 User 角色才能编辑、暂存或提交参数变更。"
         onDismiss={vi.fn()}
       />
     );
 
     expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Requires User role to edit, draft, or submit parameter changes.")).toBeInTheDocument();
+    expect(screen.getByText("需要 User 角色才能编辑、暂存或提交参数变更。")).toBeInTheDocument();
     expect(onAddToDraft).not.toHaveBeenCalled();
   });
 

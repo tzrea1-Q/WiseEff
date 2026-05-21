@@ -9,6 +9,11 @@ import {
   PowerManagementProjectId
 } from "./powerManagementConfig";
 import { buildParameterHistory, buildReviewMockRequests, REVIEW_MOCK_NOW } from "./reviewMockData";
+import type {
+  ProjectInitializationStatus,
+  ProjectParameterInitializationDraft,
+  ProjectParameterInitializationReview
+} from "@/domain/parameters/types";
 import type { PlatformRole, UserAccount } from "@/domain/users/types";
 import { migrateLegacyRoleId, platformRoles } from "@/domain/users/types";
 
@@ -320,6 +325,9 @@ export type PrototypeState = {
   changeRequests: ChangeRequest[];
   aiFeedback: AIFeedbackEntry[];
   parameterSubmissionRounds: ParameterSubmissionRound[];
+  parameterInitializationDrafts: ProjectParameterInitializationDraft[];
+  parameterInitializationReviews: ProjectParameterInitializationReview[];
+  projectInitializationStatuses: Record<string, ProjectInitializationStatus>;
   logs: LogRecord[];
   logAdminUsers: LogAdminUser[];
   archivedLogIds: string[];
@@ -813,6 +821,11 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     parameters: runtime.parameters,
     changeRequests: buildReviewMockRequests(),
     aiFeedback: [],
+    parameterInitializationDrafts: [],
+    parameterInitializationReviews: [],
+    projectInitializationStatuses: Object.fromEntries(
+      configDraft.projects.map((project) => [project.id, "initialized" as const])
+    ),
     parameterSubmissionRounds: [
       {
         id: "PRS-2405",

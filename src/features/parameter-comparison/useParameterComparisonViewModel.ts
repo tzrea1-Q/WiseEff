@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { projects, type PrototypeState } from "@/mockData";
+import { projects as seededProjects, type Project, type PrototypeState } from "@/mockData";
 import { buildComparisonData } from "@/domain/parameters/comparison";
 import type { ComparisonFilters, ComparisonProjectSelection } from "@/ParameterComparison/types";
 
@@ -9,11 +9,20 @@ export type ParameterComparisonViewModelInput = {
   filters: ComparisonFilters;
 };
 
-export function fallbackComparisonProjectId(projectId: string) {
+let lastRuntimeProjects: Project[] = seededProjects;
+
+function getComparisonProjects(state: PrototypeState) {
+  return state.configDraft.projects.length > 0 ? state.configDraft.projects : seededProjects;
+}
+
+export function fallbackComparisonProjectId(projectId: string, projectList: Project[] = lastRuntimeProjects) {
+  const projects = projectList.length > 0 ? projectList : seededProjects;
   return projects.find((project) => project.id !== projectId)?.id ?? projectId;
 }
 
 export function buildParameterComparisonViewModel({ state, comparisonSelection, filters }: ParameterComparisonViewModelInput) {
+  const projects = getComparisonProjects(state);
+  lastRuntimeProjects = projects;
   const baseProject = projects.find((project) => project.id === comparisonSelection.baseProjectId) ?? projects[0];
   const targetProject = projects.find((project) => project.id === comparisonSelection.targetProjectId) ?? projects[1] ?? projects[0];
   const comparisonData = buildComparisonData({
@@ -35,6 +44,7 @@ export function useParameterComparisonViewModel(input: ParameterComparisonViewMo
       input.filters.modules,
       input.filters.query,
       input.filters.risk,
+      input.state.configDraft.projects,
       input.state.parameters
     ]
   );

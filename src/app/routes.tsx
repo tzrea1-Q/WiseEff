@@ -32,6 +32,7 @@ export type PageRouterProps = PageProps & {
   HomePage: () => ReactNode;
   ParameterSubmissionsPage: (props: PageProps) => ReactNode;
   ParameterReviewPage: (props: PageProps) => ReactNode;
+  TopBarProjectId?: string;
   LogDashboardPage: (props: { state: PrototypeState; onNavigate: (path: string) => void }) => ReactNode;
   LogsPage: (props: PageProps) => ReactNode;
   DebuggingAdminPage: (props: PageProps) => ReactNode;
@@ -50,11 +51,19 @@ export function PageRouter({
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
+  TopBarProjectId,
   LogDashboardPage,
   LogsPage,
   DebuggingAdminPage
 }: PageRouterProps) {
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const searchProjectId = new URLSearchParams(search).get("project") ?? "";
+  const effectiveParametersProjectId = searchProjectId || state.activeProjectId;
+  const activeProjectInitializationStatus =
+    state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
+  const canEditParameters =
+    canPerform(currentRoleId, "parameter.edit") && activeProjectInitializationStatus === "initialized";
+
   if (!canAccessPage(currentRoleId, page.key)) {
     const requiredRole = getRequiredRoleForPage(page.key);
     return (
@@ -78,7 +87,10 @@ export function PageRouter({
           dispatch={dispatch}
           onNavigate={onNavigate}
           search={search}
-          canEdit={canPerform(currentRoleId, "parameter.edit")}
+          effectiveProjectId={effectiveParametersProjectId}
+          canEdit={canEditParameters}
+          initializationStatus={activeProjectInitializationStatus}
+          topBarProjectId={TopBarProjectId ?? effectiveParametersProjectId}
         />
       );
     case "parameter-submissions":

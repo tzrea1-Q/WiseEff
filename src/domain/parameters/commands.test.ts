@@ -139,4 +139,30 @@ describe("submitParameterRound", () => {
     expect(next.parameterSubmissionRounds[0].submitter).toBe("Injected Submitter");
     expect(next.changeRequests[0].submitter).toBe("Injected Submitter");
   });
+
+  it("rejects draft items from multiple projects", () => {
+    const state = createPrototypeState();
+    const auroraParameter = state.parameters.find((item) => item.projectId === "aurora")!;
+    const nebulaParameter = state.parameters.find((item) => item.projectId === "nebula")!;
+
+    const next = submitParameterRound(state, {
+      projects,
+      roles,
+      buildRuntimeReviewFields,
+      items: [
+        {
+          parameterId: auroraParameter.id,
+          targetValue: "3650",
+          reason: "Aurora reason"
+        },
+        {
+          parameterId: nebulaParameter.id,
+          targetValue: "3550",
+          reason: "Nebula reason"
+        }
+      ]
+    });
+
+    expect(next).toBe(state);
+  });
 });
