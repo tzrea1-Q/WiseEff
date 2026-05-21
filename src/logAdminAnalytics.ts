@@ -23,8 +23,8 @@ export function applyTimeWindow(logs: LogRecord[], timeWindow: TimeWindow, now: 
 
 export type LogTableFilters = {
   tableQuery: string;
-  statusFilter: LogStatus | "all";
-  moduleFilter: string | "all";
+  statusFilter: LogStatus | "all" | LogStatus[];
+  moduleFilter: string | "all" | string[];
   sortBy: { key: string; dir: "asc" | "desc" };
 };
 
@@ -55,6 +55,16 @@ function sortAccessor(log: LogRecord, key: string): string | number {
 
 export function applyTableFilters(logs: LogRecord[], filters: LogTableFilters): LogRecord[] {
   const query = filters.tableQuery.trim().toLowerCase();
+  const statusFilters = Array.isArray(filters.statusFilter)
+    ? filters.statusFilter
+    : filters.statusFilter === "all"
+      ? []
+      : [filters.statusFilter];
+  const moduleFilters = Array.isArray(filters.moduleFilter)
+    ? filters.moduleFilter
+    : filters.moduleFilter === "all"
+      ? []
+      : [filters.moduleFilter];
   const filtered = logs.filter((log) => {
     if (query) {
       const haystack = `${log.reportId} ${log.fileName}`.toLowerCase();
@@ -62,10 +72,10 @@ export function applyTableFilters(logs: LogRecord[], filters: LogTableFilters): 
         return false;
       }
     }
-    if (filters.statusFilter !== "all" && log.status !== filters.statusFilter) {
+    if (statusFilters.length > 0 && !statusFilters.includes(log.status)) {
       return false;
     }
-    if (filters.moduleFilter !== "all" && log.source !== filters.moduleFilter) {
+    if (moduleFilters.length > 0 && !moduleFilters.includes(log.source)) {
       return false;
     }
     return true;

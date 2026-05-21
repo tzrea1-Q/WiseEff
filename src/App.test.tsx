@@ -367,10 +367,11 @@ describe("WiseEff app shell", () => {
 
     expectSelectValue(projectSelect, "aurora");
     expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重要性 ▾" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "模块 ▾" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选重要性" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "模块 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
 
     expect(within(screen.getByRole("table")).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
@@ -379,7 +380,7 @@ describe("WiseEff app shell", () => {
     changeSelectValue(projectSelect, /Nebula/);
 
     expectSelectValue(projectSelect, "nebula");
-    expect(screen.getByRole("button", { name: "模块 ▾" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
     expect(getTableRow("fast_charge_current_limit_ma")).toHaveTextContent("4200");
   });
 
@@ -391,7 +392,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    fireEvent.click(screen.getByRole("button", { name: "模块 ▾" }));
+    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
     fireEvent.click(screen.getByRole("button", { name: "导出 Excel" }));
 
@@ -433,7 +434,7 @@ describe("WiseEff app shell", () => {
     const projectSelect = screen.getByRole("combobox", { name: "项目" });
 
     expectSelectValue(projectSelect, "nebula");
-    expect(screen.getByRole("button", { name: "模块 (1) ▾" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选模块" })).toHaveClass("active");
     expect(within(screen.getByRole("table")).getByText("battery_temp_target_c")).toBeInTheDocument();
     expect(within(screen.getByRole("table")).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
   });
@@ -620,13 +621,18 @@ describe("WiseEff app shell", () => {
         row.textContent?.includes(parameterName)
       );
 
-    expect(screen.getByRole("columnheader", { name: "参数键 / 模块" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "参数键" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /模块/ })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /重要性/ })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "NEB-RD / Δ" })).toBeInTheDocument();
     expect(getComparisonRow("fast_charge_current_limit_ma")).toHaveTextContent("Charging Policy");
     expect(filters).not.toHaveTextContent("当前筛选");
 
-    fireEvent.click(within(filters).getByRole("button", { name: "重要性" }));
-    fireEvent.click(screen.getByRole("option", { name: "High" }));
+    const riskHeader = screen.getByRole("columnheader", { name: /重要性/ });
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+
+    fireEvent.click(within(riskHeader).getByRole("button", { name: "筛选重要性" }));
+    fireEvent.click(within(riskHeader).getByRole("checkbox", { name: "High" }));
 
     expect(getComparisonRow("fast_charge_current_limit_ma")).toBeDefined();
     expect(getComparisonRow("charge_voltage_limit_mv")).toBeDefined();
@@ -634,8 +640,8 @@ describe("WiseEff app shell", () => {
     expect(screen.getByLabelText("当前筛选")).toBeInTheDocument();
     expect(window.location.search).toContain("risk=High");
 
-    fireEvent.click(within(filters).getByRole("button", { name: /模块/ }));
-    fireEvent.click(screen.getByRole("option", { name: "Battery Protection" }));
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块" }));
+    fireEvent.click(within(moduleHeader).getByRole("checkbox", { name: "Battery Protection" }));
 
     expect(getComparisonRow("low_battery_shutdown_soc")).toBeDefined();
     expect(getComparisonRow("fast_charge_current_limit_ma")).toBeUndefined();
@@ -887,19 +893,31 @@ describe("WiseEff app shell", () => {
     const headerRow = within(table).getAllByRole("row")[0];
 
     expect(document.querySelector(".review-queue-filters")).not.toBeInTheDocument();
-    expect(within(headerRow).getByRole("button", { name: "项目 ▾" })).toHaveClass("dropdown-trigger");
-    expect(within(headerRow).getByRole("button", { name: "模块 ▾" })).toHaveClass("dropdown-trigger");
-    expect(within(headerRow).getByRole("button", { name: "提交人 ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(headerRow).getByRole("button", { name: "筛选项目" })).toBeInTheDocument();
+    expect(within(headerRow).getByRole("button", { name: "筛选模块" })).toBeInTheDocument();
+    expect(within(headerRow).getByRole("button", { name: "筛选提交人" })).toBeInTheDocument();
 
-    fireEvent.click(within(headerRow).getByRole("button", { name: "提交人 ▾" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "H. Zhao" }));
+    fireEvent.click(within(headerRow).getByRole("button", { name: "筛选提交人" }));
+    fireEvent.click(within(headerRow).getByRole("checkbox", { name: "H. Zhao" }));
 
-    expect(within(headerRow).getByRole("button", { name: "提交人 (1) ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(headerRow).getByRole("button", { name: "筛选提交人" })).toHaveClass("active");
     expect(within(table).getByText("PRQ-9102")).toBeInTheDocument();
     expect(within(table).queryByText("PRQ-9101")).not.toBeInTheDocument();
 
     const styles = readFileSync("src/styles.css", "utf8");
     expect(readCssBlock(styles, ".review-table-wrap [data-slot=\"table-container\"]")).toContain("overflow: visible;");
+  });
+
+  it("keeps Excel-style header filters next to their header labels", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const reviewHeaderRule = readCssBlock(styles, ".review-column-filter-head");
+    const comparisonHeaderRule = readCssBlock(styles, ".comparison-matrix--v2__header-cell");
+
+    expect(reviewHeaderRule).toContain("display: inline-flex;");
+    expect(reviewHeaderRule).toContain("gap: 4px;");
+    expect(comparisonHeaderRule).toContain("justify-content: flex-start;");
+    expect(comparisonHeaderRule).toContain("width: fit-content;");
+    expect(comparisonHeaderRule).not.toContain("space-between");
   });
 
   it("switches the review table title between pending requests and merged submission history", () => {

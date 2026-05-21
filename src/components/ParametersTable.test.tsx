@@ -268,6 +268,27 @@ describe("ParametersTable", () => {
     expect(nameColumnRule).toMatch(/min-width:\s*0/);
   });
 
+  it("lets column filter menus escape the table scroll container", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const filteredTableRule =
+      styles.match(/\.parameters-table--column-filters\s+\.parameters-table-scroll\s*\{[^}]*\}/)?.[0] ?? "";
+    const parametersWorkbenchRule =
+      styles.match(/\.parameters-page-layout\s+\.workbench-main\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(filteredTableRule).toMatch(/overflow:\s*visible/);
+    expect(filteredTableRule).not.toMatch(/overflow-x:\s*auto/);
+    expect(parametersWorkbenchRule).toMatch(/overflow:\s*visible/);
+  });
+
+  it("keeps header filter buttons adjacent to header labels", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const headCellRule = styles.match(/\.parameters-table-head-cell\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(headCellRule).toMatch(/justify-content:\s*flex-start/);
+    expect(headCellRule).toMatch(/width:\s*fit-content/);
+    expect(headCellRule).not.toMatch(/justify-content:\s*space-between/);
+  });
+
   it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
     const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
 

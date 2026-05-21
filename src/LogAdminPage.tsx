@@ -7,6 +7,7 @@ import {
   TimeWindowSelect,
   type Column
 } from "@/components/admin";
+import { ColumnFilter } from "@/components/ColumnFilter";
 import { Button } from "@/components/ui/button";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
@@ -68,8 +69,8 @@ function writeInsightDismissed(): void {
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: LogAdminPageProps) {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<LogStatus | "all">("all");
-  const [moduleFilter, setModuleFilter] = useState<string | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
+  const [moduleFilter, setModuleFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<{ key: string; dir: "asc" | "desc" }>({ key: "updatedAtIso", dir: "desc" });
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
@@ -100,6 +101,15 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
   const projectName = (projectId: string): string => state.configDraft.projects.find((project) => project.id === projectId)?.name ?? projectId;
+  const toggleStatusFilter = (status: string) => {
+    if (!Object.keys(statusLabels).includes(status)) return;
+    setStatusFilter((current) =>
+      current.includes(status as LogStatus) ? current.filter((item) => item !== status) : [...current, status as LogStatus]
+    );
+  };
+  const toggleModuleFilter = (module: string) => {
+    setModuleFilter((current) => (current.includes(module) ? current.filter((item) => item !== module) : [...current, module]));
+  };
 
   const columns: Column<LogRecord>[] = [
     {
@@ -125,6 +135,16 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     {
       key: "source",
       header: "来源模块",
+      headerFilter: (
+        <ColumnFilter
+          label="来源模块"
+          groupLabel="来源模块筛选"
+          values={availableModules}
+          selectedValues={moduleFilter}
+          onToggle={toggleModuleFilter}
+          onClear={() => setModuleFilter([])}
+        />
+      ),
       render: (record) => <span className="text-muted-foreground">{record.source}</span>,
       sortAccessor: (record) => record.source,
       widthClass: "w-36"
@@ -139,6 +159,18 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     {
       key: "status",
       header: "状态",
+      headerFilter: (
+        <ColumnFilter
+          label="状态"
+          groupLabel="状态筛选"
+          values={["Processing", "Complete", "Failed"]}
+          selectedValues={statusFilter}
+          renderLabel={(status) => statusLabels[status as LogStatus] ?? status}
+          onToggle={toggleStatusFilter}
+          onClear={() => setStatusFilter([])}
+          align="right"
+        />
+      ),
       render: (record) => <StatusBadge status={record.status} />,
       sortAccessor: (record) => record.status,
       widthClass: "w-24"
@@ -163,8 +195,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
 
   const resetFilters = () => {
     setTableQuery("");
-    setStatusFilter("all");
-    setModuleFilter("all");
+    setStatusFilter([]);
+    setModuleFilter([]);
     setSortBy({ key: "updatedAtIso", dir: "desc" });
   };
 
@@ -178,7 +210,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
       return;
     }
     if (kind === "locate-failures") {
-      setStatusFilter("Failed");
+      setStatusFilter(["Failed"]);
       return;
     }
 
@@ -231,7 +263,7 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     dispatch({ type: "LOG_ADMIN_SYNC_LOGS" });
   };
 
-  const hasActiveFilters = tableQuery !== "" || statusFilter !== "all" || moduleFilter !== "all";
+  const hasActiveFilters = tableQuery !== "" || statusFilter.length > 0 || moduleFilter.length > 0;
   useTopBarActions(
     <>
       <TimeWindowSelect value={timeWindow} onChange={setTimeWindow} />
@@ -288,30 +320,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
                   placeholder="搜索 RPT- 或文件名"
                   className="h-7 w-56 rounded-md border border-border bg-background px-2.5 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 />
-                <select
-                  value={statusFilter}
-                  onChange={(event) => setStatusFilter(event.target.value as LogStatus | "all")}
-                  className="h-7 rounded-md border border-border bg-background px-2 text-xs"
-                  aria-label="状态"
-                >
-                  <option value="all">全部状态</option>
-                  <option value="Processing">处理中</option>
-                  <option value="Complete">已完成</option>
-                  <option value="Failed">失败</option>
-                </select>
-                <select
-                  value={moduleFilter}
-                  onChange={(event) => setModuleFilter(event.target.value)}
-                  className="h-7 rounded-md border border-border bg-background px-2 text-xs"
-                  aria-label="来源模块"
-                >
-                  <option value="all">全部模块</option>
-                  {availableModules.map((module) => (
-                    <option key={module} value={module}>
-                      {module}
-                    </option>
-                  ))}
-                </select>
                 {hasActiveFilters ? (
                   <button
                     type="button"

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ComparisonFilterBar } from "../components/ComparisonFilterBar";
 import type { ComparisonFilters } from "../types";
 
@@ -39,9 +39,7 @@ describe("ComparisonFilterBar", () => {
     expect(onDriftOnlyChange).toHaveBeenCalledWith(false);
   });
 
-  it("toggles risk and module options", () => {
-    const onRiskChange = vi.fn();
-    const onModulesChange = vi.fn();
+  it("keeps categorical filters out of the standalone filter bar", () => {
     render(
       <ComparisonFilterBar
         filters={filters}
@@ -50,19 +48,16 @@ describe("ComparisonFilterBar", () => {
         totalCount={8}
         onQueryChange={() => undefined}
         onDriftOnlyChange={() => undefined}
-        onRiskChange={onRiskChange}
-        onModulesChange={onModulesChange}
+        onRiskChange={() => undefined}
+        onModulesChange={() => undefined}
         onReset={() => undefined}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /重要性/ }));
-    fireEvent.click(within(screen.getByRole("listbox", { name: "重要性筛选" })).getByRole("option", { name: "High" }));
-    fireEvent.click(screen.getByRole("button", { name: /模块/ }));
-    fireEvent.click(within(screen.getByRole("listbox", { name: "模块筛选" })).getByRole("option", { name: "Battery Safety" }));
-
-    expect(onRiskChange).toHaveBeenCalledWith(["High"]);
-    expect(onModulesChange).toHaveBeenCalledWith(["Battery Safety"]);
+    expect(screen.getByPlaceholderText("搜索参数键、模块或含义")).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "仅看差异" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /重要性/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /模块/ })).not.toBeInTheDocument();
   });
 
   it("renders active filter chips and clears individual filters", () => {

@@ -1,7 +1,7 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "./App";
-import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
+import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
 import { SessionSummaryCard } from "./components/SessionSummaryCard";
@@ -26,6 +26,12 @@ const sortableHeaders: Array<{ key: SortKey; label: string }> = [
   { key: "risk", label: "风险" },
   { key: "status", label: "状态" },
 ];
+
+const headerFilterLabels: Partial<Record<SortKey, string>> = {
+  risk: "重要性",
+  status: "状态",
+  name: "模块"
+};
 
 function sortValue(row: DebugParameter, key: SortKey) {
   if (key === "risk") return riskScores[row.risk];
@@ -90,14 +96,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     [visibleRows, selectedIds]
   );
 
-  const riskFilterOptions = useMemo(
-    () => riskFilterValues.map((r) => ({
-      value: r,
-      label: `${riskLabels[r]} (${debugParameters.filter((p) => p.risk === r).length})`
-    })),
-    [debugParameters]
-  );
-
   const statusOptions = useMemo(() => {
     const statuses = Array.from(new Set(debugParameters.map((p) => p.status)));
     return statuses.map((s) => ({ value: s, label: s }));
@@ -107,6 +105,33 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     () => Array.from(new Set(debugParameters.map((p) => p.module))).map((m) => ({ value: m, label: m })),
     [debugParameters]
   );
+  const moduleFilterValues = useMemo(() => moduleOptions.map((option) => option.value), [moduleOptions]);
+  const statusFilterValues = useMemo(() => statusOptions.map((option) => option.value), [statusOptions]);
+  const toggleRiskFilter = (risk: string) => {
+    if (!riskFilterValues.includes(risk as RiskFilter)) return;
+    setRiskFilters((current) => {
+      const next = new Set(current);
+      if (next.has(risk as RiskFilter)) next.delete(risk as RiskFilter);
+      else next.add(risk as RiskFilter);
+      return next;
+    });
+  };
+  const toggleStatusFilter = (status: string) => {
+    setStatusFilters((current) => {
+      const next = new Set(current);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
+    });
+  };
+  const toggleModuleFilter = (module: string) => {
+    setModuleFilters((current) => {
+      const next = new Set(current);
+      if (next.has(module)) next.delete(module);
+      else next.add(module);
+      return next;
+    });
+  };
 
   const editingParameter = editingId ? debugParameters.find((p) => p.id === editingId) ?? null : null;
 
@@ -203,7 +228,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
             <strong>实时可调参数</strong>
             <span>{connected ? "设备在线" : "需要连接"}</span>
           </div>
-          <section className="parameters-table" aria-label="实时可调参数">
+          <section className="parameters-table parameters-table--column-filters" aria-label="实时可调参数">
             <div className="parameters-table-toolbar">
               <label className="parameters-table-search">
                 <Search size={16} aria-hidden="true" />
@@ -215,26 +240,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </label>
-              <div className="parameters-table-filters">
-                <MultiSelectDropdown
-                  label="风险等级"
-                  value={Array.from(riskFilters)}
-                  options={riskFilterOptions}
-                  onChange={(next) => setRiskFilters(new Set(next.filter((r): r is RiskFilter => riskFilterValues.includes(r as RiskFilter))))}
-                />
-                <MultiSelectDropdown
-                  label="状态"
-                  value={Array.from(statusFilters)}
-                  options={statusOptions}
-                  onChange={(next) => setStatusFilters(new Set(next))}
-                />
-                <MultiSelectDropdown
-                  label="模块"
-                  value={Array.from(moduleFilters)}
-                  options={moduleOptions}
-                  onChange={(next) => setModuleFilters(new Set(next))}
-                />
-              </div>
               <span className="parameters-table-count">Showing {visibleRows.length} of {debugParameters.length}</span>
             </div>
 
@@ -254,9 +259,42 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
                     </th>
                     {sortableHeaders.map((h) => (
                       <th key={h.key} scope="col" aria-sort={sort?.key === h.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                        <button type="button" className="parameters-table-sort-button" aria-label={`按 ${h.label} 排序`} onClick={() => updateSort(h.key)}>
-                          {h.label}
-                        </button>
+                        <div className="parameters-table-head-cell">
+                          <button type="button" className="parameters-table-sort-button" aria-label={`按 ${h.label} 排序`} onClick={() => updateSort(h.key)}>
+                            {h.label}
+                          </button>
+                          {h.key === "name" ? (
+                            <ColumnFilter
+                              label={headerFilterLabels.name!}
+                              groupLabel="模块筛选"
+                              values={moduleFilterValues}
+                              selectedValues={Array.from(moduleFilters)}
+                              onToggle={toggleModuleFilter}
+                              onClear={() => setModuleFilters(new Set())}
+                            />
+                          ) : null}
+                          {h.key === "risk" ? (
+                            <ColumnFilter
+                              label={headerFilterLabels.risk!}
+                              groupLabel="重要性筛选"
+                              values={[...riskFilterValues]}
+                              selectedValues={Array.from(riskFilters)}
+                              renderLabel={(value) => riskLabels[value as RiskFilter] ?? value}
+                              onToggle={toggleRiskFilter}
+                              onClear={() => setRiskFilters(new Set())}
+                            />
+                          ) : null}
+                          {h.key === "status" ? (
+                            <ColumnFilter
+                              label={headerFilterLabels.status!}
+                              groupLabel="状态筛选"
+                              values={statusFilterValues}
+                              selectedValues={Array.from(statusFilters)}
+                              onToggle={toggleStatusFilter}
+                              onClear={() => setStatusFilters(new Set())}
+                            />
+                          ) : null}
+                        </div>
                       </th>
                     ))}
                     <th scope="col">操作</th>

@@ -2070,6 +2070,7 @@ body {
 .parameters-page-layout .workbench-main {
   padding: 18px;
   gap: 12px;
+  overflow: visible;
 }
 
 .workbench-sheet {
@@ -2355,10 +2356,15 @@ td small {
 
 .parameters-table-scroll {
   min-width: 0;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
   border: 1px solid var(--outline);
   border-radius: 8px;
   background: #fff;
+}
+
+.parameters-table--column-filters .parameters-table-scroll {
+  overflow: visible;
 }
 
 .parameters-table-grid {
@@ -2555,7 +2561,7 @@ td small {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  width: 100%;
+  min-width: 0;
   padding: 0;
   color: inherit;
   background: transparent;
@@ -2564,6 +2570,144 @@ td small {
   letter-spacing: inherit;
   text-align: left;
   text-transform: inherit;
+}
+
+.parameters-table-head-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.parameters-column-filter {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.parameters-column-filter__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0 5px;
+  color: var(--app-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.parameters-column-filter__trigger:hover,
+.parameters-column-filter__trigger[aria-expanded="true"],
+.parameters-column-filter__trigger.active {
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-color: rgba(0, 82, 204, 0.22);
+}
+
+.parameters-column-filter__trigger span {
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.parameters-column-filter__menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  z-index: 40;
+  width: 240px;
+  max-width: min(240px, calc(100vw - 32px));
+  padding: 12px;
+  color: var(--text);
+  text-transform: none;
+  letter-spacing: 0;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.parameters-column-filter--right .parameters-column-filter__menu {
+  right: 0;
+  left: auto;
+}
+
+.data-table-column-filter {
+  position: relative;
+  display: inline-flex;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.parameters-column-filter__menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #edf1f8;
+}
+
+.parameters-column-filter__menu-head strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.parameters-column-filter__menu-head button {
+  padding: 0;
+  color: var(--primary);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.parameters-column-filter__menu-head button:disabled {
+  color: var(--app-muted);
+  cursor: not-allowed;
+}
+
+.parameters-column-filter__options {
+  display: grid;
+  gap: 4px;
+  max-height: 210px;
+  overflow: auto;
+}
+
+.parameters-column-filter__empty {
+  padding: 6px 8px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.parameters-column-filter__options label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 6px 8px;
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.parameters-column-filter__options label:hover {
+  background: #f4f7ff;
 }
 
 .parameters-table-empty {
@@ -2906,6 +3050,12 @@ td small {
   display: inline-flex;
 }
 
+.review-column-filter-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .review-filter-header .dropdown-trigger {
   position: relative;
   z-index: 1;
@@ -2953,6 +3103,10 @@ td small {
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
+}
+
+.review-filter-header .parameters-column-filter__menu {
+  text-transform: none;
 }
 
 .submission-detail-card {
@@ -9791,12 +9945,17 @@ td small {
   overflow: hidden;
 }
 
+.comparison-matrix--column-filters {
+  overflow: visible;
+}
+
 .comparison-matrix--v2__head,
 .comparison-row--v2 {
   display: grid;
-  grid-template-columns: 4px minmax(160px, 1fr) minmax(120px, 1fr) minmax(100px, 0.8fr) minmax(140px, 1fr) 140px;
+  grid-template-columns: 4px minmax(190px, 1.2fr) minmax(118px, 0.7fr) minmax(82px, 0.45fr) minmax(140px, 1fr) minmax(108px, 0.75fr) minmax(148px, 1fr) 140px;
   align-items: center;
-  gap: 12px;
+  column-gap: 10px;
+  row-gap: 8px;
   padding: 12px 16px;
 }
 
@@ -9816,6 +9975,23 @@ td small {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.comparison-matrix--v2__header-cell {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.comparison-matrix--v2__header-filters {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .env-dot {
@@ -9895,6 +10071,44 @@ td small {
   word-break: break-all;
 }
 
+.comparison-row--v2__module {
+  min-width: 0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.comparison-row--v2__risk {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.comparison-row--v2[data-risk-tone="high"] .comparison-row--v2__risk {
+  background: var(--risk-high-soft);
+  color: var(--risk-high);
+}
+
+.comparison-row--v2[data-risk-tone="medium"] .comparison-row--v2__risk {
+  background: rgba(228, 149, 58, 0.14);
+  color: #a15c05;
+}
+
+.comparison-row--v2[data-risk-tone="low"] .comparison-row--v2__risk {
+  background: var(--risk-low-soft);
+  color: var(--risk-low);
+}
+
 .comparison-row--v2__desc {
   font-size: 12px;
   color: #64748b;
@@ -9919,11 +10133,6 @@ td small {
 
 .comparison-row--v2__key-button:hover {
   text-decoration: underline;
-}
-
-.comparison-row--v2__key-text small {
-  font-size: 12px;
-  color: #64748b;
 }
 
 .comparison-row--v2__value {
@@ -10289,8 +10498,8 @@ td small {
 
   .comparison-matrix--v2__head,
   .comparison-row--v2 {
-    grid-template-columns: 4px minmax(220px, 1fr) 128px 180px 132px;
-    min-width: 720px;
+    grid-template-columns: 4px 220px 132px 92px 180px 128px 180px 132px;
+    min-width: 1080px;
     gap: 8px;
     padding: 10px 12px;
   }

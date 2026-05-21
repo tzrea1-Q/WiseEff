@@ -2,9 +2,21 @@ import { Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "../mockData";
+import { ColumnFilter } from "./ColumnFilter";
 
 type SortKey = "name" | "module" | "valueDiff" | "range" | "risk" | "updatedAtTs";
 type SortState = { key: SortKey; dir: "asc" | "desc" };
+
+export type ParametersColumnFilter = {
+  key: string;
+  label: string;
+  groupLabel: string;
+  values: string[];
+  selectedValues: string[];
+  renderLabel?: (value: string) => string;
+  onToggle: (value: string) => void;
+  onClear: () => void;
+};
 
 export type ParametersTableProps = {
   rows: ParameterRecord[];
@@ -18,6 +30,7 @@ export type ParametersTableProps = {
   onSearchQueryChange?: (query: string) => void;
   onClearFilters?: () => void;
   filters?: ReactNode;
+  columnFilters?: ParametersColumnFilter[];
   selectedIds: Set<string>;
   onSelectedIdsChange: (ids: Set<string>) => void;
   focusedId: string | null;
@@ -125,6 +138,7 @@ export function ParametersTable({
   onSearchQueryChange,
   onClearFilters,
   filters,
+  columnFilters = [],
   selectedIds,
   onSelectedIdsChange,
   focusedId,
@@ -137,6 +151,10 @@ export function ParametersTable({
   const [sort, setSort] = useState<SortState | null>(null);
   const selectAllRef = useRef<HTMLInputElement>(null);
   const sortableHeaders = useMemo(() => getSortableHeaders(valueColumnLabel), [valueColumnLabel]);
+  const columnFilterByKey = useMemo(
+    () => new Map(columnFilters.map((filter) => [filter.key, filter])),
+    [columnFilters]
+  );
   const controlledSearch = searchQuery !== undefined;
   const [internalSearchQuery, setInternalSearchQuery] = useState("");
   const activeSearchQuery = controlledSearch ? searchQuery : internalSearchQuery;
@@ -217,7 +235,10 @@ export function ParametersTable({
   };
 
   return (
-    <section className="parameters-table" aria-label={ariaLabel}>
+    <section
+      className={`parameters-table${columnFilters.length > 0 ? " parameters-table--column-filters" : ""}`}
+      aria-label={ariaLabel}
+    >
       {title || description ? (
         <div className="parameters-table-heading">
           <div>
@@ -261,9 +282,12 @@ export function ParametersTable({
               </th>
               {sortableHeaders.map((header) => (
                 <th key={header.key} scope="col" aria-sort={sort?.key === header.key ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-                  <button type="button" className="parameters-table-sort-button" aria-label={`按 ${header.label} 排序`} onClick={() => updateSort(header.key)}>
-                    {header.label}
-                  </button>
+                  <div className="parameters-table-head-cell">
+                    <button type="button" className="parameters-table-sort-button" aria-label={`按 ${header.label} 排序`} onClick={() => updateSort(header.key)}>
+                      {header.label}
+                    </button>
+                    {columnFilterByKey.has(header.key) ? <ColumnFilter {...columnFilterByKey.get(header.key)!} /> : null}
+                  </div>
                 </th>
               ))}
               <th scope="col">操作</th>

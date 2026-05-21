@@ -17,7 +17,6 @@ import type { ParameterRecord, PrototypeState } from "./mockData";
 import { roleSupportsWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
-import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { ParameterInsightBar } from "./components/ParameterInsightBar";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 import { useTopBarActions } from "./components/layout";
@@ -665,25 +664,50 @@ export function ParametersPage({
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
               onClearFilters={clearFilters}
-              filters={
-                <>
-                  <MultiSelectDropdown
-                    label="重要性"
-                    value={Array.from(riskFilters)}
-                    options={(["High", "Medium", "Low"] as const).map((risk) => ({
-                      value: risk,
-                      label: `${riskLabels[risk]} ${projectParameters.filter((p) => p.risk === risk).length}`
-                    }))}
-                    onChange={(next) => setRiskFilters(new Set(next as ParameterRiskFilter[]))}
-                  />
-                  <MultiSelectDropdown
-                    label="模块"
-                    value={Array.from(moduleFilters)}
-                    options={moduleOptions.map((module) => ({ value: module, label: module }))}
-                    onChange={(nextModules) => setModuleFilters(new Set(nextModules))}
-                  />
-                </>
-              }
+              columnFilters={[
+                {
+                  key: "module",
+                  label: "模块",
+                  groupLabel: "模块筛选",
+                  values: moduleOptions,
+                  selectedValues: Array.from(moduleFilters),
+                  onToggle: (module) => {
+                    setModuleFilters((current) => {
+                      const next = new Set(current);
+                      if (next.has(module)) {
+                        next.delete(module);
+                      } else {
+                        next.add(module);
+                      }
+                      return next;
+                    });
+                  },
+                  onClear: () => setModuleFilters(new Set())
+                },
+                {
+                  key: "risk",
+                  label: "重要性",
+                  groupLabel: "重要性筛选",
+                  values: ["High", "Medium", "Low"],
+                  selectedValues: Array.from(riskFilters),
+                  renderLabel: (risk) => `${riskLabels[risk as Exclude<ParameterRiskFilter, "All">]} ${
+                    projectParameters.filter((parameter) => parameter.risk === risk).length
+                  }`,
+                  onToggle: (risk) => {
+                    setRiskFilters((current) => {
+                      const next = new Set(current);
+                      const typedRisk = risk as ParameterRiskFilter;
+                      if (next.has(typedRisk)) {
+                        next.delete(typedRisk);
+                      } else {
+                        next.add(typedRisk);
+                      }
+                      return next;
+                    });
+                  },
+                  onClear: () => setRiskFilters(new Set())
+                }
+              ]}
               selectedIds={selectedIds}
               onSelectedIdsChange={handleSelectedIdsChange}
               focusedId={focusedId}

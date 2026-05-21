@@ -1,7 +1,7 @@
 import { Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
-import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
+import { ColumnFilter } from "./components/ColumnFilter";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -250,6 +250,8 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
     () => accessModeOptions.map((mode) => ({ value: mode, label: `${mode} (${rows.filter((row) => row.accessMode === mode).length})` })),
     [rows]
   );
+  const toggleArrayFilter = (currentValues: string[], value: string) =>
+    currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
   const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null;
   const selectableVisibleIds = useMemo(
     () => visibleRows.filter((row) => canWrite(row)).map((row) => row.id),
@@ -472,7 +474,7 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
             <span>{connected ? "HDC 设备在线" : "等待设备检测"}</span>
           </div>
 
-          <section className="parameters-table" aria-label="节点调试参数">
+          <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
             <div className="parameters-table-toolbar">
               <label className="parameters-table-search">
                 <Search size={16} aria-hidden="true" />
@@ -484,11 +486,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
               </label>
-              <div className="parameters-table-filters">
-                <MultiSelectDropdown label="状态" value={statusFilters} options={statusOptions} onChange={setStatusFilters} />
-                <MultiSelectDropdown label="模块" value={moduleFilters} options={moduleOptions} onChange={setModuleFilters} />
-                <MultiSelectDropdown label="访问模式" value={modeFilters} options={modeOptions} onChange={setModeFilters} />
-              </div>
               <span className="parameters-table-count">Showing {visibleRows.length} of {rows.length}</span>
             </div>
 
@@ -506,12 +503,49 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                         onChange={toggleSelectAll}
                       />
                     </th>
-                    <th scope="col">参数名称</th>
-                    <th scope="col">访问模式</th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>参数名称</span>
+                        <ColumnFilter
+                          label="模块"
+                          groupLabel="模块筛选"
+                          values={moduleOptions.map((option) => option.value)}
+                          selectedValues={moduleFilters}
+                          onToggle={(module) => setModuleFilters((current) => toggleArrayFilter(current, module))}
+                          onClear={() => setModuleFilters([])}
+                        />
+                      </div>
+                    </th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>访问模式</span>
+                        <ColumnFilter
+                          label="访问模式"
+                          groupLabel="访问模式筛选"
+                          values={[...accessModeOptions]}
+                          selectedValues={modeFilters}
+                          renderLabel={(mode) => modeOptions.find((option) => option.value === mode)?.label ?? mode}
+                          onToggle={(mode) => setModeFilters((current) => toggleArrayFilter(current, mode))}
+                          onClear={() => setModeFilters([])}
+                        />
+                      </div>
+                    </th>
                     <th scope="col">当前值</th>
                     <th scope="col">目标写入值</th>
                     <th scope="col">范围</th>
-                    <th scope="col">状态</th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>状态</span>
+                        <ColumnFilter
+                          label="状态"
+                          groupLabel="状态筛选"
+                          values={statusOptions.map((option) => option.value)}
+                          selectedValues={statusFilters}
+                          onToggle={(status) => setStatusFilters((current) => toggleArrayFilter(current, status))}
+                          onClear={() => setStatusFilters([])}
+                        />
+                      </div>
+                    </th>
                     <th scope="col">操作</th>
                   </tr>
                 </thead>

@@ -181,7 +181,24 @@ describe("/node-debugging", () => {
 
     expect(screen.queryByRole("button", { name: /风险等级/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "风险" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /访问模式/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选访问模式" })).toBeInTheDocument();
+  });
+
+  it("将状态、模块和访问模式筛选合并到表头，搜索框仍独立存在", async () => {
+    mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
+    render(<App initialAppState={userState} />);
+
+    await screen.findByText(/已连接：target-a/);
+
+    expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
+    expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选访问模式" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /RO/ }));
+
+    expect(screen.getByRole("button", { name: "筛选访问模式" })).toHaveClass("active");
+    expect(findRowByText("battery.impedance_mohm")).toBeInTheDocument();
+    expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
   });
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {

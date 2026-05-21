@@ -52,7 +52,7 @@ import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
-import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
+import { ColumnFilter } from "./components/ColumnFilter";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -2587,6 +2587,10 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
 }
 
 
+function toggleFilterValue(values: string[], value: string) {
+  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
+}
+
 function ReviewMultiFilter({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -2599,7 +2603,7 @@ function ReviewMultiFilter({ label, options, selected, onChange }: { label: stri
       {open ? (
         <ul className="filter-multi__list" role="listbox" aria-label={`${label}筛选`}>
           {options.map((opt) => (
-            <li key={opt} role="option" aria-selected={selected.includes(opt)} className="filter-multi__option" onClick={() => onChange(selected.includes(opt) ? selected.filter((v) => v !== opt) : [...selected, opt])}>
+            <li key={opt} role="option" aria-selected={selected.includes(opt)} className="filter-multi__option" onClick={() => onChange(toggleFilterValue(selected, opt))}>
               <input type="checkbox" checked={selected.includes(opt)} readOnly tabIndex={-1} />
               {opt}
             </li>
@@ -2883,28 +2887,43 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
               <TableRow>
                 <TableHead>请求编号</TableHead>
                 <TableHead className="review-filter-header">
-                  <MultiSelectDropdown
-                    label="项目"
-                    value={filterProjects}
-                    options={projectOptions.map((project) => ({ value: project.name, label: project.name }))}
-                    onChange={setFilterProjects}
-                  />
+                  <div className="review-column-filter-head">
+                    <span>项目</span>
+                    <ColumnFilter
+                      label="项目"
+                      groupLabel="项目筛选"
+                      values={projectOptions.map((project) => project.name)}
+                      selectedValues={filterProjects}
+                      onToggle={(project) => setFilterProjects((current) => toggleFilterValue(current, project))}
+                      onClear={() => setFilterProjects([])}
+                    />
+                  </div>
                 </TableHead>
                 <TableHead className="review-filter-header">
-                  <MultiSelectDropdown
-                    label="模块"
-                    value={filterModules}
-                    options={modules.map((module) => ({ value: module, label: module }))}
-                    onChange={setFilterModules}
-                  />
+                  <div className="review-column-filter-head">
+                    <span>模块</span>
+                    <ColumnFilter
+                      label="模块"
+                      groupLabel="模块筛选"
+                      values={modules}
+                      selectedValues={filterModules}
+                      onToggle={(module) => setFilterModules((current) => toggleFilterValue(current, module))}
+                      onClear={() => setFilterModules([])}
+                    />
+                  </div>
                 </TableHead>
                 <TableHead className="review-filter-header">
-                  <MultiSelectDropdown
-                    label="提交人"
-                    value={filterSubmitters}
-                    options={submitters.map((submitter) => ({ value: submitter, label: submitter }))}
-                    onChange={setFilterSubmitters}
-                  />
+                  <div className="review-column-filter-head">
+                    <span>提交人</span>
+                    <ColumnFilter
+                      label="提交人"
+                      groupLabel="提交人筛选"
+                      values={submitters}
+                      selectedValues={filterSubmitters}
+                      onToggle={(submitter) => setFilterSubmitters((current) => toggleFilterValue(current, submitter))}
+                      onClear={() => setFilterSubmitters([])}
+                    />
+                  </div>
                 </TableHead>
                 <TableHead>变更</TableHead>
                 <TableHead>状态</TableHead>
