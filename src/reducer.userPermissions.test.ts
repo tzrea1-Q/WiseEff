@@ -10,7 +10,7 @@ describe("shared user permission reducer actions", () => {
       name: "Demo Engineer",
       email: "demo@chargelab.cn",
       title: "Validation Engineer",
-      roleId: "user"
+      roleId: "hardware-user"
     });
 
     expect(next.users).toHaveLength(state.users.length + 1);
@@ -18,7 +18,7 @@ describe("shared user permission reducer actions", () => {
       name: "Demo Engineer",
       email: "demo@chargelab.cn",
       title: "Validation Engineer",
-      roleId: "user",
+      roleId: "hardware-user",
       isActive: true
     });
     expect(next.auditEvents[0].kind).toBe("user-add");
@@ -31,7 +31,7 @@ describe("shared user permission reducer actions", () => {
       name: "Admin Principal",
       email: "admin-principal@chargelab.cn",
       title: "Validation Engineer",
-      roleId: "user"
+      roleId: "hardware-user"
     });
 
     expect(next.users).toHaveLength(state.users.length + 1);
@@ -45,7 +45,7 @@ describe("shared user permission reducer actions", () => {
       name: "Guest Principal",
       email: "guest-principal@chargelab.cn",
       title: "Validation Engineer",
-      roleId: "user"
+      roleId: "hardware-user"
     });
 
     expect(next).toBe(state);
@@ -60,7 +60,7 @@ describe("shared user permission reducer actions", () => {
         name: "Duplicate",
         email: state.users[0].email,
         title: "Duplicate",
-        roleId: "user"
+        roleId: "hardware-user"
       })
     ).toBe(state);
 
@@ -70,7 +70,7 @@ describe("shared user permission reducer actions", () => {
         name: "Invalid",
         email: "invalid-email",
         title: "Invalid",
-        roleId: "user"
+        roleId: "hardware-user"
       })
     ).toBe(state);
   });
@@ -91,7 +91,7 @@ describe("shared user permission reducer actions", () => {
     const next = appReducer(state, {
       type: "ASSIGN_USER_ROLE",
       userId: state.currentUserId,
-      roleId: "committer"
+      roleId: "hardware-committer"
     });
 
     expect(next).toBe(state);
@@ -105,14 +105,14 @@ describe("shared user permission reducer actions", () => {
       users: base.users.map((user) =>
         user.id === base.currentUserId
           ? user
-          : { ...user, roleId: user.roleId === "admin" ? "user" : user.roleId }
+          : { ...user, roleId: user.roleId === "admin" ? "hardware-user" : user.roleId }
       )
     };
 
     const next = appReducer(state, {
       type: "ASSIGN_USER_ROLE",
       userId: state.currentUserId,
-      roleId: "committer"
+      roleId: "hardware-committer"
     });
 
     expect(next).toBe(state);
@@ -123,7 +123,7 @@ describe("shared user permission reducer actions", () => {
     const next = appReducer(state, {
       type: "ASSIGN_USER_ROLE",
       userId: "u-zhao-heng",
-      roleId: "committer"
+      roleId: "hardware-committer"
     });
 
     expect(next).toBe(state);

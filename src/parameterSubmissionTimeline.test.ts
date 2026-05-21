@@ -36,7 +36,13 @@ function createRound(
 
 describe("parameter submission timeline", () => {
   it("exposes the submission timeline steps", () => {
-    expect(SUBMISSION_TIMELINE_STEPS).toEqual(["选择参数", "填写目标值", "提交审阅", "管理员合入"]);
+    expect(SUBMISSION_TIMELINE_STEPS).toEqual([
+      "选择参数",
+      "填写目标值",
+      "硬件Committer检视",
+      "软件Committer检视",
+      "软件User合入"
+    ]);
   });
 
   it("has no active step without a round", () => {
@@ -52,12 +58,15 @@ describe("parameter submission timeline", () => {
   });
 
   it.each([
-    ["待审阅", 2],
-    ["已合入", 3],
+    ["硬件Committer检视", 2],
+    ["软件Committer检视", 3],
+    ["软件User合入", 4],
+    ["已合入", 4],
     ["已打回", 2],
     ["已撤回", 2],
-    ["自动检查通过", 2],
-    ["等待合入", 2]
+    ["待审阅", 2],
+    ["自动检查通过", 3],
+    ["等待合入", 4]
   ] as const)("maps %s rounds to timeline index %i", (status, activeIndex) => {
     expect(deriveSubmissionTimeline(createRound(status, [submissionItem])).activeIndex).toBe(activeIndex);
   });

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +22,17 @@ function renderPage(search = "") {
   return { ...utils, state, dispatch, onNavigate };
 }
 
+function readCssBlock(selector: string) {
+  const css = readFileSync("src/styles.css", "utf8");
+  const selectorIndex = css.indexOf(`${selector} {`);
+  expect(selectorIndex).toBeGreaterThanOrEqual(0);
+
+  const blockStart = css.indexOf("{", selectorIndex);
+  const blockEnd = css.indexOf("}", blockStart);
+
+  return css.slice(blockStart + 1, blockEnd);
+}
+
 describe("UserPermissionsPage", () => {
   it("renders user permissions, role names, and platform users", () => {
     renderPage();
@@ -28,7 +40,8 @@ describe("UserPermissionsPage", () => {
 
     expect(screen.getByRole("heading", { name: "User permissions" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Guest" })).toBeInTheDocument();
-    expect(within(capabilities).getByRole("heading", { name: "Committer" })).toBeInTheDocument();
+    expect(within(capabilities).getByRole("heading", { name: "Hardware Committer" })).toBeInTheDocument();
+    expect(within(capabilities).getByRole("heading", { name: "Software Committer" })).toBeInTheDocument();
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
@@ -37,9 +50,11 @@ describe("UserPermissionsPage", () => {
     const capabilities = screen.getByLabelText("角色权限说明");
 
     expect(within(capabilities).getByText("仅可查看参数页面。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("可查看并修改参数，使用参数调试和节点调试，并上传日志进行智能分析。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("包含 User 权限，并可审阅参数提交。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("包含 Committer 权限，并可访问各应用后台和用户管理。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("硬件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("软件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("包含硬件 User 权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("包含软件 User 权限，并可执行软件侧参数检视。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("包含全部 Committer 权限，并可访问各应用后台和用户管理。")).toBeInTheDocument();
     expect(within(capabilities).getAllByText("查看参数").length).toBeGreaterThan(0);
     expect(within(capabilities).getByText("管理用户权限")).toBeInTheDocument();
     expect(within(capabilities).queryByText("parameter:view")).not.toBeInTheDocument();
@@ -81,7 +96,7 @@ describe("UserPermissionsPage", () => {
     const addUserButton = screen.getByRole("button", { name: "Add user" });
 
     expect(summaryCopy).toContainElement(screen.getByRole("heading", { name: "User permissions" }));
-    expect(summaryCopy).toContainElement(screen.getByText("8 platform users across 4 roles."));
+    expect(summaryCopy).toContainElement(screen.getByText("8 platform users across 6 roles."));
     expect(addUserButton).toHaveClass("user-permissions-primary-action");
     expect(summaryCopy).not.toContainElement(addUserButton);
   });
@@ -93,7 +108,7 @@ describe("UserPermissionsPage", () => {
     await userEvent.type(screen.getByLabelText("Name"), "Demo Engineer");
     await userEvent.type(screen.getByLabelText("Email"), "demo@chargelab.cn");
     await userEvent.type(screen.getByLabelText("Title"), "Validation Engineer");
-    await userEvent.selectOptions(screen.getByLabelText("Initial role"), "user");
+    await userEvent.selectOptions(screen.getByLabelText("Initial role"), "hardware-user");
     await userEvent.click(screen.getByRole("button", { name: "Create user" }));
 
     expect(dispatch).toHaveBeenCalledWith({
@@ -101,7 +116,7 @@ describe("UserPermissionsPage", () => {
       name: "Demo Engineer",
       email: "demo@chargelab.cn",
       title: "Validation Engineer",
-      roleId: "user"
+      roleId: "hardware-user"
     });
   });
 
@@ -118,7 +133,7 @@ describe("UserPermissionsPage", () => {
       name: "Demo Engineer",
       email: "demo@chargelab.cn",
       title: "",
-      roleId: "user"
+      roleId: "hardware-user"
     });
   });
 
@@ -164,13 +179,13 @@ describe("UserPermissionsPage", () => {
     const { dispatch } = renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
 
-    await userEvent.selectOptions(within(row).getByRole("combobox", { name: "Role for Liu Min" }), "committer");
+    await userEvent.selectOptions(within(row).getByRole("combobox", { name: "Role for Liu Min" }), "software-committer");
     await userEvent.click(within(row).getByRole("button", { name: "Disable Liu Min" }));
 
     expect(dispatch).toHaveBeenCalledWith({
       type: "ASSIGN_USER_ROLE",
       userId: "u-liu-min",
-      roleId: "committer"
+      roleId: "software-committer"
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "TOGGLE_USER_ACTIVE",
@@ -188,6 +203,15 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByRole("columnheader", { name: "Role" })).toHaveClass("user-permissions-role-header");
     expect(roleCell).toHaveClass("user-permissions-role-cell");
     expect(roleSelect).toHaveClass("user-permissions-role-select");
+  });
+
+  it("keeps role selectors wide enough for split committer role names", () => {
+    const roleCellStyles = readCssBlock(".user-permissions-role-cell");
+    const roleSelectStyles = readCssBlock(".user-permissions-role-select");
+
+    expect(roleCellStyles).toContain("width: 204px;");
+    expect(roleSelectStyles).toContain("min-width: 180px;");
+    expect(roleSelectStyles).toContain("width: 180px;");
   });
 
   it("renders and filters legacy role ids under their migrated platform role", async () => {
@@ -221,10 +245,10 @@ describe("UserPermissionsPage", () => {
 
     render(<UserPermissionsPage state={state} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />);
 
-    expect(screen.getByRole("combobox", { name: "Role for Legacy Reviewer" })).toHaveValue("committer");
-    expect(screen.getByRole("combobox", { name: "Role for Legacy Viewer" })).toHaveValue("guest");
+    expect(screen.getByRole("combobox", { name: "Role for Legacy Reviewer" })).toHaveValue("software-committer");
+    expect(screen.getByRole("combobox", { name: "Role for Legacy Viewer" })).toHaveValue("hardware-user");
 
-    await userEvent.selectOptions(screen.getByLabelText("Role"), "committer");
+    await userEvent.selectOptions(screen.getByLabelText("Role"), "software-committer");
 
     expect(screen.getByText("Legacy Reviewer")).toBeInTheDocument();
     expect(screen.queryByText("Legacy Viewer")).not.toBeInTheDocument();

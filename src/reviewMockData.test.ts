@@ -94,12 +94,12 @@ describe("buildReviewMockRequests", () => {
     expect(rejectHigh.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("covers all 5 request statuses", () => {
+  it("covers the four-stage request workflow plus terminal states", () => {
     const statuses = new Set(requests.map((request) => request.status));
 
-    expect(statuses.has("待审阅")).toBe(true);
-    expect(statuses.has("自动检查通过")).toBe(true);
-    expect(statuses.has("等待合入")).toBe(true);
+    expect(statuses.has("硬件Committer检视")).toBe(true);
+    expect(statuses.has("软件Committer检视")).toBe(true);
+    expect(statuses.has("软件User合入")).toBe(true);
     expect(statuses.has("已合入")).toBe(true);
     expect(statuses.has("已打回")).toBe(true);
   });

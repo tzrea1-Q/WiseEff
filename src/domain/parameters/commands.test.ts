@@ -47,6 +47,42 @@ describe("submitParameterRound", () => {
     expect(request.targetValue).toBe("3650");
   });
 
+  it("stores selected hardware and software workflow assignees on the round and linked requests", () => {
+    const state = createPrototypeState();
+    const parameter = state.parameters.find((item) => item.projectId === "aurora")!;
+
+    const next = submitParameterRound(state, {
+      projects,
+      roles,
+      buildRuntimeReviewFields,
+      assignees: {
+        hardwareCommitterId: "u-wang-jie",
+        softwareCommitterId: "u-sun-mei",
+        softwareUserId: "u-chen-na"
+      },
+      items: [
+        {
+          parameterId: parameter.id,
+          targetValue: "3650",
+          reason: "验证四段审批指派"
+        }
+      ]
+    });
+
+    const [round] = next.parameterSubmissionRounds;
+    const [request] = next.changeRequests;
+
+    expect(round.workflowAssignees).toEqual({
+      hardwareCommitterId: "u-wang-jie",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-chen-na"
+    });
+    expect(round.status).toBe("硬件Committer检视");
+    expect(request.workflowAssignees).toEqual(round.workflowAssignees);
+    expect(request.assignedTo).toBe("u-wang-jie");
+    expect(request.status).toBe("硬件Committer检视");
+  });
+
   it("keeps state unchanged when no draft item matches", () => {
     const state = createPrototypeState();
 
