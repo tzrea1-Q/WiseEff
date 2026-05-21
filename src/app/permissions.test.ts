@@ -18,18 +18,22 @@ describe("app permission policy", () => {
     expect(canAccessPage("guest", "parameter-review")).toBe(false);
   });
 
-  it("allows User to operate but not review or administer", () => {
-    expect(canAccessPage("user", "logs")).toBe(true);
-    expect(canAccessPage("user", "debugging")).toBe(true);
-    expect(canAccessPage("user", "node-debugging")).toBe(true);
-    expect(canAccessPage("user", "parameter-review")).toBe(false);
-    expect(canAccessPage("user", "parameter-admin")).toBe(false);
+  it("allows hardware and software User roles to operate but not review or administer", () => {
+    for (const roleId of ["hardware-user", "software-user"]) {
+      expect(canAccessPage(roleId, "logs")).toBe(true);
+      expect(canAccessPage(roleId, "debugging")).toBe(true);
+      expect(canAccessPage(roleId, "node-debugging")).toBe(true);
+      expect(canAccessPage(roleId, "parameter-review")).toBe(false);
+      expect(canAccessPage(roleId, "parameter-admin")).toBe(false);
+    }
   });
 
-  it("allows Committer to review but not access admin backends", () => {
-    expect(canAccessPage("committer", "parameter-review")).toBe(true);
-    expect(canAccessPage("committer", "log-admin")).toBe(false);
-    expect(canAccessPage("committer", "user-permissions")).toBe(false);
+  it("allows hardware and software Committer roles to review but not access admin backends", () => {
+    for (const roleId of ["hardware-committer", "software-committer"]) {
+      expect(canAccessPage(roleId, "parameter-review")).toBe(true);
+      expect(canAccessPage(roleId, "log-admin")).toBe(false);
+      expect(canAccessPage(roleId, "user-permissions")).toBe(false);
+    }
   });
 
   it("allows Admin to access all admin and user management pages", () => {
@@ -41,17 +45,21 @@ describe("app permission policy", () => {
 
   it("checks key action permissions", () => {
     expect(canPerform("guest", "parameter.edit")).toBe(false);
-    expect(canPerform("user", "parameter.edit")).toBe(true);
-    expect(canPerform("user", "parameter.review")).toBe(false);
-    expect(canPerform("committer", "parameter.review")).toBe(true);
+    expect(canPerform("hardware-user", "parameter.edit")).toBe(true);
+    expect(canPerform("software-user", "parameter.edit")).toBe(true);
+    expect(canPerform("hardware-user", "parameter.review")).toBe(false);
+    expect(canPerform("software-user", "parameter.review")).toBe(false);
+    expect(canPerform("hardware-committer", "parameter.review")).toBe(true);
+    expect(canPerform("software-committer", "parameter.review")).toBe(true);
+    expect(canPerform("admin", "parameter.review")).toBe(true);
     expect(canPerform("admin", "users.manage")).toBe(true);
   });
 
   it("returns required roles and safe fallback routes", () => {
     expect(getRequiredRoleForPage("log-admin")).toBe("admin");
-    expect(getRequiredRoleForAction("parameter.review")).toBe("committer");
+    expect(getRequiredRoleForAction("parameter.review")).toBe("hardware-committer");
     expect(getAccessibleFallbackPath("guest")).toBe("/parameter-home");
     expect(getAccessibleFallbackPath("admin")).toBe("/parameter-home");
-    expect(getDisabledReason("guest", "parameter.edit")).toBe("Requires User role");
+    expect(getDisabledReason("guest", "parameter.edit")).toBe("Requires Hardware User role");
   });
 });

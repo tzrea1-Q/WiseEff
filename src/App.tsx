@@ -45,7 +45,7 @@ import type {
   ProjectParameterInitializationReview,
   RiskLevel
 } from "@/domain/parameters/types";
-import { migrateLegacyRoleId, type PlatformRoleId } from "@/domain/users/types";
+import { migrateLegacyRoleId, roleSupportsWorkflowSlot, type PlatformRoleId } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
@@ -154,7 +154,16 @@ export type AppAction =
   | { type: "APPROVE_PARAMETER_INITIALIZATION"; reviewId: string }
   | { type: "REJECT_PARAMETER_INITIALIZATION"; reviewId: string; reason: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason?: string }
+  | {
+      type: "ADD_PARAMETER_SUBMISSION_ROUND";
+      items: ParameterDraftItem[];
+      reason?: string;
+      assignees?: {
+        hardwareCommitterId: string;
+        softwareCommitterId: string;
+        softwareUserId: string;
+      };
+    }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
@@ -376,6 +385,48 @@ function canManageUsers(state: PrototypeState) {
   return canPerform(migrateLegacyRoleId(currentUser.roleId), "users.manage");
 }
 
+function getNextReviewStep(request: ChangeRequest): Pick<ChangeRequest, "status" | "assignedTo"> {
+  switch (request.status) {
+    case "硬件Committer检视":
+    case "待审阅":
+      return {
+        status: "软件Committer检视",
+        assignedTo: request.workflowAssignees?.softwareCommitterId ?? request.assignedTo
+      };
+    case "软件Committer检视":
+    case "自动检查通过":
+      return {
+        status: "软件User合入",
+        assignedTo: request.workflowAssignees?.softwareUserId ?? request.assignedTo
+      };
+    default:
+      return {
+        status: "已合入",
+        assignedTo: request.assignedTo
+      };
+  }
+}
+
+function updateRoundStatusAfterRequest(
+  rounds: ParameterSubmissionRound[],
+  request: ChangeRequest,
+  status: RequestStatus
+) {
+  if (!request.submissionRoundId) {
+    return rounds;
+  }
+
+  return rounds.map((round) => (round.id === request.submissionRoundId ? { ...round, status } : round));
+}
+
+function canAdvanceReviewRequest(activeRoleId: string, request: ChangeRequest) {
+  if (request.status === "软件User合入") {
+    return roleSupportsWorkflowSlot(activeRoleId, "softwareUser");
+  }
+
+  return canPerform(activeRoleId, "parameter.review");
+}
+
 function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
   return nextUsers.some((user) => user.isActive && user.roleId === "admin");
 }
@@ -529,6 +580,11 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const summary = action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。";
+      const workflowAssignees = {
+        hardwareCommitterId: state.users.find((user) => user.isActive && roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter"))?.id ?? "",
+        softwareCommitterId: state.users.find((user) => user.isActive && roleSupportsWorkflowSlot(user.roleId, "softwareCommitter"))?.id ?? "",
+        softwareUserId: state.users.find((user) => user.isActive && roleSupportsWorkflowSlot(user.roleId, "softwareUser"))?.id ?? ""
+      };
 
       const request: ChangeRequest = {
         id: `PRQ-${8910 + state.changeRequests.length}`,
@@ -541,7 +597,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         targetValue: action.targetValue,
         submitter,
         createdAt: "刚刚",
-        status: "待审阅",
+        status: "硬件Committer检视",
+        assignedTo: workflowAssignees.hardwareCommitterId,
+        workflowAssignees,
         ...buildRuntimeReviewFields(summary, parameter.module)
       };
       const submissionItem: ParameterSubmissionItem = {
@@ -566,8 +624,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
             projectName: project?.name ?? parameter.projectId,
             submitter,
             createdAt: "刚刚",
-            status: "待审阅",
+            status: "硬件Committer检视",
             summary: `${parameter.name} 提交审阅。`,
+            workflowAssignees,
             items: [submissionItem]
           },
           ...state.parameterSubmissionRounds
@@ -585,7 +644,14 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       if (targetProjectIds.size !== 1 || Array.from(targetProjectIds).some((projectId) => !canSubmitParameterChangesForProject(state, projectId))) {
         return state;
       }
-      return submitParameterRound(state, { items: action.items, reason: action.reason, projects, roles, buildRuntimeReviewFields });
+      return submitParameterRound(state, {
+        items: action.items,
+        reason: action.reason,
+        assignees: action.assignees,
+        projects,
+        roles,
+        buildRuntimeReviewFields
+      });
     }
     case "STASH_PARAMETER_SUBMISSION_ROUND": {
       if (!canPerform(activeRoleId, "parameter.edit")) return state;
@@ -644,39 +710,41 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           round.id === action.roundId ? { ...round, status: "已撤回", summary: `${round.summary} 已由提交人撤回。` } : round
         ),
         changeRequests: state.changeRequests.map((request) =>
-          request.submissionRoundId === action.roundId && request.status === "待审阅"
+          request.submissionRoundId === action.roundId && request.status !== "已合入"
             ? { ...request, status: "已打回", rejectReason: "提交人已撤回本轮提交。" }
             : request
         ),
         notifications: [`${action.roundId} 已撤回`, ...state.notifications]
       };
-    case "ADVANCE_REVIEW":
-      if (!canPerform(activeRoleId, "parameter.review")) return state;
+    case "ADVANCE_REVIEW": {
+      const target = state.changeRequests.find((request) => request.id === action.requestId);
+      if (!target || !canAdvanceReviewRequest(activeRoleId, target)) return state;
+      const nextStep = getNextReviewStep(target);
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
           request.id === action.requestId
             ? {
                 ...request,
-                status:
-                  request.status === "待审阅"
-                    ? "自动检查通过"
-                    : request.status === "自动检查通过"
-                      ? "等待合入"
-                      : "已合入",
+                ...nextStep,
                 fastTrack: action.fastTrack ?? request.fastTrack,
                 reviewerNote: action.note ?? request.reviewerNote,
                 updatedAt: new Date().toISOString()
               }
             : request
         ),
+        parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, nextStep.status),
         notifications: [
           `${action.requestId} 已推进到下一流程节点${action.fastTrack ? "（快速通道）" : ""}`,
           ...state.notifications
         ]
       };
+    }
     case "REJECT_REVIEW":
       if (!canPerform(activeRoleId, "parameter.review")) return state;
+      {
+      const target = state.changeRequests.find((request) => request.id === action.requestId);
+      if (!target) return state;
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
@@ -690,11 +758,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
               }
             : request
         ),
+        parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, "已打回"),
         notifications: [
           `${action.requestId} 已打回修改${action.fastTrack ? "（快速通道）" : ""}：${action.reason}`,
           ...state.notifications
         ]
       };
+      }
     case "TRANSFER_REVIEW": {
       if (!canPerform(activeRoleId, "parameter.review")) return state;
       const exists = state.changeRequests.some((request) => request.id === action.requestId);
@@ -1083,16 +1153,17 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       if (!canManageUsers(state)) {
         return state;
       }
-      if (action.userId === state.currentUserId && action.roleId !== "admin") {
+      const nextRoleId = migrateLegacyRoleId(action.roleId);
+      if (action.userId === state.currentUserId && nextRoleId !== "admin") {
         return state;
       }
 
       const user = state.users.find((item) => item.id === action.userId);
-      if (!user || user.roleId === action.roleId || !roles.some((role) => role.id === action.roleId)) {
+      if (!user || migrateLegacyRoleId(user.roleId) === nextRoleId || !roles.some((role) => role.id === nextRoleId)) {
         return state;
       }
 
-      const nextUsers = state.users.map((item) => (item.id === user.id ? { ...item, roleId: action.roleId } : item));
+      const nextUsers = state.users.map((item) => (item.id === user.id ? { ...item, roleId: nextRoleId } : item));
       if (!wouldHaveActiveAdmin(state, nextUsers)) {
         return state;
       }
@@ -1100,10 +1171,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const event = buildAuditEvent({
         kind: "user-role-change",
         actor: auditActor,
-        action: `${user.name} role changed from ${user.roleId} to ${action.roleId}`,
+        action: `${user.name} role changed from ${user.roleId} to ${nextRoleId}`,
         severity: "Medium",
         userId: user.id,
-        metadata: { previousRole: user.roleId, newRole: action.roleId }
+        metadata: { previousRole: user.roleId, newRole: nextRoleId }
       });
 
       return {
@@ -1156,7 +1227,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
 
-      const role = roles.find((item) => item.id === action.roleId);
+      const roleId = migrateLegacyRoleId(action.roleId);
+      const role = roles.find((item) => item.id === roleId);
       if (!role) {
         return state;
       }
@@ -1166,7 +1238,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         name,
         email,
         title: action.title.trim() || "Platform user",
-        roleId: action.roleId,
+        roleId,
         isActive: true,
         createdAt: new Date().toISOString(),
         lastActive: "just now"
@@ -2380,9 +2452,30 @@ function getParameterInitializationReviewStatusLabel(status: ProjectParameterIni
   }[status];
 }
 
+type VerticalTimelineItem = {
+  body: string;
+  isCurrent?: boolean;
+  marker?: string;
+  time: string;
+  title: string;
+};
+
 function getFallbackComparisonProjectId(projectId: string, projectList = projects) {
   const comparisonProjects = projectList.length > 0 ? projectList : projects;
   return comparisonProjects.find((project) => project.id !== projectId)?.id ?? projectId;
+}
+
+function getUserName(users: PrototypeState["users"], userId?: string) {
+  if (!userId) {
+    return "未指派";
+  }
+  return users.find((user) => user.id === userId)?.name ?? userId;
+}
+
+function formatWorkflowDisplayText(text: string) {
+  return text
+    .replaceAll("Committer", "MDE")
+    .replaceAll("User", "开发人员");
 }
 
 export function getContextQuery(search: string) {
@@ -2435,7 +2528,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
               onClick={() => setSelectedRoundId(round.id)}
             >
               <strong>{round.id}</strong>
-              <span>{round.status} · {round.items.length} 项 · {round.createdAt}</span>
+              <span>{formatWorkflowDisplayText(round.status)} · {round.items.length} 项 · {round.createdAt}</span>
             </Button>
           ))}
           {myRounds.length === 0 ? <EmptyState text="当前还没有你的历史提交。" /> : null}
@@ -2706,6 +2799,51 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     setDetailOpen(false);
   };
   const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项已合入` : `${reviewRows.length} 项操作`;
+  const selectedWorkflowItems: VerticalTimelineItem[] = selected
+    ? (() => {
+        const workflowItems: VerticalTimelineItem[] = [
+          {
+            time: "流程 1",
+            title: "硬件Committer检视",
+            body: `硬件 MDE：${getUserName(state.users, selected.workflowAssignees?.hardwareCommitterId)}。`
+          },
+          {
+            time: "流程 2",
+            title: "软件Committer检视",
+            body: `软件 MDE：${getUserName(state.users, selected.workflowAssignees?.softwareCommitterId)}。`
+          },
+          {
+            time: "流程 3",
+            title: "软件User合入",
+            body: `软件开发人员：${getUserName(state.users, selected.workflowAssignees?.softwareUserId)}。`
+          }
+        ];
+        const currentWorkflowIndex = workflowItems.findIndex((item) => item.title === selected.status);
+        if (currentWorkflowIndex === -1) {
+          return [
+            {
+              time: "当前",
+              title: selected.status,
+              body: selected.rejectReason ?? `当前处理人：${getUserName(state.users, selected.assignedTo)}。`,
+              isCurrent: true,
+              marker: "当前流程"
+            },
+            ...workflowItems
+          ];
+        }
+
+        return workflowItems.map((item, index) =>
+          index === currentWorkflowIndex
+            ? {
+                ...item,
+                body: `当前处理人：${getUserName(state.users, selected.assignedTo)}。`,
+                isCurrent: true,
+                marker: "当前流程"
+              }
+            : item
+        );
+      })()
+    : [];
 
   return (
     <WorkbenchLayout
@@ -2738,95 +2876,114 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
             }
             meta={reviewMeta}
           />
-          <div className="review-queue-filters">
-            <MultiSelectDropdown
-              label="模块"
-              value={filterModules}
-              options={modules.map((module) => ({ value: module, label: module }))}
-              onChange={setFilterModules}
-            />
-            <MultiSelectDropdown
-              label="提交人"
-              value={filterSubmitters}
-              options={submitters.map((submitter) => ({ value: submitter, label: submitter }))}
-              onChange={setFilterSubmitters}
-            />
-            <MultiSelectDropdown
-              label="项目"
-              value={filterProjects}
-              options={projectOptions.map((project) => ({ value: project.name, label: project.name }))}
-              onChange={setFilterProjects}
-            />
-          </div>
         </div>
-        <DataTable
-          headers={["请求编号", "模块", "提交人", "变更", "状态"]}
-          rows={reviewRows}
-          renderRow={(row) => {
-            if (row.kind === "initialization") {
-              return (
-                <TableRow
-                  className={row.review.id === selectedInitialization?.review.id ? "selected-row" : ""}
-                  key={row.review.id}
-                  onClick={() => setSelectedId(row.review.id)}
-                >
-                  <TableCell className="mono">{row.review.id}</TableCell>
-                  <TableCell>参数初始化</TableCell>
-                  <TableCell>{state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy}</TableCell>
-                  <TableCell className="change-cell">
-                    <button
-                      className="value-change value-change-button"
-                      type="button"
-                      aria-label={`查看 ${row.review.id} 初始化详情`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedId(row.review.id);
-                      }}
-                    >
-                      <strong>{row.draft.projectName}</strong>
-                      <ArrowRight size={14} />
-                      <span>{row.draft.parameterSnapshots.length} 项参数</span>
-                    </button>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={getParameterInitializationReviewStatusLabel(row.review.status)} />
-                  </TableCell>
-                </TableRow>
-              );
-            }
-
-            const { request } = row;
-            return (
-              <TableRow
-                className={request.id === selected?.id ? "selected-row" : ""}
-                key={request.id}
-                onClick={() => setSelectedId(request.id)}
-              >
-                <TableCell className="mono">{request.id}</TableCell>
-                <TableCell>{request.module}</TableCell>
-                <TableCell>{request.submitter}</TableCell>
-                <TableCell className="change-cell">
-                  <button
-                    className="value-change value-change-button"
-                    type="button"
-                    aria-label={`查看 ${request.id} 提交详情`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openSubmissionDetail(request);
-                    }}
-                  >
-                    <span className="strike">{request.currentValue}</span>
-                    <ArrowRight size={14} />
-                    <strong>{request.targetValue}</strong>
-                  </button>
-                </TableCell>
-                <TableCell>
-                  <StatusBadge status={request.status} />
-                </TableCell>
+        <div className="table-wrap review-table-wrap">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>请求编号</TableHead>
+                <TableHead className="review-filter-header">
+                  <MultiSelectDropdown
+                    label="项目"
+                    value={filterProjects}
+                    options={projectOptions.map((project) => ({ value: project.name, label: project.name }))}
+                    onChange={setFilterProjects}
+                  />
+                </TableHead>
+                <TableHead className="review-filter-header">
+                  <MultiSelectDropdown
+                    label="模块"
+                    value={filterModules}
+                    options={modules.map((module) => ({ value: module, label: module }))}
+                    onChange={setFilterModules}
+                  />
+                </TableHead>
+                <TableHead className="review-filter-header">
+                  <MultiSelectDropdown
+                    label="提交人"
+                    value={filterSubmitters}
+                    options={submitters.map((submitter) => ({ value: submitter, label: submitter }))}
+                    onChange={setFilterSubmitters}
+                  />
+                </TableHead>
+                <TableHead>变更</TableHead>
+                <TableHead>状态</TableHead>
               </TableRow>
-            );
-          }}
-        />
+            </TableHeader>
+            <TableBody>
+              {reviewRows.map((row) => {
+                if (row.kind === "initialization") {
+                  return (
+                    <TableRow
+                      className={row.review.id === selectedInitialization?.review.id ? "selected-row" : ""}
+                      key={row.review.id}
+                      onClick={() => setSelectedId(row.review.id)}
+                    >
+                      <TableCell className="mono">{row.review.id}</TableCell>
+                      <TableCell>{row.draft.projectName}</TableCell>
+                      <TableCell>参数初始化</TableCell>
+                      <TableCell>{state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy}</TableCell>
+                      <TableCell className="change-cell">
+                        <button
+                          className="value-change value-change-button"
+                          type="button"
+                          aria-label={`查看 ${row.review.id} 初始化详情`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedId(row.review.id);
+                          }}
+                        >
+                          <strong>{row.draft.projectName}</strong>
+                          <ArrowRight size={14} />
+                          <span>{row.draft.parameterSnapshots.length} 项参数</span>
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={getParameterInitializationReviewStatusLabel(row.review.status)} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                }
+
+                const { request } = row;
+                const parameter = state.parameters.find((item) => item.id === request.parameterId);
+                const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
+
+                return (
+                  <TableRow
+                    className={request.id === selected?.id ? "selected-row" : ""}
+                    key={request.id}
+                    onClick={() => setSelectedId(request.id)}
+                  >
+                    <TableCell className="mono">{request.id}</TableCell>
+                    <TableCell>{project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目"}</TableCell>
+                    <TableCell>{request.module}</TableCell>
+                    <TableCell>{request.submitter}</TableCell>
+                    <TableCell className="change-cell">
+                      <button
+                        className="value-change value-change-button"
+                        type="button"
+                        aria-label={`查看 ${request.id} 提交详情`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openSubmissionDetail(request);
+                        }}
+                      >
+                        <span className="strike">{request.currentValue}</span>
+                        <ArrowRight size={14} />
+                        <strong>{request.targetValue}</strong>
+                      </button>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={request.status} />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+          {reviewRows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
+        </div>
       </section>
       <aside className="review-detail" aria-label="审阅详情">
         {selectedInitialization ? (
@@ -2858,16 +3015,18 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
               <SectionLabel icon={<History size={16} />} label="初始化状态" />
               <VerticalTimeline
                 items={[
-                  [
-                    "现在",
-                    getParameterInitializationReviewStatusLabel(selectedInitialization.review.status),
-                    selectedInitialization.review.rejectionReason ?? "等待参数管理员处理。"
-                  ],
-                  [
-                    "已提交",
-                    selectedInitialization.review.submittedAt,
-                    selectedInitialization.draft.notes || "已从来源项目推荐值生成初始化快照。"
-                  ]
+                  {
+                    time: "当前",
+                    title: getParameterInitializationReviewStatusLabel(selectedInitialization.review.status),
+                    body: selectedInitialization.review.rejectionReason ?? "等待参数管理员处理。",
+                    isCurrent: selectedInitialization.review.status === "pending",
+                    marker: selectedInitialization.review.status === "pending" ? "当前流程" : undefined
+                  },
+                  {
+                    time: "已提交",
+                    title: selectedInitialization.review.submittedAt,
+                    body: selectedInitialization.draft.notes || "已从来源项目推荐值生成初始化快照。"
+                  }
                 ]}
               />
             </div>
@@ -2917,13 +3076,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
             ) : null}
             <div className="detail-card grow">
               <SectionLabel icon={<History size={16} />} label="变更历史" />
-              <VerticalTimeline
-                items={[
-                  ["现在", selected.status, selected.rejectReason ?? "等待管理员确认和流程推进。"],
-                  ["2 小时前", "自动检查通过", "回归检查与阈值校验通过。"],
-                  ["昨天", "请求已提交", `提交人：${selected.submitter}。`]
-                ]}
-              />
+              <VerticalTimeline items={selectedWorkflowItems} />
             </div>
             <div className="action-panel">
               <Button className="full" type="button" onClick={() => dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id })}>
@@ -4336,30 +4489,12 @@ function MetricCard({ title, value, trend, tone }: { title: string; value: strin
   );
 }
 
-function DataTable<T>({ headers, rows, renderRow }: { headers: string[]; rows: T[]; renderRow: (row: T) => ReactNode }) {
-  return (
-    <div className="table-wrap">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            {headers.map((header) => (
-              <TableHead key={header}>{header}</TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>{rows.map(renderRow)}</TableBody>
-      </Table>
-      {rows.length === 0 ? <EmptyState text="当前筛选条件下没有数据。" /> : null}
-    </div>
-  );
-}
-
 function RiskBadge({ risk }: { risk: "High" | "Medium" | "Low" }) {
   return <UiBadge className={`risk-badge ${risk.toLowerCase()}`} variant="outline">{riskLabels[risk]}</UiBadge>;
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <UiBadge className="status-badge" variant="secondary"><span />{status}</UiBadge>;
+  return <UiBadge className="status-badge" variant="secondary"><span />{formatWorkflowDisplayText(status)}</UiBadge>;
 }
 
 function SectionLabel({ icon, label }: { icon: ReactNode; label: string }) {
@@ -4386,22 +4521,25 @@ function Timeline({ steps, activeIndex }: { steps: string[]; activeIndex: number
       {steps.map((step, index) => (
         <div className={index <= activeIndex ? "done" : ""} key={step}>
           <span>{index < activeIndex ? <Check size={14} /> : index + 1}</span>
-          <small>{step}</small>
+          <small>{formatWorkflowDisplayText(step)}</small>
         </div>
       ))}
     </div>
   );
 }
 
-function VerticalTimeline({ items }: { items: [string, string, string][] }) {
+function VerticalTimeline({ items }: { items: VerticalTimelineItem[] }) {
   return (
     <div className="vertical-timeline">
-      {items.map(([time, title, body]) => (
-        <div key={`${time}-${title}`}>
+      {items.map(({ body, isCurrent, marker, time, title }) => (
+        <div className={`vertical-timeline-item${isCurrent ? " vertical-timeline-item--current" : ""}`} key={`${time}-${title}`}>
           <span className="timeline-dot" />
-          <small>{time}</small>
-          <strong>{title}</strong>
-          <p>{body}</p>
+          <div className="vertical-timeline-meta">
+            <small>{time}</small>
+            {marker ? <span className="vertical-timeline-current-badge">{marker}</span> : null}
+          </div>
+          <strong>{formatWorkflowDisplayText(title)}</strong>
+          <p>{formatWorkflowDisplayText(body)}</p>
         </div>
       ))}
     </div>

@@ -3,7 +3,8 @@ import type {
   ParameterDraftItem,
   ParameterRecord,
   ParameterSubmissionItem,
-  ParameterSubmissionRound
+  ParameterSubmissionRound,
+  ParameterWorkflowAssignees
 } from "./types";
 
 type RuntimeReviewFields = Pick<
@@ -34,6 +35,7 @@ type ParameterRoundState = {
 export type SubmitParameterRoundInput = {
   items: ParameterDraftItem[];
   reason?: string;
+  assignees?: ParameterWorkflowAssignees;
   projects: ProjectSummary[];
   roles: SubmitterRole[];
   buildRuntimeReviewFields: BuildRuntimeReviewFields;
@@ -74,7 +76,9 @@ export function submitParameterRound<TState extends ParameterRoundState>(state: 
       targetValue: item.targetValue,
       submitter,
       createdAt: "刚刚",
-      status: "待审阅",
+      status: input.assignees ? "硬件Committer检视" : "待审阅",
+      assignedTo: input.assignees?.hardwareCommitterId,
+      workflowAssignees: input.assignees,
       ...input.buildRuntimeReviewFields(summary, parameter.module)
     };
   });
@@ -100,8 +104,9 @@ export function submitParameterRound<TState extends ParameterRoundState>(state: 
         projectName: project?.name ?? draftItems[0].parameter.projectId,
         submitter,
         createdAt: "刚刚",
-        status: "待审阅",
+        status: input.assignees ? "硬件Committer检视" : "待审阅",
         summary: `本轮提交包含 ${submissionItems.length} 个参数修改。`,
+        workflowAssignees: input.assignees,
         items: submissionItems
       },
       ...state.parameterSubmissionRounds

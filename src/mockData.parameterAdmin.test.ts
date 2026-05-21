@@ -27,7 +27,10 @@ describe("parameter admin data contracts", () => {
     }
 
     expect(users.filter((user) => user.roleId === "admin").length).toBeGreaterThanOrEqual(1);
-    expect(users.filter((user) => user.roleId === "guest").length).toBeGreaterThanOrEqual(2);
+    expect(users.filter((user) => user.roleId === "hardware-user").length).toBeGreaterThanOrEqual(1);
+    expect(users.filter((user) => user.roleId === "software-user").length).toBeGreaterThanOrEqual(2);
+    expect(users.filter((user) => user.roleId === "hardware-committer").length).toBeGreaterThanOrEqual(2);
+    expect(users.filter((user) => user.roleId === "software-committer").length).toBeGreaterThanOrEqual(1);
     expect(users.some((user) => !user.isActive)).toBe(true);
   });
 

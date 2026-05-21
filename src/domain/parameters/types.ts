@@ -26,7 +26,21 @@ export type ParameterRecord = {
   history: ParameterHistoryEntry[];
 };
 
-export type RequestStatus = "待审阅" | "自动检查通过" | "等待合入" | "已合入" | "已打回";
+export type RequestStatus =
+  | "硬件Committer检视"
+  | "软件Committer检视"
+  | "软件User合入"
+  | "待审阅"
+  | "自动检查通过"
+  | "等待合入"
+  | "已合入"
+  | "已打回";
+
+export type ParameterWorkflowAssignees = {
+  hardwareCommitterId: string;
+  softwareCommitterId: string;
+  softwareUserId: string;
+};
 
 export type ParameterDraftItem = {
   parameterId: string;
@@ -73,6 +87,7 @@ export type ChangeRequest = {
   aiSuggestion: AIReviewSuggestion;
   impact: ImpactItem[];
   assignedTo?: string;
+  workflowAssignees?: ParameterWorkflowAssignees;
   fastTrack?: boolean;
   reviewerNote?: string;
 };
@@ -97,6 +112,7 @@ export type ParameterSubmissionRound = {
   createdAt: string;
   status: RequestStatus | "已撤回" | "已暂存";
   summary: string;
+  workflowAssignees?: ParameterWorkflowAssignees;
   items: ParameterSubmissionItem[];
 };
 

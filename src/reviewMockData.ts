@@ -99,6 +99,13 @@ type ReviewMockSeed = {
   assignedTo?: string;
   rejectReason?: string;
   reviewerNote?: string;
+  workflowAssignees?: ChangeRequest["workflowAssignees"];
+};
+
+const DEFAULT_WORKFLOW_ASSIGNEES = {
+  hardwareCommitterId: "u-wang-jie",
+  softwareCommitterId: "u-sun-mei",
+  softwareUserId: "u-chen-na"
 };
 
 const SEEDS: ReviewMockSeed[] = [
@@ -114,7 +121,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "H. Zhao",
     createdAt: "36 分钟前",
     createdAtTs: "2026-05-10T11:24:00.000Z",
-    status: "待审阅",
+    status: "硬件Committer检视",
     suggestion: {
       recommendation: "advance",
       confidence: "high",
@@ -127,7 +134,8 @@ const SEEDS: ReviewMockSeed[] = [
       similarRequests: ["PRQ-7801", "PRQ-7654", "PRQ-7530"]
     },
     impactKey: "charging",
-    assignedTo: "admin-li"
+    assignedTo: "u-wang-jie",
+    workflowAssignees: DEFAULT_WORKFLOW_ASSIGNEES
   },
   {
     id: "PRQ-9098",
@@ -141,7 +149,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "M. Kross",
     createdAt: "2 小时前",
     createdAtTs: "2026-05-10T10:00:00.000Z",
-    status: "待审阅",
+    status: "硬件Committer检视",
     suggestion: {
       recommendation: "advance",
       confidence: "high",
@@ -149,7 +157,9 @@ const SEEDS: ReviewMockSeed[] = [
       reasons: ["目标值在推荐区间内", "历史相似 2 条全部成功", "自动化回归全部通过"],
       similarRequests: ["PRQ-7200", "PRQ-7180"]
     },
-    impactKey: "charging"
+    impactKey: "charging",
+    assignedTo: "u-wang-jie",
+    workflowAssignees: DEFAULT_WORKFLOW_ASSIGNEES
   },
   {
     id: "PRQ-9096",
@@ -162,7 +172,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "A. Singh",
     createdAt: "6 小时前",
     createdAtTs: "2026-05-10T06:00:00.000Z",
-    status: "自动检查通过",
+    status: "软件Committer检视",
     suggestion: {
       recommendation: "advance",
       confidence: "high",
@@ -171,7 +181,12 @@ const SEEDS: ReviewMockSeed[] = [
       similarRequests: ["PRQ-8011", "PRQ-8024", "PRQ-8048"]
     },
     impactKey: "estimation",
-    assignedTo: "admin-li"
+    assignedTo: "u-sun-mei",
+    workflowAssignees: {
+      hardwareCommitterId: "u-li-peng",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-liu-min"
+    }
   },
   {
     id: "PRQ-9101",
@@ -185,7 +200,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "L. Chen",
     createdAt: "18 小时前",
     createdAtTs: "2026-05-09T18:00:00.000Z",
-    status: "待审阅",
+    status: "硬件Committer检视",
     suggestion: {
       recommendation: "reject",
       confidence: "high",
@@ -193,7 +208,9 @@ const SEEDS: ReviewMockSeed[] = [
       reasons: ["低温场景回归缺失", "与 Nebula 上一版阈值偏差超过 20%", "影响电池安全链参数"],
       similarRequests: ["PRQ-7019", "PRQ-7042"]
     },
-    impactKey: "battery-safety"
+    impactKey: "battery-safety",
+    assignedTo: "u-wang-jie",
+    workflowAssignees: DEFAULT_WORKFLOW_ASSIGNEES
   },
   {
     id: "PRQ-9091",
@@ -206,7 +223,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "R. Ito",
     createdAt: "24 小时前",
     createdAtTs: "2026-05-09T12:00:00.000Z",
-    status: "待审阅",
+    status: "硬件Committer检视",
     suggestion: {
       recommendation: "reject",
       confidence: "high",
@@ -214,7 +231,13 @@ const SEEDS: ReviewMockSeed[] = [
       reasons: ["目标值接近硬件保护下限", "缺少极端温度放电验证", "相似请求曾因保护滞后被回滚"],
       similarRequests: ["PRQ-6930", "PRQ-6888"]
     },
-    impactKey: "battery-safety"
+    impactKey: "battery-safety",
+    assignedTo: "u-li-peng",
+    workflowAssignees: {
+      hardwareCommitterId: "u-li-peng",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-liu-min"
+    }
   },
   {
     id: "PRQ-9089",
@@ -227,7 +250,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "Y. Park",
     createdAt: "3 天前",
     createdAtTs: "2026-05-07T12:00:00.000Z",
-    status: "自动检查通过",
+    status: "软件Committer检视",
     suggestion: {
       recommendation: "advance",
       confidence: "mid",
@@ -236,6 +259,8 @@ const SEEDS: ReviewMockSeed[] = [
       similarRequests: ["PRQ-6751"]
     },
     impactKey: "thermal",
+    assignedTo: "u-sun-mei",
+    workflowAssignees: DEFAULT_WORKFLOW_ASSIGNEES,
     reviewerNote: "等待补充无线充长测摘要。"
   },
   {
@@ -249,7 +274,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "N. Patel",
     createdAt: "4 天前",
     createdAtTs: "2026-05-06T12:00:00.000Z",
-    status: "等待合入",
+    status: "软件User合入",
     suggestion: {
       recommendation: "needs-review",
       confidence: "mid",
@@ -258,7 +283,12 @@ const SEEDS: ReviewMockSeed[] = [
       similarRequests: ["PRQ-6608", "PRQ-6501"]
     },
     impactKey: "thermal",
-    assignedTo: "specialist-wang"
+    assignedTo: "u-chen-na",
+    workflowAssignees: {
+      hardwareCommitterId: "u-li-peng",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-chen-na"
+    }
   },
   {
     id: "PRQ-9085",
@@ -314,7 +344,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "S. Garcia",
     createdAt: "72 小时前",
     createdAtTs: "2026-05-07T12:00:00.000Z",
-    status: "待审阅",
+    status: "硬件Committer检视",
     suggestion: {
       recommendation: "needs-review",
       confidence: "low",
@@ -322,7 +352,9 @@ const SEEDS: ReviewMockSeed[] = [
       reasons: ["后台保活指标缺少项目拆分", "目标值低于 Aurora 近 3 版均值", "需要与体验团队确认"],
       similarRequests: ["PRQ-6208", "PRQ-6191"]
     },
-    impactKey: "thermal"
+    impactKey: "thermal",
+    assignedTo: "u-wang-jie",
+    workflowAssignees: DEFAULT_WORKFLOW_ASSIGNEES
   },
   {
     id: "PRQ-9079",
@@ -335,7 +367,7 @@ const SEEDS: ReviewMockSeed[] = [
     submitter: "D. Novak",
     createdAt: "96 小时前",
     createdAtTs: "2026-05-06T12:00:00.000Z",
-    status: "待审阅",
+    status: "硬件Committer检视",
     suggestion: {
       recommendation: "needs-review",
       confidence: "mid",
@@ -344,7 +376,12 @@ const SEEDS: ReviewMockSeed[] = [
       similarRequests: ["PRQ-6120", "PRQ-6089"]
     },
     impactKey: "charging",
-    assignedTo: "specialist-wang"
+    assignedTo: "u-li-peng",
+    workflowAssignees: {
+      hardwareCommitterId: "u-li-peng",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-liu-min"
+    }
   }
 ];
 
@@ -375,6 +412,7 @@ export function buildReviewMockRequests(): ChangeRequest[] {
       aiSuggestion: suggestion,
       impact: buildImpactItems(seed.impactKey),
       assignedTo: seed.assignedTo,
+      workflowAssignees: seed.workflowAssignees,
       reviewerNote: seed.reviewerNote
     };
   });

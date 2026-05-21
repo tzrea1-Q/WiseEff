@@ -53,7 +53,15 @@ export type AIFeedbackEntry = {
 };
 
 export { REVIEW_MOCK_NOW };
-export type RequestStatus = "待审阅" | "自动检查通过" | "等待合入" | "已合入" | "已打回";
+export type RequestStatus =
+  | "硬件Committer检视"
+  | "软件Committer检视"
+  | "软件User合入"
+  | "待审阅"
+  | "自动检查通过"
+  | "等待合入"
+  | "已合入"
+  | "已打回";
 export type LogStageId = "parse" | "pattern" | "rootcause" | "report";
 export type LogStatus = "Processing" | "Complete" | "Failed";
 export type LogSeverity = "Critical" | "Warning" | "Info";
@@ -143,6 +151,7 @@ export type ChangeRequest = {
   aiSuggestion: AIReviewSuggestion;
   impact: ImpactItem[];
   assignedTo?: string;
+  workflowAssignees?: ParameterWorkflowAssignees;
   fastTrack?: boolean;
   reviewerNote?: string;
 };
@@ -159,6 +168,12 @@ export type ParameterSubmissionItem = {
   reason: string;
 };
 
+export type ParameterWorkflowAssignees = {
+  hardwareCommitterId: string;
+  softwareCommitterId: string;
+  softwareUserId: string;
+};
+
 export type ParameterSubmissionRound = {
   id: string;
   projectId: string;
@@ -167,6 +182,7 @@ export type ParameterSubmissionRound = {
   createdAt: string;
   status: RequestStatus | "已撤回" | "已暂存";
   summary: string;
+  workflowAssignees?: ParameterWorkflowAssignees;
   items: ParameterSubmissionItem[];
 };
 
@@ -354,12 +370,12 @@ export const roles: Role[] = [...platformRoles];
 
 export const users: User[] = [
   { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", title: "Platform Owner", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z", lastActive: "just now" },
-  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", title: "Hardware Engineer", roleId: "guest", isActive: true, createdAt: "2025-01-14T03:12:00.000Z", lastActive: "2h ago" },
-  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", title: "Project Engineer", roleId: "user", isActive: true, createdAt: "2025-02-03T08:04:00.000Z", lastActive: "today 09:12" },
-  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", title: "Parameter Reviewer", roleId: "committer", isActive: true, createdAt: "2024-12-20T12:00:00.000Z", lastActive: "yesterday" },
-  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", title: "Project Engineer", roleId: "user", isActive: true, createdAt: "2025-03-10T10:00:00.000Z", lastActive: "today 10:00" },
-  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", title: "Hardware Viewer", roleId: "guest", isActive: true, createdAt: "2025-03-22T11:00:00.000Z", lastActive: "3d ago" },
-  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", title: "Parameter Reviewer", roleId: "committer", isActive: true, createdAt: "2025-04-01T09:00:00.000Z", lastActive: "5h ago" },
+  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", title: "Hardware Engineer", roleId: "hardware-user", isActive: true, createdAt: "2025-01-14T03:12:00.000Z", lastActive: "2h ago" },
+  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", title: "Software Engineer", roleId: "software-user", isActive: true, createdAt: "2025-02-03T08:04:00.000Z", lastActive: "today 09:12" },
+  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", title: "Hardware Reviewer", roleId: "hardware-committer", isActive: true, createdAt: "2024-12-20T12:00:00.000Z", lastActive: "yesterday" },
+  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", title: "Software Integrator", roleId: "software-user", isActive: true, createdAt: "2025-03-10T10:00:00.000Z", lastActive: "today 10:00" },
+  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", title: "Hardware Committer", roleId: "hardware-committer", isActive: true, createdAt: "2025-03-22T11:00:00.000Z", lastActive: "3d ago" },
+  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", title: "Software Reviewer", roleId: "software-committer", isActive: true, createdAt: "2025-04-01T09:00:00.000Z", lastActive: "5h ago" },
   { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", title: "External Viewer", roleId: "guest", isActive: false, createdAt: "2025-04-15T14:00:00.000Z", lastActive: "disabled" }
 ];
 
@@ -817,8 +833,13 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         projectName: "Aurora 量产平台",
         submitter: "H. Zhao",
         createdAt: "36 分钟前",
-        status: "待审阅",
-        summary: "快充输入电流调整，等待参数管理员审阅。",
+        status: "硬件Committer检视",
+        summary: "快充输入电流调整，等待硬件 Committer 检视。",
+        workflowAssignees: {
+          hardwareCommitterId: "u-wang-jie",
+          softwareCommitterId: "u-sun-mei",
+          softwareUserId: "u-chen-na"
+        },
         items: [
           {
             requestId: "PRQ-9102",
@@ -839,8 +860,13 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         projectName: "Aurora 量产平台",
         submitter: "L. Chen",
         createdAt: "昨天",
-        status: "自动检查通过",
-        summary: "电池目标温度下调，自动检查已通过。",
+        status: "硬件Committer检视",
+        summary: "电池目标温度下调，等待硬件 Committer 检视。",
+        workflowAssignees: {
+          hardwareCommitterId: "u-wang-jie",
+          softwareCommitterId: "u-sun-mei",
+          softwareUserId: "u-chen-na"
+        },
         items: [
           {
             requestId: "PRQ-9101",

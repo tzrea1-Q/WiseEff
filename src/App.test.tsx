@@ -497,7 +497,7 @@ describe("WiseEff app shell", () => {
     expect(within(dialog).getByText("charge_voltage_limit_mv")).toBeInTheDocument();
     expect(within(dialog).getByText(/4310/)).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "确认提交本轮" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
     fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
@@ -710,7 +710,7 @@ describe("WiseEff app shell", () => {
 
     const reviewTable = screen.getByRole("table");
     expect(within(reviewTable).getByText("参数初始化")).toBeInTheDocument();
-    expect(within(reviewTable).getByText("Zephyr")).toBeInTheDocument();
+    expect(within(reviewTable).getAllByText("Zephyr").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "通过初始化" }));
 
@@ -813,6 +813,40 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector(".comparison-matrix--v2")).toHaveTextContent("battery_temp_target_c");
   });
 
+  it("does not duplicate the active review workflow step in the detail timeline", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    renderAppForCurrentPath();
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+
+    expect(within(reviewDetail).getAllByText("硬件MDE检视")).toHaveLength(1);
+    expect(reviewDetail).toHaveTextContent("软件MDE检视");
+    expect(reviewDetail).toHaveTextContent("软件开发人员合入");
+    expect(reviewDetail).toHaveTextContent("软件 MDE：Sun Mei。");
+    expect(reviewDetail).toHaveTextContent("软件开发人员：Chen Na。");
+    expect(reviewDetail).not.toHaveTextContent("Committer");
+    expect(reviewDetail).not.toHaveTextContent("User");
+    expect(reviewDetail).toHaveTextContent("当前处理人：Wang Jie。");
+  });
+
+  it("clearly marks the active review workflow step", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    renderAppForCurrentPath();
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+    const currentMarker = within(reviewDetail).getByText("当前流程");
+    const currentStep = currentMarker.closest(".vertical-timeline-item");
+
+    expect(currentStep).toHaveClass("vertical-timeline-item--current");
+    expect(currentStep).toHaveTextContent("流程 1");
+    expect(currentStep).toHaveTextContent("硬件MDE检视");
+    expect(reviewDetail).not.toHaveTextContent("硬件Committer检视");
+    expect(currentStep).toHaveTextContent("当前处理人：Wang Jie。");
+    expect(within(reviewDetail).getAllByText("当前流程")).toHaveLength(1);
+  });
+
   it("consumes parameter review context from project and module query strings", () => {
     window.history.replaceState(null, "", "/parameter-review?project=aurora&module=Battery%20Safety");
 
@@ -844,25 +878,28 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector(".topbar-title")).toHaveTextContent("参数管理员工作台");
   });
 
-  it("styles the parameter review filters like the user parameter toolbar filters", () => {
+  it("combines parameter review filters into the table headers", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
     renderAppForCurrentPath();
 
-    const filterBar = document.querySelector(".review-queue-filters");
+    const table = screen.getByRole("table");
+    const headerRow = within(table).getAllByRole("row")[0];
 
-    expect(filterBar).toBeInTheDocument();
-    expect(filterBar?.querySelectorAll(".dropdown-trigger")).toHaveLength(3);
-    expect(within(filterBar as HTMLElement).getByRole("button", { name: "模块 ▾" })).toHaveClass("dropdown-trigger");
-    expect(within(filterBar as HTMLElement).getByRole("button", { name: "提交人 ▾" })).toHaveClass("dropdown-trigger");
-    expect(within(filterBar as HTMLElement).getByRole("button", { name: "项目 ▾" })).toHaveClass("dropdown-trigger");
+    expect(document.querySelector(".review-queue-filters")).not.toBeInTheDocument();
+    expect(within(headerRow).getByRole("button", { name: "项目 ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(headerRow).getByRole("button", { name: "模块 ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(headerRow).getByRole("button", { name: "提交人 ▾" })).toHaveClass("dropdown-trigger");
 
-    fireEvent.click(within(filterBar as HTMLElement).getByRole("button", { name: "提交人 ▾" }));
+    fireEvent.click(within(headerRow).getByRole("button", { name: "提交人 ▾" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "H. Zhao" }));
 
-    expect(within(filterBar as HTMLElement).getByRole("button", { name: "提交人 (1) ▾" })).toHaveClass("dropdown-trigger");
-    expect(within(screen.getByRole("table")).getByText("PRQ-9102")).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).queryByText("PRQ-9101")).not.toBeInTheDocument();
+    expect(within(headerRow).getByRole("button", { name: "提交人 (1) ▾" })).toHaveClass("dropdown-trigger");
+    expect(within(table).getByText("PRQ-9102")).toBeInTheDocument();
+    expect(within(table).queryByText("PRQ-9101")).not.toBeInTheDocument();
+
+    const styles = readFileSync("src/styles.css", "utf8");
+    expect(readCssBlock(styles, ".review-table-wrap [data-slot=\"table-container\"]")).toContain("overflow: visible;");
   });
 
   it("switches the review table title between pending requests and merged submission history", () => {
@@ -1034,7 +1071,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-review",
-        present: ["待审阅", "历史提交", "变更", "变更历史", "现在", "提交人"],
+        present: ["待审阅", "历史提交", "变更", "变更历史", "当前", "提交人"],
         absent: ["Filter Queue", "Pending Requests", "Req ID", "Submitter", "Proposed Change", "Change History", "Targeting module"]
       },
       {
