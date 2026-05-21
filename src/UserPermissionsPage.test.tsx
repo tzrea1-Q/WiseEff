@@ -205,6 +205,33 @@ describe("UserPermissionsPage", () => {
     expect(roleSelect).toHaveClass("user-permissions-role-select");
   });
 
+  it("supports header filters on every user table data column", async () => {
+    renderPage();
+
+    const table = screen.getByRole("table", { name: "Platform users" });
+    const checks: Array<[string, string, string]> = [
+      ["User", "筛选User", "Xu Yun"],
+      ["Title", "筛选Title", "Platform Owner"],
+      ["Role", "筛选Role", "Admin"],
+      ["Status", "筛选Status", "Active"],
+      ["Last active", "筛选Last active", "just now"]
+    ];
+
+    for (const [headerName, buttonName, optionName] of checks) {
+      const header = within(table).getByRole("columnheader", { name: new RegExp(headerName) });
+      await userEvent.click(within(header).getByRole("button", { name: buttonName }));
+      expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
+      await userEvent.click(within(header).getByRole("button", { name: buttonName }));
+    }
+
+    const roleHeader = within(table).getByRole("columnheader", { name: /Role/ });
+    await userEvent.click(within(roleHeader).getByRole("button", { name: "筛选Role" }));
+    await userEvent.click(within(roleHeader).getByRole("checkbox", { name: "Admin" }));
+
+    expect(within(table).getByText("Xu Yun")).toBeInTheDocument();
+    expect(within(table).queryByText("Liu Min")).not.toBeInTheDocument();
+  });
+
   it("keeps role selectors wide enough for split committer role names", () => {
     const roleCellStyles = readCssBlock(".user-permissions-role-cell");
     const roleSelectStyles = readCssBlock(".user-permissions-role-select");

@@ -7,7 +7,6 @@ import {
   TimeWindowSelect,
   type Column
 } from "@/components/admin";
-import { ColumnFilter } from "@/components/ColumnFilter";
 import { Button } from "@/components/ui/button";
 import { canPerform } from "@/app/permissions";
 import { cn } from "@/lib/utils";
@@ -128,6 +127,11 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     {
       key: "projectId",
       header: "项目",
+      headerFilter: {
+        label: "项目",
+        values: Array.from(new Set(windowLogs.map((record) => projectName(record.projectId)))),
+        getValue: (record) => projectName(record.projectId)
+      },
       render: (record) => <span className="text-muted-foreground">{projectName(record.projectId)}</span>,
       sortAccessor: (record) => record.projectId,
       widthClass: "w-36"
@@ -135,16 +139,14 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     {
       key: "source",
       header: "来源模块",
-      headerFilter: (
-        <ColumnFilter
-          label="来源模块"
-          groupLabel="来源模块筛选"
-          values={availableModules}
-          selectedValues={moduleFilter}
-          onToggle={toggleModuleFilter}
-          onClear={() => setModuleFilter([])}
-        />
-      ),
+      headerFilter: {
+        label: "来源模块",
+        values: availableModules,
+        selectedValues: moduleFilter,
+        getValue: (record) => record.source,
+        onToggle: toggleModuleFilter,
+        onClear: () => setModuleFilter([])
+      },
       render: (record) => <span className="text-muted-foreground">{record.source}</span>,
       sortAccessor: (record) => record.source,
       widthClass: "w-36"
@@ -159,18 +161,16 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     {
       key: "status",
       header: "状态",
-      headerFilter: (
-        <ColumnFilter
-          label="状态"
-          groupLabel="状态筛选"
-          values={["Processing", "Complete", "Failed"]}
-          selectedValues={statusFilter}
-          renderLabel={(status) => statusLabels[status as LogStatus] ?? status}
-          onToggle={toggleStatusFilter}
-          onClear={() => setStatusFilter([])}
-          align="right"
-        />
-      ),
+      headerFilter: {
+        label: "状态",
+        values: ["Processing", "Complete", "Failed"],
+        selectedValues: statusFilter,
+        getValue: (record) => record.status,
+        renderLabel: (status) => statusLabels[status as LogStatus] ?? status,
+        onToggle: toggleStatusFilter,
+        onClear: () => setStatusFilter([]),
+        align: "right"
+      },
       render: (record) => <StatusBadge status={record.status} />,
       sortAccessor: (record) => record.status,
       widthClass: "w-24"
