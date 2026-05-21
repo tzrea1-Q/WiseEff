@@ -61,6 +61,51 @@ describe("powerManagementConfig", () => {
     expect(flattenDebugParameters(bundledPowerManagementConfig)).toHaveLength(8);
   });
 
+  it("supports runtime-created project ids in parameter values", () => {
+    const config = {
+      ...bundledPowerManagementConfig,
+      projects: [...bundledPowerManagementConfig.projects, { id: "zephyr", name: "Zephyr", code: "ZEP" }],
+      parameterLibrary: bundledPowerManagementConfig.parameterLibrary.map((parameter, index) =>
+        index === 0
+          ? {
+              ...parameter,
+              values: {
+                ...parameter.values,
+                zephyr: {
+                  currentValue: "待项目确认",
+                  recommendedValue: "35",
+                  updatedAt: "just now"
+                }
+              }
+            }
+          : parameter
+      )
+    };
+
+    const flattened = flattenProjectParameters(config);
+
+    expect(flattened.some((parameter) => parameter.projectId === "zephyr")).toBe(true);
+    expect(flattened.filter((parameter) => parameter.projectId === "zephyr")).toHaveLength(1);
+  });
+
+  it("creates a complete value when updating a missing runtime project parameter value", () => {
+    const firstParameter = bundledPowerManagementConfig.parameterLibrary[0];
+    const config = {
+      ...bundledPowerManagementConfig,
+      projects: [...bundledPowerManagementConfig.projects, { id: "zephyr", name: "Zephyr", code: "ZEP" }]
+    };
+
+    const next = updateProjectParameter(config, "zephyr", `zephyr-${firstParameter.id}`, {
+      recommendedValue: "42"
+    });
+
+    expect(next.parameterLibrary[0].values.zephyr).toEqual({
+      currentValue: "待项目确认",
+      recommendedValue: "42",
+      updatedAt: "just now"
+    });
+  });
+
   it("ships node metadata for every debug parameter", () => {
     expect(bundledPowerManagementConfig.debugParameters.length).toBeGreaterThan(0);
     for (const parameter of bundledPowerManagementConfig.debugParameters) {
@@ -89,7 +134,7 @@ describe("powerManagementConfig", () => {
     const addedProjectParameter = withProjectParameter.parameterLibrary.at(-1);
 
     expect(addedProjectParameter?.name).toBe("new_power_parameter_11");
-    expect(addedProjectParameter?.values.aurora.currentValue).toBe("0");
+    expect(addedProjectParameter?.values.aurora?.currentValue).toBe("0");
     expect(deleteProjectParameter(withProjectParameter, addedProjectParameter?.id ?? "").parameterLibrary).toHaveLength(10);
 
     const withDebugParameter = addDebugParameter(draft);

@@ -51,6 +51,11 @@ export function submitParameterRound<TState extends ParameterRoundState>(state: 
     return state;
   }
 
+  const targetProjectIds = new Set(draftItems.map(({ parameter }) => parameter.projectId));
+  if (targetProjectIds.size !== 1) {
+    return state;
+  }
+
   const project = input.projects.find((item) => item.id === draftItems[0].parameter.projectId);
   const submitter = input.roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
   const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;

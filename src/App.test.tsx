@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
-import App from "./App";
+import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
@@ -198,6 +198,17 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
+  });
+
+  it("opens the project initialization wizard from the parameter workspace topbar", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    renderAppForCurrentPath();
+
+    fireEvent.click(screen.getByRole("button", { name: "新建项目" }));
+
+    expect(screen.getByRole("dialog", { name: "新项目参数初始化" })).toBeInTheDocument();
+    expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
   });
 
   it("switches the prototype role from the topbar user menu", () => {
@@ -675,6 +686,131 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("dialog", { name: "打回修改" })).not.toBeInTheDocument();
     expect(reviewDetail).toHaveTextContent("已打回");
     expect(reviewDetail).toHaveTextContent("热测试数据缺少高温工况说明，需要补充后再提交。");
+  });
+
+  it("shows parameter initialization reviews and approves them", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const state = appReducer(initialState, {
+      type: "SUBMIT_PARAMETER_INITIALIZATION",
+      draft: {
+        projectName: "Zephyr",
+        projectCode: "ZEP",
+        ownerUserId: "u-xu-yun",
+        sourceProjectIds: ["aurora", "nebula"],
+        primarySourceProjectId: "aurora",
+        supplementSourceProjectIds: ["nebula"],
+        selectedModules: ["Battery Safety"],
+        selectedRisks: ["Medium"],
+        selectedParameterIds: ["battery-temp-target"],
+        notes: "Initialize from Aurora"
+      }
+    });
+
+    render(<App initialAppState={{ ...state, activeRoleId: "admin" }} />);
+
+    const reviewTable = screen.getByRole("table");
+    expect(within(reviewTable).getByText("参数初始化")).toBeInTheDocument();
+    expect(within(reviewTable).getByText("Zephyr")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "通过初始化" }));
+
+    fireEvent.click(screen.getByRole("tab", { name: "历史提交" }));
+
+    const approvedReviewTable = screen.getByRole("table");
+    expect(within(approvedReviewTable).getByText("参数初始化")).toBeInTheDocument();
+    expect(within(approvedReviewTable).getByText("已通过")).toBeInTheDocument();
+  });
+
+  it("prevents ordinary parameter submissions while initialization is pending review", () => {
+    const pendingState = appReducer(initialState, {
+      type: "SUBMIT_PARAMETER_INITIALIZATION",
+      draft: {
+        projectName: "Zephyr",
+        projectCode: "ZEP",
+        ownerUserId: "u-xu-yun",
+        sourceProjectIds: ["aurora", "nebula"],
+        primarySourceProjectId: "aurora",
+        supplementSourceProjectIds: ["nebula"],
+        selectedModules: ["Battery Safety"],
+        selectedRisks: ["Medium"],
+        selectedParameterIds: ["battery-temp-target"],
+        notes: "Initialize from Aurora"
+      }
+    });
+    const pendingProjectId = pendingState.parameterInitializationReviews[0].projectId;
+
+    window.history.replaceState(null, "", `/parameters?project=${pendingProjectId}`);
+
+    render(<App initialAppState={{ ...pendingState, activeProjectId: "aurora", activeRoleId: "user" }} />);
+
+    expect(screen.getByText("初始化待审阅")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /提交本轮|鎻愪氦鏈疆/ })).toBeDisabled();
+    expect(screen.getByRole("region", { name: /检索参数表|妫€绱㈠弬鏁拌〃/ })).toBeInTheDocument();
+    expect(screen.queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+  });
+
+  it("shows an approved initialization project in the parameters project selector", () => {
+    const submittedState = appReducer({ ...initialState, activeRoleId: "admin" }, {
+      type: "SUBMIT_PARAMETER_INITIALIZATION",
+      draft: {
+        projectName: "Zephyr",
+        projectCode: "ZEP",
+        ownerUserId: "u-xu-yun",
+        sourceProjectIds: ["aurora", "nebula"],
+        primarySourceProjectId: "aurora",
+        supplementSourceProjectIds: ["nebula"],
+        selectedModules: ["Battery Safety"],
+        selectedRisks: ["Medium"],
+        selectedParameterIds: ["battery-temp-target"],
+        notes: "Initialize from Aurora"
+      }
+    });
+    const approvedState = appReducer(submittedState, {
+      type: "APPROVE_PARAMETER_INITIALIZATION",
+      reviewId: submittedState.parameterInitializationReviews[0].id
+    });
+
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App initialAppState={{ ...approvedState, activeRoleId: "user" }} />);
+
+    const projectSelect = screen.getByRole("combobox", { name: "项目" });
+    changeSelectValue(projectSelect, "Zephyr");
+
+    expectSelectValue(projectSelect, "zep");
+    expect(window.location.search).toContain("project=zep");
+    expect(within(screen.getByRole("table")).getByText("battery_temp_target_c")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("待项目确认")).toBeInTheDocument();
+  });
+
+  it("initializes parameter comparison from an approved runtime project query", () => {
+    const submittedState = appReducer({ ...initialState, activeRoleId: "admin" }, {
+      type: "SUBMIT_PARAMETER_INITIALIZATION",
+      draft: {
+        projectName: "Zephyr",
+        projectCode: "ZEP",
+        ownerUserId: "u-xu-yun",
+        sourceProjectIds: ["aurora", "nebula"],
+        primarySourceProjectId: "aurora",
+        supplementSourceProjectIds: ["nebula"],
+        selectedModules: ["Battery Safety"],
+        selectedRisks: ["Medium"],
+        selectedParameterIds: ["battery-temp-target"],
+        notes: "Initialize from Aurora"
+      }
+    });
+    const approvedState = appReducer(submittedState, {
+      type: "APPROVE_PARAMETER_INITIALIZATION",
+      reviewId: submittedState.parameterInitializationReviews[0].id
+    });
+    const approvedProjectId = approvedState.parameterInitializationReviews[0].projectId;
+
+    window.history.replaceState(null, "", `/parameter-comparison?project=${approvedProjectId}`);
+
+    render(<App initialAppState={{ ...approvedState, activeRoleId: "user" }} />);
+
+    expect(screen.getByRole("button", { name: /ZEP Zephyr/ })).toBeInTheDocument();
+    expect(document.querySelector(".comparison-matrix--v2")).toHaveTextContent("battery_temp_target_c");
   });
 
   it("consumes parameter review context from project and module query strings", () => {

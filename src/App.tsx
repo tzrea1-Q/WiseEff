@@ -31,9 +31,20 @@ import type {
   ReactNode
 } from "react";
 import { WiseEffIcon } from "./components/WiseEffIcon";
+import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
 import { canAccessPage, canPerform } from "@/app/permissions";
+import {
+  applyInitializationDraftToConfig,
+  buildInitializationDraft,
+  canSubmitInitializationDraft
+} from "@/domain/parameters/initialization";
 import { submitParameterRound } from "@/domain/parameters/commands";
+import type {
+  ProjectParameterInitializationDraft,
+  ProjectParameterInitializationReview,
+  RiskLevel
+} from "@/domain/parameters/types";
 import { migrateLegacyRoleId, type PlatformRoleId } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
@@ -125,6 +136,23 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "SET_ROLE"; roleId: string }
+  | {
+      type: "SUBMIT_PARAMETER_INITIALIZATION";
+      draft: {
+        projectName: string;
+        projectCode: string;
+        ownerUserId: string;
+        sourceProjectIds: string[];
+        primarySourceProjectId: string;
+        supplementSourceProjectIds: string[];
+        selectedModules: string[];
+        selectedRisks: RiskLevel[];
+        selectedParameterIds: string[];
+        notes: string;
+      };
+    }
+  | { type: "APPROVE_PARAMETER_INITIALIZATION"; reviewId: string }
+  | { type: "REJECT_PARAMETER_INITIALIZATION"; reviewId: string; reason: string }
   | { type: "ADD_CHANGE_REQUEST"; parameterId: string; targetValue: string; reason: string }
   | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason?: string }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
@@ -352,6 +380,10 @@ function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
   return nextUsers.some((user) => user.isActive && user.roleId === "admin");
 }
 
+function canSubmitParameterChangesForProject(state: PrototypeState, projectId: string) {
+  return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
+}
+
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const auditActor = currentUser?.name ?? "system";
@@ -362,10 +394,135 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       return { ...state, activeProjectId: action.projectId };
     case "SET_ROLE":
       return { ...state, activeRoleId: action.roleId };
+    case "SUBMIT_PARAMETER_INITIALIZATION": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      const projectCode = action.draft.projectCode.trim().toUpperCase();
+      const projectId = action.draft.projectCode
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+      const hasActiveInitialization =
+        state.parameterInitializationReviews.some(
+          (review) => review.projectId === projectId && review.status === "pending"
+        ) ||
+        state.parameterInitializationReviews.some(
+          (review) => review.projectId === projectId && review.status === "approved"
+        ) ||
+        state.projectInitializationStatuses[projectId] === "initialized" ||
+        state.configDraft.projects.some(
+          (project) =>
+            project.id === projectId || project.code.trim().toUpperCase() === projectCode
+        );
+      const duplicateProjectId = hasActiveInitialization;
+      if (!projectId || duplicateProjectId) {
+        return state;
+      }
+      const now = new Date().toISOString();
+      const draft = buildInitializationDraft(state.configDraft, {
+        ...action.draft,
+        selectedModules: [],
+        selectedRisks: [],
+        id: `init-${state.parameterInitializationDrafts.length + 1}`,
+        projectId,
+        projectName: action.draft.projectName.trim(),
+        projectCode,
+        ownerUserId: action.draft.ownerUserId,
+        createdBy: state.currentUserId,
+        now
+      });
+      const validation = canSubmitInitializationDraft(draft);
+      if (!validation.ok) {
+        return state;
+      }
+      const review = {
+        id: `PIR-${2401 + state.parameterInitializationReviews.length}`,
+        draftId: draft.id,
+        projectId: draft.projectId,
+        status: "pending" as const,
+        submittedBy: state.currentUserId,
+        submittedAt: now
+      };
+
+      return {
+        ...state,
+        parameterInitializationDrafts: [draft, ...state.parameterInitializationDrafts],
+        parameterInitializationReviews: [review, ...state.parameterInitializationReviews],
+        projectInitializationStatuses: {
+          ...state.projectInitializationStatuses,
+          [draft.projectId]: "initialization_pending_review"
+        },
+        notifications: [`${draft.projectName} 参数初始化已提交审阅。`, ...state.notifications]
+      };
+    }
+    case "APPROVE_PARAMETER_INITIALIZATION": {
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
+      const review = state.parameterInitializationReviews.find((item) => item.id === action.reviewId);
+      if (!review || review.status !== "pending") {
+        return state;
+      }
+      const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
+      if (!draft) {
+        return state;
+      }
+      const now = new Date().toISOString();
+      const configDraft = applyInitializationDraftToConfig(state.configDraft, draft);
+
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft),
+        parameterInitializationReviews: state.parameterInitializationReviews.map((item) =>
+          item.id === review.id
+            ? { ...item, status: "approved", reviewedBy: state.currentUserId, reviewedAt: now }
+            : item
+        ),
+        projectInitializationStatuses: {
+          ...state.projectInitializationStatuses,
+          [draft.projectId]: "initialized"
+        },
+        notifications: [`${draft.projectName} 参数初始化已通过。`, ...state.notifications]
+      };
+    }
+    case "REJECT_PARAMETER_INITIALIZATION": {
+      if (!canPerform(activeRoleId, "parameter.review")) return state;
+      const reason = action.reason.trim();
+      if (!reason) {
+        return state;
+      }
+      const review = state.parameterInitializationReviews.find((item) => item.id === action.reviewId);
+      if (!review || review.status !== "pending") {
+        return state;
+      }
+      const now = new Date().toISOString();
+
+      return {
+        ...state,
+        parameterInitializationReviews: state.parameterInitializationReviews.map((item) =>
+          item.id === review.id
+            ? {
+                ...item,
+                status: "rejected",
+                reviewedBy: state.currentUserId,
+                reviewedAt: now,
+                rejectionReason: reason
+              }
+            : item
+        ),
+        projectInitializationStatuses: {
+          ...state.projectInitializationStatuses,
+          [review.projectId]: "initialization_rejected"
+        },
+        notifications: [`参数初始化 ${review.id} 已驳回：${reason}`, ...state.notifications]
+      };
+    }
     case "ADD_CHANGE_REQUEST": {
       if (!canPerform(activeRoleId, "parameter.edit")) return state;
       const parameter = state.parameters.find((item) => item.id === action.parameterId);
       if (!parameter) {
+        return state;
+      }
+      if (!canSubmitParameterChangesForProject(state, parameter.projectId)) {
         return state;
       }
       const project = projects.find((item) => item.id === parameter.projectId);
@@ -418,9 +575,18 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: [`已提交 ${request.id}，等待参数管理员审阅`, ...state.notifications]
       };
     }
-    case "ADD_PARAMETER_SUBMISSION_ROUND":
+    case "ADD_PARAMETER_SUBMISSION_ROUND": {
       if (!canPerform(activeRoleId, "parameter.edit")) return state;
+      const targetProjectIds = new Set(
+        action.items
+          .map((item) => state.parameters.find((parameter) => parameter.id === item.parameterId)?.projectId)
+          .filter((projectId): projectId is string => Boolean(projectId))
+      );
+      if (targetProjectIds.size !== 1 || Array.from(targetProjectIds).some((projectId) => !canSubmitParameterChangesForProject(state, projectId))) {
+        return state;
+      }
       return submitParameterRound(state, { items: action.items, reason: action.reason, projects, roles, buildRuntimeReviewFields });
+    }
     case "STASH_PARAMETER_SUBMISSION_ROUND": {
       if (!canPerform(activeRoleId, "parameter.edit")) return state;
       const draftItems = action.items
@@ -431,6 +597,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         .filter((item): item is { parameter: ParameterRecord; item: ParameterDraftItem } => Boolean(item));
 
       if (draftItems.length === 0) {
+        return state;
+      }
+      const targetProjectIds = new Set(draftItems.map(({ parameter }) => parameter.projectId));
+      if (targetProjectIds.size !== 1 || Array.from(targetProjectIds).some((projectId) => !canSubmitParameterChangesForProject(state, projectId))) {
         return state;
       }
 
@@ -1294,14 +1464,18 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
+  const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [comparisonSelection, setComparisonSelection] = useState<ComparisonProjectSelection>(() => {
+    const comparisonProjects = getComparisonProjects(initialAppState);
     const contextProjectId =
       getPageByPath(window.location.pathname).key === "parameter-comparison" ? getContextQuery(window.location.search).projectId : "";
-    const baseProjectId = projects.some((project) => project.id === contextProjectId) ? contextProjectId : state.activeProjectId;
+    const baseProjectId = comparisonProjects.some((project) => project.id === contextProjectId)
+      ? contextProjectId
+      : state.activeProjectId;
 
     return {
       baseProjectId,
-      targetProjectId: getFallbackComparisonProjectId(baseProjectId)
+      targetProjectId: getFallbackComparisonProjectId(baseProjectId, comparisonProjects)
     };
   });
   const page = getPageByPath(path);
@@ -1330,15 +1504,30 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
   }, []);
 
   useEffect(() => {
+    const comparisonProjects = getComparisonProjects(state);
     const contextProjectId = page.key === "parameter-comparison" ? getContextQuery(search).projectId : "";
-    if (contextProjectId && projects.some((project) => project.id === contextProjectId)) {
+    if (contextProjectId && comparisonProjects.some((project) => project.id === contextProjectId)) {
+      setComparisonSelection((current) => {
+        const targetProjectId = current.targetProjectId === contextProjectId
+          ? getFallbackComparisonProjectId(contextProjectId, comparisonProjects)
+          : current.targetProjectId;
+
+        if (current.baseProjectId === contextProjectId && current.targetProjectId === targetProjectId) {
+          return current;
+        }
+
+        return {
+          baseProjectId: contextProjectId,
+          targetProjectId
+        };
+      });
       return;
     }
 
     setComparisonSelection((current) => {
       const nextTargetProjectId =
         current.targetProjectId === state.activeProjectId
-          ? getFallbackComparisonProjectId(state.activeProjectId)
+          ? getFallbackComparisonProjectId(state.activeProjectId, comparisonProjects)
           : current.targetProjectId;
 
       if (current.baseProjectId === state.activeProjectId && current.targetProjectId === nextTargetProjectId) {
@@ -1350,7 +1539,7 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
         targetProjectId: nextTargetProjectId
       };
     });
-  }, [page.key, search, state.activeProjectId]);
+  }, [page.key, search, state.activeProjectId, state.configDraft.projects]);
 
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
@@ -1388,9 +1577,12 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
             state={state}
             dispatch={dispatch}
             page={page}
+            search={search}
+            onNavigate={navigate}
             pageActions={topBarActions}
             parameterHomeTimeWindow={parameterHomeTimeWindow}
             onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
+            onNewProject={() => setProjectInitOpen(true)}
           />
         ) : null}
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
@@ -1439,6 +1631,13 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
       </div>
       {!isPlatformHome && canAccessCurrentPage ? (
         <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
+      ) : null}
+      {projectInitOpen ? (
+        <ProjectParameterInitializationWizard
+          state={state}
+          dispatch={dispatch}
+          onClose={() => setProjectInitOpen(false)}
+        />
       ) : null}
     </div>
   );
@@ -2027,18 +2226,25 @@ function TopBar({
   state,
   dispatch,
   page,
+  search,
+  onNavigate,
   pageActions,
   parameterHomeTimeWindow,
-  onParameterHomeTimeWindowChange
+  onParameterHomeTimeWindowChange,
+  onNewProject
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
   page: PageConfig;
+  search: string;
+  onNavigate: (path: string) => void;
   pageActions?: ReactNode;
   parameterHomeTimeWindow: HomepageTimeWindow;
   onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
+  onNewProject: () => void;
 }) {
   const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
+  const showProjectInitAction = page.key.startsWith("parameter");
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
@@ -2048,6 +2254,16 @@ function TopBar({
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const currentRole = roles.find((role) => role.id === currentRoleId);
+  const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
+  const selectedProjectId =
+    page.key === "parameters" ? new URLSearchParams(search).get("project") || state.activeProjectId : state.activeProjectId;
+  const handleProjectChange = (projectId: string) => {
+    dispatch({ type: "SET_PROJECT", projectId });
+
+    if (page.key === "parameters") {
+      onNavigate(`/parameters?project=${encodeURIComponent(projectId)}`);
+    }
+  };
 
   return (
     <header className="topbar">
@@ -2056,8 +2272,14 @@ function TopBar({
         <div className="topbar-subtitle">{page.subtitle}</div>
       </div>
       <div className="topbar-actions">
-        {pageActions ? (
+        {showProjectInitAction || pageActions ? (
           <div className="topbar-page-actions" role="toolbar" aria-label={`${page.title}页面操作`}>
+            {showProjectInitAction ? (
+              <button className="button subtle" type="button" onClick={onNewProject}>
+                <FileText size={16} />
+                新建项目
+              </button>
+            ) : null}
             {pageActions}
           </div>
         ) : null}
@@ -2075,9 +2297,9 @@ function TopBar({
         {showProjectSelector ? (
           <SelectControl
             ariaLabel="项目"
-            value={state.activeProjectId}
-            onValueChange={(projectId) => dispatch({ type: "SET_PROJECT", projectId })}
-            options={projects.map((project) => ({ value: project.id, label: project.name }))}
+            value={selectedProjectId}
+            onValueChange={handleProjectChange}
+            options={projectOptions}
           />
         ) : null}
         <Button className="icon-button" type="button" aria-label="通知" variant="outline" size="icon">
@@ -2137,9 +2359,30 @@ function HomePage() {
 type LogsAuxTab = "history" | "metadata" | "related";
 type UploadDialogPhase = "idle" | "validating" | "confirm" | "unsupported";
 type ParameterReviewMode = "pending" | "history";
+type ParameterInitializationReviewRow = {
+  kind: "initialization";
+  review: ProjectParameterInitializationReview;
+  draft: ProjectParameterInitializationDraft;
+};
+type ParameterReviewRow =
+  | ParameterInitializationReviewRow
+  | { kind: "change"; request: ChangeRequest };
 
-function getFallbackComparisonProjectId(projectId: string) {
-  return projects.find((project) => project.id !== projectId)?.id ?? projectId;
+function getComparisonProjects(state: PrototypeState) {
+  return state.configDraft.projects.length > 0 ? state.configDraft.projects : projects;
+}
+
+function getParameterInitializationReviewStatusLabel(status: ProjectParameterInitializationReview["status"]) {
+  return {
+    pending: "待审阅",
+    approved: "已通过",
+    rejected: "已驳回"
+  }[status];
+}
+
+function getFallbackComparisonProjectId(projectId: string, projectList = projects) {
+  const comparisonProjects = projectList.length > 0 ? projectList : projects;
+  return comparisonProjects.find((project) => project.id !== projectId)?.id ?? projectId;
 }
 
 export function getContextQuery(search: string) {
@@ -2275,7 +2518,9 @@ function ReviewMultiFilter({ label, options, selected, onChange }: { label: stri
 }
 
 function ParameterReviewPage({ state, dispatch, search }: PageProps) {
-  const [selectedId, setSelectedId] = useState(state.changeRequests[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(
+    state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? ""
+  );
   const [rejectOpen, setRejectOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [reviewMode, setReviewMode] = useState<ParameterReviewMode>("pending");
@@ -2285,7 +2530,28 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const pendingRequests = useMemo(() => state.changeRequests.filter((request) => request.status !== "已合入"), [state.changeRequests]);
   const mergedRequests = useMemo(() => state.changeRequests.filter((request) => request.status === "已合入"), [state.changeRequests]);
+  const pendingInitializationRows = useMemo(
+    () =>
+      state.parameterInitializationReviews
+        .filter((review) => review.status === "pending")
+        .flatMap((review): ParameterInitializationReviewRow[] => {
+          const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
+          return draft ? [{ kind: "initialization", review, draft }] : [];
+        }),
+    [state.parameterInitializationDrafts, state.parameterInitializationReviews]
+  );
+  const historyInitializationRows = useMemo(
+    () =>
+      state.parameterInitializationReviews
+        .filter((review) => review.status !== "pending")
+        .flatMap((review): ParameterInitializationReviewRow[] => {
+          const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
+          return draft ? [{ kind: "initialization", review, draft }] : [];
+        }),
+    [state.parameterInitializationDrafts, state.parameterInitializationReviews]
+  );
   const visibleRequests = reviewMode === "history" ? mergedRequests : pendingRequests;
+  const visibleInitializationRows = reviewMode === "history" ? historyInitializationRows : pendingInitializationRows;
 
   const filteredRequests = useMemo(() => {
     return visibleRequests.filter((request) => {
@@ -2299,14 +2565,51 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       return true;
     });
   }, [visibleRequests, state.parameters, state.configDraft.projects, filterModules, filterSubmitters, filterProjects]);
-  const selected = filteredRequests.find((request) => request.id === selectedId) ?? filteredRequests[0] ?? null;
+  const filteredInitializationRows = useMemo(() => {
+    return visibleInitializationRows.filter(({ review, draft }) => {
+      const submitter = state.users.find((user) => user.id === review.submittedBy)?.name ?? review.submittedBy;
+      if (filterModules.length && !draft.parameterSnapshots.some((snapshot) => filterModules.includes(snapshot.module))) return false;
+      if (filterSubmitters.length && !filterSubmitters.includes(submitter)) return false;
+      if (filterProjects.length && !filterProjects.includes(draft.projectName)) return false;
+      return true;
+    });
+  }, [visibleInitializationRows, state.users, filterModules, filterSubmitters, filterProjects]);
+  const reviewRows = useMemo<ParameterReviewRow[]>(
+    () => [...filteredInitializationRows, ...filteredRequests.map((request) => ({ kind: "change" as const, request }))],
+    [filteredInitializationRows, filteredRequests]
+  );
+  const selectedRow = reviewRows.find((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId) ?? reviewRows[0] ?? null;
+  const selected = selectedRow?.kind === "change" ? selectedRow.request : null;
+  const selectedInitialization = selectedRow?.kind === "initialization" ? selectedRow : null;
 
-  const modules = useMemo(() => Array.from(new Set(visibleRequests.map((r) => r.module))), [visibleRequests]);
-  const submitters = useMemo(() => Array.from(new Set(visibleRequests.map((r) => r.submitter))), [visibleRequests]);
+  const modules = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...visibleInitializationRows.flatMap((row) => row.draft.parameterSnapshots.map((snapshot) => snapshot.module)),
+          ...visibleRequests.map((r) => r.module)
+        ])
+      ),
+    [visibleInitializationRows, visibleRequests]
+  );
+  const submitters = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...visibleInitializationRows.map((row) => state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy),
+          ...visibleRequests.map((r) => r.submitter)
+        ])
+      ),
+    [visibleInitializationRows, visibleRequests, state.users]
+  );
   const projectOptions = useMemo(() => {
     const ids = new Set(visibleRequests.map((r) => state.parameters.find((p) => p.id === r.parameterId)?.projectId).filter(Boolean));
-    return state.configDraft.projects.filter((p) => ids.has(p.id));
-  }, [visibleRequests, state.parameters, state.configDraft.projects]);
+    const changeProjects = state.configDraft.projects.filter((p) => ids.has(p.id));
+    const initializationProjects = visibleInitializationRows.map((row) => ({ id: row.draft.projectId, name: row.draft.projectName, code: row.draft.projectCode }));
+    return [...initializationProjects, ...changeProjects].filter(
+      (project, index, allProjects) => allProjects.findIndex((item) => item.name === project.name) === index
+    );
+  }, [visibleInitializationRows, visibleRequests, state.parameters, state.configDraft.projects]);
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
@@ -2342,6 +2645,16 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       ]
     };
   }, [selected, selectedRound, state.parameters, state.configDraft.projects]);
+  const selectedInitializationSubmitter = selectedInitialization
+    ? state.users.find((user) => user.id === selectedInitialization.review.submittedBy)?.name ?? selectedInitialization.review.submittedBy
+    : "";
+  const selectedInitializationPrimarySource = selectedInitialization
+    ? state.configDraft.projects.find((project) => project.id === selectedInitialization.draft.primarySourceProjectId)
+    : null;
+  const selectedInitializationSupplementCount =
+    selectedInitialization?.draft.parameterSnapshots.filter((snapshot) => snapshot.sourceRole === "supplement").length ?? 0;
+  const selectedInitializationConfirmationCount =
+    selectedInitialization?.draft.parameterSnapshots.filter((snapshot) => snapshot.needsRecommendedValueConfirmation).length ?? 0;
 
   useEffect(() => {
     if (!contextQuery.module && !contextQuery.projectId) {
@@ -2363,12 +2676,18 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   }, [contextQuery.module, contextQuery.projectId, state.changeRequests, state.parameters]);
 
   useEffect(() => {
-    if (filteredRequests.length && !filteredRequests.some((request) => request.id === selectedId)) {
-      setSelectedId(filteredRequests[0].id);
+    if (reviewRows.length && !reviewRows.some((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId)) {
+      const firstRow = reviewRows[0];
+      setSelectedId(firstRow.kind === "initialization" ? firstRow.review.id : firstRow.request.id);
     }
-  }, [filteredRequests, selectedId]);
+  }, [reviewRows, selectedId]);
 
   const rejectSelected = (reason: string) => {
+    if (selectedInitialization) {
+      dispatch({ type: "REJECT_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id, reason });
+      setRejectOpen(false);
+      return;
+    }
     if (!selected) {
       return;
     }
@@ -2386,7 +2705,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     setFilterProjects([]);
     setDetailOpen(false);
   };
-  const reviewMeta = reviewMode === "history" ? `${filteredRequests.length} 项已合入` : `${filteredRequests.length} 项操作`;
+  const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项已合入` : `${reviewRows.length} 项操作`;
 
   return (
     <WorkbenchLayout
@@ -2399,8 +2718,8 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
             title={
               <div className="review-view-tabs" role="tablist" aria-label="审阅视角">
                 {[
-                  { mode: "pending" as const, label: "待审阅", count: pendingRequests.length },
-                  { mode: "history" as const, label: "历史提交", count: mergedRequests.length }
+                  { mode: "pending" as const, label: "待审阅", count: pendingRequests.length + pendingInitializationRows.length },
+                  { mode: "history" as const, label: "历史提交", count: mergedRequests.length + historyInitializationRows.length }
                 ].map((item) => (
                   <button
                     className={reviewMode === item.mode ? "active" : ""}
@@ -2442,40 +2761,134 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
         </div>
         <DataTable
           headers={["请求编号", "模块", "提交人", "变更", "状态"]}
-          rows={filteredRequests}
-          renderRow={(request) => (
-            <TableRow
-              className={request.id === selected?.id ? "selected-row" : ""}
-              key={request.id}
-              onClick={() => setSelectedId(request.id)}
-            >
-              <TableCell className="mono">{request.id}</TableCell>
-              <TableCell>{request.module}</TableCell>
-              <TableCell>{request.submitter}</TableCell>
-              <TableCell className="change-cell">
-                <button
-                  className="value-change value-change-button"
-                  type="button"
-                  aria-label={`查看 ${request.id} 提交详情`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openSubmissionDetail(request);
-                  }}
+          rows={reviewRows}
+          renderRow={(row) => {
+            if (row.kind === "initialization") {
+              return (
+                <TableRow
+                  className={row.review.id === selectedInitialization?.review.id ? "selected-row" : ""}
+                  key={row.review.id}
+                  onClick={() => setSelectedId(row.review.id)}
                 >
-                  <span className="strike">{request.currentValue}</span>
-                  <ArrowRight size={14} />
-                  <strong>{request.targetValue}</strong>
-                </button>
-              </TableCell>
-              <TableCell>
-                <StatusBadge status={request.status} />
-              </TableCell>
-            </TableRow>
-          )}
+                  <TableCell className="mono">{row.review.id}</TableCell>
+                  <TableCell>参数初始化</TableCell>
+                  <TableCell>{state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy}</TableCell>
+                  <TableCell className="change-cell">
+                    <button
+                      className="value-change value-change-button"
+                      type="button"
+                      aria-label={`查看 ${row.review.id} 初始化详情`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedId(row.review.id);
+                      }}
+                    >
+                      <strong>{row.draft.projectName}</strong>
+                      <ArrowRight size={14} />
+                      <span>{row.draft.parameterSnapshots.length} 项参数</span>
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    <StatusBadge status={getParameterInitializationReviewStatusLabel(row.review.status)} />
+                  </TableCell>
+                </TableRow>
+              );
+            }
+
+            const { request } = row;
+            return (
+              <TableRow
+                className={request.id === selected?.id ? "selected-row" : ""}
+                key={request.id}
+                onClick={() => setSelectedId(request.id)}
+              >
+                <TableCell className="mono">{request.id}</TableCell>
+                <TableCell>{request.module}</TableCell>
+                <TableCell>{request.submitter}</TableCell>
+                <TableCell className="change-cell">
+                  <button
+                    className="value-change value-change-button"
+                    type="button"
+                    aria-label={`查看 ${request.id} 提交详情`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openSubmissionDetail(request);
+                    }}
+                  >
+                    <span className="strike">{request.currentValue}</span>
+                    <ArrowRight size={14} />
+                    <strong>{request.targetValue}</strong>
+                  </button>
+                </TableCell>
+                <TableCell>
+                  <StatusBadge status={request.status} />
+                </TableCell>
+              </TableRow>
+            );
+          }}
         />
       </section>
       <aside className="review-detail" aria-label="审阅详情">
-        {selected ? (
+        {selectedInitialization ? (
+          <>
+            <div className="detail-card">
+              <span className="eyebrow">{selectedInitialization.review.id}</span>
+              <h2>参数初始化</h2>
+              <p>
+                {selectedInitialization.draft.projectName} 初始化由 {selectedInitializationSubmitter} 提交。
+              </p>
+            </div>
+            <div className="ai-summary-card">
+              <SectionLabel icon={<Sparkles size={16} />} label="初始化摘要" />
+              <p>项目：{selectedInitialization.draft.projectName}</p>
+              <p>
+                主来源：{selectedInitializationPrimarySource?.name ?? selectedInitialization.draft.primarySourceProjectId}
+              </p>
+              <p>已选参数：{selectedInitialization.draft.parameterSnapshots.length}</p>
+              <p>补充来源填充：{selectedInitializationSupplementCount}</p>
+              <p>需确认推荐值：{selectedInitializationConfirmationCount}</p>
+            </div>
+            {selectedInitialization.review.rejectionReason ? (
+              <div className="rejection-reason-card">
+                <SectionLabel icon={<CircleOff size={16} />} label="驳回原因" />
+                <p>{selectedInitialization.review.rejectionReason}</p>
+              </div>
+            ) : null}
+            <div className="detail-card grow">
+              <SectionLabel icon={<History size={16} />} label="初始化状态" />
+              <VerticalTimeline
+                items={[
+                  [
+                    "现在",
+                    getParameterInitializationReviewStatusLabel(selectedInitialization.review.status),
+                    selectedInitialization.review.rejectionReason ?? "等待参数管理员处理。"
+                  ],
+                  [
+                    "已提交",
+                    selectedInitialization.review.submittedAt,
+                    selectedInitialization.draft.notes || "已从来源项目推荐值生成初始化快照。"
+                  ]
+                ]}
+              />
+            </div>
+            {selectedInitialization.review.status === "pending" ? (
+              <div className="action-panel">
+                <Button
+                  className="full"
+                  type="button"
+                  onClick={() => dispatch({ type: "APPROVE_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id })}
+                >
+                  <CheckCircle2 size={17} />
+                  通过初始化
+                </Button>
+                <Button className="full" type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
+                  <CircleOff size={17} />
+                  驳回初始化
+                </Button>
+              </div>
+            ) : null}
+          </>
+        ) : selected ? (
           <>
             <div className="detail-card">
               <span className="eyebrow">{selected.id}</span>
@@ -2527,8 +2940,12 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
           <EmptyState text={reviewMode === "history" ? "当前没有历史提交。" : "当前没有待审阅请求。"} />
         )}
       </aside>
-      {rejectOpen && selected ? (
-        <RejectReviewDialog request={selected} onCancel={() => setRejectOpen(false)} onSubmit={rejectSelected} />
+      {rejectOpen && (selected || selectedInitialization) ? (
+        <RejectReviewDialog
+          reviewId={selectedInitialization?.review.id ?? selected?.id ?? ""}
+          onCancel={() => setRejectOpen(false)}
+          onSubmit={rejectSelected}
+        />
       ) : null}
       {detailOpen && selectedDetailRound ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-detail-title">
@@ -2568,11 +2985,11 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
 }
 
 function RejectReviewDialog({
-  request,
+  reviewId,
   onCancel,
   onSubmit
 }: {
-  request: ChangeRequest;
+  reviewId: string;
   onCancel: () => void;
   onSubmit: (reason: string) => void;
 }) {
@@ -2590,7 +3007,7 @@ function RejectReviewDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>打回修改</AlertDialogTitle>
           <AlertDialogDescription>
-            将 {request.id} 打回给提交人，管理员需要填写明确原因，方便项目侧补充测试数据或重新调整目标值。
+            将 {reviewId} 打回给提交人，管理员需要填写明确原因，方便项目侧补充测试数据或重新调整目标值。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Label htmlFor="reject-reason">打回原因</Label>

@@ -20,6 +20,7 @@ import { MultiSelectDropdown } from "./components/MultiSelectDropdown";
 import { ParameterInsightBar } from "./components/ParameterInsightBar";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 import { useTopBarActions } from "./components/layout";
+import type { ProjectInitializationStatus } from "./domain/parameters/types";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -39,7 +40,10 @@ type ParametersPageProps = {
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
   search: string;
+  effectiveProjectId?: string;
+  topBarProjectId?: string;
   canEdit?: boolean;
+  initializationStatus?: ProjectInitializationStatus;
 };
 
 function parseRange(range: string) {
@@ -99,24 +103,42 @@ function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: st
   URL.revokeObjectURL(url);
 }
 
-export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = true }: ParametersPageProps) {
+export function ParametersPage({
+  state,
+  dispatch,
+  onNavigate,
+  search,
+  effectiveProjectId,
+  topBarProjectId,
+  canEdit = true,
+  initializationStatus = "initialized"
+}: ParametersPageProps) {
+  const initializationLocked = initializationStatus !== "initialized";
+  const effectiveCanEdit = canEdit && !initializationLocked;
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());
   const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
-  const [selectedId, setSelectedId] = useState(state.parameters[0]?.id ?? "");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
-  const [focusedId, setFocusedId] = useState<string | null>(state.parameters[0]?.id ?? null);
   const todayKey = new Date().toISOString().slice(0, 10);
-  const insightStorageKey = `parameter-workbench-insight:${state.activeProjectId}:${todayKey}`;
+  const resolvedProjectId = effectiveProjectId || state.activeProjectId;
+  const insightStorageKey = `parameter-workbench-insight:${resolvedProjectId}:${todayKey}`;
   const [insightDismissed, setInsightDismissed] = useState(() => sessionStorage.getItem(insightStorageKey) === "dismissed");
   const [insightCollapsed, setInsightCollapsed] = useState(false);
-  const projectParameters = useMemo(
-    () => state.parameters.filter((parameter) => parameter.projectId === state.activeProjectId),
-    [state.activeProjectId, state.parameters]
+  const selectedProjectParameters = useMemo(
+    () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
+    [resolvedProjectId, state.parameters]
   );
+  const firstProjectParameterId = selectedProjectParameters[0]?.id ?? "";
+  const topBarResolvedProjectId = topBarProjectId || resolvedProjectId;
+  const projectParameters = useMemo(
+    () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
+    [resolvedProjectId, state.parameters]
+  );
+  const [selectedId, setSelectedId] = useState<string>(firstProjectParameterId);
+  const [focusedId, setFocusedId] = useState<string | null>(firstProjectParameterId || null);
   const moduleOptions = useMemo(
     () => Array.from(new Set(projectParameters.map((parameter) => parameter.module))),
     [projectParameters]
@@ -150,11 +172,22 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     projectParameters.find((parameter) => parameter.id === focusedId) ??
     projectParameters.find((parameter) => parameter.id === selectedId) ??
     projectParameters[0];
-  const activeProject = projects.find((project) => project.id === state.activeProjectId) ?? projects[0];
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
+  const activeInitializationDraft = state.parameterInitializationDrafts.find(
+    (draft) => draft.projectId === resolvedProjectId
+  );
+  const runtimeProjects = state.configDraft.projects.length > 0 ? state.configDraft.projects : projects;
+  const activeProject = runtimeProjects.find((project) => project.id === topBarResolvedProjectId) ??
+    (activeInitializationDraft
+      ? {
+          id: activeInitializationDraft.projectId,
+          name: activeInitializationDraft.projectName,
+          code: activeInitializationDraft.projectCode
+        }
+      : runtimeProjects[0]);
   const insightSnapshot = useMemo(
-    () => deriveParameterWorkbenchInsightSnapshot(state, state.activeProjectId),
-    [state, state.activeProjectId]
+    () => deriveParameterWorkbenchInsightSnapshot(state, resolvedProjectId),
+    [state, resolvedProjectId]
   );
   const pendingSubmissionItems = useMemo(
     () =>
@@ -208,11 +241,11 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     () => {
       const ids = new Set<string>();
       state.parameterSubmissionRounds
-        .filter((round) => round.status === "已暂存" && round.projectId === state.activeProjectId)
+        .filter((round) => round.status === "已暂存" && round.projectId === resolvedProjectId)
         .forEach((round) => round.items.forEach((item) => ids.add(item.parameterId)));
       return ids;
     },
-    [state.parameterSubmissionRounds, state.activeProjectId]
+    [state.parameterSubmissionRounds, resolvedProjectId]
   );
   const validPendingSubmissionItems = useMemo(
     () => pendingSubmissionItems.filter((item) => item.targetValue.trim()),
@@ -229,18 +262,32 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   const allDraftsHaveTargets = draftItems.length > 0 && validDraftItems.length === draftItems.length;
 
   useEffect(() => {
-    if (contextQuery.projectId || contextQuery.module) {
+    if (contextQuery.module) {
       return;
     }
     setModuleFilters(new Set());
     setRiskFilters(new Set());
-  }, [contextQuery.module, contextQuery.projectId, state.activeProjectId]);
+  }, [contextQuery.module, contextQuery.projectId, resolvedProjectId]);
 
   useEffect(() => {
-    if (contextQuery.projectId && projects.some((project) => project.id === contextQuery.projectId) && contextQuery.projectId !== state.activeProjectId) {
+    const isKnownProject =
+      runtimeProjects.some((project) => project.id === contextQuery.projectId) ||
+      Boolean(state.projectInitializationStatuses[contextQuery.projectId]) ||
+      state.parameterInitializationDrafts.some((draft) => draft.projectId === contextQuery.projectId) ||
+      state.parameterInitializationReviews.some((review) => review.projectId === contextQuery.projectId);
+
+    if (contextQuery.projectId && isKnownProject && contextQuery.projectId !== resolvedProjectId) {
       dispatch({ type: "SET_PROJECT", projectId: contextQuery.projectId });
     }
-  }, [contextQuery.projectId, dispatch, state.activeProjectId]);
+  }, [
+    contextQuery.projectId,
+    dispatch,
+    resolvedProjectId,
+    runtimeProjects,
+    state.parameterInitializationDrafts,
+    state.parameterInitializationReviews,
+    state.projectInitializationStatuses
+  ]);
 
   useEffect(() => {
     if (!contextQuery.module) {
@@ -268,7 +315,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   }, [contextQuery.parameterId, projectParameters]);
 
   useEffect(() => {
-    if (!canEdit || !contextQuery.logId) {
+    if (!effectiveCanEdit || !contextQuery.logId) {
       return;
     }
 
@@ -292,17 +339,17 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
 
       return nextDrafts;
     });
-  }, [canEdit, contextQuery.logId, contextQuery.parameterId, parameterById, projectParameters, selected, state.logs]);
+  }, [effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, parameterById, projectParameters, selected, state.logs]);
 
   useEffect(() => {
-    if (canEdit) {
+    if (effectiveCanEdit) {
       return;
     }
     setSelectedIds(new Set());
     setDrafts({});
     setSheetOpen(false);
     setConfirmOpen(false);
-  }, [canEdit]);
+  }, [effectiveCanEdit]);
 
   useEffect(() => {
     if (!selected) {
@@ -339,7 +386,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   };
 
   const handleEditRow = (id: string) => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     const parameter = parameterById.get(id);
@@ -362,7 +409,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   };
 
   const handleSelectedIdsChange = (next: Set<string>) => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     const addedIds = Array.from(next).filter((id) => !selectedIds.has(id));
@@ -421,7 +468,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   };
 
   const openSubmitPreview = () => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     if (!allSelectedDraftsHaveTargets) {
@@ -431,7 +478,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   };
 
   const submitParameterToModifiedTable = () => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     if (!allDraftsHaveTargets) {
@@ -442,7 +489,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
   };
 
   const submitRound = () => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     if (!allSelectedDraftsHaveTargets) {
@@ -459,7 +506,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     setConfirmOpen(false);
   };
   const stashRound = () => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     const itemsToStash = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
@@ -497,7 +544,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
     document.querySelector(".parameters-table")?.scrollIntoView({ block: "start", behavior: "smooth" });
   };
   const addInsightItemsToDraft = () => {
-    if (!canEdit) {
+    if (!effectiveCanEdit) {
       return;
     }
     const insightIds = insightSnapshot.topParameters.map((parameter) => parameter.id);
@@ -554,15 +601,20 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
             onExpand={() => setInsightCollapsed(false)}
             onViewHighRisk={viewHighRiskFromInsight}
             onAddToDraft={addInsightItemsToDraft}
-            canAddToDraft={canEdit}
-            addToDraftDisabledReason="Requires User role to edit, draft, or submit parameter changes."
+            canAddToDraft={effectiveCanEdit}
+            addToDraftDisabledReason="需要 User 角色才能编辑、暂存或提交参数变更。"
             onDismiss={dismissInsightForToday}
           />
         ) : null}
-        {!canEdit ? (
+        {initializationLocked ? (
           <div className="permission-inline-note" role="status">
-            <strong>Read-only access</strong>
-            <span>Requires User role to edit, draft, or submit parameter changes.</span>
+            <strong>初始化待审阅</strong>
+            <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
+          </div>
+        ) : !canEdit ? (
+          <div className="permission-inline-note" role="status">
+            <strong>只读访问</strong>
+            <span>需要 User 角色才能编辑、暂存或提交参数变更。</span>
           </div>
         ) : null}
         <div className="workbench-one-col parameters-workbench-main">
@@ -583,7 +635,7 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
                 modifiedIds={modifiedIds}
                 onEditRow={handleEditRow}
                 stashedIds={stashedIds}
-                canEdit={canEdit}
+                canEdit={effectiveCanEdit}
               />
             ) : null}
             <ParametersTable
@@ -621,19 +673,19 @@ export function ParametersPage({ state, dispatch, onNavigate, search, canEdit = 
               modifiedIds={modifiedIds}
               onEditRow={handleEditRow}
               stashedIds={stashedIds}
-              canEdit={canEdit}
+              canEdit={effectiveCanEdit}
             />
             <div className="parameters-bottom-actions">
-              <button className="button subtle" type="button" disabled={!canEdit || pendingSubmissionItems.length === 0} onClick={stashRound}>
+              <button className="button subtle" type="button" disabled={!effectiveCanEdit || pendingSubmissionItems.length === 0} onClick={stashRound}>
                 暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
               </button>
-              <button className="button primary" type="button" disabled={!canEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
+              <button className="button primary" type="button" disabled={!effectiveCanEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
                 {submitButtonText}
               </button>
             </div>
           </section>
         </div>
-        {canEdit && draftItems.length > 0 && sheetOpen ? (
+        {effectiveCanEdit && draftItems.length > 0 && sheetOpen ? (
           <WorkbenchSheet
             open
             onClose={() => setSheetOpen(false)}

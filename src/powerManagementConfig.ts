@@ -4,7 +4,14 @@ export type PowerManagementRisk = "High" | "Medium" | "Low";
 
 export type NodeAccessMode = "RO" | "WO" | "RW";
 
-export type PowerManagementProjectId = "aurora" | "nebula" | "atlas";
+export type SeedPowerManagementProjectId = "aurora" | "nebula" | "atlas";
+export type PowerManagementProjectId = SeedPowerManagementProjectId | (string & {});
+
+export type PowerManagementParameterValue = {
+  currentValue: string;
+  recommendedValue: string;
+  updatedAt: string;
+};
 
 export type PowerManagementParameterTemplate = {
   id: string;
@@ -16,15 +23,15 @@ export type PowerManagementParameterTemplate = {
   range: string;
   unit: string;
   risk: PowerManagementRisk;
-  values: Record<
-    PowerManagementProjectId,
-    {
-      currentValue: string;
-      recommendedValue: string;
-      updatedAt: string;
-    }
-  >;
+  values: Partial<Record<PowerManagementProjectId, PowerManagementParameterValue>>;
 };
+
+export type ProjectParameterRecord = Omit<PowerManagementParameterTemplate, "values"> &
+  PowerManagementParameterValue & {
+    id: string;
+    projectId: PowerManagementProjectId;
+    values: PowerManagementParameterTemplate["values"];
+  };
 
 export type PowerManagementDebugParameter = {
   id: string;
@@ -60,19 +67,22 @@ export function clonePowerManagementConfig(config: PowerManagementConfig): Power
   return JSON.parse(JSON.stringify(config)) as PowerManagementConfig;
 }
 
-export function flattenProjectParameters(config: PowerManagementConfig) {
+export function flattenProjectParameters(config: PowerManagementConfig): ProjectParameterRecord[] {
   return config.projects.flatMap((project) =>
-    config.parameterLibrary.map((parameter) => {
+    config.parameterLibrary.flatMap((parameter) => {
       const value = parameter.values[project.id];
+      if (!value) {
+        return [];
+      }
 
-      return {
+      return [{
         ...parameter,
         id: `${project.id}-${parameter.id}`,
         projectId: project.id,
         currentValue: value.currentValue,
         recommendedValue: value.recommendedValue,
         updatedAt: value.updatedAt
-      };
+      }];
     })
   );
 }
@@ -85,26 +95,34 @@ export function updateProjectParameter(
   config: PowerManagementConfig,
   projectId: PowerManagementProjectId,
   parameterId: string,
-  patch: Partial<Pick<PowerManagementParameterTemplate["values"][PowerManagementProjectId], "currentValue" | "recommendedValue" | "updatedAt">>
+  patch: Partial<PowerManagementParameterValue>
 ) {
   const libraryParameterId = getLibraryParameterId(projectId, parameterId);
 
   return {
     ...config,
-    parameterLibrary: config.parameterLibrary.map((parameter) =>
-      parameter.id !== libraryParameterId
-        ? parameter
-        : {
-            ...parameter,
-            values: {
-              ...parameter.values,
-              [projectId]: {
-                ...parameter.values[projectId],
-                ...patch
-              }
-            }
+    parameterLibrary: config.parameterLibrary.map((parameter) => {
+      if (parameter.id !== libraryParameterId) {
+        return parameter;
+      }
+
+      const existingValue = parameter.values[projectId] ?? {
+        currentValue: "待项目确认",
+        recommendedValue: "",
+        updatedAt: "just now"
+      };
+
+      return {
+        ...parameter,
+        values: {
+          ...parameter.values,
+          [projectId]: {
+            ...existingValue,
+            ...patch
           }
-    )
+        }
+      };
+    })
   };
 }
 

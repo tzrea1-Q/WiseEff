@@ -27,7 +27,7 @@ describe("ParametersPage read-only access", () => {
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(screen.getByText("只读访问")).toBeVisible();
     expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
     expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
   });
@@ -49,7 +49,7 @@ describe("ParametersPage read-only access", () => {
     );
 
     expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
-    expect(screen.getAllByText("Requires User role to edit, draft, or submit parameter changes.").length)
+    expect(screen.getAllByText("需要 User 角色才能编辑、暂存或提交参数变更。").length)
       .toBeGreaterThan(0);
   });
 
@@ -69,7 +69,7 @@ describe("ParametersPage read-only access", () => {
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(screen.getByText("只读访问")).toBeVisible();
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
 
     rerender(
@@ -120,7 +120,7 @@ describe("ParametersPage read-only access", () => {
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("Read-only access")).toBeVisible();
+    expect(screen.getByText("只读访问")).toBeVisible();
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
     expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
 
@@ -430,7 +430,7 @@ describe("ParametersPage · 提交契约", () => {
   it("builds preview and submit items from selected draft entries only", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
     const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsHaveTargets[\s\S]*?;/)?.[0] ?? "";
-    const submitSource = source.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
+    const submitSource = source.match(/const submitRound[\s\S]*?\r?\n  };\r?\n  const previewItems/)?.[0] ?? "";
 
     expect(previewSource).toContain("const pendingSubmissionItems");
     expect(submitSource).toContain("const submitRound");
@@ -445,7 +445,7 @@ describe("ParametersPage · 提交契约", () => {
     const roundReducerSource = appSource.match(/case "ADD_PARAMETER_SUBMISSION_ROUND":[\s\S]*?\n    case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":/)?.[0] ?? "";
     const commandSource = readFileSync("src/domain/parameters/commands.ts", "utf8");
     const pageSource = readFileSync("src/ParametersPage.tsx", "utf8");
-    const submitSource = pageSource.match(/const submitRound[\s\S]*?\n  };\n  const previewItems/)?.[0] ?? "";
+    const submitSource = pageSource.match(/const submitRound[\s\S]*?\r?\n  };\r?\n  const previewItems/)?.[0] ?? "";
 
     expect(roundReducerSource).toContain('case "ADD_PARAMETER_SUBMISSION_ROUND":');
     expect(roundReducerSource).toContain("submitParameterRound");

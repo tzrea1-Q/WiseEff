@@ -1,7 +1,12 @@
 import { migrateParameterRange } from "../parameterAdminAnalytics";
-import type { PowerManagementParameterTemplate, PowerManagementProject, PowerManagementProjectId } from "../powerManagementConfig";
+import type {
+  PowerManagementParameterTemplate,
+  PowerManagementParameterValue,
+  PowerManagementProject,
+  PowerManagementProjectId
+} from "../powerManagementConfig";
 
-type ParameterValuePatch = Partial<PowerManagementParameterTemplate["values"][PowerManagementProjectId]>;
+type ParameterValuePatch = Partial<PowerManagementParameterValue>;
 
 export function ProjectValueMatrix({
   parameter,

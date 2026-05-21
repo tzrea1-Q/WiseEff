@@ -278,6 +278,10 @@ function riskWeight(risk: PowerManagementParameterTemplate["risk"]) {
 function latestUpdatedAt(parameter: PowerManagementParameterTemplate) {
   return Math.max(
     ...Object.values(parameter.values).map((value) => {
+      if (!value) {
+        return 0;
+      }
+
       const parsed = new Date(value.updatedAt).getTime();
       return Number.isFinite(parsed) ? parsed : 0;
     }),
