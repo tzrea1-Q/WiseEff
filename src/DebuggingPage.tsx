@@ -27,12 +27,6 @@ const sortableHeaders: Array<{ key: SortKey; label: string }> = [
   { key: "status", label: "状态" },
 ];
 
-const headerFilterLabels: Partial<Record<SortKey, string>> = {
-  risk: "重要性",
-  status: "状态",
-  name: "模块"
-};
-
 function sortValue(row: DebugParameter, key: SortKey) {
   if (key === "risk") return riskScores[row.risk];
   if (key === "range") return `${row.range} ${row.unit}`.trim();
@@ -58,7 +52,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<RiskFilter>>(new Set());
   const [statusFilters, setStatusFilters] = useState<Set<string>>(new Set());
-  const [moduleFilters, setModuleFilters] = useState<Set<string>>(new Set());
   const [sort, setSort] = useState<SortState | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -80,10 +73,9 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
       const matchesSearch = !normalizedQuery || [p.name, p.key].some((v) => v.toLowerCase().includes(normalizedQuery));
       const matchesRisk = riskFilters.size === 0 || riskFilters.has(p.risk);
       const matchesStatus = statusFilters.size === 0 || statusFilters.has(p.status);
-      const matchesModule = moduleFilters.size === 0 || moduleFilters.has(p.module);
-      return matchesSearch && matchesRisk && matchesStatus && matchesModule;
+      return matchesSearch && matchesRisk && matchesStatus;
     });
-  }, [debugParameters, normalizedQuery, riskFilters, statusFilters, moduleFilters]);
+  }, [debugParameters, normalizedQuery, riskFilters, statusFilters]);
 
   const visibleRows = useMemo(() => {
     if (!sort) return filteredRows;
@@ -101,11 +93,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     return statuses.map((s) => ({ value: s, label: s }));
   }, [debugParameters]);
 
-  const moduleOptions = useMemo(
-    () => Array.from(new Set(debugParameters.map((p) => p.module))).map((m) => ({ value: m, label: m })),
-    [debugParameters]
-  );
-  const moduleFilterValues = useMemo(() => moduleOptions.map((option) => option.value), [moduleOptions]);
   const statusFilterValues = useMemo(() => statusOptions.map((option) => option.value), [statusOptions]);
   const toggleRiskFilter = (risk: string) => {
     if (!riskFilterValues.includes(risk as RiskFilter)) return;
@@ -124,13 +111,33 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
       return next;
     });
   };
-  const toggleModuleFilter = (module: string) => {
-    setModuleFilters((current) => {
-      const next = new Set(current);
-      if (next.has(module)) next.delete(module);
-      else next.add(module);
-      return next;
-    });
+  const renderHeaderFilter = (header: { key: SortKey; label: string }) => {
+    if (header.key === "risk") {
+      return (
+        <ColumnFilter
+          label={header.label}
+          groupLabel={`${header.label}筛选`}
+          values={[...riskFilterValues]}
+          selectedValues={Array.from(riskFilters)}
+          renderLabel={(value) => riskLabels[value as RiskFilter] ?? value}
+          onToggle={toggleRiskFilter}
+          onClear={() => setRiskFilters(new Set())}
+        />
+      );
+    }
+    if (header.key === "status") {
+      return (
+        <ColumnFilter
+          label={header.label}
+          groupLabel={`${header.label}筛选`}
+          values={statusFilterValues}
+          selectedValues={Array.from(statusFilters)}
+          onToggle={toggleStatusFilter}
+          onClear={() => setStatusFilters(new Set())}
+        />
+      );
+    }
+    return null;
   };
 
   const editingParameter = editingId ? debugParameters.find((p) => p.id === editingId) ?? null : null;
@@ -202,7 +209,6 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     setSearchQuery("");
     setRiskFilters(new Set());
     setStatusFilters(new Set());
-    setModuleFilters(new Set());
   };
   useTopBarActions(
     <div className="device-pill">
@@ -263,37 +269,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
                           <button type="button" className="parameters-table-sort-button" aria-label={`按 ${h.label} 排序`} onClick={() => updateSort(h.key)}>
                             {h.label}
                           </button>
-                          {h.key === "name" ? (
-                            <ColumnFilter
-                              label={headerFilterLabels.name!}
-                              groupLabel="模块筛选"
-                              values={moduleFilterValues}
-                              selectedValues={Array.from(moduleFilters)}
-                              onToggle={toggleModuleFilter}
-                              onClear={() => setModuleFilters(new Set())}
-                            />
-                          ) : null}
-                          {h.key === "risk" ? (
-                            <ColumnFilter
-                              label={headerFilterLabels.risk!}
-                              groupLabel="重要性筛选"
-                              values={[...riskFilterValues]}
-                              selectedValues={Array.from(riskFilters)}
-                              renderLabel={(value) => riskLabels[value as RiskFilter] ?? value}
-                              onToggle={toggleRiskFilter}
-                              onClear={() => setRiskFilters(new Set())}
-                            />
-                          ) : null}
-                          {h.key === "status" ? (
-                            <ColumnFilter
-                              label={headerFilterLabels.status!}
-                              groupLabel="状态筛选"
-                              values={statusFilterValues}
-                              selectedValues={Array.from(statusFilters)}
-                              onToggle={toggleStatusFilter}
-                              onClear={() => setStatusFilters(new Set())}
-                            />
-                          ) : null}
+                          {renderHeaderFilter(h)}
                         </div>
                       </th>
                     ))}

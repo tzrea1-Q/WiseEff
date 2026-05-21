@@ -908,6 +908,38 @@ describe("WiseEff app shell", () => {
     expect(readCssBlock(styles, ".review-table-wrap [data-slot=\"table-container\"]")).toContain("overflow: visible;");
   });
 
+  it("keeps parameter review header filters only on project, module, submitter, and status", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    renderAppForCurrentPath();
+
+    const table = screen.getByRole("table");
+    const checks: Array<[string, string, string]> = [
+      ["项目", "筛选项目", "Aurora 量产平台"],
+      ["模块", "筛选模块", "Charging Policy"],
+      ["提交人", "筛选提交人", "H. Zhao"],
+      ["状态", "筛选状态", "软件Committer检视"]
+    ];
+
+    for (const [headerName, buttonName, optionName] of checks) {
+      const header = within(table).getByRole("columnheader", { name: new RegExp(headerName) });
+      fireEvent.click(within(header).getByRole("button", { name: buttonName }));
+      expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
+      fireEvent.click(within(header).getByRole("button", { name: buttonName }));
+    }
+
+    expect(screen.queryByRole("button", { name: "筛选请求编号" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选变更" })).not.toBeInTheDocument();
+
+    const statusHeader = within(table).getByRole("columnheader", { name: /状态/ });
+    fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
+    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "软件Committer检视" }));
+    const visibleBodyRows = Array.from(table.querySelectorAll("tbody tr"));
+    expect(visibleBodyRows.length).toBeGreaterThan(0);
+    expect(visibleBodyRows.every((row) => row.textContent?.includes("软件MDE检视"))).toBe(true);
+    expect(within(table).queryByText("PRQ-9102")).not.toBeInTheDocument();
+  });
+
   it("keeps Excel-style header filters next to their header labels", () => {
     const styles = readFileSync("src/styles.css", "utf8");
     const reviewHeaderRule = readCssBlock(styles, ".review-column-filter-head");

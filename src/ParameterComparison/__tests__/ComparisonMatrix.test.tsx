@@ -54,7 +54,7 @@ describe("ComparisonMatrix", () => {
     expect(screen.getByRole("columnheader", { name: "重要性" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "AUR-Prod" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "NEB-RD / Δ" })).toBeInTheDocument();
-    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
     expect(screen.getByText("Charging Policy")).toBeInTheDocument();
     expect(screen.getByText("High")).toBeInTheDocument();
     expect(screen.getByText("+9.1%")).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("ComparisonMatrix", () => {
     expect(onResetFilters).toHaveBeenCalledTimes(1);
   });
 
-  it("renders risk and module filters in their matching column headers", () => {
+  it("keeps header filters only on module and importance", () => {
     const onRiskToggle = vi.fn();
     const onModuleToggle = vi.fn();
 
@@ -162,6 +162,9 @@ describe("ComparisonMatrix", () => {
 
     const riskHeader = screen.getByRole("columnheader", { name: /重要性/ });
     const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+    const descHeader = screen.getByRole("columnheader", { name: /说明/ });
+    const baseHeader = screen.getByRole("columnheader", { name: /AUR-Prod/ });
+    const targetHeader = screen.getByRole("columnheader", { name: /NEB-RD \/ Δ/ });
 
     fireEvent.click(within(riskHeader).getByRole("button", { name: "筛选重要性" }));
     fireEvent.click(within(riskHeader).getByRole("checkbox", { name: "Medium" }));
@@ -171,5 +174,10 @@ describe("ComparisonMatrix", () => {
     expect(within(riskHeader).getByRole("button", { name: "筛选重要性" })).toHaveClass("active");
     expect(onRiskToggle).toHaveBeenCalledWith("Medium");
     expect(onModuleToggle).toHaveBeenCalledWith("Battery Safety");
+
+    expect(screen.queryByRole("button", { name: "筛选参数键" })).not.toBeInTheDocument();
+    expect(within(descHeader).queryByRole("button", { name: "筛选说明" })).not.toBeInTheDocument();
+    expect(within(baseHeader).queryByRole("button", { name: "筛选AUR-Prod" })).not.toBeInTheDocument();
+    expect(within(targetHeader).queryByRole("button", { name: "筛选NEB-RD / Δ" })).not.toBeInTheDocument();
   });
 });

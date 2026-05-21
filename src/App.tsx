@@ -53,6 +53,7 @@ import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
+import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
@@ -2587,10 +2588,6 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
 }
 
 
-function toggleFilterValue(values: string[], value: string) {
-  return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-}
-
 function ReviewMultiFilter({ label, options, selected, onChange }: { label: string; options: string[]; selected: string[]; onChange: (v: string[]) => void }) {
   const [open, setOpen] = useState(false);
   return (
@@ -2624,6 +2621,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const [filterModules, setFilterModules] = useState<string[]>([]);
   const [filterSubmitters, setFilterSubmitters] = useState<string[]>([]);
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
   const pendingRequests = useMemo(() => state.changeRequests.filter((request) => request.status !== "已合入"), [state.changeRequests]);
   const mergedRequests = useMemo(() => state.changeRequests.filter((request) => request.status === "已合入"), [state.changeRequests]);
@@ -2650,30 +2648,56 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
   const visibleRequests = reviewMode === "history" ? mergedRequests : pendingRequests;
   const visibleInitializationRows = reviewMode === "history" ? historyInitializationRows : pendingInitializationRows;
 
-  const filteredRequests = useMemo(() => {
-    return visibleRequests.filter((request) => {
-      if (filterModules.length && !filterModules.includes(request.module)) return false;
-      if (filterSubmitters.length && !filterSubmitters.includes(request.submitter)) return false;
-      if (filterProjects.length) {
-        const param = state.parameters.find((p) => p.id === request.parameterId);
-        const project = state.configDraft.projects.find((p) => p.id === param?.projectId);
-        if (!project || !filterProjects.includes(project.name)) return false;
-      }
-      return true;
-    });
-  }, [visibleRequests, state.parameters, state.configDraft.projects, filterModules, filterSubmitters, filterProjects]);
-  const filteredInitializationRows = useMemo(() => {
-    return visibleInitializationRows.filter(({ review, draft }) => {
-      const submitter = state.users.find((user) => user.id === review.submittedBy)?.name ?? review.submittedBy;
-      if (filterModules.length && !draft.parameterSnapshots.some((snapshot) => filterModules.includes(snapshot.module))) return false;
-      if (filterSubmitters.length && !filterSubmitters.includes(submitter)) return false;
-      if (filterProjects.length && !filterProjects.includes(draft.projectName)) return false;
-      return true;
-    });
-  }, [visibleInitializationRows, state.users, filterModules, filterSubmitters, filterProjects]);
+  const unfilteredReviewRows = useMemo<ParameterReviewRow[]>(
+    () => [...visibleInitializationRows, ...visibleRequests.map((request) => ({ kind: "change" as const, request }))],
+    [visibleInitializationRows, visibleRequests]
+  );
+  const getReviewRowField = useCallback((row: ParameterReviewRow, field: "id" | "project" | "module" | "submitter" | "change" | "status") => {
+    if (row.kind === "initialization") {
+      const submitter = state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy;
+      const modules = row.draft.parameterSnapshots.map((snapshot) => snapshot.module);
+      const primaryModule = modules[0] ?? "参数初始化";
+      const moduleText = modules.length > 1 ? `${primaryModule} 等 ${modules.length} 个模块` : primaryModule;
+      const values = {
+        id: row.review.id,
+        project: row.draft.projectName,
+        module: moduleText,
+        submitter,
+        change: `${row.draft.projectName} → ${row.draft.parameterSnapshots.length} 项参数`,
+        status: getParameterInitializationReviewStatusLabel(row.review.status)
+      };
+      return values[field];
+    }
+
+    const { request } = row;
+    const parameter = state.parameters.find((item) => item.id === request.parameterId);
+    const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
+    const values = {
+      id: request.id,
+      project: project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目",
+      module: request.module,
+      submitter: request.submitter,
+      change: `${request.currentValue} → ${request.targetValue}`,
+      status: request.status
+    };
+    return values[field];
+  }, [state.configDraft.projects, state.parameters, state.users]);
   const reviewRows = useMemo<ParameterReviewRow[]>(
-    () => [...filteredInitializationRows, ...filteredRequests.map((request) => ({ kind: "change" as const, request }))],
-    [filteredInitializationRows, filteredRequests]
+    () =>
+      unfilteredReviewRows.filter((row) => {
+        if (filterProjects.length && !filterProjects.includes(getReviewRowField(row, "project"))) return false;
+        if (filterModules.length) {
+          if (row.kind === "initialization") {
+            if (!row.draft.parameterSnapshots.some((snapshot) => filterModules.includes(snapshot.module))) return false;
+          } else if (!filterModules.includes(getReviewRowField(row, "module"))) {
+            return false;
+          }
+        }
+        if (filterSubmitters.length && !filterSubmitters.includes(getReviewRowField(row, "submitter"))) return false;
+        if (filterStatuses.length && !filterStatuses.includes(getReviewRowField(row, "status"))) return false;
+        return true;
+      }),
+    [filterModules, filterProjects, filterStatuses, filterSubmitters, getReviewRowField, unfilteredReviewRows]
   );
   const selectedRow = reviewRows.find((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId) ?? reviewRows[0] ?? null;
   const selected = selectedRow?.kind === "change" ? selectedRow.request : null;
@@ -2707,6 +2731,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       (project, index, allProjects) => allProjects.findIndex((item) => item.name === project.name) === index
     );
   }, [visibleInitializationRows, visibleRequests, state.parameters, state.configDraft.projects]);
+  const statusOptions = useMemo(() => uniqueFilterValues(unfilteredReviewRows, (row) => getReviewRowField(row, "status")), [getReviewRowField, unfilteredReviewRows]);
 
   const selectedRound = useMemo(() => {
     if (!selected?.submissionRoundId) return null;
@@ -2800,6 +2825,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     setFilterModules([]);
     setFilterSubmitters([]);
     setFilterProjects([]);
+    setFilterStatuses([]);
     setDetailOpen(false);
   };
   const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项已合入` : `${reviewRows.length} 项操作`;
@@ -2885,7 +2911,11 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>请求编号</TableHead>
+                <TableHead className="review-filter-header">
+                  <div className="review-column-filter-head">
+                    <span>请求编号</span>
+                  </div>
+                </TableHead>
                 <TableHead className="review-filter-header">
                   <div className="review-column-filter-head">
                     <span>项目</span>
@@ -2925,8 +2955,24 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
                     />
                   </div>
                 </TableHead>
-                <TableHead>变更</TableHead>
-                <TableHead>状态</TableHead>
+                <TableHead className="review-filter-header">
+                  <div className="review-column-filter-head">
+                    <span>变更</span>
+                  </div>
+                </TableHead>
+                <TableHead className="review-filter-header">
+                  <div className="review-column-filter-head">
+                    <span>状态</span>
+                    <ColumnFilter
+                      label="状态"
+                      groupLabel="状态筛选"
+                      values={statusOptions}
+                      selectedValues={filterStatuses}
+                      onToggle={(status) => setFilterStatuses((current) => toggleFilterValue(current, status))}
+                      onClear={() => setFilterStatuses([])}
+                    />
+                  </div>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -3947,6 +3993,48 @@ function RawLogViewer({
 }) {
   const activeMatchLine = matchLines[activeMatchIndex];
   const matchLineSet = useMemo(() => new Set(matchLines), [matchLines]);
+  const [rawLogColumnFilters, setRawLogColumnFilters] = useState<HeaderFilterState>({});
+  const rawLogRows = useMemo(
+    () =>
+      rawLines.map((line, index) => ({
+        line,
+        lineNumber: index + 1,
+        parsed: parseLogLine(line)
+      })),
+    [rawLines]
+  );
+  const visibleRawLogRows = useMemo(
+    () =>
+      rawLogRows.filter((row) =>
+        (["time", "module", "content"] as const).every((key) => {
+          const selectedValues = rawLogColumnFilters[key] ?? [];
+          return selectedValues.length === 0 || selectedValues.includes(row.parsed[key]);
+        })
+      ),
+    [rawLogColumnFilters, rawLogRows]
+  );
+  const toggleRawLogColumnFilter = (key: "time" | "module" | "content", value: string) => {
+    setRawLogColumnFilters((current) => ({
+      ...current,
+      [key]: toggleFilterValue(current[key] ?? [], value)
+    }));
+  };
+  const clearRawLogColumnFilter = (key: "time" | "module" | "content") => {
+    setRawLogColumnFilters((current) => ({ ...current, [key]: [] }));
+  };
+  const renderRawLogHeader = (key: "time" | "module" | "content", label: string) => (
+    <div className="rawlog-table__head-cell">
+      <span>{label}</span>
+      <ColumnFilter
+        label={label}
+        groupLabel={`${label}筛选`}
+        values={uniqueFilterValues(rawLogRows, (row) => row.parsed[key])}
+        selectedValues={rawLogColumnFilters[key] ?? []}
+        onToggle={(value) => toggleRawLogColumnFilter(key, value)}
+        onClear={() => clearRawLogColumnFilter(key)}
+      />
+    </div>
+  );
   const moveMatch = (delta: number) => {
     if (matchLines.length === 0) {
       return;
@@ -4005,21 +4093,19 @@ function RawLogViewer({
           <thead>
             <tr>
               <th className="rawlog-table__th-num">#</th>
-              <th className="rawlog-table__th-time">时间</th>
-              <th className="rawlog-table__th-module">模块</th>
-              <th className="rawlog-table__th-content">内容</th>
+              <th className="rawlog-table__th-time">{renderRawLogHeader("time", "时间")}</th>
+              <th className="rawlog-table__th-module">{renderRawLogHeader("module", "模块")}</th>
+              <th className="rawlog-table__th-content">{renderRawLogHeader("content", "内容")}</th>
             </tr>
           </thead>
           <tbody>
-            {rawLines.map((line, index) => {
-              const lineNumber = index + 1;
+            {visibleRawLogRows.map(({ line, lineNumber, parsed }) => {
               const evidence = evidenceByLine.get(lineNumber) ?? [];
               const isHoverAnchor = evidence.some((item) => item.id === hoveredEvidenceId);
               const isFocusAnchor = evidence.some((item) => item.id === focusedEvidenceId);
               const isHoveredLine = hoveredLine === lineNumber && evidence.length > 0;
               const isMatch = matchLineSet.has(lineNumber);
               const isCurrentMatch = activeMatchLine === lineNumber;
-              const parsed = parseLogLine(line);
 
               return (
                 <tr
@@ -4053,6 +4139,11 @@ function RawLogViewer({
                 </tr>
               );
             })}
+            {visibleRawLogRows.length === 0 ? (
+              <tr className="rawlog-line">
+                <td colSpan={4}>当前筛选条件下没有日志行。</td>
+              </tr>
+            ) : null}
           </tbody>
         </table>
       </div>

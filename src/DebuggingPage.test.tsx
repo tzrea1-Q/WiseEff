@@ -49,19 +49,52 @@ describe("/debugging 单栏骨架", () => {
     expect(screen.getByRole("button", { name: /下发调试值/ })).toBeInTheDocument();
   });
 
-  it("将风险、模块和状态筛选合并到表头，搜索框仍独立存在", () => {
+  it("将风险和状态筛选合并到表头，搜索框仍独立存在", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App initialAppState={userState} />);
 
     expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
     expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
+    expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();
 
-    expect(screen.getByRole("button", { name: "筛选模块" })).toHaveClass("active");
-    expect(getDebugRow("charger.charge_pump.enable")).toBeInTheDocument();
-    expect(() => getDebugRow("battery.temp.target")).toThrow();
+    fireEvent.click(screen.getByRole("button", { name: "筛选风险" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "高" }));
+
+    expect(screen.getByRole("button", { name: "筛选风险" })).toHaveClass("active");
+    expect(getDebugRow("charger.input_current_limit_ma")).toBeInTheDocument();
+    expect(() => getDebugRow("charger.charge_pump.enable")).toThrow();
+  });
+
+  it("仅支持从风险和状态表头筛选调试参数", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App initialAppState={userState} />);
+
+    const headers: Array<[string, string, string]> = [
+      ["风险", "筛选风险", "高"],
+      ["状态", "筛选状态", "下发成功"]
+    ];
+
+    for (const [headerName, buttonName, optionName] of headers) {
+      const header = screen.getByRole("columnheader", { name: new RegExp(headerName) });
+      const button = within(header).getByRole("button", { name: buttonName });
+      fireEvent.click(button);
+      expect(within(header).getByRole("checkbox", { name: optionName })).toBeInTheDocument();
+      fireEvent.click(button);
+    }
+
+    expect(screen.queryByRole("button", { name: "筛选参数名称" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选当前值" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选目标设定值" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选范围" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选模块" })).not.toBeInTheDocument();
+
+    const statusHeader = screen.getByRole("columnheader", { name: /状态/ });
+    fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
+    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "下发成功" }));
+
+    expect(getDebugRow("charger.input_current_limit_ma")).toBeInTheDocument();
+    expect(() => getDebugRow("battery.cell_temp_limit_c")).toThrow();
   });
 
   it("连接、修改 target、下发的基本链路仍能工作", () => {

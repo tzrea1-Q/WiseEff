@@ -7,8 +7,6 @@ import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
-const accessModeOptions = ["RO", "WO", "RW"] as const;
-
 type NodeRuntimeStatus =
   | "未检测"
   | "待写入"
@@ -203,8 +201,6 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
-  const [moduleFilters, setModuleFilters] = useState<string[]>([]);
-  const [modeFilters, setModeFilters] = useState<string[]>([]);
   const [nowTick, setNowTick] = useState(() => new Date());
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const didAutoDetectRef = useRef(false);
@@ -232,22 +228,12 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
         row.name.toLowerCase().includes(normalizedQuery) ||
         row.key.toLowerCase().includes(normalizedQuery);
       const matchesStatus = statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus);
-      const matchesModule = moduleFilters.length === 0 || moduleFilters.includes(row.module);
-      const matchesMode = modeFilters.length === 0 || modeFilters.includes(row.accessMode);
-      return matchesSearch && matchesStatus && matchesModule && matchesMode;
+      return matchesSearch && matchesStatus;
     });
-  }, [modeFilters, moduleFilters, normalizedQuery, rows, statusFilters]);
+  }, [normalizedQuery, rows, statusFilters]);
 
-  const moduleOptions = useMemo(
-    () => Array.from(new Set(rows.map((row) => row.module))).map((module) => ({ value: module, label: module })),
-    [rows]
-  );
   const statusOptions = useMemo(
     () => Array.from(new Set(rows.map((row) => row.runtimeStatus))).map((status) => ({ value: status, label: status })),
-    [rows]
-  );
-  const modeOptions = useMemo(
-    () => accessModeOptions.map((mode) => ({ value: mode, label: `${mode} (${rows.filter((row) => row.accessMode === mode).length})` })),
     [rows]
   );
   const toggleArrayFilter = (currentValues: string[], value: string) =>
@@ -506,33 +492,28 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
                     <th scope="col">
                       <div className="parameters-table-head-cell">
                         <span>参数名称</span>
-                        <ColumnFilter
-                          label="模块"
-                          groupLabel="模块筛选"
-                          values={moduleOptions.map((option) => option.value)}
-                          selectedValues={moduleFilters}
-                          onToggle={(module) => setModuleFilters((current) => toggleArrayFilter(current, module))}
-                          onClear={() => setModuleFilters([])}
-                        />
                       </div>
                     </th>
                     <th scope="col">
                       <div className="parameters-table-head-cell">
                         <span>访问模式</span>
-                        <ColumnFilter
-                          label="访问模式"
-                          groupLabel="访问模式筛选"
-                          values={[...accessModeOptions]}
-                          selectedValues={modeFilters}
-                          renderLabel={(mode) => modeOptions.find((option) => option.value === mode)?.label ?? mode}
-                          onToggle={(mode) => setModeFilters((current) => toggleArrayFilter(current, mode))}
-                          onClear={() => setModeFilters([])}
-                        />
                       </div>
                     </th>
-                    <th scope="col">当前值</th>
-                    <th scope="col">目标写入值</th>
-                    <th scope="col">范围</th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>当前值</span>
+                      </div>
+                    </th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>目标写入值</span>
+                      </div>
+                    </th>
+                    <th scope="col">
+                      <div className="parameters-table-head-cell">
+                        <span>范围</span>
+                      </div>
+                    </th>
                     <th scope="col">
                       <div className="parameters-table-head-cell">
                         <span>状态</span>
