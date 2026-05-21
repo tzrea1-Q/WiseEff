@@ -50,9 +50,10 @@ export function ComparisonRow({ row, query, onSync, onIgnore }: ComparisonRowPro
             <ParameterKeyTooltip parameterKey={row.key} module={row.module} description={row.description} risk={row.risk}>
               {highlight(row.key, query)}
             </ParameterKeyTooltip>
-            <small>{highlight(row.module, query)}</small>
           </span>
         </div>
+        <span className="comparison-row--v2__module" role="cell">{highlight(row.module, query)}</span>
+        <span className="comparison-row--v2__risk" role="cell">{row.risk}</span>
         <span className="comparison-row--v2__desc" role="cell">{row.description}</span>
         <span className="comparison-row--v2__value" role="cell">{row.baseValue}</span>
         <span className="comparison-row--v2__value" data-side="target" role="cell">{row.targetValue}<DeltaBadge delta={delta} /></span>

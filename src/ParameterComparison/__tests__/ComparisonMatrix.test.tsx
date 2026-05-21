@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { ComparisonMatrix } from "../components/ComparisonMatrix";
 import type { ComparisonRow } from "../types";
 
@@ -49,10 +49,14 @@ describe("ComparisonMatrix", () => {
       />
     );
 
-    expect(screen.getByRole("columnheader", { name: "参数键 / 模块" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "参数键" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "模块" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "重要性" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "AUR-Prod" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "NEB-RD / Δ" })).toBeInTheDocument();
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.getByText("Charging Policy")).toBeInTheDocument();
+    expect(screen.getByText("High")).toBeInTheDocument();
     expect(screen.getByText("+9.1%")).toBeInTheDocument();
     expect(screen.getAllByText("已同步")).toHaveLength(2);
   });
@@ -117,5 +121,55 @@ describe("ComparisonMatrix", () => {
 
     expect(screen.getByRole("heading", { name: "没有匹配参数" })).toBeInTheDocument();
     expect(onResetFilters).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders risk and module filters in their matching column headers", () => {
+    const onRiskToggle = vi.fn();
+    const onModuleToggle = vi.fn();
+
+    render(
+      <ComparisonMatrix
+        rows={rows}
+        query=""
+        baseProjectCode="AUR-Prod"
+        targetProjectCode="NEB-RD"
+        totalCount={rows.length}
+        columnFilters={[
+          {
+            key: "risk",
+            label: "重要性",
+            groupLabel: "重要性筛选",
+            values: ["High", "Medium", "Low"],
+            selectedValues: ["High"],
+            onToggle: onRiskToggle,
+            onClear: vi.fn()
+          },
+          {
+            key: "module",
+            label: "模块",
+            groupLabel: "模块筛选",
+            values: ["Battery Safety", "Charging Policy"],
+            selectedValues: [],
+            onToggle: onModuleToggle,
+            onClear: vi.fn()
+          }
+        ]}
+        onResetFilters={() => undefined}
+        onSync={() => undefined}
+        onIgnore={() => undefined}
+      />
+    );
+
+    const riskHeader = screen.getByRole("columnheader", { name: /重要性/ });
+    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
+
+    fireEvent.click(within(riskHeader).getByRole("button", { name: "筛选重要性" }));
+    fireEvent.click(within(riskHeader).getByRole("checkbox", { name: "Medium" }));
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块" }));
+    fireEvent.click(within(moduleHeader).getByRole("checkbox", { name: "Battery Safety" }));
+
+    expect(within(riskHeader).getByRole("button", { name: "筛选重要性" })).toHaveClass("active");
+    expect(onRiskToggle).toHaveBeenCalledWith("Medium");
+    expect(onModuleToggle).toHaveBeenCalledWith("Battery Safety");
   });
 });

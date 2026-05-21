@@ -84,12 +84,32 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(within(group).getByRole("button", { name: "30 日" })).toBeInTheDocument();
   });
 
-  it("filters table when 状态 filter is set to 失败", async () => {
+  it("filters table from the 状态 column header", async () => {
     renderPage();
 
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "状态" }), "Failed");
+    expect(screen.queryByRole("combobox", { name: "状态" })).not.toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "日志分析记录" });
+    const statusHeader = within(table).getByRole("columnheader", { name: /状态/ });
+
+    await userEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
+    await userEvent.click(within(statusHeader).getByRole("checkbox", { name: "失败" }));
+
+    expect(within(table).getByText(/thermal_snapshot\.bin/)).toBeInTheDocument();
+  });
+
+  it("keeps log search standalone and moves source filtering into the header", async () => {
+    renderPage();
+
+    expect(screen.getByPlaceholderText(/搜索 RPT-/)).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "来源模块" })).not.toBeInTheDocument();
 
     const table = screen.getByRole("table", { name: "日志分析记录" });
+    const sourceHeader = within(table).getByRole("columnheader", { name: /来源模块/ });
+
+    await userEvent.click(within(sourceHeader).getByRole("button", { name: "筛选来源模块" }));
+    await userEvent.click(within(sourceHeader).getByRole("checkbox", { name: "Thermal Snapshot" }));
+
+    expect(within(sourceHeader).getByRole("button", { name: "筛选来源模块" })).toHaveClass("active");
     expect(within(table).getByText(/thermal_snapshot\.bin/)).toBeInTheDocument();
   });
 

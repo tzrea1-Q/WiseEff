@@ -265,10 +265,33 @@ describe("ParametersPage draft edge cases", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看高风险" }));
 
-    expect(screen.getByRole("button", { name: "重要性 (1) ▾" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "筛选重要性" })).toHaveClass("active");
     const table = screen.getByRole("table");
     expect(within(table).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(table).queryByText("battery_temp_target_c")).not.toBeInTheDocument();
+  });
+
+  it("keeps search separate while moving module and importance filters into table headers", () => {
+    renderPage();
+
+    const searchTable = screen.getByRole("region", { name: "检索参数表" });
+    const toolbar = searchTable.querySelector(".parameters-table-toolbar");
+    expect(toolbar).not.toBeNull();
+    expect(within(toolbar as HTMLElement).getByRole("searchbox", { name: "按名称 / 描述 / 模块搜索" })).toBeInTheDocument();
+    expect(within(toolbar as HTMLElement).queryByRole("button", { name: /模块/ })).not.toBeInTheDocument();
+    expect(within(toolbar as HTMLElement).queryByRole("button", { name: /重要性/ })).not.toBeInTheDocument();
+
+    const moduleHeader = within(searchTable).getByRole("columnheader", { name: /模块/ });
+    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块" }));
+    expect(within(moduleHeader).getByRole("group", { name: "模块筛选" })).toBeInTheDocument();
+    fireEvent.click(within(moduleHeader).getByLabelText("Charging Policy"));
+
+    expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(within(searchTable).queryByText("battery_temp_target_c")).not.toBeInTheDocument();
+
+    const riskHeader = within(searchTable).getByRole("columnheader", { name: /重要性/ });
+    fireEvent.click(within(riskHeader).getByRole("button", { name: "筛选重要性" }));
+    expect(within(riskHeader).getByRole("group", { name: "重要性筛选" })).toBeInTheDocument();
   });
 
   it("adds insight parameters to the draft sheet in one click", () => {

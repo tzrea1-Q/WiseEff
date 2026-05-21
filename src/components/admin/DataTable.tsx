@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 export type Column<T> = {
   key: string;
   header: ReactNode;
+  headerFilter?: ReactNode;
   render: (row: T) => ReactNode;
   sortAccessor?: (row: T) => string | number;
   align?: "left" | "center" | "right";
@@ -83,6 +84,7 @@ export function DataTable<TData>({
   const activeSort = controlledSort ? { key: controlledSort.key, dir: controlledSort.direction } : sort;
   const tableLabel = ariaLabelProp ?? ariaLabel;
   const hasActions = Boolean(renderRowActions);
+  const hasHeaderFilters = columns.some((column) => Boolean(column.headerFilter));
 
   const sortedRows = useMemo(() => {
     if (!activeSort) {
@@ -144,13 +146,13 @@ export function DataTable<TData>({
   };
 
   return (
-    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", className)}>
+    <div className={cn("overflow-hidden rounded-lg border border-border bg-card", hasHeaderFilters && "overflow-visible", className)}>
       {toolbar ? <div className="border-b border-border p-3">{toolbar}</div> : null}
       {sortedRows.length === 0 ? (
         <div className="p-8 text-center">{emptyState ?? <p className="text-sm text-muted-foreground">{emptyMessage}</p>}</div>
       ) : (
         <>
-          <div className="overflow-x-auto">
+          <div className={cn("overflow-x-auto", hasHeaderFilters && "overflow-visible")}>
             {/* M7 note: narrow screens use horizontal overflow; card-style row folding belongs in a later dedicated spec. */}
             <table aria-label={tableLabel} className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
@@ -182,7 +184,7 @@ export function DataTable<TData>({
                               alignment === "right" && "justify-end"
                             )}
                           >
-                            {column.header}
+                            <span>{column.header}</span>
                             {sortState === "ascending" ? (
                               <ChevronUp className="size-3" />
                             ) : sortState === "descending" ? (
@@ -192,8 +194,9 @@ export function DataTable<TData>({
                             )}
                           </button>
                         ) : (
-                          column.header
+                          <span>{column.header}</span>
                         )}
+                        {column.headerFilter ? <span className="data-table-column-filter">{column.headerFilter}</span> : null}
                       </th>
                     );
                   })}

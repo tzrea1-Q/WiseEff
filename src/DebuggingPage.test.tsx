@@ -49,6 +49,21 @@ describe("/debugging 单栏骨架", () => {
     expect(screen.getByRole("button", { name: /下发调试值/ })).toBeInTheDocument();
   });
 
+  it("将风险、模块和状态筛选合并到表头，搜索框仍独立存在", () => {
+    window.history.replaceState(null, "", "/debugging");
+    render(<App initialAppState={userState} />);
+
+    expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
+    expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "筛选模块" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Charging Policy" }));
+
+    expect(screen.getByRole("button", { name: "筛选模块" })).toHaveClass("active");
+    expect(getDebugRow("charger.charge_pump.enable")).toBeInTheDocument();
+    expect(() => getDebugRow("battery.temp.target")).toThrow();
+  });
+
   it("连接、修改 target、下发的基本链路仍能工作", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App initialAppState={userState} />);

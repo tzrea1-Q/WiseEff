@@ -99,6 +99,32 @@ export function ParameterComparisonPage({
         baseProjectCode={baseProject.code}
         targetProjectCode={targetProject.code}
         totalCount={comparisonData.rows.length}
+        columnFilters={[
+          {
+            key: "risk",
+            label: "重要性",
+            groupLabel: "重要性筛选",
+            values: ["High", "Medium", "Low"],
+            selectedValues: filters.risk,
+            onToggle: (risk) =>
+              setRisk(filters.risk.includes(risk as "High" | "Medium" | "Low")
+                ? filters.risk.filter((item) => item !== risk)
+                : [...filters.risk, risk as "High" | "Medium" | "Low"]),
+            onClear: () => setRisk([])
+          },
+          {
+            key: "module",
+            label: "模块",
+            groupLabel: "模块筛选",
+            values: comparisonData.moduleOptions,
+            selectedValues: filters.modules,
+            onToggle: (module) =>
+              setModules(filters.modules.includes(module)
+                ? filters.modules.filter((item) => item !== module)
+                : [...filters.modules, module]),
+            onClear: () => setModules([])
+          }
+        ]}
         onResetFilters={resetFilters}
         onSync={() => undefined}
         onIgnore={() => undefined}

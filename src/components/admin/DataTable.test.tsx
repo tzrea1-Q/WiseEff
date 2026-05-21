@@ -1,7 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { DataTable, type Column, type DataTableColumn } from "./DataTable";
+import { ColumnFilter } from "../ColumnFilter";
 
 type Row = {
   id: string;
@@ -224,6 +226,49 @@ describe("DataTable planned API", () => {
     );
 
     expect(screen.getByText("TOOLBAR")).toBeInTheDocument();
+  });
+
+  it("renders filter controls inside matching column headers", async () => {
+    const onToggle = vi.fn();
+
+    render(
+      <DataTable
+        aria-label="t"
+        rows={simpleRows}
+        rowKey={(row) => row.id}
+        columns={[
+          simpleColumns[0],
+          {
+            ...simpleColumns[1],
+            headerFilter: (
+              <ColumnFilter
+                label="分数"
+                groupLabel="分数筛选"
+                values={["10", "20", "30"]}
+                selectedValues={["20"]}
+                onToggle={onToggle}
+                onClear={() => undefined}
+              />
+            )
+          }
+        ]}
+      />
+    );
+
+    const scoreHeader = screen.getByRole("columnheader", { name: /Score/ });
+    await userEvent.click(within(scoreHeader).getByRole("button", { name: "筛选分数" }));
+    await userEvent.click(within(scoreHeader).getByRole("checkbox", { name: "10" }));
+
+    expect(within(scoreHeader).getByRole("button", { name: "筛选分数" })).toHaveClass("active");
+    expect(onToggle).toHaveBeenCalledWith("10");
+  });
+
+  it("keeps data table header filters adjacent to header labels", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    const dataFilterRule = styles.match(/\.data-table-column-filter\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(dataFilterRule).toMatch(/margin-left:\s*4px/);
+    expect(dataFilterRule).not.toMatch(/float:\s*right/);
   });
 
   it("supports aria-label on the table element", () => {
