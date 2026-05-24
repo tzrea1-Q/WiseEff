@@ -107,6 +107,32 @@ describe("derivePersonalWorkbench", () => {
     expect(workbench.nextActions.every((action) => action.source !== "submission")).toBe(true);
   });
 
+  it("drops actions that reference missing project or parameter data", () => {
+    const state: PrototypeState = {
+      ...initialState,
+      activeRoleId: "software-user",
+      parameterSubmissionRounds: [
+        {
+          ...initialState.parameterSubmissionRounds[0],
+          id: "PRS-bad-reference",
+          submitter: "Software User",
+          status: "已暂存",
+          projectId: "missing-project",
+          items: [
+            {
+              ...initialState.parameterSubmissionRounds[0].items[0],
+              parameterId: "missing-parameter"
+            }
+          ]
+        }
+      ]
+    };
+
+    const workbench = derivePersonalWorkbench(state, analyticsFor(state));
+
+    expect(workbench.nextActions.some((action) => action.id.includes("PRS-bad-reference"))).toBe(false);
+  });
+
   it("shows review actions for committers", () => {
     const state: PrototypeState = { ...initialState, activeRoleId: "hardware-committer" };
 

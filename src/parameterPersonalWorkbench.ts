@@ -6,7 +6,7 @@ import {
   type PlatformRoleId
 } from "@/domain/users/types";
 import type { PageKey } from "./appConfig";
-import type { ChangeRequest, PrototypeState, RequestStatus } from "./mockData";
+import type { ChangeRequest, ParameterSubmissionRound, PrototypeState, RequestStatus } from "./mockData";
 import type { ParameterHomepageAnalytics, ParameterHotspot } from "./parameterHomepageAnalytics";
 
 export type WorkbenchRoleView = "guest" | "user" | "committer" | "admin";
@@ -105,7 +105,9 @@ function buildRealActions(
 
 function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): WorkbenchAction[] {
   const submitter = getPlatformRole(roleId).name;
-  const userRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === submitter);
+  const userRounds = state.parameterSubmissionRounds.filter(
+    (round) => roundHasValidReferences(state, round) && round.submitter === submitter
+  );
   const stashedRound = userRounds.find((round) => round.status === "已暂存");
   const rejectedRound = userRounds.find((round) => round.status === "已打回");
   const softwareMergeCount = roleSupportsWorkflowSlot(roleId, "softwareUser")
@@ -153,6 +155,12 @@ function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): Workbe
   }
 
   return actions;
+}
+
+function roundHasValidReferences(state: PrototypeState, round: ParameterSubmissionRound) {
+  const projectExists = state.configDraft.projects.some((project) => project.id === round.projectId);
+  const parameterIds = new Set(state.parameters.map((parameter) => parameter.id));
+  return projectExists && round.items.every((item) => parameterIds.has(item.parameterId));
 }
 
 function buildCommitterActions(state: PrototypeState, roleId: PlatformRoleId): WorkbenchAction[] {
