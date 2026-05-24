@@ -13,13 +13,14 @@ function readCssBlock(css: string, selector: string) {
 }
 
 function readCssBlockAfter(css: string, marker: string, selector: string) {
-  const markerStart = css.indexOf(marker);
+  const normalizedCss = css.replace(/\r\n/g, "\n");
+  const markerStart = normalizedCss.indexOf(marker);
   expect(markerStart).toBeGreaterThanOrEqual(0);
-  const start = css.indexOf(`${selector} {`, markerStart);
+  const start = normalizedCss.indexOf(`${selector} {`, markerStart);
   expect(start).toBeGreaterThanOrEqual(0);
-  const end = css.indexOf("\n}", start);
+  const end = normalizedCss.indexOf("\n}", start);
   expect(end).toBeGreaterThan(start);
-  return css.slice(start, end);
+  return normalizedCss.slice(start, end);
 }
 
 afterEach(() => {
@@ -293,20 +294,23 @@ describe("ParameterManagementHomePage", () => {
     expect(metricValueCss).toContain("font-size: 22px;");
   });
 
-  it("keeps hotspot rows readable in accordion and mobile layouts", () => {
+  it("keeps hotspot rows readable in mid-desktop and mobile layouts", () => {
     const css = readFileSync("src/styles.css", "utf8");
-    const accordionRowCss = readCssBlockAfter(css, "@media (max-width: 1099px)", ".hotspot-row");
-    const accordionSelectCss = readCssBlockAfter(css, "@media (max-width: 1099px)", ".hotspot-row-select");
-    const accordionTitleCss = readCssBlockAfter(css, "@media (max-width: 1099px)", ".hotspot-title");
+    const midDesktopMarker = "@media (max-width: 1399px) {\n  .parameter-homepage-hotspot-layout";
+    const midDesktopLayoutCss = readCssBlockAfter(css, midDesktopMarker, ".parameter-homepage-hotspot-layout");
+    const midDesktopRowCss = readCssBlockAfter(css, midDesktopMarker, ".hotspot-row");
+    const midDesktopSelectCss = readCssBlockAfter(css, midDesktopMarker, ".hotspot-row-select");
+    const midDesktopTitleCss = readCssBlockAfter(css, midDesktopMarker, ".hotspot-title");
     const mobileSelectCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".hotspot-row-select");
     const mobileScoreCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".hotspot-col-score");
 
-    expect(accordionRowCss).toContain("overflow: visible;");
-    expect(accordionSelectCss).toContain("grid-template-areas:");
-    expect(accordionSelectCss).toContain("minmax(0, 1fr)");
-    expect(accordionSelectCss).not.toContain("100px 140px 76px");
-    expect(accordionTitleCss).toContain("white-space: normal;");
-    expect(accordionTitleCss).toContain("overflow-wrap: anywhere;");
+    expect(midDesktopLayoutCss).toContain("grid-template-columns: 1fr;");
+    expect(midDesktopRowCss).toContain("overflow: visible;");
+    expect(midDesktopSelectCss).toContain("grid-template-areas:");
+    expect(midDesktopSelectCss).toContain("minmax(0, 1fr)");
+    expect(midDesktopSelectCss).not.toContain("100px 140px 76px");
+    expect(midDesktopTitleCss).toContain("white-space: normal;");
+    expect(midDesktopTitleCss).toContain("overflow-wrap: anywhere;");
     expect(mobileSelectCss).toContain("grid-template-columns: minmax(0, 1fr);");
     expect(mobileSelectCss).toContain("grid-template-areas:");
     expect(mobileScoreCss).toContain("width: 100%;");

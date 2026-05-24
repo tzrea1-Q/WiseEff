@@ -10614,7 +10614,7 @@ td small {
   }
 }
 
-@media (max-width: 1099px) {
+@media (max-width: 1399px) {
   .parameter-homepage-hotspot-layout {
     grid-template-columns: 1fr;
     gap: 0;
