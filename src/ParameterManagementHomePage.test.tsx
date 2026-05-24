@@ -45,9 +45,11 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero__summary")).toBeInTheDocument();
-    expect(document.querySelector(".personal-workbench-hero__workspace")).toBeInTheDocument();
-    expect(document.querySelector(".personal-workbench-hero__workspace > .next-action-panel")).toBeInTheDocument();
-    expect(document.querySelector(".personal-workbench-hero__workspace > .scenario-entry-panel")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-grid")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero > .next-action-panel")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero > .scenario-entry-panel")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-grid > .next-action-panel.homepage-panel")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-grid > .scenario-entry-panel.homepage-panel")).toBeInTheDocument();
   });
 
   it("keeps the old dashboard as recommendation evidence", () => {
@@ -329,24 +331,25 @@ describe("ParameterManagementHomePage", () => {
     expect(mobileScoreCss).toContain("width: 100%;");
   });
 
-  it("lays out the personal workbench with a full-width summary and a main-action workspace", () => {
+  it("splits next actions and scenario entries into separate workbench panels", () => {
     const css = readFileSync("src/styles.css", "utf8");
     const desktopHeroCss = readCssBlock(css, ".personal-workbench-hero");
     const summaryCss = readCssBlock(css, ".personal-workbench-hero__summary");
-    const workspaceCss = readCssBlock(css, ".personal-workbench-hero__workspace");
+    const gridCss = readCssBlock(css, ".personal-workbench-grid");
+    const panelCss = readCssBlock(css, ".next-action-panel");
     const actionListCss = readCssBlock(css, ".next-action-list");
     const primaryActionCss = readCssBlock(css, ".next-action-card[data-priority=\"primary\"]");
-    const responsiveHeroCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-hero", ".personal-workbench-hero");
-    const responsiveWorkspaceCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-hero", ".personal-workbench-hero__workspace");
+    const responsiveGridCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-grid", ".personal-workbench-grid");
     const mobileActionListCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".next-action-list");
 
-    expect(desktopHeroCss).toContain("grid-template-rows: auto 1fr;");
+    expect(desktopHeroCss).not.toContain("grid-template-rows: auto 1fr;");
+    expect(desktopHeroCss).toContain("padding: 14px 18px;");
     expect(summaryCss).toContain("grid-template-columns: 1fr;");
-    expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);");
+    expect(gridCss).toContain("grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);");
+    expect(panelCss).toContain("padding: 14px;");
     expect(actionListCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
     expect(primaryActionCss).toContain("grid-column: 1 / -1;");
-    expect(responsiveHeroCss).toContain("grid-template-columns: 1fr;");
-    expect(responsiveWorkspaceCss).toContain("grid-template-columns: 1fr;");
+    expect(responsiveGridCss).toContain("grid-template-columns: 1fr;");
     expect(mobileActionListCss).toContain("grid-template-columns: 1fr;");
   });
 

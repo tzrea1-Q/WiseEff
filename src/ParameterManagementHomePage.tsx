@@ -160,13 +160,15 @@ function PersonalWorkbenchHero({
   onNewProject?: () => void;
 }) {
   return (
-    <section className="personal-workbench-hero homepage-panel" aria-label="个人工作台">
-      <div className="personal-workbench-hero__summary">
-        <span className="personal-workbench-hero__copy">
-          <h2>我的工作台</h2>
-        </span>
-      </div>
-      <div className="personal-workbench-hero__workspace">
+    <section className="personal-workbench" aria-label="个人工作台">
+      <header className="personal-workbench-hero homepage-panel">
+        <div className="personal-workbench-hero__summary">
+          <span className="personal-workbench-hero__copy">
+            <h2>我的工作台</h2>
+          </span>
+        </div>
+      </header>
+      <div className="personal-workbench-grid">
         <NextActionList actions={workbench.nextActions} onNavigate={onNavigate} />
         <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />
       </div>
@@ -182,7 +184,7 @@ function NextActionList({
   onNavigate: (path: string) => void;
 }) {
   return (
-    <section className="next-action-panel" aria-label="我的下一步">
+    <section className="next-action-panel homepage-panel" aria-label="我的下一步">
       <div className="parameter-homepage-section-head">
         <div>
           <h2>我的下一步</h2>
@@ -224,7 +226,7 @@ function ScenarioEntryPanel({
   onNewProject?: () => void;
 }) {
   return (
-    <section className="scenario-entry-panel" aria-label="我想做">
+    <section className="scenario-entry-panel homepage-panel" aria-label="我想做">
       <div className="parameter-homepage-section-head">
         <div>
           <h2>我想做</h2>
