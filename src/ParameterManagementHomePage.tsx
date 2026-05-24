@@ -177,10 +177,10 @@ function NextActionList({
   onNavigate: (path: string) => void;
 }) {
   return (
-    <section className="next-action-panel homepage-panel" aria-label="我的下一步">
+    <section className="next-action-panel homepage-panel" aria-label="待办事项">
       <div className="parameter-homepage-section-head">
         <div>
-          <h2>我的下一步</h2>
+          <h2>待办事项</h2>
         </div>
       </div>
       <div className="next-action-list">

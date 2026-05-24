@@ -32,7 +32,7 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
 
     expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
     expect(screen.queryByText("我的工作台")).not.toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
