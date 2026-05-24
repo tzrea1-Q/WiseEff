@@ -37,6 +37,9 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero__eyebrow")).not.toBeInTheDocument();
     expect(screen.queryByText("管理项已按影响范围排序，直接进入后台处理。")).not.toBeInTheDocument();
+    expect(screen.queryByText("流程待办优先")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无流程待办，按风险推荐")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无必须处理事项")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();

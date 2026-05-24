@@ -167,7 +167,7 @@ function PersonalWorkbenchHero({
         </span>
       </div>
       <div className="personal-workbench-hero__workspace">
-        <NextActionList actions={workbench.nextActions} emptyState={workbench.emptyState} onNavigate={onNavigate} />
+        <NextActionList actions={workbench.nextActions} onNavigate={onNavigate} />
         <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />
       </div>
     </section>
@@ -176,11 +176,9 @@ function PersonalWorkbenchHero({
 
 function NextActionList({
   actions,
-  emptyState,
   onNavigate
 }: {
   actions: WorkbenchAction[];
-  emptyState: PersonalWorkbenchViewModel["emptyState"];
   onNavigate: (path: string) => void;
 }) {
   return (
@@ -188,7 +186,6 @@ function NextActionList({
       <div className="parameter-homepage-section-head">
         <div>
           <h2>我的下一步</h2>
-          <span>{emptyState === "has-todos" ? "流程待办优先" : emptyState === "recommendations" ? "暂无流程待办，按风险推荐" : "暂无必须处理事项"}</span>
         </div>
       </div>
       <div className="next-action-list">
