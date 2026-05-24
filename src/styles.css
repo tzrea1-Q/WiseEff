@@ -9718,13 +9718,14 @@ td small {
 
 .personal-workbench-hero {
   display: grid;
-  grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.35fr) minmax(260px, 0.95fr);
-  gap: 16px;
-  align-items: stretch;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto 1fr;
+  gap: 14px;
   padding: 18px;
 }
 
 .personal-workbench-hero__summary,
+.personal-workbench-hero__workspace,
 .next-action-panel,
 .scenario-entry-panel {
   min-width: 0;
@@ -9732,15 +9733,37 @@ td small {
 
 .personal-workbench-hero__summary {
   display: grid;
-  align-content: start;
-  gap: 8px;
-  padding: 4px 4px 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  padding: 2px 4px 0;
+}
+
+.personal-workbench-hero__copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.personal-workbench-hero__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
+  gap: 14px;
+  align-items: start;
 }
 
 .personal-workbench-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
   color: var(--app-secondary);
+  background: #f1fbff;
+  border: 1px solid #bbeaf8;
+  border-radius: 8px;
   font-size: 12px;
   font-weight: 850;
+  white-space: nowrap;
 }
 
 .personal-workbench-hero h2,
@@ -9757,10 +9780,20 @@ td small {
   line-height: 1.5;
 }
 
+.next-action-panel,
+.scenario-entry-panel {
+  display: grid;
+  align-content: start;
+}
+
 .next-action-list,
 .scenario-entry-list {
   display: grid;
   gap: 8px;
+}
+
+.next-action-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .next-action-card,
@@ -9786,6 +9819,7 @@ td small {
 }
 
 .next-action-card[data-priority="primary"] {
+  grid-column: 1 / -1;
   background: #eef4ff;
   border-color: #9bb4ff;
   box-shadow: 0 10px 24px rgba(0, 61, 155, 0.12);
@@ -10565,6 +10599,10 @@ td small {
   .personal-workbench-hero {
     grid-template-columns: 1fr;
   }
+
+  .personal-workbench-hero__workspace {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 980px) {
@@ -10654,9 +10692,18 @@ td small {
     padding: 14px;
   }
 
+  .personal-workbench-hero__summary {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
   .next-action-card,
   .scenario-entry {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .next-action-list {
+    grid-template-columns: 1fr;
   }
 
   .next-action-card__icon {

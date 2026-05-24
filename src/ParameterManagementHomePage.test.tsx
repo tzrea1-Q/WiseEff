@@ -38,6 +38,10 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__summary")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__workspace")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__workspace > .next-action-panel")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__workspace > .scenario-entry-panel")).toBeInTheDocument();
   });
 
   it("keeps the old dashboard as recommendation evidence", () => {
@@ -319,13 +323,25 @@ describe("ParameterManagementHomePage", () => {
     expect(mobileScoreCss).toContain("width: 100%;");
   });
 
-  it("collapses the personal workbench hero before sidebar-constrained desktop widths", () => {
+  it("lays out the personal workbench with a full-width summary and a main-action workspace", () => {
     const css = readFileSync("src/styles.css", "utf8");
     const desktopHeroCss = readCssBlock(css, ".personal-workbench-hero");
+    const summaryCss = readCssBlock(css, ".personal-workbench-hero__summary");
+    const workspaceCss = readCssBlock(css, ".personal-workbench-hero__workspace");
+    const actionListCss = readCssBlock(css, ".next-action-list");
+    const primaryActionCss = readCssBlock(css, ".next-action-card[data-priority=\"primary\"]");
     const responsiveHeroCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-hero", ".personal-workbench-hero");
+    const responsiveWorkspaceCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-hero", ".personal-workbench-hero__workspace");
+    const mobileActionListCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".next-action-list");
 
-    expect(desktopHeroCss).toContain("grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.35fr) minmax(260px, 0.95fr);");
+    expect(desktopHeroCss).toContain("grid-template-rows: auto 1fr;");
+    expect(summaryCss).toContain("grid-template-columns: auto minmax(0, 1fr);");
+    expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);");
+    expect(actionListCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
+    expect(primaryActionCss).toContain("grid-column: 1 / -1;");
     expect(responsiveHeroCss).toContain("grid-template-columns: 1fr;");
+    expect(responsiveWorkspaceCss).toContain("grid-template-columns: 1fr;");
+    expect(mobileActionListCss).toContain("grid-template-columns: 1fr;");
   });
 
   it("defines leaderboard hotspot styles and removes legacy hotspot-card rules", () => {

@@ -163,11 +163,15 @@ function PersonalWorkbenchHero({
     <section className="personal-workbench-hero homepage-panel" aria-label="个人工作台">
       <div className="personal-workbench-hero__summary">
         <span className="personal-workbench-hero__eyebrow">{getWorkbenchEyebrow(workbench)}</span>
-        <h2>我的工作台</h2>
-        <p>{workbench.summary}</p>
+        <span className="personal-workbench-hero__copy">
+          <h2>我的工作台</h2>
+          <p>{workbench.summary}</p>
+        </span>
       </div>
-      <NextActionList actions={workbench.nextActions} emptyState={workbench.emptyState} onNavigate={onNavigate} />
-      <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />
+      <div className="personal-workbench-hero__workspace">
+        <NextActionList actions={workbench.nextActions} emptyState={workbench.emptyState} onNavigate={onNavigate} />
+        <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />
+      </div>
     </section>
   );
 }
