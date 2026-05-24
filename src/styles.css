@@ -10598,7 +10598,7 @@ td small {
   color: var(--app-primary);
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 1399px) {
   .personal-workbench-hero {
     grid-template-columns: 1fr;
   }

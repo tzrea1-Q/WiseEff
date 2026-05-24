@@ -316,6 +316,15 @@ describe("ParameterManagementHomePage", () => {
     expect(mobileScoreCss).toContain("width: 100%;");
   });
 
+  it("collapses the personal workbench hero before sidebar-constrained desktop widths", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const desktopHeroCss = readCssBlock(css, ".personal-workbench-hero");
+    const responsiveHeroCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-hero", ".personal-workbench-hero");
+
+    expect(desktopHeroCss).toContain("grid-template-columns: minmax(220px, 0.7fr) minmax(0, 1.35fr) minmax(260px, 0.95fr);");
+    expect(responsiveHeroCss).toContain("grid-template-columns: 1fr;");
+  });
+
   it("defines leaderboard hotspot styles and removes legacy hotspot-card rules", () => {
     const css = readFileSync("src/styles.css", "utf8");
 
@@ -338,7 +347,7 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain(".parameter-homepage-dimension-option[data-state=\"on\"]");
     expect(css).toContain(".parameter-homepage-select-label {");
     expect(css).toContain(".action-btn--primary {");
-    expect(css).toContain("@media (max-width: 1040px)");
+    expect(css).toContain("@media (max-width: 1399px)");
     expect(css).toContain("@media (max-width: 768px)");
     expect(css).not.toContain(".parameter-homepage-headline {");
     expect(css).not.toContain(".parameter-homepage-quick-nav");
