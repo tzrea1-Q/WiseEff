@@ -51,8 +51,7 @@ const activeStatuses = new Set<RequestStatus>([
   "软件User合入",
   "待审阅",
   "自动检查通过",
-  "等待合入",
-  "已打回"
+  "等待合入"
 ]);
 
 export function derivePersonalWorkbench(
@@ -110,9 +109,6 @@ function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): Workbe
   );
   const stashedRound = userRounds.find((round) => round.status === "已暂存");
   const rejectedRound = userRounds.find((round) => round.status === "已打回");
-  const softwareMergeCount = roleSupportsWorkflowSlot(roleId, "softwareUser")
-    ? state.changeRequests.filter((request) => request.status === "软件User合入").length
-    : 0;
   const actions: WorkbenchAction[] = [];
 
   if (stashedRound) {
@@ -141,19 +137,6 @@ function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): Workbe
     });
   }
 
-  if (softwareMergeCount > 0) {
-    actions.push({
-      id: "user-software-merge",
-      kind: "todo",
-      priority: "secondary",
-      title: "确认软件侧待合入事项",
-      description: "有参数变更已完成审阅，等待软件侧合入确认。",
-      meta: `${softwareMergeCount} 项待合入`,
-      path: "/parameter-submissions",
-      source: "review"
-    });
-  }
-
   return actions;
 }
 
@@ -164,7 +147,7 @@ function roundHasValidReferences(state: PrototypeState, round: ParameterSubmissi
 }
 
 function buildCommitterActions(state: PrototypeState, roleId: PlatformRoleId): WorkbenchAction[] {
-  const reviewRequests = state.changeRequests.filter((request) => canReviewRequest(roleId, request));
+  const reviewRequests = getReviewRequests(state, roleId);
   const initializationCount = state.parameterInitializationReviews.filter((review) => review.status === "pending").length;
   const actions: WorkbenchAction[] = [];
 
@@ -251,6 +234,10 @@ function canReviewRequest(roleId: PlatformRoleId, request: ChangeRequest) {
   if (request.status === "软件Committer检视") return roleSupportsWorkflowSlot(roleId, "softwareCommitter");
   if (request.status === "软件User合入") return roleSupportsWorkflowSlot(roleId, "softwareUser");
   return activeStatuses.has(request.status) && getWorkbenchRoleView(roleId) === "committer";
+}
+
+function getReviewRequests(state: PrototypeState, roleId: PlatformRoleId) {
+  return state.changeRequests.filter((request) => canReviewRequest(roleId, request));
 }
 
 function buildRecommendationActions(
@@ -351,7 +338,7 @@ function buildScenarioEntries(
         ]
       : roleView === "committer"
         ? [
-            entry("review", "处理审阅", "进入当前角色的参数审阅队列。", "/parameter-review", "parameter-review", "待审", state.changeRequests.length),
+            entry("review", "处理审阅", "进入当前角色的参数审阅队列。", "/parameter-review", "parameter-review", "待审", getReviewRequests(state, roleId).length),
             entry("risk", "高风险专项", "按风险热区聚焦审阅对象。", "/parameter-review", "parameter-review", "热区", analytics.hotspots.length),
             entry("library", "查看参数库", "回到参数目录核对上下文。", "/parameters", "parameters", "参数", state.parameters.length)
           ]

@@ -1,6 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { canAccessPage } from "@/app/permissions";
-import { getPageByPath } from "./appConfig";
 import { deriveParameterHomepageAnalytics } from "./parameterHomepageAnalytics";
 import { derivePersonalWorkbench } from "./parameterPersonalWorkbench";
 import { initialState, type PrototypeState } from "./mockData";
@@ -60,7 +58,7 @@ describe("derivePersonalWorkbench", () => {
     expect(workbench.nextActions[0].path).toMatch(/^\/parameters/);
   });
 
-  it("keeps generated user todo actions on pages the user can access", () => {
+  it("does not create software merge todos before users have an accessible merge action", () => {
     const state: PrototypeState = {
       ...initialState,
       activeRoleId: "software-user",
@@ -77,12 +75,13 @@ describe("derivePersonalWorkbench", () => {
     const workbench = derivePersonalWorkbench(state, analyticsFor(state));
     const todoActions = workbench.nextActions.filter((action) => action.kind === "todo");
 
-    expect(todoActions.length).toBeGreaterThan(0);
-    expect(
-      todoActions.every((action) =>
-        canAccessPage(state.activeRoleId, getPageByPath(action.path.split("?")[0]).key)
-      )
-    ).toBe(true);
+    expect(todoActions).toEqual([]);
+    expect(workbench.nextActions).not.toContainEqual(
+      expect.objectContaining({
+        id: "user-software-merge",
+        path: "/parameter-submissions"
+      })
+    );
   });
 
   it("does not treat committer-authored drafts as user workflow todos", () => {
@@ -146,6 +145,68 @@ describe("derivePersonalWorkbench", () => {
     });
     expect(workbench.nextActions[0].path).toBe("/parameter-review");
     expect(workbench.scenarioEntries.map((entry) => entry.title)).toContain("处理审阅");
+  });
+
+  it("does not create review todos for rejected work", () => {
+    const state: PrototypeState = {
+      ...initialState,
+      activeRoleId: "hardware-committer",
+      changeRequests: [
+        {
+          ...initialState.changeRequests[0],
+          id: "CR-rejected-only",
+          status: "已打回"
+        }
+      ],
+      parameterInitializationReviews: []
+    };
+
+    const workbench = derivePersonalWorkbench(state, analyticsFor(state));
+
+    expect(workbench.nextActions).not.toContainEqual(
+      expect.objectContaining({
+        id: "committer-review-queue",
+        title: "处理待审阅参数变更"
+      })
+    );
+    expect(workbench.emptyState).toBe("recommendations");
+  });
+
+  it("uses the current committer review candidates for the review scenario metric", () => {
+    const state: PrototypeState = {
+      ...initialState,
+      activeRoleId: "hardware-committer",
+      changeRequests: [
+        {
+          ...initialState.changeRequests[0],
+          id: "CR-hardware-review",
+          status: "硬件Committer检视"
+        },
+        {
+          ...initialState.changeRequests[0],
+          id: "CR-software-review",
+          status: "软件Committer检视"
+        },
+        {
+          ...initialState.changeRequests[0],
+          id: "CR-rejected",
+          status: "已打回"
+        },
+        {
+          ...initialState.changeRequests[0],
+          id: "CR-merged",
+          status: "已合入"
+        }
+      ]
+    };
+
+    const workbench = derivePersonalWorkbench(state, analyticsFor(state));
+    const reviewScenario = workbench.scenarioEntries.find((entry) => entry.id === "review");
+
+    expect(reviewScenario).toMatchObject({
+      metricLabel: "待审",
+      metricValue: "1"
+    });
   });
 
   it("shows direct management actions for admins without beginner governance copy", () => {
