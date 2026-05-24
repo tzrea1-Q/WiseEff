@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, Info, Lightbulb, ListChecks, LockKeyhole, Play, Send, X } from "lucide-react";
+import { Bot, Lightbulb, LockKeyhole, Play, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, Dispatch, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AppAction } from "@/App";
@@ -17,35 +17,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { getCoverage } from "@/parameterAdminAnalytics";
-import { projects, type PrototypeState } from "@/mockData";
-import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
-
-function createComparisonInsights(state: PrototypeState, selection: ComparisonProjectSelection) {
-  const baseProject = projects.find((project) => project.id === selection.baseProjectId) ?? projects[0];
-  const targetProject = projects.find((project) => project.id === selection.targetProjectId) ?? projects[1] ?? projects[0];
-  const baseParameters = state.parameters.filter((parameter) => parameter.projectId === baseProject.id);
-  const targetParameters = state.parameters.filter((parameter) => parameter.projectId === targetProject.id);
-  const targetByName = new Map(targetParameters.map((parameter) => [parameter.name, parameter]));
-  const comparisonRows = baseParameters.map((baseParameter) => {
-    const targetParameter = targetByName.get(baseParameter.name);
-
-    return {
-      key: baseParameter.name,
-      risk: baseParameter.risk,
-      status: targetParameter && targetParameter.currentValue === baseParameter.currentValue ? "synced" : "drift"
-    };
-  });
-  const driftRows = comparisonRows.filter((row) => row.status === "drift");
-  const primaryInsight = driftRows.find((row) => row.risk === "High") ?? driftRows[0] ?? comparisonRows[0];
-  const secondaryInsight = driftRows.find((row) => row.key !== primaryInsight?.key) ?? comparisonRows[1] ?? primaryInsight;
-
-  return {
-    baseProject,
-    targetProject,
-    primaryInsight,
-    secondaryInsight
-  };
-}
+import type { PrototypeState } from "@/mockData";
 
 const agentFabSize = 56;
 const agentPanelDesktopWidth = 430;
@@ -95,14 +67,12 @@ export function UnifiedAgent({
   path,
   plan,
   state,
-  dispatch,
-  comparisonSelection
+  dispatch
 }: {
   path: string;
   plan: ReturnType<typeof createAgentPlan>;
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
-  comparisonSelection: ComparisonProjectSelection;
 }) {
   const [open, setOpen] = useState(false);
   const [agentPosition, setAgentPosition] = useState<AgentPosition>({ right: 24, bottom: 24 });
@@ -256,7 +226,6 @@ export function UnifiedAgent({
     right: `${clampAgentPanelOffset(agentPosition.right, window.innerWidth)}px`,
     bottom: `${agentPosition.bottom}px`
   };
-  const comparisonInsights = path === "/parameter-comparison" ? createComparisonInsights(state, comparisonSelection) : null;
   const visibleActions = plan.actions.filter((action) => {
     const requiredAction = action.requiredPermission;
     return !requiredAction || canPerform(state.activeRoleId, requiredAction);
@@ -318,34 +287,6 @@ export function UnifiedAgent({
           <SectionLabel icon={<Lightbulb size={15} />} label="上下文洞察" />
           <p>{plan.contextSummary}</p>
         </div>
-        {comparisonInsights ? (
-          <div className="agent-insight-stack" aria-label="WiseAgent 洞察">
-            <div className="agent-insight-heading">
-              <Bot size={16} />
-              <strong>WiseAgent 洞察</strong>
-            </div>
-            <div className="agent-insight-card accent-secondary">
-              <SectionLabel icon={<Info size={15} />} label="项目差异风险" />
-              <p>
-                <code>{comparisonInsights.primaryInsight?.key}</code> 在 {comparisonInsights.baseProject.code} 与 {comparisonInsights.targetProject.code} 间存在差异，
-                建议结合充电温升与降额日志判断是否同步。
-              </p>
-              <Button className="link-button" type="button" variant="link">查看历史延迟</Button>
-            </div>
-            <div className="agent-insight-card accent-tertiary">
-              <SectionLabel icon={<ListChecks size={15} />} label="参数值对照" />
-              <p>
-                <code>{comparisonInsights.secondaryInsight?.key}</code> 的项目配置需要按机型定位、电池规格和区域电源策略一起复核。
-              </p>
-            </div>
-            <div className="agent-insight-card accent-danger">
-              <SectionLabel icon={<AlertTriangle size={15} />} label="风险阈值漂移" />
-              <p>
-                高重要性参数会直接影响充电安全、电量估算或热管理表现，同步前需要先完成参数审阅。
-              </p>
-            </div>
-          </div>
-        ) : null}
         <div className="agent-steps">
           {plan.steps.map((step, index) => (
             <div key={step}>

@@ -160,7 +160,7 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数审阅" })).not.toBeInTheDocument();
     expect(within(topbarEntries).getByRole("button", { name: "参数修改" })).toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "对比分析" })).toBeInTheDocument();
+    expect(within(topbarEntries).queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
     expect(within(topbarEntries).getByRole("button", { name: "参数审阅" })).toBeInTheDocument();
     expect(within(topbarEntries).getByRole("button", { name: "管理后台" })).toBeInTheDocument();
     expectSelectValue(timeWindowSelect, "30d");
@@ -195,6 +195,8 @@ describe("WiseEff app shell", () => {
     expect(workbenchBrand).toBeInTheDocument();
     expect(workbenchBrand).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
+    expect(screen.getByText("Driven by AI")).toBeInTheDocument();
+    expect(screen.queryByText("AI 驱动的企业业务效率平台")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
@@ -461,7 +463,7 @@ describe("WiseEff app shell", () => {
 
     expect(screen.queryByText(/当前项目：/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "提交变更" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /提交本轮|鎻愴氦鏈疆/ })).not.toBeInTheDocument();
   });
 
   it("opens a hidden personal submission history page from the parameter workbench", () => {
@@ -509,165 +511,170 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("charge_voltage_limit_mv")).toBeInTheDocument();
   });
 
-  it("opens a parameter comparison workspace from the compare action", () => {
+  it("keeps submission round detail copy to a single prompt line and a single-row timeline", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App initialAppState={userState} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
+
+    const detail = screen.getByRole("region", { name: "提交轮次详情" });
+    expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*个参数/)).toHaveLength(1);
+
+    const css = readFileSync("src/styles.css", "utf8");
+    expect(css).toContain(".submission-timeline {");
+    expect(readCssBlock(css, ".submission-timeline")).toContain("grid-template-columns: repeat(5, minmax(0, 1fr));");
+  });
+
+  it("renders complex DTS values in personal submission history without stretching the detail layout", () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const dtsParameter = initialState.parameters.find((parameter) => parameter.name === "dts_fast_charge_profile_matrix");
+    expect(dtsParameter).toBeDefined();
+    const complexRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "PRS-complex",
+      projectId: dtsParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Admin",
+      createdAt: "刚刚",
+      items: [
+        {
+          requestId: "PRQ-complex",
+          parameterId: dtsParameter!.id,
+          name: dtsParameter!.name,
+          module: dtsParameter!.module,
+          currentValue: dtsParameter!.currentValue,
+          targetValue: dtsParameter!.currentValue.replace('"burst"', '"boost"'),
+          unit: dtsParameter!.unit,
+          risk: dtsParameter!.risk,
+          reason: "同步 DTS 矩阵配置"
+        }
+      ]
+    };
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "admin", parameterSubmissionRounds: [complexRound] }} />);
+
+    const detail = document.querySelector<HTMLElement>(".submission-round-detail");
+    expect(detail).not.toBeNull();
+    const complexCard = within(detail!).getByText("dts_fast_charge_profile_matrix").closest(".submission-diff-card");
+    expect(complexCard).toHaveClass("submission-diff-card--history-complex");
+    expect(complexCard!.querySelector(".diff-values")).not.toBeInTheDocument();
+    expect(complexCard!.querySelector(".history-submission-code-grid")).not.toBeInTheDocument();
+
+    const diff = complexCard!.querySelector<HTMLElement>(".history-submission-diff");
+    expect(diff).toBeInTheDocument();
+    expect(diff).toHaveClass("submission-preview-diff");
+    expect(diff!.querySelectorAll(".submission-preview-diff-row[data-kind='remove']")).toHaveLength(1);
+    expect(diff!.querySelectorAll(".submission-preview-diff-row[data-kind='add']")).toHaveLength(1);
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent('"burst"');
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"boost"');
+
+    const css = readFileSync("src/styles.css", "utf8");
+    expect(readCssBlock(css, ".submission-round-detail")).toContain("min-width: 0;");
+    expect(readCssBlock(css, ".history-diff-list")).toContain("overflow: hidden;");
+    expect(readCssBlock(css, ".history-submission-diff")).toContain("max-height: 300px;");
+  });
+
+  it("uses the same history card structure for simple values and compacts the submission metrics", () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const simpleRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "PRS-simple",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Admin",
+      createdAt: "刚刚",
+      items: [
+        {
+          requestId: "PRQ-simple",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "同步推荐电流限制"
+        }
+      ]
+    };
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "admin", parameterSubmissionRounds: [simpleRound] }} />);
+
+    const detail = screen.getByRole("region", { name: "提交轮次详情" });
+    const simpleCard = within(detail).getByText("fast_charge_current_limit_ma").closest(".submission-diff-card");
+
+    expect(simpleCard).toHaveClass("submission-diff-card--history");
+    expect(simpleCard).not.toHaveClass("submission-diff-card--history-complex");
+    expect(simpleCard!.querySelector(".diff-values")).not.toBeInTheDocument();
+    expect(simpleCard!.querySelector(".history-submission-code-grid")).not.toBeInTheDocument();
+    expect(within(simpleCard as HTMLElement).getAllByText("数值配置")).toHaveLength(2);
+    expect(within(simpleCard as HTMLElement).getByText("当前 1 行")).toBeInTheDocument();
+    expect(within(simpleCard as HTMLElement).getByText("目标 1 行")).toBeInTheDocument();
+
+    const diff = simpleCard!.querySelector<HTMLElement>(".history-submission-diff");
+    expect(diff).toBeInTheDocument();
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("3850 mA");
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("3200 mA");
+
+    const css = readFileSync("src/styles.css", "utf8");
+    expect(readCssBlock(css, ".submission-history-summary")).toContain("display: grid;");
+    expect(readCssBlock(css, ".submission-history-summary")).toContain("grid-template-columns: repeat(3, minmax(0, 1fr));");
+    expect(readCssBlock(css, ".submission-history-summary .metric-card")).toContain("min-height: 96px;");
+    expect(readCssBlock(css, ".submission-history-summary .metric-bar")).toContain("height: 4px;");
+  });
+
+  it("keeps row-level detail view available without exposing a standalone comparison action", () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderAppForCurrentPath();
 
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(within(topbar).queryByRole("button", { name: /跨项目对比/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "对比参数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "跨项目对比" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "跨项目对比" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
 
-    expect(window.location.pathname).toBe("/parameter-comparison");
-    expect(screen.getByTestId("comparison-page-v2")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "基准项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "交换基准和对比项目" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "项目对比选择" })).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("生产 vs 预发");
-    expect(document.body).not.toHaveTextContent("的充电、电池和电源管理参数差异分析。");
-    expect(screen.queryByRole("button", { name: "同步选中项" })).not.toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent("WiseAgent 已生成风险说明");
-    expect(screen.getByRole("region", { name: "参数差异矩阵" })).toBeInTheDocument();
-    expect(screen.getAllByText("fast_charge_current_limit_ma").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
-    expect(screen.queryByText("WiseAgent 洞察")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/parameters");
+    expect(screen.getByRole("dialog", { name: /fast_charge_current_limit_ma/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "跨项目对比" })).toBeInTheDocument();
   });
 
-  it("exports the project comparison matrix as an Excel-readable file", async () => {
-    window.history.replaceState(null, "", "/parameter-comparison");
-    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:comparison-parameters");
-    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-
-    renderAppForCurrentPath();
-
-    fireEvent.click(screen.getByRole("button", { name: "导出对比结果" }));
-
-    const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
-    const exportedText = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.addEventListener("load", () => resolve(String(reader.result)));
-      reader.addEventListener("error", () => reject(reader.error));
-      reader.readAsText(exportedBlob);
-    });
-
-    expect(exportedBlob.type).toContain("application/vnd.ms-excel");
-    expect(exportedText).toContain("fast_charge_current_limit_ma");
-    expect(exportedText).toContain("AUR-Prod");
-    expect(exportedText).toContain("NEB-RD");
-    expect(exportedText).toContain("参数含义");
-    expect(clickAnchor).toHaveBeenCalled();
-    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:comparison-parameters");
-  });
-
-  it("compares parameter values between two real projects with project chips and delta badges", () => {
-    window.history.replaceState(null, "", "/parameter-comparison");
-
-    renderAppForCurrentPath();
-
-    const getComparisonRow = (parameterName: string) =>
-      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
-        row.textContent?.includes(parameterName)
-      );
-
-    expect(screen.getByRole("button", { name: "基准项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: "基准项目" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("AUR-Prod").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("NEB-RD").length).toBeGreaterThan(0);
-    expect(screen.queryByText("生产")).not.toBeInTheDocument();
-    expect(screen.queryByText("预发")).not.toBeInTheDocument();
-
-    const fastChargeRow = getComparisonRow("fast_charge_current_limit_ma");
-    expect(fastChargeRow).toHaveTextContent("3850");
-    expect(fastChargeRow).toHaveTextContent("4200");
-    expect(fastChargeRow).toHaveTextContent("+9.1%");
-
-    fireEvent.click(screen.getByRole("button", { name: "对比项目 NEB-RD Nebula 高频调试项目" }));
-    fireEvent.click(screen.getByRole("option", { name: /ATL-Intl/ }));
-
-    const atlasFastChargeRow = getComparisonRow("fast_charge_current_limit_ma");
-    expect(screen.getAllByText("ATL-Intl").length).toBeGreaterThan(0);
-    expect(atlasFastChargeRow).toHaveTextContent("3000");
-    expect(atlasFastChargeRow).toHaveTextContent("-22.1%");
-  });
-
-  it("consumes parameter comparison context from query strings", () => {
+  it("renders a no-entry state for the retired standalone comparison route without redirecting", () => {
     window.history.replaceState(null, "", "/parameter-comparison?project=nebula&module=Battery%20Safety");
 
     renderAppForCurrentPath();
 
-    const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
-    const matrix = document.querySelector<HTMLElement>(".comparison-matrix--v2");
-
-    expect(screen.getByRole("button", { name: "基准项目 NEB-RD Nebula 高频调试项目" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "对比项目 AUR-Prod Aurora 量产平台" })).toBeInTheDocument();
-    expect(within(filters).getByText("Battery Safety")).toBeInTheDocument();
-    expect(screen.getAllByText("NEB-RD").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("AUR-Prod").length).toBeGreaterThan(0);
-    expect(matrix).toHaveTextContent("battery_temp_target_c");
-    expect(matrix).not.toHaveTextContent("fast_charge_current_limit_ma");
-  });
-
-  it("filters the parameter comparison matrix and shows parameter meanings", () => {
-    window.history.replaceState(null, "", "/parameter-comparison");
-
-    renderAppForCurrentPath();
-
-    const filters = screen.getByRole("region", { name: "参数矩阵筛选" });
-    const getComparisonRow = (parameterName: string) =>
-      Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
-        row.textContent?.includes(parameterName)
-      );
-
-    expect(screen.getByRole("columnheader", { name: "参数键" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /模块/ })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: /重要性/ })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "NEB-RD / Δ" })).toBeInTheDocument();
-    expect(getComparisonRow("fast_charge_current_limit_ma")).toHaveTextContent("Charging Policy");
-    expect(filters).not.toHaveTextContent("当前筛选");
-
-    const riskHeader = screen.getByRole("columnheader", { name: /重要性/ });
-    const moduleHeader = screen.getByRole("columnheader", { name: /模块/ });
-
-    fireEvent.click(within(riskHeader).getByRole("button", { name: "筛选重要性" }));
-    fireEvent.click(within(riskHeader).getByRole("checkbox", { name: "High" }));
-
-    expect(getComparisonRow("fast_charge_current_limit_ma")).toBeDefined();
-    expect(getComparisonRow("charge_voltage_limit_mv")).toBeDefined();
-    expect(getComparisonRow("battery_temp_target_c")).toBeUndefined();
-    expect(screen.getByLabelText("当前筛选")).toBeInTheDocument();
-    expect(window.location.search).toContain("risk=High");
-
-    fireEvent.click(within(moduleHeader).getByRole("button", { name: "筛选模块" }));
-    fireEvent.click(within(moduleHeader).getByRole("checkbox", { name: "Battery Protection" }));
-
-    expect(getComparisonRow("low_battery_shutdown_soc")).toBeDefined();
-    expect(getComparisonRow("fast_charge_current_limit_ma")).toBeUndefined();
-    expect(filters).toHaveTextContent("Battery Protection");
-    expect(window.location.search).toContain("module=Battery+Protection");
-  });
-
-  it("keeps comparison insights inside the floating WiseAgent after opening it", () => {
-    window.history.replaceState(null, "", "/parameter-comparison");
-
-    renderAppForCurrentPath();
-
-    expect(document.querySelector(".comparison-insights")).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/parameter-comparison");
+    expect(screen.getByRole("region", { name: "页面不可用" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "页面不可用" })).toBeInTheDocument();
     expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
-    expect(document.querySelector(".agent-panel")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
 
     const agentPanel = document.querySelector<HTMLElement>(".agent-panel");
     expect(agentPanel).toBeInTheDocument();
-    expect(within(agentPanel!).getByText("WiseAgent")).toBeInTheDocument();
-    expect(within(agentPanel!).getByText("项目差异风险")).toBeInTheDocument();
-    expect(within(agentPanel!).getByText("参数值对照")).toBeInTheDocument();
-    expect(within(agentPanel!).getByText("风险阈值漂移")).toBeInTheDocument();
-    expect(agentPanel).toHaveTextContent("fast_charge_current_limit_ma");
-    expect(agentPanel).toHaveTextContent("AUR-Prod 与 NEB-RD");
+    expect(agentPanel).not.toHaveTextContent("项目差异风险");
+    expect(agentPanel).not.toHaveTextContent("参数值对照");
+    expect(agentPanel).not.toHaveTextContent("风险阈值漂移");
+    expect(agentPanel).not.toHaveTextContent("生成差异摘要");
+    expect(agentPanel).not.toHaveTextContent("同步选中差异");
+    fireEvent.click(within(agentPanel!).getByRole("button", { name: "最小化 WiseAgent" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "参数工作台" }));
+
+    expect(window.location.pathname).toBe("/parameters");
   });
 
   it("requires a rejection reason when an admin sends a parameter request back", () => {
@@ -750,7 +757,7 @@ describe("WiseEff app shell", () => {
     render(<App initialAppState={{ ...pendingState, activeProjectId: "aurora", activeRoleId: "user" }} />);
 
     expect(screen.getByText("初始化待审阅")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /提交本轮|鎻愪氦鏈疆/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /提交本轮|鎻愴氦鏈疆/ })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /检索参数表|妫€绱㈠弬鏁拌〃/ })).toBeInTheDocument();
     expect(screen.queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
   });
@@ -789,7 +796,7 @@ describe("WiseEff app shell", () => {
     expect(within(screen.getByRole("table")).getByText("待项目确认")).toBeInTheDocument();
   });
 
-  it("initializes parameter comparison from an approved runtime project query", () => {
+  it("keeps approved runtime project queries on the retired comparison no-entry route", () => {
     const submittedState = appReducer({ ...initialState, activeRoleId: "admin" }, {
       type: "SUBMIT_PARAMETER_INITIALIZATION",
       draft: {
@@ -815,8 +822,9 @@ describe("WiseEff app shell", () => {
 
     render(<App initialAppState={{ ...approvedState, activeRoleId: "user" }} />);
 
-    expect(screen.getByRole("button", { name: /ZEP Zephyr/ })).toBeInTheDocument();
-    expect(document.querySelector(".comparison-matrix--v2")).toHaveTextContent("battery_temp_target_c");
+    expect(window.location.pathname).toBe("/parameter-comparison");
+    expect(window.location.search).toContain(`project=${approvedProjectId}`);
+    expect(screen.getByRole("region", { name: "页面不可用" })).toBeInTheDocument();
   });
 
   it("does not duplicate the active review workflow step in the detail timeline", () => {
@@ -943,13 +951,9 @@ describe("WiseEff app shell", () => {
   it("keeps Excel-style header filters next to their header labels", () => {
     const styles = readFileSync("src/styles.css", "utf8");
     const reviewHeaderRule = readCssBlock(styles, ".review-column-filter-head");
-    const comparisonHeaderRule = readCssBlock(styles, ".comparison-matrix--v2__header-cell");
 
     expect(reviewHeaderRule).toContain("display: inline-flex;");
     expect(reviewHeaderRule).toContain("gap: 4px;");
-    expect(comparisonHeaderRule).toContain("justify-content: flex-start;");
-    expect(comparisonHeaderRule).toContain("width: fit-content;");
-    expect(comparisonHeaderRule).not.toContain("space-between");
   });
 
   it("switches the review table title between pending requests and merged submission history", () => {
@@ -999,6 +1003,94 @@ describe("WiseEff app shell", () => {
     const dialog = screen.getByRole("dialog", { name: "提交详情" });
     expect(dialog).toHaveTextContent("PRS-2405");
     expect(dialog).toHaveTextContent("fast_charge_current_limit_ma");
+    expect(dialog.querySelector(".diff-values")).not.toBeInTheDocument();
+    expect(dialog.querySelector(".history-submission-diff")).toBeInTheDocument();
+    expect(dialog.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("3800 mA");
+    expect(dialog.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("3200 mA");
+  });
+
+  it("renders mixed simple and complex review submission details with the history diff layout", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "soc_estimation_smoothing");
+    const complexParameter = initialState.parameters.find((parameter) => parameter.name === "dts_fast_charge_profile_matrix");
+    expect(simpleParameter).toBeDefined();
+    expect(complexParameter).toBeDefined();
+    const complexTargetValue = complexParameter!.currentValue.replace('"burst"', '"boost"');
+    const mixedRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "PRS-mixed",
+      projectId: complexParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Admin",
+      createdAt: "刚刚",
+      status: "硬件Committer检视" as const,
+      summary: "本轮提交包含 2 个参数修改。",
+      items: [
+        {
+          requestId: "PRQ-mixed-complex",
+          parameterId: complexParameter!.id,
+          name: complexParameter!.name,
+          module: complexParameter!.module,
+          currentValue: complexParameter!.currentValue,
+          targetValue: complexTargetValue,
+          unit: complexParameter!.unit,
+          risk: complexParameter!.risk,
+          reason: "同步 DTS 矩阵配置"
+        },
+        {
+          requestId: "PRQ-mixed-simple",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "0.82",
+          targetValue: "0.88",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "同步 SOC 平滑系数"
+        }
+      ]
+    };
+    const mixedRequests = mixedRound.items.map((item, index) => ({
+      ...initialState.changeRequests[index],
+      id: item.requestId,
+      submissionRoundId: mixedRound.id,
+      projectId: mixedRound.projectId,
+      parameterId: item.parameterId,
+      module: item.module,
+      title: item.name,
+      currentValue: item.currentValue,
+      targetValue: item.targetValue,
+      submitter: mixedRound.submitter,
+      status: "硬件Committer检视" as const
+    }));
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          parameterSubmissionRounds: [mixedRound, ...initialState.parameterSubmissionRounds],
+          changeRequests: [...mixedRequests, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    const row = screen.getByRole("row", { name: /PRQ-mixed-complex/ });
+    fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-mixed-complex 提交详情" }));
+
+    const dialog = screen.getByRole("dialog", { name: "提交详情" });
+    expect(dialog.querySelector(".submission-dialog")).toHaveClass("submission-dialog--wide");
+    expect(within(dialog).getByText("dts_fast_charge_profile_matrix")).toBeInTheDocument();
+    expect(within(dialog).getByText("soc_estimation_smoothing")).toBeInTheDocument();
+    expect(dialog.querySelector(".diff-values")).not.toBeInTheDocument();
+    expect(dialog.querySelectorAll(".history-submission-diff")).toHaveLength(2);
+    expect(dialog.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent('"burst"');
+    expect(dialog.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"boost"');
+    expect(dialog).toHaveTextContent("0.82 ratio");
+    expect(dialog).toHaveTextContent("0.88 ratio");
+
+    const css = readFileSync("src/styles.css", "utf8");
+    expect(readCssBlock(css, ".submission-detail-dialog .history-submission-diff")).toContain("max-height: 340px;");
   });
 
   it("opens synthesized submission details when a review row has no stored submission round", () => {
@@ -1092,7 +1184,8 @@ describe("WiseEff app shell", () => {
           "Powering the world's best product teams",
           "Issue tracking you'll enjoy using",
           "关键参数变化",
-          "审核合入情况"
+          "审核合入情况",
+          "对比分析"
         ]
       },
       {
@@ -1102,10 +1195,15 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-comparison",
-        present: ["参数", "对比分析", "AUR-Prod", "NEB-RD", "差异参数", "高重要性差异", "仅看差异"],
+        present: ["页面不可用", "参数工作台"],
         absent: [
           "Parameters",
           "Comparison",
+          "AUR-Prod",
+          "NEB-RD",
+          "差异参数",
+          "高重要性差异",
+          "仅看差异",
           "当前选择 AUR-Prod",
           "当前选择 NEB-RD",
           "需要审阅后同步",
@@ -1253,8 +1351,8 @@ describe("WiseEff app shell", () => {
     const css = readFileSync("src/styles.css", "utf8");
     const navItemCss = readCssBlock(css, ".nav-item");
     const feedbackEntryCss = readCssBlock(css, ".feedback-entry");
-    expect(css).toContain(".utility-nav {\n  flex: 0 0 auto;");
-    expect(css).toContain(".utility-nav {\n    display: block;");
+    expect(css).toMatch(/\.utility-nav \{\r?\n  flex: 0 0 auto;/);
+    expect(css).toMatch(/\.utility-nav \{\r?\n\s+display: block;/);
     expect(navItemCss).toContain("justify-content: flex-start;");
     expect(navItemCss).toContain("height: auto;");
     expect(feedbackEntryCss).toContain("align-items: flex-start;");
@@ -1303,8 +1401,8 @@ describe("WiseEff app shell", () => {
     expect(feedbackLayoutCss).toContain("overflow: hidden;");
     expect(feedbackActionsCss).toContain("margin: 0;");
     expect(feedbackActionsCss).toContain("overflow: hidden;");
-    expect(css).toContain(".feedback-section [data-slot=\"textarea\"] {\n    min-height: 112px;");
-    expect(css).toContain(".feedback-screenshot-preview {\n    min-height: 132px;");
+    expect(css).toMatch(/\.feedback-section \[data-slot="textarea"\] \{\r?\n\s+min-height: 112px;/);
+    expect(css).toMatch(/\.feedback-screenshot-preview \{\r?\n\s+min-height: 132px;/);
   });
 
   it("includes responsive and reduced-motion styles for the log analysis workbench", () => {
@@ -1368,7 +1466,7 @@ describe("WiseEff app shell", () => {
     expect(window.location.pathname).toBe("/");
   });
 
-  it("provides 10 power-management parameters for every project", () => {
+  it("provides 12 power-management parameters for every project", () => {
     const parameterCountsByProject = initialState.parameters.reduce<Record<string, number>>(
       (counts, parameter) => {
         counts[parameter.projectId] = (counts[parameter.projectId] ?? 0) + 1;
@@ -1378,9 +1476,9 @@ describe("WiseEff app shell", () => {
     );
 
     expect(parameterCountsByProject).toEqual({
-      atlas: 10,
-      aurora: 10,
-      nebula: 10
+      atlas: 12,
+      aurora: 12,
+      nebula: 12
     });
   });
 
@@ -1398,13 +1496,7 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
     expect(within(sharedDefinition).getByLabelText("参数推荐值")).toHaveValue("3200");
     expect(within(projectValues).queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "对比分析" }));
-
-    const fastChargeRow = Array.from(document.querySelectorAll<HTMLElement>(".comparison-row--v2")).find((row) =>
-      row.textContent?.includes("fast_charge_current_limit_ma")
-    );
-    expect(fastChargeRow).toHaveTextContent("3650");
+    expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
   });
 
   it("adds and deletes shared project parameters from the project admin config", () => {
@@ -1431,21 +1523,21 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
 
     expect(screen.getByRole("dialog", { name: "新增参数" })).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText("例如 battery_temp_limit_c"), { target: { value: "new_power_parameter_11" } });
+    fireEvent.change(screen.getByPlaceholderText("例如 battery_temp_limit_c"), { target: { value: "new_power_parameter_13" } });
     fireEvent.click(screen.getByRole("button", { name: "创建参数" }));
 
-    expect(screen.getByDisplayValue("new_power_parameter_11")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("new_power_parameter_13")).toBeInTheDocument();
 
-    expect(screen.getByText("new_power_parameter_11")).toBeInTheDocument();
+    expect(screen.getByText("new_power_parameter_13")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toHaveTextContent("NEB-RD");
 
-    fireEvent.click(screen.getByRole("button", { name: /删除 new_power_parameter_11/ }));
+    fireEvent.click(screen.getByRole("button", { name: /删除 new_power_parameter_13/ }));
 
     expect(screen.getByRole("dialog", { name: /删除参数/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /确认删除/ }));
 
-    expect(screen.queryByDisplayValue("new_power_parameter_11")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("new_power_parameter_13")).not.toBeInTheDocument();
   });
 
   it("keeps the project shared parameter library list breathable and scannable", () => {

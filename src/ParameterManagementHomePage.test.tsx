@@ -26,7 +26,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByText("参数变化态势")).not.toBeInTheDocument();
     expect(screen.queryByText("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。")).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("30")).toBeInTheDocument();
+    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.parameters.length))).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("管理项目总数")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("3")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("开发人员总数")).toBeInTheDocument();
@@ -59,6 +59,14 @@ describe("ParameterManagementHomePage", () => {
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/^\/(parameters|parameter-review)/));
+  });
+
+  it("does not advertise the retired standalone comparison entry on the homepage", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
+
+    expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
+    expect(screen.queryByText("对比分析")).not.toBeInTheDocument();
   });
 
   it("shows hotspot leaderboard with AI detail panel", () => {

@@ -1,7 +1,4 @@
-import {
-  ArrowRight,
-  Sparkles
-} from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Dispatch } from "react";
 import {
@@ -9,15 +6,15 @@ import {
   escapeExcelCell,
   getContextQuery,
   riskLabels,
-  RiskBadge,
   WorkbenchLayout
 } from "./workbenchUi";
 import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
 import { roleSupportsWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
-import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { ParameterInsightBar } from "./components/ParameterInsightBar";
+import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
+import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 import { useTopBarActions } from "./components/layout";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
@@ -53,26 +50,6 @@ type ParametersPageProps = {
   canEdit?: boolean;
   initializationStatus?: ProjectInitializationStatus;
 };
-
-function parseRange(range: string) {
-  const [min, max] = range.split("-").map((part) => Number.parseFloat(part.trim()));
-  if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    return null;
-  }
-  return { min, max };
-}
-
-function getRangeWarning(parameter: ParameterRecord, targetValue: string) {
-  const numericValue = Number.parseFloat(targetValue);
-  const parsedRange = parseRange(parameter.range);
-  if (!parsedRange || !Number.isFinite(numericValue)) {
-    return "";
-  }
-  if (numericValue < parsedRange.min || numericValue > parsedRange.max) {
-    return `超出 ${parameter.range} ${parameter.unit}`.trim();
-  }
-  return "";
-}
 
 function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: string) {
   const headers = ["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"];
@@ -129,6 +106,8 @@ export function ParametersPage({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [viewingParameterId, setViewingParameterId] = useState<string | null>(null);
+  const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const todayKey = new Date().toISOString().slice(0, 10);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
@@ -144,6 +123,14 @@ export function ParametersPage({
   const projectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
     [resolvedProjectId, state.parameters]
+  );
+  const activeParameterById = useMemo(
+    () => new Map(projectParameters.map((parameter) => [parameter.id, parameter])),
+    [projectParameters]
+  );
+  const activeParameterIds = useMemo(
+    () => new Set(projectParameters.map((parameter) => parameter.id)),
+    [projectParameters]
   );
   const [selectedId, setSelectedId] = useState<string>(firstProjectParameterId);
   const [focusedId, setFocusedId] = useState<string | null>(firstProjectParameterId || null);
@@ -202,6 +189,14 @@ export function ParametersPage({
           code: activeInitializationDraft.projectCode
         }
       : runtimeProjects[0]);
+  const viewingParameter = viewingParameterId
+    ? projectParameters.find((parameter) => parameter.id === viewingParameterId) ?? null
+    : null;
+  const draftActionDisabledReason = initializationLocked
+    ? "初始化通过前暂不可提交普通参数变更。"
+    : !canEdit
+      ? "需要 User 角色才能编辑、暂存或提交参数变更。"
+      : undefined;
   const insightSnapshot = useMemo(
     () => deriveParameterWorkbenchInsightSnapshot(state, resolvedProjectId),
     [state, resolvedProjectId]
@@ -246,6 +241,16 @@ export function ParametersPage({
         .filter((item): item is ParameterDraftItem & { parameter: ParameterRecord } => Boolean(item)),
     [drafts, parameterById]
   );
+  const draftDialogItems = useMemo(() => {
+    if (!focusedId) {
+      return draftItems;
+    }
+    const focusedDraft = draftItems.find((item) => item.parameterId === focusedId);
+    if (!focusedDraft) {
+      return draftItems;
+    }
+    return [focusedDraft, ...draftItems.filter((item) => item.parameterId !== focusedId)];
+  }, [draftItems, focusedId]);
   const modifiedParameters = useMemo(
     () =>
       pendingSubmissionItems.map((item) => ({
@@ -337,10 +342,11 @@ export function ParametersPage({
     }
 
     const originLog = state.logs.find((log) => log.id === contextQuery.logId);
-    const requestedParameter =
-      (contextQuery.parameterId ? parameterById.get(contextQuery.parameterId) : null) ?? selected ?? projectParameters[0];
+    const requestedParameter = contextQuery.parameterId
+      ? activeParameterById.get(contextQuery.parameterId)
+      : selected ?? projectParameters[0];
 
-    if (!originLog || !requestedParameter) {
+    if (!originLog || originLog.projectId !== resolvedProjectId || !requestedParameter) {
       return;
     }
 
@@ -356,7 +362,7 @@ export function ParametersPage({
 
       return nextDrafts;
     });
-  }, [effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, parameterById, projectParameters, selected, state.logs]);
+  }, [activeParameterById, effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
 
   useEffect(() => {
     if (effectiveCanEdit) {
@@ -377,7 +383,6 @@ export function ParametersPage({
   }, [selected?.id]);
 
   useEffect(() => {
-    const activeParameterIds = new Set(projectParameters.map((parameter) => parameter.id));
     setSelectedIds((ids) => {
       const next = new Set(Array.from(ids).filter((id) => activeParameterIds.has(id)));
       return next.size === ids.size ? ids : next;
@@ -385,7 +390,8 @@ export function ParametersPage({
     setDrafts((items) =>
       Object.fromEntries(Object.entries(items).filter(([parameterId]) => activeParameterIds.has(parameterId)))
     );
-  }, [projectParameters]);
+    setViewingParameterId((id) => (id && !activeParameterIds.has(id) ? null : id));
+  }, [activeParameterIds]);
 
   useEffect(() => {
     if (selectedIds.size === 0 && !contextQuery.logId && Object.keys(drafts).length === 0) {
@@ -394,7 +400,7 @@ export function ParametersPage({
   }, [contextQuery.logId, selectedIds.size, drafts]);
 
   const handleFocusRow = (id: string) => {
-    const parameter = parameterById.get(id);
+    const parameter = activeParameterById.get(id);
     if (!parameter) {
       return;
     }
@@ -402,27 +408,51 @@ export function ParametersPage({
     setFocusedId(parameter.id);
   };
 
-  const handleEditRow = (id: string) => {
+  const handleEditRow = (id: string, draftPatch?: { targetValue: string; reason: string }) => {
     if (!effectiveCanEdit) {
       return;
     }
-    const parameter = parameterById.get(id);
+    const parameter = activeParameterById.get(id);
     if (!parameter) {
       return;
     }
     setSelectedId(parameter.id);
     setFocusedId(parameter.id);
     setDrafts((items) => {
-      if (items[id]) return items;
+      if (items[id] && !draftPatch) return items;
       return {
         ...items,
         [id]: {
-          targetValue: parameter.recommendedValue,
-          reason: ""
+          targetValue: draftPatch?.targetValue ?? items[id]?.targetValue ?? parameter.recommendedValue,
+          reason: draftPatch?.reason ?? items[id]?.reason ?? ""
         }
       };
     });
     setSheetOpen(true);
+  };
+
+  const handleViewRow = (id: string) => {
+    const parameter = activeParameterById.get(id);
+    if (!parameter) {
+      return;
+    }
+    const defaultTargetProject =
+      runtimeProjects.find((project) => project.id !== parameter.projectId) ??
+      runtimeProjects.find((project) => project.id === parameter.projectId) ??
+      runtimeProjects[0];
+
+    setSelectedId(parameter.id);
+    setFocusedId(parameter.id);
+    setViewingParameterId(parameter.id);
+    setComparisonTargetProjectId(defaultTargetProject?.id ?? parameter.projectId);
+  };
+
+  const addViewingParameterToDraft = (draft?: { targetValue: string; reason: string }) => {
+    if (!viewingParameter) {
+      return;
+    }
+    handleEditRow(viewingParameter.id, draft);
+    setViewingParameterId(null);
   };
 
   const handleSelectedIdsChange = (next: Set<string>) => {
@@ -546,6 +576,17 @@ export function ParametersPage({
     });
   };
   const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
+  const roundActions =
+    modifiedParameters.length > 0 ? (
+      <div className="parameters-bottom-actions">
+        <button className="button subtle" type="button" disabled={!effectiveCanEdit || pendingSubmissionItems.length === 0} onClick={stashRound}>
+          暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
+        </button>
+        <button className="button primary" type="button" disabled={!effectiveCanEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
+          {submitButtonText}
+        </button>
+      </div>
+    ) : null;
   const clearFilters = () => {
     setSearchQuery("");
     setRiskFilters(new Set());
@@ -595,9 +636,6 @@ export function ParametersPage({
       <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
         历史提交
       </button>
-      <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-comparison")}>
-        跨项目对比
-      </button>
       <button className="button primary" type="button" onClick={handleAiAuditClick}>
         <Sparkles size={16} />
         AI 巡检
@@ -619,7 +657,7 @@ export function ParametersPage({
             onViewHighRisk={viewHighRiskFromInsight}
             onAddToDraft={addInsightItemsToDraft}
             canAddToDraft={effectiveCanEdit}
-            addToDraftDisabledReason="需要 User 角色才能编辑、暂存或提交参数变更。"
+            addToDraftDisabledReason={draftActionDisabledReason}
             onDismiss={dismissInsightForToday}
           />
         ) : null}
@@ -637,23 +675,27 @@ export function ParametersPage({
         <div className="workbench-one-col parameters-workbench-main">
           <section className="workbench-main">
             {modifiedParameters.length > 0 ? (
-              <ParametersTable
-                rows={modifiedParameters}
-                totalRows={modifiedParameters.length}
-                ariaLabel="本轮已修改参数表"
-                title="本轮已修改参数"
-                description="这些参数已从检索结果中移出，可在这里集中确认目标值并提交本轮。"
-                showToolbar={false}
-                valueColumnLabel="当前 → 目标"
-                selectedIds={selectedIds}
-                onSelectedIdsChange={handleSelectedIdsChange}
-                focusedId={focusedId}
-                onFocusRow={handleFocusRow}
-                modifiedIds={modifiedIds}
-                onEditRow={handleEditRow}
-                stashedIds={stashedIds}
-                canEdit={effectiveCanEdit}
-              />
+              <section className="modified-parameters-section" aria-label="本轮已修改参数区">
+                <ParametersTable
+                  rows={modifiedParameters}
+                  totalRows={modifiedParameters.length}
+                  ariaLabel="本轮已修改参数表"
+                  title="本轮已修改参数"
+                  description="这些参数已从检索结果中移出，可在这里集中确认目标值并提交本轮。"
+                  showToolbar={false}
+                  valueColumnLabel="当前 → 目标"
+                  selectedIds={selectedIds}
+                  onSelectedIdsChange={handleSelectedIdsChange}
+                  focusedId={focusedId}
+                  onFocusRow={handleFocusRow}
+                  modifiedIds={modifiedIds}
+                  onEditRow={handleEditRow}
+                  onViewRow={handleViewRow}
+                  stashedIds={stashedIds}
+                  canEdit={effectiveCanEdit}
+                />
+                {roundActions}
+              </section>
             ) : null}
             <ParametersTable
               rows={searchParameters}
@@ -714,111 +756,27 @@ export function ParametersPage({
               onFocusRow={handleFocusRow}
               modifiedIds={modifiedIds}
               onEditRow={handleEditRow}
+              onViewRow={handleViewRow}
               stashedIds={stashedIds}
               canEdit={effectiveCanEdit}
             />
-            <div className="parameters-bottom-actions">
-              <button className="button subtle" type="button" disabled={!effectiveCanEdit || pendingSubmissionItems.length === 0} onClick={stashRound}>
-                暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
-              </button>
-              <button className="button primary" type="button" disabled={!effectiveCanEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
-                {submitButtonText}
-              </button>
-            </div>
           </section>
         </div>
         {effectiveCanEdit && draftItems.length > 0 && sheetOpen ? (
-          <WorkbenchSheet
+          <ParameterDraftDialog
             open
-            onClose={() => setSheetOpen(false)}
             title="修改草稿"
-            description="勾选即加入草稿，提交前可逐项调整目标值和原因。"
-            footer={
-              <div className="draft-sheet-footer">
-                <span>
-                  提交参数后将归入本轮已修改参数，可在底部统一提交审阅 ·{" "}
-                  <button className="link-button" type="button" onClick={() => onNavigate("/parameter-submissions")}>
-                    查看我的提交
-                  </button>
-                </span>
-                <div className="draft-sheet-footer-actions">
-                  <button className="button primary" type="button" disabled={!allDraftsHaveTargets} onClick={submitParameterToModifiedTable}>
-                    提交参数
-                  </button>
-                </div>
-              </div>
-            }
-          >
-            <div className="draft-sheet-stack">
-              <div className="round-draft-panel" aria-label="本轮提交草稿">
-                <div>
-                  <strong>本轮提交 {draftItems.length} 项</strong>
-                  <span>可先收集多个参数，再统一提交审阅。</span>
-                </div>
-                <button className="link-button" type="button" onClick={clearAllDrafts}>
-                  全部清空
-                </button>
-              </div>
-              <div className="draft-card-list">
-                {draftItems.map((item) => {
-                  const isFocusedCard = focusedId === item.parameterId;
-                  const targetInputId = `target-value-${item.parameterId}`;
-                  const reasonInputId = `reason-${item.parameterId}`;
-                  const warning = getRangeWarning(item.parameter, item.targetValue);
-
-                  return (
-                    <article className="draft-card" key={item.parameterId}>
-                      <div className="draft-card-head">
-                        <div>
-                          <strong>{item.parameter.name}</strong>
-                          <small>{item.parameter.module} · {riskLabels[item.parameter.risk]}</small>
-                        </div>
-                        <RiskBadge risk={item.parameter.risk} />
-                      </div>
-                      <div className="draft-diff">
-                        <span>{item.parameter.currentValue}{item.parameter.unit}</span>
-                        <ArrowRight size={15} aria-hidden="true" />
-                        <strong>{item.targetValue}{item.parameter.unit}</strong>
-                      </div>
-                      <p className="draft-drift-note">
-                        Agent 建议调整到推荐值，当前偏差 {item.parameter.currentValue} → {item.parameter.recommendedValue}{item.parameter.unit}
-                      </p>
-                      <label className="field-label" htmlFor={targetInputId}>
-                        {isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
-                      </label>
-                      <textarea
-                        id={targetInputId}
-                        aria-label={isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
-                        className="parameter-target-editor"
-                        value={item.targetValue}
-                        rows={6}
-                        onChange={(event) => {
-                          updateDraft(item.parameter, { targetValue: event.target.value });
-                        }}
-                      />
-                      {warning ? <p className="field-warning">{warning}</p> : null}
-                      <label className="field-label" htmlFor={reasonInputId}>
-                        {isFocusedCard ? "修改原因" : `修改原因 ${item.parameter.name}`}
-                      </label>
-                      <textarea
-                        id={reasonInputId}
-                        aria-label={isFocusedCard ? "修改原因" : `修改原因 ${item.parameter.name}`}
-                        value={item.reason}
-                        onChange={(event) => {
-                          updateDraft(item.parameter, { reason: event.target.value });
-                        }}
-                        placeholder={`说明为什么要把 ${item.parameter.name} 改为 ${item.targetValue}`}
-                        rows={3}
-                      />
-                      <button className="button subtle" type="button" onClick={() => removeDraftItem(item.parameterId)}>
-                        移除本项
-                      </button>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          </WorkbenchSheet>
+            description="点击编辑会加入草稿，提交参数后才会进入上方的本轮已修改参数表。"
+            drafts={draftDialogItems}
+            focusedParameterId={focusedId}
+            canEdit={effectiveCanEdit}
+            onClose={() => setSheetOpen(false)}
+            onClearAll={clearAllDrafts}
+            onRemoveItem={removeDraftItem}
+            onUpdateDraft={updateDraft}
+            onSubmit={submitParameterToModifiedTable}
+            onViewSubmissions={() => onNavigate("/parameter-submissions")}
+          />
         ) : null}
       </div>
       {confirmOpen && previewItems.length > 0 ? (
@@ -829,7 +787,124 @@ export function ParametersPage({
           onConfirm={submitRound}
         />
       ) : null}
+      {viewingParameter ? (
+        <ParameterDetailDialog
+          parameter={viewingParameter}
+          parameters={state.parameters}
+          projects={runtimeProjects}
+          currentProjectId={viewingParameter.projectId}
+          targetProjectId={
+            comparisonTargetProjectId ||
+            runtimeProjects.find((project) => project.id !== viewingParameter.projectId)?.id ||
+            viewingParameter.projectId
+          }
+          canEdit={effectiveCanEdit}
+          disabledReason={draftActionDisabledReason}
+          alreadyInDraft={Boolean(drafts[viewingParameter.id])}
+          onTargetProjectChange={setComparisonTargetProjectId}
+          onAddToDraft={addViewingParameterToDraft}
+          onClose={() => setViewingParameterId(null)}
+        />
+      ) : null}
     </WorkbenchLayout>
+  );
+}
+
+function isComplexSubmissionValue(value: string) {
+  return value.includes("\n") || value.length > 80;
+}
+
+function isComplexSubmissionItem(item: ParameterDraftItem & { parameter: ParameterRecord }) {
+  return (
+    isComplexSubmissionValue(item.parameter.currentValue) ||
+    isComplexSubmissionValue(item.targetValue) ||
+    isComplexSubmissionValue(item.parameter.configFormat)
+  );
+}
+
+function getSubmissionLineCount(value: string) {
+  return value ? value.split(/\r?\n/).length : 0;
+}
+
+type SubmissionPreviewDiffLineKind = "equal" | "remove" | "add";
+
+type SubmissionPreviewDiffLine = {
+  kind: SubmissionPreviewDiffLineKind;
+  leftLineNumber: number | null;
+  rightLineNumber: number | null;
+  value: string;
+};
+
+function splitSubmissionDiffLines(value: string) {
+  const lines = value.split(/\r?\n/);
+  return lines.length === 0 ? [""] : lines;
+}
+
+function buildSubmissionPreviewDiffLines(baseValue: string, targetValue: string): SubmissionPreviewDiffLine[] {
+  const baseLines = splitSubmissionDiffLines(baseValue);
+  const targetLines = splitSubmissionDiffLines(targetValue);
+  const lineCount = Math.max(baseLines.length, targetLines.length);
+  const diffLines: SubmissionPreviewDiffLine[] = [];
+
+  for (let index = 0; index < lineCount; index += 1) {
+    const baseLine = baseLines[index];
+    const targetLine = targetLines[index];
+    const baseLineNumber = baseLine === undefined ? null : index + 1;
+    const targetLineNumber = targetLine === undefined ? null : index + 1;
+
+    if (baseLine === targetLine) {
+      diffLines.push({
+        kind: "equal",
+        leftLineNumber: baseLineNumber,
+        rightLineNumber: targetLineNumber,
+        value: baseLine ?? ""
+      });
+      continue;
+    }
+
+    if (baseLine !== undefined) {
+      diffLines.push({
+        kind: "remove",
+        leftLineNumber: baseLineNumber,
+        rightLineNumber: null,
+        value: baseLine
+      });
+    }
+
+    if (targetLine !== undefined) {
+      diffLines.push({
+        kind: "add",
+        leftLineNumber: null,
+        rightLineNumber: targetLineNumber,
+        value: targetLine
+      });
+    }
+  }
+
+  return diffLines;
+}
+
+function SubmissionPreviewDiff({ baseValue, targetValue }: { baseValue: string; targetValue: string }) {
+  const diffLines = buildSubmissionPreviewDiffLines(baseValue, targetValue);
+
+  return (
+    <div className="submission-preview-diff" role="list">
+      {diffLines.map((line, index) => (
+        <div
+          className="submission-preview-diff-row"
+          data-kind={line.kind}
+          key={`${line.kind}-${line.leftLineNumber ?? "-"}-${line.rightLineNumber ?? "-"}-${index}`}
+          role="listitem"
+        >
+          <span className="submission-preview-diff-row__marker" aria-hidden="true">
+            {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
+          </span>
+          <span className="submission-preview-diff-row__line-number">{line.leftLineNumber ?? ""}</span>
+          <span className="submission-preview-diff-row__line-number">{line.rightLineNumber ?? ""}</span>
+          <code>{line.value || " "}</code>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -852,6 +927,7 @@ function ParameterSubmissionDialog({
   const [softwareCommitterId, setSoftwareCommitterId] = useState(candidates.softwareCommitters[0]?.id ?? "");
   const [softwareUserId, setSoftwareUserId] = useState(candidates.softwareUsers[0]?.id ?? "");
   const canSubmit = Boolean(hardwareCommitterId && softwareCommitterId && softwareUserId);
+  const hasComplexItems = items.some(isComplexSubmissionItem);
   const submitWithAssignees = () => {
     if (!canSubmit) {
       return;
@@ -860,12 +936,11 @@ function ParameterSubmissionDialog({
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-preview-title">
-      <div className="submission-dialog">
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="提交本轮参数">
+      <div className={["submission-dialog", hasComplexItems ? "submission-dialog--wide" : ""].filter(Boolean).join(" ")}>
         <div className="submission-dialog-head">
           <div>
             <span className="eyebrow">参数提交预览</span>
-            <h2 id="submission-preview-title">提交本轮参数</h2>
             <p>本轮提交包含 {items.length} 个参数修改，确认后进入硬件与软件协同审阅流程。</p>
           </div>
           <Badge tone="secondary">Diff 预览</Badge>
@@ -903,26 +978,49 @@ function ParameterSubmissionDialog({
           </label>
         </div>
         <div className="submission-diff-list">
-          {items.map((item) => (
-            <article className="submission-diff-card" key={item.parameterId}>
-              <div>
-                <strong>{item.parameter.name}</strong>
-                <small>{item.parameter.module} · {riskLabels[item.parameter.risk]}</small>
-              </div>
-              <div className="diff-values">
-                <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
-                <span>→</span>
-                <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
-              </div>
-              {item.parameter.configFormat ? (
-                <div className="submission-config-format">
-                  <code className="config-before">{item.parameter.configFormat}</code>
-                  <code className="config-after">{item.parameter.configFormat.replace(/=.*$/, `=${item.targetValue}`)}</code>
+          {items.map((item) => {
+            const isComplexItem = isComplexSubmissionItem(item);
+
+            return (
+              <article
+                className={["submission-diff-card", isComplexItem ? "submission-diff-card--complex" : ""].filter(Boolean).join(" ")}
+                key={item.parameterId}
+              >
+                <div className="submission-diff-card__head">
+                  <div>
+                    <strong>{item.parameter.name}</strong>
+                    <small>{item.parameter.module} · {riskLabels[item.parameter.risk]}</small>
+                  </div>
+                  {isComplexItem ? <span>复杂配置</span> : null}
                 </div>
-              ) : null}
-              {item.reason ? <p>{item.reason}</p> : null}
-            </article>
-          ))}
+                {isComplexItem ? (
+                  <>
+                    <div className="submission-preview-meta-row" aria-label={`${item.parameter.name} 提交摘要`}>
+                      <span>DTS / 多行参数</span>
+                      <span>当前 {getSubmissionLineCount(item.parameter.currentValue)} 行</span>
+                      <span>目标 {getSubmissionLineCount(item.targetValue)} 行</span>
+                    </div>
+                    <SubmissionPreviewDiff baseValue={item.parameter.currentValue || "-"} targetValue={item.targetValue || "-"} />
+                  </>
+                ) : (
+                  <>
+                    <div className="diff-values">
+                      <span className="diff-before">{item.parameter.currentValue}{item.parameter.unit}</span>
+                      <span>→</span>
+                      <span className="diff-after">{item.targetValue}{item.parameter.unit}</span>
+                    </div>
+                    {item.parameter.configFormat ? (
+                      <div className="submission-config-format">
+                        <code className="config-before">{item.parameter.configFormat}</code>
+                        <code className="config-after">{item.parameter.configFormat.replace(/=.*$/, `=${item.targetValue}`)}</code>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+                {item.reason ? <p>{item.reason}</p> : null}
+              </article>
+            );
+          })}
         </div>
         <div className="dialog-actions">
           <button className="button subtle" type="button" onClick={onCancel}>

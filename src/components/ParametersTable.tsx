@@ -1,4 +1,4 @@
-import { Pencil, Search } from "lucide-react";
+import { Eye, Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { ParameterRecord } from "../mockData";
@@ -39,6 +39,7 @@ export type ParametersTableProps = {
   onFocusRow: (id: string) => void;
   modifiedIds?: Set<string>;
   onEditRow?: (id: string) => void;
+  onViewRow?: (id: string) => void;
   stashedIds?: Set<string>;
   canEdit?: boolean;
 };
@@ -115,6 +116,17 @@ function getValueDiffIcon(row: ParameterRecord) {
   return "→";
 }
 
+function isComplexParameterValue(value: string) {
+  return value.includes("\n") || value.length > 80;
+}
+
+function getParameterValueSummary(value: string) {
+  const firstLine = value.split("\n")[0]?.trim() ?? "";
+  const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
+  const lineCount = value.split("\n").filter((line) => line.trim()).length;
+  return { propertyName, lineCount };
+}
+
 function getModuleToneIndex(module: string) {
   return Array.from(module).reduce((total, char) => total + char.charCodeAt(0), 0) % 8;
 }
@@ -166,6 +178,7 @@ export function ParametersTable({
   onFocusRow,
   modifiedIds,
   onEditRow,
+  onViewRow,
   stashedIds,
   canEdit = true
 }: ParametersTableProps) {
@@ -365,6 +378,8 @@ export function ParametersTable({
             {visibleRows.map((row) => {
               const isModified = modifiedIds ? modifiedIds.has(row.id) : false;
               const isStashed = stashedIds ? stashedIds.has(row.id) : false;
+              const hasComplexValue = isComplexParameterValue(row.currentValue) || isComplexParameterValue(row.recommendedValue);
+              const valueSummary = getParameterValueSummary(row.currentValue || row.recommendedValue);
               return (
               <tr
                 key={row.id}
@@ -408,11 +423,22 @@ export function ParametersTable({
                   <span className={`module-badge module-tone-${getModuleToneIndex(row.module)}`}>{row.module}</span>
                 </td>
                 <td className="mono" data-label={valueColumnLabel}>
-                  <span className={`parameter-value-diff diff-${getValueDiffDirection(row)}`}>
-                    <span>{row.currentValue}</span>
-                    <span aria-hidden="true">{getValueDiffIcon(row)}</span>
-                    <strong>{row.recommendedValue}</strong>
-                  </span>
+                  {hasComplexValue ? (
+                    <span
+                      className={`parameter-value-summary diff-${getValueDiffDirection(row)}`}
+                      title={row.currentValue === row.recommendedValue ? row.currentValue : `${row.currentValue}\n---\n${row.recommendedValue}`}
+                    >
+                      <span>复杂配置</span>
+                      <strong>{valueSummary.propertyName}</strong>
+                      <small>{valueSummary.lineCount} 行 · {row.currentValue === row.recommendedValue ? "当前与推荐一致" : "当前与推荐不同"}</small>
+                    </span>
+                  ) : (
+                    <span className={`parameter-value-diff diff-${getValueDiffDirection(row)}`}>
+                      <span>{row.currentValue}</span>
+                      <span aria-hidden="true">{getValueDiffIcon(row)}</span>
+                      <strong>{row.recommendedValue}</strong>
+                    </span>
+                  )}
                 </td>
                 <td data-label="范围 / 单位">
                   <span>{row.range}</span>
@@ -421,6 +447,20 @@ export function ParametersTable({
                 <td data-label="重要性">{row.risk}</td>
                 <td data-label="更新时间">{row.updatedAt}</td>
                 <td data-label="操作">
+                  <div className="parameters-table-row-actions">
+                  {onViewRow ? (
+                      <button
+                        type="button"
+                        className="view-row-button"
+                        aria-label={`查看 ${row.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onViewRow(row.id);
+                        }}
+                      >
+                        <Eye size={15} />
+                      </button>
+                    ) : null}
                   {canEdit ? (
                     <button
                       type="button"
@@ -436,6 +476,7 @@ export function ParametersTable({
                   ) : (
                     <span className="permission-muted-action">Read only</span>
                   )}
+                  </div>
                 </td>
               </tr>
               );

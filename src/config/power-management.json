@@ -270,6 +270,62 @@
       }
     },
     {
+      "id": "dts-fast-charge-profile-matrix",
+      "name": "dts_fast_charge_profile_matrix",
+      "description": "DTS string-list fast charge profile matrix.",
+      "explanation": "Uses a device-tree string-list property where every tuple item is quoted and rows are separated by line breaks.",
+      "configFormat": "DTS: fast-charge-profile-matrix =\n  \"profile-id\", \"vbus-mv\", \"ibus-ma\", \"temp-c\", \"note\",\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"11000\", \"4200\", \"46\", \"burst\";",
+      "module": "Charging Policy",
+      "range": "0 - 1",
+      "unit": "profile",
+      "risk": "Low",
+      "values": {
+        "aurora": {
+          "currentValue": "fast-charge-profile-matrix =\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"11000\", \"4200\", \"46\", \"burst\";",
+          "recommendedValue": "fast-charge-profile-matrix =\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"11000\", \"4200\", \"46\", \"burst\";",
+          "updatedAt": "today 14:05"
+        },
+        "nebula": {
+          "currentValue": "fast-charge-profile-matrix =\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"12000\", \"4300\", \"48\", \"boost\";",
+          "recommendedValue": "fast-charge-profile-matrix =\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"12000\", \"4300\", \"48\", \"boost\";",
+          "updatedAt": "yesterday 16:30"
+        },
+        "atlas": {
+          "currentValue": "fast-charge-profile-matrix =\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"11000\", \"4200\", \"46\", \"burst\";",
+          "recommendedValue": "fast-charge-profile-matrix =\n  \"0\", \"5000\", \"1500\", \"40\", \"entry\",\n  \"1\", \"9000\", \"3000\", \"43\", \"balanced\",\n  \"2\", \"11000\", \"4200\", \"46\", \"burst\";",
+          "updatedAt": "3d ago"
+        }
+      }
+    },
+    {
+      "id": "dts-battery-thermal-derate-curve",
+      "name": "battery_thermal_derate_curve",
+      "description": "DTS cell-array battery thermal derate curve.",
+      "explanation": "Uses a device-tree numeric cell array wrapped with angle brackets to represent row-oriented curve data.",
+      "configFormat": "DTS: battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3200 4320\n  2 45 2600 4280\n>;",
+      "module": "Battery Safety",
+      "range": "0 - 1",
+      "unit": "curve",
+      "risk": "Low",
+      "values": {
+        "aurora": {
+          "currentValue": "battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3200 4320\n  2 45 2600 4280\n>;",
+          "recommendedValue": "battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3200 4320\n  2 45 2600 4280\n>;",
+          "updatedAt": "today 09:20"
+        },
+        "nebula": {
+          "currentValue": "battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3000 4300\n  2 45 2400 4260\n>;",
+          "recommendedValue": "battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3000 4300\n  2 45 2400 4260\n>;",
+          "updatedAt": "today 11:40"
+        },
+        "atlas": {
+          "currentValue": "battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3200 4320\n  2 45 2600 4280\n>;",
+          "recommendedValue": "battery-thermal-derate-curve = <\n  0 38 3800 4350\n  1 42 3200 4320\n  2 45 2600 4280\n>;",
+          "updatedAt": "yesterday 18:15"
+        }
+      }
+    },
+    {
       "id": "standby-drain-limit",
       "name": "standby_drain_limit_ma",
       "description": "待机漏电流告警阈值。",

@@ -49,7 +49,6 @@ import { migrateLegacyRoleId, roleSupportsWorkflowSlot, type PlatformRoleId } fr
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
-import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
@@ -1538,19 +1537,6 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
-  const [comparisonSelection, setComparisonSelection] = useState<ComparisonProjectSelection>(() => {
-    const comparisonProjects = getComparisonProjects(initialAppState);
-    const contextProjectId =
-      getPageByPath(window.location.pathname).key === "parameter-comparison" ? getContextQuery(window.location.search).projectId : "";
-    const baseProjectId = comparisonProjects.some((project) => project.id === contextProjectId)
-      ? contextProjectId
-      : state.activeProjectId;
-
-    return {
-      baseProjectId,
-      targetProjectId: getFallbackComparisonProjectId(baseProjectId, comparisonProjects)
-    };
-  });
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
@@ -1576,44 +1562,6 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
     };
   }, []);
 
-  useEffect(() => {
-    const comparisonProjects = getComparisonProjects(state);
-    const contextProjectId = page.key === "parameter-comparison" ? getContextQuery(search).projectId : "";
-    if (contextProjectId && comparisonProjects.some((project) => project.id === contextProjectId)) {
-      setComparisonSelection((current) => {
-        const targetProjectId = current.targetProjectId === contextProjectId
-          ? getFallbackComparisonProjectId(contextProjectId, comparisonProjects)
-          : current.targetProjectId;
-
-        if (current.baseProjectId === contextProjectId && current.targetProjectId === targetProjectId) {
-          return current;
-        }
-
-        return {
-          baseProjectId: contextProjectId,
-          targetProjectId
-        };
-      });
-      return;
-    }
-
-    setComparisonSelection((current) => {
-      const nextTargetProjectId =
-        current.targetProjectId === state.activeProjectId
-          ? getFallbackComparisonProjectId(state.activeProjectId, comparisonProjects)
-          : current.targetProjectId;
-
-      if (current.baseProjectId === state.activeProjectId && current.targetProjectId === nextTargetProjectId) {
-        return current;
-      }
-
-      return {
-        baseProjectId: state.activeProjectId,
-        targetProjectId: nextTargetProjectId
-      };
-    });
-  }, [page.key, search, state.activeProjectId, state.configDraft.projects]);
-
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
     const nextPage = getPageByPath(url.pathname);
@@ -1629,17 +1577,6 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
     setPath(nextPage.path);
     setSearch(url.search);
   }, []);
-
-  const updateSearch = useCallback((nextSearch: string) => {
-    const nextUrl = `${page.path}${nextSearch}`;
-    const currentUrl = `${window.location.pathname}${window.location.search}`;
-
-    if (nextUrl !== currentUrl) {
-      window.history.pushState(null, "", nextUrl);
-    }
-
-    setSearch(nextSearch);
-  }, [page.path]);
 
   return (
     <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
@@ -1668,9 +1605,6 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
                 onNavigate={navigate}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
-                comparisonSelection={comparisonSelection}
-                onComparisonSelectionChange={setComparisonSelection}
-                onSearchChange={updateSearch}
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
@@ -1688,9 +1622,6 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
                 onNavigate={navigate}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
-                comparisonSelection={comparisonSelection}
-                onComparisonSelectionChange={setComparisonSelection}
-                onSearchChange={updateSearch}
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
@@ -1703,7 +1634,7 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
         </TopBarActionsContext.Provider>
       </div>
       {!isPlatformHome && canAccessCurrentPage ? (
-        <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} comparisonSelection={comparisonSelection} />
+        <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} />
       ) : null}
       {projectInitOpen ? (
         <ProjectParameterInitializationWizard
@@ -2042,7 +1973,7 @@ function Sidebar({
         </div>
         <div>
           <div className="brand-title">智效 WiseEff</div>
-          <div className="brand-subtitle">AI 驱动的企业业务效率平台</div>
+          <div className="brand-subtitle">Driven by AI</div>
         </div>
       </div>
       <ScrollArea className="nav-scroll">
@@ -2441,10 +2372,6 @@ type ParameterReviewRow =
   | ParameterInitializationReviewRow
   | { kind: "change"; request: ChangeRequest };
 
-function getComparisonProjects(state: PrototypeState) {
-  return state.configDraft.projects.length > 0 ? state.configDraft.projects : projects;
-}
-
 function getParameterInitializationReviewStatusLabel(status: ProjectParameterInitializationReview["status"]) {
   return {
     pending: "待审阅",
@@ -2460,11 +2387,6 @@ type VerticalTimelineItem = {
   time: string;
   title: string;
 };
-
-function getFallbackComparisonProjectId(projectId: string, projectList = projects) {
-  const comparisonProjects = projectList.length > 0 ? projectList : projects;
-  return comparisonProjects.find((project) => project.id !== projectId)?.id ?? projectId;
-}
 
 function getUserName(users: PrototypeState["users"], userId?: string) {
   if (!userId) {
@@ -2489,6 +2411,146 @@ export function getContextQuery(search: string) {
   };
 }
 
+function isComplexSubmissionHistoryValue(value: string) {
+  return value.includes("\n") || value.length > 80;
+}
+
+function isComplexSubmissionHistoryItem(item: ParameterSubmissionItem) {
+  return isComplexSubmissionHistoryValue(item.currentValue) || isComplexSubmissionHistoryValue(item.targetValue);
+}
+
+function getSubmissionHistoryLineCount(value: string) {
+  return value ? value.split(/\r?\n/).length : 0;
+}
+
+function formatSubmissionHistoryValue(value: string, unit: string, isComplexItem: boolean) {
+  if (isComplexItem) {
+    return value || "-";
+  }
+  return `${value || "-"} ${unit}`.trim();
+}
+
+type SubmissionHistoryDiffLineKind = "equal" | "remove" | "add";
+
+type SubmissionHistoryDiffLine = {
+  kind: SubmissionHistoryDiffLineKind;
+  leftLineNumber: number | null;
+  rightLineNumber: number | null;
+  value: string;
+};
+
+function splitSubmissionHistoryDiffLines(value: string) {
+  const lines = value.split(/\r?\n/);
+  return lines.length === 0 ? [""] : lines;
+}
+
+function buildSubmissionHistoryDiffLines(baseValue: string, targetValue: string): SubmissionHistoryDiffLine[] {
+  const baseLines = splitSubmissionHistoryDiffLines(baseValue);
+  const targetLines = splitSubmissionHistoryDiffLines(targetValue);
+  const lineCount = Math.max(baseLines.length, targetLines.length);
+  const diffLines: SubmissionHistoryDiffLine[] = [];
+
+  for (let index = 0; index < lineCount; index += 1) {
+    const baseLine = baseLines[index];
+    const targetLine = targetLines[index];
+    const baseLineNumber = baseLine === undefined ? null : index + 1;
+    const targetLineNumber = targetLine === undefined ? null : index + 1;
+
+    if (baseLine === targetLine) {
+      diffLines.push({
+        kind: "equal",
+        leftLineNumber: baseLineNumber,
+        rightLineNumber: targetLineNumber,
+        value: baseLine ?? ""
+      });
+      continue;
+    }
+
+    if (baseLine !== undefined) {
+      diffLines.push({
+        kind: "remove",
+        leftLineNumber: baseLineNumber,
+        rightLineNumber: null,
+        value: baseLine
+      });
+    }
+
+    if (targetLine !== undefined) {
+      diffLines.push({
+        kind: "add",
+        leftLineNumber: null,
+        rightLineNumber: targetLineNumber,
+        value: targetLine
+      });
+    }
+  }
+
+  return diffLines;
+}
+
+function SubmissionHistoryDiff({ baseValue, targetValue }: { baseValue: string; targetValue: string }) {
+  const diffLines = buildSubmissionHistoryDiffLines(baseValue, targetValue);
+
+  return (
+    <div className="submission-preview-diff history-submission-diff" role="list">
+      {diffLines.map((line, index) => (
+        <div
+          className="submission-preview-diff-row"
+          data-kind={line.kind}
+          key={`${line.kind}-${line.leftLineNumber ?? "-"}-${line.rightLineNumber ?? "-"}-${index}`}
+          role="listitem"
+        >
+          <span className="submission-preview-diff-row__marker" aria-hidden="true">
+            {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
+          </span>
+          <span className="submission-preview-diff-row__line-number">{line.leftLineNumber ?? ""}</span>
+          <span className="submission-preview-diff-row__line-number">{line.rightLineNumber ?? ""}</span>
+          <code>{line.value || " "}</code>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) {
+  const isComplexItem = isComplexSubmissionHistoryItem(item);
+  const sourceLabel = isComplexItem ? "DTS / 多行参数" : "数值配置";
+  const currentDisplayValue = formatSubmissionHistoryValue(item.currentValue, item.unit, isComplexItem);
+  const targetDisplayValue = formatSubmissionHistoryValue(item.targetValue, item.unit, isComplexItem);
+
+  return (
+    <article
+      className={["submission-diff-card", "submission-diff-card--history", isComplexItem ? "submission-diff-card--history-complex" : ""]
+        .filter(Boolean)
+        .join(" ")}
+      key={item.requestId}
+    >
+      <div className="submission-diff-card__head">
+        <div>
+          <strong>{item.name}</strong>
+          <small>{item.module} · {riskLabels[item.risk]} · {item.requestId}</small>
+        </div>
+        <span>{isComplexItem ? "复杂配置" : "数值配置"}</span>
+      </div>
+      <div className="history-submission-meta-row" aria-label={`${item.name} 历史提交摘要`}>
+        <span>{sourceLabel}</span>
+        <span>当前 {getSubmissionHistoryLineCount(item.currentValue)} 行</span>
+        <span>目标 {getSubmissionHistoryLineCount(item.targetValue)} 行</span>
+      </div>
+      <SubmissionHistoryDiff baseValue={currentDisplayValue} targetValue={targetDisplayValue} />
+      <p>{item.reason}</p>
+    </article>
+  );
+}
+
+function shouldShowSubmissionRoundSummary(round: ParameterSubmissionRound) {
+  const summary = round.summary.trim();
+  if (!summary) {
+    return false;
+  }
+  return !/本轮提交包含\s*\d+\s*个参数/.test(summary);
+}
+
 function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
   const myName = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
   const myRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === myName);
@@ -2511,7 +2573,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
 
   return (
     <div className="submission-history-page">
-      <section className="comparison-summary">
+      <section className="comparison-summary submission-history-summary">
         <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
         <MetricCard title="待审阅轮次" value={`${myRounds.filter((round) => round.status === "待审阅").length}`} trend="可撤回或等待处理" tone="teal" />
         <MetricCard title="参数项总数" value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单参数和多参数提交" tone="purple" />
@@ -2546,24 +2608,10 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
                   <StatusBadge status={selectedRound.status} />
                 </div>
                 <p>本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在 {selectedRound.createdAt} 提交。</p>
-                <p>{selectedRound.summary}</p>
-                <Timeline steps={[...timelineView.steps]} activeIndex={timelineView.activeIndex} />
+                <Timeline className="submission-timeline" steps={[...timelineView.steps]} activeIndex={timelineView.activeIndex} />
               </div>
               <div className="submission-diff-list history-diff-list">
-                {selectedRound.items.map((item) => (
-                  <article className="submission-diff-card" key={item.requestId}>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <small>{item.module} · {riskLabels[item.risk]} · {item.requestId}</small>
-                    </div>
-                    <div className="diff-values">
-                      <span className="diff-before">{item.currentValue}{item.unit}</span>
-                      <ArrowRight size={16} />
-                      <span className="diff-after">{item.targetValue}{item.unit}</span>
-                    </div>
-                    <p>{item.reason}</p>
-                  </article>
-                ))}
+                {selectedRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
               </div>
               <div className="action-panel">
                 <Button
@@ -3167,30 +3215,25 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
       ) : null}
       {detailOpen && selectedDetailRound ? (
         <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="submission-detail-title">
-          <div className="submission-dialog">
+          <div
+            className={[
+              "submission-dialog",
+              selectedDetailRound.items.some(isComplexSubmissionHistoryItem) ? "submission-dialog--wide" : "",
+              "submission-detail-dialog"
+            ]
+              .filter(Boolean)
+              .join(" ")}
+          >
             <div className="submission-dialog-head">
               <div>
                 <span className="eyebrow">{selectedDetailRound.id} · {selectedDetailRound.projectName}</span>
                 <h2 id="submission-detail-title">提交详情</h2>
                 <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
-                {selectedDetailRound.summary ? <p>{selectedDetailRound.summary}</p> : null}
+                {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
               </div>
             </div>
             <div className="submission-diff-list">
-              {selectedDetailRound.items.map((item) => (
-                <article className="submission-diff-card" key={item.requestId}>
-                  <div>
-                    <strong>{item.name}</strong>
-                    <small>{item.module} · {riskLabels[item.risk]}</small>
-                  </div>
-                  <div className="diff-values">
-                    <span className="diff-before">{item.currentValue}{item.unit}</span>
-                    <span>→</span>
-                    <span className="diff-after">{item.targetValue}{item.unit}</span>
-                  </div>
-                  {item.reason ? <p className="submission-reason">修改原因：{item.reason}</p> : null}
-                </article>
-              ))}
+              {selectedDetailRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
             </div>
             <div className="dialog-actions">
               <button className="button subtle" type="button" onClick={() => setDetailOpen(false)}>关闭</button>
@@ -4625,9 +4668,17 @@ function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
   );
 }
 
-function Timeline({ steps, activeIndex }: { steps: string[]; activeIndex: number }) {
+function Timeline({
+  steps,
+  activeIndex,
+  className
+}: {
+  steps: string[];
+  activeIndex: number;
+  className?: string;
+}) {
   return (
-    <div className="timeline">
+    <div className={["timeline", className].filter(Boolean).join(" ")}>
       {steps.map((step, index) => (
         <div className={index <= activeIndex ? "done" : ""} key={step}>
           <span>{index < activeIndex ? <Check size={14} /> : index + 1}</span>

@@ -177,11 +177,14 @@ describe("generateHotspotActions", () => {
     expect(riskAction.primary.label).toBe("创建高风险专项审阅 · 6 项");
     expect(riskAction.primary.path).toBe("/parameter-review?filter=high-risk&module=Charging%20Policy");
     expect(riskAction.secondary?.label).toBe("查看 Charging Policy 推荐值对比");
+    expect(riskAction.secondary?.path).toBe("/parameters?module=Charging%20Policy");
+    expect(driftAction.primary.path).toBe("/parameters?module=Charging%20Policy&highlight=drift");
     expect(driftAction.primary.path).toContain("highlight=drift");
     expect(zeroRiskAction.primary.label).toBe("创建高风险专项审阅");
     for (const action of [riskAction.primary, riskAction.secondary, driftAction.primary, zeroRiskAction.primary].filter(Boolean)) {
       expect(action?.label).not.toMatch(/[{}]/);
       expect(action?.path).not.toMatch(/[{}]/);
+      expect(action?.path).not.toContain("/parameter-comparison");
     }
   });
 });

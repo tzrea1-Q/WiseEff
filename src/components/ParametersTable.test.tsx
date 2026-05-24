@@ -59,6 +59,29 @@ const rows: ParameterRecord[] = [
   }
 ];
 
+const dtsValue = `fast-charge-profile-matrix =
+  "0", "5000", "1500", "40", "entry",
+  "1", "9000", "3000", "43", "balanced",
+  "2", "11000", "4200", "46", "burst";`;
+
+const complexRow: ParameterRecord = {
+  id: "p-dts",
+  name: "dts_fast_charge_profile_matrix",
+  description: "DTS string-list fast charge profile matrix.",
+  explanation: "Uses a device-tree string-list property.",
+  configFormat: dtsValue,
+  module: "Charging Policy",
+  projectId: "aurora",
+  currentValue: dtsValue,
+  recommendedValue: dtsValue,
+  range: "0 - 1",
+  unit: "profile",
+  risk: "Low",
+  updatedAt: "today 14:05",
+  updatedAtTs: "2026-05-10T14:05:00Z",
+  history: []
+};
+
 function setup(overrides: Partial<ParametersTableProps> = {}) {
   const onSelectedIdsChange = vi.fn();
   const onFocusRow = vi.fn();
@@ -164,6 +187,17 @@ describe("ParametersTable", () => {
     expect(diffCell?.querySelector(".parameter-value-diff")).toHaveTextContent("3200");
   });
 
+  it("summarizes multiline DTS values in the table instead of expanding the full config", () => {
+    setup({ rows: [complexRow], onViewRow: vi.fn() });
+
+    const dtsRow = screen.getByText("dts_fast_charge_profile_matrix").closest("tr");
+    expect(dtsRow).toBeInTheDocument();
+    expect(within(dtsRow!).getByText("复杂配置")).toBeInTheDocument();
+    expect(within(dtsRow!).getByText("fast-charge-profile-matrix")).toBeInTheDocument();
+    expect(within(dtsRow!).getByText(/当前与推荐一致/)).toBeInTheDocument();
+    expect(within(dtsRow!).queryByText(/"0", "5000"/)).not.toBeInTheDocument();
+  });
+
   it("adds modified row styling and module badge hooks", () => {
     setup({ modifiedIds: new Set(["p1"]) });
     const modifiedRow = screen.getByRole("checkbox", { name: /fast_charge/ }).closest("tr");
@@ -233,6 +267,41 @@ describe("ParametersTable", () => {
     expect(onFocusRow).toHaveBeenCalledWith("p2");
   });
 
+  it("renders a view action", () => {
+    const onViewRow = vi.fn();
+    const { onFocusRow } = setup({ onViewRow });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 battery_temp_target_c" }));
+
+    expect(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 battery_temp_target_c" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看 soc_estimation_smoothing" })).toBeInTheDocument();
+    expect(onViewRow).toHaveBeenCalledTimes(1);
+    expect(onViewRow).toHaveBeenCalledWith("p2");
+    expect(onFocusRow).not.toHaveBeenCalled();
+  });
+
+  it("does not render inert view actions without a view handler", () => {
+    setup();
+
+    expect(screen.queryByRole("button", { name: "查看 fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看 battery_temp_target_c" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "查看 soc_estimation_smoothing" })).not.toBeInTheDocument();
+  });
+
+  it("keeps view actions available in read-only mode without edit actions", () => {
+    const onViewRow = vi.fn();
+    const { onFocusRow } = setup({ canEdit: false, onViewRow, onEditRow: vi.fn() });
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+
+    expect(onViewRow).toHaveBeenCalledTimes(1);
+    expect(onViewRow).toHaveBeenCalledWith("p1");
+    expect(onFocusRow).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "编辑 fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Read only")).toHaveLength(3);
+  });
+
   it("selects only filtered visible modified rows from the header checkbox", () => {
     const { onSelectedIdsChange } = setup({ modifiedIds: new Set(["p1", "p2", "p3"]) });
 
@@ -288,6 +357,29 @@ describe("ParametersTable", () => {
     expect(tableGridRule).toMatch(/table-layout:\s*fixed/);
     expect(tableHeaderRule).not.toMatch(/white-space:\s*nowrap/);
     expect(nameColumnRule).toMatch(/min-width:\s*0/);
+  });
+
+  it("lets long DTS-style parameter descriptions wrap inside the name column", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+
+    expect(styles).toMatch(
+      /\.parameters-table-grid td:nth-child\(2\) strong,\s*\.parameters-table-grid td:nth-child\(2\) small\s*\{[^}]*white-space:\s*normal;[^}]*\}/s
+    );
+    expect(styles).toMatch(
+      /\.parameters-table-grid td:nth-child\(2\) strong,\s*\.parameters-table-grid td:nth-child\(2\) small\s*\{[^}]*overflow-wrap:\s*anywhere;[^}]*\}/s
+    );
+  });
+
+  it("keeps multiline parameter values inside the current-to-recommended column", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+    const diffRule = styles.match(/\.parameter-value-diff\s*\{[^}]*\}/)?.[0] ?? "";
+    const diffChildRule = styles.match(/\.parameter-value-diff\s*>\s*span,\s*\.parameter-value-diff\s*>\s*strong\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(diffRule).toMatch(/display:\s*grid/);
+    expect(diffRule).toMatch(/white-space:\s*normal/);
+    expect(diffRule).toMatch(/max-width:\s*100%/);
+    expect(diffChildRule).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(diffChildRule).toMatch(/white-space:\s*pre-wrap/);
   });
 
   it("lets column filter menus escape the table scroll container", () => {

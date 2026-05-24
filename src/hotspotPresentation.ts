@@ -46,13 +46,13 @@ export const HOTSPOT_ACTION_TEMPLATES: Record<HotspotArchetype, ArchetypeActions
     },
     secondary: {
       labelTemplate: "查看 {module} 推荐值对比",
-      pathTemplate: "/parameter-comparison?module={module}"
+      pathTemplate: "/parameters?module={module}"
     }
   },
   "drift-anomaly": {
     primary: {
       labelTemplate: "查看 {module} 漂移详情",
-      pathTemplate: "/parameter-comparison?module={module}&highlight=drift"
+      pathTemplate: "/parameters?module={module}&highlight=drift"
     },
     secondary: {
       labelTemplate: "订阅偏离告警",
@@ -82,7 +82,7 @@ export const HOTSPOT_ACTION_TEMPLATES: Record<HotspotArchetype, ArchetypeActions
   "impact-wide": {
     primary: {
       labelTemplate: "查看跨项目定义使用",
-      pathTemplate: "/parameter-comparison?module={module}"
+      pathTemplate: "/parameters?module={module}"
     },
     secondary: {
       labelTemplate: "打开参数定义库",

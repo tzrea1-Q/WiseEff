@@ -211,8 +211,8 @@ function deriveEntryCards(state: PrototypeState, summary: HomepageSummary, flowH
     },
     {
       title: "项目参数对比分析",
-      description: "定位跨项目参数漂移与异常差异",
-      path: "/parameter-comparison",
+      description: "在工作台定位跨项目参数漂移与异常差异",
+      path: "/parameters",
       statusLabel: "定义数量",
       statusValue: String(summary.parameterDefinitions)
     },
@@ -421,12 +421,12 @@ function buildHotspotPath(
   if (hotspotKind === "module") {
     return requestCount > 0
       ? `/parameter-review?module=${encodeURIComponent(module)}`
-      : `/parameter-comparison?module=${encodeURIComponent(module)}`;
+      : `/parameters?module=${encodeURIComponent(module)}`;
   }
   if (hotspotKind === "project") {
     return requestCount > 0
       ? `/parameter-review?project=${encodeURIComponent(projectId)}`
-      : `/parameter-comparison?project=${encodeURIComponent(projectId)}`;
+      : `/parameters?project=${encodeURIComponent(projectId)}`;
   }
 
   return requestCount > 0

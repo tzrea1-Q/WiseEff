@@ -7,7 +7,6 @@ describe("WiseEff prototype configuration", () => {
       "/",
       "/parameter-home",
       "/parameters",
-      "/parameter-comparison",
       "/parameter-review",
       "/parameter-admin",
       "/debugging",
@@ -63,6 +62,20 @@ describe("WiseEff prototype configuration", () => {
     expect(page.key).toBe("user-permissions");
     expect(page.path).toBe("/user-permissions");
     expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
+  });
+
+  it("keeps the retired comparison route resolvable outside normal navigation", () => {
+    const page = getPageByPath("/parameter-comparison");
+    const plan = createAgentPlan("/parameter-comparison");
+
+    expect(navigationItems.map((item) => item.path)).not.toContain("/parameter-comparison");
+    expect(page.key).toBe("parameter-comparison");
+    expect(page.path).toBe("/parameter-comparison");
+    expect(page.title).toBe("页面不可用");
+    expect(plan.contextTitle).not.toContain("对比");
+    expect(plan.actions.map((action) => action.id)).not.toContain("summarize-comparison");
+    expect(plan.actions.map((action) => action.id)).not.toContain("sync-comparison");
+    expect(plan.prompts.join(" ")).not.toContain("同步");
   });
 
   it("makes user management a utility route to user permissions", () => {

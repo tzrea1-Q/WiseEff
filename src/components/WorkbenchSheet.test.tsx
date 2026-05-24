@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ParameterDraftDialog } from "./ParameterDraftDialog";
 import { WorkbenchSheet } from "./WorkbenchSheet";
 
 afterEach(() => {
@@ -117,6 +119,46 @@ describe("WorkbenchSheet", () => {
     cleanup();
 
     expect(document.body.style.overflow).toBe("auto");
+  });
+
+  it("keeps body scrolling locked until all overlapping modals close", () => {
+    document.body.style.overflow = "auto";
+
+    const draftProps: ComponentProps<typeof ParameterDraftDialog> = {
+      open: true,
+      title: "修改草稿",
+      drafts: [],
+      focusedParameterId: null,
+      canEdit: true,
+      onClose: () => {},
+      onClearAll: () => {},
+      onRemoveItem: () => {},
+      onUpdateDraft: () => {},
+      onSubmit: () => {},
+      onViewSubmissions: () => {}
+    };
+
+    const { rerender } = render(
+      <>
+        <WorkbenchSheet open onClose={() => {}} title="参数草稿">
+          草稿内容
+        </WorkbenchSheet>
+        <ParameterDraftDialog {...draftProps} />
+      </>
+    );
+
+    expect(document.body.style.overflow).toBe("hidden");
+
+    rerender(
+      <>
+        <WorkbenchSheet open={false} onClose={() => {}} title="参数草稿">
+          草稿内容
+        </WorkbenchSheet>
+        <ParameterDraftDialog {...draftProps} />
+      </>
+    );
+
+    expect(document.body.style.overflow).toBe("hidden");
   });
 
   it("focuses the close button when opened", () => {

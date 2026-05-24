@@ -18,7 +18,7 @@ import {
 describe("powerManagementConfig", () => {
   it("ships one shared project parameter library used by all projects", () => {
     expect(bundledPowerManagementConfig.projects).toHaveLength(3);
-    expect(bundledPowerManagementConfig.parameterLibrary).toHaveLength(10);
+    expect(bundledPowerManagementConfig.parameterLibrary).toHaveLength(12);
     expect(bundledPowerManagementConfig.projects.some((project) => "parameters" in project)).toBe(false);
     expect(bundledPowerManagementConfig.debugParameters.length).toBeGreaterThanOrEqual(8);
   });
@@ -57,8 +57,37 @@ describe("powerManagementConfig", () => {
   });
 
   it("flattens project and debug catalogs for runtime state", () => {
-    expect(flattenProjectParameters(bundledPowerManagementConfig)).toHaveLength(30);
+    expect(flattenProjectParameters(bundledPowerManagementConfig)).toHaveLength(36);
     expect(flattenDebugParameters(bundledPowerManagementConfig)).toHaveLength(8);
+  });
+
+  it("ships DTS-style multiline matrix values for display verification", () => {
+    const flattened = flattenProjectParameters(bundledPowerManagementConfig);
+    const fastChargeRows = flattened.filter((parameter) => parameter.name === "dts_fast_charge_profile_matrix");
+    const thermalRows = flattened.filter((parameter) => parameter.name === "battery_thermal_derate_curve");
+    const dtsRows = [...fastChargeRows, ...thermalRows];
+
+    expect(dtsRows).toHaveLength(6);
+    for (const row of dtsRows) {
+      expect(row.currentValue).toContain("\n");
+      expect(row.recommendedValue).toContain("\n");
+    }
+    for (const row of fastChargeRows) {
+      expect(row.configFormat).toContain('fast-charge-profile-matrix =');
+      expect(row.currentValue).toContain('fast-charge-profile-matrix =');
+      expect(row.recommendedValue).toContain('fast-charge-profile-matrix =');
+      expect(row.currentValue).toContain('"0", "5000", "1500", "40", "entry"');
+      expect(row.currentValue).toContain(",");
+    }
+    for (const row of thermalRows) {
+      expect(row.configFormat).toContain("battery-thermal-derate-curve = <");
+      expect(row.currentValue).toContain("battery-thermal-derate-curve = <");
+      expect(row.recommendedValue).toContain("battery-thermal-derate-curve = <");
+      expect(row.currentValue).toContain("0 38 3800 4350");
+      expect(row.currentValue).toContain(">;");
+    }
+    expect(new Set(fastChargeRows.map((row) => row.currentValue)).size).toBeGreaterThan(1);
+    expect(new Set(thermalRows.map((row) => row.currentValue)).size).toBeGreaterThan(1);
   });
 
   it("supports runtime-created project ids in parameter values", () => {
@@ -133,9 +162,9 @@ describe("powerManagementConfig", () => {
     const withProjectParameter = addProjectParameter(draft);
     const addedProjectParameter = withProjectParameter.parameterLibrary.at(-1);
 
-    expect(addedProjectParameter?.name).toBe("new_power_parameter_11");
+    expect(addedProjectParameter?.name).toBe("new_power_parameter_13");
     expect(addedProjectParameter?.values.aurora?.currentValue).toBe("0");
-    expect(deleteProjectParameter(withProjectParameter, addedProjectParameter?.id ?? "").parameterLibrary).toHaveLength(10);
+    expect(deleteProjectParameter(withProjectParameter, addedProjectParameter?.id ?? "").parameterLibrary).toHaveLength(12);
 
     const withDebugParameter = addDebugParameter(draft);
     const addedDebugParameter = withDebugParameter.debugParameters.at(-1);

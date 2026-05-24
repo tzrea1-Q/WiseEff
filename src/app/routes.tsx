@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { Dispatch, ReactNode } from "react";
 
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
@@ -7,11 +7,10 @@ import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
-import { ParameterComparisonPage } from "@/ParameterComparison";
-import type { ComparisonProjectSelection } from "@/ParameterComparison/types";
 import { ParameterManagementHomePage } from "@/ParameterManagementHomePage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
+import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
 import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
@@ -26,9 +25,6 @@ export type PageProps = {
 
 export type PageRouterProps = PageProps & {
   page: PageConfig;
-  comparisonSelection: ComparisonProjectSelection;
-  onComparisonSelectionChange: Dispatch<SetStateAction<ComparisonProjectSelection>>;
-  onSearchChange: (search: string) => void;
   HomePage: () => ReactNode;
   ParameterSubmissionsPage: (props: PageProps) => ReactNode;
   ParameterReviewPage: (props: PageProps) => ReactNode;
@@ -45,9 +41,6 @@ export function PageRouter({
   onNavigate,
   search,
   parameterHomeTimeWindow,
-  comparisonSelection,
-  onComparisonSelectionChange,
-  onSearchChange,
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
@@ -99,13 +92,12 @@ export function PageRouter({
       return <ParameterManagementHomePage state={state} onNavigate={onNavigate} timeWindow={parameterHomeTimeWindow} />;
     case "parameter-comparison":
       return (
-        <ParameterComparisonPage
-          state={state}
+        <NoEntryPage
+          title="页面不可用"
+          description="独立参数对比页面已下线，请回到参数工作台通过参数行的查看按钮查看跨项目对比。"
+          actionLabel="参数工作台"
+          actionPath="/parameters"
           onNavigate={onNavigate}
-          search={search}
-          comparisonSelection={comparisonSelection}
-          onComparisonSelectionChange={onComparisonSelectionChange}
-          onSearchChange={onSearchChange}
         />
       );
     case "parameter-review":
