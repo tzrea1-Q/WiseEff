@@ -219,10 +219,10 @@ function ScenarioEntryPanel({
   onNewProject?: () => void;
 }) {
   return (
-    <section className="scenario-entry-panel homepage-panel" aria-label="我想做">
+    <section className="scenario-entry-panel homepage-panel" aria-label="主要功能">
       <div className="parameter-homepage-section-head">
         <div>
-          <h2>我想做</h2>
+          <h2>主要功能</h2>
         </div>
       </div>
       <div className="scenario-entry-list">

@@ -33,7 +33,7 @@ describe("ParameterManagementHomePage", () => {
 
     expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByText("我的工作台")).not.toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero__eyebrow")).not.toBeInTheDocument();

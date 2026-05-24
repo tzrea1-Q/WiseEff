@@ -48,7 +48,7 @@ describe("permission-aware routing", () => {
 
     renderRole("guest");
 
-    expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 处理审阅/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
 
