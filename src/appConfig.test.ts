@@ -47,6 +47,16 @@ describe("WiseEff prototype configuration", () => {
     expect(page.group).toBe("日志分析");
   });
 
+  it("labels the parameter homepage as the user workbench without changing the log dashboard label", () => {
+    const parameterHome = getPageByPath("/parameter-home");
+    const logDashboard = getPageByPath("/log-dashboard");
+
+    expect(parameterHome.label).toBe("我的工作台");
+    expect(parameterHome.group).toBe("参数管理");
+    expect(logDashboard.label).toBe("看板");
+    expect(logDashboard.group).toBe("日志分析");
+  });
+
   it("exposes a dedicated node debugging route", () => {
     const page = getPageByPath("/node-debugging");
     expect(page.key).toBe("node-debugging");

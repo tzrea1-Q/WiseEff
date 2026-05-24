@@ -169,7 +169,8 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
     expectSelectValue(timeWindowSelect, "30d");
-    const activeNavButtons = screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"));
+    expect(screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"))).toHaveLength(0);
+    const activeNavButtons = screen.getAllByRole("button", { name: "我的工作台" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
   });
 
