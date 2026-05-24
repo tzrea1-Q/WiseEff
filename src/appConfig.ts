@@ -83,15 +83,6 @@ export const navigationItems: PageConfig[] = [
     subtitle: "查看、筛选、对比并提交充电与电池参数修改请求"
   },
   {
-    key: "parameter-comparison",
-    path: "/parameter-comparison",
-    label: "对比分析",
-    group: "参数管理",
-    icon: SlidersHorizontal,
-    title: "项目参数对比分析",
-    subtitle: "对比两个实际项目的充电、温控与电池保护参数差异，查看风险并同步选择项"
-  },
-  {
     key: "parameter-review",
     path: "/parameter-review",
     label: "参数审阅",
@@ -195,6 +186,18 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  if (path === "/parameter-comparison") {
+    return {
+      key: "parameter-comparison",
+      path: "/parameter-comparison",
+      label: "对比分析",
+      group: "参数管理",
+      icon: SlidersHorizontal,
+      title: "页面不可用",
+      subtitle: "独立参数对比已下线，请回到参数工作台查看行级对比"
+    };
+  }
+
   return navigationItems.find((item) => item.path === path) ?? navigationItems[0];
 }
 
@@ -220,12 +223,11 @@ export function createAgentPlan(path: string): AgentPlan {
     case "parameter-comparison":
       return {
         ...shared,
-        contextTitle: "参数对比 Agent",
-        contextSummary: "正在关注两个实际项目之间的快充档位、温控阈值和协议协商差异。",
-        prompts: ["解释参数漂移影响", "生成同步建议", "筛出高风险差异"],
+        contextTitle: "页面不可用 Agent",
+        contextSummary: "独立参数对比页面已下线，请回到参数工作台查看行级跨项目对比。",
+        prompts: ["返回参数工作台", "查看行级参数详情", "说明页面下线原因"],
         actions: [
-          { id: "summarize-comparison", label: "生成差异摘要", requiresConfirm: false },
-          { id: "sync-comparison", label: "同步选中差异", requiresConfirm: true }
+          { id: "open-parameters", label: "返回参数工作台", requiresConfirm: false }
         ]
       };
     case "parameter-review":

@@ -5,11 +5,6 @@ import { UnifiedAgent } from "./UnifiedAgent";
 import type { createAgentPlan } from "@/appConfig";
 import { createPrototypeState } from "@/mockData";
 
-const comparisonSelection = {
-  baseProjectId: "aurora",
-  targetProjectId: "nebula"
-};
-
 const parameterPlan = {
   shellVariant: "unified-glass-agent",
   contextTitle: "Parameter Agent",
@@ -20,6 +15,15 @@ const parameterPlan = {
     { id: "filter-high-risk", label: "Filter high risk", requiresConfirm: false },
     { id: "draft-parameter-change", label: "Draft parameter change", requiresConfirm: true, requiredPermission: "parameter.edit" }
   ]
+} satisfies ReturnType<typeof createAgentPlan>;
+
+const staleComparisonPlan = {
+  shellVariant: "unified-glass-agent",
+  contextTitle: "Retired comparison Agent",
+  contextSummary: "Retired comparison context",
+  steps: ["Read stale comparison context"],
+  prompts: [],
+  actions: [{ id: "summarize-comparison", label: "Summarize comparison", requiresConfirm: false }]
 } satisfies ReturnType<typeof createAgentPlan>;
 
 afterEach(() => {
@@ -34,7 +38,6 @@ describe("UnifiedAgent permission boundaries", () => {
         plan={parameterPlan}
         state={{ ...createPrototypeState(), activeRoleId: "guest" }}
         dispatch={vi.fn()}
-        comparisonSelection={comparisonSelection}
       />
     );
 
@@ -52,7 +55,6 @@ describe("UnifiedAgent permission boundaries", () => {
         plan={parameterPlan}
         state={{ ...createPrototypeState(), activeRoleId: "user" }}
         dispatch={dispatch}
-        comparisonSelection={comparisonSelection}
       />
     );
 
@@ -65,5 +67,21 @@ describe("UnifiedAgent permission boundaries", () => {
         type: "ADD_CHANGE_REQUEST"
       })
     );
+  });
+
+  it("does not depend on retired comparison selection for stale comparison plans", () => {
+    render(
+      <UnifiedAgent
+        path="/parameter-comparison"
+        plan={staleComparisonPlan}
+        state={createPrototypeState()}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 WiseAgent" }));
+
+    expect(screen.getByText("Retired comparison context")).toBeInTheDocument();
+    expect(screen.queryByLabelText("WiseAgent 洞察")).not.toBeInTheDocument();
   });
 });

@@ -29,7 +29,7 @@ describe("ParametersPage read-only access", () => {
 
     expect(screen.getByText("只读访问")).toBeVisible();
     expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
-    expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
+    expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
 
   it("does not expose the Agent insight one-click draft action to Guest", () => {
@@ -106,7 +106,7 @@ describe("ParametersPage read-only access", () => {
     const editButton = container.querySelector<HTMLButtonElement>(".edit-row-button");
     expect(editButton).not.toBeNull();
     fireEvent.click(editButton!);
-    expect(container.querySelector(".workbench-sheet")).toBeInTheDocument();
+    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
 
     rerender(
       <TopBarActionsHarness>
@@ -177,6 +177,205 @@ function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
   return { ...result, dispatch, onNavigate };
 }
 
+describe("ParametersPage parameter detail modal", () => {
+  it("opens the detail modal from a row view action without changing the pathname", () => {
+    window.history.pushState({}, "", "/parameters");
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+
+    expect(window.location.pathname).toBe("/parameters");
+    expect(screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" })).toBeInTheDocument();
+  });
+
+  it("shows the parameter definition and every runtime project", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
+
+    expect(within(dialog).getByRole("region", { name: "参数定义" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("region", { name: "跨项目对比" })).toBeInTheDocument();
+    ["AUR-Prod", "NEB-RD", "ATL-Intl"].forEach((projectCode) => {
+      expect(within(dialog).getAllByText(projectCode).length).toBeGreaterThan(0);
+    });
+  });
+
+  it("updates the focused delta when the comparison target changes", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
+    expect(within(dialog).getByText("+350 mA (+9.1%)")).toBeInTheDocument();
+    expect(within(dialog).getByText("对比 AUR-Prod 与 NEB-RD")).toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByLabelText("对比目标项目"), {
+      target: { value: "atlas" }
+    });
+
+    expect(within(dialog).getByText("-850 mA (-22.1%)")).toBeInTheDocument();
+    expect(within(dialog).getByText("对比 AUR-Prod 与 ATL-Intl")).toBeInTheDocument();
+  });
+
+  it("adds the viewed parameter to the existing modification draft sheet", () => {
+    const { container } = renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    fireEvent.click(screen.getByRole("button", { name: "加入修改草稿" }));
+
+    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("3200")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("adds the recommended config from the detail modal to the modification draft", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用推荐配置加入草稿" }));
+
+    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(sheet).getByDisplayValue("3200")).toBeInTheDocument();
+    expect(within(sheet).getByDisplayValue("使用推荐配置生成草稿")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("adds the selected comparison project value from the detail modal to the modification draft", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
+    fireEvent.change(within(dialog).getByLabelText("对比目标项目"), {
+      target: { value: "atlas" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "使用该项目配置加入草稿" }));
+
+    const sheet = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(within(sheet).getByDisplayValue("3000")).toBeInTheDocument();
+    expect(within(sheet).getByDisplayValue("参考 ATL-Intl 项目当前配置生成草稿")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  });
+
+  it("reuses an existing draft when viewing the same parameter from the modal", () => {
+    const { container } = renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+
+    expect(screen.getByRole("button", { name: "已在草稿中" })).toBeDisabled();
+    expect(container.querySelectorAll(".draft-card")).toHaveLength(1);
+    expect(screen.getByDisplayValue("3200")).toBeInTheDocument();
+  });
+
+  it("closes the stale detail modal on project switch and cannot add the old project parameter to drafts", () => {
+    const { container, rerender } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          effectiveProjectId="aurora"
+        />
+      </TopBarActionsHarness>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    expect(screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" })).toBeInTheDocument();
+
+    rerender(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          effectiveProjectId="nebula"
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(screen.queryByRole("dialog", { name: "fast_charge_current_limit_ma" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加入修改草稿" })).not.toBeInTheDocument();
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+  });
+
+  it("ignores stale log-linked parameters from another project when seeding drafts", () => {
+    const { container } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search="?logId=log-active&parameter=nebula-fast-charge-current"
+          effectiveProjectId="aurora"
+          canEdit
+        />
+      </TopBarActionsHarness>
+    );
+
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
+  });
+
+  it("shows initialization-specific disabled reasons when initialization is locked even if canEdit is false", () => {
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={initialState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          canEdit={false}
+          initializationStatus="initialization_pending_review"
+        />
+      </TopBarActionsHarness>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
+    const insight = screen.getByRole("status", { name: "Agent 参数洞察" });
+
+    expect(dialog.querySelector(".parameter-detail-disabled-reason")).toHaveTextContent("初始化通过前暂不可提交普通参数变更。");
+    expect(within(insight).getByText("初始化通过前暂不可提交普通参数变更。")).toBeInTheDocument();
+    expect(screen.getByText("该项目可查看，初始化通过前暂不可提交普通参数变更。")).toBeInTheDocument();
+    expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
+  });
+
+  it("allows read-only users to view details but disables adding to the draft", () => {
+    const { container } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={{ ...initialState, activeRoleId: "guest" }}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
+    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
+
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "加入修改草稿" })).toBeDisabled();
+    expect(dialog.querySelector(".parameter-detail-disabled-reason")).toHaveTextContent("需要 User 角色才能编辑、暂存或提交参数变更。");
+    expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+  });
+
+  it("does not render the standalone topbar comparison action", () => {
+    const { container } = renderPage();
+    const topbar = container.querySelector(".topbar");
+
+    expect(topbar).not.toBeNull();
+    expect(within(topbar as HTMLElement).queryByRole("button", { name: /跨项目对比/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("ParametersPage (抽出后的模块)", () => {
   it("可以从独立模块引入并渲染工作台根节点", () => {
     renderPage();
@@ -200,6 +399,16 @@ describe("ParametersPage (抽出后的模块)", () => {
 });
 
 describe("ParametersPage draft edge cases", () => {
+  it("renders the draft editor as a centered modal instead of the sheet shell", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 fast_charge_current_limit_ma" }));
+
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    expect(dialog.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(dialog.querySelector(".workbench-sheet")).not.toBeInTheDocument();
+  });
+
   it("moves edited rows into the current-round modified table only after submitting the parameter draft", () => {
     renderPage();
 
@@ -239,10 +448,11 @@ describe("ParametersPage draft edge cases", () => {
     const topbar = container.querySelector(".topbar");
 
     expect(topbar).not.toBeNull();
-    ["导出 Excel", "历史提交", "跨项目对比"].forEach((label) => {
+    ["导出 Excel", "历史提交"].forEach((label) => {
       const action = within(topbar as HTMLElement).getByRole("button", { name: label });
       expect(action).toHaveClass("button", "subtle");
     });
+    expect(within(topbar as HTMLElement).queryByRole("button", { name: /跨项目对比/ })).not.toBeInTheDocument();
 
     const primaryActions = Array.from(topbar!.querySelectorAll<HTMLButtonElement>(".button.primary"));
     expect(primaryActions).toHaveLength(1);
@@ -300,7 +510,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: "一键加入草稿" }));
 
     expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue("参考 Agent 巡检建议（-16.9%）")).toBeInTheDocument();
   });
 
@@ -327,16 +537,15 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
 
     const searchTable = screen.getByRole("region", { name: "检索参数表" });
-    const footer = container.querySelector<HTMLElement>(".draft-sheet-footer");
-    const styles = readFileSync("src/styles.css", "utf8");
+    const footer = container.querySelector<HTMLElement>(".parameter-draft-dialog .parameter-detail-dialog__footer");
     expect(footer).not.toBeNull();
     expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
     expect(within(footer!).queryByRole("button", { name: /暂存本轮/ })).not.toBeInTheDocument();
     expect(within(footer!).queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
-    expect(styles).toMatch(/\.draft-sheet-footer\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
-    expect(styles).toMatch(/\.draft-sheet-footer-actions\s*\{[^}]*grid-row:\s*2;/s);
-    expect(styles).toMatch(/\.draft-sheet-footer-actions\s*\{[^}]*justify-content:\s*flex-start;/s);
+    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
+    expect(container.querySelector(".parameter-draft-dialog__body")).toBeInTheDocument();
+    expect(container.querySelector(".parameter-draft-dialog__body")).toHaveClass("parameter-draft-dialog__body");
 
     const submitParameter = within(footer!).getByRole("button", { name: "提交参数" });
     expect(submitParameter).toBeEnabled();
@@ -344,10 +553,13 @@ describe("ParametersPage draft edge cases", () => {
 
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: /提交本轮参数/ })).not.toBeInTheDocument();
-    const modifiedTable = screen.getByRole("region", { name: "本轮已修改参数表" });
+    const modifiedSection = screen.getByRole("region", { name: "本轮已修改参数区" });
+    const modifiedTable = within(modifiedSection).getByRole("region", { name: "本轮已修改参数表" });
     expect(within(modifiedTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(within(searchTable).queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
-    expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeEnabled();
+    const modifiedActions = modifiedSection.querySelector<HTMLElement>(".parameters-bottom-actions");
+    expect(modifiedActions).toBeInTheDocument();
+    expect(within(modifiedActions as HTMLElement).getByRole("button", { name: "提交本轮 (1 项)" })).toBeEnabled();
   });
 
   it("does not render an editable draft card for a focused unselected row", () => {
@@ -355,7 +567,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getAllByText("charge_voltage_limit_mv")[0]);
 
-    expect(container.querySelector(".workbench-sheet")).toBeInTheDocument();
+    expect(container.querySelector(".parameter-draft-dialog")).toBeInTheDocument();
     expect(container.querySelector(".focused-draft-editor")).not.toBeInTheDocument();
   });
 
@@ -368,10 +580,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(targetInput).not.toBeNull();
     fireEvent.change(targetInput!, { target: { value: "   " } });
 
-    const submitButton = container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary");
-    expect(submitButton).not.toBeNull();
-    expect(submitButton).toBeDisabled();
-    fireEvent.click(submitButton!);
+    expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
     expect(container.querySelector(".submission-dialog")).not.toBeInTheDocument();
   });
 
@@ -383,7 +592,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: "全部清空" }));
 
     expect(screen.queryByRole("dialog", { name: "修改草稿" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "提交本轮" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
   });
 
   it("shows drift explanation in each draft card", () => {
@@ -445,7 +654,7 @@ describe("ParametersPage draft edge cases", () => {
       ]
     }));
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
-    expect(container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary")).toBeDisabled();
+    expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
 });
 
@@ -476,18 +685,23 @@ describe("ParametersPage · 提交契约", () => {
     expect(submitSource).not.toContain("reason });");
   });
 
-  it("未勾选任何行时，提交按钮禁用", () => {
+  it("未出现本轮已修改参数时，不显示本轮操作按钮", () => {
     renderPage();
-    const btn = screen.getByRole("button", { name: /提交本轮/ });
-    expect(btn).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /暂存本轮/ })).not.toBeInTheDocument();
   });
 
-  it("勾选 1 行后，按钮文案变为『提交本轮 (1 项)』并可点", () => {
+  it("本轮已修改参数下方显示操作按钮，文案变为『提交本轮 (1 项)』并可点", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
-    const btns = screen.getAllByRole("button", { name: "提交本轮 (1 项)" });
-    expect(btns[0]).toBeEnabled();
+    const modifiedSection = screen.getByRole("region", { name: "本轮已修改参数区" });
+    expect(within(modifiedSection).getByRole("region", { name: "本轮已修改参数表" })).toBeInTheDocument();
+    const actions = modifiedSection.querySelector<HTMLElement>(".parameters-bottom-actions");
+
+    expect(actions).toBeInTheDocument();
+    expect(within(actions as HTMLElement).getByRole("button", { name: "提交本轮 (1 项)" })).toBeEnabled();
+    expect(within(actions as HTMLElement).getByRole("button", { name: "暂存本轮 (1 项)" })).toBeEnabled();
   });
 
   it("不存在『加入本轮』按钮", () => {
@@ -503,6 +717,93 @@ describe("ParametersPage · 提交契约", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
     expect(within(dialog).getAllByText(/→/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("提交预览保留对话框名称但不显示标题 h2", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).queryByRole("heading", { name: "提交本轮参数" })).not.toBeInTheDocument();
+    expect(container.querySelector("#submission-preview-title")).not.toBeInTheDocument();
+  });
+
+  it("用代码预览布局展示复杂 DTS 参数的提交 diff", () => {
+    const { container } = renderPage();
+    const dtsRow = screen.getByText("dts_fast_charge_profile_matrix").closest("tr");
+    expect(dtsRow).not.toBeNull();
+    const editButton = dtsRow!.querySelector<HTMLButtonElement>(".edit-row-button");
+    expect(editButton).not.toBeNull();
+
+    fireEvent.click(editButton!);
+    const targetEditor = container.querySelector<HTMLTextAreaElement>(".parameter-draft-code-editor");
+    expect(targetEditor).not.toBeNull();
+    fireEvent.change(targetEditor!, {
+      target: {
+        value: `fast-charge-profile-matrix =
+  "0", "5000", "1500", "40", "entry",
+  "1", "9000", "3000", "43", "balanced",
+  "2", "12000", "4300", "48", "boost";`
+      }
+    });
+    const submitDraftButton = container.querySelector<HTMLButtonElement>(
+      ".parameter-draft-dialog .parameter-detail-dialog__footer .button.primary"
+    );
+    expect(submitDraftButton).not.toBeNull();
+    fireEvent.click(submitDraftButton!);
+
+    const submitRoundButton = container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary");
+    expect(submitRoundButton).not.toBeNull();
+    fireEvent.click(submitRoundButton!);
+
+    const dialog = container.querySelector<HTMLElement>(".submission-dialog");
+    expect(dialog).not.toBeNull();
+    const complexCard = dialog!.querySelector<HTMLElement>(".submission-diff-card--complex");
+    expect(complexCard).not.toBeNull();
+    expect(complexCard).toHaveTextContent("dts_fast_charge_profile_matrix");
+    expect(complexCard!.querySelector(".diff-values")).not.toBeInTheDocument();
+    expect(complexCard!.querySelector(".submission-config-format")).not.toBeInTheDocument();
+    expect(complexCard!.querySelector(".submission-preview-code-grid")).not.toBeInTheDocument();
+
+    const diff = complexCard!.querySelector<HTMLElement>(".submission-preview-diff");
+    expect(diff).toBeInTheDocument();
+    expect(diff).toHaveAttribute("role", "list");
+    expect(diff!.querySelectorAll(".submission-preview-diff-row")).toHaveLength(5);
+    expect(diff!.querySelectorAll(".submission-preview-diff-row[data-kind='equal']").length).toBeGreaterThan(0);
+    expect(diff!.querySelectorAll(".submission-preview-diff-row[data-kind='remove']").length).toBeGreaterThan(0);
+    expect(diff!.querySelectorAll(".submission-preview-diff-row[data-kind='add']").length).toBeGreaterThan(0);
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent(
+      '"2", "11000", "4200", "46", "burst";'
+    );
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent(
+      '"2", "12000", "4300", "48", "boost";'
+    );
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='remove'] .submission-preview-diff-row__marker")).toHaveTextContent("-");
+    expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] .submission-preview-diff-row__marker")).toHaveTextContent("+");
+
+    const styles = readFileSync("src/styles.css", "utf8");
+    const codeRule = styles.match(/\.submission-preview-diff\s*\{[^}]*\}/)?.[0] ?? "";
+    const rowCodeRule = styles.match(/\.submission-preview-diff-row code\s*\{[^}]*\}/)?.[0] ?? "";
+    const removeRowRule = styles.match(/\.submission-preview-diff-row\[data-kind="remove"\]\s*\{[^}]*\}/)?.[0] ?? "";
+    const addRowRule = styles.match(/\.submission-preview-diff-row\[data-kind="add"\]\s*\{[^}]*\}/)?.[0] ?? "";
+    const lineMetaRule =
+      styles.match(/\.submission-preview-diff-row__marker,\s*\.submission-preview-diff-row__line-number\s*\{[^}]*\}/)?.[0] ?? "";
+    const genericHeadingRuleIndex = /\.submission-diff-card strong,\s*\.submission-diff-card small\s*\{/.exec(styles)?.index ?? -1;
+    const complexHeadingRuleIndex =
+      Array.from(styles.matchAll(/\.submission-diff-card--complex strong,\s*\.submission-diff-card--complex small\s*\{/g)).at(-1)?.index ??
+      -1;
+    expect(codeRule).toMatch(/overflow:\s*auto/);
+    expect(codeRule).toContain("background: #ffffff;");
+    expect(codeRule).toContain("color: #0f172a;");
+    expect(removeRowRule).toContain("background: #fff1f2;");
+    expect(addRowRule).toContain("background: #ecfdf5;");
+    expect(lineMetaRule).toContain("background: #f8fafc;");
+    expect(rowCodeRule).toMatch(/white-space:\s*pre/);
+    expect(codeRule).toMatch(/word-break:\s*normal/);
+    expect(complexHeadingRuleIndex).toBeGreaterThan(genericHeadingRuleIndex);
   });
 
   it("提交预览要求选择硬件 MDE、软件 MDE 和软件开发，且软件节点可选同一人", () => {
@@ -575,23 +876,32 @@ describe("ParametersPage · 布局与 Sheet", () => {
     expect(screen.getByText("本轮提交 2 项")).toBeInTheDocument();
   });
 
+  it("再次编辑其他参数时将当前点击的参数置于草稿弹窗首位", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
+
+    const firstDraftCard = container.querySelector<HTMLElement>(".parameter-draft-card");
+    expect(firstDraftCard).toHaveTextContent("charge_voltage_limit_mv");
+    expect(firstDraftCard).not.toHaveTextContent("fast_charge_current_limit_ma");
+  });
+
   it("removing the last draft item clears selection and closes the sheet", () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: "移除本项" }));
 
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
-    const bottomSubmit = container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.primary");
-    expect(bottomSubmit).toBeDisabled();
+    expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
 
-  it("bottom actions stay disabled after closing unsubmitted drafts", () => {
+  it("bottom actions stay hidden after closing unsubmitted drafts", () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
 
-    const bottomStash = container.querySelector<HTMLButtonElement>(".parameters-bottom-actions .button.subtle");
-    expect(bottomStash).toBeDisabled();
-    expect(bottomStash?.textContent).toContain("暂存本轮");
+    expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
 });

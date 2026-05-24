@@ -37,7 +37,6 @@ const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"];
 
 const parameterHomeQuickEntries = [
   { title: "参数修改", path: "/parameters" },
-  { title: "对比分析", path: "/parameter-comparison" },
   { title: "参数审阅", path: "/parameter-review" },
   { title: "管理后台", path: "/parameter-admin" }
 ];

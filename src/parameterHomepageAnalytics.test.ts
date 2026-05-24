@@ -13,18 +13,19 @@ describe("parameter homepage analytics", () => {
 
     expect(analytics.timeWindowLabel).toBe("近 30 天");
     expect(analytics.hotspotDimension).toBe("overall");
-    expect(analytics.summary.totalParameters).toBe(30);
-    expect(analytics.summary.parameterDefinitions).toBe(10);
-    expect(analytics.summary.debugParameters).toBe(8);
-    expect(analytics.summary.highRiskParameters).toBe(12);
+    expect(analytics.summary.totalParameters).toBe(initialState.parameters.length);
+    expect(analytics.summary.parameterDefinitions).toBe(new Set(initialState.parameters.map((parameter) => parameter.name)).size);
+    expect(analytics.summary.debugParameters).toBe(initialState.debugParameters.length);
+    expect(analytics.summary.highRiskParameters).toBe(initialState.parameters.filter((parameter) => parameter.risk === "High").length);
     expect(analytics.summary.changeEvents).toBeGreaterThanOrEqual(initialState.changeRequests.length);
     expect(analytics.flowHealth.reviewQueue).toBe(initialState.changeRequests.length);
     expect(analytics.entryCards.map((entry) => entry.path)).toEqual([
       "/parameters",
-      "/parameter-comparison",
+      "/parameters",
       "/parameter-review",
       "/parameter-admin"
     ]);
+    expect(analytics.entryCards.map((entry) => entry.path)).not.toContain("/parameter-comparison");
     expect(analytics.entryCards.find((entry) => entry.path === "/parameter-review")?.title).toBe("参数合入审核");
   });
 
@@ -54,7 +55,8 @@ describe("parameter homepage analytics", () => {
       })
     );
     expect(analytics.hotspots[0].explanation).toContain("近 30 天");
-    expect(analytics.hotspots[0].suggestedPath).toMatch(/^\/(parameters|parameter-comparison|parameter-review|parameter-admin)/);
+    expect(analytics.hotspots[0].suggestedPath).toMatch(/^\/(parameters|parameter-review|parameter-admin)/);
+    expect(analytics.hotspots.map((hotspot) => hotspot.suggestedPath).join("\n")).not.toContain("/parameter-comparison");
   });
 
   it("injects hotspot presentation metadata for leaderboard rendering", () => {
