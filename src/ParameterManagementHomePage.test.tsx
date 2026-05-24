@@ -12,6 +12,16 @@ function readCssBlock(css: string, selector: string) {
   return css.slice(start, end);
 }
 
+function readCssBlockAfter(css: string, marker: string, selector: string) {
+  const markerStart = css.indexOf(marker);
+  expect(markerStart).toBeGreaterThanOrEqual(0);
+  const start = css.indexOf(`${selector} {`, markerStart);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = css.indexOf("\n}", start);
+  expect(end).toBeGreaterThan(start);
+  return css.slice(start, end);
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -271,13 +281,35 @@ describe("ParameterManagementHomePage", () => {
     const css = readFileSync("src/styles.css", "utf8");
     const metricCardCss = readCssBlock(css, ".homepage-metric-card");
     const pageCardCss = readCssBlock(css, ".parameter-homepage-card");
-    const metricValueCss = readCssBlock(css, ".parameter-homepage .metric-card strong");
+    const metricValueCss = readCssBlock(css, ".parameter-homepage .homepage-metric-card [data-slot=\"card-title\"]");
+    const metricValues = document.querySelectorAll(".homepage-metric-card [data-slot=\"card-title\"]");
 
     expect(document.querySelectorAll(".homepage-metric-card")).toHaveLength(4);
+    expect(metricValues).toHaveLength(4);
+    expect(metricValues[0]).toHaveTextContent(String(initialState.parameters.length));
     expect(metricCardCss).toContain("gap: 6px;");
     expect(metricCardCss).toContain("min-height: 96px;");
     expect(pageCardCss).toContain("padding: 12px 14px;");
     expect(metricValueCss).toContain("font-size: 22px;");
+  });
+
+  it("keeps hotspot rows readable in accordion and mobile layouts", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const accordionRowCss = readCssBlockAfter(css, "@media (max-width: 1099px)", ".hotspot-row");
+    const accordionSelectCss = readCssBlockAfter(css, "@media (max-width: 1099px)", ".hotspot-row-select");
+    const accordionTitleCss = readCssBlockAfter(css, "@media (max-width: 1099px)", ".hotspot-title");
+    const mobileSelectCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".hotspot-row-select");
+    const mobileScoreCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".hotspot-col-score");
+
+    expect(accordionRowCss).toContain("overflow: visible;");
+    expect(accordionSelectCss).toContain("grid-template-areas:");
+    expect(accordionSelectCss).toContain("minmax(0, 1fr)");
+    expect(accordionSelectCss).not.toContain("100px 140px 76px");
+    expect(accordionTitleCss).toContain("white-space: normal;");
+    expect(accordionTitleCss).toContain("overflow-wrap: anywhere;");
+    expect(mobileSelectCss).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(mobileSelectCss).toContain("grid-template-areas:");
+    expect(mobileScoreCss).toContain("width: 100%;");
   });
 
   it("defines leaderboard hotspot styles and removes legacy hotspot-card rules", () => {

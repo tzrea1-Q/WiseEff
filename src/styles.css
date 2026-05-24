@@ -9973,7 +9973,7 @@ td small {
   font-weight: 800;
 }
 
-.parameter-homepage .metric-card strong {
+.parameter-homepage .homepage-metric-card [data-slot="card-title"] {
   color: var(--app-primary);
   font-size: 22px;
   line-height: 1.1;
@@ -10623,6 +10623,67 @@ td small {
   .hotspot-list-head {
     display: none;
   }
+
+  .hotspot-row {
+    overflow: visible;
+  }
+
+  .hotspot-row-select {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank identity status"
+      "rank score score"
+      "rank trend trend";
+    align-items: start;
+    gap: 6px 10px;
+    min-height: 70px;
+  }
+
+  .hotspot-col-rank {
+    grid-area: rank;
+    align-self: start;
+    padding-top: 3px;
+  }
+
+  .hotspot-col-identity {
+    grid-area: identity;
+  }
+
+  .hotspot-col-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .hotspot-col-score {
+    grid-area: score;
+    justify-self: stretch;
+    min-width: 0;
+  }
+
+  .hotspot-col-trend {
+    grid-area: trend;
+    justify-self: start;
+  }
+
+  .hotspot-title {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .hotspot-eyebrow {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .score-bar {
+    flex: 1 1 80px;
+    width: min(120px, 100%);
+    min-width: 52px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -10667,8 +10728,33 @@ td small {
     min-width: 78px;
   }
 
+  .hotspot-row {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
   .hotspot-row-select {
-    grid-template-columns: 44px minmax(0, 1fr) 86px 116px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "rank"
+      "identity"
+      "status"
+      "score";
+    gap: 6px;
+    padding: 10px 8px 10px 12px;
+  }
+
+  .hotspot-row-enter {
+    width: 38px;
+  }
+
+  .hotspot-col-rank,
+  .hotspot-col-status,
+  .hotspot-col-score {
+    justify-self: start;
+  }
+
+  .hotspot-col-score {
+    width: 100%;
   }
 
   .hotspot-col-trend {
@@ -10676,7 +10762,7 @@ td small {
   }
 
   .score-bar {
-    width: 64px;
+    width: min(140px, 100%);
   }
 
   .hotspot-rank-dot {
