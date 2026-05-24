@@ -46,7 +46,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "核心指标" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "风险热区证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
     expect(screen.queryByText("推荐依据")).not.toBeInTheDocument();
     expect(screen.queryByText("保留原看板指标，用来解释工作台行动排序")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
@@ -115,7 +115,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
     expect(document.querySelector(".project-risk-bar-chart")).toBeInTheDocument();
-    expect(screen.getByText("风险热区证据")).toBeInTheDocument();
+    expect(screen.getByText("热榜")).toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(screen.queryByText("治理流健康度")).not.toBeInTheDocument();
@@ -131,7 +131,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
 
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/^\/(parameters|parameter-review)/));
@@ -148,7 +148,7 @@ describe("ParameterManagementHomePage", () => {
   it("shows hotspot leaderboard with AI detail panel", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getByRole("button", { name: /选择热区 #2/ }));
 
     const panel = within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ });
@@ -188,7 +188,7 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const metrics = screen.getByRole("region", { name: "核心指标" });
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
 
     expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
     expect(within(hotspotRegion).getAllByText(/^\d+(\.\d+)?$/).length).toBeGreaterThan(0);
@@ -197,7 +197,7 @@ describe("ParameterManagementHomePage", () => {
   it("defaults to the overall hotspot leaderboard and exposes four ranking tabs", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
     const overallToggle = within(dimensionGroup).getByRole("radio", { name: "总榜" });
 
@@ -213,7 +213,7 @@ describe("ParameterManagementHomePage", () => {
   it("switches hotspot ranking between project, module, and parameter dimensions", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
     const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块榜" });
     const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目榜" });

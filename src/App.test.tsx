@@ -147,7 +147,7 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "风险热区证据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
@@ -326,7 +326,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(["/parameters", "/parameter-review"]).toContain(window.location.pathname);
@@ -338,7 +338,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
 
     expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
     expect(within(hotspotRegion).queryByRole("button", { name: /查看评分/ })).not.toBeInTheDocument();
@@ -1182,7 +1182,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["风险热区证据", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
+        present: ["热榜", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",

@@ -103,10 +103,10 @@ export function ParameterManagementHomePage({ state, onNavigate, onNewProject, t
           </div>
         </section>
 
-        <section className="parameter-homepage-hotspots homepage-panel" aria-label="风险热区证据">
+        <section className="parameter-homepage-hotspots homepage-panel" aria-label="热榜">
           <div className="parameter-homepage-section-head">
             <div>
-              <h2>风险热区证据</h2>
+              <h2>热榜</h2>
               <span>
                 {analytics.timeWindowLabel} · {analytics.hotspots.length} 个热区
               </span>
