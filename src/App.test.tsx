@@ -146,7 +146,8 @@ describe("WiseEff app shell", () => {
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
-    expect(screen.getByText("热门模块")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "风险热区证据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
@@ -325,7 +326,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(["/parameters", "/parameter-review"]).toContain(window.location.pathname);
@@ -337,7 +338,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
 
     expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
     expect(within(hotspotRegion).queryByRole("button", { name: /查看评分/ })).not.toBeInTheDocument();
@@ -1181,12 +1182,13 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热门模块", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
+        present: ["推荐依据", "风险热区证据", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
         absent: [
           "WiseEff Prototype",
           "Linear is a better way",
           "Powering the world's best product teams",
           "Issue tracking you'll enjoy using",
+          "热门模块",
           "关键参数变化",
           "审核合入情况",
           "对比分析"
