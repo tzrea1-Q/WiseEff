@@ -35,6 +35,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
     expect(screen.getByText("管理视角")).toBeInTheDocument();
+    expect(screen.queryByText("管理项已按影响范围排序，直接进入后台处理。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();

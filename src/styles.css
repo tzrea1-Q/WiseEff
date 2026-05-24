@@ -9772,14 +9772,6 @@ td small {
   margin: 0;
 }
 
-.personal-workbench-hero__summary p {
-  margin: 0;
-  color: var(--app-muted);
-  font-size: 14px;
-  font-weight: 720;
-  line-height: 1.5;
-}
-
 .next-action-panel,
 .scenario-entry-panel {
   display: grid;

@@ -165,7 +165,6 @@ function PersonalWorkbenchHero({
         <span className="personal-workbench-hero__eyebrow">{getWorkbenchEyebrow(workbench)}</span>
         <span className="personal-workbench-hero__copy">
           <h2>我的工作台</h2>
-          <p>{workbench.summary}</p>
         </span>
       </div>
       <div className="personal-workbench-hero__workspace">
