@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { canAccessPage } from "@/app/permissions";
+import { getPageByPath } from "./appConfig";
 import { deriveParameterHomepageAnalytics } from "./parameterHomepageAnalytics";
 import { derivePersonalWorkbench } from "./parameterPersonalWorkbench";
 import { initialState, type PrototypeState } from "./mockData";
@@ -56,6 +58,53 @@ describe("derivePersonalWorkbench", () => {
       priority: "primary"
     });
     expect(workbench.nextActions[0].path).toMatch(/^\/parameters/);
+  });
+
+  it("keeps generated user todo actions on pages the user can access", () => {
+    const state: PrototypeState = {
+      ...initialState,
+      activeRoleId: "software-user",
+      parameterSubmissionRounds: [],
+      changeRequests: [
+        {
+          ...initialState.changeRequests[0],
+          id: "CR-user-software-merge",
+          status: "软件User合入"
+        }
+      ]
+    };
+
+    const workbench = derivePersonalWorkbench(state, analyticsFor(state));
+    const todoActions = workbench.nextActions.filter((action) => action.kind === "todo");
+
+    expect(todoActions.length).toBeGreaterThan(0);
+    expect(
+      todoActions.every((action) =>
+        canAccessPage(state.activeRoleId, getPageByPath(action.path.split("?")[0]).key)
+      )
+    ).toBe(true);
+  });
+
+  it("does not treat committer-authored drafts as user workflow todos", () => {
+    const state: PrototypeState = {
+      ...initialState,
+      activeRoleId: "software-user",
+      changeRequests: [],
+      parameterSubmissionRounds: [
+        {
+          ...initialState.parameterSubmissionRounds[0],
+          id: "PRS-committer-draft",
+          submitter: "Software Committer",
+          status: "已暂存",
+          summary: "Committer draft should not appear for a Software User."
+        }
+      ]
+    };
+
+    const workbench = derivePersonalWorkbench(state, analyticsFor(state));
+
+    expect(workbench.emptyState).toBe("recommendations");
+    expect(workbench.nextActions.every((action) => action.source !== "submission")).toBe(true);
   });
 
   it("shows review actions for committers", () => {

@@ -105,9 +105,7 @@ function buildRealActions(
 
 function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): WorkbenchAction[] {
   const submitter = getPlatformRole(roleId).name;
-  const userRounds = state.parameterSubmissionRounds.filter(
-    (round) => round.submitter === submitter || round.submitter.includes(submitter.replace(" User", ""))
-  );
+  const userRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === submitter);
   const stashedRound = userRounds.find((round) => round.status === "已暂存");
   const rejectedRound = userRounds.find((round) => round.status === "已打回");
   const softwareMergeCount = roleSupportsWorkflowSlot(roleId, "softwareUser")
@@ -149,7 +147,7 @@ function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): Workbe
       title: "确认软件侧待合入事项",
       description: "有参数变更已完成审阅，等待软件侧合入确认。",
       meta: `${softwareMergeCount} 项待合入`,
-      path: "/parameter-review",
+      path: "/parameter-submissions",
       source: "review"
     });
   }
