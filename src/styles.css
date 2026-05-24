@@ -9709,7 +9709,6 @@ td small {
   background: linear-gradient(180deg, #fbfcff 0%, #f4f7ff 100%);
 }
 
-.homepage-metric-card,
 .homepage-panel {
   border: 1px solid var(--outline);
   border-radius: 8px;
@@ -9943,50 +9942,14 @@ td small {
 }
 
 .parameter-homepage-hotspot-layout,
-.parameter-homepage-metrics,
 .parameter-homepage-charts {
   display: grid;
   gap: 14px;
 }
 
-.parameter-homepage-metrics {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.parameter-homepage-card {
-  padding: 12px 14px;
-}
-
-.parameter-homepage .metric-card p {
-  margin: 0;
-}
-
-.parameter-homepage .metric-card p,
 .parameter-homepage-section-head span,
 .hotspot-panel-evidence li {
   color: var(--app-muted);
-}
-
-.parameter-homepage .metric-card span {
-  color: var(--outline-strong);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.parameter-homepage .homepage-metric-card [data-slot="card-title"] {
-  color: var(--app-primary);
-  font-size: 22px;
-  line-height: 1.1;
-}
-
-.homepage-metric-card {
-  gap: 6px;
-  min-height: 96px;
-  border-radius: 8px;
-}
-
-.homepage-metric-card svg {
-  color: var(--app-secondary);
 }
 
 .parameter-homepage-hotspots {
@@ -10605,10 +10568,6 @@ td small {
 }
 
 @media (max-width: 980px) {
-  .parameter-homepage-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .parameter-homepage-charts {
     grid-template-columns: 1fr;
   }
@@ -10708,7 +10667,6 @@ td small {
     white-space: normal;
   }
 
-  .parameter-homepage-metrics,
   .parameter-homepage-charts {
     grid-template-columns: 1fr;
   }

@@ -1182,10 +1182,14 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
+        present: ["热榜", "参数更新趋势", "各项目参数更新情况", "参数修改", "参数审阅"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",
+          "参数总量",
+          "管理项目总数",
+          "修改频次",
+          "开发人员总数",
           "WiseEff Prototype",
           "Linear is a better way",
           "Powering the world's best product teams",

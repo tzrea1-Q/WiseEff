@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
-import type { ComponentType, KeyboardEvent, ReactNode } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronRight, Layers3, ListChecks, ShieldCheck, Sparkles, TrendingUp, Users } from "lucide-react";
+import type { KeyboardEvent, ReactNode } from "react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronRight, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
 import type { PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
 import { derivePersonalWorkbench, type PersonalWorkbenchViewModel, type WorkbenchAction, type WorkbenchScenarioEntry } from "./parameterPersonalWorkbench";
@@ -9,7 +9,6 @@ import { UpdateTrendChart } from "./components/UpdateTrendChart";
 import { useTopBarActions } from "./components/layout";
 import { computeEyebrow, generateHotspotActions } from "./hotspotPresentation";
 import { useIsAccordionMode } from "./components/hotspots/useIsAccordionMode";
-import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type ParameterManagementHomePageProps = {
@@ -26,7 +25,6 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
   { value: "parameter", label: "参数榜" }
 ];
 
-const metricIcons = [BarChart3, Layers3, TrendingUp, Users] as const;
 const SCORE_CEILING = 250;
 const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"]; label: string }> = [
   { key: "frequency", label: "变更频次" },
@@ -50,25 +48,12 @@ export function ParameterManagementHomePage({ state, onNavigate, onNewProject, t
     [state, analytics]
   );
   useTopBarActions(null, []);
-  const metrics = [
-    { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
-    { title: "管理项目总数", value: state.configDraft.projects.length, detail: "纳入治理项目" },
-    { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
-    { title: "开发人员总数", value: state.developers.length, detail: "参数协作角色" }
-  ];
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
       <PersonalWorkbenchHero workbench={workbench} onNavigate={onNavigate} onNewProject={onNewProject} />
 
       <section className="dashboard-evidence-section" aria-label="推荐依据">
-        <section className="parameter-homepage-metrics" aria-label="核心指标">
-          {metrics.map((metric, index) => {
-            const Icon = metricIcons[index];
-            return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
-          })}
-        </section>
-
         <section className="parameter-homepage-charts" aria-label="参数态势图表">
           <div className="homepage-panel parameter-homepage-chart-card">
             <div className="parameter-homepage-section-head">
@@ -162,27 +147,6 @@ function HotspotDimensionSelect({
         ))}
       </ToggleGroup>
     </div>
-  );
-}
-
-function MetricCard({
-  title,
-  value,
-  detail,
-  Icon
-}: {
-  title: string;
-  value: number;
-  detail: string;
-  Icon: ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
-}) {
-  return (
-    <Card className="parameter-homepage-card homepage-metric-card metric-card">
-      <Icon size={18} aria-hidden={true} />
-      <CardDescription>{title}</CardDescription>
-      <CardTitle>{value}</CardTitle>
-      <p>{detail}</p>
-    </Card>
   );
 }
 

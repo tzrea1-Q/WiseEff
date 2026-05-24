@@ -44,11 +44,15 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
 
     expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "核心指标" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
     expect(screen.queryByText("推荐依据")).not.toBeInTheDocument();
     expect(screen.queryByText("保留原看板指标，用来解释工作台行动排序")).not.toBeInTheDocument();
+    expect(screen.queryByText("参数总量")).not.toBeInTheDocument();
+    expect(screen.queryByText("管理项目总数")).not.toBeInTheDocument();
+    expect(screen.queryByText("修改频次")).not.toBeInTheDocument();
+    expect(screen.queryByText("开发人员总数")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
     expect(document.querySelector(".next-action-card")).toBeInTheDocument();
     expect(document.querySelector(".scenario-entry")).toBeInTheDocument();
@@ -101,12 +105,10 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数变化态势")).not.toBeInTheDocument();
     expect(screen.queryByText("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.parameters.length))).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("管理项目总数")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("3")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("开发人员总数")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.developers.length))).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(screen.queryByText("参数总量")).not.toBeInTheDocument();
+    expect(screen.queryByText("管理项目总数")).not.toBeInTheDocument();
+    expect(screen.queryByText("开发人员总数")).not.toBeInTheDocument();
     expect(screen.queryByText("共享参数定义")).not.toBeInTheDocument();
     expect(screen.queryByText("关键风险参数")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
@@ -129,7 +131,8 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".homepage-entry-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(screen.queryByText("参数总量")).not.toBeInTheDocument();
 
     const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
@@ -187,10 +190,13 @@ describe("ParameterManagementHomePage", () => {
   it("keeps analytics visible without a time window control", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const metrics = screen.getByRole("region", { name: "核心指标" });
+    const charts = screen.getByRole("region", { name: "参数态势图表" });
     const hotspotRegion = screen.getByRole("region", { name: "热榜" });
 
-    expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(within(charts).getByText("参数更新趋势")).toBeInTheDocument();
+    expect(within(charts).getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(within(hotspotRegion).getAllByText(/^\d+(\.\d+)?$/).length).toBeGreaterThan(0);
   });
 
@@ -261,7 +267,8 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".homepage-entry-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-main-grid")).not.toBeInTheDocument();
-    expect(document.querySelector(".homepage-metric-card")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-metrics")).not.toBeInTheDocument();
+    expect(document.querySelector(".homepage-metric-card")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-panel")).toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
     expect(document.querySelector(".dashboard-evidence-section")).toBeInTheDocument();
@@ -278,22 +285,16 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".breakdown-row")).not.toBeInTheDocument();
   });
 
-  it("keeps the metric strip visually compact", () => {
+  it("removes the metric strip from the homepage surface and styles", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const css = readFileSync("src/styles.css", "utf8");
-    const metricCardCss = readCssBlock(css, ".homepage-metric-card");
-    const pageCardCss = readCssBlock(css, ".parameter-homepage-card");
-    const metricValueCss = readCssBlock(css, ".parameter-homepage .homepage-metric-card [data-slot=\"card-title\"]");
-    const metricValues = document.querySelectorAll(".homepage-metric-card [data-slot=\"card-title\"]");
 
-    expect(document.querySelectorAll(".homepage-metric-card")).toHaveLength(4);
-    expect(metricValues).toHaveLength(4);
-    expect(metricValues[0]).toHaveTextContent(String(initialState.parameters.length));
-    expect(metricCardCss).toContain("gap: 6px;");
-    expect(metricCardCss).toContain("min-height: 96px;");
-    expect(pageCardCss).toContain("padding: 12px 14px;");
-    expect(metricValueCss).toContain("font-size: 22px;");
+    expect(document.querySelector(".parameter-homepage-metrics")).not.toBeInTheDocument();
+    expect(document.querySelector(".homepage-metric-card")).not.toBeInTheDocument();
+    expect(css).not.toContain(".parameter-homepage-metrics");
+    expect(css).not.toContain(".homepage-metric-card");
+    expect(css).not.toContain(".parameter-homepage-card");
   });
 
   it("keeps hotspot rows readable in mid-desktop and mobile layouts", () => {
