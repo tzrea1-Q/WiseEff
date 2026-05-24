@@ -61,72 +61,81 @@ export function ParameterManagementHomePage({ state, onNavigate, onNewProject, t
     <section className="parameter-homepage" aria-label="参数管理首页">
       <PersonalWorkbenchHero workbench={workbench} onNavigate={onNavigate} onNewProject={onNewProject} />
 
-      <section className="parameter-homepage-metrics" aria-label="核心指标">
-        {metrics.map((metric, index) => {
-          const Icon = metricIcons[index];
-          return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
-        })}
-      </section>
-
-      <section className="parameter-homepage-charts" aria-label="参数态势图表">
-        <div className="homepage-panel parameter-homepage-chart-card">
-          <div className="parameter-homepage-section-head">
-            <div>
-              <h2>参数更新趋势</h2>
-              <span>{analytics.timeWindowLabel}</span>
-            </div>
-          </div>
-          <UpdateTrendChart series={analytics.updateTrend} timeWindow={timeWindow} />
-        </div>
-        <div className="homepage-panel parameter-homepage-chart-card">
-          <div className="parameter-homepage-section-head">
-            <div>
-              <h2>各项目参数更新情况</h2>
-              <ul className="project-risk-legend" aria-label="各项目参数更新情况颜色说明">
-                <li>
-                  <span className="project-risk-legend-dot risk-high" aria-hidden="true" />
-                  红色 高风险
-                </li>
-                <li>
-                  <span className="project-risk-legend-dot risk-medium" aria-hidden="true" />
-                  橙色 中风险
-                </li>
-                <li>
-                  <span className="project-risk-legend-dot risk-low" aria-hidden="true" />
-                  蓝色 低风险
-                </li>
-              </ul>
-            </div>
-          </div>
-          <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
-        </div>
-      </section>
-
-      <section className="parameter-homepage-hotspots homepage-panel" aria-label="热门模块">
-        <div className="parameter-homepage-section-head">
+      <section className="dashboard-evidence-section" aria-label="推荐依据">
+        <div className="parameter-homepage-section-head dashboard-evidence-section__head">
           <div>
-            <h2>热门模块</h2>
-            <span>
-              {analytics.timeWindowLabel} · {analytics.hotspots.length} 个热区
-            </span>
+            <h2>推荐依据</h2>
+            <span>保留原看板指标，用来解释工作台行动排序</span>
           </div>
-          <HotspotDimensionSelect
-            value={hotspotDimension}
-            onChange={(nextDimension) => {
-              setHotspotDimension(nextDimension);
-              setSelectedHotspotId(null);
-            }}
-          />
         </div>
-        <HotspotLeaderboard
-          hotspots={analytics.hotspots}
-          selectedId={selectedHotspotId}
-          sectionId="parameter-home-hotspots"
-          state={state}
-          isAccordionMode={isAccordionMode}
-          onNavigate={onNavigate}
-          onSelectionChange={setSelectedHotspotId}
-        />
+
+        <section className="parameter-homepage-metrics" aria-label="核心指标">
+          {metrics.map((metric, index) => {
+            const Icon = metricIcons[index];
+            return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
+          })}
+        </section>
+
+        <section className="parameter-homepage-charts" aria-label="参数态势图表">
+          <div className="homepage-panel parameter-homepage-chart-card">
+            <div className="parameter-homepage-section-head">
+              <div>
+                <h2>参数更新趋势</h2>
+                <span>{analytics.timeWindowLabel}</span>
+              </div>
+            </div>
+            <UpdateTrendChart series={analytics.updateTrend} timeWindow={timeWindow} />
+          </div>
+          <div className="homepage-panel parameter-homepage-chart-card">
+            <div className="parameter-homepage-section-head">
+              <div>
+                <h2>各项目参数更新情况</h2>
+                <ul className="project-risk-legend" aria-label="各项目参数更新情况颜色说明">
+                  <li>
+                    <span className="project-risk-legend-dot risk-high" aria-hidden="true" />
+                    红色 高风险
+                  </li>
+                  <li>
+                    <span className="project-risk-legend-dot risk-medium" aria-hidden="true" />
+                    橙色 中风险
+                  </li>
+                  <li>
+                    <span className="project-risk-legend-dot risk-low" aria-hidden="true" />
+                    蓝色 低风险
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
+          </div>
+        </section>
+
+        <section className="parameter-homepage-hotspots homepage-panel" aria-label="风险热区证据">
+          <div className="parameter-homepage-section-head">
+            <div>
+              <h2>风险热区证据</h2>
+              <span>
+                {analytics.timeWindowLabel} · {analytics.hotspots.length} 个热区
+              </span>
+            </div>
+            <HotspotDimensionSelect
+              value={hotspotDimension}
+              onChange={(nextDimension) => {
+                setHotspotDimension(nextDimension);
+                setSelectedHotspotId(null);
+              }}
+            />
+          </div>
+          <HotspotLeaderboard
+            hotspots={analytics.hotspots}
+            selectedId={selectedHotspotId}
+            sectionId="parameter-home-hotspots"
+            state={state}
+            isAccordionMode={isAccordionMode}
+            onNavigate={onNavigate}
+            onSelectionChange={setSelectedHotspotId}
+          />
+        </section>
       </section>
     </section>
   );

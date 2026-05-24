@@ -29,6 +29,19 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
   });
 
+  it("keeps the old dashboard as recommendation evidence", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "核心指标" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "风险热区证据" })).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
+    expect(document.querySelector(".next-action-card")).toBeInTheDocument();
+    expect(document.querySelector(".scenario-entry")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-headline")).not.toBeInTheDocument();
+  });
+
   it("renders user-focused scenario entries for a normal user", () => {
     render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-user" }} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
 
@@ -83,13 +96,13 @@ describe("ParameterManagementHomePage", () => {
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.developers.length))).toBeInTheDocument();
     expect(screen.queryByText("共享参数定义")).not.toBeInTheDocument();
     expect(screen.queryByText("关键风险参数")).not.toBeInTheDocument();
-    expect(screen.getByTestId("parameter-home-headline")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
     expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
     expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
     expect(document.querySelector(".project-risk-bar-chart")).toBeInTheDocument();
-    expect(screen.getByText("热门模块")).toBeInTheDocument();
+    expect(screen.getByText("风险热区证据")).toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(screen.queryByText("治理流健康度")).not.toBeInTheDocument();
@@ -105,7 +118,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/^\/(parameters|parameter-review)/));
@@ -122,7 +135,7 @@ describe("ParameterManagementHomePage", () => {
   it("shows hotspot leaderboard with AI detail panel", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
     fireEvent.click(within(hotspotRegion).getByRole("button", { name: /选择热区 #2/ }));
 
     const panel = within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ });
@@ -162,7 +175,7 @@ describe("ParameterManagementHomePage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const metrics = screen.getByRole("region", { name: "核心指标" });
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
 
     expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
     expect(within(hotspotRegion).getAllByText(/^\d+(\.\d+)?$/).length).toBeGreaterThan(0);
@@ -171,7 +184,7 @@ describe("ParameterManagementHomePage", () => {
   it("defaults to the overall hotspot leaderboard and exposes four ranking tabs", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
     const overallToggle = within(dimensionGroup).getByRole("radio", { name: "总榜" });
 
@@ -187,7 +200,7 @@ describe("ParameterManagementHomePage", () => {
   it("switches hotspot ranking between project, module, and parameter dimensions", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "风险热区证据" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
     const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块榜" });
     const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目榜" });
@@ -237,7 +250,9 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".homepage-main-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-metric-card")).toBeInTheDocument();
     expect(document.querySelector(".homepage-panel")).toBeInTheDocument();
-    expect(document.querySelector(".parameter-homepage-headline")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
+    expect(document.querySelector(".dashboard-evidence-section")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-headline")).not.toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-charts")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-chart-card")).toBeInTheDocument();
     expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
@@ -271,7 +286,10 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain("--risk-high: #d23c3c;");
     expect(css).toContain("--risk-medium: #e4953a;");
     expect(css).toContain("--risk-low: #6a8ad6;");
-    expect(css).toContain(".parameter-homepage-headline {");
+    expect(css).toContain(".personal-workbench-hero {");
+    expect(css).toContain(".next-action-card {");
+    expect(css).toContain(".scenario-entry {");
+    expect(css).toContain(".dashboard-evidence-section {");
     expect(css).toContain(".parameter-homepage-charts {");
     expect(css).toContain(".update-trend-chart {");
     expect(css).toContain(".project-risk-bar-chart {");
@@ -284,7 +302,10 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain(".parameter-homepage-dimension-option[data-state=\"on\"]");
     expect(css).toContain(".parameter-homepage-select-label {");
     expect(css).toContain(".action-btn--primary {");
+    expect(css).toContain("@media (max-width: 1040px)");
     expect(css).toContain("@media (max-width: 768px)");
+    expect(css).not.toContain(".parameter-homepage-headline {");
+    expect(css).not.toContain(".parameter-homepage-quick-nav");
     expect(css).not.toContain(".hotspot-card {");
     expect(css).not.toContain(".hotspot-card.selected");
     expect(css).not.toContain(".parameter-homepage-hotspot-head");
