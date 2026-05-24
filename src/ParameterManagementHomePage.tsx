@@ -228,7 +228,6 @@ function ScenarioEntryPanel({
       <div className="parameter-homepage-section-head">
         <div>
           <h2>我想做</h2>
-          <span>按当前角色过滤入口</span>
         </div>
       </div>
       <div className="scenario-entry-list">
