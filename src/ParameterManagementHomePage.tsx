@@ -62,13 +62,6 @@ export function ParameterManagementHomePage({ state, onNavigate, onNewProject, t
       <PersonalWorkbenchHero workbench={workbench} onNavigate={onNavigate} onNewProject={onNewProject} />
 
       <section className="dashboard-evidence-section" aria-label="推荐依据">
-        <div className="parameter-homepage-section-head dashboard-evidence-section__head">
-          <div>
-            <h2>推荐依据</h2>
-            <span>保留原看板指标，用来解释工作台行动排序</span>
-          </div>
-        </div>
-
         <section className="parameter-homepage-metrics" aria-label="核心指标">
           {metrics.map((metric, index) => {
             const Icon = metricIcons[index];

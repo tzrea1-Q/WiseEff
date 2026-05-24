@@ -47,6 +47,8 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("region", { name: "核心指标" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "风险热区证据" })).toBeInTheDocument();
+    expect(screen.queryByText("推荐依据")).not.toBeInTheDocument();
+    expect(screen.queryByText("保留原看板指标，用来解释工作台行动排序")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
     expect(document.querySelector(".next-action-card")).toBeInTheDocument();
     expect(document.querySelector(".scenario-entry")).toBeInTheDocument();
