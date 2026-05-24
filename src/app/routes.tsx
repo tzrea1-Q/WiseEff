@@ -28,6 +28,7 @@ export type PageRouterProps = PageProps & {
   HomePage: () => ReactNode;
   ParameterSubmissionsPage: (props: PageProps) => ReactNode;
   ParameterReviewPage: (props: PageProps) => ReactNode;
+  onNewProject?: () => void;
   TopBarProjectId?: string;
   LogDashboardPage: (props: { state: PrototypeState; onNavigate: (path: string) => void }) => ReactNode;
   LogsPage: (props: PageProps) => ReactNode;
@@ -44,6 +45,7 @@ export function PageRouter({
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
+  onNewProject,
   TopBarProjectId,
   LogDashboardPage,
   LogsPage,
@@ -89,7 +91,14 @@ export function PageRouter({
     case "parameter-submissions":
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "parameter-home":
-      return <ParameterManagementHomePage state={state} onNavigate={onNavigate} timeWindow={parameterHomeTimeWindow} />;
+      return (
+        <ParameterManagementHomePage
+          state={state}
+          onNavigate={onNavigate}
+          onNewProject={onNewProject}
+          timeWindow={parameterHomeTimeWindow}
+        />
+      );
     case "parameter-comparison":
       return (
         <NoEntryPage

@@ -17,6 +17,56 @@ afterEach(() => {
 });
 
 describe("ParameterManagementHomePage", () => {
+  it("renders a personal workbench hero with next actions and scenario entries", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
+    expect(screen.getByText("管理视角")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
+    expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
+  });
+
+  it("renders user-focused scenario entries for a normal user", () => {
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-user" }} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /打开 修改参数/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 我的提交/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 处理审阅/ })).not.toBeInTheDocument();
+  });
+
+  it("renders committer review entries without admin actions", () => {
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-committer" }} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /打开 处理审阅/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 高风险专项/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+  });
+
+  it("navigates from next actions and scenario entries with context", () => {
+    const onNavigate = vi.fn();
+
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-committer" }} onNavigate={onNavigate} onNewProject={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /处理待审阅参数变更/ }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-review");
+
+    fireEvent.click(screen.getByRole("button", { name: /打开 高风险专项/ }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-review");
+  });
+
+  it("opens the project initialization wizard from the Admin scenario entry", () => {
+    const onNewProject = vi.fn();
+
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={onNewProject} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /打开 新建项目/ }));
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the manager-facing operations hub", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
