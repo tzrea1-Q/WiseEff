@@ -162,7 +162,6 @@ function PersonalWorkbenchHero({
   return (
     <section className="personal-workbench-hero homepage-panel" aria-label="个人工作台">
       <div className="personal-workbench-hero__summary">
-        <span className="personal-workbench-hero__eyebrow">{getWorkbenchEyebrow(workbench)}</span>
         <span className="personal-workbench-hero__copy">
           <h2>我的工作台</h2>
         </span>
@@ -173,11 +172,6 @@ function PersonalWorkbenchHero({
       </div>
     </section>
   );
-}
-
-function getWorkbenchEyebrow(workbench: PersonalWorkbenchViewModel) {
-  if (workbench.roleView === "admin") return "管理视角";
-  return workbench.roleLabel;
 }
 
 function NextActionList({

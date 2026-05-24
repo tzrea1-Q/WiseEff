@@ -9733,9 +9733,9 @@ td small {
 
 .personal-workbench-hero__summary {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: 1fr;
   align-items: start;
-  gap: 12px;
+  gap: 4px;
   padding: 2px 4px 0;
 }
 
@@ -9750,20 +9750,6 @@ td small {
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
   gap: 14px;
   align-items: start;
-}
-
-.personal-workbench-hero__eyebrow {
-  display: inline-flex;
-  align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
-  color: var(--app-secondary);
-  background: #f1fbff;
-  border: 1px solid #bbeaf8;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 850;
-  white-space: nowrap;
 }
 
 .personal-workbench-hero h2,
@@ -10682,11 +10668,6 @@ td small {
 
   .personal-workbench-hero {
     padding: 14px;
-  }
-
-  .personal-workbench-hero__summary {
-    grid-template-columns: 1fr;
-    gap: 8px;
   }
 
   .next-action-card,

@@ -34,7 +34,8 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
-    expect(screen.getByText("管理视角")).toBeInTheDocument();
+    expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__eyebrow")).not.toBeInTheDocument();
     expect(screen.queryByText("管理项已按影响范围排序，直接进入后台处理。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
@@ -336,7 +337,7 @@ describe("ParameterManagementHomePage", () => {
     const mobileActionListCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".next-action-list");
 
     expect(desktopHeroCss).toContain("grid-template-rows: auto 1fr;");
-    expect(summaryCss).toContain("grid-template-columns: auto minmax(0, 1fr);");
+    expect(summaryCss).toContain("grid-template-columns: 1fr;");
     expect(workspaceCss).toContain("grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);");
     expect(actionListCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
     expect(primaryActionCss).toContain("grid-column: 1 / -1;");
