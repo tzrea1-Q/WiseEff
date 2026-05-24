@@ -160,14 +160,7 @@ function PersonalWorkbenchHero({
   onNewProject?: () => void;
 }) {
   return (
-    <section className="personal-workbench" aria-label="个人工作台">
-      <header className="personal-workbench-hero homepage-panel">
-        <div className="personal-workbench-hero__summary">
-          <span className="personal-workbench-hero__copy">
-            <h2>我的工作台</h2>
-          </span>
-        </div>
-      </header>
+    <section className="personal-workbench">
       <div className="personal-workbench-grid">
         <NextActionList actions={workbench.nextActions} onNavigate={onNavigate} />
         <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />

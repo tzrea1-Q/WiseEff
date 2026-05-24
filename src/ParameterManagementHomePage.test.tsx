@@ -31,9 +31,10 @@ describe("ParameterManagementHomePage", () => {
   it("renders a personal workbench hero with next actions and scenario entries", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
 
-    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
+    expect(screen.queryByText("我的工作台")).not.toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero__eyebrow")).not.toBeInTheDocument();
     expect(screen.queryByText("管理项已按影响范围排序，直接进入后台处理。")).not.toBeInTheDocument();
@@ -44,7 +45,8 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
-    expect(document.querySelector(".personal-workbench-hero__summary")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__summary")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-grid")).toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero > .next-action-panel")).not.toBeInTheDocument();
     expect(document.querySelector(".personal-workbench-hero > .scenario-entry-panel")).not.toBeInTheDocument();
@@ -65,7 +67,7 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByText("管理项目总数")).not.toBeInTheDocument();
     expect(screen.queryByText("修改频次")).not.toBeInTheDocument();
     expect(screen.queryByText("开发人员总数")).not.toBeInTheDocument();
-    expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero")).not.toBeInTheDocument();
     expect(document.querySelector(".next-action-card")).toBeInTheDocument();
     expect(document.querySelector(".scenario-entry")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-headline")).not.toBeInTheDocument();
@@ -282,7 +284,7 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".parameter-homepage-metrics")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-metric-card")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-panel")).toBeInTheDocument();
-    expect(document.querySelector(".personal-workbench-hero")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench")).toBeInTheDocument();
     expect(document.querySelector(".dashboard-evidence-section")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-headline")).not.toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-charts")).toBeInTheDocument();
@@ -331,10 +333,9 @@ describe("ParameterManagementHomePage", () => {
     expect(mobileScoreCss).toContain("width: 100%;");
   });
 
-  it("splits next actions and scenario entries into separate workbench panels", () => {
+  it("renders the workbench as separate next-action and scenario panels without a title panel", () => {
     const css = readFileSync("src/styles.css", "utf8");
-    const desktopHeroCss = readCssBlock(css, ".personal-workbench-hero");
-    const summaryCss = readCssBlock(css, ".personal-workbench-hero__summary");
+    const workbenchCss = readCssBlock(css, ".personal-workbench");
     const gridCss = readCssBlock(css, ".personal-workbench-grid");
     const panelCss = readCssBlock(css, ".next-action-panel");
     const actionListCss = readCssBlock(css, ".next-action-list");
@@ -342,9 +343,7 @@ describe("ParameterManagementHomePage", () => {
     const responsiveGridCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-grid", ".personal-workbench-grid");
     const mobileActionListCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".next-action-list");
 
-    expect(desktopHeroCss).not.toContain("grid-template-rows: auto 1fr;");
-    expect(desktopHeroCss).toContain("padding: 14px 18px;");
-    expect(summaryCss).toContain("grid-template-columns: 1fr;");
+    expect(workbenchCss).toContain("gap: 14px;");
     expect(gridCss).toContain("grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);");
     expect(panelCss).toContain("padding: 14px;");
     expect(actionListCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
@@ -359,7 +358,8 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain("--risk-high: #d23c3c;");
     expect(css).toContain("--risk-medium: #e4953a;");
     expect(css).toContain("--risk-low: #6a8ad6;");
-    expect(css).toContain(".personal-workbench-hero {");
+    expect(css).toContain(".personal-workbench {");
+    expect(css).not.toContain(".personal-workbench-hero {");
     expect(css).toContain(".next-action-card {");
     expect(css).toContain(".scenario-entry {");
     expect(css).toContain(".dashboard-evidence-section {");

@@ -148,7 +148,7 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我的下一步" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "我想做" })).toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();

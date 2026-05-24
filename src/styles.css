@@ -9722,29 +9722,10 @@ td small {
   gap: 14px;
 }
 
-.personal-workbench-hero {
-  padding: 14px 18px;
-}
-
-.personal-workbench-hero__summary,
 .personal-workbench-grid,
 .next-action-panel,
 .scenario-entry-panel {
   min-width: 0;
-}
-
-.personal-workbench-hero__summary {
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: start;
-  gap: 4px;
-  padding: 2px 4px 0;
-}
-
-.personal-workbench-hero__copy {
-  display: grid;
-  min-width: 0;
-  gap: 4px;
 }
 
 .personal-workbench-grid {
@@ -9754,7 +9735,6 @@ td small {
   align-items: start;
 }
 
-.personal-workbench-hero h2,
 .next-action-panel h2,
 .scenario-entry-panel h2 {
   margin: 0;
@@ -10670,10 +10650,6 @@ td small {
 @media (max-width: 768px) {
   .parameter-homepage {
     padding: 18px 14px 36px;
-  }
-
-  .personal-workbench-hero {
-    padding: 14px;
   }
 
   .next-action-card,
