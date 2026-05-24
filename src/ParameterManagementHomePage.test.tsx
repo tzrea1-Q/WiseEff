@@ -12,11 +12,105 @@ function readCssBlock(css: string, selector: string) {
   return css.slice(start, end);
 }
 
+function readCssBlockAfter(css: string, marker: string, selector: string) {
+  const normalizedCss = css.replace(/\r\n/g, "\n");
+  const markerStart = normalizedCss.indexOf(marker);
+  expect(markerStart).toBeGreaterThanOrEqual(0);
+  const start = normalizedCss.indexOf(`${selector} {`, markerStart);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = normalizedCss.indexOf("\n}", start);
+  expect(end).toBeGreaterThan(start);
+  return normalizedCss.slice(start, end);
+}
+
 afterEach(() => {
   cleanup();
 });
 
 describe("ParameterManagementHomePage", () => {
+  it("renders a personal workbench hero with next actions and scenario entries", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
+    expect(screen.queryByText("我的工作台")).not.toBeInTheDocument();
+    expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__eyebrow")).not.toBeInTheDocument();
+    expect(screen.queryByText("管理项已按影响范围排序，直接进入后台处理。")).not.toBeInTheDocument();
+    expect(screen.queryByText("流程待办优先")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无流程待办，按风险推荐")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂无必须处理事项")).not.toBeInTheDocument();
+    expect(screen.queryByText("按当前角色过滤入口")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
+    expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero__summary")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-grid")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero > .next-action-panel")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero > .scenario-entry-panel")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-grid > .next-action-panel.homepage-panel")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-grid > .scenario-entry-panel.homepage-panel")).toBeInTheDocument();
+  });
+
+  it("keeps the old dashboard as recommendation evidence", () => {
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
+    expect(screen.queryByText("推荐依据")).not.toBeInTheDocument();
+    expect(screen.queryByText("保留原看板指标，用来解释工作台行动排序")).not.toBeInTheDocument();
+    expect(screen.queryByText("参数总量")).not.toBeInTheDocument();
+    expect(screen.queryByText("管理项目总数")).not.toBeInTheDocument();
+    expect(screen.queryByText("修改频次")).not.toBeInTheDocument();
+    expect(screen.queryByText("开发人员总数")).not.toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench-hero")).not.toBeInTheDocument();
+    expect(document.querySelector(".next-action-card")).toBeInTheDocument();
+    expect(document.querySelector(".scenario-entry")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-headline")).not.toBeInTheDocument();
+  });
+
+  it("renders user-focused scenario entries for a normal user", () => {
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-user" }} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /打开 修改参数/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 我的提交/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 处理审阅/ })).not.toBeInTheDocument();
+  });
+
+  it("renders committer review entries without admin actions", () => {
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-committer" }} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /打开 处理审阅/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 高风险专项/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
+  });
+
+  it("navigates from next actions and scenario entries with context", () => {
+    const onNavigate = vi.fn();
+
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "hardware-committer" }} onNavigate={onNavigate} onNewProject={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /处理待审阅参数变更/ }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-review");
+
+    fireEvent.click(screen.getByRole("button", { name: /打开 高风险专项/ }));
+    expect(onNavigate).toHaveBeenLastCalledWith("/parameter-review");
+  });
+
+  it("opens the project initialization wizard from the Admin scenario entry", () => {
+    const onNewProject = vi.fn();
+
+    render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} onNewProject={onNewProject} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /打开 新建项目/ }));
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the manager-facing operations hub", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
@@ -25,21 +119,19 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数变化态势")).not.toBeInTheDocument();
     expect(screen.queryByText("系统按变更频次、风险权重、影响范围、流程堆积与异常偏离识别参数管理优先级。")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.parameters.length))).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("管理项目总数")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("3")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("开发人员总数")).toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText(String(initialState.developers.length))).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(screen.queryByText("参数总量")).not.toBeInTheDocument();
+    expect(screen.queryByText("管理项目总数")).not.toBeInTheDocument();
+    expect(screen.queryByText("开发人员总数")).not.toBeInTheDocument();
     expect(screen.queryByText("共享参数定义")).not.toBeInTheDocument();
     expect(screen.queryByText("关键风险参数")).not.toBeInTheDocument();
-    expect(screen.getByTestId("parameter-home-headline")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "参数态势图表" })).toBeInTheDocument();
     expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
     expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
     expect(document.querySelector(".project-risk-bar-chart")).toBeInTheDocument();
-    expect(screen.getByText("热门模块")).toBeInTheDocument();
+    expect(screen.getByText("热榜")).toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(screen.queryByText("治理流健康度")).not.toBeInTheDocument();
@@ -53,9 +145,10 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".homepage-entry-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("region", { name: "核心指标" })).getByText("参数总量")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(screen.queryByText("参数总量")).not.toBeInTheDocument();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(onNavigate).toHaveBeenLastCalledWith(expect.stringMatching(/^\/(parameters|parameter-review)/));
@@ -72,7 +165,7 @@ describe("ParameterManagementHomePage", () => {
   it("shows hotspot leaderboard with AI detail panel", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getByRole("button", { name: /选择热区 #2/ }));
 
     const panel = within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ });
@@ -111,17 +204,20 @@ describe("ParameterManagementHomePage", () => {
   it("keeps analytics visible without a time window control", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const metrics = screen.getByRole("region", { name: "核心指标" });
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const charts = screen.getByRole("region", { name: "参数态势图表" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
 
-    expect(within(metrics).getByText("修改频次")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "核心指标" })).not.toBeInTheDocument();
+    expect(within(charts).getByText("参数更新趋势")).toBeInTheDocument();
+    expect(within(charts).getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(within(hotspotRegion).getAllByText(/^\d+(\.\d+)?$/).length).toBeGreaterThan(0);
   });
 
   it("defaults to the overall hotspot leaderboard and exposes four ranking tabs", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
     const overallToggle = within(dimensionGroup).getByRole("radio", { name: "总榜" });
 
@@ -137,7 +233,7 @@ describe("ParameterManagementHomePage", () => {
   it("switches hotspot ranking between project, module, and parameter dimensions", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     const dimensionGroup = within(hotspotRegion).getByRole("group", { name: "热榜维度" });
     const moduleToggle = within(dimensionGroup).getByRole("radio", { name: "模块榜" });
     const projectToggle = within(dimensionGroup).getByRole("radio", { name: "项目榜" });
@@ -185,9 +281,12 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".homepage-entry-grid")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-entry-card")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-main-grid")).not.toBeInTheDocument();
-    expect(document.querySelector(".homepage-metric-card")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-metrics")).not.toBeInTheDocument();
+    expect(document.querySelector(".homepage-metric-card")).not.toBeInTheDocument();
     expect(document.querySelector(".homepage-panel")).toBeInTheDocument();
-    expect(document.querySelector(".parameter-homepage-headline")).toBeInTheDocument();
+    expect(document.querySelector(".personal-workbench")).toBeInTheDocument();
+    expect(document.querySelector(".dashboard-evidence-section")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-homepage-headline")).not.toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-charts")).toBeInTheDocument();
     expect(document.querySelector(".parameter-homepage-chart-card")).toBeInTheDocument();
     expect(document.querySelector(".update-trend-chart")).toBeInTheDocument();
@@ -200,19 +299,57 @@ describe("ParameterManagementHomePage", () => {
     expect(document.querySelector(".breakdown-row")).not.toBeInTheDocument();
   });
 
-  it("keeps the metric strip visually compact", () => {
+  it("removes the metric strip from the homepage surface and styles", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 
     const css = readFileSync("src/styles.css", "utf8");
-    const metricCardCss = readCssBlock(css, ".homepage-metric-card");
-    const pageCardCss = readCssBlock(css, ".parameter-homepage-card");
-    const metricValueCss = readCssBlock(css, ".parameter-homepage .metric-card strong");
 
-    expect(document.querySelectorAll(".homepage-metric-card")).toHaveLength(4);
-    expect(metricCardCss).toContain("gap: 6px;");
-    expect(metricCardCss).toContain("min-height: 96px;");
-    expect(pageCardCss).toContain("padding: 12px 14px;");
-    expect(metricValueCss).toContain("font-size: 22px;");
+    expect(document.querySelector(".parameter-homepage-metrics")).not.toBeInTheDocument();
+    expect(document.querySelector(".homepage-metric-card")).not.toBeInTheDocument();
+    expect(css).not.toContain(".parameter-homepage-metrics");
+    expect(css).not.toContain(".homepage-metric-card");
+    expect(css).not.toContain(".parameter-homepage-card");
+  });
+
+  it("keeps hotspot rows readable in mid-desktop and mobile layouts", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const midDesktopMarker = "@media (max-width: 1399px) {\n  .parameter-homepage-hotspot-layout";
+    const midDesktopLayoutCss = readCssBlockAfter(css, midDesktopMarker, ".parameter-homepage-hotspot-layout");
+    const midDesktopRowCss = readCssBlockAfter(css, midDesktopMarker, ".hotspot-row");
+    const midDesktopSelectCss = readCssBlockAfter(css, midDesktopMarker, ".hotspot-row-select");
+    const midDesktopTitleCss = readCssBlockAfter(css, midDesktopMarker, ".hotspot-title");
+    const mobileSelectCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".hotspot-row-select");
+    const mobileScoreCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".hotspot-col-score");
+
+    expect(midDesktopLayoutCss).toContain("grid-template-columns: 1fr;");
+    expect(midDesktopRowCss).toContain("overflow: visible;");
+    expect(midDesktopSelectCss).toContain("grid-template-areas:");
+    expect(midDesktopSelectCss).toContain("minmax(0, 1fr)");
+    expect(midDesktopSelectCss).not.toContain("100px 140px 76px");
+    expect(midDesktopTitleCss).toContain("white-space: normal;");
+    expect(midDesktopTitleCss).toContain("overflow-wrap: anywhere;");
+    expect(mobileSelectCss).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(mobileSelectCss).toContain("grid-template-areas:");
+    expect(mobileScoreCss).toContain("width: 100%;");
+  });
+
+  it("renders the workbench as separate next-action and scenario panels without a title panel", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const workbenchCss = readCssBlock(css, ".personal-workbench");
+    const gridCss = readCssBlock(css, ".personal-workbench-grid");
+    const panelCss = readCssBlock(css, ".next-action-panel");
+    const actionListCss = readCssBlock(css, ".next-action-list");
+    const primaryActionCss = readCssBlock(css, ".next-action-card[data-priority=\"primary\"]");
+    const responsiveGridCss = readCssBlockAfter(css, "@media (max-width: 1399px) {\n  .personal-workbench-grid", ".personal-workbench-grid");
+    const mobileActionListCss = readCssBlockAfter(css, "@media (max-width: 768px)", ".next-action-list");
+
+    expect(workbenchCss).toContain("gap: 14px;");
+    expect(gridCss).toContain("grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);");
+    expect(panelCss).toContain("padding: 14px;");
+    expect(actionListCss).toContain("grid-template-columns: repeat(2, minmax(0, 1fr));");
+    expect(primaryActionCss).toContain("grid-column: 1 / -1;");
+    expect(responsiveGridCss).toContain("grid-template-columns: 1fr;");
+    expect(mobileActionListCss).toContain("grid-template-columns: 1fr;");
   });
 
   it("defines leaderboard hotspot styles and removes legacy hotspot-card rules", () => {
@@ -221,7 +358,11 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain("--risk-high: #d23c3c;");
     expect(css).toContain("--risk-medium: #e4953a;");
     expect(css).toContain("--risk-low: #6a8ad6;");
-    expect(css).toContain(".parameter-homepage-headline {");
+    expect(css).toContain(".personal-workbench {");
+    expect(css).not.toContain(".personal-workbench-hero {");
+    expect(css).toContain(".next-action-card {");
+    expect(css).toContain(".scenario-entry {");
+    expect(css).toContain(".dashboard-evidence-section {");
     expect(css).toContain(".parameter-homepage-charts {");
     expect(css).toContain(".update-trend-chart {");
     expect(css).toContain(".project-risk-bar-chart {");
@@ -234,7 +375,10 @@ describe("ParameterManagementHomePage", () => {
     expect(css).toContain(".parameter-homepage-dimension-option[data-state=\"on\"]");
     expect(css).toContain(".parameter-homepage-select-label {");
     expect(css).toContain(".action-btn--primary {");
+    expect(css).toContain("@media (max-width: 1399px)");
     expect(css).toContain("@media (max-width: 768px)");
+    expect(css).not.toContain(".parameter-homepage-headline {");
+    expect(css).not.toContain(".parameter-homepage-quick-nav");
     expect(css).not.toContain(".hotspot-card {");
     expect(css).not.toContain(".hotspot-card.selected");
     expect(css).not.toContain(".parameter-homepage-hotspot-head");

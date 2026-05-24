@@ -67,11 +67,11 @@ export const navigationItems: PageConfig[] = [
   {
     key: "parameter-home",
     path: "/parameter-home",
-    label: "看板",
+    label: "我的工作台",
     group: "参数管理",
     icon: Home,
-    title: "智能参数管理",
-    subtitle: "参数治理态势 · 入口看板 · AI 热区"
+    title: "我的工作台",
+    subtitle: "待办事项 · 主要功能 · 热榜"
   },
   {
     key: "parameters",

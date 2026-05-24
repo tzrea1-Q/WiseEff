@@ -1603,6 +1603,7 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
                 state={state}
                 dispatch={dispatch}
                 onNavigate={navigate}
+                onNewProject={() => setProjectInitOpen(true)}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
@@ -1620,6 +1621,7 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
                 state={state}
                 dispatch={dispatch}
                 onNavigate={navigate}
+                onNewProject={() => setProjectInitOpen(true)}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}

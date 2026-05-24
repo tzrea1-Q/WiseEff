@@ -1,20 +1,20 @@
 import { useMemo, useRef, useState } from "react";
-import type { ComponentType, KeyboardEvent, ReactNode } from "react";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, ChevronRight, Layers3, TrendingUp, Users } from "lucide-react";
+import type { KeyboardEvent, ReactNode } from "react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, ChevronRight, ListChecks, ShieldCheck, Sparkles } from "lucide-react";
 import type { PrototypeState } from "./mockData";
 import { deriveParameterHomepageAnalytics, type HomepageTimeWindow, type HotspotDimension, type ParameterHotspot } from "./parameterHomepageAnalytics";
+import { derivePersonalWorkbench, type PersonalWorkbenchViewModel, type WorkbenchAction, type WorkbenchScenarioEntry } from "./parameterPersonalWorkbench";
 import { ProjectRiskBarChart } from "./components/ProjectRiskBarChart";
 import { UpdateTrendChart } from "./components/UpdateTrendChart";
 import { useTopBarActions } from "./components/layout";
 import { computeEyebrow, generateHotspotActions } from "./hotspotPresentation";
 import { useIsAccordionMode } from "./components/hotspots/useIsAccordionMode";
-import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardTitle } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type ParameterManagementHomePageProps = {
   state: PrototypeState;
   onNavigate: (path: string) => void;
+  onNewProject?: () => void;
   timeWindow?: HomepageTimeWindow;
 };
 
@@ -25,7 +25,6 @@ const hotspotDimensionOptions: Array<{ value: HotspotDimension; label: string }>
   { value: "parameter", label: "参数榜" }
 ];
 
-const metricIcons = [BarChart3, Layers3, TrendingUp, Users] as const;
 const SCORE_CEILING = 250;
 const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"]; label: string }> = [
   { key: "frequency", label: "变更频次" },
@@ -35,13 +34,7 @@ const HOTSPOT_DIMENSIONS: Array<{ key: keyof ParameterHotspot["scoreBreakdown"];
   { key: "drift", label: "异常偏离" }
 ];
 
-const parameterHomeQuickEntries = [
-  { title: "参数修改", path: "/parameters" },
-  { title: "参数审阅", path: "/parameter-review" },
-  { title: "管理后台", path: "/parameter-admin" }
-];
-
-export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "30d" }: ParameterManagementHomePageProps) {
+export function ParameterManagementHomePage({ state, onNavigate, onNewProject, timeWindow = "30d" }: ParameterManagementHomePageProps) {
   const [hotspotDimension, setHotspotDimension] = useState<HotspotDimension>("overall");
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const isAccordionMode = useIsAccordionMode(1099);
@@ -50,95 +43,77 @@ export function ParameterManagementHomePage({ state, onNavigate, timeWindow = "3
     () => deriveParameterHomepageAnalytics(state, timeWindow, hotspotDimension),
     [state, timeWindow, hotspotDimension]
   );
-  useTopBarActions(
-    <nav className="parameter-homepage-quick-nav" aria-label="参数管理快捷入口">
-      {parameterHomeQuickEntries.map((entry) => (
-        <Button key={entry.path} type="button" variant="outline" onClick={() => onNavigate(entry.path)}>
-          {entry.title}
-        </Button>
-      ))}
-    </nav>,
-    []
+  const workbench = useMemo(
+    () => derivePersonalWorkbench(state, analytics),
+    [state, analytics]
   );
-  const metrics = [
-    { title: "参数总量", value: analytics.summary.totalParameters, detail: "全量运行参数" },
-    { title: "管理项目总数", value: state.configDraft.projects.length, detail: "纳入治理项目" },
-    { title: "修改频次", value: analytics.summary.changeEvents, detail: "近窗变更事件" },
-    { title: "开发人员总数", value: state.developers.length, detail: "参数协作角色" }
-  ];
+  useTopBarActions(null, []);
 
   return (
     <section className="parameter-homepage" aria-label="参数管理首页">
-      <p className="parameter-homepage-headline homepage-panel" data-testid="parameter-home-headline">
-        <span>{analytics.opsHeadline}</span>
-      </p>
+      <PersonalWorkbenchHero workbench={workbench} onNavigate={onNavigate} onNewProject={onNewProject} />
 
-      <section className="parameter-homepage-metrics" aria-label="核心指标">
-        {metrics.map((metric, index) => {
-          const Icon = metricIcons[index];
-          return <MetricCard key={metric.title} title={metric.title} value={metric.value} detail={metric.detail} Icon={Icon} />;
-        })}
-      </section>
+      <section className="dashboard-evidence-section" aria-label="推荐依据">
+        <section className="parameter-homepage-charts" aria-label="参数态势图表">
+          <div className="homepage-panel parameter-homepage-chart-card">
+            <div className="parameter-homepage-section-head">
+              <div>
+                <h2>参数更新趋势</h2>
+                <span>{analytics.timeWindowLabel}</span>
+              </div>
+            </div>
+            <UpdateTrendChart series={analytics.updateTrend} timeWindow={timeWindow} />
+          </div>
+          <div className="homepage-panel parameter-homepage-chart-card">
+            <div className="parameter-homepage-section-head">
+              <div>
+                <h2>各项目参数更新情况</h2>
+                <ul className="project-risk-legend" aria-label="各项目参数更新情况颜色说明">
+                  <li>
+                    <span className="project-risk-legend-dot risk-high" aria-hidden="true" />
+                    红色 高风险
+                  </li>
+                  <li>
+                    <span className="project-risk-legend-dot risk-medium" aria-hidden="true" />
+                    橙色 中风险
+                  </li>
+                  <li>
+                    <span className="project-risk-legend-dot risk-low" aria-hidden="true" />
+                    蓝色 低风险
+                  </li>
+                </ul>
+              </div>
+            </div>
+            <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
+          </div>
+        </section>
 
-      <section className="parameter-homepage-charts" aria-label="参数态势图表">
-        <div className="homepage-panel parameter-homepage-chart-card">
+        <section className="parameter-homepage-hotspots homepage-panel" aria-label="热榜">
           <div className="parameter-homepage-section-head">
             <div>
-              <h2>参数更新趋势</h2>
-              <span>{analytics.timeWindowLabel}</span>
+              <h2>热榜</h2>
+              <span>
+                {analytics.timeWindowLabel} · {analytics.hotspots.length} 个热区
+              </span>
             </div>
+            <HotspotDimensionSelect
+              value={hotspotDimension}
+              onChange={(nextDimension) => {
+                setHotspotDimension(nextDimension);
+                setSelectedHotspotId(null);
+              }}
+            />
           </div>
-          <UpdateTrendChart series={analytics.updateTrend} timeWindow={timeWindow} />
-        </div>
-        <div className="homepage-panel parameter-homepage-chart-card">
-          <div className="parameter-homepage-section-head">
-            <div>
-              <h2>各项目参数更新情况</h2>
-              <ul className="project-risk-legend" aria-label="各项目参数更新情况颜色说明">
-                <li>
-                  <span className="project-risk-legend-dot risk-high" aria-hidden="true" />
-                  红色 高风险
-                </li>
-                <li>
-                  <span className="project-risk-legend-dot risk-medium" aria-hidden="true" />
-                  橙色 中风险
-                </li>
-                <li>
-                  <span className="project-risk-legend-dot risk-low" aria-hidden="true" />
-                  蓝色 低风险
-                </li>
-              </ul>
-            </div>
-          </div>
-          <ProjectRiskBarChart buckets={analytics.riskBuckets} onNavigate={onNavigate} />
-        </div>
-      </section>
-
-      <section className="parameter-homepage-hotspots homepage-panel" aria-label="热门模块">
-        <div className="parameter-homepage-section-head">
-          <div>
-            <h2>热门模块</h2>
-            <span>
-              {analytics.timeWindowLabel} · {analytics.hotspots.length} 个热区
-            </span>
-          </div>
-          <HotspotDimensionSelect
-            value={hotspotDimension}
-            onChange={(nextDimension) => {
-              setHotspotDimension(nextDimension);
-              setSelectedHotspotId(null);
-            }}
+          <HotspotLeaderboard
+            hotspots={analytics.hotspots}
+            selectedId={selectedHotspotId}
+            sectionId="parameter-home-hotspots"
+            state={state}
+            isAccordionMode={isAccordionMode}
+            onNavigate={onNavigate}
+            onSelectionChange={setSelectedHotspotId}
           />
-        </div>
-        <HotspotLeaderboard
-          hotspots={analytics.hotspots}
-          selectedId={selectedHotspotId}
-          sectionId="parameter-home-hotspots"
-          state={state}
-          isAccordionMode={isAccordionMode}
-          onNavigate={onNavigate}
-          onSelectionChange={setSelectedHotspotId}
-        />
+        </section>
       </section>
     </section>
   );
@@ -175,24 +150,108 @@ function HotspotDimensionSelect({
   );
 }
 
-function MetricCard({
-  title,
-  value,
-  detail,
-  Icon
+function PersonalWorkbenchHero({
+  workbench,
+  onNavigate,
+  onNewProject
 }: {
-  title: string;
-  value: number;
-  detail: string;
-  Icon: ComponentType<{ size?: number; "aria-hidden"?: boolean }>;
+  workbench: PersonalWorkbenchViewModel;
+  onNavigate: (path: string) => void;
+  onNewProject?: () => void;
 }) {
   return (
-    <Card className="parameter-homepage-card homepage-metric-card metric-card">
-      <Icon size={18} aria-hidden={true} />
-      <CardDescription>{title}</CardDescription>
-      <CardTitle>{value}</CardTitle>
-      <p>{detail}</p>
-    </Card>
+    <section className="personal-workbench">
+      <div className="personal-workbench-grid">
+        <NextActionList actions={workbench.nextActions} onNavigate={onNavigate} />
+        <ScenarioEntryPanel entries={workbench.scenarioEntries} onNavigate={onNavigate} onNewProject={onNewProject} />
+      </div>
+    </section>
+  );
+}
+
+function NextActionList({
+  actions,
+  onNavigate
+}: {
+  actions: WorkbenchAction[];
+  onNavigate: (path: string) => void;
+}) {
+  return (
+    <section className="next-action-panel homepage-panel" aria-label="待办事项">
+      <div className="parameter-homepage-section-head">
+        <div>
+          <h2>待办事项</h2>
+        </div>
+      </div>
+      <div className="next-action-list">
+        {actions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            className="next-action-card"
+            data-priority={action.priority}
+            data-kind={action.kind}
+            onClick={() => onNavigate(action.path)}
+          >
+            <span className="next-action-card__icon" aria-hidden="true">
+              {action.kind === "todo" ? <ListChecks size={18} /> : action.kind === "recommendation" ? <Sparkles size={18} /> : <ShieldCheck size={18} />}
+            </span>
+            <span className="next-action-card__body">
+              <strong>{action.title}</strong>
+              <small>{action.description}</small>
+              <em>{action.meta}</em>
+            </span>
+            <ArrowRight size={16} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ScenarioEntryPanel({
+  entries,
+  onNavigate,
+  onNewProject
+}: {
+  entries: WorkbenchScenarioEntry[];
+  onNavigate: (path: string) => void;
+  onNewProject?: () => void;
+}) {
+  return (
+    <section className="scenario-entry-panel homepage-panel" aria-label="主要功能">
+      <div className="parameter-homepage-section-head">
+        <div>
+          <h2>主要功能</h2>
+        </div>
+      </div>
+      <div className="scenario-entry-list">
+        {entries.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className="scenario-entry"
+            aria-label={`打开 ${entry.title}`}
+            onClick={() => {
+              if (entry.action === "new-project" && onNewProject) {
+                onNewProject();
+                return;
+              }
+              onNavigate(entry.path);
+            }}
+          >
+            <span>
+              <strong>{entry.title}</strong>
+              <small>{entry.description}</small>
+            </span>
+            <em>
+              {entry.metricLabel} <b>{entry.metricValue}</b>
+            </em>
+            <ArrowRight size={15} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 

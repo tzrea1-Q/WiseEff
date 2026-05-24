@@ -146,8 +146,15 @@ describe("WiseEff app shell", () => {
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
-    expect(screen.getByText("热门模块")).toBeInTheDocument();
-    expect(screen.getByTestId("parameter-home-headline")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
+    expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
+    expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
     expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
@@ -155,17 +162,17 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
-    const topbarEntries = within(topbar).getByRole("navigation", { name: "参数管理快捷入口" });
 
+    expect(topbar.querySelector(".topbar-title")).toHaveTextContent("我的工作台");
+    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("待办事项 · 主要功能 · 热榜");
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数审阅" })).not.toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "参数修改" })).toBeInTheDocument();
-    expect(within(topbarEntries).queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "参数审阅" })).toBeInTheDocument();
-    expect(within(topbarEntries).getByRole("button", { name: "管理后台" })).toBeInTheDocument();
+    expect(within(topbar).queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
     expectSelectValue(timeWindowSelect, "30d");
-    expect(topbar.querySelector(".topbar-actions")?.firstElementChild).toBe(topbarEntries.closest(".topbar-page-actions"));
-    const activeNavButtons = screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"));
+    expect(screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"))).toHaveLength(0);
+    const activeNavButtons = screen.getAllByRole("button", { name: "我的工作台" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
   });
 
@@ -301,19 +308,20 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const workspaceEntries = within(document.querySelector(".topbar") as HTMLElement).getByRole("navigation", { name: "参数管理快捷入口" });
+    expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(workspaceEntries).getByRole("button", { name: "参数修改" }));
-    expect(window.location.pathname).toBe("/parameters");
+    fireEvent.click(screen.getByRole("button", { name: /打开 管理后台/ }));
+    expect(window.location.pathname).toBe("/parameter-admin");
 
     window.history.replaceState(null, "", "/parameter-home");
     cleanup();
     renderAppForCurrentPath();
 
-    const rerenderedEntries = within(document.querySelector(".topbar") as HTMLElement).getByRole("navigation", { name: "参数管理快捷入口" });
+    expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
 
-    fireEvent.click(within(rerenderedEntries).getByRole("button", { name: "参数审阅" }));
-    expect(window.location.pathname).toBe("/parameter-review");
+    fireEvent.click(screen.getByRole("button", { name: /打开 新建项目/ }));
+    expect(screen.getByRole("dialog", { name: "新项目参数初始化" })).toBeInTheDocument();
+    expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
   });
 
   it("preserves contextual query strings when navigating from parameter homepage hotspots", () => {
@@ -321,7 +329,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
     fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
 
     expect(["/parameters", "/parameter-review"]).toContain(window.location.pathname);
@@ -333,7 +341,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热门模块" });
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
 
     expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
     expect(within(hotspotRegion).queryByRole("button", { name: /查看评分/ })).not.toBeInTheDocument();
@@ -1177,12 +1185,19 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热门模块", "参数更新趋势", "各项目参数更新情况", "开发人员总数", "管理项目总数", "参数修改", "参数审阅"],
+        present: ["热榜", "参数更新趋势", "各项目参数更新情况", "参数修改", "参数审阅"],
         absent: [
+          "推荐依据",
+          "保留原看板指标，用来解释工作台行动排序",
+          "参数总量",
+          "管理项目总数",
+          "修改频次",
+          "开发人员总数",
           "WiseEff Prototype",
           "Linear is a better way",
           "Powering the world's best product teams",
           "Issue tracking you'll enjoy using",
+          "热门模块",
           "关键参数变化",
           "审核合入情况",
           "对比分析"

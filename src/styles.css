@@ -497,22 +497,6 @@ body {
   font-weight: 800;
 }
 
-.parameter-homepage-quick-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.parameter-homepage-quick-nav [data-slot="button"] {
-  height: 32px;
-  padding: 0 10px;
-  border-radius: 8px;
-  color: #17324f;
-  font-size: 12px;
-  font-weight: 800;
-}
-
 .topbar-time-window-control {
   display: inline-flex;
   align-items: center;
@@ -9601,17 +9585,6 @@ td small {
     justify-content: flex-start;
   }
 
-  .parameter-homepage-quick-nav {
-    align-items: stretch;
-    flex-wrap: wrap;
-    width: 100%;
-  }
-
-  .parameter-homepage-quick-nav [data-slot="button"] {
-    flex: 1 1 calc(50% - 4px);
-    min-width: 118px;
-  }
-
   .page-actions {
     justify-content: flex-start;
     flex-wrap: wrap;
@@ -9736,12 +9709,171 @@ td small {
   background: linear-gradient(180deg, #fbfcff 0%, #f4f7ff 100%);
 }
 
-.homepage-metric-card,
 .homepage-panel {
   border: 1px solid var(--outline);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 16px 42px rgba(58, 76, 118, 0.1);
+}
+
+.personal-workbench {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.personal-workbench-grid,
+.next-action-panel,
+.scenario-entry-panel {
+  min-width: 0;
+}
+
+.personal-workbench-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.36fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.next-action-panel h2,
+.scenario-entry-panel h2 {
+  margin: 0;
+}
+
+.next-action-panel,
+.scenario-entry-panel {
+  display: grid;
+  align-content: start;
+}
+
+.next-action-panel {
+  padding: 14px;
+}
+
+.scenario-entry-panel {
+  padding: 14px;
+}
+
+.next-action-list,
+.scenario-entry-list {
+  display: grid;
+  gap: 8px;
+}
+
+.next-action-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.next-action-card,
+.scenario-entry {
+  display: grid;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.next-action-card {
+  grid-template-columns: 36px minmax(0, 1fr) 18px;
+  gap: 10px;
+  min-height: 66px;
+  padding: 10px 12px;
+}
+
+.next-action-card[data-priority="primary"] {
+  grid-column: 1 / -1;
+  background: #eef4ff;
+  border-color: #9bb4ff;
+  box-shadow: 0 10px 24px rgba(0, 61, 155, 0.12);
+}
+
+.next-action-card__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--app-primary);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+}
+
+.next-action-card__body,
+.scenario-entry span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.next-action-card strong,
+.scenario-entry strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.next-action-card small,
+.scenario-entry small {
+  overflow-wrap: anywhere;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.next-action-card em,
+.scenario-entry em {
+  color: var(--outline-strong);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.scenario-entry {
+  grid-template-columns: minmax(0, 1fr) auto 16px;
+  gap: 10px;
+  min-height: 62px;
+  padding: 10px 12px;
+}
+
+.scenario-entry em {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.scenario-entry b {
+  color: var(--app-primary);
+}
+
+.next-action-card:hover,
+.scenario-entry:hover {
+  border-color: #9bb4ff;
+  background: #f7faff;
+}
+
+.next-action-card:focus-visible,
+.scenario-entry:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 2px;
+}
+
+.dashboard-evidence-section {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.dashboard-evidence-section__head {
+  margin-bottom: 0;
 }
 
 .parameter-homepage-inline-select span {
@@ -9812,75 +9944,18 @@ td small {
 }
 
 .parameter-homepage-hotspot-layout,
-.parameter-homepage-metrics,
 .parameter-homepage-charts {
   display: grid;
   gap: 14px;
 }
 
-.parameter-homepage-headline,
-.parameter-homepage-charts,
-.parameter-homepage-hotspots,
-.parameter-homepage-metrics {
-  margin-top: 14px;
-}
-
-.parameter-homepage-metrics {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.parameter-homepage-card {
-  padding: 12px 14px;
-}
-
-.parameter-homepage .metric-card p {
-  margin: 0;
-}
-
-.parameter-homepage .metric-card p,
 .parameter-homepage-section-head span,
 .hotspot-panel-evidence li {
   color: var(--app-muted);
 }
 
-.parameter-homepage .metric-card span {
-  color: var(--outline-strong);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.parameter-homepage .metric-card strong {
-  color: var(--app-primary);
-  font-size: 22px;
-  line-height: 1.1;
-}
-
-.homepage-metric-card {
-  gap: 6px;
-  min-height: 96px;
-  border-radius: 8px;
-}
-
-.homepage-metric-card svg {
-  color: var(--app-secondary);
-}
-
 .parameter-homepage-hotspots {
   padding: 18px;
-}
-
-.parameter-homepage-headline {
-  padding: 14px 18px;
-  margin-bottom: 0;
-  color: var(--text);
-  background: var(--surface-low);
-  font-size: 15px;
-  font-weight: 750;
-  line-height: 1.5;
-}
-
-.parameter-homepage-headline span {
-  display: block;
 }
 
 .parameter-homepage-charts {
@@ -10488,17 +10563,19 @@ td small {
   color: var(--app-primary);
 }
 
-@media (max-width: 980px) {
-  .parameter-homepage-metrics {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1399px) {
+  .personal-workbench-grid {
+    grid-template-columns: 1fr;
   }
+}
 
+@media (max-width: 980px) {
   .parameter-homepage-charts {
     grid-template-columns: 1fr;
   }
 }
 
-@media (max-width: 1099px) {
+@media (max-width: 1399px) {
   .parameter-homepage-hotspot-layout {
     grid-template-columns: 1fr;
     gap: 0;
@@ -10507,6 +10584,67 @@ td small {
   .hotspot-list-head {
     display: none;
   }
+
+  .hotspot-row {
+    overflow: visible;
+  }
+
+  .hotspot-row-select {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "rank identity status"
+      "rank score score"
+      "rank trend trend";
+    align-items: start;
+    gap: 6px 10px;
+    min-height: 70px;
+  }
+
+  .hotspot-col-rank {
+    grid-area: rank;
+    align-self: start;
+    padding-top: 3px;
+  }
+
+  .hotspot-col-identity {
+    grid-area: identity;
+  }
+
+  .hotspot-col-status {
+    grid-area: status;
+    justify-self: end;
+  }
+
+  .hotspot-col-score {
+    grid-area: score;
+    justify-self: stretch;
+    min-width: 0;
+  }
+
+  .hotspot-col-trend {
+    grid-area: trend;
+    justify-self: start;
+  }
+
+  .hotspot-title {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .hotspot-eyebrow {
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .score-bar {
+    flex: 1 1 80px;
+    width: min(120px, 100%);
+    min-width: 52px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -10514,7 +10652,23 @@ td small {
     padding: 18px 14px 36px;
   }
 
-  .parameter-homepage-metrics,
+  .next-action-card,
+  .scenario-entry {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .next-action-list {
+    grid-template-columns: 1fr;
+  }
+
+  .next-action-card__icon {
+    display: none;
+  }
+
+  .scenario-entry em {
+    white-space: normal;
+  }
+
   .parameter-homepage-charts {
     grid-template-columns: 1fr;
   }
@@ -10534,8 +10688,33 @@ td small {
     min-width: 78px;
   }
 
+  .hotspot-row {
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
   .hotspot-row-select {
-    grid-template-columns: 44px minmax(0, 1fr) 86px 116px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "rank"
+      "identity"
+      "status"
+      "score";
+    gap: 6px;
+    padding: 10px 8px 10px 12px;
+  }
+
+  .hotspot-row-enter {
+    width: 38px;
+  }
+
+  .hotspot-col-rank,
+  .hotspot-col-status,
+  .hotspot-col-score {
+    justify-self: start;
+  }
+
+  .hotspot-col-score {
+    width: 100%;
   }
 
   .hotspot-col-trend {
@@ -10543,7 +10722,7 @@ td small {
   }
 
   .score-bar {
-    width: 64px;
+    width: min(140px, 100%);
   }
 
   .hotspot-rank-dot {
