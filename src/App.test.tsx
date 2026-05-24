@@ -163,6 +163,8 @@ describe("WiseEff app shell", () => {
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
 
+    expect(topbar.querySelector(".topbar-title")).toHaveTextContent("我的工作台");
+    expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("待办事项 · 主要功能 · 热榜");
     expect(screen.queryByRole("button", { name: "进入 参数修改" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "进入 参数审阅" })).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
