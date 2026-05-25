@@ -3,6 +3,7 @@ import type {
   ParameterDraftDto,
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
+  ParameterImportSourceItem,
   ParameterListQuery,
   ParameterRepository,
   ProjectSummary,
@@ -59,11 +60,12 @@ function slugForId(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function buildImportBatch(input: { projectId: string; sourceName: string; items: ParameterImportBatchDto["items"] }, status: ParameterImportBatchDto["status"]): ParameterImportBatchDto {
+function buildImportBatch(input: { projectId: string; sourceName: string; items: ParameterImportSourceItem[] }, status: ParameterImportBatchDto["status"]): ParameterImportBatchDto {
   const highRisk = input.items.filter((item) => item.risk === "High").length;
+  const batchId = `import-${input.projectId}-${slugForId(input.sourceName)}`;
 
   return {
-    id: `import-${input.projectId}-${slugForId(input.sourceName)}`,
+    id: batchId,
     projectId: input.projectId,
     sourceName: input.sourceName,
     status,
@@ -76,7 +78,10 @@ function buildImportBatch(input: { projectId: string; sourceName: string; items:
       conflict: 0,
       highRisk
     },
-    items: input.items.map((item) => ({ ...item }))
+    items: input.items.map((item, index) => ({
+      ...item,
+      id: `${batchId}-item-${index + 1}`
+    }))
   };
 }
 

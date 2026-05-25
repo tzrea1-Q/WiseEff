@@ -1,4 +1,9 @@
-import type { ParameterChangeStatus, ParameterImportBatchStatus, ParameterRiskLevel } from "./status";
+import type {
+  ParameterChangeRequestStatus,
+  ParameterImportBatchStatus,
+  ParameterRiskLevel,
+  ParameterSubmissionRoundStatus
+} from "./status";
 
 export type ProjectDto = {
   id: string;
@@ -41,6 +46,31 @@ export type ParameterDraftDto = {
   updatedAt: string;
 };
 
+export type ParameterWorkflowAssigneesDto = {
+  hardwareCommitterId: string;
+  softwareCommitterId: string;
+  softwareUserId: string;
+};
+
+export type AIConfidenceDto = "high" | "mid" | "low";
+
+export type AIRecommendationDto = "advance" | "needs-review" | "reject";
+
+export type AIReviewSuggestionDto = {
+  recommendation: AIRecommendationDto;
+  confidence: AIConfidenceDto;
+  summary: string;
+  reasons: string[];
+  similarRequests: string[];
+};
+
+export type ImpactItemDto = {
+  kind: "module" | "test" | "parameter";
+  name: string;
+  note: string;
+  risk: ParameterRiskLevel;
+};
+
 export type ChangeRequestDto = {
   id: string;
   submissionRoundId?: string;
@@ -54,13 +84,28 @@ export type ChangeRequestDto = {
   createdAt: string;
   createdAtTs: string;
   updatedAt: string;
-  status: ParameterChangeStatus;
+  status: ParameterChangeRequestStatus;
   aiSummary: string;
   rejectReason?: string;
   waitingHours: number;
+  aiSuggestion: AIReviewSuggestionDto;
+  impact: ImpactItemDto[];
   assignedTo?: string;
+  workflowAssignees?: ParameterWorkflowAssigneesDto;
   fastTrack?: boolean;
   reviewerNote?: string;
+};
+
+export type ParameterSubmissionItemDto = {
+  requestId: string;
+  parameterId: string;
+  name: string;
+  module: string;
+  currentValue: string;
+  targetValue: string;
+  unit: string;
+  risk: ParameterRiskLevel;
+  reason: string;
 };
 
 export type ParameterSubmissionRoundDto = {
@@ -69,8 +114,10 @@ export type ParameterSubmissionRoundDto = {
   projectName: string;
   submitter: string;
   createdAt: string;
-  status: ParameterChangeStatus;
+  status: ParameterSubmissionRoundStatus;
   summary: string;
+  workflowAssignees?: ParameterWorkflowAssigneesDto;
+  items: ParameterSubmissionItemDto[];
 };
 
 export type ParameterImportSummaryDto = {
@@ -82,7 +129,6 @@ export type ParameterImportSummaryDto = {
 };
 
 export type ParameterImportSourceItemDto = {
-  id?: string;
   name: string;
   module: string;
   risk: ParameterRiskLevel;
@@ -95,6 +141,10 @@ export type ParameterImportSourceItemDto = {
   configFormat?: string;
 };
 
+export type ParameterImportBatchItemDto = ParameterImportSourceItemDto & {
+  id: string;
+};
+
 export type ParameterImportBatchDto = {
   id: string;
   projectId: string;
@@ -103,5 +153,5 @@ export type ParameterImportBatchDto = {
   createdAt: string;
   appliedAt?: string;
   summary: ParameterImportSummaryDto;
-  items: ParameterImportSourceItemDto[];
+  items: ParameterImportBatchItemDto[];
 };

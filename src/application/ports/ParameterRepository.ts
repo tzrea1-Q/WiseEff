@@ -65,6 +65,10 @@ export type ParameterImportSourceItem = {
   configFormat?: string;
 };
 
+export type ParameterImportBatchItem = ParameterImportSourceItem & {
+  id: string;
+};
+
 export type ParameterImportPreviewInput = {
   projectId: string;
   sourceName: string;
@@ -85,7 +89,7 @@ export type ParameterImportBatchDto = {
     conflict: number;
     highRisk: number;
   };
-  items: ParameterImportSourceItem[];
+  items: ParameterImportBatchItem[];
 };
 
 export type ApplyParameterImportBatchInput = {

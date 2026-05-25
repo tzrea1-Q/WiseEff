@@ -41,7 +41,7 @@ describe("parameter http dto mappers", () => {
       recommendedValue: "3000",
       range: "0-3500",
       unit: "mA",
-      risk: "high",
+      risk: "High",
       updatedAt: "2026-05-25 10:00",
       updatedAtTs: "2026-05-25T02:00:00.000Z",
       history: [
@@ -90,7 +90,7 @@ describe("parameter http dto mappers", () => {
           kind: "module",
           name: "Charging",
           note: "Affects charge profile.",
-          risk: "medium"
+          risk: "Medium"
         }
       ],
       assignedTo: "hardware-committer",
@@ -128,7 +128,7 @@ describe("parameter http dto mappers", () => {
           currentValue: "2800",
           targetValue: "3000",
           unit: "mA",
-          risk: "low",
+          risk: "Low",
           reason: "Align with validated pack profile."
         }
       ]
@@ -155,15 +155,28 @@ describe("parameter http dto mappers", () => {
         conflict: 1,
         highRisk: 2
       },
-      items: []
+      items: [
+        {
+          id: "item-1",
+          name: "Fast charge current",
+          module: "Charging",
+          risk: "High",
+          unit: "mA",
+          range: "0-3500",
+          currentValue: "2800"
+        }
+      ]
     };
 
-    expect(importBatchFromDto(dto).summary).toEqual({
+    const batch = importBatchFromDto(dto);
+
+    expect(batch.summary).toEqual({
       added: 2,
       updated: 3,
       unchanged: 4,
       conflict: 1,
       highRisk: 2
     });
+    expect(batch.items[0].id).toBe("item-1");
   });
 });

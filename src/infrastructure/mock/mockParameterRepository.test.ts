@@ -177,6 +177,7 @@ describe("mock parameter repository", () => {
         highRisk: 1
       }
     });
+    expect(preview.items.map((item) => item.id)).toEqual(["import-aurora-parameters-csv-item-1", "import-aurora-parameters-csv-item-2"]);
 
     await expect(repository.applyImportBatch({ batchId: preview.id })).resolves.toMatchObject({
       ...preview,
