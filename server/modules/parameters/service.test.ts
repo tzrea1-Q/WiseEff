@@ -365,6 +365,93 @@ describe("parameter service", () => {
     expect(calls[4].text).toContain("insert into parameter_import_batches");
   });
 
+  it("preview flags high-risk recommended value deltas without over-flagging zero or nonnumeric baselines", async () => {
+    const { db } = createFakeDb([
+      [
+        definitionRow({
+          id: "definition-recommended-delta",
+          name: "recommended_delta",
+          current_value: "100",
+          recommended_value: "100",
+          project_parameter_value_id: "param-recommended-delta"
+        }),
+        definitionRow({
+          id: "definition-zero-baseline",
+          name: "zero_baseline_delta",
+          current_value: "100",
+          recommended_value: "0",
+          project_parameter_value_id: "param-zero-baseline"
+        }),
+        definitionRow({
+          id: "definition-nonnumeric-baseline",
+          name: "nonnumeric_delta",
+          current_value: "100",
+          recommended_value: "auto",
+          project_parameter_value_id: "param-nonnumeric-baseline"
+        })
+      ],
+      [],
+      [],
+      [],
+      (call) => [
+        importBatchRow({
+          summary: JSON.parse(call.values[6] as string),
+          items: JSON.parse(call.values[7] as string)
+        })
+      ]
+    ]);
+
+    const batch = await createImportPreview(db, makeAdminAuth(), {
+      projectId: "project-1",
+      sourceName: "admin-upload.csv",
+      items: [
+        {
+          name: "recommended_delta",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "100",
+          recommendedValue: "130",
+          description: "Limit fast charge current.",
+          explanation: "Controls fast charging current.",
+          configFormat: "ENV: FAST_CHARGE_CURRENT=number"
+        },
+        {
+          name: "zero_baseline_delta",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "100",
+          recommendedValue: "130",
+          description: "Limit fast charge current.",
+          explanation: "Controls fast charging current.",
+          configFormat: "ENV: FAST_CHARGE_CURRENT=number"
+        },
+        {
+          name: "nonnumeric_delta",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "100",
+          recommendedValue: "130",
+          description: "Limit fast charge current.",
+          explanation: "Controls fast charging current.",
+          configFormat: "ENV: FAST_CHARGE_CURRENT=number"
+        }
+      ]
+    });
+
+    expect(batch.summary).toMatchObject({ updated: 3, highRisk: 1 });
+    expect(batch.items.map((item) => ({ id: item.id, riskFlag: item.riskFlag }))).toEqual([
+      { id: "recommended_delta", riskFlag: true },
+      { id: "zero_baseline_delta", riskFlag: false },
+      { id: "nonnumeric_delta", riskFlag: false }
+    ]);
+  });
+
   it("apply creates added values, updates selected values, skips unselected items, and writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],

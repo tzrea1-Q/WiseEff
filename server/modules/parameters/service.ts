@@ -217,11 +217,16 @@ function parseNumericValue(value: string | undefined) {
 function hasHighRiskDelta(item: ParameterImportSourceItemDto, existing: ParameterDefinitionImportCandidate | undefined) {
   if (item.risk !== "High" || !existing) return false;
 
-  const current = parseNumericValue(existing.currentValue ?? existing.recommendedValue);
-  const next = parseNumericValue(item.currentValue ?? item.recommendedValue);
-  if (current === null || next === null || current === 0) return false;
+  return [
+    [existing.currentValue, item.currentValue],
+    [existing.recommendedValue, item.recommendedValue]
+  ].some(([currentValue, nextValue]) => {
+    const current = parseNumericValue(currentValue);
+    const next = parseNumericValue(nextValue);
+    if (current === null || next === null || current === 0) return false;
 
-  return Math.abs(next - current) / Math.abs(current) > 0.2;
+    return Math.abs(next - current) / Math.abs(current) > 0.2;
+  });
 }
 
 function summarizeImportItems(items: PersistedImportBatchItem[]): ParameterImportSummaryDto {
