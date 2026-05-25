@@ -101,6 +101,20 @@ create table if not exists parameter_change_requests (
   updated_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'parameter_history_entries_request_id_fkey'
+  ) then
+    alter table parameter_history_entries
+      add constraint parameter_history_entries_request_id_fkey
+      foreign key (request_id) references parameter_change_requests(id);
+  end if;
+end;
+$$;
+
 create table if not exists parameter_submission_items (
   id text primary key,
   organization_id text not null references organizations(id),

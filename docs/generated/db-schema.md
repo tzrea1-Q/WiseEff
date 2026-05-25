@@ -163,12 +163,18 @@ Indexes:
 | `version` | `integer` | Required |
 | `value` | `text` | Required |
 | `changed_by_user_id` | `text` | Nullable, references `users(id)` |
-| `request_id` | `text` | Nullable |
+| `request_id` | `text` | Nullable, references `parameter_change_requests(id)` |
 | `changed_at` | `timestamptz` | Defaults to `now()` |
 
 Indexes:
 
 - `parameter_history_value_idx` on `project_parameter_value_id, changed_at desc`
+
+Seed behavior:
+
+- Initial seed creates a version `1` history row per seeded value when none exists.
+- Rerunning the M1 seed increments `project_parameter_values.value_version` and inserts a matching history row only when `current_value` changes.
+- Rerunning the M1 seed can update `recommended_value` without creating a new current-value history row.
 
 ### `parameter_drafts`
 
