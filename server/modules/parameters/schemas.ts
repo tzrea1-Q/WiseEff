@@ -68,8 +68,7 @@ export const createImportBatchBodySchema = z.object({
 
 export const applyImportBatchBodySchema = z.object({
   batchId: nonEmptyString,
-  selectedItemIds: z.array(nonEmptyString).optional(),
-  expectedVersion: positiveInteger.optional()
+  selectedItemIds: z.array(nonEmptyString).optional()
 });
 
 export type ListParametersQuery = z.infer<typeof listParametersQuerySchema>;

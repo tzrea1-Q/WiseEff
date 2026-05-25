@@ -16,6 +16,7 @@ import {
   deleteDraftForParameter,
   findOpenChangeRequest,
   getChangeRequestById,
+  getProjectById,
   getProjectParameterForUpdate,
   insertImportBatch,
   insertReviewDecision,
@@ -85,7 +86,6 @@ export type CreateImportPreviewInput = {
 export type ApplyImportBatchInput = {
   batchId: string;
   selectedItemIds?: string[];
-  expectedVersion?: number;
 };
 
 function requireCanView(auth: AuthContext) {
@@ -272,6 +272,19 @@ async function loadChangeRequestForReview(db: Queryable, auth: AuthContext, requ
   return request;
 }
 
+async function loadProjectForImport(db: Queryable, auth: AuthContext, projectId: string) {
+  const project = await getProjectById(db, {
+    organizationId: auth.organization.id,
+    projectId
+  });
+
+  if (!project) {
+    throw new ApiError("NOT_FOUND", "Project was not found for this organization.", 404, { projectId });
+  }
+
+  return project;
+}
+
 function hasHighRiskReviewEvidence(
   decisions: Awaited<ReturnType<typeof listReviewDecisions>>
 ) {
@@ -372,6 +385,7 @@ async function createImportAudit(
 export async function createImportPreview(db: Queryable, auth: AuthContext, input: CreateImportPreviewInput) {
   requireCanAdminImport(auth);
   const parsed = assertValidCreateImportInput(input);
+  await loadProjectForImport(db, auth, parsed.projectId);
   const names = parsed.items.map((item) => item.name);
   const definitionIds = parsed.items.map((item) => item.id).filter((id): id is string => Boolean(id));
   const candidates = await listParameterDefinitionsForImport(db, {
@@ -454,6 +468,19 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       throw new ApiError("CONFLICT", "Parameter import batch has already been applied.", 409, { batchId: parsed.batchId });
     }
 
+    await loadProjectForImport(tx, auth, batch.projectId);
+
+    if (parsed.selectedItemIds) {
+      const batchItemIds = new Set(batch.items.map((item) => item.id));
+      const unknownItemId = parsed.selectedItemIds.find((itemId) => !batchItemIds.has(itemId));
+      if (unknownItemId) {
+        throw new ApiError("VALIDATION_FAILED", "Selected import item was not found in the batch.", 400, {
+          batchId: parsed.batchId,
+          itemId: unknownItemId
+        });
+      }
+    }
+
     const selectedIds = parsed.selectedItemIds ? new Set(parsed.selectedItemIds) : null;
     const selectedItems = batch.items.filter(
       (item) => item.classification !== "unchanged" && (!selectedIds || selectedIds.has(item.id))
@@ -466,9 +493,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       });
     }
 
-    let added = 0;
-    let updated = 0;
-    for (const item of selectedItems as PersistedImportBatchItem[]) {
+    const selectedItemsWithTargets = selectedItems.map((item) => {
       if (!item.definitionId || !item.projectParameterValueId) {
         throw new ApiError("VALIDATION_FAILED", "Import preview item is missing persisted target identifiers.", 400, {
           batchId: parsed.batchId,
@@ -476,23 +501,60 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         });
       }
 
+      return { ...item, definitionId: item.definitionId, projectParameterValueId: item.projectParameterValueId };
+    });
+
+    for (const item of selectedItemsWithTargets) {
+      if (item.classification !== "updated") continue;
+
+      const openRequest = await findOpenChangeRequest(tx, {
+        organizationId: auth.organization.id,
+        projectId: batch.projectId,
+        parameterId: item.projectParameterValueId
+      });
+      if (openRequest) {
+        throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409, {
+          batchId: parsed.batchId,
+          itemId: item.id,
+          requestId: openRequest.id
+        });
+      }
+    }
+
+    let added = 0;
+    let updated = 0;
+    for (const item of selectedItemsWithTargets) {
       if (item.classification === "added") {
-        await applyAddedImportItem(tx, {
+        const appliedItem = await applyAddedImportItem(tx, {
           organizationId: auth.organization.id,
           projectId: batch.projectId,
           actorUserId: auth.user.id,
           historyId: randomUUID(),
-          item: { ...item, definitionId: item.definitionId, projectParameterValueId: item.projectParameterValueId }
+          item
         });
+        if (!appliedItem) {
+          throw new ApiError("CONFLICT", "Import item definition id belongs to another organization.", 409, {
+            batchId: parsed.batchId,
+            itemId: item.id,
+            definitionId: item.definitionId
+          });
+        }
         added += 1;
       } else if (item.classification === "updated") {
-        await applyUpdatedImportItem(tx, {
+        const appliedItem = await applyUpdatedImportItem(tx, {
           organizationId: auth.organization.id,
           projectId: batch.projectId,
           actorUserId: auth.user.id,
           historyId: randomUUID(),
-          item: { ...item, definitionId: item.definitionId, projectParameterValueId: item.projectParameterValueId }
+          item
         });
+        if (!appliedItem) {
+          throw new ApiError("CONFLICT", "Import item definition id belongs to another organization.", 409, {
+            batchId: parsed.batchId,
+            itemId: item.id,
+            definitionId: item.definitionId
+          });
+        }
         updated += 1;
       }
     }

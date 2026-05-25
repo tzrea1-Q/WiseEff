@@ -512,6 +512,21 @@ export async function listProjects(db: Queryable, query: { organizationId: strin
   return result.rows.map(toProjectDto);
 }
 
+export async function getProjectById(db: Queryable, query: { organizationId: string; projectId: string }) {
+  const result = await db.query<ProjectRow>(
+    `
+    select id, name, code
+    from projects
+    where organization_id = $1
+      and id = $2
+    limit 1
+    `,
+    [query.organizationId, query.projectId]
+  );
+
+  return result.rows[0] ? toProjectDto(result.rows[0]) : null;
+}
+
 export async function listProjectModules(db: Queryable, query: { organizationId: string; projectId: string }) {
   const result = await db.query<ProjectModuleRow>(
     `
@@ -1409,6 +1424,7 @@ export async function applyAddedImportItem(
         unit = excluded.unit,
         risk = excluded.risk,
         updated_at = now()
+      where parameter_definitions.organization_id = $1
       returning id
     ),
     inserted_value as (
@@ -1457,7 +1473,7 @@ export async function applyAddedImportItem(
     ]
   );
 
-  return toImportApplyResult(result.rows[0]);
+  return result.rows[0] ? toImportApplyResult(result.rows[0]) : null;
 }
 
 export async function applyUpdatedImportItem(
@@ -1487,21 +1503,52 @@ export async function applyUpdatedImportItem(
         unit = excluded.unit,
         risk = excluded.risk,
         updated_at = now()
+      where parameter_definitions.organization_id = $1
       returning id
     ),
-    upserted_value as (
+    existing_value as (
+      select
+        ppv.id,
+        ppv.project_id,
+        ppv.parameter_definition_id,
+        ppv.current_value,
+        ppv.recommended_value,
+        ppv.value_version
+      from project_parameter_values ppv
+      inner join upserted_definition on upserted_definition.id = ppv.parameter_definition_id
+      where ppv.organization_id = $1
+        and ppv.project_id = $2
+    ),
+    inserted_value as (
       insert into project_parameter_values (
         id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
       )
       select $4, $1, $2, upserted_definition.id, $11, $12, $3
       from upserted_definition
-      on conflict (project_id, parameter_definition_id) do update set
-        current_value = excluded.current_value,
-        recommended_value = excluded.recommended_value,
-        value_version = project_parameter_values.value_version + 1,
-        updated_by_user_id = excluded.updated_by_user_id,
-        updated_at = now()
+      where not exists (select 1 from existing_value)
       returning id, project_id, parameter_definition_id, current_value, value_version
+    ),
+    updated_value as (
+      update project_parameter_values ppv
+      set current_value = $11,
+        recommended_value = $12,
+        value_version = ppv.value_version + 1,
+        updated_by_user_id = $3,
+        updated_at = now()
+      from upserted_definition
+      where ppv.organization_id = $1
+        and ppv.project_id = $2
+        and ppv.parameter_definition_id = upserted_definition.id
+        and (
+          ppv.current_value is distinct from $11
+          or ppv.recommended_value is distinct from $12
+        )
+      returning ppv.id, ppv.project_id, ppv.parameter_definition_id, ppv.current_value, ppv.value_version
+    ),
+    changed_value as (
+      select id, project_id, parameter_definition_id, current_value, value_version from inserted_value
+      union all
+      select id, project_id, parameter_definition_id, current_value, value_version from updated_value
     ),
     inserted_history as (
       insert into parameter_history_entries (
@@ -1509,11 +1556,16 @@ export async function applyUpdatedImportItem(
         version, value, changed_by_user_id, request_id
       )
       select $16, $1, project_id, parameter_definition_id, id, value_version, current_value, $3, null
-      from upserted_value
+      from changed_value
       returning id
     )
     select $4 as id, parameter_definition_id as definition_id, id as project_parameter_value_id, value_version as new_version
-    from upserted_value
+    from changed_value
+    union all
+    select $4 as id, upserted_definition.id as definition_id, existing_value.id as project_parameter_value_id, existing_value.value_version as new_version
+    from upserted_definition
+    inner join existing_value on existing_value.parameter_definition_id = upserted_definition.id
+    where not exists (select 1 from changed_value)
     `,
     [
       input.organizationId,

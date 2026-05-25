@@ -9,6 +9,7 @@ import {
   getChangeRequestById,
   getImportBatchForUpdate,
   getParameterById,
+  getProjectById,
   getProjectParameterForUpdate,
   insertReviewDecision,
   insertImportBatch,
@@ -73,6 +74,18 @@ describe("parameter repository", () => {
       { id: "aurora", name: "Aurora", code: "AUR" },
       { id: "zephyr", name: "Zephyr", code: "ZEP" }
     ]);
+  });
+
+  it("getProjectById scopes project ownership to organization", async () => {
+    const { db, calls } = createFakeDb([[{ id: "aurora", name: "Aurora", code: "AUR" }]]);
+
+    const row = await getProjectById(db, { organizationId: "org-chargelab", projectId: "aurora" });
+
+    expect(calls[0].text).toContain("from projects");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("id = $2");
+    expect(calls[0].values).toEqual(["org-chargelab", "aurora"]);
+    expect(row).toEqual({ id: "aurora", name: "Aurora", code: "AUR" });
   });
 
   it("listParameters accepts project, module, risk, query, and limit filters", async () => {
@@ -736,7 +749,9 @@ describe("parameter repository", () => {
     expect(calls[0].values[3]).toBe("project-1-thermal_guard_threshold_c");
     expect(calls[1].text).toContain("insert into parameter_definitions");
     expect(calls[1].text).toContain("insert into project_parameter_values");
-    expect(calls[1].text).toContain("on conflict (project_id, parameter_definition_id) do update set");
+    expect(calls[1].text).toContain("where parameter_definitions.organization_id = $1");
+    expect(calls[1].text).toContain("updated_value as");
+    expect(calls[1].text).toContain("ppv.current_value is distinct from $11");
     expect(calls[1].text).toContain("insert into parameter_history_entries");
     expect(calls[2].text).toContain("update parameter_import_batches");
     expect(calls[2].values).toEqual(["org-chargelab", "batch-1"]);
@@ -780,9 +795,14 @@ describe("parameter repository", () => {
 
     expect(calls[0].text).toContain("insert into parameter_definitions");
     expect(calls[0].text).toContain("on conflict (id) do update set");
+    expect(calls[0].text).toContain("where parameter_definitions.organization_id = $1");
     expect(calls[0].text).toContain("insert into project_parameter_values");
-    expect(calls[0].text).toContain("on conflict (project_id, parameter_definition_id) do update set");
+    expect(calls[0].text).toContain("inserted_value as");
+    expect(calls[0].text).toContain("updated_value as");
+    expect(calls[0].text).toContain("changed_value as");
     expect(calls[0].text).toContain("insert into parameter_history_entries");
+    expect(calls[0].text).toContain("from changed_value");
+    expect(calls[0].text).toContain("where not exists (select 1 from changed_value)");
     expect(calls[0].values).toEqual([
       "org-chargelab",
       "project-1",
@@ -801,5 +821,46 @@ describe("parameter repository", () => {
       "ENV: FAST_CHARGE_CURRENT_V2=number",
       "history-updated-metadata"
     ]);
+  });
+
+  it("import item definition upserts do not bind cross-organization id conflicts", async () => {
+    const { db, calls } = createFakeDb([[], []]);
+    const item = {
+      id: "item-cross-org",
+      definitionId: "definition-cross-org",
+      projectParameterValueId: "project-1-definition-cross-org",
+      currentValue: "4100",
+      recommendedValue: "3900",
+      name: "fast_charge_current_limit_ma",
+      module: "Charging Policy",
+      risk: "High" as const,
+      unit: "mA",
+      range: "500 - 4500",
+      description: "Updated definition description.",
+      explanation: "Updated explanation.",
+      configFormat: "ENV: FAST_CHARGE_CURRENT_V2=number",
+      classification: "updated" as const,
+      riskFlag: true
+    };
+
+    const added = await applyAddedImportItem(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      actorUserId: "user-1",
+      historyId: "history-added-cross-org",
+      item: { ...item, classification: "added" as const }
+    });
+    const updated = await applyUpdatedImportItem(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      actorUserId: "user-1",
+      historyId: "history-updated-cross-org",
+      item
+    });
+
+    expect(added).toBeNull();
+    expect(updated).toBeNull();
+    expect(calls[0].text).toContain("where parameter_definitions.organization_id = $1");
+    expect(calls[1].text).toContain("where parameter_definitions.organization_id = $1");
   });
 });

@@ -70,6 +70,15 @@ function makeAdminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   });
 }
 
+function projectRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "project-1",
+    name: "Aurora",
+    code: "AUR",
+    ...overrides
+  };
+}
+
 function parameterRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "param-1",
@@ -260,8 +269,40 @@ describe("parameter service", () => {
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Invalid parameter import item.", 400));
   });
 
+  it("preview rejects projects outside the organization", async () => {
+    const { db, calls } = createFakeDb([
+      [],
+      (call) => [
+        importBatchRow({
+          summary: JSON.parse(call.values[6] as string),
+          items: JSON.parse(call.values[7] as string)
+        })
+      ]
+    ]);
+
+    await expect(
+      createImportPreview(db, makeAdminAuth(), {
+        projectId: "foreign-project",
+        sourceName: "admin-upload.csv",
+        items: [
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "1000 - 5000",
+            currentValue: "3200"
+          }
+        ]
+      })
+    ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Project was not found for this organization.", 404));
+
+    expect(calls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(false);
+  });
+
   it("preview classifies added updated unchanged conflict and flags high-risk value deltas", async () => {
     const { db, calls } = createFakeDb([
+      [projectRow()],
       [
         definitionRow({ id: "definition-updated", project_parameter_value_id: "param-updated" }),
         definitionRow({
@@ -355,18 +396,19 @@ describe("parameter service", () => {
       { id: "new_balancing_window_s", classification: "added", riskFlag: false },
       { id: "pack_voltage_limit_v", classification: "conflict", riskFlag: false }
     ]);
-    expect(calls[0].text).toContain("from parameter_definitions pd");
-    expect(calls[0].values).toEqual([
+    const definitionLookupCall = calls.find((call) => call.text.includes("from parameter_definitions pd"));
+    expect(definitionLookupCall?.values).toEqual([
       "org-1",
       "project-1",
       ["fast_charge_current_limit_ma", "thermal_guard_threshold_c", "new_balancing_window_s", "pack_voltage_limit_v"],
       []
     ]);
-    expect(calls[4].text).toContain("insert into parameter_import_batches");
+    expect(calls.some((call) => call.text.includes("insert into parameter_import_batches"))).toBe(true);
   });
 
   it("preview flags high-risk recommended value deltas without over-flagging zero or nonnumeric baselines", async () => {
     const { db } = createFakeDb([
+      [projectRow()],
       [
         definitionRow({
           id: "definition-recommended-delta",
@@ -455,6 +497,8 @@ describe("parameter service", () => {
   it("apply creates added values, updates selected values, skips unselected items, and writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
+      [projectRow()],
+      [],
       [
         {
           id: "item-added",
@@ -499,7 +543,10 @@ describe("parameter service", () => {
       "",
       expect.any(String)
     ]);
-    expect(txCalls.find((call) => call.values.includes("param-1"))?.text).toContain("insert into project_parameter_values");
+    expect(
+      txCalls.find((call) => call.text.includes("insert into project_parameter_values") && call.values.includes("param-1"))
+        ?.text
+    ).toContain("insert into project_parameter_values");
     expect(txCalls.filter((call) => call.text.includes("parameter_history_entries"))).toHaveLength(2);
     expect(txCalls.find((call) => call.text.includes("update parameter_import_batches"))?.values).toEqual([
       "org-1",
@@ -515,9 +562,105 @@ describe("parameter service", () => {
     });
   });
 
+  it("apply rejects batches whose project is outside the organization", async () => {
+    const foreignProjectBatch = importBatchRow({ project_id: "foreign-project" });
+    const { db, txCalls } = createFakeDb([
+      [foreignProjectBatch],
+      [],
+      [
+        {
+          id: "item-added",
+          definition_id: "thermal_guard_threshold_c",
+          project_parameter_value_id: "project-1-thermal_guard_threshold_c",
+          new_version: 1
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-added"]
+      })
+    ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Project was not found for this organization.", 404));
+
+    expect(txCalls.some((call) => call.text.includes("insert into project_parameter_values"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+  });
+
+  it("apply rejects unknown selected item ids", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [projectRow()],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-missing"]
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Selected import item was not found in the batch.", 400));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+  });
+
+  it("apply rejects definition id collisions outside the organization", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [projectRow()],
+      [],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-added"]
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Import item definition id belongs to another organization.", 409));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("apply rechecks open requests created after preview", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [projectRow()],
+      [changeRequestRow({ id: "request-open-after-preview" })],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-updated"]
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409));
+
+    expect(txCalls.some((call) => call.text.includes("insert into project_parameter_values"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+  });
+
   it("apply skips unselected items", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
+      [projectRow()],
+      [],
       [
         {
           id: "item-updated",
@@ -537,7 +680,10 @@ describe("parameter service", () => {
 
     expect(txCalls.some((call) => call.values.includes("item-added"))).toBe(false);
     expect(txCalls.some((call) => call.values.includes("thermal_guard_threshold_c"))).toBe(false);
-    expect(txCalls.find((call) => call.values.includes("param-1"))?.text).toContain("insert into project_parameter_values");
+    expect(
+      txCalls.find((call) => call.text.includes("insert into project_parameter_values") && call.values.includes("param-1"))
+        ?.text
+    ).toContain("insert into project_parameter_values");
   });
 
   it("apply updates definition metadata for selected updated items", async () => {
@@ -565,6 +711,8 @@ describe("parameter service", () => {
     });
     const { db, txCalls } = createFakeDb([
       [metadataBatch],
+      [projectRow()],
+      [],
       [
         {
           id: "item-metadata-only",
@@ -582,7 +730,9 @@ describe("parameter service", () => {
       selectedItemIds: ["item-metadata-only"]
     });
 
-    const applyCall = txCalls.find((call) => call.values.includes("param-1"));
+    const applyCall = txCalls.find(
+      (call) => call.text.includes("insert into parameter_definitions") && call.values.includes("param-1")
+    );
     expect(applyCall?.text).toContain("insert into parameter_definitions");
     expect(applyCall?.text).toContain("on conflict (id) do update set");
     expect(applyCall?.values).toEqual([
@@ -630,6 +780,8 @@ describe("parameter service", () => {
     });
     const { db, txCalls } = createFakeDb([
       [missingValueBatch],
+      [projectRow()],
+      [],
       [
         {
           id: "item-existing-definition",
@@ -647,9 +799,12 @@ describe("parameter service", () => {
       selectedItemIds: ["item-existing-definition"]
     });
 
-    const applyCall = txCalls.find((call) => call.values.includes("project-1-definition-orphan"));
+    const applyCall = txCalls.find(
+      (call) =>
+        call.text.includes("insert into project_parameter_values") && call.values.includes("project-1-definition-orphan")
+    );
     expect(applyCall?.text).toContain("insert into project_parameter_values");
-    expect(applyCall?.text).toContain("on conflict (project_id, parameter_definition_id) do update set");
+    expect(applyCall?.text).toContain("inserted_value as");
     expect(applyCall?.text).toContain("insert into parameter_history_entries");
     expect(applyCall?.values).toContain("project-1-definition-orphan");
   });
@@ -672,7 +827,7 @@ describe("parameter service", () => {
         }
       ]
     });
-    const { db, txCalls } = createFakeDb([[conflictBatch]]);
+    const { db, txCalls } = createFakeDb([[conflictBatch], [projectRow()]]);
 
     await expect(
       applyImportBatch(db, makeAdminAuth(), {
