@@ -356,7 +356,7 @@ describe("mock parameter repository", () => {
     expect(parameters.some((parameter) => parameter.name === "Skipped Runtime Parameter")).toBe(false);
   });
 
-  it("accepts an empty selected item list as a no-op apply", async () => {
+  it("rejects an empty selected item list without consuming the batch", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 
     const preview = await repository.createImportPreview({
@@ -374,12 +374,15 @@ describe("mock parameter repository", () => {
       ]
     });
 
-    const applied = await repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [] });
+    await expect(repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [] })).rejects.toThrow(
+      "At least one import item must be selected."
+    );
 
+    const applied = await repository.applyImportBatch({ batchId: preview.id });
     expect(applied.items).toHaveLength(preview.items.length);
     expect(applied.items[0].id).toBe(preview.items[0].id);
     const parameters = await repository.listParameters({ projectId: "aurora" });
-    expect(parameters.some((parameter) => parameter.name === "Selected Runtime Parameter")).toBe(false);
+    expect(parameters.some((parameter) => parameter.name === "Selected Runtime Parameter")).toBe(true);
   });
 
   it("protects stored import batches from returned object mutation", async () => {

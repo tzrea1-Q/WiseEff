@@ -416,6 +416,9 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       const batch = importBatches.get(input.batchId);
       if (!batch) throw new Error(`Import batch not found: ${input.batchId}`);
       if (batch.status === "applied") throw new Error(`Import batch already applied: ${input.batchId}`);
+      if (input.selectedItemIds && input.selectedItemIds.length === 0) {
+        throw new Error("At least one import item must be selected.");
+      }
       const selectedItemIds = input.selectedItemIds ?? batch.items.map((item) => item.id);
       const unknownSelectedIds = selectedItemIds.filter((itemId) => !batch.items.some((item) => item.id === itemId));
       if (unknownSelectedIds.length > 0) {

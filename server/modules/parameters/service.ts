@@ -178,6 +178,10 @@ function assertValidApplyImportInput(input: ApplyImportBatchInput) {
     });
   }
 
+  if (parsed.data.selectedItemIds && parsed.data.selectedItemIds.length === 0) {
+    throw new ApiError("VALIDATION_FAILED", "At least one import item must be selected.", 400);
+  }
+
   return parsed.data;
 }
 

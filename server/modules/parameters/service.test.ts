@@ -656,6 +656,19 @@ describe("parameter service", () => {
     expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
   });
 
+  it("apply rejects an empty selected item list without consuming the batch", async () => {
+    const { db, txCalls } = createFakeDb([[importBatchRow()]]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: []
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "At least one import item must be selected.", 400));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+  });
+
   it("apply rejects added definition id collisions", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
