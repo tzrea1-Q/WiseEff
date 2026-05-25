@@ -1925,6 +1925,23 @@ describe("WiseEff app shell", () => {
     );
   });
 
+  it("does not save debug admin config directly in API mode", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App initialAppState={adminState} runtimeMode="api" parameterRepository={createAppParameterRepository()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
+    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
+
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);
+    expect(document.body).toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
+  });
+
   it("removes reset-to-code-version actions from both config admin pages", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 

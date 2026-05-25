@@ -1669,6 +1669,10 @@ function AppShell({
       }),
     [parameterRepositoryClient, runtimeMode]
   );
+  const DebuggingAdminPageWithRuntime = useCallback(
+    (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
+    [runtimeMode]
+  );
   const parameterRuntimeConnectedRef = useRef(false);
 
   useEffect(() => {
@@ -1789,7 +1793,7 @@ function AppShell({
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
                 LogsPage={LogsPage}
-                DebuggingAdminPage={DebuggingAdminPage}
+                DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
           ) : (
@@ -1808,7 +1812,7 @@ function AppShell({
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
                 LogsPage={LogsPage}
-                DebuggingAdminPage={DebuggingAdminPage}
+                DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </main>
           )}
@@ -3502,7 +3506,7 @@ function RejectReviewDialog({
   );
 }
 
-function ConfigExportActions({ configJson }: { configJson: string }) {
+function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; runtimeMode: WiseEffRuntimeMode }) {
   const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
   const [saving, setSaving] = useState(false);
   const exportConfig = () => {
@@ -3526,6 +3530,10 @@ function ConfigExportActions({ configJson }: { configJson: string }) {
     }
   };
   const saveConfig = async () => {
+    if (runtimeMode === "api") {
+      setSyncMessage("API 模式下参数库修改通过导入批次或审阅流程写入。");
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch("/api/power-management-config", {
@@ -4575,7 +4583,11 @@ function LogsAuxPanel({
   );
 }
 
-function DebuggingAdminPage({ state, dispatch }: PageProps) {
+function DebuggingAdminPage({
+  state,
+  dispatch,
+  runtimeMode = wiseEffRuntimeMode
+}: PageProps & { runtimeMode?: WiseEffRuntimeMode }) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.debugParameters[0]?.id ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRisk, setFilterRisk] = useState<string[]>([]);
@@ -4811,7 +4823,7 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
         {jsonExpanded ? (
           <div className="debug-admin-json-content">
             <pre>{configJson}</pre>
-            <ConfigExportActions configJson={configJson} />
+            <ConfigExportActions configJson={configJson} runtimeMode={runtimeMode} />
           </div>
         ) : null}
       </section>
