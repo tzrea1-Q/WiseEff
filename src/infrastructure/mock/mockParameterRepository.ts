@@ -86,6 +86,15 @@ function slugForId(value: string) {
 function buildImportBatch(input: { projectId: string; sourceName: string; items: ParameterImportSourceItem[] }, status: ParameterImportBatchDto["status"]): ParameterImportBatchDto {
   const highRisk = input.items.filter((item) => item.risk === "High").length;
   const batchId = `import-${input.projectId}-${slugForId(input.sourceName)}`;
+  const items = input.items.map((item, index) => {
+    const hintedItem = item as ParameterImportSourceItem & Partial<Pick<ParameterImportBatchDto["items"][number], "classification" | "riskFlag">>;
+    return {
+      ...item,
+      id: `${batchId}-item-${index + 1}`,
+      classification: hintedItem.classification ?? ("added" as const),
+      riskFlag: hintedItem.riskFlag ?? item.risk === "High"
+    };
+  });
 
   return {
     id: batchId,
@@ -101,10 +110,7 @@ function buildImportBatch(input: { projectId: string; sourceName: string; items:
       conflict: 0,
       highRisk
     },
-    items: input.items.map((item, index) => ({
-      ...item,
-      id: `${batchId}-item-${index + 1}`
-    }))
+    items
   };
 }
 
@@ -163,7 +169,9 @@ function importItemToParameterRecord(projectId: string, item: ParameterImportBat
 
 function applyImportItemsToState(state: PrototypeState, batch: ParameterImportBatchDto, selectedItemIds?: string[]): PrototypeState {
   const selectedIds = selectedItemIds ? new Set(selectedItemIds) : null;
-  const selectedItems = batch.items.filter((item) => !selectedIds || selectedIds.has(item.id));
+  const selectedItems = batch.items.filter((item) =>
+    selectedIds ? selectedIds.has(item.id) : item.classification === "added" || item.classification === "updated"
+  );
 
   if (selectedItems.length === 0) {
     return state;
@@ -419,8 +427,9 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       if (input.selectedItemIds && input.selectedItemIds.length === 0) {
         throw new Error("At least one import item must be selected.");
       }
-      const selectedItemIds = input.selectedItemIds ?? batch.items.map((item) => item.id);
-      const unknownSelectedIds = selectedItemIds.filter((itemId) => !batch.items.some((item) => item.id === itemId));
+      const selectedItemIds = input.selectedItemIds;
+      const selectedIdsForValidation = selectedItemIds ?? batch.items.map((item) => item.id);
+      const unknownSelectedIds = selectedIdsForValidation.filter((itemId) => !batch.items.some((item) => item.id === itemId));
       if (unknownSelectedIds.length > 0) {
         throw new Error(`Unknown selected import item ids: ${unknownSelectedIds.join(", ")}`);
       }

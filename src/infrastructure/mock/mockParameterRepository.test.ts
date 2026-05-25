@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createMockRuntimeState } from "./mockState";
 import { createMockParameterRepository } from "./mockParameterRepository";
+import type { ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
 
 describe("mock parameter repository", () => {
   it("lists project-filtered parameters", async () => {
@@ -354,6 +355,42 @@ describe("mock parameter repository", () => {
     expect(applied.items.map((item) => item.name)).toEqual(preview.items.map((item) => item.name));
     expect(parameters.some((parameter) => parameter.name === "Selected Runtime Parameter")).toBe(true);
     expect(parameters.some((parameter) => parameter.name === "Skipped Runtime Parameter")).toBe(false);
+  });
+
+  it("defaults import apply to added and updated items only", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const items = [
+      {
+        name: "Eligible Runtime Parameter",
+        module: "Charging",
+        risk: "Medium",
+        unit: "mA",
+        range: "0-5000",
+        currentValue: "3100",
+        classification: "added"
+      },
+      {
+        name: "Ineligible Runtime Parameter",
+        module: "Thermal",
+        risk: "Low",
+        unit: "C",
+        range: "0-100",
+        currentValue: "42",
+        classification: "conflict"
+      }
+    ] satisfies Array<ParameterImportSourceItem & { classification: "added" | "conflict" }>;
+
+    const preview = await repository.createImportPreview({
+      projectId: "aurora",
+      sourceName: "runtime-eligible.csv",
+      items
+    });
+
+    await repository.applyImportBatch({ batchId: preview.id });
+
+    const parameters = await repository.listParameters({ projectId: "aurora" });
+    expect(parameters.some((parameter) => parameter.name === "Eligible Runtime Parameter")).toBe(true);
+    expect(parameters.some((parameter) => parameter.name === "Ineligible Runtime Parameter")).toBe(false);
   });
 
   it("rejects an empty selected item list without consuming the batch", async () => {

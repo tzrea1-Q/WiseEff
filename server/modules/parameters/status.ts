@@ -18,6 +18,7 @@ export const parameterReviewDecisions = ["advance", "reject"] as const;
 export const parameterRiskLevels = ["High", "Medium", "Low"] as const;
 
 export const parameterImportBatchStatuses = ["previewed", "applied"] as const;
+export const parameterImportPreviewClassifications = ["added", "updated", "unchanged", "conflict"] as const;
 
 export type ParameterChangeRequestStatus = (typeof parameterChangeRequestStatuses)[number];
 export type ParameterChangeStatus = ParameterChangeRequestStatus;
@@ -25,6 +26,7 @@ export type ParameterSubmissionRoundStatus = (typeof parameterSubmissionRoundSta
 export type ParameterReviewDecision = (typeof parameterReviewDecisions)[number];
 export type ParameterRiskLevel = (typeof parameterRiskLevels)[number];
 export type ParameterImportBatchStatus = (typeof parameterImportBatchStatuses)[number];
+export type ImportPreviewClassification = (typeof parameterImportPreviewClassifications)[number];
 
 export const parameterStatusLabels = {
   submitted: "待审阅",

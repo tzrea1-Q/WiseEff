@@ -72,6 +72,8 @@ export type ParameterImportSourceItem = {
 
 export type ParameterImportBatchItem = ParameterImportSourceItem & {
   id: string;
+  classification: "added" | "updated" | "unchanged" | "conflict";
+  riskFlag?: boolean;
 };
 
 export type ParameterImportPreviewInput = {

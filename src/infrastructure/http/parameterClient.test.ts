@@ -125,7 +125,9 @@ const importBatchDto: ParameterImportBatchDto = {
       risk: "High",
       unit: "mA",
       range: "0-3500",
-      currentValue: "2800"
+      currentValue: "2800",
+      classification: "added",
+      riskFlag: true
     }
   ]
 };

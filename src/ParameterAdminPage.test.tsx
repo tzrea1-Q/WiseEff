@@ -52,7 +52,9 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
           range: "0 - 5000",
           currentValue: "3200",
           recommendedValue: "3400",
-          description: "API import row"
+          description: "API import row",
+          classification: "added",
+          riskFlag: true
         },
         {
           id: "preview-item-2",
@@ -62,7 +64,9 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
           unit: "mV",
           range: "3000 - 4500",
           currentValue: "4100",
-          recommendedValue: "4200"
+          recommendedValue: "4200",
+          classification: "updated",
+          riskFlag: false
         }
       ]
     }),
@@ -304,5 +308,93 @@ describe("ParameterAdminPage", () => {
     fireEvent.click(applyButton);
 
     expect(parameterActions.applyImportBatch).not.toHaveBeenCalled();
+  });
+
+  it("preselects only eligible import preview items", async () => {
+    const parameterActions = createParameterActions({
+      createImportPreview: vi.fn().mockResolvedValue({
+        id: "api-import-batch",
+        projectId: initialState.activeProjectId,
+        sourceName: "paste.json",
+        status: "previewed",
+        createdAt: "2026-05-25T08:00:00.000Z",
+        summary: { added: 1, updated: 1, unchanged: 1, conflict: 1, highRisk: 0 },
+        items: [
+          {
+            id: "preview-added",
+            name: "api_added_limit",
+            module: "Charging Policy",
+            risk: "Medium",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3200",
+            classification: "added"
+          },
+          {
+            id: "preview-updated",
+            name: "api_updated_limit",
+            module: "Charging Policy",
+            risk: "Medium",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3300",
+            classification: "updated"
+          },
+          {
+            id: "preview-unchanged",
+            name: "api_unchanged_limit",
+            module: "Charging Policy",
+            risk: "Low",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3400",
+            classification: "unchanged"
+          },
+          {
+            id: "preview-conflict",
+            name: "api_conflict_limit",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3500",
+            classification: "conflict"
+          }
+        ]
+      })
+    });
+    renderPage("", initialState, vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /批量参数导入/ }));
+    const dialog = screen.getByRole("dialog", { name: "参数导入" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "api_added_limit",
+            module: "Charging Policy",
+            risk: "Medium",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3200"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "生成预览" }));
+
+    await waitFor(() => expect(parameterActions.createImportPreview).toHaveBeenCalledTimes(1));
+    const checkboxes = within(dialog).getAllByRole("checkbox");
+    expect(checkboxes.map((checkbox) => (checkbox as HTMLInputElement).checked)).toEqual([true, true, false, false]);
+    expect(checkboxes.map((checkbox) => (checkbox as HTMLInputElement).disabled)).toEqual([false, false, true, true]);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "应用导入" }));
+
+    await waitFor(() =>
+      expect(parameterActions.applyImportBatch).toHaveBeenCalledWith({
+        batchId: "api-import-batch",
+        selectedItemIds: ["preview-added", "preview-updated"]
+      })
+    );
   });
 });

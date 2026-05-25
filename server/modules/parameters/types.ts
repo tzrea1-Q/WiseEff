@@ -1,4 +1,5 @@
 import type {
+  ImportPreviewClassification,
   ParameterChangeRequestStatus,
   ParameterImportBatchStatus,
   ParameterRiskLevel,
@@ -151,6 +152,8 @@ export type ParameterImportSourceItemDto = {
 
 export type ParameterImportBatchItemDto = ParameterImportSourceItemDto & {
   id: string;
+  classification: ImportPreviewClassification;
+  riskFlag?: boolean;
 };
 
 export type ParameterImportBatchDto = {

@@ -508,9 +508,10 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
     }
 
     const selectedIds = parsed.selectedItemIds ? new Set(parsed.selectedItemIds) : null;
-    const selectedItems = batch.items.filter(
-      (item) => item.classification !== "unchanged" && (!selectedIds || selectedIds.has(item.id))
-    );
+    const selectedItems = batch.items.filter((item) => {
+      if (!selectedIds) return item.classification === "added" || item.classification === "updated";
+      return selectedIds.has(item.id) && item.classification !== "unchanged";
+    });
     const conflictItem = selectedItems.find((item) => item.classification === "conflict");
     if (conflictItem) {
       throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409, {
@@ -605,7 +606,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       summary: {
         added,
         updated,
-        skipped: batch.items.filter((item) => item.classification !== "unchanged").length - selectedItems.length
+        skipped: batch.items.length - selectedItems.length
       }
     });
 

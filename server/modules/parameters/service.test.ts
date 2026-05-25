@@ -610,6 +610,80 @@ describe("parameter service", () => {
     });
   });
 
+  it("apply defaults to eligible added and updated items without selecting conflicts", async () => {
+    const mixedBatch = importBatchRow({
+      summary: { added: 1, updated: 1, unchanged: 1, conflict: 1, highRisk: 1 },
+      items: [
+        ...importBatchRow().items,
+        {
+          id: "item-unchanged",
+          name: "unchanged_threshold_c",
+          module: "Thermal",
+          risk: "Low",
+          unit: "C",
+          range: "40 - 90",
+          currentValue: "72",
+          classification: "unchanged",
+          definitionId: "unchanged-threshold",
+          projectParameterValueId: "param-unchanged",
+          riskFlag: false
+        },
+        {
+          id: "item-conflict",
+          name: "conflicting_current_limit_ma",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "4000",
+          classification: "conflict",
+          definitionId: "definition-conflict",
+          projectParameterValueId: "param-conflict",
+          riskFlag: false
+        }
+      ]
+    });
+    const { db, txCalls } = createFakeDb([
+      [mixedBatch],
+      [projectRow()],
+      [parameterRow()],
+      [],
+      [
+        {
+          id: "item-added",
+          definition_id: "thermal_guard_threshold_c",
+          project_parameter_value_id: "project-1-thermal_guard_threshold_c",
+          new_version: 1
+        }
+      ],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    const applied = await applyImportBatch(db, makeAdminAuth(), { batchId: "batch-1" });
+
+    expect(applied.status).toBe("applied");
+    expect(txCalls.some((call) => call.values.includes("definition-conflict"))).toBe(false);
+    expect(txCalls.some((call) => call.values.includes("param-unchanged"))).toBe(false);
+    expect(txCalls.find((call) => call.text.includes("update parameter_import_batches"))?.values).toEqual([
+      "org-1",
+      "batch-1"
+    ]);
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
+      batchId: "batch-1",
+      summary: { added: 1, updated: 1, skipped: 2 }
+    });
+  });
+
   it("apply rejects batches whose project is outside the organization", async () => {
     const foreignProjectBatch = importBatchRow({ project_id: "foreign-project" });
     const { db, txCalls } = createFakeDb([

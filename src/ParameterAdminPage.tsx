@@ -21,6 +21,10 @@ import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
 import { serializePowerManagementConfig, type PowerManagementParameterTemplate } from "./powerManagementConfig";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
+function isEligibleImportItem(item: ParameterImportBatchDto["items"][number]) {
+  return item.classification === "added" || item.classification === "updated";
+}
+
 export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -279,7 +283,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         return;
       }
       setImportPreview(result);
-      setSelectedImportItemIds(result.items.map((item) => item.id));
+      setSelectedImportItemIds(result.items.filter(isEligibleImportItem).map((item) => item.id));
     } finally {
       setImportPending(false);
     }
@@ -553,17 +557,21 @@ function ParameterImportDialog({
               <span>高风险 {preview.summary.highRisk}</span>
             </div>
             <div className="submission-diff-list">
-              {preview.items.map((item) => (
-                <label className="submission-diff-card" key={item.id}>
-                  <input
-                    type="checkbox"
-                    checked={selectedItemIds.includes(item.id)}
-                    onChange={() => toggleItem(item.id)}
-                  />
-                  <strong>{item.name}</strong>
-                  <small>{item.module} · {item.risk}</small>
-                </label>
-              ))}
+              {preview.items.map((item) => {
+                const eligible = isEligibleImportItem(item);
+                return (
+                  <label className="submission-diff-card" key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedItemIds.includes(item.id)}
+                      disabled={!eligible}
+                      onChange={() => toggleItem(item.id)}
+                    />
+                    <strong>{item.name}</strong>
+                    <small>{item.module} · {item.risk}</small>
+                  </label>
+                );
+              })}
             </div>
           </section>
         ) : null}
@@ -597,7 +605,12 @@ function createLocalImportPreview(projectId: string, sourceName: string, items: 
       conflict: 0,
       highRisk: items.filter((item) => item.risk === "High").length
     },
-    items: items.map((item, index) => ({ ...item, id: `local-import-item-${index + 1}` }))
+    items: items.map((item, index) => ({
+      ...item,
+      id: `local-import-item-${index + 1}`,
+      classification: "added",
+      riskFlag: item.risk === "High"
+    }))
   };
 }
 

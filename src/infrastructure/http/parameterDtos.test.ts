@@ -164,7 +164,9 @@ describe("parameter http dto mappers", () => {
           risk: "High",
           unit: "mA",
           range: "0-3500",
-          currentValue: "2800"
+          currentValue: "2800",
+          classification: "updated",
+          riskFlag: true
         }
       ]
     };
@@ -179,5 +181,7 @@ describe("parameter http dto mappers", () => {
       highRisk: 2
     });
     expect(batch.items[0].id).toBe("item-1");
+    expect(batch.items[0].classification).toBe("updated");
+    expect(batch.items[0].riskFlag).toBe(true);
   });
 });

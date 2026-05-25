@@ -197,7 +197,12 @@ export function createParameterRuntimeActions({
             conflict: 0,
             highRisk: input.items.filter((item) => item.risk === "High").length
           },
-          items: input.items.map((item, index) => ({ ...item, id: `mock-import-item-${index + 1}` }))
+          items: input.items.map((item, index) => ({
+            ...item,
+            id: `mock-import-item-${index + 1}`,
+            classification: "added",
+            riskFlag: item.risk === "High"
+          }))
         };
       }
 
