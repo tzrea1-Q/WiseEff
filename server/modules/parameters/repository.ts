@@ -8,6 +8,7 @@ import type {
   ParameterRecordDto,
   ParameterSubmissionItemDto,
   ParameterSubmissionRoundDto,
+  ParameterWorkflowAssigneesDto,
   ProjectDto,
   ProjectModuleDto
 } from "./types";
@@ -158,9 +159,20 @@ type ChangeRequestRow = {
   created_at: string | Date;
   updated_at: string | Date;
   assigned_to: string | null;
+  assigned_to_user_id?: string | null;
+  workflow_hardware_committer_user_id?: string | null;
+  workflow_software_committer_user_id?: string | null;
+  workflow_software_user_id?: string | null;
   reviewer_note: string | null;
   reject_reason: string | null;
   fast_track: boolean;
+};
+
+type WorkflowAssigneesRow = {
+  submission_round_id: string;
+  workflow_hardware_committer_user_id: string | null;
+  workflow_software_committer_user_id: string | null;
+  workflow_software_user_id: string | null;
 };
 
 export type ReviewDecisionDto = {
@@ -373,6 +385,26 @@ function toSubmissionRoundDto(row: SubmissionRoundRow, items: ParameterSubmissio
   };
 }
 
+function workflowAssigneesFromRow(row: {
+  workflow_hardware_committer_user_id?: string | null;
+  workflow_software_committer_user_id?: string | null;
+  workflow_software_user_id?: string | null;
+}): ParameterWorkflowAssigneesDto | undefined {
+  if (
+    !row.workflow_hardware_committer_user_id ||
+    !row.workflow_software_committer_user_id ||
+    !row.workflow_software_user_id
+  ) {
+    return undefined;
+  }
+
+  return {
+    hardwareCommitterId: row.workflow_hardware_committer_user_id,
+    softwareCommitterId: row.workflow_software_committer_user_id,
+    softwareUserId: row.workflow_software_user_id
+  };
+}
+
 function waitingHoursSince(value: string | Date) {
   const createdAt = new Date(dateTimeToIso(value)).getTime();
   if (Number.isNaN(createdAt)) return 0;
@@ -423,7 +455,8 @@ function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
         risk: row.risk
       }
     ],
-    assignedTo: row.assigned_to ?? undefined,
+    assignedTo: row.assigned_to_user_id ?? row.assigned_to ?? undefined,
+    workflowAssignees: workflowAssigneesFromRow(row),
     fastTrack: row.fast_track,
     reviewerNote: row.reviewer_note ?? undefined
   };
@@ -799,6 +832,8 @@ export async function createChangeRequest(
     targetValue: string;
     status: ParameterChangeRequestStatus;
     submitterUserId: string;
+    assignedToUserId?: string;
+    workflowAssignees?: Partial<ParameterWorkflowAssigneesDto>;
   }
 ) {
   const result = await db.query<ChangeRequestRow>(
@@ -806,9 +841,11 @@ export async function createChangeRequest(
     with inserted as (
       insert into parameter_change_requests (
         id, organization_id, submission_round_id, project_id, project_parameter_value_id,
-        parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id
+        parameter_definition_id, base_version, current_value, target_value, status, submitter_user_id,
+        assigned_to_user_id, workflow_hardware_committer_user_id, workflow_software_committer_user_id,
+        workflow_software_user_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
       returning *
     )
     select
@@ -825,6 +862,10 @@ export async function createChangeRequest(
       pd.risk,
       inserted.created_at,
       inserted.updated_at,
+      inserted.assigned_to_user_id,
+      inserted.workflow_hardware_committer_user_id,
+      inserted.workflow_software_committer_user_id,
+      inserted.workflow_software_user_id,
       assignee.name as assigned_to,
       inserted.reviewer_note,
       inserted.reject_reason,
@@ -845,7 +886,11 @@ export async function createChangeRequest(
       input.currentValue,
       input.targetValue,
       input.status,
-      input.submitterUserId
+      input.submitterUserId,
+      input.assignedToUserId ?? null,
+      input.workflowAssignees?.hardwareCommitterId ?? null,
+      input.workflowAssignees?.softwareCommitterId ?? null,
+      input.workflowAssignees?.softwareUserId ?? null
     ]
   );
 
@@ -939,8 +984,16 @@ export async function listSubmissionRounds(
     organizationId: query.organizationId,
     roundIds: rounds.map((round) => round.id)
   });
+  const assigneesByRound = await listWorkflowAssigneesByRoundIds(db, {
+    organizationId: query.organizationId,
+    roundIds: rounds.map((round) => round.id)
+  });
 
-  return rounds.map((round) => ({ ...round, items: itemsByRound.get(round.id) ?? [] }));
+  return rounds.map((round) => ({
+    ...round,
+    workflowAssignees: assigneesByRound.get(round.id),
+    items: itemsByRound.get(round.id) ?? []
+  }));
 }
 export async function listChangeRequests(
   db: Queryable,
@@ -978,6 +1031,10 @@ export async function listChangeRequests(
       pd.risk,
       pcr.created_at,
       pcr.updated_at,
+      pcr.assigned_to_user_id,
+      pcr.workflow_hardware_committer_user_id,
+      pcr.workflow_software_committer_user_id,
+      pcr.workflow_software_user_id,
       assignee.name as assigned_to,
       pcr.reviewer_note,
       pcr.reject_reason,
@@ -1016,6 +1073,10 @@ export async function findOpenChangeRequest(
       pd.risk,
       pcr.created_at,
       pcr.updated_at,
+      pcr.assigned_to_user_id,
+      pcr.workflow_hardware_committer_user_id,
+      pcr.workflow_software_committer_user_id,
+      pcr.workflow_software_user_id,
       assignee.name as assigned_to,
       pcr.reviewer_note,
       pcr.reject_reason,
@@ -1058,6 +1119,10 @@ export async function getChangeRequestById(
       pd.risk,
       pcr.created_at,
       pcr.updated_at,
+      pcr.assigned_to_user_id,
+      pcr.workflow_hardware_committer_user_id,
+      pcr.workflow_software_committer_user_id,
+      pcr.workflow_software_user_id,
       assignee.name as assigned_to,
       pcr.reviewer_note,
       pcr.reject_reason,
@@ -1165,6 +1230,10 @@ export async function updateChangeRequestStatus(
       (select risk from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as risk,
       created_at,
       updated_at,
+      assigned_to_user_id,
+      workflow_hardware_committer_user_id,
+      workflow_software_committer_user_id,
+      workflow_software_user_id,
       (select name from users where id = parameter_change_requests.assigned_to_user_id) as assigned_to,
       reviewer_note,
       reject_reason,
@@ -1634,6 +1703,39 @@ async function listSubmissionItemsByRoundIds(
     const items = byRound.get(row.submission_round_id) ?? [];
     items.push(toSubmissionItemDto(row));
     byRound.set(row.submission_round_id, items);
+  }
+
+  return byRound;
+}
+
+async function listWorkflowAssigneesByRoundIds(
+  db: Queryable,
+  query: { organizationId: string; roundIds: string[] }
+) {
+  const result = await db.query<WorkflowAssigneesRow>(
+    `
+    select distinct on (submission_round_id)
+      submission_round_id,
+      workflow_hardware_committer_user_id,
+      workflow_software_committer_user_id,
+      workflow_software_user_id
+    from parameter_change_requests
+    where organization_id = $1
+      and submission_round_id = any($2::text[])
+      and workflow_hardware_committer_user_id is not null
+      and workflow_software_committer_user_id is not null
+      and workflow_software_user_id is not null
+    order by submission_round_id, created_at asc, id asc
+    `,
+    [query.organizationId, query.roundIds]
+  );
+
+  const byRound = new Map<string, ParameterWorkflowAssigneesDto>();
+  for (const row of result.rows) {
+    const assignees = workflowAssigneesFromRow(row);
+    if (assignees) {
+      byRound.set(row.submission_round_id, assignees);
+    }
   }
 
   return byRound;

@@ -231,6 +231,9 @@ Indexes:
 | `status` | `text` | Required |
 | `submitter_user_id` | `text` | Required, references `users(id)` |
 | `assigned_to_user_id` | `text` | Nullable, references `users(id)` |
+| `workflow_hardware_committer_user_id` | `text` | Nullable, references `users(id)` |
+| `workflow_software_committer_user_id` | `text` | Nullable, references `users(id)` |
+| `workflow_software_user_id` | `text` | Nullable, references `users(id)` |
 | `reviewer_note` | `text` | Nullable |
 | `reject_reason` | `text` | Nullable |
 | `fast_track` | `boolean` | Required, defaults to `false` |

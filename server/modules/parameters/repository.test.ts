@@ -351,6 +351,83 @@ describe("parameter repository", () => {
     ]);
   });
 
+  it("persists and maps workflow assignees on created change requests", async () => {
+    const workflowAssignees = {
+      hardwareCommitterId: "u-hardware",
+      softwareCommitterId: "u-software-committer",
+      softwareUserId: "u-software-user"
+    };
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "request-1",
+          submission_round_id: "round-1",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          base_version: 7,
+          module: "Charging Policy",
+          title: "fast_charge_current_limit_ma",
+          current_value: "3200",
+          target_value: "3100",
+          submitter: "Riley Chen",
+          status: "hardware_review",
+          risk: "High",
+          created_at: "2026-05-25T05:00:01.000Z",
+          updated_at: "2026-05-25T05:00:01.000Z",
+          assigned_to_user_id: "u-hardware",
+          workflow_hardware_committer_user_id: "u-hardware",
+          workflow_software_committer_user_id: "u-software-committer",
+          workflow_software_user_id: "u-software-user",
+          reviewer_note: null,
+          reject_reason: null,
+          fast_track: false
+        }
+      ]
+    ]);
+
+    const request = await createChangeRequest(db, {
+      id: "request-1",
+      organizationId: "org-chargelab",
+      submissionRoundId: "round-1",
+      projectId: "project-1",
+      parameterId: "param-1",
+      parameterDefinitionId: "definition-1",
+      baseVersion: 7,
+      currentValue: "3200",
+      targetValue: "3100",
+      status: "hardware_review",
+      submitterUserId: "user-1",
+      assignedToUserId: "u-hardware",
+      workflowAssignees
+    });
+
+    expect(calls[0].text).toContain("assigned_to_user_id");
+    expect(calls[0].text).toContain("workflow_hardware_committer_user_id");
+    expect(calls[0].text).toContain("workflow_software_committer_user_id");
+    expect(calls[0].text).toContain("workflow_software_user_id");
+    expect(calls[0].values).toEqual([
+      "request-1",
+      "org-chargelab",
+      "round-1",
+      "project-1",
+      "param-1",
+      "definition-1",
+      7,
+      "3200",
+      "3100",
+      "hardware_review",
+      "user-1",
+      "u-hardware",
+      "u-hardware",
+      "u-software-committer",
+      "u-software-user"
+    ]);
+    expect(request).toMatchObject({
+      assignedTo: "u-hardware",
+      workflowAssignees
+    });
+  });
+
   it("lists submission rounds and change requests with project and status filters", async () => {
     const { db, calls } = createFakeDb([[], []]);
 
@@ -363,6 +440,55 @@ describe("parameter repository", () => {
     expect(calls[1].text).toContain("pcr.project_id = $2");
     expect(calls[1].text).toContain("pcr.status = any($3::text[])");
     expect(calls[1].values).toEqual(["org-chargelab", "project-1", ["submitted"]]);
+  });
+
+  it("lists submission rounds with workflow assignees reconstructed from linked requests", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "round-1",
+          project_id: "project-1",
+          project_name: "Aurora",
+          submitter: "Riley Chen",
+          status: "hardware_review",
+          summary: "Assigned workflow.",
+          created_at: "2026-05-25T05:00:00.000Z"
+        }
+      ],
+      [
+        {
+          change_request_id: "request-1",
+          project_parameter_value_id: "param-1",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          current_value: "3200",
+          target_value: "3100",
+          unit: "mA",
+          risk: "High",
+          reason: "Reduce thermal risk."
+        }
+      ],
+      [
+        {
+          submission_round_id: "round-1",
+          workflow_hardware_committer_user_id: "u-hardware",
+          workflow_software_committer_user_id: "u-software-committer",
+          workflow_software_user_id: "u-software-user"
+        }
+      ]
+    ]);
+
+    const rounds = await listSubmissionRounds(db, { organizationId: "org-chargelab" });
+
+    expect(calls[2].text).toContain("workflow_hardware_committer_user_id");
+    expect(rounds[0]).toMatchObject({
+      id: "round-1",
+      workflowAssignees: {
+        hardwareCommitterId: "u-hardware",
+        softwareCommitterId: "u-software-committer",
+        softwareUserId: "u-software-user"
+      }
+    });
   });
 
   it("findOpenChangeRequest and getProjectParameterForUpdate use organization scoped parameter ids", async () => {

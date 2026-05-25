@@ -1143,6 +1143,71 @@ describe("parameter service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
   });
 
+  it("submitting with assignees persists the initial reviewer and workflow assignee ids", async () => {
+    const workflowAssignees = {
+      hardwareCommitterId: "u-hardware",
+      softwareCommitterId: "u-software-committer",
+      softwareUserId: "u-software-user"
+    };
+    const { db, txCalls } = createFakeDb([
+      [parameterRow()],
+      [],
+      [
+        {
+          id: "round-1",
+          project_id: "project-1",
+          project_name: "Aurora",
+          submitter: "Riley Chen",
+          status: "hardware_review",
+          summary: "Parameter changes submitted.",
+          created_at: "2026-05-25T05:00:00.000Z"
+        }
+      ],
+      [
+        changeRequestRow({
+          status: "hardware_review",
+          assigned_to_user_id: "u-hardware",
+          workflow_hardware_committer_user_id: "u-hardware",
+          workflow_software_committer_user_id: "u-software-committer",
+          workflow_software_user_id: "u-software-user"
+        })
+      ],
+      [
+        {
+          id: "item-1",
+          change_request_id: "request-1",
+          project_parameter_value_id: "param-1",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          current_value: "3200",
+          target_value: "3100",
+          unit: "mA",
+          risk: "High",
+          reason: "Reduce thermal risk."
+        }
+      ],
+      [],
+      []
+    ]);
+
+    const round = await submitParameterChanges(db, makeAuth(), {
+      projectId: "project-1",
+      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+      assignees: workflowAssignees
+    });
+
+    const insertRequest = txCalls.find((call) => call.text.includes("insert into parameter_change_requests"));
+    expect(insertRequest?.values).toEqual(expect.arrayContaining([
+      "u-hardware",
+      "u-software-committer",
+      "u-software-user"
+    ]));
+    expect(round).toMatchObject({
+      status: "hardware_review",
+      workflowAssignees
+    });
+  });
+
   it("submitting a parameter with an existing open request throws conflict", async () => {
     const { db } = createFakeDb([
       [parameterRow()],

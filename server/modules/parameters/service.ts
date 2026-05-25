@@ -132,6 +132,19 @@ function hasAssignees(input: SubmitParameterChangesInput) {
   );
 }
 
+function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
+  const assignees = input.assignees;
+  if (!assignees?.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
+    return undefined;
+  }
+
+  return {
+    hardwareCommitterId: assignees.hardwareCommitterId,
+    softwareCommitterId: assignees.softwareCommitterId,
+    softwareUserId: assignees.softwareUserId
+  };
+}
+
 function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["items"]) {
   const parameterIds = new Set<string>();
 
@@ -672,7 +685,9 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         currentValue: parameter.currentValue,
         targetValue: item.targetValue,
         status,
-        submitterUserId: auth.user.id
+        submitterUserId: auth.user.id,
+        assignedToUserId: input.assignees?.hardwareCommitterId,
+        workflowAssignees: input.assignees
       });
 
       const submissionItem = await createSubmissionItem(tx, {
@@ -715,7 +730,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       traceId: randomUUID()
     });
 
-    return { ...round, items };
+    const workflowAssignees = getCompleteWorkflowAssignees(input);
+    return workflowAssignees ? { ...round, workflowAssignees, items } : { ...round, items };
   });
 }
 
