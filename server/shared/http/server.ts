@@ -37,6 +37,21 @@ function getErrorStatus(error: unknown) {
   return 500;
 }
 
+function parseQuery(searchParams: URLSearchParams) {
+  const query: Record<string, string | string[]> = {};
+  for (const [key, value] of searchParams.entries()) {
+    const existing = query[key];
+    if (Array.isArray(existing)) {
+      query[key] = [...existing, value];
+    } else if (existing !== undefined) {
+      query[key] = [existing, value];
+    } else {
+      query[key] = value;
+    }
+  }
+  return query;
+}
+
 export function createHttpServer(router: { handle(request: RouteRequest): Promise<RouteResponse> }) {
   return createServer(async (request, response) => {
     const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
@@ -46,6 +61,8 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
       const routeResponse = await router.handle({
         method: request.method as HttpMethod,
         path: url.pathname,
+        params: {},
+        query: parseQuery(url.searchParams),
         headers: request.headers,
         requestId,
         body: await readJsonBody(request)

@@ -5,6 +5,8 @@ export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 export type RouteRequest = {
   method: HttpMethod;
   path: string;
+  params: Record<string, string>;
+  query: Record<string, string | string[]>;
   headers: Record<string, string | string[] | undefined>;
   requestId: string;
   body: unknown;
@@ -17,15 +19,46 @@ export type RouteResponse = {
 
 export type RouteHandler = (request: RouteRequest) => Promise<RouteResponse>;
 
-function key(method: HttpMethod, path: string) {
-  return `${method} ${path}`;
+type RouteEntry = {
+  method: HttpMethod;
+  pattern: string;
+  segments: string[];
+  handler: RouteHandler;
+};
+
+function splitPath(path: string) {
+  return path.split("/").filter(Boolean);
+}
+
+function matchRoute(entry: RouteEntry, request: RouteRequest) {
+  if (entry.method !== request.method) {
+    return undefined;
+  }
+
+  const pathSegments = splitPath(request.path);
+  if (entry.segments.length !== pathSegments.length) {
+    return undefined;
+  }
+
+  const params: Record<string, string> = {};
+  for (let index = 0; index < entry.segments.length; index += 1) {
+    const routeSegment = entry.segments[index];
+    const pathSegment = pathSegments[index];
+    if (routeSegment.startsWith(":")) {
+      params[routeSegment.slice(1)] = decodeURIComponent(pathSegment);
+    } else if (routeSegment !== pathSegment) {
+      return undefined;
+    }
+  }
+
+  return params;
 }
 
 export function createRouter() {
-  const routes = new Map<string, RouteHandler>();
+  const routes: RouteEntry[] = [];
 
   function add(method: HttpMethod, path: string, handler: RouteHandler) {
-    routes.set(key(method, path), handler);
+    routes.push({ method, pattern: path, segments: splitPath(path), handler });
   }
 
   return {
@@ -35,11 +68,19 @@ export function createRouter() {
     patch: (path: string, handler: RouteHandler) => add("PATCH", path, handler),
     delete: (path: string, handler: RouteHandler) => add("DELETE", path, handler),
     async handle(request: RouteRequest): Promise<RouteResponse> {
-      const handler = routes.get(key(request.method, request.path));
-      if (!handler) {
+      const matchingRoutes = routes
+        .map((route) => ({ route, params: matchRoute(route, request) }))
+        .filter((match): match is { route: RouteEntry; params: Record<string, string> } => match.params !== undefined)
+        .sort((left, right) => {
+          const leftDynamicSegments = left.route.segments.filter((segment) => segment.startsWith(":")).length;
+          const rightDynamicSegments = right.route.segments.filter((segment) => segment.startsWith(":")).length;
+          return leftDynamicSegments - rightDynamicSegments;
+        });
+      const match = matchingRoutes[0];
+      if (!match) {
         throw new ApiError("NOT_FOUND", "Route not found.", 404, { path: request.path });
       }
-      return handler(request);
+      return match.route.handler({ ...request, params: { ...request.params, ...match.params } });
     }
   };
 }
