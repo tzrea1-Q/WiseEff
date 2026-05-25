@@ -101,6 +101,7 @@ describe("parameter service", () => {
   it("user can save and list own draft", async () => {
     const updatedAt = new Date("2026-05-25T04:00:00.000Z");
     const { db, calls } = createFakeDb([
+      [parameterRow()],
       [
         {
           id: "draft-1",
@@ -140,7 +141,9 @@ describe("parameter service", () => {
       updatedAt: "2026-05-25T04:00:00.000Z"
     });
     expect(drafts).toEqual([draft]);
-    expect(calls[0].values).toEqual([
+    expect(calls[0].text).toContain("from project_parameter_values");
+    expect(calls[0].values).toEqual(["org-1", "project-1", "param-1"]);
+    expect(calls[1].values).toEqual([
       expect.any(String),
       "org-1",
       "project-1",
@@ -149,8 +152,31 @@ describe("parameter service", () => {
       "3100",
       "Reduce thermal risk."
     ]);
-    expect(calls[1].text).toContain("user_id = $2");
-    expect(calls[1].values).toEqual(["org-1", "user-1", "project-1"]);
+    expect(calls[2].text).toContain("user_id = $2");
+    expect(calls[2].values).toEqual(["org-1", "user-1", "project-1"]);
+  });
+
+  it("saveDraft rejects when parameter is not in the project before upserting", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await expect(
+      saveDraft(db, makeAuth(), {
+        projectId: "project-1",
+        parameterId: "param-from-other-project",
+        targetValue: "3100",
+        reason: "Reduce thermal risk."
+      })
+    ).rejects.toMatchObject(
+      new ApiError("NOT_FOUND", "Parameter was not found for this project.", 404, {
+        parameterId: "param-from-other-project",
+        projectId: "project-1"
+      })
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].text).toContain("from project_parameter_values");
+    expect(calls[0].values).toEqual(["org-1", "project-1", "param-from-other-project"]);
+    expect(calls.some((call) => call.text.includes("insert into parameter_drafts"))).toBe(false);
   });
 
   it("submitting two items creates one round and two change requests", async () => {
@@ -301,6 +327,27 @@ describe("parameter service", () => {
         items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
       })
     ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter already has an open change request.", 409));
+  });
+
+  it("submitting duplicate parameter ids rejects before write inserts", async () => {
+    const { db, txCalls } = createFakeDb();
+
+    await expect(
+      submitParameterChanges(db, makeAuth(), {
+        projectId: "project-1",
+        items: [
+          { parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." },
+          { parameterId: "param-1", targetValue: "3050", reason: "Duplicate edit." }
+        ]
+      })
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+        parameterId: "param-1"
+      })
+    );
+
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_change_requests"))).toBe(false);
   });
 
   it("submit uses the current value_version as baseVersion", async () => {

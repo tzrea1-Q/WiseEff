@@ -71,6 +71,20 @@ function hasAssignees(input: SubmitParameterChangesInput) {
   );
 }
 
+function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["items"]) {
+  const parameterIds = new Set<string>();
+
+  for (const item of items) {
+    if (parameterIds.has(item.parameterId)) {
+      throw new ApiError("VALIDATION_FAILED", "Each parameter can only appear once per submission round.", 400, {
+        parameterId: item.parameterId
+      });
+    }
+
+    parameterIds.add(item.parameterId);
+  }
+}
+
 async function loadParameterForSubmission(
   db: Queryable,
   auth: AuthContext,
@@ -92,6 +106,7 @@ async function loadParameterForSubmission(
 
 export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDraftInput) {
   requireCanEdit(auth);
+  await loadParameterForSubmission(db, auth, input.projectId, input.parameterId);
 
   return upsertDraft(db, {
     id: randomUUID(),
@@ -120,6 +135,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
   if (input.items.length === 0) {
     throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.", 400);
   }
+  assertUniqueSubmissionParameters(input.items);
 
   return db.transaction(async (tx) => {
     const parameters = [];
