@@ -2840,7 +2840,7 @@ function ReviewMultiFilter({ label, options, selected, onChange }: { label: stri
   );
 }
 
-function ParameterReviewPage({ state, dispatch, search }: PageProps) {
+function ParameterReviewPage({ state, dispatch, search, parameterActions }: PageProps) {
   const [selectedId, setSelectedId] = useState(
     state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? ""
   );
@@ -3033,7 +3033,15 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     }
   }, [reviewRows, selectedId]);
 
-  const rejectSelected = (reason: string) => {
+  const dispatchParameterActionFailure = (result: Awaited<ReturnType<NonNullable<PageProps["parameterActions"]>["reviewChange"]>>) => {
+    if (result && "notification" in result) {
+      dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      return true;
+    }
+    return false;
+  };
+
+  const rejectSelected = async (reason: string) => {
     if (selectedInitialization) {
       dispatch({ type: "REJECT_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id, reason });
       setRejectOpen(false);
@@ -3042,8 +3050,22 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     if (!selected) {
       return;
     }
-    dispatch({ type: "REJECT_REVIEW", requestId: selected.id, reason });
+    const result = parameterActions
+      ? await parameterActions.reviewChange({ requestId: selected.id, decision: "reject", note: reason })
+      : await Promise.resolve(dispatch({ type: "REJECT_REVIEW", requestId: selected.id, reason }));
+    if (dispatchParameterActionFailure(result)) {
+      return;
+    }
     setRejectOpen(false);
+  };
+  const advanceSelected = async () => {
+    if (!selected) {
+      return;
+    }
+    const result = parameterActions
+      ? await parameterActions.reviewChange({ requestId: selected.id, decision: "advance", expectedVersion: undefined })
+      : await Promise.resolve(dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id }));
+    dispatchParameterActionFailure(result);
   };
   const openSubmissionDetail = (request: ChangeRequest) => {
     setSelectedId(request.id);
@@ -3373,7 +3395,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
               <VerticalTimeline items={selectedWorkflowItems} />
             </div>
             <div className="action-panel">
-              <Button className="full" type="button" onClick={() => dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id })}>
+              <Button className="full" type="button" onClick={advanceSelected}>
                 <CheckCircle2 size={17} />
                 推进流程
               </Button>

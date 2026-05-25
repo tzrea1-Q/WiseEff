@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { TopBarActionsContext } from "./components/layout";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { initialState } from "./mockData";
+import type { ParameterPageActions } from "./app/routes";
 
 afterEach(() => {
   cleanup();
@@ -29,7 +30,49 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
   );
 }
 
-function renderPage(search = "", state = initialState, dispatch = vi.fn()) {
+function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
+  return {
+    submitChanges: vi.fn().mockResolvedValue(undefined),
+    stashChanges: vi.fn().mockResolvedValue(undefined),
+    reviewChange: vi.fn().mockResolvedValue(undefined),
+    createImportPreview: vi.fn().mockResolvedValue({
+      id: "api-import-batch",
+      projectId: initialState.activeProjectId,
+      sourceName: "paste.json",
+      status: "previewed",
+      createdAt: "2026-05-25T08:00:00.000Z",
+      summary: { added: 1, updated: 2, unchanged: 3, conflict: 4, highRisk: 1 },
+      items: [
+        {
+          id: "preview-item-1",
+          name: "api_import_limit",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "0 - 5000",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          description: "API import row"
+        },
+        {
+          id: "preview-item-2",
+          name: "api_import_voltage",
+          module: "Charging Policy",
+          risk: "Medium",
+          unit: "mV",
+          range: "3000 - 4500",
+          currentValue: "4100",
+          recommendedValue: "4200"
+        }
+      ]
+    }),
+    applyImportBatch: vi.fn().mockResolvedValue(undefined),
+    refresh: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+}
+
+function renderPage(search = "", state = initialState, dispatch = vi.fn(), parameterActions?: ParameterPageActions) {
   return render(
     <TopBarActionsHarness>
       <ParameterAdminPage
@@ -37,6 +80,7 @@ function renderPage(search = "", state = initialState, dispatch = vi.fn()) {
         dispatch={dispatch}
         onNavigate={vi.fn()}
         search={search}
+        parameterActions={parameterActions}
       />
     </TopBarActionsHarness>
   );
@@ -176,5 +220,55 @@ describe("ParameterAdminPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /撤销/ }));
 
     expect(dispatch).toHaveBeenCalledWith({ type: "UNDO_LAST_DESTRUCTIVE" });
+  });
+
+  it("previews and applies a parameter import through parameterActions", async () => {
+    const parameterActions = createParameterActions();
+    renderPage("", initialState, vi.fn(), parameterActions);
+    const toolbar = screen.getByRole("toolbar", { name: "参数管理后台页面操作" });
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: /批量参数导入/ }));
+    const dialog = screen.getByRole("dialog", { name: "参数导入" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "api_import_limit",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3200",
+            recommendedValue: "3400",
+            description: "API import row"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "生成预览" }));
+
+    await waitFor(() => expect(parameterActions.createImportPreview).toHaveBeenCalledWith({
+      projectId: initialState.activeProjectId,
+      sourceName: "pasted-import.json",
+      items: [
+        expect.objectContaining({
+          name: "api_import_limit",
+          module: "Charging Policy",
+          risk: "High"
+        })
+      ]
+    }));
+    expect(within(dialog).getByText("新增 1")).toBeInTheDocument();
+    expect(within(dialog).getByText("更新 2")).toBeInTheDocument();
+    expect(within(dialog).getByText("不变 3")).toBeInTheDocument();
+    expect(within(dialog).getByText("冲突 4")).toBeInTheDocument();
+    expect(within(dialog).getByText("高风险 1")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "应用导入" }));
+
+    await waitFor(() => expect(parameterActions.applyImportBatch).toHaveBeenCalledWith({
+      batchId: "api-import-batch",
+      selectedItemIds: ["preview-item-1", "preview-item-2"]
+    }));
   });
 });

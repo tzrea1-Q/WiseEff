@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ParametersPage } from "./ParametersPage";
 import { TopBarActionsContext } from "./components/layout";
 import { initialState } from "./mockData";
+import type { ParameterPageActions } from "./app/routes";
 
 beforeEach(() => {
   cleanup();
@@ -162,7 +163,37 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
   );
 }
 
-function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
+function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
+  return {
+    submitChanges: vi.fn().mockResolvedValue(undefined),
+    stashChanges: vi.fn().mockResolvedValue(undefined),
+    reviewChange: vi.fn().mockResolvedValue(undefined),
+    createImportPreview: vi.fn().mockResolvedValue({
+      id: "preview-1",
+      projectId: initialState.activeProjectId,
+      sourceName: "test.json",
+      status: "previewed",
+      createdAt: "2026-05-25T08:00:00.000Z",
+      summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: []
+    }),
+    applyImportBatch: vi.fn().mockResolvedValue(undefined),
+    refresh: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+function renderPage(dispatch = vi.fn(), onNavigate = vi.fn(), parameterActions?: ParameterPageActions) {
   const result = render(
     <TopBarActionsHarness>
       <ParametersPage
@@ -170,6 +201,7 @@ function renderPage(dispatch = vi.fn(), onNavigate = vi.fn()) {
         dispatch={dispatch}
         onNavigate={onNavigate}
         search=""
+        parameterActions={parameterActions}
       />
     </TopBarActionsHarness>
   );
@@ -659,6 +691,105 @@ describe("ParametersPage draft edge cases", () => {
 });
 
 describe("ParametersPage · 提交契约", () => {
+  it("clicking submit calls parameterActions.submitChanges", async () => {
+    const dispatch = vi.fn();
+    const parameterActions = createParameterActions();
+    const { container } = renderPage(dispatch, vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "submit via api action" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    fireEvent.change(within(dialog).getByLabelText("硬件 MDE"), { target: { value: "u-wang-jie" } });
+    fireEvent.change(within(dialog).getByLabelText("软件 MDE"), { target: { value: "u-sun-mei" } });
+    fireEvent.change(within(dialog).getByLabelText("软件开发"), { target: { value: "u-sun-mei" } });
+    fireEvent.click(container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
+
+    await waitFor(() => expect(parameterActions.submitChanges).toHaveBeenCalledWith({
+      projectId: initialState.activeProjectId,
+      items: [
+        expect.objectContaining({
+          parameterId: initialState.parameters[0].id,
+          reason: "submit via api action"
+        })
+      ],
+      assignees: {
+        hardwareCommitterId: "u-wang-jie",
+        softwareCommitterId: "u-sun-mei",
+        softwareUserId: "u-sun-mei"
+      }
+    }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_PARAMETER_SUBMISSION_ROUND" }));
+  });
+
+  it("clicking stash calls parameterActions.stashChanges", async () => {
+    const dispatch = vi.fn();
+    const parameterActions = createParameterActions();
+    renderPage(dispatch, vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "stash via api action" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "暂存本轮 (1 项)" }));
+
+    await waitFor(() => expect(parameterActions.stashChanges).toHaveBeenCalledWith([
+      expect.objectContaining({
+        parameterId: initialState.parameters[0].id,
+        reason: "stash via api action"
+      })
+    ]));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "STASH_PARAMETER_SUBMISSION_ROUND" }));
+  });
+
+  it("submit button shows pending state while the action is unresolved", async () => {
+    const deferred = createDeferred<void>();
+    const parameterActions = createParameterActions({
+      submitChanges: vi.fn().mockReturnValue(deferred.promise)
+    });
+    const { container } = renderPage(vi.fn(), vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
+    const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
+    expect(confirmButton).not.toBeNull();
+    fireEvent.click(confirmButton!);
+
+    await waitFor(() => {
+      expect(confirmButton).toBeDisabled();
+      expect(confirmButton).toHaveTextContent("提交中");
+    });
+
+    deferred.resolve(undefined);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /提交本轮参数/ })).not.toBeInTheDocument());
+  });
+
+  it("action rejection displays a notification and keeps drafts visible", async () => {
+    const dispatch = vi.fn();
+    const parameterActions = createParameterActions({
+      submitChanges: vi.fn().mockResolvedValue({ notification: "api submit failed" })
+    });
+    const { container } = renderPage(dispatch, vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "keep this draft" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
+    fireEvent.click(container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
+
+    await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "api submit failed" }));
+    expect(screen.getByRole("dialog", { name: /提交本轮参数/ })).toBeInTheDocument();
+    expect(screen.getByText("keep this draft")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "本轮已修改参数区" })).toBeInTheDocument();
+  });
+
   it("builds preview and submit items from selected draft entries only", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
     const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsHaveTargets[\s\S]*?;/)?.[0] ?? "";

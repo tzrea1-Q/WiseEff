@@ -90,6 +90,42 @@ describe("ParameterManagementHomePage", () => {
     expect(screen.queryByRole("button", { name: /打开 管理后台/ })).not.toBeInTheDocument();
   });
 
+  it("shows a pending review action from API-hydrated parameter state after refresh", () => {
+    const apiProject = { id: "api-project", name: "API Hydrated Project", code: "API-HYD" };
+    const apiParameter = {
+      ...initialState.parameters[0],
+      id: "api-project-fast-charge",
+      projectId: apiProject.id,
+      name: "api_hydrated_fast_charge"
+    };
+    const apiReview = {
+      ...initialState.changeRequests[0],
+      id: "api-review-1",
+      parameterId: apiParameter.id,
+      projectId: apiProject.id,
+      title: "API hydrated pending review",
+      status: "硬件Committer检视" as const
+    };
+    const hydratedState = {
+      ...initialState,
+      activeRoleId: "hardware-committer",
+      configDraft: {
+        ...initialState.configDraft,
+        projects: [apiProject]
+      },
+      parameters: [apiParameter],
+      changeRequests: [apiReview],
+      parameterSubmissionRounds: [],
+      parameterInitializationReviews: []
+    };
+
+    render(<ParameterManagementHomePage state={hydratedState} onNavigate={vi.fn()} onNewProject={vi.fn()} />);
+
+    const nextActions = screen.getByRole("region", { name: "待办事项" });
+    expect(within(nextActions).getByRole("button", { name: /处理待审阅参数变更/ })).toBeInTheDocument();
+    expect(within(nextActions).getByText(/1 项待审阅/)).toBeInTheDocument();
+  });
+
   it("navigates from next actions and scenario entries with context", () => {
     const onNavigate = vi.fn();
 
