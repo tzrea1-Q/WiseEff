@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import App, { appReducer } from "./App";
@@ -230,6 +230,54 @@ describe("WiseEff app shell", () => {
     expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("advances an API-hydrated review with the request baseVersion as expectedVersion", async () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const apiReview = {
+      ...initialState.changeRequests[0],
+      id: "api-review-with-version",
+      parameterId: apiParameter.id,
+      projectId: apiProject.id,
+      status: "硬件Committer检视" as const,
+      baseVersion: 7
+    };
+    const parameterRepository = createAppParameterRepository({
+      listChangeRequests: vi.fn().mockResolvedValue([apiReview]),
+      reviewChange: vi.fn().mockResolvedValue({ ...apiReview, status: "软件Committer检视" })
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-reviewer",
+              organizationId: "org-chargelab",
+              name: "API Reviewer",
+              email: "api-reviewer@chargelab.cn",
+              title: "API Reviewer",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "hardware-committer" }],
+            permissions: ["parameter:review"]
+          })
+        }}
+        initialAppState={{ ...initialState, activeRoleId: "hardware-committer" }}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findAllByText("api-review-with-version")).not.toHaveLength(0);
+    fireEvent.click(within(screen.getByRole("complementary", { name: "审阅详情" })).getByRole("button", { name: "推进流程" }));
+
+    await waitFor(() => expect(parameterRepository.reviewChange).toHaveBeenCalledWith({
+      requestId: "api-review-with-version",
+      decision: "advance",
+      expectedVersion: 7
+    }));
   });
 
   it("hydrates parameter runtime state while preserving unrelated local state", () => {

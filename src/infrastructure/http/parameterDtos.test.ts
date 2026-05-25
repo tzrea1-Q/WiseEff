@@ -67,6 +67,7 @@ describe("parameter http dto mappers", () => {
       submissionRoundId: "PRS-1",
       projectId: "aurora",
       parameterId: "aurora-fast-charge-current",
+      baseVersion: 7,
       module: "Charging",
       title: "Fast charge current -> 3000",
       currentValue: "2800",

@@ -3062,8 +3062,13 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
     if (!selected) {
       return;
     }
+    const input = {
+      requestId: selected.id,
+      decision: "advance" as const,
+      ...(selected.baseVersion !== undefined ? { expectedVersion: selected.baseVersion } : {})
+    };
     const result = parameterActions
-      ? await parameterActions.reviewChange({ requestId: selected.id, decision: "advance", expectedVersion: undefined })
+      ? await parameterActions.reviewChange(input)
       : await Promise.resolve(dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id }));
     dispatchParameterActionFailure(result);
   };
