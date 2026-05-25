@@ -393,6 +393,36 @@ describe("mock parameter repository", () => {
     expect(parameters.some((parameter) => parameter.name === "Ineligible Runtime Parameter")).toBe(false);
   });
 
+  it("rejects explicitly selected conflict import items without consuming the batch", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const items = [
+      {
+        name: "Selected Conflict Runtime Parameter",
+        module: "Charging",
+        risk: "High",
+        unit: "mA",
+        range: "0-5000",
+        currentValue: "3100",
+        classification: "conflict"
+      }
+    ] satisfies Array<ParameterImportSourceItem & { classification: "conflict" }>;
+
+    const preview = await repository.createImportPreview({
+      projectId: "aurora",
+      sourceName: "runtime-conflict.csv",
+      items
+    });
+
+    await expect(
+      repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [preview.items[0].id] })
+    ).rejects.toThrow("Cannot apply import items with open change requests.");
+
+    const applied = await repository.applyImportBatch({ batchId: preview.id });
+    expect(applied.status).toBe("applied");
+    const parameters = await repository.listParameters({ projectId: "aurora" });
+    expect(parameters.some((parameter) => parameter.name === "Selected Conflict Runtime Parameter")).toBe(false);
+  });
+
   it("rejects an empty selected item list without consuming the batch", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 

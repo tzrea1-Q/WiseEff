@@ -433,6 +433,12 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       if (unknownSelectedIds.length > 0) {
         throw new Error(`Unknown selected import item ids: ${unknownSelectedIds.join(", ")}`);
       }
+      const conflictItem = selectedItemIds
+        ? batch.items.find((item) => selectedItemIds.includes(item.id) && item.classification === "conflict")
+        : undefined;
+      if (conflictItem) {
+        throw new Error("Cannot apply import items with open change requests.");
+      }
       const applied = {
         ...batch,
         status: "applied" as const,
