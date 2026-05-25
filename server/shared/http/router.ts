@@ -54,6 +54,18 @@ function matchRoute(entry: RouteEntry, request: RouteRequest) {
   return params;
 }
 
+function compareRoutePrecedence(left: RouteEntry, right: RouteEntry) {
+  for (let index = 0; index < left.segments.length; index += 1) {
+    const leftIsDynamic = left.segments[index].startsWith(":");
+    const rightIsDynamic = right.segments[index].startsWith(":");
+    if (leftIsDynamic !== rightIsDynamic) {
+      return leftIsDynamic ? 1 : -1;
+    }
+  }
+
+  return 0;
+}
+
 export function createRouter() {
   const routes: RouteEntry[] = [];
 
@@ -71,11 +83,7 @@ export function createRouter() {
       const matchingRoutes = routes
         .map((route) => ({ route, params: matchRoute(route, request) }))
         .filter((match): match is { route: RouteEntry; params: Record<string, string> } => match.params !== undefined)
-        .sort((left, right) => {
-          const leftDynamicSegments = left.route.segments.filter((segment) => segment.startsWith(":")).length;
-          const rightDynamicSegments = right.route.segments.filter((segment) => segment.startsWith(":")).length;
-          return leftDynamicSegments - rightDynamicSegments;
-        });
+        .sort((left, right) => compareRoutePrecedence(left.route, right.route));
       const match = matchingRoutes[0];
       if (!match) {
         throw new ApiError("NOT_FOUND", "Route not found.", 404, { path: request.path });

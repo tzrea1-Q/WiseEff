@@ -85,4 +85,28 @@ describe("createRouter", () => {
 
     expect(response.body).toEqual({ route: "exact" });
   });
+
+  it("prefers static segments over dynamic segments position by position", async () => {
+    const router = createRouter();
+    router.get("/api/v1/:scope/search", async (request) => ({
+      status: 200,
+      body: { route: "scope", scope: request.params.scope }
+    }));
+    router.get("/api/v1/parameters/:parameterId", async (request) => ({
+      status: 200,
+      body: { route: "parameter", parameterId: request.params.parameterId }
+    }));
+
+    const response = await router.handle({
+      method: "GET",
+      path: "/api/v1/parameters/search",
+      params: {},
+      query: {},
+      headers: {},
+      requestId: "req-1",
+      body: undefined
+    });
+
+    expect(response.body).toEqual({ route: "parameter", parameterId: "search" });
+  });
 });
