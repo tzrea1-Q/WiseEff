@@ -11,6 +11,13 @@ export type ProjectDto = {
   code: string;
 };
 
+export type ProjectModuleDto = {
+  id: string;
+  projectId: string;
+  name: string;
+  sortOrder: number;
+};
+
 export type ParameterHistoryEntryDto = {
   version: string;
   value: string;
