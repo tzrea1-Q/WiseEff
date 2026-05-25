@@ -59,8 +59,13 @@ describe("createParameterRuntimeActions", () => {
     const dispatch = vi.fn();
     const actions = createParameterRuntimeActions({ runtimeMode: "mock", dispatch });
     const draftItem = { parameterId: initialState.parameters[0].id, targetValue: "4100", reason: "Raise target" };
+    const assignees = {
+      hardwareCommitterId: "u-wang-jie",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-chen-na"
+    };
 
-    await actions.submitChanges({ projectId: "aurora", items: [draftItem], reason: "submit reason" });
+    await actions.submitChanges({ projectId: "aurora", items: [draftItem], reason: "submit reason", assignees });
     await actions.stashChanges([draftItem]);
     await actions.reviewChange({ requestId: "CR-1", decision: "advance", note: "Looks good" });
     await actions.reviewChange({ requestId: "CR-2", decision: "reject", note: "Needs data" });
@@ -69,7 +74,8 @@ describe("createParameterRuntimeActions", () => {
     expect(dispatch).toHaveBeenNthCalledWith(1, {
       type: "ADD_PARAMETER_SUBMISSION_ROUND",
       items: [draftItem],
-      reason: "submit reason"
+      reason: "submit reason",
+      assignees
     });
     expect(dispatch).toHaveBeenNthCalledWith(2, { type: "STASH_PARAMETER_SUBMISSION_ROUND", items: [draftItem] });
     expect(dispatch).toHaveBeenNthCalledWith(3, { type: "ADVANCE_REVIEW", requestId: "CR-1", note: "Looks good" });

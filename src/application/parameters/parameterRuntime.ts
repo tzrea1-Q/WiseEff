@@ -47,7 +47,16 @@ export type ParameterRuntimeRefreshOptions = {
 
 type ParameterRuntimeDispatchAction =
   | HydrateParameterRuntimeAction
-  | { type: "ADD_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[]; reason?: string }
+  | {
+      type: "ADD_PARAMETER_SUBMISSION_ROUND";
+      items: ParameterDraftItem[];
+      reason?: string;
+      assignees?: {
+        hardwareCommitterId: string;
+        softwareCommitterId: string;
+        softwareUserId: string;
+      };
+    }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
   | { type: "ADVANCE_REVIEW"; requestId: string; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string }
@@ -130,7 +139,7 @@ export function createParameterRuntimeActions({
   return {
     async submitChanges(input) {
       if (runtimeMode !== "api") {
-        dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: input.items, reason: input.reason });
+        dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: input.items, reason: input.reason, assignees: input.assignees });
         return undefined;
       }
 

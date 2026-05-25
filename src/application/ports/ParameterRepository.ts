@@ -43,6 +43,11 @@ export type SubmitParameterChangesInput = {
   projectId: string;
   items: Array<{ parameterId: string; targetValue: string; reason: string }>;
   reason?: string;
+  assignees?: {
+    hardwareCommitterId: string;
+    softwareCommitterId: string;
+    softwareUserId: string;
+  };
 };
 
 export type ReviewParameterChangeInput = {
