@@ -421,17 +421,12 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       if (unknownSelectedIds.length > 0) {
         throw new Error(`Unknown selected import item ids: ${unknownSelectedIds.join(", ")}`);
       }
-      const selectedItemSet = new Set(selectedItemIds);
-      const selectedItems = batch.items.filter((item) => selectedItemSet.has(item.id));
-      if (selectedItems.length === 0) {
-        throw new Error("No selected import items matched the batch.");
-      }
       const applied = {
         ...batch,
         status: "applied" as const,
         appliedAt: MOCK_CONTRACT_NOW,
         summary: { ...batch.summary },
-        items: selectedItems.map((item) => ({ ...item }))
+        items: batch.items.map((item) => ({ ...item }))
       };
       writeMockState(runtime, applyImportItemsToState(readMockState(runtime), batch, selectedItemIds));
       importBatches.set(input.batchId, cloneImportBatch(applied));

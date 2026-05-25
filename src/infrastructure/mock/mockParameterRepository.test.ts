@@ -280,6 +280,7 @@ describe("mock parameter repository", () => {
       status: "applied",
       appliedAt: "2026-05-25T00:00:00.000Z"
     });
+    expect(applied.items).toHaveLength(preview.items.length);
     await expect(repository.applyImportBatch({ batchId: preview.id })).rejects.toThrow("Import batch already applied: import-aurora-parameters-csv");
   });
 
@@ -345,15 +346,17 @@ describe("mock parameter repository", () => {
       ]
     });
 
-    await repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [preview.items[0].id] });
+    const applied = await repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [preview.items[0].id] });
 
     const parameters = await repository.listParameters({ projectId: "aurora" });
 
+    expect(applied.items).toHaveLength(preview.items.length);
+    expect(applied.items.map((item) => item.name)).toEqual(preview.items.map((item) => item.name));
     expect(parameters.some((parameter) => parameter.name === "Selected Runtime Parameter")).toBe(true);
     expect(parameters.some((parameter) => parameter.name === "Skipped Runtime Parameter")).toBe(false);
   });
 
-  it("rejects unknown selected import item ids", async () => {
+  it("accepts an empty selected item list as a no-op apply", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 
     const preview = await repository.createImportPreview({
@@ -371,9 +374,12 @@ describe("mock parameter repository", () => {
       ]
     });
 
-    await expect(repository.applyImportBatch({ batchId: preview.id, selectedItemIds: ["missing-id"] })).rejects.toThrow(
-      "Unknown selected import item ids: missing-id"
-    );
+    const applied = await repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [] });
+
+    expect(applied.items).toHaveLength(preview.items.length);
+    expect(applied.items[0].id).toBe(preview.items[0].id);
+    const parameters = await repository.listParameters({ projectId: "aurora" });
+    expect(parameters.some((parameter) => parameter.name === "Selected Runtime Parameter")).toBe(false);
   });
 
   it("protects stored import batches from returned object mutation", async () => {
