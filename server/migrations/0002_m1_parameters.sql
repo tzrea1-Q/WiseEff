@@ -155,6 +155,8 @@ create index if not exists projects_organization_id_idx on projects(organization
 create index if not exists parameter_definitions_org_module_risk_idx on parameter_definitions(organization_id, module, risk);
 create index if not exists project_parameter_values_project_idx on project_parameter_values(project_id, updated_at desc);
 create index if not exists parameter_history_value_idx on parameter_history_entries(project_parameter_value_id, changed_at desc);
+create unique index if not exists parameter_history_entries_value_version_unique_idx
+  on parameter_history_entries(project_parameter_value_id, version);
 create index if not exists parameter_drafts_user_project_idx on parameter_drafts(user_id, project_id, updated_at desc);
 create index if not exists parameter_change_requests_project_status_idx on parameter_change_requests(project_id, status, updated_at desc);
 create unique index if not exists parameter_change_requests_open_unique_idx

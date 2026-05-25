@@ -169,6 +169,7 @@ Indexes:
 Indexes:
 
 - `parameter_history_value_idx` on `project_parameter_value_id, changed_at desc`
+- `parameter_history_entries_value_version_unique_idx` unique on `project_parameter_value_id, version`
 
 Seed behavior:
 
