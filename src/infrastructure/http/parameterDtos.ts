@@ -13,16 +13,14 @@ import type { ParameterDraftDto as PortParameterDraftDto, ParameterImportBatchDt
 export type BackendRiskLevel = "high" | "medium" | "low";
 
 export type BackendRequestStatus =
+  | "submitted"
   | "hardware_review"
   | "software_review"
-  | "software_user_merge"
-  | "pending_review"
-  | "auto_check_passed"
-  | "waiting_merge"
+  | "software_merge"
   | "merged"
   | "rejected"
   | "withdrawn"
-  | "draft";
+  | "stashed";
 
 export type ProjectDto = ProjectSummary;
 
@@ -62,16 +60,14 @@ const riskLabels: Record<BackendRiskLevel, RiskLevel> = {
 };
 
 const requestStatusLabels: Record<BackendRequestStatus, ParameterSubmissionRound["status"]> = {
+  submitted: "待审阅",
   hardware_review: "硬件Committer检视",
   software_review: "软件Committer检视",
-  software_user_merge: "软件User合入",
-  pending_review: "待审阅",
-  auto_check_passed: "自动检查通过",
-  waiting_merge: "等待合入",
+  software_merge: "软件User合入",
   merged: "已合入",
   rejected: "已打回",
   withdrawn: "已撤回",
-  draft: "已暂存"
+  stashed: "已暂存"
 };
 
 export function projectFromDto(dto: ProjectDto): ProjectSummary {

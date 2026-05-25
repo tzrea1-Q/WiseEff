@@ -117,7 +117,7 @@ describe("parameter http dto mappers", () => {
       projectName: "Aurora EV Platform",
       submitter: "Xu Yun",
       createdAt: "2026-05-25 10:00",
-      status: "waiting_merge",
+      status: "software_merge",
       summary: "1 parameter submitted.",
       items: [
         {
@@ -136,7 +136,7 @@ describe("parameter http dto mappers", () => {
 
     expect(submissionRoundFromDto(dto)).toEqual({
       ...dto,
-      status: "等待合入",
+      status: "软件User合入",
       items: [{ ...dto.items[0], risk: "Low" }]
     });
   });

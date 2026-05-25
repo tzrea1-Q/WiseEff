@@ -1,14 +1,12 @@
 export const parameterChangeStatuses = [
+  "submitted",
   "hardware_review",
   "software_review",
-  "software_user_merge",
-  "pending_review",
-  "auto_check_passed",
-  "waiting_merge",
+  "software_merge",
   "merged",
   "rejected",
   "withdrawn",
-  "draft"
+  "stashed"
 ] as const;
 
 export const parameterReviewDecisions = ["advance", "reject"] as const;
