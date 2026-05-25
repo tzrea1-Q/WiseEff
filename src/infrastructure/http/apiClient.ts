@@ -44,6 +44,11 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
         method: "POST",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
+      }),
+    delete: <T>(path: string) =>
+      request<T>(path, {
+        method: "DELETE",
+        headers: { Accept: "application/json" }
       })
   };
 }

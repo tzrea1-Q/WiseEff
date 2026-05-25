@@ -72,7 +72,7 @@ describe("mock parameter repository", () => {
     await expect(repository.getParameter("missing-parameter")).rejects.toThrow("Parameter not found: missing-parameter");
   });
 
-  it("supports deterministic draft methods without broad state mutation", async () => {
+  it("stores and deletes drafts per project", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 
     await expect(repository.listDrafts("aurora")).resolves.toEqual([]);
@@ -91,7 +91,19 @@ describe("mock parameter repository", () => {
       reason: "mock draft",
       updatedAt: "2026-05-25T00:00:00.000Z"
     });
+    await expect(repository.listDrafts("aurora")).resolves.toEqual([
+      {
+        id: "draft-aurora-aurora-fast-charge-current",
+        projectId: "aurora",
+        parameterId: "aurora-fast-charge-current",
+        targetValue: "3200",
+        reason: "mock draft",
+        updatedAt: "2026-05-25T00:00:00.000Z"
+      }
+    ]);
+    await expect(repository.listDrafts("nebula")).resolves.toEqual([]);
     await expect(repository.deleteDraft("draft-aurora-aurora-fast-charge-current")).resolves.toBeUndefined();
+    await expect(repository.listDrafts("aurora")).resolves.toEqual([]);
   });
 
   it("returns submission round copies that cannot mutate runtime state", async () => {
@@ -121,9 +133,9 @@ describe("mock parameter repository", () => {
     expect(rereadRequest.impact[0].name).toBe(originalImpactName);
   });
 
-  it("returns a cloned change request from reviewChange without state transition", async () => {
+  it("updates a change request from reviewChange consistently with reducer workflow", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
-    const [request] = await repository.listChangeRequests();
+    const request = (await repository.listChangeRequests()).find((item) => item.status === "硬件Committer检视")!;
 
     const reviewed = await repository.reviewChange({
       requestId: request.id,
@@ -133,9 +145,29 @@ describe("mock parameter repository", () => {
 
     reviewed.aiSuggestion.reasons[0] = "mutated";
 
-    const [rereadRequest] = await repository.listChangeRequests();
+    const rereadRequest = (await repository.listChangeRequests()).find((item) => item.id === request.id)!;
     expect(reviewed.id).toBe(request.id);
+    expect(reviewed.status).toBe("软件Committer检视");
+    expect(reviewed.reviewerNote).toBe("contract smoke test");
     expect(rereadRequest.aiSuggestion.reasons[0]).toBe(request.aiSuggestion.reasons[0]);
+    expect(rereadRequest.status).toBe("软件Committer检视");
+  });
+
+  it("rejects a change request from reviewChange and updates its submission round", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const request = (await repository.listChangeRequests()).find((item) => item.submissionRoundId)!;
+
+    const reviewed = await repository.reviewChange({
+      requestId: request.id,
+      decision: "reject",
+      note: "Missing evidence"
+    });
+
+    const round = (await repository.listSubmissionRounds()).find((item) => item.id === request.submissionRoundId)!;
+
+    expect(reviewed.status).toBe("已打回");
+    expect(reviewed.rejectReason).toBe("Missing evidence");
+    expect(round.status).toBe("已打回");
   });
 
   it("creates and applies deterministic import batch previews", async () => {

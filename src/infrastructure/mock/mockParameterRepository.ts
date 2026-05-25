@@ -13,7 +13,9 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import { submitParameterRound, type BuildRuntimeReviewFields } from "@/domain/parameters/commands";
 import type { ChangeRequest, ParameterHistoryEntry, ParameterRecord, ParameterSubmissionRound } from "@/domain/parameters/types";
-import { projects, roles } from "@/mockData";
+import { canPerform } from "@/app/permissions";
+import { roleSupportsWorkflowSlot } from "@/domain/users/types";
+import { projects, roles, type PrototypeState } from "@/mockData";
 import { buildAISuggestion, buildImpactItems, REVIEW_MOCK_NOW } from "@/reviewMockData";
 import { type MockRuntimeState, readMockState, writeMockState } from "./mockState";
 
@@ -52,6 +54,10 @@ function cloneSubmissionRound(round: ParameterSubmissionRound): ParameterSubmiss
 }
 
 const MOCK_CONTRACT_NOW = "2026-05-25T00:00:00.000Z";
+
+type MockParameterRepositoryRuntimeState = MockRuntimeState & {
+  parameterDrafts?: ParameterDraftDto[];
+};
 
 function slugForId(value: string) {
   return value
@@ -93,6 +99,99 @@ function cloneImportBatch(batch: ParameterImportBatchDto): ParameterImportBatchD
   };
 }
 
+function readDrafts(runtime: MockParameterRepositoryRuntimeState) {
+  return runtime.parameterDrafts ?? [];
+}
+
+function writeDrafts(runtime: MockParameterRepositoryRuntimeState, drafts: ParameterDraftDto[]) {
+  runtime.parameterDrafts = drafts;
+}
+
+function cloneDraft(draft: ParameterDraftDto): ParameterDraftDto {
+  return { ...draft };
+}
+
+function getNextReviewStep(request: ChangeRequest): Pick<ChangeRequest, "status" | "assignedTo"> {
+  switch (request.status) {
+    case "硬件Committer检视":
+    case "待审阅":
+      return {
+        status: "软件Committer检视",
+        assignedTo: request.workflowAssignees?.softwareCommitterId ?? request.assignedTo
+      };
+    case "软件Committer检视":
+    case "自动检查通过":
+      return {
+        status: "软件User合入",
+        assignedTo: request.workflowAssignees?.softwareUserId ?? request.assignedTo
+      };
+    default:
+      return {
+        status: "已合入",
+        assignedTo: request.assignedTo
+      };
+  }
+}
+
+function updateRoundStatusAfterRequest(rounds: ParameterSubmissionRound[], request: ChangeRequest, status: ChangeRequest["status"]) {
+  if (!request.submissionRoundId) {
+    return rounds;
+  }
+
+  return rounds.map((round) => (round.id === request.submissionRoundId ? { ...round, status } : round));
+}
+
+function canAdvanceReviewRequest(activeRoleId: string, request: ChangeRequest) {
+  if (request.status === "软件User合入") {
+    return roleSupportsWorkflowSlot(activeRoleId, "softwareUser");
+  }
+
+  return canPerform(activeRoleId, "parameter.review");
+}
+
+function applyReviewChange(state: PrototypeState, input: ReviewParameterChangeInput): PrototypeState {
+  const target = state.changeRequests.find((request) => request.id === input.requestId);
+  if (!target) {
+    throw new Error(`Change request not found: ${input.requestId}`);
+  }
+
+  if (input.decision === "reject") {
+    if (!canPerform(state.activeRoleId, "parameter.review")) return state;
+    return {
+      ...state,
+      changeRequests: state.changeRequests.map((request) =>
+        request.id === input.requestId
+          ? {
+              ...request,
+              status: "已打回",
+              rejectReason: input.note,
+              updatedAt: new Date().toISOString()
+            }
+          : request
+      ),
+      parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, "已打回")
+    };
+  }
+
+  if (!canAdvanceReviewRequest(state.activeRoleId, target)) return state;
+  const nextStep = getNextReviewStep(target);
+
+  return {
+    ...state,
+    changeRequests: state.changeRequests.map((request) =>
+      request.id === input.requestId
+        ? {
+            ...request,
+            ...nextStep,
+            reviewerNote: input.note ?? request.reviewerNote,
+            updatedAt: new Date().toISOString()
+          }
+        : request
+    ),
+    parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, nextStep.status)
+  };
+}
+
 const buildRuntimeReviewFields: BuildRuntimeReviewFields = (summary, module) => {
   const suggestion = buildAISuggestion({
     recommendation: "needs-review",
@@ -113,6 +212,7 @@ const buildRuntimeReviewFields: BuildRuntimeReviewFields = (summary, module) => 
 };
 
 export function createMockParameterRepository(runtime: MockRuntimeState): ParameterRepository {
+  const repositoryRuntime = runtime as MockParameterRepositoryRuntimeState;
   const importBatches = new Map<string, ParameterImportBatchDto>();
 
   return {
@@ -132,11 +232,13 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       if (!parameter) throw new Error(`Parameter not found: ${parameterId}`);
       return parameter.history.map((entry) => ({ ...entry }));
     },
-    async listDrafts(): Promise<ParameterDraftDto[]> {
-      return [];
+    async listDrafts(projectId?: string): Promise<ParameterDraftDto[]> {
+      return readDrafts(repositoryRuntime)
+        .filter((draft) => !projectId || draft.projectId === projectId)
+        .map(cloneDraft);
     },
     async saveDraft(input: SaveParameterDraftInput): Promise<ParameterDraftDto> {
-      return {
+      const draft = {
         id: `draft-${input.projectId}-${input.parameterId}`,
         projectId: input.projectId,
         parameterId: input.parameterId,
@@ -144,9 +246,17 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
         reason: input.reason,
         updatedAt: MOCK_CONTRACT_NOW
       };
+      writeDrafts(repositoryRuntime, [
+        draft,
+        ...readDrafts(repositoryRuntime).filter((item) => item.id !== draft.id && !(item.projectId === input.projectId && item.parameterId === input.parameterId))
+      ]);
+      return cloneDraft(draft);
     },
-    async deleteDraft(): Promise<void> {
-      return undefined;
+    async deleteDraft(draftId: string): Promise<void> {
+      writeDrafts(
+        repositoryRuntime,
+        readDrafts(repositoryRuntime).filter((draft) => draft.id !== draftId)
+      );
     },
     async listChangeRequests(): Promise<ChangeRequest[]> {
       return readMockState(runtime).changeRequests.map(cloneChangeRequest);
@@ -161,6 +271,8 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       return cloneSubmissionRound(next.parameterSubmissionRounds[0]);
     },
     async reviewChange(input: ReviewParameterChangeInput): Promise<ChangeRequest> {
+      const next = applyReviewChange(readMockState(runtime), input);
+      writeMockState(runtime, next);
       const request = readMockState(runtime).changeRequests.find((row) => row.id === input.requestId);
       if (!request) throw new Error(`Change request not found: ${input.requestId}`);
       return cloneChangeRequest(request);
