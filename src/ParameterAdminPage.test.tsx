@@ -387,6 +387,10 @@ describe("ParameterAdminPage", () => {
     const checkboxes = within(dialog).getAllByRole("checkbox");
     expect(checkboxes.map((checkbox) => (checkbox as HTMLInputElement).checked)).toEqual([true, true, false, false]);
     expect(checkboxes.map((checkbox) => (checkbox as HTMLInputElement).disabled)).toEqual([false, false, true, true]);
+    expect(within(dialog).getByText("added")).toBeInTheDocument();
+    expect(within(dialog).getByText("updated")).toBeInTheDocument();
+    expect(within(dialog).getByText("unchanged · not eligible")).toBeInTheDocument();
+    expect(within(dialog).getByText("conflict · not eligible")).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "应用导入" }));
 

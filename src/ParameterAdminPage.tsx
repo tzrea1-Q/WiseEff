@@ -25,6 +25,10 @@ function isEligibleImportItem(item: ParameterImportBatchDto["items"][number]) {
   return item.classification === "added" || item.classification === "updated";
 }
 
+function getImportClassificationLabel(item: ParameterImportBatchDto["items"][number]) {
+  return isEligibleImportItem(item) ? item.classification : `${item.classification} · not eligible`;
+}
+
 export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
@@ -568,6 +572,7 @@ function ParameterImportDialog({
                       onChange={() => toggleItem(item.id)}
                     />
                     <strong>{item.name}</strong>
+                    <small>{getImportClassificationLabel(item)}</small>
                     <small>{item.module} · {item.risk}</small>
                   </label>
                 );
