@@ -7,17 +7,23 @@ import {
   deleteDraft,
   findOpenChangeRequest,
   getChangeRequestById,
+  getImportBatchForUpdate,
   getParameterById,
   getProjectParameterForUpdate,
   insertReviewDecision,
+  insertImportBatch,
   listChangeRequests,
   listDraftsForUser,
   listParameterHistory,
   listParameters,
+  listParameterDefinitionsForImport,
   listReviewDecisions,
   listProjects,
   listSubmissionRounds,
   mergeChangeRequest,
+  applyAddedImportItem,
+  applyUpdatedImportItem,
+  markImportBatchApplied,
   updateChangeRequestStatus,
   updateSubmissionRoundStatusFromRequests,
   upsertDraft
@@ -547,5 +553,189 @@ describe("parameter repository", () => {
     expect(calls[0].text).toContain("from parameter_change_requests");
     expect(calls[1].text).toContain("update parameter_submission_rounds");
     expect(calls[1].values).toEqual(["org-chargelab", "round-1", "software_merge"]);
+  });
+
+  it("lists import match candidates by definition id or name", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "definition-1",
+          name: "fast_charge_current_limit_ma",
+          description: "Limit fast charge current.",
+          explanation: "Controls fast charging current.",
+          config_format: "ENV: FAST_CHARGE_CURRENT=number",
+          module: "Charging Policy",
+          default_range: "1000 - 5000",
+          unit: "mA",
+          risk: "High",
+          project_parameter_value_id: "param-1",
+          current_value: "3200",
+          recommended_value: "3000",
+          value_version: 7
+        }
+      ]
+    ]);
+
+    const rows = await listParameterDefinitionsForImport(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      names: ["fast_charge_current_limit_ma"],
+      definitionIds: ["definition-1"]
+    });
+
+    expect(calls[0].text).toContain("from parameter_definitions pd");
+    expect(calls[0].text).toContain("left join project_parameter_values ppv");
+    expect(calls[0].text).toContain("(pd.name = any($3::text[]) or pd.id = any($4::text[]))");
+    expect(calls[0].values).toEqual(["org-chargelab", "project-1", ["fast_charge_current_limit_ma"], ["definition-1"]]);
+    expect(rows[0]).toMatchObject({
+      id: "definition-1",
+      name: "fast_charge_current_limit_ma",
+      projectParameterValueId: "param-1",
+      currentValue: "3200",
+      valueVersion: 7
+    });
+  });
+
+  it("inserts and loads import preview batches as jsonb payloads", async () => {
+    const items = [
+      {
+        id: "item-1",
+        name: "thermal_guard_threshold_c",
+        module: "Thermal",
+        risk: "Medium" as const,
+        unit: "C",
+        range: "40 - 90",
+        currentValue: "72",
+        classification: "added" as const,
+        definitionId: "thermal_guard_threshold_c",
+        projectParameterValueId: "project-1-thermal_guard_threshold_c",
+        riskFlag: false
+      }
+    ];
+    const batchRow = {
+      id: "batch-1",
+      project_id: "project-1",
+      source_name: "admin-upload.csv",
+      status: "previewed",
+      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items,
+      created_at: "2026-05-25T06:00:00.000Z",
+      applied_at: null
+    };
+    const { db, calls } = createFakeDb([[batchRow], [batchRow]]);
+
+    const inserted = await insertImportBatch(db, {
+      id: "batch-1",
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      createdByUserId: "user-1",
+      sourceName: "admin-upload.csv",
+      summary: batchRow.summary,
+      items: batchRow.items
+    });
+    const loaded = await getImportBatchForUpdate(db, {
+      organizationId: "org-chargelab",
+      batchId: "batch-1"
+    });
+
+    expect(calls[0].text).toContain("insert into parameter_import_batches");
+    expect(calls[0].values).toEqual([
+      "batch-1",
+      "org-chargelab",
+      "project-1",
+      "user-1",
+      "admin-upload.csv",
+      "previewed",
+      JSON.stringify(batchRow.summary),
+      JSON.stringify(batchRow.items)
+    ]);
+    expect(calls[1].text).toContain("for update");
+    expect(loaded).toEqual(inserted);
+  });
+
+  it("applies added and updated import items with history rows", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "item-added",
+          definition_id: "thermal_guard_threshold_c",
+          project_parameter_value_id: "project-1-thermal_guard_threshold_c",
+          new_version: 1
+        }
+      ],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [
+        {
+          id: "batch-1",
+          project_id: "project-1",
+          source_name: "admin-upload.csv",
+          status: "applied",
+          summary: { added: 1, updated: 1, unchanged: 0, conflict: 0, highRisk: 1 },
+          items: [],
+          created_at: "2026-05-25T06:00:00.000Z",
+          applied_at: "2026-05-25T07:00:00.000Z"
+        }
+      ]
+    ]);
+
+    await applyAddedImportItem(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      actorUserId: "user-1",
+      historyId: "history-added",
+      item: {
+        id: "item-added",
+        definitionId: "thermal_guard_threshold_c",
+        projectParameterValueId: "project-1-thermal_guard_threshold_c",
+        name: "thermal_guard_threshold_c",
+        module: "Thermal",
+        risk: "Medium",
+        unit: "C",
+        range: "40 - 90",
+        currentValue: "72",
+        recommendedValue: "70",
+        description: "",
+        explanation: "",
+        configFormat: "",
+        classification: "added",
+        riskFlag: false
+      }
+    });
+    await applyUpdatedImportItem(db, {
+      organizationId: "org-chargelab",
+      actorUserId: "user-1",
+      historyId: "history-updated",
+      item: {
+        id: "item-updated",
+        definitionId: "definition-1",
+        projectParameterValueId: "param-1",
+        currentValue: "4000",
+        recommendedValue: "3800",
+        name: "fast_charge_current_limit_ma",
+        module: "Charging Policy",
+        risk: "High",
+        unit: "mA",
+        range: "1000 - 5000",
+        classification: "updated",
+        riskFlag: true
+      }
+    });
+    await markImportBatchApplied(db, { organizationId: "org-chargelab", batchId: "batch-1" });
+
+    expect(calls[0].text).toContain("insert into parameter_definitions");
+    expect(calls[0].text).toContain("insert into project_parameter_values");
+    expect(calls[0].text).toContain("insert into parameter_history_entries");
+    expect(calls[1].text).toContain("update project_parameter_values");
+    expect(calls[1].text).toContain("recommended_value = coalesce($6, ppv.recommended_value)");
+    expect(calls[1].text).toContain("insert into parameter_history_entries");
+    expect(calls[2].text).toContain("update parameter_import_batches");
+    expect(calls[2].values).toEqual(["org-chargelab", "batch-1"]);
   });
 });

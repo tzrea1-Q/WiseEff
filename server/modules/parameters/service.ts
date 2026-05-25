@@ -4,9 +4,12 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
+import { canAdminParameters, canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import {
+  applyAddedImportItem,
+  applyUpdatedImportItem,
   createChangeRequest,
+  getImportBatchForUpdate,
   createSubmissionItem,
   createSubmissionRound,
   deleteDraft as deleteDraftRow,
@@ -14,17 +17,24 @@ import {
   findOpenChangeRequest,
   getChangeRequestById,
   getProjectParameterForUpdate,
+  insertImportBatch,
   insertReviewDecision,
+  listParameterDefinitionsForImport,
   listChangeRequests as listChangeRequestRows,
   listDraftsForUser,
   listReviewDecisions,
   listSubmissionRounds as listSubmissionRoundRows,
+  markImportBatchApplied,
   mergeChangeRequest,
+  type ParameterDefinitionImportCandidate,
+  type PersistedImportBatchItem,
   updateChangeRequestStatus,
   updateSubmissionRoundStatusFromRequests,
   upsertDraft
 } from "./repository";
+import { applyImportBatchBodySchema, createImportBatchBodySchema } from "./schemas";
 import { getNextParameterStatus, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
+import type { ParameterImportSourceItemDto, ParameterImportSummaryDto } from "./types";
 
 export type SaveDraftInput = {
   projectId: string;
@@ -66,6 +76,18 @@ export type ReviewParameterChangeInput = {
   expectedVersion?: number;
 };
 
+export type CreateImportPreviewInput = {
+  projectId: string;
+  sourceName: string;
+  items: Array<ParameterImportSourceItemDto & { id?: string }>;
+};
+
+export type ApplyImportBatchInput = {
+  batchId: string;
+  selectedItemIds?: string[];
+  expectedVersion?: number;
+};
+
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
@@ -75,6 +97,12 @@ function requireCanView(auth: AuthContext) {
 function requireCanEdit(auth: AuthContext) {
   if (!canEditParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
+  }
+}
+
+function requireCanAdminImport(auth: AuthContext) {
+  if (!canAdminParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403);
   }
 }
 
@@ -116,6 +144,95 @@ function assertUniqueSubmissionParameters(items: SubmitParameterChangesInput["it
 
     parameterIds.add(item.parameterId);
   }
+}
+
+function assertValidCreateImportInput(input: CreateImportPreviewInput) {
+  const parsed = createImportBatchBodySchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ApiError("VALIDATION_FAILED", "Invalid parameter import item.", 400, {
+      issues: parsed.error.issues
+    });
+  }
+
+  return parsed.data;
+}
+
+function assertValidApplyImportInput(input: ApplyImportBatchInput) {
+  const parsed = applyImportBatchBodySchema.safeParse(input);
+  if (!parsed.success) {
+    throw new ApiError("VALIDATION_FAILED", "Invalid parameter import apply request.", 400, {
+      issues: parsed.error.issues
+    });
+  }
+
+  return parsed.data;
+}
+
+function normalizeSlug(value: string) {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return slug || "parameter";
+}
+
+function createUniqueId(base: string, used: Set<string>) {
+  let candidate = base;
+  let index = 2;
+  while (used.has(candidate)) {
+    candidate = `${base}_${index}`;
+    index += 1;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
+function valuesMatch(left: string | undefined, right: string | undefined) {
+  return (left ?? "") === (right ?? "");
+}
+
+function itemDiffers(item: ParameterImportSourceItemDto, existing: ParameterDefinitionImportCandidate) {
+  return !(
+    valuesMatch(item.name, existing.name) &&
+    valuesMatch(item.module, existing.module) &&
+    valuesMatch(item.risk, existing.risk) &&
+    valuesMatch(item.unit, existing.unit) &&
+    valuesMatch(item.range, existing.range) &&
+    valuesMatch(item.description, existing.description) &&
+    valuesMatch(item.explanation, existing.explanation) &&
+    valuesMatch(item.configFormat, existing.configFormat) &&
+    valuesMatch(item.currentValue, existing.currentValue) &&
+    valuesMatch(item.recommendedValue, existing.recommendedValue)
+  );
+}
+
+function parseNumericValue(value: string | undefined) {
+  if (!value) return null;
+  const numeric = Number(value.trim());
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function hasHighRiskDelta(item: ParameterImportSourceItemDto, existing: ParameterDefinitionImportCandidate | undefined) {
+  if (item.risk !== "High" || !existing) return false;
+
+  const current = parseNumericValue(existing.currentValue ?? existing.recommendedValue);
+  const next = parseNumericValue(item.currentValue ?? item.recommendedValue);
+  if (current === null || next === null || current === 0) return false;
+
+  return Math.abs(next - current) / Math.abs(current) > 0.2;
+}
+
+function summarizeImportItems(items: PersistedImportBatchItem[]): ParameterImportSummaryDto {
+  return items.reduce<ParameterImportSummaryDto>(
+    (summary, item) => {
+      summary[item.classification] += 1;
+      if (item.riskFlag) summary.highRisk += 1;
+      return summary;
+    },
+    { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 }
+  );
 }
 
 async function loadParameterForSubmission(
@@ -215,6 +332,184 @@ async function createParameterReviewAudit(
       expectedVersion: input.expectedVersion
     },
     traceId: randomUUID()
+  });
+}
+
+async function createImportAudit(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    projectId: string;
+    batchId: string;
+    summary: { added: number; updated: number; skipped: number };
+  }
+) {
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "parameter-management",
+    kind: "batch-import",
+    action: "apply",
+    severity: "High",
+    targetType: "parameter-import-batch",
+    targetId: input.batchId,
+    metadata: {
+      batchId: input.batchId,
+      summary: input.summary
+    },
+    traceId: randomUUID()
+  });
+}
+
+export async function createImportPreview(db: Queryable, auth: AuthContext, input: CreateImportPreviewInput) {
+  requireCanAdminImport(auth);
+  const parsed = assertValidCreateImportInput(input);
+  const names = parsed.items.map((item) => item.name);
+  const definitionIds = parsed.items.map((item) => item.id).filter((id): id is string => Boolean(id));
+  const candidates = await listParameterDefinitionsForImport(db, {
+    organizationId: auth.organization.id,
+    projectId: parsed.projectId,
+    names,
+    definitionIds
+  });
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
+  const usedItemIds = new Set<string>();
+  const usedDefinitionIds = new Set(candidates.map((candidate) => candidate.id));
+  const previewItems: PersistedImportBatchItem[] = [];
+
+  for (const sourceItem of parsed.items) {
+    const existing = sourceItem.id ? byId.get(sourceItem.id) : byName.get(sourceItem.name);
+    const itemId = createUniqueId(sourceItem.id ?? normalizeSlug(sourceItem.name), usedItemIds);
+    const definitionId = existing?.id ?? createUniqueId(sourceItem.id ?? normalizeSlug(sourceItem.name), usedDefinitionIds);
+    const projectParameterValueId = existing?.projectParameterValueId ?? `${parsed.projectId}-${definitionId}`;
+    const openRequest = existing?.projectParameterValueId
+      ? await findOpenChangeRequest(db, {
+          organizationId: auth.organization.id,
+          projectId: parsed.projectId,
+          parameterId: existing.projectParameterValueId
+        })
+      : null;
+    const classification = !existing
+      ? "added"
+      : openRequest
+        ? "conflict"
+        : itemDiffers(sourceItem, existing)
+          ? "updated"
+          : "unchanged";
+
+    previewItems.push({
+      id: itemId,
+      name: sourceItem.name,
+      module: sourceItem.module,
+      risk: sourceItem.risk,
+      unit: sourceItem.unit,
+      range: sourceItem.range,
+      currentValue: sourceItem.currentValue,
+      recommendedValue: sourceItem.recommendedValue,
+      description: sourceItem.description ?? "",
+      explanation: sourceItem.explanation ?? "",
+      configFormat: sourceItem.configFormat ?? "",
+      classification,
+      definitionId,
+      projectParameterValueId,
+      riskFlag: classification === "updated" && hasHighRiskDelta(sourceItem, existing)
+    });
+  }
+
+  const summary = summarizeImportItems(previewItems);
+  return insertImportBatch(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: parsed.projectId,
+    createdByUserId: auth.user.id,
+    sourceName: parsed.sourceName,
+    summary,
+    items: previewItems
+  });
+}
+
+export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput) {
+  requireCanAdminImport(auth);
+  const parsed = assertValidApplyImportInput(input);
+
+  return db.transaction(async (tx) => {
+    const batch = await getImportBatchForUpdate(tx, {
+      organizationId: auth.organization.id,
+      batchId: parsed.batchId
+    });
+
+    if (!batch) {
+      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", 404, { batchId: parsed.batchId });
+    }
+    if (batch.status !== "previewed") {
+      throw new ApiError("CONFLICT", "Parameter import batch has already been applied.", 409, { batchId: parsed.batchId });
+    }
+
+    const selectedIds = parsed.selectedItemIds ? new Set(parsed.selectedItemIds) : null;
+    const selectedItems = batch.items.filter(
+      (item) => item.classification !== "unchanged" && (!selectedIds || selectedIds.has(item.id))
+    );
+    const conflictItem = selectedItems.find((item) => item.classification === "conflict");
+    if (conflictItem) {
+      throw new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409, {
+        batchId: parsed.batchId,
+        itemId: conflictItem.id
+      });
+    }
+
+    let added = 0;
+    let updated = 0;
+    for (const item of selectedItems as PersistedImportBatchItem[]) {
+      if (!item.definitionId || !item.projectParameterValueId) {
+        throw new ApiError("VALIDATION_FAILED", "Import preview item is missing persisted target identifiers.", 400, {
+          batchId: parsed.batchId,
+          itemId: item.id
+        });
+      }
+
+      if (item.classification === "added") {
+        await applyAddedImportItem(tx, {
+          organizationId: auth.organization.id,
+          projectId: batch.projectId,
+          actorUserId: auth.user.id,
+          historyId: randomUUID(),
+          item: { ...item, definitionId: item.definitionId, projectParameterValueId: item.projectParameterValueId }
+        });
+        added += 1;
+      } else if (item.classification === "updated") {
+        await applyUpdatedImportItem(tx, {
+          organizationId: auth.organization.id,
+          actorUserId: auth.user.id,
+          historyId: randomUUID(),
+          item: { ...item, definitionId: item.definitionId, projectParameterValueId: item.projectParameterValueId }
+        });
+        updated += 1;
+      }
+    }
+
+    const applied = await markImportBatchApplied(tx, {
+      organizationId: auth.organization.id,
+      batchId: parsed.batchId
+    });
+    if (!applied) {
+      throw new ApiError("NOT_FOUND", "Parameter import batch was not found.", 404, { batchId: parsed.batchId });
+    }
+
+    await createImportAudit(tx, auth, {
+      projectId: batch.projectId,
+      batchId: batch.id,
+      summary: {
+        added,
+        updated,
+        skipped: batch.items.filter((item) => item.classification !== "unchanged").length - selectedItems.length
+      }
+    });
+
+    return applied;
   });
 }
 

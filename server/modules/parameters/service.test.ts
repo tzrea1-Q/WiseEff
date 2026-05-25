@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { listDrafts, reviewChange, saveDraft, submitParameterChanges } from "./service";
+import { applyImportBatch, createImportPreview, listDrafts, reviewChange, saveDraft, submitParameterChanges } from "./service";
+import { createImportBatchBodySchema } from "./schemas";
 
 type QueryCall = {
   text: string;
@@ -61,6 +62,14 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   };
 }
 
+function makeAdminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
+  return makeAuth({
+    roles: [{ projectId: "project-1", roleId: "admin" }],
+    permissions: ["parameter:view", "parameter:edit", "admin:access"],
+    ...overrides
+  });
+}
+
 function parameterRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "param-1",
@@ -74,6 +83,74 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     recommended_value: "3000",
     value_version: 7,
     updated_at: "2026-05-25T02:00:00.000Z",
+    ...overrides
+  };
+}
+
+function definitionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "definition-1",
+    name: "fast_charge_current_limit_ma",
+    description: "Limit fast charge current.",
+    explanation: "Controls fast charging current.",
+    config_format: "ENV: FAST_CHARGE_CURRENT=number",
+    module: "Charging Policy",
+    default_range: "1000 - 5000",
+    unit: "mA",
+    risk: "High",
+    project_parameter_value_id: "param-1",
+    current_value: "3200",
+    recommended_value: "3000",
+    value_version: 7,
+    ...overrides
+  };
+}
+
+function importBatchRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "batch-1",
+    project_id: "project-1",
+    source_name: "admin-upload.csv",
+    status: "previewed",
+    summary: { added: 1, updated: 1, unchanged: 0, conflict: 0, highRisk: 1 },
+    items: [
+      {
+        id: "item-added",
+        name: "thermal_guard_threshold_c",
+        module: "Thermal",
+        risk: "Medium",
+        unit: "C",
+        range: "40 - 90",
+        currentValue: "72",
+        recommendedValue: "70",
+        description: "",
+        explanation: "",
+        configFormat: "",
+        classification: "added",
+        definitionId: "thermal_guard_threshold_c",
+        projectParameterValueId: "project-1-thermal_guard_threshold_c",
+        riskFlag: false
+      },
+      {
+        id: "item-updated",
+        name: "fast_charge_current_limit_ma",
+        module: "Charging Policy",
+        risk: "High",
+        unit: "mA",
+        range: "1000 - 5000",
+        currentValue: "4000",
+        recommendedValue: "3800",
+        description: "Limit fast charge current.",
+        explanation: "Controls fast charging current.",
+        configFormat: "ENV: FAST_CHARGE_CURRENT=number",
+        classification: "updated",
+        definitionId: "definition-1",
+        projectParameterValueId: "param-1",
+        riskFlag: true
+      }
+    ],
+    created_at: "2026-05-25T06:00:00.000Z",
+    applied_at: null,
     ...overrides
   };
 }
@@ -118,6 +195,295 @@ function reviewDecisionRow(overrides: Record<string, unknown> = {}) {
 }
 
 describe("parameter service", () => {
+  it("non-admin cannot create or apply import batches", async () => {
+    const { db, calls, txCalls } = createFakeDb();
+
+    await expect(
+      createImportPreview(db, makeAuth(), {
+        projectId: "project-1",
+        sourceName: "admin-upload.csv",
+        items: [
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "1000 - 5000",
+            currentValue: "3200"
+          }
+        ]
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403));
+
+    await expect(
+      applyImportBatch(db, makeAuth(), {
+        batchId: "batch-1"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Admin access is required for parameter import.", 403));
+
+    expect(calls).toHaveLength(0);
+    expect(txCalls).toHaveLength(0);
+  });
+
+  it("invalid import item shape returns validation failed", async () => {
+    expect(() =>
+      createImportBatchBodySchema.parse({
+        projectId: "project-1",
+        sourceName: "admin-upload.csv",
+        items: [
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "1000 - 5000"
+          }
+        ]
+      })
+    ).toThrow();
+
+    const { db } = createFakeDb();
+    await expect(
+      createImportPreview(db, makeAdminAuth(), {
+        projectId: "project-1",
+        sourceName: "admin-upload.csv",
+        items: [
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "1000 - 5000"
+          }
+        ]
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Invalid parameter import item.", 400));
+  });
+
+  it("preview classifies added updated unchanged conflict and flags high-risk value deltas", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        definitionRow({ id: "definition-updated", project_parameter_value_id: "param-updated" }),
+        definitionRow({
+          id: "definition-unchanged",
+          name: "thermal_guard_threshold_c",
+          module: "Thermal",
+          risk: "Medium",
+          unit: "C",
+          default_range: "40 - 90",
+          current_value: "70",
+          recommended_value: "68",
+          project_parameter_value_id: "param-unchanged",
+          value_version: 2
+        }),
+        definitionRow({
+          id: "definition-conflict",
+          name: "pack_voltage_limit_v",
+          module: "Power",
+          risk: "High",
+          unit: "V",
+          default_range: "300 - 450",
+          current_value: "400",
+          recommended_value: "395",
+          project_parameter_value_id: "param-conflict",
+          value_version: 5
+        })
+      ],
+      [],
+      [],
+      [{ id: "request-open" }],
+      (call) => [
+        importBatchRow({
+          summary: JSON.parse(call.values[6] as string),
+          items: JSON.parse(call.values[7] as string)
+        })
+      ]
+    ]);
+
+    const batch = await createImportPreview(db, makeAdminAuth(), {
+      projectId: "project-1",
+      sourceName: "admin-upload.csv",
+      items: [
+        {
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "4000",
+          recommendedValue: "3800",
+          description: "Limit fast charge current.",
+          explanation: "Controls fast charging current.",
+          configFormat: "ENV: FAST_CHARGE_CURRENT=number"
+        },
+        {
+          name: "thermal_guard_threshold_c",
+          module: "Thermal",
+          risk: "Medium",
+          unit: "C",
+          range: "40 - 90",
+          currentValue: "70",
+          recommendedValue: "68",
+          description: "Limit fast charge current.",
+          explanation: "Controls fast charging current.",
+          configFormat: "ENV: FAST_CHARGE_CURRENT=number"
+        },
+        {
+          name: "new_balancing_window_s",
+          module: "Balancing",
+          risk: "Low",
+          unit: "s",
+          range: "1 - 30",
+          currentValue: "10"
+        },
+        {
+          name: "pack_voltage_limit_v",
+          module: "Power",
+          risk: "High",
+          unit: "V",
+          range: "300 - 450",
+          currentValue: "410",
+          recommendedValue: "405"
+        }
+      ]
+    });
+
+    expect(batch.summary).toEqual({ added: 1, updated: 1, unchanged: 1, conflict: 1, highRisk: 1 });
+    expect(batch.items.map((item) => ({ id: item.id, classification: item.classification, riskFlag: item.riskFlag }))).toEqual([
+      { id: "fast_charge_current_limit_ma", classification: "updated", riskFlag: true },
+      { id: "thermal_guard_threshold_c", classification: "unchanged", riskFlag: false },
+      { id: "new_balancing_window_s", classification: "added", riskFlag: false },
+      { id: "pack_voltage_limit_v", classification: "conflict", riskFlag: false }
+    ]);
+    expect(calls[0].text).toContain("from parameter_definitions pd");
+    expect(calls[0].values).toEqual([
+      "org-1",
+      "project-1",
+      ["fast_charge_current_limit_ma", "thermal_guard_threshold_c", "new_balancing_window_s", "pack_voltage_limit_v"],
+      []
+    ]);
+    expect(calls[4].text).toContain("insert into parameter_import_batches");
+  });
+
+  it("apply creates added values, updates selected values, skips unselected items, and writes audit", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [
+        {
+          id: "item-added",
+          definition_id: "thermal_guard_threshold_c",
+          project_parameter_value_id: "project-1-thermal_guard_threshold_c",
+          new_version: 1
+        }
+      ],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    const applied = await applyImportBatch(db, makeAdminAuth(), {
+      batchId: "batch-1",
+      selectedItemIds: ["item-added", "item-updated"]
+    });
+
+    expect(applied.status).toBe("applied");
+    expect(txCalls.find((call) => call.text.includes("insert into parameter_definitions"))?.values).toEqual([
+      "org-1",
+      "project-1",
+      "user-1",
+      "item-added",
+      "thermal_guard_threshold_c",
+      "thermal_guard_threshold_c",
+      "Thermal",
+      "Medium",
+      "C",
+      "40 - 90",
+      "72",
+      "70",
+      "",
+      "",
+      "",
+      expect.any(String)
+    ]);
+    expect(txCalls.find((call) => call.text.includes("update project_parameter_values"))?.values).toContain("item-updated");
+    expect(txCalls.filter((call) => call.text.includes("parameter_history_entries"))).toHaveLength(2);
+    expect(txCalls.find((call) => call.text.includes("update parameter_import_batches"))?.values).toEqual([
+      "org-1",
+      "batch-1"
+    ]);
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall?.values).toContain("batch-import");
+    expect(auditCall?.values).toContain("parameter-import-batch");
+    expect(auditCall?.values).toContain("batch-1");
+    expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
+      batchId: "batch-1",
+      summary: { added: 1, updated: 1, skipped: 0 }
+    });
+  });
+
+  it("apply skips unselected items", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await applyImportBatch(db, makeAdminAuth(), {
+      batchId: "batch-1",
+      selectedItemIds: ["item-updated"]
+    });
+
+    expect(txCalls.some((call) => call.values.includes("item-added"))).toBe(false);
+    expect(txCalls.find((call) => call.text.includes("insert into parameter_definitions"))).toBeUndefined();
+    expect(txCalls.find((call) => call.text.includes("update project_parameter_values"))?.values).toContain("item-updated");
+  });
+
+  it("apply rejects selected conflict items", async () => {
+    const conflictBatch = importBatchRow({
+      items: [
+        {
+          id: "item-conflict",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "4000",
+          classification: "conflict",
+          definitionId: "definition-1",
+          projectParameterValueId: "param-1",
+          riskFlag: false
+        }
+      ]
+    });
+    const { db, txCalls } = createFakeDb([[conflictBatch]]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-conflict"]
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409));
+
+    expect(txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+  });
+
   it("guest cannot save draft", async () => {
     const { db, calls } = createFakeDb();
 
