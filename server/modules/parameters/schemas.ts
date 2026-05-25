@@ -29,7 +29,8 @@ const parameterImportSourceItemSchema = z
 export const listParametersQuerySchema = z.object({
   projectId: nonEmptyString.optional(),
   module: nonEmptyString.optional(),
-  risk: z.union([z.enum(parameterRiskLevels), z.array(z.enum(parameterRiskLevels))]).optional()
+  risk: z.union([z.enum(parameterRiskLevels), z.array(z.enum(parameterRiskLevels))]).optional(),
+  q: nonEmptyString.optional()
 });
 
 export const saveDraftBodySchema = z.object({

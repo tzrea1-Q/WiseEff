@@ -83,15 +83,34 @@ describe("parameter routes", () => {
     const db = makeDb();
     vi.mocked(repository.listParameters).mockResolvedValue([]);
 
-    const response = await requestJson(makeServer({ db }), "/api/v1/parameters?projectId=aurora&risk=High");
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v1/parameters?projectId=aurora&risk=High&q=charge"
+    );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [] });
     expect(repository.listParameters).toHaveBeenCalledWith(db, {
       organizationId: "org-1",
       projectId: "aurora",
-      risk: "High"
+      risk: "High",
+      q: "charge"
     });
+  });
+
+  it("auth without parameter view permission cannot read parameters", async () => {
+    const db = makeDb();
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:edit"] }) }),
+      "/api/v1/parameters"
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Parameter view permission is required."
+    });
+    expect(repository.listParameters).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/parameters/:parameterId/history uses route params", async () => {
@@ -196,5 +215,22 @@ describe("parameter routes", () => {
       expectedVersion: 7,
       note: "Merge approved."
     });
+  });
+
+  it("review route rejects conflicting path and body request ids", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db }),
+      "/api/v1/parameter-change-requests/request-1/review",
+      {
+        method: "POST",
+        body: JSON.stringify({ requestId: "request-2", decision: "advance" })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.reviewChange).not.toHaveBeenCalled();
   });
 });

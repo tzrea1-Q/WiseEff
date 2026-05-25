@@ -29,6 +29,7 @@ import {
   saveDraftBodySchema,
   submitRoundBodySchema
 } from "./schemas";
+import { canViewParameters } from "./policy";
 import { parameterChangeRequestStatuses, parameterSubmissionRoundStatuses } from "./status";
 
 const paramsWithProjectIdSchema = z.object({
@@ -83,7 +84,26 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
   return parsed.data;
 }
 
+function requireCanView(auth: AuthContext) {
+  if (!canViewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+  }
+}
+
 function withRouteField(value: unknown, field: string, fieldValue: string) {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    field in value &&
+    value[field as keyof typeof value] !== fieldValue
+  ) {
+    throw new ApiError("VALIDATION_FAILED", `Route ${field} must match request body ${field}.`, 400, {
+      [field]: value[field as keyof typeof value],
+      routeValue: fieldValue
+    });
+  }
+
   return {
     ...(typeof value === "object" && value !== null && !Array.isArray(value) ? value : {}),
     [field]: fieldValue
@@ -101,6 +121,7 @@ export function registerParameterRoutes(
   router.get("/api/v1/projects", async () => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext();
+    requireCanView(auth);
     const items = await listProjects(db, { organizationId: auth.organization.id });
 
     return { status: 200, body: { items } };
@@ -109,6 +130,7 @@ export function registerParameterRoutes(
   router.get("/api/v1/projects/:projectId/modules", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext();
+    requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const items = await listProjectModules(db, {
       organizationId: auth.organization.id,
@@ -121,6 +143,7 @@ export function registerParameterRoutes(
   router.get("/api/v1/parameters", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext();
+    requireCanView(auth);
     const query = parseWithSchema(listParametersQuerySchema, request.query);
     const items = await listParameters(db, {
       organizationId: auth.organization.id,
@@ -133,6 +156,7 @@ export function registerParameterRoutes(
   router.get("/api/v1/parameters/:parameterId", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext();
+    requireCanView(auth);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
     const item = await getParameterById(db, {
       organizationId: auth.organization.id,
@@ -149,6 +173,7 @@ export function registerParameterRoutes(
   router.get("/api/v1/parameters/:parameterId/history", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext();
+    requireCanView(auth);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
     const items = await listParameterHistory(db, {
       organizationId: auth.organization.id,
