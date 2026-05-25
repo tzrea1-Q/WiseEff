@@ -109,4 +109,28 @@ describe("createRouter", () => {
 
     expect(response.body).toEqual({ route: "parameter", parameterId: "search" });
   });
+
+  it("returns a validation error for malformed dynamic route encoding", async () => {
+    const router = createRouter();
+    router.get("/api/v1/parameters/:parameterId/history", async (request) => ({
+      status: 200,
+      body: { parameterId: request.params.parameterId }
+    }));
+
+    await expect(
+      router.handle({
+        method: "GET",
+        path: "/api/v1/parameters/%E0%A4%A/history",
+        params: {},
+        query: {},
+        headers: {},
+        requestId: "req-1",
+        body: undefined
+      })
+    ).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Route parameter is not valid URL encoding.", 400, {
+        path: "/api/v1/parameters/%E0%A4%A/history"
+      })
+    );
+  });
 });

@@ -30,6 +30,17 @@ function splitPath(path: string) {
   return path.split("/").filter(Boolean);
 }
 
+function decodeRouteParam(pathSegment: string, path: string) {
+  try {
+    return decodeURIComponent(pathSegment);
+  } catch (error) {
+    if (error instanceof URIError) {
+      throw new ApiError("VALIDATION_FAILED", "Route parameter is not valid URL encoding.", 400, { path });
+    }
+    throw error;
+  }
+}
+
 function matchRoute(entry: RouteEntry, request: RouteRequest) {
   if (entry.method !== request.method) {
     return undefined;
@@ -45,7 +56,7 @@ function matchRoute(entry: RouteEntry, request: RouteRequest) {
     const routeSegment = entry.segments[index];
     const pathSegment = pathSegments[index];
     if (routeSegment.startsWith(":")) {
-      params[routeSegment.slice(1)] = decodeURIComponent(pathSegment);
+      params[routeSegment.slice(1)] = decodeRouteParam(pathSegment, request.path);
     } else if (routeSegment !== pathSegment) {
       return undefined;
     }
