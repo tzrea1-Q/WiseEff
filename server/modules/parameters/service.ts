@@ -189,6 +189,15 @@ function createUniqueId(base: string, used: Set<string>) {
   return candidate;
 }
 
+function createImportDefinitionId(used: Set<string>) {
+  let candidate = `import-${randomUUID()}`;
+  while (used.has(candidate)) {
+    candidate = `import-${randomUUID()}`;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
 function valuesMatch(left: string | undefined, right: string | undefined) {
   return (left ?? "") === (right ?? "");
 }
@@ -403,7 +412,7 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
   for (const sourceItem of parsed.items) {
     const existing = sourceItem.id ? byId.get(sourceItem.id) : byName.get(sourceItem.name);
     const itemId = createUniqueId(sourceItem.id ?? normalizeSlug(sourceItem.name), usedItemIds);
-    const definitionId = existing?.id ?? createUniqueId(sourceItem.id ?? normalizeSlug(sourceItem.name), usedDefinitionIds);
+    const definitionId = existing?.id ?? createImportDefinitionId(usedDefinitionIds);
     const projectParameterValueId = existing?.projectParameterValueId ?? `${parsed.projectId}-${definitionId}`;
     const openRequest = existing?.projectParameterValueId
       ? await findOpenChangeRequest(db, {
@@ -507,6 +516,12 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
     for (const item of selectedItemsWithTargets) {
       if (item.classification !== "updated") continue;
 
+      await getProjectParameterForUpdate(tx, {
+        organizationId: auth.organization.id,
+        projectId: batch.projectId,
+        parameterId: item.projectParameterValueId
+      });
+
       const openRequest = await findOpenChangeRequest(tx, {
         organizationId: auth.organization.id,
         projectId: batch.projectId,
@@ -533,7 +548,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
           item
         });
         if (!appliedItem) {
-          throw new ApiError("CONFLICT", "Import item definition id belongs to another organization.", 409, {
+          throw new ApiError("CONFLICT", "Import item definition id already exists.", 409, {
             batchId: parsed.batchId,
             itemId: item.id,
             definitionId: item.definitionId
@@ -549,7 +564,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
           item
         });
         if (!appliedItem) {
-          throw new ApiError("CONFLICT", "Import item definition id belongs to another organization.", 409, {
+          throw new ApiError("CONFLICT", "Import item definition id already exists.", 409, {
             batchId: parsed.batchId,
             itemId: item.id,
             definitionId: item.definitionId

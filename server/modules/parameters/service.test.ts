@@ -494,10 +494,48 @@ describe("parameter service", () => {
     ]);
   });
 
+  it("preview mints import-owned definition ids for added items with unmatched supplied ids", async () => {
+    const { db } = createFakeDb([
+      [projectRow()],
+      [],
+      (call) => [
+        importBatchRow({
+          summary: JSON.parse(call.values[6] as string),
+          items: JSON.parse(call.values[7] as string)
+        })
+      ]
+    ]);
+
+    const batch = await createImportPreview(db, makeAdminAuth(), {
+      projectId: "project-1",
+      sourceName: "admin-upload.csv",
+      items: [
+        {
+          id: "unmatched_caller_supplied_id",
+          name: "new_unmatched_parameter",
+          module: "Charging Policy",
+          risk: "Medium",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "2500"
+        }
+      ]
+    });
+
+    expect(batch.items[0]).toMatchObject({
+      id: "unmatched_caller_supplied_id",
+      classification: "added"
+    });
+    expect(batch.items[0].definitionId).toMatch(/^import-[0-9a-f-]{36}$/);
+    expect(batch.items[0].definitionId).not.toBe("unmatched_caller_supplied_id");
+    expect(batch.items[0].projectParameterValueId).toBe(`project-1-${batch.items[0].definitionId}`);
+  });
+
   it("apply creates added values, updates selected values, skips unselected items, and writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
       [projectRow()],
+      [parameterRow()],
       [],
       [
         {
@@ -548,6 +586,16 @@ describe("parameter service", () => {
         ?.text
     ).toContain("insert into project_parameter_values");
     expect(txCalls.filter((call) => call.text.includes("parameter_history_entries"))).toHaveLength(2);
+    const lockIndex = txCalls.findIndex((call) => call.text.includes("for update") && call.values.includes("param-1"));
+    const finalRecheckIndex = txCalls.findIndex(
+      (call, index) => index > lockIndex && call.text.includes("from parameter_change_requests pcr")
+    );
+    const updateIndex = txCalls.findIndex(
+      (call) => call.text.includes("insert into project_parameter_values") && call.values.includes("param-1")
+    );
+    expect(lockIndex).toBeGreaterThan(-1);
+    expect(finalRecheckIndex).toBeGreaterThan(lockIndex);
+    expect(updateIndex).toBeGreaterThan(finalRecheckIndex);
     expect(txCalls.find((call) => call.text.includes("update parameter_import_batches"))?.values).toEqual([
       "org-1",
       "batch-1"
@@ -608,7 +656,7 @@ describe("parameter service", () => {
     expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
   });
 
-  it("apply rejects definition id collisions outside the organization", async () => {
+  it("apply rejects added definition id collisions", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
       [projectRow()],
@@ -622,16 +670,52 @@ describe("parameter service", () => {
         batchId: "batch-1",
         selectedItemIds: ["item-added"]
       })
-    ).rejects.toMatchObject(new ApiError("CONFLICT", "Import item definition id belongs to another organization.", 409));
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Import item definition id already exists.", 409));
 
     expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
     expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
+  it("apply rejects open requests found after locking target values", async () => {
+    const { db, txCalls } = createFakeDb([
+      [importBatchRow()],
+      [projectRow()],
+      [parameterRow()],
+      [changeRequestRow({ id: "request-open-after-lock" })],
+      [
+        {
+          id: "item-updated",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-updated"]
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Cannot apply import items with open change requests.", 409));
+
+    const lockIndex = txCalls.findIndex((call) => call.text.includes("for update") && call.values.includes("param-1"));
+    const recheckIndex = txCalls.findIndex(
+      (call, index) => index > lockIndex && call.text.includes("from parameter_change_requests pcr")
+    );
+    expect(lockIndex).toBeGreaterThan(-1);
+    expect(recheckIndex).toBeGreaterThan(lockIndex);
+    expect(txCalls.some((call) => call.text.includes("insert into project_parameter_values"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
   });
 
   it("apply rechecks open requests created after preview", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
       [projectRow()],
+      [parameterRow()],
       [changeRequestRow({ id: "request-open-after-preview" })],
       [
         {
@@ -660,6 +744,7 @@ describe("parameter service", () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
       [projectRow()],
+      [parameterRow()],
       [],
       [
         {
@@ -712,6 +797,7 @@ describe("parameter service", () => {
     const { db, txCalls } = createFakeDb([
       [metadataBatch],
       [projectRow()],
+      [parameterRow()],
       [],
       [
         {
@@ -781,6 +867,7 @@ describe("parameter service", () => {
     const { db, txCalls } = createFakeDb([
       [missingValueBatch],
       [projectRow()],
+      [],
       [],
       [
         {

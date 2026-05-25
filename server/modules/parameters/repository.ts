@@ -1414,17 +1414,7 @@ export async function applyAddedImportItem(
         id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
       )
       values ($5, $1, $6, $13, $14, $15, $7, $10, $9, $8)
-      on conflict (id) do update set
-        name = excluded.name,
-        description = excluded.description,
-        explanation = excluded.explanation,
-        config_format = excluded.config_format,
-        module = excluded.module,
-        default_range = excluded.default_range,
-        unit = excluded.unit,
-        risk = excluded.risk,
-        updated_at = now()
-      where parameter_definitions.organization_id = $1
+      on conflict (id) do nothing
       returning id
     ),
     inserted_value as (

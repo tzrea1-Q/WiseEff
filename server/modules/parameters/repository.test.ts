@@ -860,7 +860,7 @@ describe("parameter repository", () => {
 
     expect(added).toBeNull();
     expect(updated).toBeNull();
-    expect(calls[0].text).toContain("where parameter_definitions.organization_id = $1");
+    expect(calls[0].text).toContain("on conflict (id) do nothing");
     expect(calls[1].text).toContain("where parameter_definitions.organization_id = $1");
   });
 });
