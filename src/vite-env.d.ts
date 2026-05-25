@@ -3,13 +3,26 @@ declare module "node:fs" {
   export function readFileSync(path: string, encoding: string): string;
 
   export const promises: {
+    readFile(path: string, encoding: string): Promise<string>;
+    readdir(path: string): Promise<string[]>;
     writeFile(path: string, data: string, encoding: string): Promise<void>;
   };
 }
 
 declare module "node:path" {
   const path: {
+    join(...paths: string[]): string;
     resolve(...paths: string[]): string;
   };
   export default path;
+}
+
+interface ImportMetaEnv {
+  readonly MODE: string;
+  readonly VITE_WISEEFF_API_BASE_URL?: string;
+  readonly VITE_WISEEFF_RUNTIME_MODE?: string;
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv;
 }

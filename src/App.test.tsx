@@ -112,6 +112,35 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
   });
 
+  it("hydrates the active user and role from the API auth context", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-admin",
+              organizationId: "org-chargelab",
+              name: "API Admin",
+              email: "api-admin@chargelab.cn",
+              title: "API Platform Owner",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access"]
+          })
+        }}
+        initialAppState={initialState}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByText("API Admin")).toBeInTheDocument();
+    expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
   it("keeps the platform homepage inside the app scroll container", () => {
     window.history.replaceState(null, "", "/");
 

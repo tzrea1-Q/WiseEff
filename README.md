@@ -37,16 +37,45 @@ npm test
 运行一次 Vitest 测试套件。
 
 ```bash
+npm run test:server
+```
+
+运行 M0 后端 Node 环境测试。
+
+```bash
+npm run test:all
+```
+
+连续运行前端与后端测试。
+
+```bash
 npm run build
 ```
 
 执行 TypeScript 项目检查，并将生产构建产物输出到 `dist/`。
 
 ```bash
+npm run dev:api
+```
+
+启动 M0 后端 API，默认监听 `http://127.0.0.1:8787`。
+
+```bash
 npm run preview
 ```
 
 在执行 `npm run build` 后，本地预览生产构建结果。
+
+## 运行模式
+
+默认前端仍运行在 `mock` 模式，适合演示和组件开发。需要连接 M0 API 时，创建本地环境变量：
+
+```text
+VITE_WISEEFF_RUNTIME_MODE=api
+VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
+```
+
+生产构建不允许使用 `mock` 作为业务数据源。
 
 ## 项目结构
 
@@ -59,6 +88,11 @@ src/
   powerManagementConfig.ts        电源管理配置辅助逻辑
   config/power-management.json    可编辑的原型配置数据
   test/setup.ts                   Vitest DOM 测试初始化
+server/
+  app.ts                          M0 后端 API 入口
+  modules/auth                    当前用户、角色和权限上下文
+  modules/audit                   审计事件写入与查询边界
+  migrations                      PostgreSQL SQL 迁移
 
 PRD.md                            产品需求和原型范围说明
 stitch_ai_driven_business_synergy_platform/

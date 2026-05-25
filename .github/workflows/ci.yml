@@ -29,5 +29,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Test
+      - name: Frontend tests
         run: npm test
+
+      - name: Backend tests
+        run: npm run test:server

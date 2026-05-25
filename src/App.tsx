@@ -132,10 +132,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { createAuthClient, type AuthContextDto } from "@/infrastructure/http/authClient";
+import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+
+type WiseEffAuthClient = {
+  getCurrentAuthContext(): Promise<AuthContextDto>;
+};
 
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "SET_ROLE"; roleId: string }
+  | {
+      type: "HYDRATE_AUTH_CONTEXT";
+      user: User;
+      roleId: string;
+    }
   | {
       type: "SUBMIT_PARAMETER_INITIALIZATION";
       draft: {
@@ -445,6 +456,15 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       return { ...state, activeProjectId: action.projectId };
     case "SET_ROLE":
       return { ...state, activeRoleId: action.roleId };
+    case "HYDRATE_AUTH_CONTEXT": {
+      const existingUsers = state.users.filter((user) => user.id !== action.user.id);
+      return {
+        ...state,
+        users: [action.user, ...existingUsers],
+        currentUserId: action.user.id,
+        activeRoleId: action.roleId
+      };
+    }
     case "SUBMIT_PARAMETER_INITIALIZATION": {
       if (!canPerform(activeRoleId, "admin.access")) return state;
       const projectCode = action.draft.projectCode.trim().toUpperCase();
@@ -1522,15 +1542,29 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 
 export const appReducer = reducer;
 
-function App({ initialAppState = initialState }: { initialAppState?: PrototypeState } = {}) {
+type AppProps = {
+  authClient?: WiseEffAuthClient;
+  initialAppState?: PrototypeState;
+  runtimeMode?: WiseEffRuntimeMode;
+};
+
+function App({ authClient, initialAppState = initialState, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell initialAppState={initialAppState} key={mockDataFingerprint} />
+      <AppShell authClient={authClient} initialAppState={initialAppState} key={mockDataFingerprint} runtimeMode={runtimeMode} />
     </TooltipProvider>
   );
 }
 
-function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
+function AppShell({
+  authClient,
+  initialAppState,
+  runtimeMode
+}: {
+  authClient?: WiseEffAuthClient;
+  initialAppState: PrototypeState;
+  runtimeMode: WiseEffRuntimeMode;
+}) {
   const [state, dispatch] = useReducer(reducer, initialAppState);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
@@ -1544,6 +1578,43 @@ function AppShell({ initialAppState }: { initialAppState: PrototypeState }) {
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+
+  useEffect(() => {
+    if (runtimeMode !== "api") {
+      return;
+    }
+
+    let cancelled = false;
+    const client = authClient ?? createAuthClient();
+
+    client
+      .getCurrentAuthContext()
+      .then((context) => {
+        if (cancelled) return;
+        const primaryRole = context.roles[0]?.roleId ?? "guest";
+        dispatch({
+          type: "HYDRATE_AUTH_CONTEXT",
+          roleId: primaryRole,
+          user: {
+            id: context.user.id,
+            name: context.user.name,
+            email: context.user.email,
+            title: context.user.title,
+            roleId: migrateLegacyRoleId(primaryRole),
+            isActive: context.user.isActive,
+            createdAt: new Date().toISOString(),
+            lastActive: "just now"
+          }
+        });
+      })
+      .catch(() => {
+        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authClient, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
