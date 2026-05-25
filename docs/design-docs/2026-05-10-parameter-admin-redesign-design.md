@@ -1740,14 +1740,14 @@ case "UNDO_LAST_DESTRUCTIVE": {
 - `src/powerManagementConfig.ts` — `ParameterEditorDraft` / `PowerManagementConfig` / `clonePowerManagementConfig`
 - `src/config/power-management.json` — 参数库持久化源
 - `src/styles.css` — 现 `.library-panel` / `.config-editor-panel` / `.config-admin-grid` 等样式
-- `PRD.md` §5.3 — 功能覆盖要求
-- `PRD.md` §10 / §11 — 原型边界与后续工程
-- `docs/superpowers/specs/2026-05-10-parameter-review-workbench-redesign-design.md` — 姊妹 spec（master-detail + Resizable 模式）
-- `docs/superpowers/specs/2026-05-10-debugging-workbench-redesign-design.md` — 姊妹 spec（分级确认 / Draft Sheet / AgentInsightBar / SessionSummary 模式）
-- `docs/superpowers/specs/2026-05-10-parameter-user-workbench-redesign-design.md` — 姊妹 spec（多选 + 草稿 Sheet 模式）
+- `docs/product-specs/prototype-functional-spec.md` §5.3 — 功能覆盖要求
+- `docs/product-specs/prototype-functional-spec.md` §10 / §11 — 原型边界与后续工程
+- 姊妹 spec（历史引用，当前仓库未保留对应文件）：parameter-review workbench（master-detail + Resizable 模式）
+- 姊妹 spec（历史引用，当前仓库未保留对应文件）：debugging workbench（分级确认 / Draft Sheet / AgentInsightBar / SessionSummary 模式）
+- 姊妹 spec（历史引用，当前仓库未保留对应文件）：parameter-user workbench（多选 + 草稿 Sheet 模式）
 - `qa-screenshots/parameter-admin-viewport-1440.png` / `parameter-admin-shared-definition-matrix.png` — 当前状态与历史设计对照
 - 本次评测记录：对话上文对 `/parameter-admin` 的 17 条问题与 P0–P3 修复清单
 
 ## 下一步
 
-写实施计划：调用 `superpowers:writing-plans`，将本 spec 展开为 `docs/superpowers/plans/2026-05-10-parameter-admin-redesign-m1.md`，按 §27 的 14 个里程碑拆成 bite-sized 步骤，每步包含 Files / Step / Command / Expected 四要素。
+写实施计划：调用 `superpowers:writing-plans`，将本 spec 展开为 `docs/exec-plans/completed/2026-05-10-parameter-admin-redesign-m1.md`，按 §27 的 14 个里程碑拆成 bite-sized 步骤，每步包含 Files / Step / Command / Expected 四要素。

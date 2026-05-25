@@ -1,0 +1,27 @@
+WiseEff design-system notes for LLM/agent use.
+
+Audience:
+- Agents making UI changes in the WiseEff React app.
+
+Core style:
+- Enterprise productivity workbench.
+- Dense but readable information.
+- Restrained visual styling for operational pages.
+- More expressive visuals are acceptable on the home page and AI capability sections.
+
+Use existing components first:
+- src/components/ui/*
+- src/components/layout/*
+- src/components/admin/*
+- src/components/* table, filter, dialog, chart, and toast components
+
+Interaction rules:
+- Use visible role, project, state, risk, and audit cues near related actions.
+- Keep confirmation flows for state-changing operations.
+- Do not hide security or governance behind only color.
+- Avoid oversized hero type inside workbench panels.
+- Keep tables scan-friendly and controls close to the business object they modify.
+
+Testing:
+- Add or update Testing Library tests for UI state changes.
+- Verify permission-denied, empty, disabled, loading, and error states when relevant.

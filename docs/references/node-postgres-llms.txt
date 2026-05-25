@@ -1,0 +1,22 @@
+WiseEff Node/PostgreSQL notes for LLM/agent use.
+
+Current backend:
+- server/app.ts composes the M0 API.
+- server/shared/http contains a small HTTP router and error serialization.
+- server/shared/database contains the database client and migration runner.
+- server/modules/auth exposes GET /api/v1/me.
+- server/modules/audit exposes audit write/query boundaries.
+- server/migrations/0001_m0_foundation.sql is the executable schema baseline.
+
+Commands:
+- npm run dev:api
+- npm run test:server
+- npm run db:migrate
+- npm run db:seed:m0
+
+Rules:
+- Validate API inputs at the boundary.
+- Use server-side permissions for writes.
+- Include audit records for production-changing actions.
+- Keep SQL migrations explicit and reviewable.
+- Update docs/generated/db-schema.md when migrations change until this is automated.

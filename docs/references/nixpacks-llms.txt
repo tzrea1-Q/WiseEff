@@ -1,0 +1,17 @@
+WiseEff Nixpacks notes for LLM/agent use.
+
+Current status:
+- WiseEff does not currently use Nixpacks.
+- There is no committed Nixpacks configuration in this repository.
+
+If Nixpacks is introduced later:
+- Add the exact build/start commands here.
+- Document required Node.js version and package manager behavior.
+- Keep production mock-runtime rules explicit.
+- Link deployment details from docs/RELIABILITY.md and docs/design-docs/deployment-operations.md.
+
+Current Node commands:
+- npm ci
+- npm run build
+- npm run dev:api
+- npm run preview

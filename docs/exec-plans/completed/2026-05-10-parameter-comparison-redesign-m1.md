@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 18 · TypeScript · Vite 7 · Vitest + @testing-library/react · lucide-react · 原有 `styles.css` 变量体系
 
-**Spec 来源:** `docs/superpowers/specs/2026-05-10-parameter-comparison-redesign-design.md`（§3, §4, §5, §7, §9, §11, §12, §14 对应本计划）
+**Spec 来源:** `docs/design-docs/2026-05-10-parameter-comparison-redesign-design.md`（§3, §4, §5, §7, §9, §11, §12, §14 对应本计划）
 
 **Out of M1 (延后到 M2/M3):**
 - 暂存状态模型（`stagedKeys` / `ignoredKeys`）

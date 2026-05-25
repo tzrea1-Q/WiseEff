@@ -94,9 +94,14 @@ server/
   modules/audit                   审计事件写入与查询边界
   migrations                      PostgreSQL SQL 迁移
 
-PRD.md                            产品需求和原型范围说明
-stitch_ai_driven_business_synergy_platform/
-                                  设计参考导出文件和页面截图
+AGENTS.md                         Agent 工作指南和知识库路由
+ARCHITECTURE.md                   系统架构总览
+docs/                             harness 风格项目知识库
+  product-specs/                  产品规格、原型功能说明和 MVP 切分
+  design-docs/                    架构、领域模型、API、安全、测试和设计文档
+  exec-plans/                     active/completed 执行计划和技术债追踪
+  generated/                      由代码或迁移派生的知识库材料
+  references/                     面向 LLM/Agent 的紧凑参考资料
 ```
 
 ### 项目参数管理后台（/parameter-admin）
@@ -120,9 +125,9 @@ stitch_ai_driven_business_synergy_platform/
 4. 执行 `npm test` 和 `npm run build` 验证环境。
 5. 执行 `npm run dev`，打开终端输出的本地访问地址。
 
-当前原型不依赖外部 API key、后端服务或数据库。
+当前原型默认不依赖外部 API key。连接 M0 API 时需要本地启动后端；后续数据库、设备网关和真实 Agent 接入规划见 `docs/README.md`。
 
-产品化边界规划见 docs/productization-api-contract.md。该文档描述后续接入后端、数据库、设备网关和真实 Agent 时的前端契约方向。
+产品化边界草案见 `docs/references/productization-api-contract-draft.md`。完整产品规格、架构和执行计划分别见 `docs/product-specs/`、`docs/design-docs/` 和 `docs/exec-plans/`。
 
 ## 仓库规范
 
