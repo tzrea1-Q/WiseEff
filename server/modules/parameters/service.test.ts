@@ -398,7 +398,7 @@ describe("parameter service", () => {
       "org-1",
       "project-1",
       "user-1",
-      "item-added",
+      "project-1-thermal_guard_threshold_c",
       "thermal_guard_threshold_c",
       "thermal_guard_threshold_c",
       "Thermal",
@@ -412,7 +412,7 @@ describe("parameter service", () => {
       "",
       expect.any(String)
     ]);
-    expect(txCalls.find((call) => call.text.includes("update project_parameter_values"))?.values).toContain("item-updated");
+    expect(txCalls.find((call) => call.values.includes("param-1"))?.text).toContain("insert into project_parameter_values");
     expect(txCalls.filter((call) => call.text.includes("parameter_history_entries"))).toHaveLength(2);
     expect(txCalls.find((call) => call.text.includes("update parameter_import_batches"))?.values).toEqual([
       "org-1",
@@ -449,8 +449,122 @@ describe("parameter service", () => {
     });
 
     expect(txCalls.some((call) => call.values.includes("item-added"))).toBe(false);
-    expect(txCalls.find((call) => call.text.includes("insert into parameter_definitions"))).toBeUndefined();
-    expect(txCalls.find((call) => call.text.includes("update project_parameter_values"))?.values).toContain("item-updated");
+    expect(txCalls.some((call) => call.values.includes("thermal_guard_threshold_c"))).toBe(false);
+    expect(txCalls.find((call) => call.values.includes("param-1"))?.text).toContain("insert into project_parameter_values");
+  });
+
+  it("apply updates definition metadata for selected updated items", async () => {
+    const metadataBatch = importBatchRow({
+      summary: { added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "item-metadata-only",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy V2",
+          risk: "High",
+          unit: "A",
+          range: "1 - 5",
+          currentValue: "3200",
+          recommendedValue: "3000",
+          description: "Updated description.",
+          explanation: "Updated explanation.",
+          configFormat: "ENV: FAST_CHARGE_CURRENT_V2=number",
+          classification: "updated",
+          definitionId: "definition-1",
+          projectParameterValueId: "param-1",
+          riskFlag: false
+        }
+      ]
+    });
+    const { db, txCalls } = createFakeDb([
+      [metadataBatch],
+      [
+        {
+          id: "item-metadata-only",
+          definition_id: "definition-1",
+          project_parameter_value_id: "param-1",
+          new_version: 8
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await applyImportBatch(db, makeAdminAuth(), {
+      batchId: "batch-1",
+      selectedItemIds: ["item-metadata-only"]
+    });
+
+    const applyCall = txCalls.find((call) => call.values.includes("param-1"));
+    expect(applyCall?.text).toContain("insert into parameter_definitions");
+    expect(applyCall?.text).toContain("on conflict (id) do update set");
+    expect(applyCall?.values).toEqual([
+      "org-1",
+      "project-1",
+      "user-1",
+      "param-1",
+      "definition-1",
+      "fast_charge_current_limit_ma",
+      "Charging Policy V2",
+      "High",
+      "A",
+      "1 - 5",
+      "3200",
+      "3000",
+      "Updated description.",
+      "Updated explanation.",
+      "ENV: FAST_CHARGE_CURRENT_V2=number",
+      expect.any(String)
+    ]);
+  });
+
+  it("apply creates a project value when an updated definition has no project row", async () => {
+    const missingValueBatch = importBatchRow({
+      summary: { added: 0, updated: 1, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "item-existing-definition",
+          name: "orphan_definition",
+          module: "Charging Policy",
+          risk: "Medium",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "2500",
+          recommendedValue: "2400",
+          description: "Existing definition without project value.",
+          explanation: "Creates project scoped value.",
+          configFormat: "ENV: ORPHAN=number",
+          classification: "updated",
+          definitionId: "definition-orphan",
+          projectParameterValueId: "project-1-definition-orphan",
+          riskFlag: false
+        }
+      ]
+    });
+    const { db, txCalls } = createFakeDb([
+      [missingValueBatch],
+      [
+        {
+          id: "item-existing-definition",
+          definition_id: "definition-orphan",
+          project_parameter_value_id: "project-1-definition-orphan",
+          new_version: 1
+        }
+      ],
+      [importBatchRow({ status: "applied", applied_at: "2026-05-25T07:00:00.000Z" })],
+      []
+    ]);
+
+    await applyImportBatch(db, makeAdminAuth(), {
+      batchId: "batch-1",
+      selectedItemIds: ["item-existing-definition"]
+    });
+
+    const applyCall = txCalls.find((call) => call.values.includes("project-1-definition-orphan"));
+    expect(applyCall?.text).toContain("insert into project_parameter_values");
+    expect(applyCall?.text).toContain("on conflict (project_id, parameter_definition_id) do update set");
+    expect(applyCall?.text).toContain("insert into parameter_history_entries");
+    expect(applyCall?.values).toContain("project-1-definition-orphan");
   });
 
   it("apply rejects selected conflict items", async () => {

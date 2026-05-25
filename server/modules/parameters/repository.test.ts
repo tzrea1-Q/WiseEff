@@ -657,7 +657,7 @@ describe("parameter repository", () => {
     const { db, calls } = createFakeDb([
       [
         {
-          id: "item-added",
+          id: "project-1-thermal_guard_threshold_c",
           definition_id: "thermal_guard_threshold_c",
           project_parameter_value_id: "project-1-thermal_guard_threshold_c",
           new_version: 1
@@ -710,6 +710,7 @@ describe("parameter repository", () => {
     });
     await applyUpdatedImportItem(db, {
       organizationId: "org-chargelab",
+      projectId: "project-1",
       actorUserId: "user-1",
       historyId: "history-updated",
       item: {
@@ -732,10 +733,73 @@ describe("parameter repository", () => {
     expect(calls[0].text).toContain("insert into parameter_definitions");
     expect(calls[0].text).toContain("insert into project_parameter_values");
     expect(calls[0].text).toContain("insert into parameter_history_entries");
-    expect(calls[1].text).toContain("update project_parameter_values");
-    expect(calls[1].text).toContain("recommended_value = coalesce($6, ppv.recommended_value)");
+    expect(calls[0].values[3]).toBe("project-1-thermal_guard_threshold_c");
+    expect(calls[1].text).toContain("insert into parameter_definitions");
+    expect(calls[1].text).toContain("insert into project_parameter_values");
+    expect(calls[1].text).toContain("on conflict (project_id, parameter_definition_id) do update set");
     expect(calls[1].text).toContain("insert into parameter_history_entries");
     expect(calls[2].text).toContain("update parameter_import_batches");
     expect(calls[2].values).toEqual(["org-chargelab", "batch-1"]);
+  });
+
+  it("updated import items upsert definition metadata and missing project values", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "item-updated-metadata",
+          definition_id: "definition-1",
+          project_parameter_value_id: "project-1-definition-1",
+          new_version: 1
+        }
+      ]
+    ]);
+
+    await applyUpdatedImportItem(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      actorUserId: "user-1",
+      historyId: "history-updated-metadata",
+      item: {
+        id: "item-updated-metadata",
+        definitionId: "definition-1",
+        projectParameterValueId: "project-1-definition-1",
+        currentValue: "4100",
+        recommendedValue: "3900",
+        name: "fast_charge_current_limit_ma",
+        module: "Charging Policy V2",
+        risk: "High",
+        unit: "mA",
+        range: "500 - 4500",
+        description: "Updated definition description.",
+        explanation: "Updated explanation.",
+        configFormat: "ENV: FAST_CHARGE_CURRENT_V2=number",
+        classification: "updated",
+        riskFlag: true
+      }
+    });
+
+    expect(calls[0].text).toContain("insert into parameter_definitions");
+    expect(calls[0].text).toContain("on conflict (id) do update set");
+    expect(calls[0].text).toContain("insert into project_parameter_values");
+    expect(calls[0].text).toContain("on conflict (project_id, parameter_definition_id) do update set");
+    expect(calls[0].text).toContain("insert into parameter_history_entries");
+    expect(calls[0].values).toEqual([
+      "org-chargelab",
+      "project-1",
+      "user-1",
+      "project-1-definition-1",
+      "definition-1",
+      "fast_charge_current_limit_ma",
+      "Charging Policy V2",
+      "High",
+      "mA",
+      "500 - 4500",
+      "4100",
+      "3900",
+      "Updated definition description.",
+      "Updated explanation.",
+      "ENV: FAST_CHARGE_CURRENT_V2=number",
+      "history-updated-metadata"
+    ]);
   });
 });

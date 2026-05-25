@@ -1441,7 +1441,7 @@ export async function applyAddedImportItem(
       input.organizationId,
       input.projectId,
       input.actorUserId,
-      input.item.id,
+      input.item.projectParameterValueId,
       input.item.definitionId,
       input.item.name,
       input.item.module,
@@ -1464,6 +1464,7 @@ export async function applyUpdatedImportItem(
   db: Queryable,
   input: {
     organizationId: string;
+    projectId: string;
     actorUserId: string;
     historyId: string;
     item: PersistedImportBatchItem & { definitionId: string; projectParameterValueId: string };
@@ -1471,36 +1472,65 @@ export async function applyUpdatedImportItem(
 ) {
   const result = await db.query<ImportApplyResultRow>(
     `
-    with updated_value as (
-      update project_parameter_values ppv
-      set current_value = coalesce($5, ppv.current_value),
-        recommended_value = coalesce($6, ppv.recommended_value),
-        value_version = ppv.value_version + 1,
-        updated_by_user_id = $3,
+    with upserted_definition as (
+      insert into parameter_definitions (
+        id, organization_id, name, description, explanation, config_format, module, default_range, unit, risk
+      )
+      values ($5, $1, $6, $13, $14, $15, $7, $10, $9, $8)
+      on conflict (id) do update set
+        name = excluded.name,
+        description = excluded.description,
+        explanation = excluded.explanation,
+        config_format = excluded.config_format,
+        module = excluded.module,
+        default_range = excluded.default_range,
+        unit = excluded.unit,
+        risk = excluded.risk,
         updated_at = now()
-      where ppv.organization_id = $1
-        and ppv.id = $4
-      returning ppv.id, ppv.project_id, ppv.parameter_definition_id, ppv.current_value, ppv.value_version
+      returning id
+    ),
+    upserted_value as (
+      insert into project_parameter_values (
+        id, organization_id, project_id, parameter_definition_id, current_value, recommended_value, updated_by_user_id
+      )
+      select $4, $1, $2, upserted_definition.id, $11, $12, $3
+      from upserted_definition
+      on conflict (project_id, parameter_definition_id) do update set
+        current_value = excluded.current_value,
+        recommended_value = excluded.recommended_value,
+        value_version = project_parameter_values.value_version + 1,
+        updated_by_user_id = excluded.updated_by_user_id,
+        updated_at = now()
+      returning id, project_id, parameter_definition_id, current_value, value_version
     ),
     inserted_history as (
       insert into parameter_history_entries (
         id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
         version, value, changed_by_user_id, request_id
       )
-      select $7, $1, project_id, parameter_definition_id, id, value_version, current_value, $3, null
-      from updated_value
+      select $16, $1, project_id, parameter_definition_id, id, value_version, current_value, $3, null
+      from upserted_value
       returning id
     )
-    select $2 as id, parameter_definition_id as definition_id, id as project_parameter_value_id, value_version as new_version
-    from updated_value
+    select $4 as id, parameter_definition_id as definition_id, id as project_parameter_value_id, value_version as new_version
+    from upserted_value
     `,
     [
       input.organizationId,
-      input.item.id,
+      input.projectId,
       input.actorUserId,
       input.item.projectParameterValueId,
-      input.item.currentValue ?? null,
-      input.item.recommendedValue ?? null,
+      input.item.definitionId,
+      input.item.name,
+      input.item.module,
+      input.item.risk,
+      input.item.unit,
+      input.item.range,
+      input.item.currentValue ?? input.item.recommendedValue ?? "",
+      input.item.recommendedValue ?? input.item.currentValue ?? "",
+      input.item.description ?? "",
+      input.item.explanation ?? "",
+      input.item.configFormat ?? "",
       input.historyId
     ]
   );

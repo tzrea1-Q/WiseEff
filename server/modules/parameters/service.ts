@@ -483,6 +483,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       } else if (item.classification === "updated") {
         await applyUpdatedImportItem(tx, {
           organizationId: auth.organization.id,
+          projectId: batch.projectId,
           actorUserId: auth.user.id,
           historyId: randomUUID(),
           item: { ...item, definitionId: item.definitionId, projectParameterValueId: item.projectParameterValueId }
