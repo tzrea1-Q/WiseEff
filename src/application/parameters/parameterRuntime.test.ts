@@ -106,7 +106,7 @@ describe("createParameterRuntimeActions", () => {
     });
   });
 
-  it("returns a user-facing notification and avoids optimistic local mutation when an api action fails", async () => {
+  it("marks api action failures that already dispatched a notification", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({
       submitParameterChanges: vi.fn().mockRejectedValue(new Error("database unavailable"))
@@ -118,7 +118,7 @@ describe("createParameterRuntimeActions", () => {
       items: [{ parameterId: apiParameter.id, targetValue: "42", reason: "Tune value" }]
     });
 
-    expect(result).toEqual({ notification: parameterRuntimeFailureNotification });
+    expect(result).toEqual({ notification: parameterRuntimeFailureNotification, alreadyNotified: true });
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_PARAMETER_SUBMISSION_ROUND" }));

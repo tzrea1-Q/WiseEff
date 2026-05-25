@@ -3035,7 +3035,9 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
 
   const dispatchParameterActionFailure = (result: Awaited<ReturnType<NonNullable<PageProps["parameterActions"]>["reviewChange"]>>) => {
     if (result && "notification" in result) {
-      dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      if (!result.alreadyNotified) {
+        dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      }
       return true;
     }
     return false;

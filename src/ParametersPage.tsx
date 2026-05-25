@@ -543,7 +543,9 @@ export function ParametersPage({
 
   const notifyActionFailure = (result: Awaited<ReturnType<ParameterPageActions["submitChanges"]>>) => {
     if (result && "notification" in result) {
-      dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      if (!result.alreadyNotified) {
+        dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      }
       return true;
     }
     return false;

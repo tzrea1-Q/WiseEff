@@ -272,7 +272,9 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
           })
         : createLocalImportPreview(state.activeProjectId, importSourceName || "pasted-import.json", items);
       if ("notification" in result) {
-        dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        if (!result.alreadyNotified) {
+          dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        }
         setImportMessage(result.notification);
         return;
       }
@@ -287,6 +289,10 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
     if (!importPreview) {
       return;
     }
+    if (selectedImportItemIds.length === 0) {
+      setImportMessage("请选择至少一个导入项。");
+      return;
+    }
     setImportPending(true);
     setImportMessage("");
     try {
@@ -294,7 +300,9 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         ? await parameterActions.applyImportBatch({ batchId: importPreview.id, selectedItemIds: selectedImportItemIds })
         : await Promise.resolve(dispatch({ type: "IMPORT_PARAMETERS" }));
       if (result && "notification" in result) {
-        dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        if (!result.alreadyNotified) {
+          dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        }
         setImportMessage(result.notification);
         return;
       }
@@ -566,7 +574,7 @@ function ParameterImportDialog({
           <button className="button subtle" type="button" disabled={pending || !sourceText.trim()} onClick={onPreview}>
             {pending && !preview ? "预览中" : "生成预览"}
           </button>
-          <button className="button primary" type="button" disabled={pending || !preview} onClick={onApply}>
+          <button className="button primary" type="button" disabled={pending || !preview || selectedItemIds.length === 0} onClick={onApply}>
             {pending && preview ? "应用中" : "应用导入"}
           </button>
         </div>

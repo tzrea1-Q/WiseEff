@@ -37,6 +37,7 @@ export type HydrateParameterRuntimeAction = {
 
 export type ParameterRuntimeActionFailure = {
   notification: string;
+  alreadyNotified?: boolean;
 };
 
 export type ParameterRuntimeVoidResult = void | ParameterRuntimeActionFailure;
@@ -85,6 +86,7 @@ function notifyFailure(
 ): ParameterRuntimeActionFailure {
   if (options.notifyOnFailure !== false) {
     dispatch({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
+    return { notification: parameterRuntimeFailureNotification, alreadyNotified: true };
   }
   return { notification: parameterRuntimeFailureNotification };
 }

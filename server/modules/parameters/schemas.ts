@@ -4,6 +4,11 @@ import { parameterReviewDecisions, parameterRiskLevels } from "./status";
 
 const nonEmptyString = z.string().min(1);
 const positiveInteger = z.number().int().positive();
+const workflowAssigneesSchema = z.object({
+  hardwareCommitterId: nonEmptyString.optional(),
+  softwareCommitterId: nonEmptyString.optional(),
+  softwareUserId: nonEmptyString.optional()
+});
 
 const importItemValueFields = ["currentValue", "recommendedValue"] as const;
 
@@ -51,7 +56,8 @@ export const submitRoundBodySchema = z.object({
       })
     )
     .min(1),
-  reason: z.string().optional()
+  reason: z.string().optional(),
+  assignees: workflowAssigneesSchema.optional()
 });
 
 export const reviewChangeBodySchema = z.object({

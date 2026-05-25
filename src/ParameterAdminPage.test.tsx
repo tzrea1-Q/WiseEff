@@ -271,4 +271,38 @@ describe("ParameterAdminPage", () => {
       selectedItemIds: ["preview-item-1", "preview-item-2"]
     }));
   });
+
+  it("prevents applying an import preview when all preview items are deselected", async () => {
+    const parameterActions = createParameterActions();
+    renderPage("", initialState, vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /批量参数导入/ }));
+    const dialog = screen.getByRole("dialog", { name: "参数导入" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "api_import_limit",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "0 - 5000",
+            currentValue: "3200"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "生成预览" }));
+
+    await waitFor(() => expect(parameterActions.createImportPreview).toHaveBeenCalledTimes(1));
+    within(dialog).getAllByRole("checkbox").forEach((checkbox) => {
+      fireEvent.click(checkbox);
+    });
+
+    const applyButton = within(dialog).getByRole("button", { name: "应用导入" });
+    expect(applyButton).toBeDisabled();
+    fireEvent.click(applyButton);
+
+    expect(parameterActions.applyImportBatch).not.toHaveBeenCalled();
+  });
 });

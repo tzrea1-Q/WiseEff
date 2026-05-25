@@ -790,6 +790,26 @@ describe("ParametersPage · 提交契约", () => {
     expect(screen.getByRole("region", { name: "本轮已修改参数区" })).toBeInTheDocument();
   });
 
+  it("does not redispatch an action failure notification already emitted by the runtime", async () => {
+    const dispatch = vi.fn();
+    const parameterActions = createParameterActions({
+      submitChanges: vi.fn().mockResolvedValue({ notification: "api submit failed", alreadyNotified: true })
+    });
+    const { container } = renderPage(dispatch, vi.fn(), parameterActions);
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "keep this draft" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
+    fireEvent.click(container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary")!);
+
+    await waitFor(() => expect(parameterActions.submitChanges).toHaveBeenCalledTimes(1));
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "api submit failed" });
+    expect(screen.getByRole("dialog", { name: /提交本轮参数/ })).toBeInTheDocument();
+  });
+
   it("builds preview and submit items from selected draft entries only", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
     const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsHaveTargets[\s\S]*?;/)?.[0] ?? "";

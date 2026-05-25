@@ -170,6 +170,45 @@ describe("parameter routes", () => {
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
 
+  it("submit route passes workflow assignees through to the service", async () => {
+    const db = makeDb();
+    const round = {
+      id: "round-1",
+      projectId: "aurora",
+      projectName: "Aurora",
+      submitter: "Riley Chen",
+      createdAt: "2026-05-25T05:00:00.000Z",
+      status: "hardware_review" as const,
+      summary: "Parameter changes submitted.",
+      items: []
+    };
+    vi.mocked(service.submitParameterChanges).mockResolvedValue(round);
+
+    const response = await requestJson<{ item: typeof round }>(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "aurora",
+        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+        assignees: {
+          hardwareCommitterId: "u-hardware",
+          softwareCommitterId: "u-software-committer",
+          softwareUserId: "u-software-user"
+        }
+      })
+    });
+
+    expect(response.status).toBe(201);
+    expect(service.submitParameterChanges).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "aurora",
+      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+      assignees: {
+        hardwareCommitterId: "u-hardware",
+        softwareCommitterId: "u-software-committer",
+        softwareUserId: "u-software-user"
+      }
+    });
+  });
+
   it("review route can return merged request after service success", async () => {
     const db = makeDb();
     const mergedRequest = {
