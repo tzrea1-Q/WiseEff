@@ -41,6 +41,9 @@ export type ParameterRuntimeActionFailure = {
 
 export type ParameterRuntimeVoidResult = void | ParameterRuntimeActionFailure;
 export type ParameterRuntimeRefreshResult = ParameterRuntimeSnapshot | ParameterRuntimeActionFailure | void;
+export type ParameterRuntimeRefreshOptions = {
+  notifyOnFailure?: boolean;
+};
 
 type ParameterRuntimeDispatchAction =
   | HydrateParameterRuntimeAction
@@ -57,7 +60,7 @@ export type ParameterRuntimeActions = {
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
-  refresh(): Promise<ParameterRuntimeRefreshResult>;
+  refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
 
 type ParameterRuntimeOptions = {
@@ -67,8 +70,13 @@ type ParameterRuntimeOptions = {
   getParameterProjectId?: (parameterId: string) => string | undefined;
 };
 
-function notifyFailure(dispatch: ParameterRuntimeOptions["dispatch"]): ParameterRuntimeActionFailure {
-  dispatch({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
+function notifyFailure(
+  dispatch: ParameterRuntimeOptions["dispatch"],
+  options: ParameterRuntimeRefreshOptions = {}
+): ParameterRuntimeActionFailure {
+  if (options.notifyOnFailure !== false) {
+    dispatch({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
+  }
   return { notification: parameterRuntimeFailureNotification };
 }
 
@@ -85,7 +93,7 @@ export function createParameterRuntimeActions({
   repository,
   getParameterProjectId
 }: ParameterRuntimeOptions): ParameterRuntimeActions {
-  const refresh = async (): Promise<ParameterRuntimeRefreshResult> => {
+  const refresh = async (options: ParameterRuntimeRefreshOptions = {}): Promise<ParameterRuntimeRefreshResult> => {
     if (runtimeMode !== "api") {
       return undefined;
     }
@@ -104,7 +112,7 @@ export function createParameterRuntimeActions({
       dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", ...snapshot });
       return snapshot;
     } catch {
-      return notifyFailure(dispatch);
+      return notifyFailure(dispatch, options);
     }
   };
 

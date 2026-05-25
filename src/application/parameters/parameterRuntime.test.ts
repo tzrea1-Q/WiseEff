@@ -141,6 +141,19 @@ describe("createParameterRuntimeActions", () => {
     });
   });
 
+  it("can return a refresh failure without dispatching a duplicate notification", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      listProjects: vi.fn().mockRejectedValue(new Error("api down"))
+    });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+
+    const result = await actions.refresh({ notifyOnFailure: false });
+
+    expect(result).toEqual({ notification: parameterRuntimeFailureNotification });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
+  });
+
   it("refreshes parameter runtime after an api import preview succeeds", async () => {
     const dispatch = vi.fn();
     const repository = createRepository();

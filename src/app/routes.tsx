@@ -9,6 +9,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import type {
   ParameterRuntimeActionFailure,
+  ParameterRuntimeRefreshOptions,
   ParameterRuntimeRefreshResult,
   ParameterRuntimeVoidResult
 } from "@/application/parameters/parameterRuntime";
@@ -34,7 +35,7 @@ export type ParameterPageActions = {
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
-  refresh(): Promise<ParameterRuntimeRefreshResult>;
+  refresh(options?: ParameterRuntimeRefreshOptions): Promise<ParameterRuntimeRefreshResult>;
 };
 
 export type PageProps = {

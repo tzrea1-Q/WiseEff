@@ -38,7 +38,7 @@ import {
   type HydrateParameterRuntimeAction,
   type ParameterRuntimeActions
 } from "@/application/parameters/parameterRuntime";
-import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import type { ParameterDraftDto, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
   applyInitializationDraftToConfig,
@@ -454,6 +454,47 @@ function canSubmitParameterChangesForProject(state: PrototypeState, projectId: s
   return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
 }
 
+function buildDraftSubmissionRounds(
+  drafts: ParameterDraftDto[] | undefined,
+  parameters: ParameterRecord[],
+  apiProjects: ProjectSummary[],
+  submitter: string
+): ParameterSubmissionRound[] {
+  if (!drafts?.length) {
+    return [];
+  }
+
+  const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]));
+  const projectById = new Map(apiProjects.map((project) => [project.id, project]));
+
+  return drafts.map((draft) => {
+    const parameter = parameterById.get(draft.parameterId);
+    const project = projectById.get(draft.projectId);
+    const item: ParameterSubmissionItem = {
+      requestId: "",
+      parameterId: draft.parameterId,
+      name: parameter?.name ?? draft.parameterId,
+      module: parameter?.module ?? "",
+      currentValue: parameter?.currentValue ?? "",
+      targetValue: draft.targetValue,
+      unit: parameter?.unit ?? "",
+      risk: parameter?.risk ?? "Medium",
+      reason: draft.reason
+    };
+
+    return {
+      id: `draft-${draft.id}`,
+      projectId: draft.projectId,
+      projectName: project?.name ?? draft.projectId,
+      submitter,
+      createdAt: draft.updatedAt,
+      status: "\u5df2\u6682\u5b58",
+      summary: `API draft contains 1 parameter change`,
+      items: [item]
+    };
+  });
+}
+
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const auditActor = currentUser?.name ?? "system";
@@ -473,17 +514,24 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         activeRoleId: action.roleId
       };
     }
-    case "HYDRATE_PARAMETER_RUNTIME":
+    case "HYDRATE_PARAMETER_RUNTIME": {
+      const draftSubmissionRounds = buildDraftSubmissionRounds(
+        action.parameterDrafts,
+        action.parameters,
+        action.projects,
+        currentUser?.name ?? "API draft"
+      );
       return {
         ...state,
         parameters: action.parameters,
         changeRequests: action.changeRequests,
-        parameterSubmissionRounds: action.parameterSubmissionRounds,
+        parameterSubmissionRounds: [...draftSubmissionRounds, ...action.parameterSubmissionRounds],
         configDraft: {
           ...state.configDraft,
           projects: action.projects.map((project) => ({ ...project }))
         }
       };
+    }
     case "SUBMIT_PARAMETER_INITIALIZATION": {
       if (!canPerform(activeRoleId, "admin.access")) return state;
       const projectCode = action.draft.projectCode.trim().toUpperCase();
@@ -1654,7 +1702,7 @@ function AppShell({
             lastActive: "just now"
           }
         });
-        const parameterRefreshResult = await parameterActions.refresh();
+        const parameterRefreshResult = await parameterActions.refresh({ notifyOnFailure: false });
         if (cancelled) return;
         if (parameterRefreshResult && "notification" in parameterRefreshResult) {
           dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });

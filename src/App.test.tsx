@@ -239,18 +239,46 @@ describe("WiseEff app shell", () => {
       activeRoleId: "admin",
       notifications: ["keep this notification"]
     };
+    const apiDraft = {
+      id: "api-draft-1",
+      projectId: apiProject.id,
+      parameterId: apiParameter.id,
+      targetValue: "4200",
+      reason: "Hold for review",
+      updatedAt: "2026-05-25T08:30:00.000Z"
+    };
     const next = appReducer(state, {
       type: "HYDRATE_PARAMETER_RUNTIME",
       projects: [apiProject],
       parameters: [apiParameter],
       changeRequests: [],
       parameterSubmissionRounds: [],
-      parameterDrafts: []
+      parameterDrafts: [apiDraft]
     });
 
     expect(next.parameters).toEqual([apiParameter]);
     expect(next.changeRequests).toEqual([]);
-    expect(next.parameterSubmissionRounds).toEqual([]);
+    expect(next.parameterSubmissionRounds).toEqual([
+      expect.objectContaining({
+        id: "draft-api-draft-1",
+        projectId: apiProject.id,
+        projectName: apiProject.name,
+        createdAt: apiDraft.updatedAt,
+        status: "\u5df2\u6682\u5b58",
+        items: [
+          expect.objectContaining({
+            parameterId: apiParameter.id,
+            name: apiParameter.name,
+            module: apiParameter.module,
+            currentValue: apiParameter.currentValue,
+            targetValue: apiDraft.targetValue,
+            unit: apiParameter.unit,
+            risk: apiParameter.risk,
+            reason: apiDraft.reason
+          })
+        ]
+      })
+    ]);
     expect(next.configDraft.projects).toEqual([apiProject]);
     expect(next.activeProjectId).toBe(state.activeProjectId);
     expect(next.activeRoleId).toBe(state.activeRoleId);
