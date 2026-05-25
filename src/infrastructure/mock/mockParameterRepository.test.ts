@@ -149,6 +149,22 @@ describe("mock parameter repository", () => {
     expect(rereadRequest.impact[0].name).toBe(originalImpactName);
   });
 
+  it("uses a deterministic updatedAt timestamp when reviewChange mutates a request", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const request = (await repository.listChangeRequests())[0];
+
+    const reviewed = await repository.reviewChange({
+      requestId: request.id,
+      decision: "reject",
+      note: "contract smoke test"
+    });
+
+    expect(reviewed.updatedAt).toBe("2026-05-25T00:00:00.000Z");
+    expect((await repository.listChangeRequests()).find((item) => item.id === request.id)?.updatedAt).toBe(
+      "2026-05-25T00:00:00.000Z"
+    );
+  });
+
   it("filters change requests by project, status, and assignee", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
     const matchingRequest = (await repository.listChangeRequests()).find((request) => request.projectId && request.assignedTo)!;
@@ -257,11 +273,14 @@ describe("mock parameter repository", () => {
     });
     expect(preview.items.map((item) => item.id)).toEqual(["import-aurora-parameters-csv-item-1", "import-aurora-parameters-csv-item-2"]);
 
-    await expect(repository.applyImportBatch({ batchId: preview.id })).resolves.toMatchObject({
+    const applied = await repository.applyImportBatch({ batchId: preview.id });
+
+    expect(applied).toMatchObject({
       ...preview,
       status: "applied",
       appliedAt: "2026-05-25T00:00:00.000Z"
     });
+    await expect(repository.applyImportBatch({ batchId: preview.id })).rejects.toThrow("Import batch already applied: import-aurora-parameters-csv");
   });
 
   it("applies import batches into future parameter list results", async () => {
@@ -334,6 +353,29 @@ describe("mock parameter repository", () => {
     expect(parameters.some((parameter) => parameter.name === "Skipped Runtime Parameter")).toBe(false);
   });
 
+  it("rejects unknown selected import item ids", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    const preview = await repository.createImportPreview({
+      projectId: "aurora",
+      sourceName: "runtime-selected.csv",
+      items: [
+        {
+          name: "Selected Runtime Parameter",
+          module: "Charging",
+          risk: "Medium",
+          unit: "mA",
+          range: "0-5000",
+          currentValue: "3100"
+        }
+      ]
+    });
+
+    await expect(repository.applyImportBatch({ batchId: preview.id, selectedItemIds: ["missing-id"] })).rejects.toThrow(
+      "Unknown selected import item ids: missing-id"
+    );
+  });
+
   it("protects stored import batches from returned object mutation", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
 
@@ -365,10 +407,9 @@ describe("mock parameter repository", () => {
     applied.summary.added = 42;
     applied.items[0].name = "mutated again";
 
-    const reapplied = await repository.applyImportBatch({ batchId: preview.id });
-
-    expect(reapplied.summary.added).toBe(1);
-    expect(reapplied.items[0].name).toBe("New high risk parameter");
+    await expect(repository.applyImportBatch({ batchId: preview.id })).rejects.toThrow(
+      "Import batch already applied: import-aurora-parameters-csv"
+    );
   });
 
   it("submits parameter changes through reducer behavior", async () => {
