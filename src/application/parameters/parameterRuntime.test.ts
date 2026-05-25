@@ -16,6 +16,15 @@ const apiDraft = {
   reason: "Tune value",
   updatedAt: "2026-05-25T08:00:00.000Z"
 };
+const apiPreviewBatch = {
+  id: "batch-1",
+  projectId: "api-project",
+  sourceName: "import.csv",
+  status: "previewed" as const,
+  createdAt: "2026-05-25T08:00:00.000Z",
+  summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+  items: []
+};
 
 function createRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
   return {
@@ -30,15 +39,7 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
     listSubmissionRounds: vi.fn().mockResolvedValue([apiRound]),
     submitParameterChanges: vi.fn().mockResolvedValue(apiRound),
     reviewChange: vi.fn().mockResolvedValue(apiChangeRequest),
-    createImportPreview: vi.fn().mockResolvedValue({
-      id: "batch-1",
-      projectId: "api-project",
-      sourceName: "import.csv",
-      status: "previewed",
-      createdAt: "2026-05-25T08:00:00.000Z",
-      summary: { added: 1, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
-      items: []
-    }),
+    createImportPreview: vi.fn().mockResolvedValue(apiPreviewBatch),
     applyImportBatch: vi.fn().mockResolvedValue({
       id: "batch-1",
       projectId: "api-project",
@@ -125,6 +126,43 @@ describe("createParameterRuntimeActions", () => {
 
     await actions.refresh();
 
+    expect(repository.listProjects).toHaveBeenCalledTimes(1);
+    expect(repository.listParameters).toHaveBeenCalledTimes(1);
+    expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);
+    expect(repository.listSubmissionRounds).toHaveBeenCalledTimes(1);
+    expect(repository.listDrafts).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "HYDRATE_PARAMETER_RUNTIME",
+      projects: apiProjects,
+      parameters: [apiParameter],
+      changeRequests: [apiChangeRequest],
+      parameterSubmissionRounds: [apiRound],
+      parameterDrafts: [apiDraft]
+    });
+  });
+
+  it("refreshes parameter runtime after an api import preview succeeds", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository();
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+    const input = {
+      projectId: "api-project",
+      sourceName: "import.csv",
+      items: [
+        {
+          name: "previewed_parameter",
+          module: "Charging Policy",
+          risk: "High" as const,
+          unit: "mA",
+          range: "0-5000"
+        }
+      ]
+    };
+
+    const result = await actions.createImportPreview(input);
+
+    expect(result).toEqual(apiPreviewBatch);
+    expect(repository.createImportPreview).toHaveBeenCalledWith(input);
     expect(repository.listProjects).toHaveBeenCalledTimes(1);
     expect(repository.listParameters).toHaveBeenCalledTimes(1);
     expect(repository.listChangeRequests).toHaveBeenCalledTimes(1);

@@ -17,6 +17,7 @@ import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 import { useTopBarActions } from "./components/layout";
+import type { ParameterPageActions } from "./app/routes";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -45,6 +46,7 @@ type ParametersPageProps = {
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
   search: string;
+  parameterActions?: ParameterPageActions;
   effectiveProjectId?: string;
   topBarProjectId?: string;
   canEdit?: boolean;

@@ -183,7 +183,9 @@ export function createParameterRuntimeActions({
       }
 
       try {
-        return await requireRepository(repository).createImportPreview(input);
+        const preview = await requireRepository(repository).createImportPreview(input);
+        const result = await refresh();
+        return result && "notification" in result ? result : preview;
       } catch {
         return notifyFailure(dispatch);
       }

@@ -106,6 +106,7 @@ export function PageRouter({
           dispatch={dispatch}
           onNavigate={onNavigate}
           search={search}
+          parameterActions={parameterActions}
           effectiveProjectId={effectiveParametersProjectId}
           canEdit={canEditParameters}
           initializationStatus={activeProjectInitializationStatus}
