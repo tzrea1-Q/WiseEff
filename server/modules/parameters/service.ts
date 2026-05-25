@@ -18,6 +18,7 @@ import {
   getChangeRequestById,
   getProjectById,
   getProjectParameterForUpdate,
+  hasEligibleWorkflowAssignee,
   insertImportBatch,
   insertReviewDecision,
   listParameterDefinitionsForImport,
@@ -183,6 +184,39 @@ function assertValidApplyImportInput(input: ApplyImportBatchInput) {
   }
 
   return parsed.data;
+}
+
+async function assertWorkflowAssigneesAreEligible(
+  db: Queryable,
+  auth: AuthContext,
+  projectId: string,
+  assignees: SubmitParameterChangesInput["assignees"]
+) {
+  if (!assignees) return;
+
+  const checks = [
+    { userId: assignees.hardwareCommitterId, roleId: "hardware-committer" as const },
+    { userId: assignees.softwareCommitterId, roleId: "software-committer" as const },
+    { userId: assignees.softwareUserId, roleId: "software-user" as const }
+  ];
+
+  for (const check of checks) {
+    if (!check.userId) continue;
+    const eligible = await hasEligibleWorkflowAssignee(db, {
+      organizationId: auth.organization.id,
+      projectId,
+      userId: check.userId,
+      roleId: check.roleId
+    });
+
+    if (!eligible) {
+      throw new ApiError("VALIDATION_FAILED", "Workflow assignee is not eligible for the requested role.", 400, {
+        userId: check.userId,
+        roleId: check.roleId,
+        projectId
+      });
+    }
+  }
 }
 
 function normalizeSlug(value: string) {
@@ -519,6 +553,11 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         itemId: conflictItem.id
       });
     }
+    if (selectedItems.length === 0) {
+      throw new ApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.", 400, {
+        batchId: parsed.batchId
+      });
+    }
 
     const selectedItemsWithTargets = selectedItems.map((item) => {
       if (!item.definitionId || !item.projectParameterValueId) {
@@ -666,6 +705,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
 
       parameters.push({ item, parameter });
     }
+
+    await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, input.assignees);
 
     const status = hasAssignees(input) ? "hardware_review" : "submitted";
     const round = await createSubmissionRound(tx, {

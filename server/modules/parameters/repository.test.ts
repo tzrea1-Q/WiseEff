@@ -11,6 +11,7 @@ import {
   getParameterById,
   getProjectById,
   getProjectParameterForUpdate,
+  hasEligibleWorkflowAssignee,
   insertReviewDecision,
   insertImportBatch,
   listChangeRequests,
@@ -624,6 +625,75 @@ describe("parameter repository", () => {
     expect(calls[0].values).toEqual(["org-chargelab", "request-1", "software_review", "Hardware reviewed.", null]);
     expect(calls[1].text).toContain("insert into parameter_review_decisions");
     expect(decision).toMatchObject({ requestId: "request-1", toStatus: "software_review" });
+  });
+
+  it("advances assigned user from workflow assignees when updating review status", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "request-1",
+          submission_round_id: "round-1",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          base_version: 7,
+          module: "Charging Policy",
+          title: "fast_charge_current_limit_ma",
+          current_value: "3200",
+          target_value: "3100",
+          submitter: "Riley Chen",
+          status: "software_review",
+          risk: "High",
+          created_at: "2026-05-25T05:00:01.000Z",
+          updated_at: "2026-05-25T05:10:00.000Z",
+          assigned_to_user_id: "u-software-committer",
+          workflow_hardware_committer_user_id: "u-hardware",
+          workflow_software_committer_user_id: "u-software-committer",
+          workflow_software_user_id: "u-software-user",
+          assigned_to: "Software Committer",
+          reviewer_note: "Hardware reviewed.",
+          reject_reason: null,
+          fast_track: false
+        }
+      ]
+    ]);
+
+    const request = await updateChangeRequestStatus(db, {
+      organizationId: "org-chargelab",
+      requestId: "request-1",
+      status: "software_review",
+      note: "Hardware reviewed."
+    });
+
+    expect(calls[0].text).toContain("assigned_to_user_id = case");
+    expect(calls[0].values).toEqual(["org-chargelab", "request-1", "software_review", "Hardware reviewed.", null]);
+    expect(request).toMatchObject({
+      status: "software_review",
+      assignedTo: "u-software-committer",
+      workflowAssignees: {
+        hardwareCommitterId: "u-hardware",
+        softwareCommitterId: "u-software-committer",
+        softwareUserId: "u-software-user"
+      }
+    });
+  });
+
+  it("checks workflow assignee eligibility against active project role bindings", async () => {
+    const { db, calls } = createFakeDb([[{ id: "u-hardware" }]]);
+
+    const eligible = await hasEligibleWorkflowAssignee(db, {
+      organizationId: "org-chargelab",
+      projectId: "project-1",
+      userId: "u-hardware",
+      roleId: "hardware-committer"
+    });
+
+    expect(eligible).toBe(true);
+    expect(calls[0].text).toContain("users.organization_id = $1");
+    expect(calls[0].text).toContain("users.is_active = true");
+    expect(calls[0].text).toContain("urb.project_id = $3");
+    expect(calls[0].text).toContain("urb.role_id = $4");
+    expect(calls[0].values).toEqual(["org-chargelab", "u-hardware", "project-1", "hardware-committer"]);
   });
 
   it("merges change request with expected version and inserts history", async () => {

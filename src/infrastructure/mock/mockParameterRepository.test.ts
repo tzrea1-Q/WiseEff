@@ -417,10 +417,40 @@ describe("mock parameter repository", () => {
       repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [preview.items[0].id] })
     ).rejects.toThrow("Cannot apply import items with open change requests.");
 
-    const applied = await repository.applyImportBatch({ batchId: preview.id });
-    expect(applied.status).toBe("applied");
+    await expect(repository.applyImportBatch({ batchId: preview.id })).rejects.toThrow(
+      "At least one eligible import item must be selected."
+    );
     const parameters = await repository.listParameters({ projectId: "aurora" });
     expect(parameters.some((parameter) => parameter.name === "Selected Conflict Runtime Parameter")).toBe(false);
+  });
+
+  it("rejects import apply when no eligible items would be applied", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const items = [
+      {
+        name: "Unchanged Runtime Parameter",
+        module: "Charging",
+        risk: "Medium",
+        unit: "mA",
+        range: "0-5000",
+        currentValue: "3100",
+        classification: "unchanged"
+      }
+    ] satisfies Array<ParameterImportSourceItem & { classification: "unchanged" }>;
+
+    const preview = await repository.createImportPreview({
+      projectId: "aurora",
+      sourceName: "runtime-unchanged.csv",
+      items
+    });
+
+    await expect(
+      repository.applyImportBatch({ batchId: preview.id, selectedItemIds: [preview.items[0].id] })
+    ).rejects.toThrow("At least one eligible import item must be selected.");
+
+    await expect(repository.applyImportBatch({ batchId: preview.id })).rejects.toThrow(
+      "At least one eligible import item must be selected."
+    );
   });
 
   it("rejects an empty selected item list without consuming the batch", async () => {

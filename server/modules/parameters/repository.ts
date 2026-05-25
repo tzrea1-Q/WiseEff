@@ -12,6 +12,7 @@ import type {
   ProjectDto,
   ProjectModuleDto
 } from "./types";
+import type { BackendRoleId } from "../auth/types";
 import {
   getMostAdvancedActiveParameterStatus,
   type ParameterChangeRequestStatus,
@@ -897,6 +898,33 @@ export async function createChangeRequest(
   return toChangeRequestDto(result.rows[0]);
 }
 
+export async function hasEligibleWorkflowAssignee(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    userId: string;
+    roleId: BackendRoleId;
+  }
+) {
+  const result = await db.query<{ id: string }>(
+    `
+    select users.id
+    from users
+    inner join user_role_bindings urb on urb.user_id = users.id
+    where users.organization_id = $1
+      and users.id = $2
+      and users.is_active = true
+      and urb.project_id = $3
+      and urb.role_id = $4
+    limit 1
+    `,
+    [input.organizationId, input.userId, input.projectId, input.roleId]
+  );
+
+  return result.rows.length > 0;
+}
+
 export async function createSubmissionItem(
   db: Queryable,
   input: {
@@ -1211,6 +1239,13 @@ export async function updateChangeRequestStatus(
     set status = $3,
       reviewer_note = $4,
       reject_reason = coalesce($5, reject_reason),
+      assigned_to_user_id = case
+        when $3 in ('submitted', 'hardware_review') then coalesce(workflow_hardware_committer_user_id, assigned_to_user_id)
+        when $3 = 'software_review' then coalesce(workflow_software_committer_user_id, assigned_to_user_id)
+        when $3 = 'software_merge' then coalesce(workflow_software_user_id, assigned_to_user_id)
+        when $3 in ('merged', 'rejected') then null
+        else assigned_to_user_id
+      end,
       updated_at = now()
     where organization_id = $1
       and id = $2

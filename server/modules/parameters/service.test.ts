@@ -743,6 +743,37 @@ describe("parameter service", () => {
     expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
   });
 
+  it("apply rejects when selected items contain no eligible import changes", async () => {
+    const unchangedBatch = importBatchRow({
+      summary: { added: 0, updated: 0, unchanged: 1, conflict: 0, highRisk: 0 },
+      items: [
+        {
+          id: "item-unchanged",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          risk: "High",
+          unit: "mA",
+          range: "1000 - 5000",
+          currentValue: "3200",
+          classification: "unchanged",
+          definitionId: "definition-1",
+          projectParameterValueId: "param-1",
+          riskFlag: false
+        }
+      ]
+    });
+    const { db, txCalls } = createFakeDb([[unchangedBatch], [projectRow()]]);
+
+    await expect(
+      applyImportBatch(db, makeAdminAuth(), {
+        batchId: "batch-1",
+        selectedItemIds: ["item-unchanged"]
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "At least one eligible import item must be selected.", 400));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_import_batches"))).toBe(false);
+  });
+
   it("apply rejects added definition id collisions", async () => {
     const { db, txCalls } = createFakeDb([
       [importBatchRow()],
@@ -1239,6 +1270,9 @@ describe("parameter service", () => {
     const { db, txCalls } = createFakeDb([
       [parameterRow()],
       [],
+      [{ id: "u-hardware" }],
+      [{ id: "u-software-committer" }],
+      [{ id: "u-software-user" }],
       [
         {
           id: "round-1",
@@ -1293,6 +1327,28 @@ describe("parameter service", () => {
       status: "hardware_review",
       workflowAssignees
     });
+  });
+
+  it("submitting with an assignee lacking the project workflow role rejects before writes", async () => {
+    const { db, txCalls } = createFakeDb([
+      [parameterRow()],
+      [],
+      []
+    ]);
+
+    await expect(
+      submitParameterChanges(db, makeAuth(), {
+        projectId: "project-1",
+        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+        assignees: {
+          hardwareCommitterId: "u-wrong-role",
+          softwareCommitterId: "u-software-committer",
+          softwareUserId: "u-software-user"
+        }
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Workflow assignee is not eligible for the requested role.", 400));
+
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
   });
 
   it("submitting a parameter with an existing open request throws conflict", async () => {

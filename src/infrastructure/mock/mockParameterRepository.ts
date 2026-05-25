@@ -170,7 +170,9 @@ function importItemToParameterRecord(projectId: string, item: ParameterImportBat
 function applyImportItemsToState(state: PrototypeState, batch: ParameterImportBatchDto, selectedItemIds?: string[]): PrototypeState {
   const selectedIds = selectedItemIds ? new Set(selectedItemIds) : null;
   const selectedItems = batch.items.filter((item) =>
-    selectedIds ? selectedIds.has(item.id) : item.classification === "added" || item.classification === "updated"
+    selectedIds
+      ? selectedIds.has(item.id) && (item.classification === "added" || item.classification === "updated")
+      : item.classification === "added" || item.classification === "updated"
   );
 
   if (selectedItems.length === 0) {
@@ -438,6 +440,14 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
         : undefined;
       if (conflictItem) {
         throw new Error("Cannot apply import items with open change requests.");
+      }
+      const eligibleSelectedItems = batch.items.filter((item) =>
+        selectedItemIds
+          ? selectedItemIds.includes(item.id) && (item.classification === "added" || item.classification === "updated")
+          : item.classification === "added" || item.classification === "updated"
+      );
+      if (eligibleSelectedItems.length === 0) {
+        throw new Error("At least one eligible import item must be selected.");
       }
       const applied = {
         ...batch,
