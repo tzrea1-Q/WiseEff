@@ -1,4 +1,4 @@
-# Plans
+﻿# Plans
 
 Execution plans are first-class repository artifacts. Use them for work that has more than a tiny local change or that affects product behavior, architecture, security, reliability, or multiple files.
 
@@ -11,6 +11,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 ## Current Active Plan
 
 - `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence.
+- `exec-plans/active/2026-05-25-wiseeff-m1-parameter-management-mvp.md`: detailed M1 parameter management MVP implementation plan.
 
 ## Completed Plans
 
