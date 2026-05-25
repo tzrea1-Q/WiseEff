@@ -4,11 +4,13 @@ import type {
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
   ParameterImportSourceItem,
+  ChangeRequestListQuery,
   ParameterListQuery,
   ParameterRepository,
   ProjectSummary,
   ReviewParameterChangeInput,
   SaveParameterDraftInput,
+  SubmissionRoundListQuery,
   SubmitParameterChangesInput
 } from "@/application/ports/ParameterRepository";
 import { submitParameterRound, type BuildRuntimeReviewFields } from "@/domain/parameters/commands";
@@ -24,6 +26,21 @@ function matchesQuery(parameter: ParameterRecord, query?: ParameterListQuery) {
   if (query.projectId && parameter.projectId !== query.projectId) return false;
   if (query.module && parameter.module !== query.module) return false;
   if (query.risk && query.risk.length > 0 && !query.risk.includes(parameter.risk)) return false;
+  return true;
+}
+
+function matchesChangeRequestQuery(request: ChangeRequest, query?: ChangeRequestListQuery) {
+  if (!query) return true;
+  if (query.projectId && request.projectId !== query.projectId) return false;
+  if (query.assignedTo && request.assignedTo !== query.assignedTo) return false;
+  if (query.status && query.status.length > 0 && !query.status.includes(request.status)) return false;
+  return true;
+}
+
+function matchesSubmissionRoundQuery(round: ParameterSubmissionRound, query?: SubmissionRoundListQuery) {
+  if (!query) return true;
+  if (query.projectId && round.projectId !== query.projectId) return false;
+  if (query.status && query.status.length > 0 && !query.status.includes(round.status)) return false;
   return true;
 }
 
@@ -109,6 +126,119 @@ function writeDrafts(runtime: MockParameterRepositoryRuntimeState, drafts: Param
 
 function cloneDraft(draft: ParameterDraftDto): ParameterDraftDto {
   return { ...draft };
+}
+
+function importParameterId(projectId: string, name: string) {
+  return `${projectId}-${slugForId(name)}`;
+}
+
+function importItemToParameterRecord(projectId: string, item: ParameterImportBatchDto["items"][number]): ParameterRecord {
+  const currentValue = item.currentValue ?? item.recommendedValue ?? "";
+  const recommendedValue = item.recommendedValue ?? item.currentValue ?? "";
+  return {
+    id: importParameterId(projectId, item.name),
+    name: item.name,
+    description: item.description ?? `${item.name} imported from mock parameter batch.`,
+    explanation: item.explanation ?? "",
+    configFormat: item.configFormat ?? "",
+    module: item.module,
+    projectId,
+    currentValue,
+    recommendedValue,
+    range: item.range,
+    unit: item.unit,
+    risk: item.risk,
+    updatedAt: MOCK_CONTRACT_NOW,
+    updatedAtTs: MOCK_CONTRACT_NOW,
+    history: [
+      {
+        version: "mock-import",
+        value: currentValue,
+        changedAt: MOCK_CONTRACT_NOW,
+        changedBy: "Mock import"
+      }
+    ]
+  };
+}
+
+function applyImportItemsToState(state: PrototypeState, batch: ParameterImportBatchDto, selectedItemIds?: string[]): PrototypeState {
+  const selectedIds = selectedItemIds ? new Set(selectedItemIds) : null;
+  const selectedItems = batch.items.filter((item) => !selectedIds || selectedIds.has(item.id));
+
+  if (selectedItems.length === 0) {
+    return state;
+  }
+
+  const parameters = [...state.parameters];
+  const configParameterLibrary = [...state.configDraft.parameterLibrary];
+
+  for (const item of selectedItems) {
+    const existingIndex = parameters.findIndex((parameter) => parameter.projectId === batch.projectId && parameter.name === item.name);
+    const existing = existingIndex >= 0 ? parameters[existingIndex] : undefined;
+    const imported = importItemToParameterRecord(batch.projectId, item);
+    const nextParameter = existing
+      ? {
+          ...existing,
+          description: item.description ?? existing.description,
+          explanation: item.explanation ?? existing.explanation,
+          configFormat: item.configFormat ?? existing.configFormat,
+          module: item.module,
+          currentValue: item.currentValue ?? existing.currentValue,
+          recommendedValue: item.recommendedValue ?? existing.recommendedValue,
+          range: item.range,
+          unit: item.unit,
+          risk: item.risk,
+          updatedAt: MOCK_CONTRACT_NOW,
+          updatedAtTs: MOCK_CONTRACT_NOW
+        }
+      : imported;
+
+    if (existingIndex >= 0) {
+      parameters[existingIndex] = nextParameter;
+    } else {
+      parameters.push(nextParameter);
+    }
+
+    const libraryId = existing?.id.startsWith(`${batch.projectId}-`) ? existing.id.slice(batch.projectId.length + 1) : slugForId(item.name);
+    const libraryIndex = configParameterLibrary.findIndex((parameter) => parameter.id === libraryId);
+    const existingLibrary = libraryIndex >= 0 ? configParameterLibrary[libraryIndex] : undefined;
+    const currentValue = item.currentValue ?? existing?.currentValue ?? item.recommendedValue ?? "";
+    const recommendedValue = item.recommendedValue ?? existing?.recommendedValue ?? item.currentValue ?? "";
+    const nextLibrary = {
+      id: libraryId,
+      name: item.name,
+      description: item.description ?? existingLibrary?.description ?? nextParameter.description,
+      explanation: item.explanation ?? existingLibrary?.explanation ?? nextParameter.explanation,
+      configFormat: item.configFormat ?? existingLibrary?.configFormat ?? nextParameter.configFormat,
+      module: item.module,
+      range: item.range,
+      unit: item.unit,
+      risk: item.risk,
+      values: {
+        ...(existingLibrary?.values ?? {}),
+        [batch.projectId]: {
+          currentValue,
+          recommendedValue,
+          updatedAt: MOCK_CONTRACT_NOW
+        }
+      }
+    };
+
+    if (libraryIndex >= 0) {
+      configParameterLibrary[libraryIndex] = nextLibrary;
+    } else {
+      configParameterLibrary.push(nextLibrary);
+    }
+  }
+
+  return {
+    ...state,
+    parameters,
+    configDraft: {
+      ...state.configDraft,
+      parameterLibrary: configParameterLibrary
+    }
+  };
 }
 
 function getNextReviewStep(request: ChangeRequest): Pick<ChangeRequest, "status" | "assignedTo"> {
@@ -258,11 +388,11 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
         readDrafts(repositoryRuntime).filter((draft) => draft.id !== draftId)
       );
     },
-    async listChangeRequests(): Promise<ChangeRequest[]> {
-      return readMockState(runtime).changeRequests.map(cloneChangeRequest);
+    async listChangeRequests(query?: ChangeRequestListQuery): Promise<ChangeRequest[]> {
+      return readMockState(runtime).changeRequests.filter((request) => matchesChangeRequestQuery(request, query)).map(cloneChangeRequest);
     },
-    async listSubmissionRounds(): Promise<ParameterSubmissionRound[]> {
-      return readMockState(runtime).parameterSubmissionRounds.map(cloneSubmissionRound);
+    async listSubmissionRounds(query?: SubmissionRoundListQuery): Promise<ParameterSubmissionRound[]> {
+      return readMockState(runtime).parameterSubmissionRounds.filter((round) => matchesSubmissionRoundQuery(round, query)).map(cloneSubmissionRound);
     },
     async submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound> {
       const before = readMockState(runtime);
@@ -290,8 +420,9 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
         status: "applied" as const,
         appliedAt: MOCK_CONTRACT_NOW,
         summary: { ...batch.summary },
-        items: batch.items.map((item) => ({ ...item }))
+        items: batch.items.filter((item) => !input.selectedItemIds || input.selectedItemIds.includes(item.id)).map((item) => ({ ...item }))
       };
+      writeMockState(runtime, applyImportItemsToState(readMockState(runtime), batch, input.selectedItemIds));
       importBatches.set(input.batchId, cloneImportBatch(applied));
       return cloneImportBatch(applied);
     }
