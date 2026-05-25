@@ -9,7 +9,13 @@ import type {
   ProjectDto,
   ProjectModuleDto
 } from "./types";
-import type { ParameterChangeRequestStatus, ParameterRiskLevel, ParameterSubmissionRoundStatus } from "./status";
+import {
+  getMostAdvancedActiveParameterStatus,
+  type ParameterChangeRequestStatus,
+  type ParameterReviewDecision,
+  type ParameterRiskLevel,
+  type ParameterSubmissionRoundStatus
+} from "./status";
 
 type ProjectRow = {
   id: string;
@@ -98,6 +104,8 @@ type ChangeRequestRow = {
   submission_round_id: string | null;
   project_id: string;
   project_parameter_value_id: string;
+  parameter_definition_id?: string;
+  base_version?: number | string;
   module: string;
   title: string;
   current_value: string;
@@ -111,6 +119,48 @@ type ChangeRequestRow = {
   reviewer_note: string | null;
   reject_reason: string | null;
   fast_track: boolean;
+};
+
+export type ReviewDecisionDto = {
+  id: string;
+  requestId: string;
+  reviewerUserId: string;
+  decision: ParameterReviewDecision;
+  fromStatus: ParameterChangeRequestStatus;
+  toStatus: ParameterChangeRequestStatus;
+  note?: string;
+  createdAt: string;
+};
+
+type ReviewDecisionRow = {
+  id: string;
+  request_id: string;
+  reviewer_user_id: string;
+  decision: ParameterReviewDecision;
+  from_status: ParameterChangeRequestStatus;
+  to_status: ParameterChangeRequestStatus;
+  note: string | null;
+  created_at: string | Date;
+};
+
+export type ChangeRequestMergeResult = {
+  id: string;
+  projectParameterValueId: string;
+  parameterDefinitionId: string;
+  projectId: string;
+  targetValue: string;
+  baseVersion: number;
+  newVersion: number;
+};
+
+type ChangeRequestMergeRow = {
+  id: string;
+  project_parameter_value_id: string;
+  parameter_definition_id: string;
+  project_id: string;
+  target_value: string;
+  base_version: number | string;
+  new_version: number | string;
 };
 
 type SubmissionItemRow = {
@@ -292,6 +342,31 @@ function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
     assignedTo: row.assigned_to ?? undefined,
     fastTrack: row.fast_track,
     reviewerNote: row.reviewer_note ?? undefined
+  };
+}
+
+function toReviewDecisionDto(row: ReviewDecisionRow): ReviewDecisionDto {
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    reviewerUserId: row.reviewer_user_id,
+    decision: row.decision,
+    fromStatus: row.from_status,
+    toStatus: row.to_status,
+    note: row.note ?? undefined,
+    createdAt: dateTimeToIso(row.created_at)
+  };
+}
+
+function toChangeRequestMergeResult(row: ChangeRequestMergeRow): ChangeRequestMergeResult {
+  return {
+    id: row.id,
+    projectParameterValueId: row.project_parameter_value_id,
+    parameterDefinitionId: row.parameter_definition_id,
+    projectId: row.project_id,
+    targetValue: row.target_value,
+    baseVersion: Number(row.base_version),
+    newVersion: Number(row.new_version)
   };
 }
 
@@ -818,6 +893,254 @@ export async function findOpenChangeRequest(
   );
 
   return result.rows[0] ? toChangeRequestDto(result.rows[0]) : null;
+}
+
+export async function getChangeRequestById(
+  db: Queryable,
+  query: { organizationId: string; requestId: string }
+) {
+  const result = await db.query<ChangeRequestRow>(
+    `
+    select
+      pcr.id,
+      pcr.submission_round_id,
+      pcr.project_id,
+      pcr.project_parameter_value_id,
+      pcr.parameter_definition_id,
+      pcr.base_version,
+      pd.module,
+      pd.name as title,
+      pcr.current_value,
+      pcr.target_value,
+      users.name as submitter,
+      pcr.status,
+      pd.risk,
+      pcr.created_at,
+      pcr.updated_at,
+      assignee.name as assigned_to,
+      pcr.reviewer_note,
+      pcr.reject_reason,
+      pcr.fast_track
+    from parameter_change_requests pcr
+    inner join parameter_definitions pd on pd.id = pcr.parameter_definition_id
+    inner join users on users.id = pcr.submitter_user_id
+    left join users assignee on assignee.id = pcr.assigned_to_user_id
+    where pcr.organization_id = $1
+      and pcr.id = $2
+    for update
+    `,
+    [query.organizationId, query.requestId]
+  );
+
+  return result.rows[0] ? toChangeRequestDto(result.rows[0]) : null;
+}
+
+export async function listReviewDecisions(
+  db: Queryable,
+  query: { organizationId: string; requestId: string }
+) {
+  const result = await db.query<ReviewDecisionRow>(
+    `
+    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at
+    from parameter_review_decisions
+    where organization_id = $1
+      and request_id = $2
+    order by created_at asc, id asc
+    `,
+    [query.organizationId, query.requestId]
+  );
+
+  return result.rows.map(toReviewDecisionDto);
+}
+
+export async function insertReviewDecision(
+  db: Queryable,
+  input: {
+    id: string;
+    organizationId: string;
+    requestId: string;
+    reviewerUserId: string;
+    decision: ParameterReviewDecision;
+    fromStatus: ParameterChangeRequestStatus;
+    toStatus: ParameterChangeRequestStatus;
+    note?: string;
+  }
+) {
+  const result = await db.query<ReviewDecisionRow>(
+    `
+    insert into parameter_review_decisions (
+      id, organization_id, request_id, reviewer_user_id, decision, from_status, to_status, note
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8)
+    returning id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at
+    `,
+    [
+      input.id,
+      input.organizationId,
+      input.requestId,
+      input.reviewerUserId,
+      input.decision,
+      input.fromStatus,
+      input.toStatus,
+      input.note ?? null
+    ]
+  );
+
+  return toReviewDecisionDto(result.rows[0]);
+}
+
+export async function updateChangeRequestStatus(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    requestId: string;
+    status: ParameterChangeRequestStatus;
+    note?: string;
+  }
+) {
+  const rejectReason = input.status === "rejected" ? input.note ?? null : null;
+  const result = await db.query<ChangeRequestRow>(
+    `
+    update parameter_change_requests
+    set status = $3,
+      reviewer_note = $4,
+      reject_reason = coalesce($5, reject_reason),
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    returning
+      id,
+      submission_round_id,
+      project_id,
+      project_parameter_value_id,
+      parameter_definition_id,
+      base_version,
+      (select module from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as module,
+      (select name from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as title,
+      current_value,
+      target_value,
+      (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
+      status,
+      (select risk from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as risk,
+      created_at,
+      updated_at,
+      (select name from users where id = parameter_change_requests.assigned_to_user_id) as assigned_to,
+      reviewer_note,
+      reject_reason,
+      fast_track
+    `,
+    [input.organizationId, input.requestId, input.status, input.note ?? null, rejectReason]
+  );
+
+  return result.rows[0] ? toChangeRequestDto(result.rows[0]) : null;
+}
+
+export async function mergeChangeRequest(
+  db: Queryable,
+  input: {
+    historyId: string;
+    organizationId: string;
+    requestId: string;
+    expectedVersion?: number;
+    actorUserId: string;
+  }
+) {
+  const result = await db.query<ChangeRequestMergeRow>(
+    `
+    with request_to_merge as (
+      select
+        id,
+        organization_id,
+        project_id,
+        project_parameter_value_id,
+        parameter_definition_id,
+        base_version,
+        target_value
+      from parameter_change_requests
+      where organization_id = $1
+        and id = $2
+        and status = 'software_merge'
+      for update
+    ),
+    updated_value as (
+      update project_parameter_values ppv
+      set current_value = request_to_merge.target_value,
+        value_version = ppv.value_version + 1,
+        updated_by_user_id = $4,
+        updated_at = now()
+      from request_to_merge
+      where ppv.organization_id = $1
+        and ppv.id = request_to_merge.project_parameter_value_id
+        and ppv.value_version = coalesce($3, request_to_merge.base_version)
+      returning
+        request_to_merge.id,
+        request_to_merge.project_parameter_value_id,
+        request_to_merge.parameter_definition_id,
+        request_to_merge.project_id,
+        request_to_merge.target_value,
+        request_to_merge.base_version,
+        ppv.value_version as new_version
+    )
+    select *
+    from updated_value
+    `,
+    [input.organizationId, input.requestId, input.expectedVersion ?? null, input.actorUserId]
+  );
+
+  const merged = result.rows[0];
+  if (!merged) return null;
+
+  await db.query(
+    `
+    insert into parameter_history_entries (
+      id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
+      version, value, changed_by_user_id, request_id
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `,
+    [
+      input.historyId,
+      input.organizationId,
+      merged.project_id,
+      merged.parameter_definition_id,
+      merged.project_parameter_value_id,
+      Number(merged.new_version),
+      merged.target_value,
+      input.actorUserId,
+      input.requestId
+    ]
+  );
+
+  return toChangeRequestMergeResult(merged);
+}
+
+export async function updateSubmissionRoundStatusFromRequests(
+  db: Queryable,
+  input: { organizationId: string; submissionRoundId: string }
+) {
+  const result = await db.query<{ status: ParameterChangeRequestStatus }>(
+    `
+    select status
+    from parameter_change_requests
+    where organization_id = $1
+      and submission_round_id = $2
+    `,
+    [input.organizationId, input.submissionRoundId]
+  );
+  const status = getMostAdvancedActiveParameterStatus(result.rows.map((row) => row.status));
+
+  await db.query(
+    `
+    update parameter_submission_rounds
+    set status = $3,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    `,
+    [input.organizationId, input.submissionRoundId, status]
+  );
+
+  return status;
 }
 
 export async function getProjectParameterForUpdate(

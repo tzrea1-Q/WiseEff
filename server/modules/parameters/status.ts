@@ -43,3 +43,22 @@ export function getNextParameterStatus(status: ParameterChangeStatus) {
   if (status === "software_merge") return "merged";
   return status;
 }
+
+const activeStatusRank: Record<ParameterChangeRequestStatus, number> = {
+  submitted: 0,
+  hardware_review: 1,
+  software_review: 2,
+  software_merge: 3,
+  merged: 4,
+  rejected: 4
+};
+
+export function getMostAdvancedActiveParameterStatus(statuses: ParameterChangeRequestStatus[]) {
+  if (statuses.length === 0) return "submitted";
+  if (statuses.every((status) => status === "merged")) return "merged";
+  if (statuses.some((status) => status === "rejected")) return "rejected";
+
+  return statuses.reduce((mostAdvanced, status) =>
+    activeStatusRank[status] > activeStatusRank[mostAdvanced] ? status : mostAdvanced
+  );
+}

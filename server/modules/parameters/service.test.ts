@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { listDrafts, saveDraft, submitParameterChanges } from "./service";
+import { listDrafts, reviewChange, saveDraft, submitParameterChanges } from "./service";
 
 type QueryCall = {
   text: string;
@@ -74,6 +74,45 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     recommended_value: "3000",
     value_version: 7,
     updated_at: "2026-05-25T02:00:00.000Z",
+    ...overrides
+  };
+}
+
+function changeRequestRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "request-1",
+    submission_round_id: "round-1",
+    project_id: "project-1",
+    project_parameter_value_id: "param-1",
+    parameter_definition_id: "definition-1",
+    base_version: 7,
+    module: "Charging Policy",
+    title: "fast_charge_current_limit_ma",
+    current_value: "3200",
+    target_value: "3100",
+    submitter: "Riley Chen",
+    status: "hardware_review",
+    risk: "High",
+    created_at: "2026-05-25T05:00:01.000Z",
+    updated_at: "2026-05-25T05:00:01.000Z",
+    assigned_to: null,
+    reviewer_note: null,
+    reject_reason: null,
+    fast_track: false,
+    ...overrides
+  };
+}
+
+function reviewDecisionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "decision-1",
+    request_id: "request-1",
+    reviewer_user_id: "reviewer-1",
+    decision: "advance",
+    from_status: "hardware_review",
+    to_status: "software_review",
+    note: "Hardware reviewed.",
+    created_at: "2026-05-25T05:10:00.000Z",
     ...overrides
   };
 }
@@ -411,5 +450,183 @@ describe("parameter service", () => {
 
     const insertRequest = txCalls.find((call) => call.text.includes("insert into parameter_change_requests"));
     expect(insertRequest?.values).toContain(42);
+  });
+
+  it("ordinary user cannot advance review", async () => {
+    const { db, txCalls } = createFakeDb([[changeRequestRow()]]);
+
+    await expect(
+      reviewChange(db, makeAuth(), {
+        requestId: "request-1",
+        decision: "advance",
+        note: "Looks good."
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter review permission is required.", 403));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(false);
+  });
+
+  it("committer advances hardware review to software review", async () => {
+    const { db, txCalls } = createFakeDb([
+      [changeRequestRow({ status: "hardware_review" })],
+      [changeRequestRow({ status: "software_review", updated_at: "2026-05-25T05:11:00.000Z" })],
+      [reviewDecisionRow({ from_status: "hardware_review", to_status: "software_review" })],
+      [{ status: "software_review" }],
+      []
+    ]);
+
+    const request = await reviewChange(
+      db,
+      makeAuth({ permissions: ["parameter:view", "parameter:edit", "parameter:review"], roles: [{ projectId: "project-1", roleId: "hardware-committer" }] }),
+      {
+        requestId: "request-1",
+        decision: "advance",
+        note: "Hardware reviewed."
+      }
+    );
+
+    expect(request.status).toBe("software_review");
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("update parameter_submission_rounds"))).toBe(true);
+    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain(
+      "parameter-review-advance"
+    );
+  });
+
+  it("committer advances software review to software merge", async () => {
+    const { db } = createFakeDb([
+      [changeRequestRow({ status: "software_review" })],
+      [changeRequestRow({ status: "software_merge", updated_at: "2026-05-25T05:12:00.000Z" })],
+      [reviewDecisionRow({ from_status: "software_review", to_status: "software_merge" })],
+      [{ status: "software_merge" }],
+      []
+    ]);
+
+    const request = await reviewChange(
+      db,
+      makeAuth({ permissions: ["parameter:view", "parameter:edit", "parameter:review"], roles: [{ projectId: "project-1", roleId: "software-committer" }] }),
+      {
+        requestId: "request-1",
+        decision: "advance",
+        note: "Software reviewed."
+      }
+    );
+
+    expect(request.status).toBe("software_merge");
+  });
+
+  it("software user can merge software merge request", async () => {
+    const { db, txCalls } = createFakeDb([
+      [changeRequestRow({ status: "software_merge", risk: "Medium" })],
+      [
+        {
+          id: "request-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          project_id: "project-1",
+          target_value: "3100",
+          base_version: 7,
+          new_version: 8
+        }
+      ],
+      [],
+      [changeRequestRow({ status: "merged", risk: "Medium", current_value: "3100", updated_at: "2026-05-25T05:13:00.000Z" })],
+      [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
+      [{ status: "merged" }],
+      []
+    ]);
+
+    const request = await reviewChange(db, makeAuth(), {
+      requestId: "request-1",
+      decision: "advance",
+      expectedVersion: 7,
+      note: "Merge approved."
+    });
+
+    expect(request.status).toBe("merged");
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
+    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
+  });
+
+  it("high-risk request cannot merge unless prior hardware and software decisions exist", async () => {
+    const { db } = createFakeDb([[changeRequestRow({ status: "software_merge", risk: "High" })], []]);
+
+    await expect(
+      reviewChange(db, makeAuth(), {
+        requestId: "request-1",
+        decision: "advance",
+        expectedVersion: 7
+      })
+    ).rejects.toMatchObject(
+      new ApiError(
+        "CONFLICT",
+        "High-risk parameter changes require hardware and software review before merge.",
+        409,
+        { requestId: "request-1" }
+      )
+    );
+  });
+
+  it("merge with stale expectedVersion throws conflict", async () => {
+    const { db, txCalls } = createFakeDb([
+      [changeRequestRow({ status: "software_merge", risk: "Medium" })],
+      []
+    ]);
+
+    await expect(
+      reviewChange(db, makeAuth(), {
+        requestId: "request-1",
+        decision: "advance",
+        expectedVersion: 6
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter value changed before merge.", 409));
+
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(false);
+  });
+
+  it("merge updates parameter value, inserts history, inserts decision, writes audit", async () => {
+    const { db, txCalls } = createFakeDb([
+      [changeRequestRow({ status: "software_merge", risk: "High" })],
+      [
+        reviewDecisionRow({ id: "decision-hardware", from_status: "hardware_review", to_status: "software_review" }),
+        reviewDecisionRow({ id: "decision-software", from_status: "software_review", to_status: "software_merge" })
+      ],
+      [
+        {
+          id: "request-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          project_id: "project-1",
+          target_value: "3100",
+          base_version: 7,
+          new_version: 8
+        }
+      ],
+      [],
+      [changeRequestRow({ status: "merged", current_value: "3100", updated_at: "2026-05-25T05:14:00.000Z" })],
+      [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
+      [{ status: "merged" }],
+      []
+    ]);
+
+    const request = await reviewChange(db, makeAuth(), {
+      requestId: "request-1",
+      decision: "advance",
+      expectedVersion: 7,
+      note: "Merge approved."
+    });
+
+    expect(request.status).toBe("merged");
+    expect(txCalls.find((call) => call.text.includes("update project_parameter_values"))?.values).toEqual([
+      "org-1",
+      "request-1",
+      7,
+      "user-1"
+    ]);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(true);
+    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
   });
 });

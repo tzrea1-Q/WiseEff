@@ -6,14 +6,20 @@ import {
   createSubmissionRound,
   deleteDraft,
   findOpenChangeRequest,
+  getChangeRequestById,
   getParameterById,
   getProjectParameterForUpdate,
+  insertReviewDecision,
   listChangeRequests,
   listDraftsForUser,
   listParameterHistory,
   listParameters,
+  listReviewDecisions,
   listProjects,
   listSubmissionRounds,
+  mergeChangeRequest,
+  updateChangeRequestStatus,
+  updateSubmissionRoundStatusFromRequests,
   upsertDraft
 } from "./repository";
 
@@ -350,5 +356,195 @@ describe("parameter repository", () => {
     expect(calls[0].values).toEqual(["org-chargelab", "project-1", "param-1"]);
     expect(calls[1].text).toContain("for update");
     expect(calls[1].values).toEqual(["org-chargelab", "project-1", "param-1"]);
+  });
+
+  it("gets change request by id and lists review decisions by organization", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "request-1",
+          submission_round_id: "round-1",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          base_version: 7,
+          module: "Charging Policy",
+          title: "fast_charge_current_limit_ma",
+          current_value: "3200",
+          target_value: "3100",
+          submitter: "Riley Chen",
+          status: "hardware_review",
+          risk: "High",
+          created_at: "2026-05-25T05:00:01.000Z",
+          updated_at: "2026-05-25T05:00:01.000Z",
+          assigned_to: null,
+          reviewer_note: null,
+          reject_reason: null,
+          fast_track: false
+        }
+      ],
+      [
+        {
+          id: "decision-1",
+          request_id: "request-1",
+          reviewer_user_id: "user-1",
+          decision: "advance",
+          from_status: "hardware_review",
+          to_status: "software_review",
+          note: "Hardware reviewed.",
+          created_at: "2026-05-25T05:10:00.000Z"
+        }
+      ]
+    ]);
+
+    const request = await getChangeRequestById(db, { organizationId: "org-chargelab", requestId: "request-1" });
+    const decisions = await listReviewDecisions(db, { organizationId: "org-chargelab", requestId: "request-1" });
+
+    expect(request).toMatchObject({ id: "request-1", status: "hardware_review" });
+    expect(decisions).toEqual([
+      {
+        id: "decision-1",
+        requestId: "request-1",
+        reviewerUserId: "user-1",
+        decision: "advance",
+        fromStatus: "hardware_review",
+        toStatus: "software_review",
+        note: "Hardware reviewed.",
+        createdAt: "2026-05-25T05:10:00.000Z"
+      }
+    ]);
+    expect(calls[0].text).toContain("pcr.id = $2");
+    expect(calls[0].values).toEqual(["org-chargelab", "request-1"]);
+    expect(calls[1].text).toContain("from parameter_review_decisions");
+    expect(calls[1].values).toEqual(["org-chargelab", "request-1"]);
+  });
+
+  it("updates request status and inserts review decisions", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "request-1",
+          submission_round_id: "round-1",
+          project_id: "project-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          base_version: 7,
+          module: "Charging Policy",
+          title: "fast_charge_current_limit_ma",
+          current_value: "3200",
+          target_value: "3100",
+          submitter: "Riley Chen",
+          status: "software_review",
+          risk: "High",
+          created_at: "2026-05-25T05:00:01.000Z",
+          updated_at: "2026-05-25T05:10:00.000Z",
+          assigned_to: null,
+          reviewer_note: "Hardware reviewed.",
+          reject_reason: null,
+          fast_track: false
+        }
+      ],
+      [
+        {
+          id: "decision-1",
+          request_id: "request-1",
+          reviewer_user_id: "user-1",
+          decision: "advance",
+          from_status: "hardware_review",
+          to_status: "software_review",
+          note: "Hardware reviewed.",
+          created_at: "2026-05-25T05:10:00.000Z"
+        }
+      ]
+    ]);
+
+    await updateChangeRequestStatus(db, {
+      organizationId: "org-chargelab",
+      requestId: "request-1",
+      status: "software_review",
+      note: "Hardware reviewed."
+    });
+    const decision = await insertReviewDecision(db, {
+      id: "decision-1",
+      organizationId: "org-chargelab",
+      requestId: "request-1",
+      reviewerUserId: "user-1",
+      decision: "advance",
+      fromStatus: "hardware_review",
+      toStatus: "software_review",
+      note: "Hardware reviewed."
+    });
+
+    expect(calls[0].text).toContain("update parameter_change_requests");
+    expect(calls[0].values).toEqual(["org-chargelab", "request-1", "software_review", "Hardware reviewed.", null]);
+    expect(calls[1].text).toContain("insert into parameter_review_decisions");
+    expect(decision).toMatchObject({ requestId: "request-1", toStatus: "software_review" });
+  });
+
+  it("merges change request with expected version and inserts history", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "request-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          project_id: "project-1",
+          target_value: "3100",
+          base_version: 7,
+          new_version: 8
+        }
+      ]
+    ]);
+
+    const merged = await mergeChangeRequest(db, {
+      historyId: "history-1",
+      organizationId: "org-chargelab",
+      requestId: "request-1",
+      expectedVersion: 7,
+      actorUserId: "user-1"
+    });
+
+    expect(merged).toEqual({
+      id: "request-1",
+      projectParameterValueId: "param-1",
+      parameterDefinitionId: "definition-1",
+      projectId: "project-1",
+      targetValue: "3100",
+      baseVersion: 7,
+      newVersion: 8
+    });
+    expect(calls[0].text).toContain("update project_parameter_values");
+    expect(calls[0].text).toContain("value_version = coalesce($3, request_to_merge.base_version)");
+    expect(calls[0].values).toEqual(["org-chargelab", "request-1", 7, "user-1"]);
+    expect(calls[1].text).toContain("insert into parameter_history_entries");
+  });
+
+  it("mergeChangeRequest returns null when the version guard does not update a row", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    const merged = await mergeChangeRequest(db, {
+      historyId: "history-1",
+      organizationId: "org-chargelab",
+      requestId: "request-1",
+      expectedVersion: 6,
+      actorUserId: "user-1"
+    });
+
+    expect(merged).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("updates submission round status from child requests", async () => {
+    const { db, calls } = createFakeDb([[{ status: "software_merge" }]]);
+
+    const status = await updateSubmissionRoundStatusFromRequests(db, {
+      organizationId: "org-chargelab",
+      submissionRoundId: "round-1"
+    });
+
+    expect(status).toBe("software_merge");
+    expect(calls[0].text).toContain("from parameter_change_requests");
+    expect(calls[1].text).toContain("update parameter_submission_rounds");
+    expect(calls[1].values).toEqual(["org-chargelab", "round-1", "software_merge"]);
   });
 });

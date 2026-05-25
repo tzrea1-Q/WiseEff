@@ -4,7 +4,7 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditParameters, canViewParameters } from "./policy";
+import { canEditParameters, canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
 import {
   createChangeRequest,
   createSubmissionItem,
@@ -12,13 +12,19 @@ import {
   deleteDraft as deleteDraftRow,
   deleteDraftForParameter,
   findOpenChangeRequest,
+  getChangeRequestById,
   getProjectParameterForUpdate,
+  insertReviewDecision,
   listChangeRequests as listChangeRequestRows,
   listDraftsForUser,
+  listReviewDecisions,
   listSubmissionRounds as listSubmissionRoundRows,
+  mergeChangeRequest,
+  updateChangeRequestStatus,
+  updateSubmissionRoundStatusFromRequests,
   upsertDraft
 } from "./repository";
-import type { ParameterChangeRequestStatus, ParameterSubmissionRoundStatus } from "./status";
+import { getNextParameterStatus, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
 
 export type SaveDraftInput = {
   projectId: string;
@@ -53,6 +59,13 @@ export type ChangeRequestListQuery = {
   assignedTo?: string;
 };
 
+export type ReviewParameterChangeInput = {
+  requestId: string;
+  decision: "advance" | "reject";
+  note?: string;
+  expectedVersion?: number;
+};
+
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
@@ -62,6 +75,18 @@ function requireCanView(auth: AuthContext) {
 function requireCanEdit(auth: AuthContext) {
   if (!canEditParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403);
+  }
+}
+
+function requireCanReview(auth: AuthContext) {
+  if (!canReviewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+  }
+}
+
+function requireCanMerge(auth: AuthContext) {
+  if (!canMergeParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter merge permission is required.", 403);
   }
 }
 
@@ -102,6 +127,87 @@ async function loadParameterForSubmission(
   }
 
   return parameter;
+}
+
+async function loadChangeRequestForReview(db: Queryable, auth: AuthContext, requestId: string) {
+  const request = await getChangeRequestById(db, {
+    organizationId: auth.organization.id,
+    requestId
+  });
+
+  if (!request) {
+    throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId });
+  }
+
+  return request;
+}
+
+function hasHighRiskReviewEvidence(
+  decisions: Awaited<ReturnType<typeof listReviewDecisions>>
+) {
+  const hasHardwareDecision = decisions.some(
+    (decision) =>
+      decision.decision === "advance" &&
+      decision.fromStatus === "hardware_review" &&
+      decision.toStatus === "software_review"
+  );
+  const hasSoftwareDecision = decisions.some(
+    (decision) =>
+      decision.decision === "advance" &&
+      decision.fromStatus === "software_review" &&
+      decision.toStatus === "software_merge"
+  );
+
+  return hasHardwareDecision && hasSoftwareDecision;
+}
+
+async function updateRoundStatusIfNeeded(
+  db: Queryable,
+  auth: AuthContext,
+  submissionRoundId: string | undefined
+) {
+  if (!submissionRoundId) return undefined;
+
+  return updateSubmissionRoundStatusFromRequests(db, {
+    organizationId: auth.organization.id,
+    submissionRoundId
+  });
+}
+
+async function createParameterReviewAudit(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    projectId?: string;
+    requestId: string;
+    kind: "parameter-review-advance" | "parameter-review-reject" | "parameter-merge";
+    action: "advance" | "reject" | "merge";
+    fromStatus: ParameterChangeRequestStatus;
+    toStatus: ParameterChangeRequestStatus;
+    note?: string;
+    expectedVersion?: number;
+  }
+) {
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: input.projectId ?? null,
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "parameter-management",
+    kind: input.kind,
+    action: input.action,
+    severity: input.kind === "parameter-merge" ? "High" : "Medium",
+    targetType: "parameter-change-request",
+    targetId: input.requestId,
+    metadata: {
+      fromStatus: input.fromStatus,
+      toStatus: input.toStatus,
+      note: input.note,
+      expectedVersion: input.expectedVersion
+    },
+    traceId: randomUUID()
+  });
 }
 
 export async function saveDraft(db: Queryable, auth: AuthContext, input: SaveDraftInput) {
@@ -255,5 +361,168 @@ export async function listChangeRequests(db: Queryable, auth: AuthContext, query
     projectId: query.projectId,
     status: query.status,
     assignedTo: query.assignedTo
+  });
+}
+
+export async function reviewChange(db: Database, auth: AuthContext, input: ReviewParameterChangeInput) {
+  return db.transaction(async (tx) => {
+    const request = await loadChangeRequestForReview(tx, auth, input.requestId);
+    const fromStatus = request.status;
+
+    if (fromStatus === "merged" || fromStatus === "rejected") {
+      throw new ApiError("CONFLICT", "Parameter change request is already closed.", 409, {
+        requestId: input.requestId,
+        status: fromStatus
+      });
+    }
+
+    if (input.decision === "reject") {
+      requireCanReview(auth);
+      const toStatus = "rejected";
+      const updated = await updateChangeRequestStatus(tx, {
+        organizationId: auth.organization.id,
+        requestId: input.requestId,
+        status: toStatus,
+        note: input.note
+      });
+
+      if (!updated) {
+        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId: input.requestId });
+      }
+
+      await insertReviewDecision(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        requestId: input.requestId,
+        reviewerUserId: auth.user.id,
+        decision: "reject",
+        fromStatus,
+        toStatus,
+        note: input.note
+      });
+      await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
+      await createParameterReviewAudit(tx, auth, {
+        projectId: request.projectId,
+        requestId: input.requestId,
+        kind: "parameter-review-reject",
+        action: "reject",
+        fromStatus,
+        toStatus,
+        note: input.note
+      });
+
+      return updated;
+    }
+
+    const toStatus = getNextParameterStatus(fromStatus);
+    if (fromStatus !== "software_merge") {
+      requireCanReview(auth);
+
+      if (toStatus === fromStatus) {
+        throw new ApiError("CONFLICT", "Parameter change request cannot advance from its current status.", 409, {
+          requestId: input.requestId,
+          status: fromStatus
+        });
+      }
+
+      const updated = await updateChangeRequestStatus(tx, {
+        organizationId: auth.organization.id,
+        requestId: input.requestId,
+        status: toStatus,
+        note: input.note
+      });
+
+      if (!updated) {
+        throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId: input.requestId });
+      }
+
+      await insertReviewDecision(tx, {
+        id: randomUUID(),
+        organizationId: auth.organization.id,
+        requestId: input.requestId,
+        reviewerUserId: auth.user.id,
+        decision: "advance",
+        fromStatus,
+        toStatus,
+        note: input.note
+      });
+      await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
+      await createParameterReviewAudit(tx, auth, {
+        projectId: request.projectId,
+        requestId: input.requestId,
+        kind: "parameter-review-advance",
+        action: "advance",
+        fromStatus,
+        toStatus,
+        note: input.note
+      });
+
+      return updated;
+    }
+
+    requireCanMerge(auth);
+
+    if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
+      const decisions = await listReviewDecisions(tx, {
+        organizationId: auth.organization.id,
+        requestId: input.requestId
+      });
+
+      if (!hasHighRiskReviewEvidence(decisions)) {
+        throw new ApiError(
+          "CONFLICT",
+          "High-risk parameter changes require hardware and software review before merge.",
+          409,
+          { requestId: input.requestId }
+        );
+      }
+    }
+
+    const merged = await mergeChangeRequest(tx, {
+      historyId: randomUUID(),
+      organizationId: auth.organization.id,
+      requestId: input.requestId,
+      expectedVersion: input.expectedVersion,
+      actorUserId: auth.user.id
+    });
+
+    if (!merged) {
+      throw new ApiError("CONFLICT", "Parameter value changed before merge.", 409, { requestId: input.requestId });
+    }
+
+    const updated = await updateChangeRequestStatus(tx, {
+      organizationId: auth.organization.id,
+      requestId: input.requestId,
+      status: "merged",
+      note: input.note
+    });
+
+    if (!updated) {
+      throw new ApiError("NOT_FOUND", "Parameter change request was not found.", 404, { requestId: input.requestId });
+    }
+
+    await insertReviewDecision(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      requestId: input.requestId,
+      reviewerUserId: auth.user.id,
+      decision: "advance",
+      fromStatus,
+      toStatus: "merged",
+      note: input.note
+    });
+    await updateRoundStatusIfNeeded(tx, auth, request.submissionRoundId);
+    await createParameterReviewAudit(tx, auth, {
+      projectId: request.projectId,
+      requestId: input.requestId,
+      kind: "parameter-merge",
+      action: "merge",
+      fromStatus,
+      toStatus: "merged",
+      note: input.note,
+      expectedVersion: input.expectedVersion
+    });
+
+    return updated;
   });
 }
