@@ -3,10 +3,65 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+const apiParameter = {
+  ...initialState.parameters[0],
+  id: `${initialState.activeProjectId}-api-runtime-param`,
+  projectId: initialState.activeProjectId,
+  name: "api_runtime_voltage_limit"
+};
+const apiProject = {
+  id: initialState.activeProjectId,
+  name: "API Runtime Project",
+  code: "API-RUN"
+};
+
+function createAppParameterRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
+  return {
+    listProjects: vi.fn().mockResolvedValue([apiProject]),
+    listParameters: vi.fn().mockResolvedValue([apiParameter]),
+    getParameter: vi.fn().mockResolvedValue(apiParameter),
+    listParameterHistory: vi.fn().mockResolvedValue([]),
+    listDrafts: vi.fn().mockResolvedValue([]),
+    saveDraft: vi.fn().mockResolvedValue({
+      id: "draft-api-runtime",
+      projectId: initialState.activeProjectId,
+      parameterId: apiParameter.id,
+      targetValue: "42",
+      reason: "Tune value",
+      updatedAt: "2026-05-25T08:00:00.000Z"
+    }),
+    deleteDraft: vi.fn().mockResolvedValue(undefined),
+    listChangeRequests: vi.fn().mockResolvedValue([]),
+    listSubmissionRounds: vi.fn().mockResolvedValue([]),
+    submitParameterChanges: vi.fn().mockResolvedValue({ ...initialState.parameterSubmissionRounds[0], id: "api-runtime-round" }),
+    reviewChange: vi.fn().mockResolvedValue({ ...initialState.changeRequests[0], id: "api-runtime-change" }),
+    createImportPreview: vi.fn().mockResolvedValue({
+      id: "api-runtime-batch",
+      projectId: initialState.activeProjectId,
+      sourceName: "import.csv",
+      status: "previewed",
+      createdAt: "2026-05-25T08:00:00.000Z",
+      summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: []
+    }),
+    applyImportBatch: vi.fn().mockResolvedValue({
+      id: "api-runtime-batch",
+      projectId: initialState.activeProjectId,
+      sourceName: "import.csv",
+      status: "applied",
+      createdAt: "2026-05-25T08:00:00.000Z",
+      appliedAt: "2026-05-25T08:01:00.000Z",
+      summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
+      items: []
+    }),
+    ...overrides
+  };
+}
 
 afterEach(() => {
   cleanup();
@@ -133,12 +188,76 @@ describe("WiseEff app shell", () => {
           })
         }}
         initialAppState={initialState}
+        parameterRepository={createAppParameterRepository()}
         runtimeMode="api"
       />
     );
 
     expect(await screen.findByText("API Admin")).toBeInTheDocument();
     expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("hydrates parameter runtime data from the API repository after auth", async () => {
+    window.history.replaceState(null, "", "/parameters");
+    const parameterRepository = createAppParameterRepository();
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-user",
+              organizationId: "org-chargelab",
+              name: "API User",
+              email: "api-user@chargelab.cn",
+              title: "API Parameter User",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "user" }],
+            permissions: ["parameter:edit"]
+          })
+        }}
+        initialAppState={{ ...initialState, activeRoleId: "user" }}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findAllByText("api_runtime_voltage_limit")).not.toHaveLength(0);
+    expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
+    expect(parameterRepository.listParameters).toHaveBeenCalledTimes(1);
+    expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
+    expect(parameterRepository.listSubmissionRounds).toHaveBeenCalledTimes(1);
+    expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("hydrates parameter runtime state while preserving unrelated local state", () => {
+    const state = {
+      ...initialState,
+      activeProjectId: "aurora",
+      activeRoleId: "admin",
+      notifications: ["keep this notification"]
+    };
+    const next = appReducer(state, {
+      type: "HYDRATE_PARAMETER_RUNTIME",
+      projects: [apiProject],
+      parameters: [apiParameter],
+      changeRequests: [],
+      parameterSubmissionRounds: [],
+      parameterDrafts: []
+    });
+
+    expect(next.parameters).toEqual([apiParameter]);
+    expect(next.changeRequests).toEqual([]);
+    expect(next.parameterSubmissionRounds).toEqual([]);
+    expect(next.configDraft.projects).toEqual([apiProject]);
+    expect(next.activeProjectId).toBe(state.activeProjectId);
+    expect(next.activeRoleId).toBe(state.activeRoleId);
+    expect(next.notifications).toBe(state.notifications);
+    expect(next.logs).toBe(state.logs);
+    expect(next.debugParameters).toBe(state.debugParameters);
+    expect(next.users).toBe(state.users);
   });
 
   it("keeps the platform homepage inside the app scroll container", () => {

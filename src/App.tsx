@@ -33,6 +33,12 @@ import type {
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
+import {
+  createParameterRuntimeActions,
+  type HydrateParameterRuntimeAction,
+  type ParameterRuntimeActions
+} from "@/application/parameters/parameterRuntime";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
   applyInitializationDraftToConfig,
@@ -133,6 +139,7 @@ import { Badge as UiBadge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { createAuthClient, type AuthContextDto } from "@/infrastructure/http/authClient";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 type WiseEffAuthClient = {
@@ -147,6 +154,7 @@ export type AppAction =
       user: User;
       roleId: string;
     }
+  | HydrateParameterRuntimeAction
   | {
       type: "SUBMIT_PARAMETER_INITIALIZATION";
       draft: {
@@ -465,6 +473,17 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         activeRoleId: action.roleId
       };
     }
+    case "HYDRATE_PARAMETER_RUNTIME":
+      return {
+        ...state,
+        parameters: action.parameters,
+        changeRequests: action.changeRequests,
+        parameterSubmissionRounds: action.parameterSubmissionRounds,
+        configDraft: {
+          ...state.configDraft,
+          projects: action.projects.map((project) => ({ ...project }))
+        }
+      };
     case "SUBMIT_PARAMETER_INITIALIZATION": {
       if (!canPerform(activeRoleId, "admin.access")) return state;
       const projectCode = action.draft.projectCode.trim().toUpperCase();
@@ -1545,13 +1564,20 @@ export const appReducer = reducer;
 type AppProps = {
   authClient?: WiseEffAuthClient;
   initialAppState?: PrototypeState;
+  parameterRepository?: ParameterRepository;
   runtimeMode?: WiseEffRuntimeMode;
 };
 
-function App({ authClient, initialAppState = initialState, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
+function App({ authClient, initialAppState = initialState, parameterRepository, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell authClient={authClient} initialAppState={initialAppState} key={mockDataFingerprint} runtimeMode={runtimeMode} />
+      <AppShell
+        authClient={authClient}
+        initialAppState={initialAppState}
+        key={mockDataFingerprint}
+        parameterRepository={parameterRepository}
+        runtimeMode={runtimeMode}
+      />
     </TooltipProvider>
   );
 }
@@ -1559,13 +1585,16 @@ function App({ authClient, initialAppState = initialState, runtimeMode = wiseEff
 function AppShell({
   authClient,
   initialAppState,
+  parameterRepository,
   runtimeMode
 }: {
   authClient?: WiseEffAuthClient;
   initialAppState: PrototypeState;
+  parameterRepository?: ParameterRepository;
   runtimeMode: WiseEffRuntimeMode;
 }) {
   const [state, dispatch] = useReducer(reducer, initialAppState);
+  const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
@@ -1578,6 +1607,25 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const parameterRepositoryClient = useMemo(
+    () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
+    [parameterRepository, runtimeMode]
+  );
+  const parameterActions = useMemo<ParameterRuntimeActions>(
+    () =>
+      createParameterRuntimeActions({
+        runtimeMode,
+        repository: parameterRepositoryClient,
+        dispatch,
+        getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
+      }),
+    [parameterRepositoryClient, runtimeMode]
+  );
+  const parameterRuntimeConnectedRef = useRef(false);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     if (runtimeMode !== "api") {
@@ -1589,7 +1637,7 @@ function AppShell({
 
     client
       .getCurrentAuthContext()
-      .then((context) => {
+      .then(async (context) => {
         if (cancelled) return;
         const primaryRole = context.roles[0]?.roleId ?? "guest";
         dispatch({
@@ -1606,6 +1654,16 @@ function AppShell({
             lastActive: "just now"
           }
         });
+        const parameterRefreshResult = await parameterActions.refresh();
+        if (cancelled) return;
+        if (parameterRefreshResult && "notification" in parameterRefreshResult) {
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
+          return;
+        }
+        if (!parameterRuntimeConnectedRef.current) {
+          parameterRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
+        }
       })
       .catch(() => {
         dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
@@ -1614,7 +1672,7 @@ function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [authClient, runtimeMode]);
+  }, [authClient, parameterActions, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1675,6 +1733,7 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                parameterActions={parameterActions}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
@@ -1693,6 +1752,7 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                parameterActions={parameterActions}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}

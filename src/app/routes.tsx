@@ -1,5 +1,17 @@
 import type { Dispatch, ReactNode } from "react";
 
+import type {
+  ApplyParameterImportBatchInput,
+  ParameterImportBatchDto,
+  ParameterImportPreviewInput,
+  ReviewParameterChangeInput,
+  SubmitParameterChangesInput
+} from "@/application/ports/ParameterRepository";
+import type {
+  ParameterRuntimeActionFailure,
+  ParameterRuntimeRefreshResult,
+  ParameterRuntimeVoidResult
+} from "@/application/parameters/parameterRuntime";
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import { DebuggingPage } from "@/DebuggingPage";
@@ -14,12 +26,23 @@ import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
 import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
+import type { ParameterDraftItem } from "@/domain/parameters/types";
+
+export type ParameterPageActions = {
+  submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
+  stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
+  reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
+  createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
+  refresh(): Promise<ParameterRuntimeRefreshResult>;
+};
 
 export type PageProps = {
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  parameterActions?: ParameterPageActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
 };
 
@@ -41,6 +64,7 @@ export function PageRouter({
   dispatch,
   onNavigate,
   search,
+  parameterActions,
   parameterHomeTimeWindow,
   HomePage,
   ParameterSubmissionsPage,
@@ -89,7 +113,7 @@ export function PageRouter({
         />
       );
     case "parameter-submissions":
-      return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-home":
       return (
         <ParameterManagementHomePage
@@ -110,13 +134,13 @@ export function PageRouter({
         />
       );
     case "parameter-review":
-      return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-admin":
-      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging":
@@ -124,7 +148,7 @@ export function PageRouter({
     case "node-debugging":
       return <NodeDebuggingPage state={state} />;
     case "debugging-admin":
-      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "user-permissions":
       return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
