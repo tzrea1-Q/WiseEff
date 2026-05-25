@@ -85,6 +85,14 @@ function buildImportBatch(input: { projectId: string; sourceName: string; items:
   };
 }
 
+function cloneImportBatch(batch: ParameterImportBatchDto): ParameterImportBatchDto {
+  return {
+    ...batch,
+    summary: { ...batch.summary },
+    items: batch.items.map((item) => ({ ...item }))
+  };
+}
+
 const buildRuntimeReviewFields: BuildRuntimeReviewFields = (summary, module) => {
   const suggestion = buildAISuggestion({
     recommendation: "needs-review",
@@ -159,8 +167,8 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
     },
     async createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto> {
       const batch = buildImportBatch(input, "previewed");
-      importBatches.set(batch.id, batch);
-      return batch;
+      importBatches.set(batch.id, cloneImportBatch(batch));
+      return cloneImportBatch(batch);
     },
     async applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto> {
       const batch = importBatches.get(input.batchId);
@@ -172,8 +180,8 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
         summary: { ...batch.summary },
         items: batch.items.map((item) => ({ ...item }))
       };
-      importBatches.set(input.batchId, applied);
-      return applied;
+      importBatches.set(input.batchId, cloneImportBatch(applied));
+      return cloneImportBatch(applied);
     }
   };
 }

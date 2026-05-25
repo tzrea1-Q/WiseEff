@@ -186,6 +186,43 @@ describe("mock parameter repository", () => {
     });
   });
 
+  it("protects stored import batches from returned object mutation", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    const preview = await repository.createImportPreview({
+      projectId: "aurora",
+      sourceName: "parameters.csv",
+      items: [
+        {
+          name: "New high risk parameter",
+          module: "Charging",
+          risk: "High",
+          unit: "mA",
+          range: "0-4000",
+          currentValue: "3000"
+        }
+      ]
+    });
+
+    preview.summary.added = 99;
+    preview.items[0].name = "mutated";
+    preview.status = "applied";
+
+    const applied = await repository.applyImportBatch({ batchId: preview.id });
+
+    expect(applied.status).toBe("applied");
+    expect(applied.summary.added).toBe(1);
+    expect(applied.items[0].name).toBe("New high risk parameter");
+
+    applied.summary.added = 42;
+    applied.items[0].name = "mutated again";
+
+    const reapplied = await repository.applyImportBatch({ batchId: preview.id });
+
+    expect(reapplied.summary.added).toBe(1);
+    expect(reapplied.items[0].name).toBe("New high risk parameter");
+  });
+
   it("submits parameter changes through reducer behavior", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
     const [parameter] = await repository.listParameters({ projectId: "aurora" });
