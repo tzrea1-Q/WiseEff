@@ -1080,36 +1080,34 @@ export async function mergeChangeRequest(
         request_to_merge.target_value,
         request_to_merge.base_version,
         ppv.value_version as new_version
+    ),
+    inserted_history as (
+      insert into parameter_history_entries (
+        id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
+        version, value, changed_by_user_id, request_id
+      )
+      select
+        $5,
+        $1,
+        project_id,
+        parameter_definition_id,
+        project_parameter_value_id,
+        new_version,
+        target_value,
+        $4,
+        id
+      from updated_value
+      returning id
     )
-    select *
+    select updated_value.*
     from updated_value
+    inner join inserted_history on true
     `,
-    [input.organizationId, input.requestId, input.expectedVersion ?? null, input.actorUserId]
+    [input.organizationId, input.requestId, input.expectedVersion ?? null, input.actorUserId, input.historyId]
   );
 
   const merged = result.rows[0];
   if (!merged) return null;
-
-  await db.query(
-    `
-    insert into parameter_history_entries (
-      id, organization_id, project_id, parameter_definition_id, project_parameter_value_id,
-      version, value, changed_by_user_id, request_id
-    )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `,
-    [
-      input.historyId,
-      input.organizationId,
-      merged.project_id,
-      merged.parameter_definition_id,
-      merged.project_parameter_value_id,
-      Number(merged.new_version),
-      merged.target_value,
-      input.actorUserId,
-      input.requestId
-    ]
-  );
 
   return toChangeRequestMergeResult(merged);
 }

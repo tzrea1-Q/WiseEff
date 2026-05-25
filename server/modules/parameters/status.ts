@@ -37,8 +37,9 @@ export const parameterStatusLabels = {
   stashed: "已暂存"
 } as const;
 
-export function getNextParameterStatus(status: ParameterChangeStatus) {
-  if (status === "submitted" || status === "hardware_review") return "software_review";
+export function getNextParameterStatus(status: ParameterChangeStatus, risk?: ParameterRiskLevel) {
+  if (status === "submitted") return risk === "High" ? "hardware_review" : "software_review";
+  if (status === "hardware_review") return "software_review";
   if (status === "software_review") return "software_merge";
   if (status === "software_merge") return "merged";
   return status;

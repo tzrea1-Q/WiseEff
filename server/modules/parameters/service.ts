@@ -4,7 +4,7 @@ import { createAuditEvent } from "../audit/repository";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import { canEditParameters, canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
+import { canEditParameters, canMergeParameters, canReviewParameterStage, canViewParameters } from "./policy";
 import {
   createChangeRequest,
   createSubmissionItem,
@@ -78,16 +78,24 @@ function requireCanEdit(auth: AuthContext) {
   }
 }
 
-function requireCanReview(auth: AuthContext) {
-  if (!canReviewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+function getReviewForbiddenMessage(fromStatus: ParameterChangeRequestStatus) {
+  if (fromStatus === "submitted" || fromStatus === "hardware_review") {
+    return "Parameter hardware review role is required for this project.";
   }
+
+  return "Parameter software review role is required for this project.";
 }
 
-function requireCanMerge(auth: AuthContext) {
-  if (!canMergeParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter merge permission is required.", 403);
-  }
+function requireCanReviewStage(auth: AuthContext, projectId: string | undefined, fromStatus: ParameterChangeRequestStatus) {
+  if (projectId && canReviewParameterStage(auth, projectId, fromStatus)) return;
+
+  throw new ApiError("FORBIDDEN", getReviewForbiddenMessage(fromStatus), 403);
+}
+
+function requireCanMerge(auth: AuthContext, projectId: string | undefined) {
+  if (projectId && canMergeParameters(auth, projectId)) return;
+
+  throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403);
 }
 
 function hasAssignees(input: SubmitParameterChangesInput) {
@@ -377,7 +385,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
     }
 
     if (input.decision === "reject") {
-      requireCanReview(auth);
+      requireCanReviewStage(auth, request.projectId, fromStatus);
       const toStatus = "rejected";
       const updated = await updateChangeRequestStatus(tx, {
         organizationId: auth.organization.id,
@@ -414,9 +422,10 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       return updated;
     }
 
-    const toStatus = getNextParameterStatus(fromStatus);
+    const requestRisk = request.impact.find((item) => item.kind === "parameter")?.risk;
+    const toStatus = getNextParameterStatus(fromStatus, requestRisk);
     if (fromStatus !== "software_merge") {
-      requireCanReview(auth);
+      requireCanReviewStage(auth, request.projectId, fromStatus);
 
       if (toStatus === fromStatus) {
         throw new ApiError("CONFLICT", "Parameter change request cannot advance from its current status.", 409, {
@@ -460,7 +469,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       return updated;
     }
 
-    requireCanMerge(auth);
+    requireCanMerge(auth, request.projectId);
 
     if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
       const decisions = await listReviewDecisions(tx, {

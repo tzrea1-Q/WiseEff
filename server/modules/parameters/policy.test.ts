@@ -4,6 +4,7 @@ import {
   canAdminParameters,
   canEditParameters,
   canMergeParameters,
+  canReviewParameterStage,
   canReviewParameters,
   canViewParameters
 } from "./policy";
@@ -39,11 +40,46 @@ describe("parameter policy", () => {
   });
 
   it("allows merge for active software users and admins", () => {
-    expect(canMergeParameters(auth({ roles: [{ projectId: "aurora", roleId: "software-user" }] }))).toBe(true);
-    expect(canMergeParameters(auth({ roles: [{ projectId: null, roleId: "admin" }] }))).toBe(true);
-    expect(canMergeParameters(auth({ roles: [{ projectId: "aurora", roleId: "hardware-committer" }] }))).toBe(false);
+    expect(canMergeParameters(auth({ roles: [{ projectId: "aurora", roleId: "software-user" }] }), "aurora")).toBe(true);
+    expect(canMergeParameters(auth({ roles: [{ projectId: null, roleId: "admin" }] }), "aurora")).toBe(true);
+    expect(canMergeParameters(auth({ roles: [{ projectId: "zephyr", roleId: "software-user" }] }), "aurora")).toBe(false);
+    expect(canMergeParameters(auth({ roles: [{ projectId: "aurora", roleId: "hardware-committer" }] }), "aurora")).toBe(false);
     expect(canMergeParameters(auth({ roles: [{ projectId: null, roleId: "admin" }], user: { ...auth().user, isActive: false } }))).toBe(
       false
+    );
+  });
+
+  it("requires project-scoped stage roles for review", () => {
+    expect(
+      canReviewParameterStage(
+        auth({ roles: [{ projectId: "aurora", roleId: "hardware-committer" }], permissions: [] }),
+        "aurora",
+        "hardware_review"
+      )
+    ).toBe(true);
+    expect(
+      canReviewParameterStage(
+        auth({ roles: [{ projectId: "aurora", roleId: "software-committer" }], permissions: [] }),
+        "aurora",
+        "software_review"
+      )
+    ).toBe(true);
+    expect(
+      canReviewParameterStage(
+        auth({ roles: [{ projectId: "zephyr", roleId: "hardware-committer" }], permissions: ["parameter:review"] }),
+        "aurora",
+        "hardware_review"
+      )
+    ).toBe(false);
+    expect(
+      canReviewParameterStage(
+        auth({ roles: [{ projectId: "aurora", roleId: "hardware-committer" }], permissions: ["parameter:review"] }),
+        "aurora",
+        "software_review"
+      )
+    ).toBe(false);
+    expect(canReviewParameterStage(auth({ roles: [{ projectId: null, roleId: "admin" }] }), "aurora", "submitted")).toBe(
+      true
     );
   });
 

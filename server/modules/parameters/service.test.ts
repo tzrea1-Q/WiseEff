@@ -461,10 +461,46 @@ describe("parameter service", () => {
         decision: "advance",
         note: "Looks good."
       })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter review permission is required.", 403));
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter hardware review role is required for this project.", 403));
 
     expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
     expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(false);
+  });
+
+  it("cross-project committer cannot advance review", async () => {
+    const { db, txCalls } = createFakeDb([[changeRequestRow({ project_id: "project-1", status: "hardware_review" })]]);
+
+    await expect(
+      reviewChange(
+        db,
+        makeAuth({ roles: [{ projectId: "project-2", roleId: "hardware-committer" }], permissions: ["parameter:review"] }),
+        {
+          requestId: "request-1",
+          decision: "advance",
+          note: "Wrong project."
+        }
+      )
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter hardware review role is required for this project.", 403));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
+  });
+
+  it("wrong-stage committer cannot advance review", async () => {
+    const { db, txCalls } = createFakeDb([[changeRequestRow({ status: "software_review" })]]);
+
+    await expect(
+      reviewChange(
+        db,
+        makeAuth({ roles: [{ projectId: "project-1", roleId: "hardware-committer" }], permissions: ["parameter:review"] }),
+        {
+          requestId: "request-1",
+          decision: "advance",
+          note: "Hardware committer at software stage."
+        }
+      )
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter software review role is required for this project.", 403));
+
+    expect(txCalls.some((call) => call.text.includes("update parameter_change_requests"))).toBe(false);
   });
 
   it("committer advances hardware review to software review", async () => {
@@ -530,7 +566,6 @@ describe("parameter service", () => {
           new_version: 8
         }
       ],
-      [],
       [changeRequestRow({ status: "merged", risk: "Medium", current_value: "3100", updated_at: "2026-05-25T05:13:00.000Z" })],
       [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
       [{ status: "merged" }],
@@ -547,6 +582,24 @@ describe("parameter service", () => {
     expect(request.status).toBe("merged");
     expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
+  });
+
+  it("cross-project software user cannot merge software merge request", async () => {
+    const { db, txCalls } = createFakeDb([[changeRequestRow({ project_id: "project-1", status: "software_merge", risk: "Medium" })]]);
+
+    await expect(
+      reviewChange(
+        db,
+        makeAuth({ roles: [{ projectId: "project-2", roleId: "software-user" }], permissions: ["parameter:view", "parameter:edit"] }),
+        {
+          requestId: "request-1",
+          decision: "advance",
+          expectedVersion: 7
+        }
+      )
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403));
+
+    expect(txCalls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
   });
 
   it("high-risk request cannot merge unless prior hardware and software decisions exist", async () => {
@@ -582,7 +635,6 @@ describe("parameter service", () => {
       })
     ).rejects.toMatchObject(new ApiError("CONFLICT", "Parameter value changed before merge.", 409));
 
-    expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(false);
     expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(false);
   });
 
@@ -604,7 +656,6 @@ describe("parameter service", () => {
           new_version: 8
         }
       ],
-      [],
       [changeRequestRow({ status: "merged", current_value: "3100", updated_at: "2026-05-25T05:14:00.000Z" })],
       [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
       [{ status: "merged" }],
@@ -623,10 +674,95 @@ describe("parameter service", () => {
       "org-1",
       "request-1",
       7,
-      "user-1"
+      "user-1",
+      expect.any(String)
     ]);
     expect(txCalls.some((call) => call.text.includes("insert into parameter_history_entries"))).toBe(true);
     expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(true);
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("parameter-merge");
+  });
+
+  it("high-risk submitted request advances through hardware and software review before merge", async () => {
+    const hardwareAuth = makeAuth({
+      roles: [{ projectId: "project-1", roleId: "hardware-committer" }],
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"]
+    });
+    const softwareCommitterAuth = makeAuth({
+      roles: [{ projectId: "project-1", roleId: "software-committer" }],
+      permissions: ["parameter:view", "parameter:edit", "parameter:review"]
+    });
+    const softwareUserAuth = makeAuth({
+      roles: [{ projectId: "project-1", roleId: "software-user" }],
+      permissions: ["parameter:view", "parameter:edit"]
+    });
+
+    const { db } = createFakeDb([
+      [changeRequestRow({ status: "submitted", risk: "High" })],
+      [changeRequestRow({ status: "hardware_review", risk: "High" })],
+      [reviewDecisionRow({ from_status: "submitted", to_status: "hardware_review" })],
+      [{ status: "hardware_review" }],
+      [],
+      [],
+      [changeRequestRow({ status: "hardware_review", risk: "High" })],
+      [changeRequestRow({ status: "software_review", risk: "High" })],
+      [reviewDecisionRow({ from_status: "hardware_review", to_status: "software_review" })],
+      [{ status: "software_review" }],
+      [],
+      [],
+      [changeRequestRow({ status: "software_review", risk: "High" })],
+      [changeRequestRow({ status: "software_merge", risk: "High" })],
+      [reviewDecisionRow({ from_status: "software_review", to_status: "software_merge" })],
+      [{ status: "software_merge" }],
+      [],
+      [],
+      [changeRequestRow({ status: "software_merge", risk: "High" })],
+      [
+        reviewDecisionRow({ id: "decision-hardware", from_status: "hardware_review", to_status: "software_review" }),
+        reviewDecisionRow({ id: "decision-software", from_status: "software_review", to_status: "software_merge" })
+      ],
+      [
+        {
+          id: "request-1",
+          project_parameter_value_id: "param-1",
+          parameter_definition_id: "definition-1",
+          project_id: "project-1",
+          target_value: "3100",
+          base_version: 7,
+          new_version: 8
+        }
+      ],
+      [changeRequestRow({ status: "merged", risk: "High", current_value: "3100" })],
+      [reviewDecisionRow({ from_status: "software_merge", to_status: "merged" })],
+      [{ status: "merged" }],
+      [],
+      []
+    ]);
+
+    const hardwareReview = await reviewChange(db, hardwareAuth, {
+      requestId: "request-1",
+      decision: "advance",
+      note: "Route high-risk request to hardware review."
+    });
+    const softwareReview = await reviewChange(db, hardwareAuth, {
+      requestId: "request-1",
+      decision: "advance",
+      note: "Hardware reviewed."
+    });
+    const softwareMerge = await reviewChange(db, softwareCommitterAuth, {
+      requestId: "request-1",
+      decision: "advance",
+      note: "Software reviewed."
+    });
+    const merged = await reviewChange(db, softwareUserAuth, {
+      requestId: "request-1",
+      decision: "advance",
+      expectedVersion: 7,
+      note: "Merge approved."
+    });
+
+    expect(hardwareReview.status).toBe("hardware_review");
+    expect(softwareReview.status).toBe("software_review");
+    expect(softwareMerge.status).toBe("software_merge");
+    expect(merged.status).toBe("merged");
   });
 });

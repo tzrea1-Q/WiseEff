@@ -515,8 +515,9 @@ describe("parameter repository", () => {
     });
     expect(calls[0].text).toContain("update project_parameter_values");
     expect(calls[0].text).toContain("value_version = coalesce($3, request_to_merge.base_version)");
-    expect(calls[0].values).toEqual(["org-chargelab", "request-1", 7, "user-1"]);
-    expect(calls[1].text).toContain("insert into parameter_history_entries");
+    expect(calls[0].values).toEqual(["org-chargelab", "request-1", 7, "user-1", "history-1"]);
+    expect(calls[0].text).toContain("insert into parameter_history_entries");
+    expect(calls).toHaveLength(1);
   });
 
   it("mergeChangeRequest returns null when the version guard does not update a row", async () => {
