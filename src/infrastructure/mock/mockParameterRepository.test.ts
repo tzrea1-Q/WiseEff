@@ -55,6 +55,45 @@ describe("mock parameter repository", () => {
     expect(rereadRows[0].history[0].value).toBe(originalHistoryValue);
   });
 
+  it("gets a parameter and its history by id", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const [listed] = await repository.listParameters();
+
+    const parameter = await repository.getParameter(listed.id);
+    const history = await repository.listParameterHistory(listed.id);
+
+    expect(parameter).toEqual(listed);
+    expect(history).toEqual(listed.history);
+  });
+
+  it("rejects unknown parameter ids with a clear error", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    await expect(repository.getParameter("missing-parameter")).rejects.toThrow("Parameter not found: missing-parameter");
+  });
+
+  it("supports deterministic draft methods without broad state mutation", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    await expect(repository.listDrafts("aurora")).resolves.toEqual([]);
+    await expect(
+      repository.saveDraft({
+        projectId: "aurora",
+        parameterId: "aurora-fast-charge-current",
+        targetValue: "3200",
+        reason: "mock draft"
+      })
+    ).resolves.toEqual({
+      id: "draft-aurora-aurora-fast-charge-current",
+      projectId: "aurora",
+      parameterId: "aurora-fast-charge-current",
+      targetValue: "3200",
+      reason: "mock draft",
+      updatedAt: "2026-05-25T00:00:00.000Z"
+    });
+    await expect(repository.deleteDraft("draft-aurora-aurora-fast-charge-current")).resolves.toBeUndefined();
+  });
+
   it("returns submission round copies that cannot mutate runtime state", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
     const [round] = await repository.listSubmissionRounds();
@@ -82,11 +121,76 @@ describe("mock parameter repository", () => {
     expect(rereadRequest.impact[0].name).toBe(originalImpactName);
   });
 
+  it("returns a cloned change request from reviewChange without state transition", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+    const [request] = await repository.listChangeRequests();
+
+    const reviewed = await repository.reviewChange({
+      requestId: request.id,
+      decision: "advance",
+      note: "contract smoke test"
+    });
+
+    reviewed.aiSuggestion.reasons[0] = "mutated";
+
+    const [rereadRequest] = await repository.listChangeRequests();
+    expect(reviewed.id).toBe(request.id);
+    expect(rereadRequest.aiSuggestion.reasons[0]).toBe(request.aiSuggestion.reasons[0]);
+  });
+
+  it("creates and applies deterministic import batch previews", async () => {
+    const repository = createMockParameterRepository(createMockRuntimeState());
+
+    const preview = await repository.createImportPreview({
+      projectId: "aurora",
+      sourceName: "parameters.csv",
+      items: [
+        {
+          name: "New high risk parameter",
+          module: "Charging",
+          risk: "High",
+          unit: "mA",
+          range: "0-4000",
+          currentValue: "3000"
+        },
+        {
+          name: "Existing low risk parameter",
+          module: "Thermal",
+          risk: "Low",
+          unit: "C",
+          range: "0-100",
+          recommendedValue: "45"
+        }
+      ]
+    });
+
+    expect(preview).toMatchObject({
+      id: "import-aurora-parameters-csv",
+      projectId: "aurora",
+      sourceName: "parameters.csv",
+      status: "previewed",
+      summary: {
+        added: 2,
+        updated: 0,
+        unchanged: 0,
+        conflict: 0,
+        highRisk: 1
+      }
+    });
+
+    await expect(repository.applyImportBatch({ batchId: preview.id })).resolves.toMatchObject({
+      ...preview,
+      status: "applied",
+      appliedAt: "2026-05-25T00:00:00.000Z"
+    });
+  });
+
   it("submits parameter changes through reducer behavior", async () => {
     const repository = createMockParameterRepository(createMockRuntimeState());
     const [parameter] = await repository.listParameters({ projectId: "aurora" });
 
     const round = await repository.submitParameterChanges({
+      projectId: "aurora",
       items: [{ parameterId: parameter.id, targetValue: "1234", reason: "repository contract test" }],
       reason: "repository contract test"
     });

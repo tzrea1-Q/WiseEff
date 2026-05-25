@@ -40,7 +40,7 @@ export type ParameterDraftDto = {
 };
 
 export type SubmitParameterChangesInput = {
-  projectId?: string;
+  projectId: string;
   items: Array<{ parameterId: string; targetValue: string; reason: string }>;
   reason?: string;
 };
@@ -97,15 +97,15 @@ export type ApplyParameterImportBatchInput = {
 export interface ParameterRepository {
   listProjects(): Promise<ProjectSummary[]>;
   listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]>;
-  getParameter?(parameterId: string): Promise<ParameterRecord>;
-  listParameterHistory?(parameterId: string): Promise<ParameterHistoryEntry[]>;
-  listDrafts?(projectId?: string): Promise<ParameterDraftDto[]>;
-  saveDraft?(input: SaveParameterDraftInput): Promise<ParameterDraftDto>;
-  deleteDraft?(draftId: string): Promise<void>;
+  getParameter(parameterId: string): Promise<ParameterRecord>;
+  listParameterHistory(parameterId: string): Promise<ParameterHistoryEntry[]>;
+  listDrafts(projectId?: string): Promise<ParameterDraftDto[]>;
+  saveDraft(input: SaveParameterDraftInput): Promise<ParameterDraftDto>;
+  deleteDraft(draftId: string): Promise<void>;
   listChangeRequests(query?: ChangeRequestListQuery): Promise<ChangeRequest[]>;
   listSubmissionRounds(query?: SubmissionRoundListQuery): Promise<ParameterSubmissionRound[]>;
   submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound>;
-  reviewChange?(input: ReviewParameterChangeInput): Promise<ChangeRequest>;
-  createImportPreview?(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto>;
-  applyImportBatch?(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto>;
+  reviewChange(input: ReviewParameterChangeInput): Promise<ChangeRequest>;
+  createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto>;
+  applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto>;
 }
