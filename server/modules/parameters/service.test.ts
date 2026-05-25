@@ -1351,6 +1351,25 @@ describe("parameter service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
   });
 
+  it("submitting with partial workflow assignees rejects before writes", async () => {
+    const { db, txCalls } = createFakeDb([
+      [parameterRow()],
+      []
+    ]);
+
+    await expect(
+      submitParameterChanges(db, makeAuth(), {
+        projectId: "project-1",
+        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+        assignees: {
+          hardwareCommitterId: "u-hardware"
+        }
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Workflow assignees must include all review roles or be omitted.", 400));
+
+    expect(txCalls.some((call) => call.text.includes("insert into parameter_submission_rounds"))).toBe(false);
+  });
+
   it("submitting a parameter with an existing open request throws conflict", async () => {
     const { db } = createFakeDb([
       [parameterRow()],

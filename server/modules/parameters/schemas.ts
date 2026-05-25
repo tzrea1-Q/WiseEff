@@ -5,9 +5,9 @@ import { parameterReviewDecisions, parameterRiskLevels } from "./status";
 const nonEmptyString = z.string().min(1);
 const positiveInteger = z.number().int().positive();
 const workflowAssigneesSchema = z.object({
-  hardwareCommitterId: nonEmptyString.optional(),
-  softwareCommitterId: nonEmptyString.optional(),
-  softwareUserId: nonEmptyString.optional()
+  hardwareCommitterId: nonEmptyString,
+  softwareCommitterId: nonEmptyString,
+  softwareUserId: nonEmptyString
 });
 
 const importItemValueFields = ["currentValue", "recommendedValue"] as const;

@@ -15,6 +15,7 @@ import type {
 } from "@/application/parameters/parameterRuntime";
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { DebuggingPage } from "@/DebuggingPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
@@ -45,6 +46,7 @@ export type PageProps = {
   search: string;
   parameterActions?: ParameterPageActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
+  runtimeMode?: WiseEffRuntimeMode;
 };
 
 export type PageRouterProps = PageProps & {
@@ -67,6 +69,7 @@ export function PageRouter({
   search,
   parameterActions,
   parameterHomeTimeWindow,
+  runtimeMode,
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
@@ -138,7 +141,7 @@ export function PageRouter({
     case "parameter-review":
       return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-admin":
-      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
+      return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} runtimeMode={runtimeMode} />;
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":

@@ -29,7 +29,7 @@ function getImportClassificationLabel(item: ParameterImportBatchDto["items"][num
   return isEligibleImportItem(item) ? item.classification : `${item.classification} · not eligible`;
 }
 
-export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions }: PageProps) {
+export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions, runtimeMode }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
@@ -44,7 +44,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   const [importMessage, setImportMessage] = useState("");
   const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
   const [saving, setSaving] = useState(false);
-  const isApiMode = wiseEffRuntimeMode === "api";
+  const isApiMode = (runtimeMode ?? wiseEffRuntimeMode) === "api";
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;

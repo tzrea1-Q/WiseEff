@@ -1786,6 +1786,7 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 parameterActions={parameterActions}
+                runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
@@ -1805,6 +1806,7 @@ function AppShell({
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
                 parameterActions={parameterActions}
+                runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}

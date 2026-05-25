@@ -1842,6 +1842,22 @@ describe("WiseEff app shell", () => {
     );
   });
 
+  it("does not save parameter admin config directly in injected API mode", () => {
+    window.history.replaceState(null, "", "/parameter-admin");
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true })
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<App initialAppState={adminState} runtimeMode="api" parameterRepository={createAppParameterRepository()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
+
+    expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);
+    expect(document.body).toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
+  });
+
   it("edits debug parameter config and reflects it in the debugging workspace", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 

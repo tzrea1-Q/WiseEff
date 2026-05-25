@@ -209,6 +209,30 @@ describe("parameter routes", () => {
     });
   });
 
+  it("submit route rejects partial workflow assignees before the service", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string; details: { issues?: unknown[] } } }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+          assignees: {
+            hardwareCommitterId: "u-hardware"
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(response.body.error.details.issues).toEqual(expect.any(Array));
+    expect(service.submitParameterChanges).not.toHaveBeenCalled();
+  });
+
   it("review route can return merged request after service success", async () => {
     const db = makeDb();
     const mergedRequest = {

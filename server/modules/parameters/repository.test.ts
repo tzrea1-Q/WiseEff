@@ -690,6 +690,7 @@ describe("parameter repository", () => {
 
     expect(eligible).toBe(true);
     expect(calls[0].text).toContain("users.organization_id = $1");
+    expect(calls[0].text).toContain("urb.organization_id = $1");
     expect(calls[0].text).toContain("users.is_active = true");
     expect(calls[0].text).toContain("urb.project_id = $3");
     expect(calls[0].text).toContain("urb.role_id = $4");

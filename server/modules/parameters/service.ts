@@ -127,16 +127,14 @@ function requireCanMerge(auth: AuthContext, projectId: string | undefined) {
   throw new ApiError("FORBIDDEN", "Parameter merge role is required for this project.", 403);
 }
 
-function hasAssignees(input: SubmitParameterChangesInput) {
-  return Boolean(
-    input.assignees?.hardwareCommitterId || input.assignees?.softwareCommitterId || input.assignees?.softwareUserId
-  );
-}
-
 function getCompleteWorkflowAssignees(input: SubmitParameterChangesInput) {
   const assignees = input.assignees;
-  if (!assignees?.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
+  if (!assignees) {
     return undefined;
+  }
+
+  if (!assignees?.hardwareCommitterId || !assignees.softwareCommitterId || !assignees.softwareUserId) {
+    throw new ApiError("VALIDATION_FAILED", "Workflow assignees must include all review roles or be omitted.", 400);
   }
 
   return {
@@ -685,6 +683,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
     throw new ApiError("VALIDATION_FAILED", "At least one parameter change is required.", 400);
   }
   assertUniqueSubmissionParameters(input.items);
+  const workflowAssignees = getCompleteWorkflowAssignees(input);
 
   return db.transaction(async (tx) => {
     const parameters = [];
@@ -706,9 +705,9 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       parameters.push({ item, parameter });
     }
 
-    await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, input.assignees);
+    await assertWorkflowAssigneesAreEligible(tx, auth, input.projectId, workflowAssignees);
 
-    const status = hasAssignees(input) ? "hardware_review" : "submitted";
+    const status = workflowAssignees ? "hardware_review" : "submitted";
     const round = await createSubmissionRound(tx, {
       id: randomUUID(),
       organizationId: auth.organization.id,
@@ -732,8 +731,8 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         targetValue: item.targetValue,
         status,
         submitterUserId: auth.user.id,
-        assignedToUserId: input.assignees?.hardwareCommitterId,
-        workflowAssignees: input.assignees
+        assignedToUserId: workflowAssignees?.hardwareCommitterId,
+        workflowAssignees
       });
 
       const submissionItem = await createSubmissionItem(tx, {
@@ -776,7 +775,6 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       traceId: randomUUID()
     });
 
-    const workflowAssignees = getCompleteWorkflowAssignees(input);
     return workflowAssignees ? { ...round, workflowAssignees, items } : { ...round, items };
   });
 }

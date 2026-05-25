@@ -915,6 +915,7 @@ export async function hasEligibleWorkflowAssignee(
     where users.organization_id = $1
       and users.id = $2
       and users.is_active = true
+      and urb.organization_id = $1
       and urb.project_id = $3
       and urb.role_id = $4
     limit 1
