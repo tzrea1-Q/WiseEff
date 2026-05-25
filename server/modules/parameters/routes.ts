@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import type { WiseEffRouter } from "../../shared/http/router";
+import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   getParameterById,
   listParameterHistory,
@@ -116,11 +116,11 @@ function normalizeArray<T>(value: T | T[] | undefined) {
 
 export function registerParameterRoutes(
   router: WiseEffRouter,
-  options: { db?: Database; getCurrentAuthContext: () => Promise<AuthContext> | AuthContext }
+  options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
-  router.get("/api/v1/projects", async () => {
+  router.get("/api/v1/projects", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const items = await listProjects(db, { organizationId: auth.organization.id });
 
@@ -129,7 +129,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/projects/:projectId/modules", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
     const items = await listProjectModules(db, {
@@ -142,7 +142,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const query = parseWithSchema(listParametersQuerySchema, request.query);
     const items = await listParameters(db, {
@@ -155,7 +155,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/:parameterId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
     const item = await getParameterById(db, {
@@ -172,7 +172,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameters/:parameterId/history", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     requireCanView(auth);
     const params = parseWithSchema(paramsWithParameterIdSchema, request.params);
     const items = await listParameterHistory(db, {
@@ -185,7 +185,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-drafts", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(saveDraftBodySchema, request.body);
     const item = await saveDraft(db, auth, body);
 
@@ -194,7 +194,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-drafts/mine", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(listDraftsQuerySchema, request.query);
     const items = await listDrafts(db, auth, query);
 
@@ -203,7 +203,7 @@ export function registerParameterRoutes(
 
   router.delete("/api/v1/parameter-drafts/:draftId", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithDraftIdSchema, request.params);
 
     await deleteDraft(db, auth, params.draftId);
@@ -213,7 +213,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-submission-rounds", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(submitRoundBodySchema, request.body);
     const item = await submitParameterChanges(db, auth, body);
 
@@ -222,7 +222,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-submission-rounds", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(listSubmissionRoundsQuerySchema, request.query);
     const items = await listSubmissionRounds(db, auth, {
       ...query,
@@ -234,7 +234,7 @@ export function registerParameterRoutes(
 
   router.get("/api/v1/parameter-change-requests", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const query = parseWithSchema(listChangeRequestsQuerySchema, request.query);
     const items = await listChangeRequests(db, auth, {
       ...query,
@@ -246,7 +246,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-change-requests/:requestId/review", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
     const item = await reviewChange(db, auth, body);
@@ -256,7 +256,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-import-batches", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createImportBatchBodySchema, request.body);
     const item = await createImportPreview(db, auth, body);
 
@@ -265,7 +265,7 @@ export function registerParameterRoutes(
 
   router.post("/api/v1/parameter-import-batches/:batchId/apply", async (request) => {
     const db = requireDb(options.db);
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
     const body = parseWithSchema(applyImportBatchBodySchema, withRouteField(request.body, "batchId", params.batchId));
     const item = await applyImportBatch(db, auth, body);
