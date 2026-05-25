@@ -8,7 +8,7 @@
 
 **Tech Stack:** React 19 + TypeScript + Vite 7 + Vitest 4 + @testing-library/react 16 + 原生 CSS。无新依赖（shadcn 组件按姊妹 spec 节奏延后到 m2 批次引入；本 m1 使用现有 `src/components` 自制组件维持视觉家族一致）。
 
-**Spec:** `docs/superpowers/specs/2026-05-10-parameter-admin-redesign-design.md`
+**Spec:** `docs/design-docs/2026-05-10-parameter-admin-redesign-design.md`
 
 **Scope boundary (M1 不做):**
 
@@ -5123,13 +5123,13 @@ M1 完成后，顺势进入 m2 plan（同 worktree，同分支），覆盖：
 - Agent `preview-import` / `summarize-audit` 接入
 - shadcn `Dialog` / `DropdownMenu` / `Sonner` 统一替换自制组件
 
-m2 plan 文件：`docs/superpowers/plans/2026-05-10-parameter-admin-redesign-m2.md`（M1 合入 main 之后再起草）。
+m2 plan 文件建议：`docs/exec-plans/active/2026-05-10-parameter-admin-redesign-m2.md`（M1 合入 main 之后再起草）。
 
 ---
 
 ## 参考
 
-- Spec: `docs/superpowers/specs/2026-05-10-parameter-admin-redesign-design.md`
+- Spec: `docs/design-docs/2026-05-10-parameter-admin-redesign-design.md`
 - 评测记录：对话上文对 `/parameter-admin` 的 17 条问题
-- 姊妹 m1 plan: `docs/superpowers/plans/2026-05-10-debugging-workbench-redesign-m1.md`、`docs/superpowers/plans/2026-05-10-parameter-review-workbench-redesign-m1.md`
-- PRD: `PRD.md` §5.3
+- 姊妹 m1 plan: historical references only; current repository does not retain those files.
+- PRD: `docs/product-specs/prototype-functional-spec.md` §5.3

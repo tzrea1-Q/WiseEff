@@ -2106,9 +2106,9 @@ git commit -m "docs: document m0 api development workflow"
 ### Task 10: Final M0 Foundation Verification
 
 **Files:**
-- Read: `docs/product/mvp-scope.md`
-- Read: `docs/engineering/development-roadmap.md`
-- Read: `docs/engineering/testing-strategy.md`
+- Read: `docs/product-specs/mvp-scope.md`
+- Read: `docs/exec-plans/active/development-roadmap.md`
+- Read: `docs/design-docs/testing-strategy.md`
 
 - [ ] **Step 1: Run full verification**
 

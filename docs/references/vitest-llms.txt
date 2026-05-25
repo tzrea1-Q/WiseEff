@@ -1,0 +1,22 @@
+WiseEff Vitest notes for LLM/agent use.
+
+Frontend tests:
+- Command: npm test
+- Environment: jsdom through Vite/Vitest config.
+- Setup: src/test/setup.ts
+- Common tools: Testing Library, jest-dom matchers, user-event.
+
+Backend tests:
+- Command: npm run test:server
+- Config: vitest.server.config.ts
+- Environment: node.
+
+Targeted examples:
+- npm test -- src/App.test.tsx
+- npm test -- src/infrastructure/http/apiClient.test.ts
+- npm run test:server -- server/app.test.ts
+
+Expectations:
+- Add tests for new domain rules, permission behavior, reducer branches, DTO mapping, API errors, and backend routes.
+- Prefer tests that reproduce the real workflow boundary.
+- For docs-only changes, tests are usually unnecessary; use file/link checks and git diff --check.

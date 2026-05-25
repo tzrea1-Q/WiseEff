@@ -1,0 +1,16 @@
+WiseEff uv notes for LLM/agent use.
+
+Current status:
+- WiseEff does not currently use Python uv for project dependencies.
+- The repository is primarily Node.js, React, TypeScript, Vite, Vitest, and a TypeScript backend skeleton.
+
+If uv is introduced later:
+- Add pyproject.toml ownership and Python version here.
+- Document exact install, test, lint, and run commands.
+- Explain which subsystem uses Python and how it integrates with the TypeScript API.
+
+Current package workflow:
+- npm ci
+- npm test
+- npm run test:server
+- npm run build

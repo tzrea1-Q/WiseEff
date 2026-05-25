@@ -1,0 +1,32 @@
+WiseEff Vite/React notes for LLM/agent use.
+
+Stack:
+- Vite 7
+- React 19
+- TypeScript 5
+- Vitest 4
+- Testing Library
+
+Commands:
+- npm run dev
+- npm run build
+- npm test
+- npm run preview
+
+Frontend runtime:
+- Default mock mode is for demos/tests.
+- API mode uses VITE_WISEEFF_RUNTIME_MODE=api.
+- API base URL defaults to http://127.0.0.1:8787.
+
+Code boundaries:
+- src/app: routing, permissions, navigation.
+- src/domain: pure domain types/rules.
+- src/application/ports: business dependency interfaces.
+- src/infrastructure/http: API client and DTO mapping.
+- src/infrastructure/mock: demo/test runtime.
+- src/components and page files: UI.
+
+Rules:
+- Keep production behavior out of mock-only paths.
+- Prefer focused tests next to changed code.
+- Run npm run build for TypeScript or Vite-impacting changes.
