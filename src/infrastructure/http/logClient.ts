@@ -21,6 +21,7 @@ type ItemEnvelope<T> = { item: T };
 type OkEnvelope = { ok: true };
 type LogUploadResponse = { fileObject: unknown; log: LogRecordDto; job: LogJobDto | null };
 type LogRerunResponse = { log: LogRecordDto; job: LogJobDto };
+type HttpLogAnalysisRepositoryOptions = { baseUrl?: string };
 
 const terminalJobStatuses = new Set(["complete", "failed"]);
 
@@ -44,6 +45,10 @@ function routeLogPath(logId: string) {
 
 function routeJobPath(jobId: string) {
   return `/api/v1/jobs/${encodeURIComponent(jobId)}`;
+}
+
+function apiUrl(baseUrl: string, path: string) {
+  return new URL(path, baseUrl).toString();
 }
 
 function backendStatus(status: LogRecord["status"]) {
@@ -85,7 +90,8 @@ function feedbackBody(input: LogFeedbackInput) {
 }
 
 export function createHttpLogAnalysisRepository(
-  apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl })
+  apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl }),
+  { baseUrl = wiseEffApiBaseUrl }: HttpLogAnalysisRepositoryOptions = {}
 ): LogAnalysisRepository {
   const repository: LogAnalysisRepository = {
     async listLogs(query?: LogListQuery) {
@@ -116,7 +122,7 @@ export function createHttpLogAnalysisRepository(
     },
     watchJob(jobId, onEvent) {
       if (typeof EventSource !== "undefined") {
-        const eventSource = new EventSource(`${routeJobPath(jobId)}/events`);
+        const eventSource = new EventSource(apiUrl(baseUrl, `${routeJobPath(jobId)}/events`));
         eventSource.addEventListener("job", (event) => {
           onEvent(jobSnapshotFromDto(JSON.parse(event.data) as LogJobDto));
         });

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createHttpLogAnalysisRepository } from "./logClient";
@@ -59,6 +59,10 @@ function createRepository(fetchMock: typeof fetch) {
 }
 
 describe("createHttpLogAnalysisRepository", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("lists logs with encoded backend filters", async () => {
     const fetchMock = createFetchMock({ items: [baseLogDto] });
     const repository = createRepository(fetchMock);
@@ -148,6 +152,29 @@ describe("createHttpLogAnalysisRepository", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/jobs/job-1");
+  });
+
+  it("watches a job with EventSource against the configured API base URL", () => {
+    const fetchMock = createFetchMock({ item: baseJobDto });
+    const addEventListener = vi.fn();
+    const close = vi.fn();
+    const EventSourceStub = vi.fn(function EventSource(this: unknown, _url: string) {
+      Object.assign(this as Record<string, unknown>, { addEventListener, close });
+    });
+    vi.stubGlobal("EventSource", EventSourceStub);
+    const repository = createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }), {
+      baseUrl: "http://127.0.0.1:8787"
+    });
+    const onEvent = vi.fn();
+
+    const cleanup = repository.watchJob?.("job-1", onEvent);
+    const jobHandler = addEventListener.mock.calls.find(([eventName]) => eventName === "job")?.[1] as (event: MessageEvent<string>) => void;
+    jobHandler(new MessageEvent("job", { data: JSON.stringify({ ...baseJobDto, status: "complete", progress: 100 }) }));
+    cleanup?.();
+
+    expect(EventSourceStub).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/jobs/job-1/events");
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: "job-1", status: "complete", progress: 100 }));
+    expect(close).toHaveBeenCalledTimes(1);
   });
 
   it("reruns a log analysis", async () => {
