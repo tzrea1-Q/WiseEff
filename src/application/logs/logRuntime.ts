@@ -54,7 +54,12 @@ const supportedMockUploadExtensions = new Set(["log", "txt", "json"]);
 export type LogRuntimeNotifiedFailure = Error & { alreadyNotified: true };
 type PollGenerationTracker = {
   begin(logId: string): number;
+  bind(activeGeneration: ActiveLogGeneration, logId: string): boolean;
   isCurrent(logId: string, generation: number): boolean;
+};
+type ActiveLogGeneration = {
+  logId: string;
+  generation: number;
 };
 
 function requireRepository(repository?: LogAnalysisRepository): LogAnalysisRepository {
@@ -90,26 +95,40 @@ async function pollJobUntilTerminal(
   dispatch: LogRuntimeOptions["dispatch"],
   pollIntervalMs: number,
   maxPollAttempts: number,
-  generations: PollGenerationTracker
+  generations: PollGenerationTracker,
+  activeGeneration: ActiveLogGeneration
 ) {
   let job = initialJob;
-  const generation = generations.begin(initialJob.logId);
+  if (initialJob.logId !== activeGeneration.logId || !generations.isCurrent(activeGeneration.logId, activeGeneration.generation)) {
+    return;
+  }
 
   for (let attempt = 0; attempt < maxPollAttempts && !terminalJobStatuses.has(job.status); attempt += 1) {
     if (pollIntervalMs > 0) {
       await delay(pollIntervalMs);
     }
     job = await api.getJob(job.id);
-    if (!generations.isCurrent(job.logId, generation)) {
+    if (!generations.isCurrent(job.logId, activeGeneration.generation)) {
       return;
     }
     dispatch({ type: "LOG_JOB_PROGRESS", job });
   }
 
-  if (terminalJobStatuses.has(job.status) && generations.isCurrent(job.logId, generation)) {
+  if (terminalJobStatuses.has(job.status) && generations.isCurrent(job.logId, activeGeneration.generation)) {
     const latestLog = await api.getLog(job.logId);
-    if (latestLog && generations.isCurrent(job.logId, generation)) {
+    if (latestLog && generations.isCurrent(job.logId, activeGeneration.generation)) {
       dispatch({ type: "UPSERT_LOG_RECORD", log: latestLog });
+    }
+    return;
+  }
+
+  if (generations.isCurrent(job.logId, activeGeneration.generation)) {
+    const latestLog = await api.getLog(job.logId);
+    if (latestLog && generations.isCurrent(job.logId, activeGeneration.generation)) {
+      dispatch({ type: "UPSERT_LOG_RECORD", log: latestLog });
+    }
+    if (generations.isCurrent(job.logId, activeGeneration.generation)) {
+      dispatch({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
     }
   }
 }
@@ -123,16 +142,37 @@ export function createLogRuntimeActions({
   maxPollAttempts = 60
 }: LogRuntimeOptions): LogRuntimeActions {
   const pollGenerations = new Map<string, number>();
+  let nextPollGeneration = 0;
   const generations: PollGenerationTracker = {
     begin(logId) {
-      const next = (pollGenerations.get(logId) ?? 0) + 1;
+      const next = nextPollGeneration + 1;
+      nextPollGeneration = next;
       pollGenerations.set(logId, next);
       return next;
+    },
+    bind(activeGeneration, logId) {
+      if (!generations.isCurrent(activeGeneration.logId, activeGeneration.generation)) {
+        return false;
+      }
+      const currentGeneration = pollGenerations.get(logId);
+      if (currentGeneration !== undefined && currentGeneration > activeGeneration.generation) {
+        return false;
+      }
+      if (activeGeneration.logId !== logId) {
+        pollGenerations.delete(activeGeneration.logId);
+      }
+      activeGeneration.logId = logId;
+      pollGenerations.set(logId, activeGeneration.generation);
+      return true;
     },
     isCurrent(logId, generation) {
       return pollGenerations.get(logId) === generation;
     }
   };
+  const reserveGeneration = (logId: string): ActiveLogGeneration => ({
+    logId,
+    generation: generations.begin(logId)
+  });
 
   const refresh = async (query?: LogListQuery) => {
     if (mode !== "api") {
@@ -170,11 +210,15 @@ export function createLogRuntimeActions({
         return;
       }
 
+      const activeGeneration = reserveGeneration(`upload:${input.projectId}:${input.file.name}`);
       await runApiMutation(async (api) => {
         const result = await api.uploadLog(input);
+        if (!generations.bind(activeGeneration, result.log.id)) {
+          return;
+        }
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
         if (result.job) {
-          await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations);
+          await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations, activeGeneration);
         }
       });
     },
@@ -184,10 +228,14 @@ export function createLogRuntimeActions({
         return;
       }
 
+      const activeGeneration = reserveGeneration(input.logId);
       await runApiMutation(async (api) => {
         const result = await api.rerunLog(input);
+        if (!generations.isCurrent(input.logId, activeGeneration.generation)) {
+          return;
+        }
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
-        await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations);
+        await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations, activeGeneration);
       });
     },
     async archive(logId) {

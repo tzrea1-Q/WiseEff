@@ -248,4 +248,73 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: latestTerminalLog });
     expect(dispatch).not.toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: staleTerminalLog });
   });
+
+  it("ignores older rerun responses that resolve after a newer rerun starts for the same log", async () => {
+    const dispatch = vi.fn();
+    const staleLog = { ...apiLog, reportId: "RPT-OLDER", conclusion: "Older rerun accepted" };
+    const latestLog = { ...apiLog, reportId: "RPT-NEWER", conclusion: "Newer rerun accepted" };
+    const olderJob: LogJobSnapshot = { ...queuedJob, id: "job-older", runId: "run-older" };
+    const newerJob: LogJobSnapshot = { ...queuedJob, id: "job-newer", runId: "run-newer" };
+    let resolveOlderRerun: (result: { log: LogRecord; job: LogJobSnapshot }) => void = () => undefined;
+    const olderRerunPromise = new Promise<{ log: LogRecord; job: LogJobSnapshot }>((resolve) => {
+      resolveOlderRerun = resolve;
+    });
+    const repository = createRepository({
+      rerunLog: vi
+        .fn()
+        .mockReturnValueOnce(olderRerunPromise)
+        .mockResolvedValueOnce({ log: latestLog, job: newerJob }),
+      getJob: vi.fn().mockResolvedValue({ ...completeJob, id: newerJob.id, runId: newerJob.runId }),
+      getLog: vi.fn().mockResolvedValue({ ...completedApiLog, reportId: "RPT-NEWER-DONE" })
+    });
+    const actions = createLogRuntimeActions({
+      mode: "api",
+      repository,
+      dispatch,
+      getState: () => initialState,
+      pollIntervalMs: 0
+    });
+
+    const olderRerun = actions.rerun({ logId: apiLog.id, analysisQuestion: "older" });
+    await Promise.resolve();
+    const newerRerun = actions.rerun({ logId: apiLog.id, analysisQuestion: "newer" });
+    await newerRerun;
+    resolveOlderRerun({ log: staleLog, job: olderJob });
+    await olderRerun;
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: latestLog });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: staleLog });
+    expect(repository.getJob).not.toHaveBeenCalledWith(olderJob.id);
+  });
+
+  it("notifies and fetches the latest log when polling exhausts max attempts before terminal", async () => {
+    const dispatch = vi.fn();
+    const stillProcessingJob: LogJobSnapshot = {
+      ...processingJob,
+      id: queuedJob.id,
+      status: "processing",
+      currentStage: "pattern"
+    };
+    const latestProcessingLog = { ...apiLog, stage: "pattern", conclusion: "Still processing" };
+    const repository = createRepository({
+      getJob: vi.fn().mockResolvedValue(stillProcessingJob),
+      getLog: vi.fn().mockResolvedValue(latestProcessingLog)
+    });
+    const actions = createLogRuntimeActions({
+      mode: "api",
+      repository,
+      dispatch,
+      getState: () => initialState,
+      pollIntervalMs: 0,
+      maxPollAttempts: 1
+    });
+
+    await actions.upload({ projectId: "api-project", file: createFile("timeout.log") });
+
+    expect(repository.getJob).toHaveBeenCalledTimes(1);
+    expect(repository.getLog).toHaveBeenCalledWith(apiLog.id);
+    expect(dispatch).toHaveBeenCalledWith({ type: "LOG_JOB_PROGRESS", job: stillProcessingJob });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: latestProcessingLog });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+  });
 });
