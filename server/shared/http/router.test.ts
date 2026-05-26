@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./errors";
 import { createRouter } from "./router";
-import { createHttpServer, type RawBody } from "./server";
+import { createHttpServer, type MultipartBody, type RawBody } from "./server";
 
 async function requestText(server: ReturnType<typeof createHttpServer>, path: string, init: RequestInit = {}) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -179,6 +179,47 @@ describe("createHttpServer", () => {
     });
   });
 
+  it("passes multipart form uploads as structured bodies", async () => {
+    const server = createHttpServer({
+      handle: async (request) => {
+        const body = request.body as MultipartBody;
+        return {
+          status: 200,
+          body: {
+            fields: body.fields,
+            file: {
+              bytes: body.files[0].bytes.toString("utf8"),
+              contentType: body.files[0].contentType,
+              fieldName: body.files[0].fieldName,
+              fileName: body.files[0].fileName
+            },
+            kind: body.kind
+          }
+        };
+      }
+    });
+    const formData = new FormData();
+    formData.append("projectId", "aurora");
+    formData.append("file", new File(["timestamp,message\n1,ok"], "diagnostics.csv", { type: "text/csv" }));
+
+    const { response, text } = await requestText(server, "/api/v1/logs", {
+      method: "POST",
+      body: formData
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(text)).toEqual({
+      fields: { projectId: "aurora" },
+      file: {
+        bytes: "timestamp,message\n1,ok",
+        contentType: "text/csv",
+        fieldName: "file",
+        fileName: "diagnostics.csv"
+      },
+      kind: "multipart"
+    });
+  });
+
   it("sends server-sent events from route responses", async () => {
     async function* events() {
       yield { event: "job", data: { id: "job_1", status: "processing" } };
@@ -193,5 +234,24 @@ describe("createHttpServer", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(text).toContain("event: job\n");
     expect(text).toContain('data: {"id":"job_1","status":"processing"}\n\n');
+  });
+
+  it("sends SSE error events when iterators fail after streaming starts", async () => {
+    async function* events() {
+      yield { event: "job", data: { id: "job_1", status: "processing" } };
+      throw new Error("stream failed");
+    }
+    const server = createHttpServer({
+      handle: async () => ({ status: 200, sse: events() })
+    });
+
+    const { response, text } = await requestText(server, "/api/v1/jobs/events");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+    expect(text).toContain("event: job\n");
+    expect(text).toContain("event: error\n");
+    expect(text).toContain('data: {"code":"INTERNAL_ERROR","message":"stream failed"}\n\n');
+    expect(text).not.toContain('"error":');
   });
 });
