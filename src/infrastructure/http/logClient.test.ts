@@ -60,6 +60,7 @@ function createRepository(fetchMock: typeof fetch) {
 
 describe("createHttpLogAnalysisRepository", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -175,6 +176,57 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(EventSourceStub).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/jobs/job-1/events");
     expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: "job-1", status: "complete", progress: 100 }));
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to polling when EventSource errors before terminal status", async () => {
+    vi.useFakeTimers();
+    const fetchMock = createFetchMock({ item: { ...baseJobDto, status: "complete", progress: 100 } });
+    const addEventListener = vi.fn();
+    const close = vi.fn();
+    const EventSourceStub = vi.fn(function EventSource(this: { onerror?: () => void }, _url: string) {
+      Object.assign(this, { addEventListener, close });
+    });
+    vi.stubGlobal("EventSource", EventSourceStub);
+    const repository = createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }), {
+      baseUrl: "http://127.0.0.1:8787"
+    });
+    const onEvent = vi.fn();
+
+    const cleanup = repository.watchJob?.("job-1", onEvent);
+    const eventSource = EventSourceStub.mock.instances[0] as unknown as { onerror: () => void };
+    eventSource.onerror();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({ id: "job-1", status: "complete", progress: 100 }));
+
+    cleanup?.();
+  });
+
+  it("cleanup stops EventSource error polling fallback", async () => {
+    vi.useFakeTimers();
+    const fetchMock = createFetchMock({ item: { ...baseJobDto, status: "processing", progress: 55 } });
+    const addEventListener = vi.fn();
+    const close = vi.fn();
+    const EventSourceStub = vi.fn(function EventSource(this: { onerror?: () => void }, _url: string) {
+      Object.assign(this, { addEventListener, close });
+    });
+    vi.stubGlobal("EventSource", EventSourceStub);
+    const repository = createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }), {
+      baseUrl: "http://127.0.0.1:8787"
+    });
+    const onEvent = vi.fn();
+
+    const cleanup = repository.watchJob?.("job-1", onEvent);
+    const eventSource = EventSourceStub.mock.instances[0] as unknown as { onerror: () => void };
+    eventSource.onerror();
+    cleanup?.();
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
   });
 
   it("reruns a log analysis", async () => {

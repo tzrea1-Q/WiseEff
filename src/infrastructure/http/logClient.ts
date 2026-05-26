@@ -89,6 +89,10 @@ function feedbackBody(input: LogFeedbackInput) {
   };
 }
 
+function isTerminalStatus(status: string | undefined) {
+  return status !== undefined && terminalJobStatuses.has(status);
+}
+
 export function createHttpLogAnalysisRepository(
   apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl }),
   { baseUrl = wiseEffApiBaseUrl }: HttpLogAnalysisRepositoryOptions = {}
@@ -121,24 +125,36 @@ export function createHttpLogAnalysisRepository(
       return jobSnapshotFromDto(response.item);
     },
     watchJob(jobId, onEvent) {
-      if (typeof EventSource !== "undefined") {
-        const eventSource = new EventSource(apiUrl(baseUrl, `${routeJobPath(jobId)}/events`));
-        eventSource.addEventListener("job", (event) => {
-          onEvent(jobSnapshotFromDto(JSON.parse(event.data) as LogJobDto));
-        });
-        eventSource.onerror = () => {
-          eventSource.close();
-        };
-        return () => eventSource.close();
-      }
-
       let stopped = false;
       let timeoutId: ReturnType<typeof setTimeout> | undefined;
+      let eventSource: EventSource | undefined;
+      let eventSourceClosed = false;
+      let lastStatus: string | undefined;
+
+      const stopPolling = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = undefined;
+        }
+      };
+
+      const closeEventSource = () => {
+        if (eventSourceClosed) return;
+        eventSourceClosed = true;
+        eventSource?.close();
+      };
+
+      const cleanup = () => {
+        stopped = true;
+        stopPolling();
+        closeEventSource();
+      };
 
       const poll = async () => {
         try {
           const snapshot = await repository.getJob(jobId);
           if (stopped) return;
+          lastStatus = snapshot.status;
           onEvent(snapshot);
           if (!terminalJobStatuses.has(snapshot.status)) {
             timeoutId = setTimeout(poll, 1000);
@@ -150,12 +166,32 @@ export function createHttpLogAnalysisRepository(
         }
       };
 
-      void poll();
-
-      return () => {
-        stopped = true;
-        if (timeoutId) clearTimeout(timeoutId);
+      const startPolling = () => {
+        if (stopped || timeoutId) return;
+        timeoutId = setTimeout(poll, 1000);
       };
+
+      if (typeof EventSource !== "undefined") {
+        eventSource = new EventSource(apiUrl(baseUrl, `${routeJobPath(jobId)}/events`));
+        eventSource.addEventListener("job", (event) => {
+          const snapshot = jobSnapshotFromDto(JSON.parse(event.data) as LogJobDto);
+          lastStatus = snapshot.status;
+          onEvent(snapshot);
+          if (terminalJobStatuses.has(snapshot.status)) {
+            cleanup();
+          }
+        });
+        eventSource.onerror = () => {
+          closeEventSource();
+          if (!isTerminalStatus(lastStatus)) {
+            startPolling();
+          }
+        };
+        return cleanup;
+      }
+
+      void poll();
+      return cleanup;
     },
     async rerunLog(input: LogRerunInput) {
       const response = await apiClient.post<LogRerunResponse>(`${routeLogPath(input.logId)}/rerun`, rerunBody(input));
