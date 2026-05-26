@@ -3,13 +3,23 @@ import { z } from "zod";
 import { logRecordStatuses } from "./status";
 
 const nonEmptyString = z.string().min(1);
+const base64String = nonEmptyString.refine(
+  (value) => {
+    try {
+      return Buffer.from(value, "base64").toString("base64") === value;
+    } catch {
+      return false;
+    }
+  },
+  { message: "Expected valid base64 content." }
+);
 const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
 
 export const createLogFileBodySchema = z.object({
   projectId: nonEmptyString,
   fileName: nonEmptyString,
   contentType: nonEmptyString,
-  contentBase64: nonEmptyString,
+  contentBase64: base64String,
   analysisQuestion: z.string().optional(),
   relatedParameterId: nonEmptyString.optional()
 });
