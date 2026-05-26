@@ -172,6 +172,22 @@ POST   /api/v1/parameter-import-batches/:batchId/apply
 
 ## 6. Logs
 
+M2 日志合同锁定为：
+
+```text
+POST /api/v1/log-files
+POST /api/v1/logs
+GET  /api/v1/logs
+GET  /api/v1/logs/:logId
+GET  /api/v1/logs/:logId/runs
+POST /api/v1/logs/:logId/rerun
+POST /api/v1/logs/:logId/archive
+POST /api/v1/logs/:logId/unarchive
+POST /api/v1/logs/:logId/feedback
+GET  /api/v1/jobs/:jobId
+GET  /api/v1/jobs/:jobId/events
+```
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `POST` | `/api/v1/log-files` | 创建上传凭证或直接上传 |
@@ -184,6 +200,21 @@ POST   /api/v1/parameter-import-batches/:batchId/apply
 | `POST` | `/api/v1/logs/:logId/unarchive` | 取消归档 |
 | `POST` | `/api/v1/logs/:logId/feedback` | 用户反馈 |
 
+`POST /api/v1/log-files` 在 M2 接受 JSON base64 内容，后续可替换为签名上传凭证而不改变 `POST /api/v1/logs` 的分析合同。
+
+创建日志文件：
+
+```json
+{
+  "projectId": "aurora",
+  "fileName": "charging_thermal_trace.log",
+  "contentType": "text/plain",
+  "contentBase64": "V0FSTiB0ZW1wPTc1",
+  "analysisQuestion": "Why did fast charging fold back?",
+  "relatedParameterId": "fast-charge-current"
+}
+```
+
 创建日志分析：
 
 ```json
@@ -191,7 +222,8 @@ POST   /api/v1/parameter-import-batches/:batchId/apply
   "projectId": "aurora",
   "fileObjectId": "file_123",
   "fileName": "charging_thermal_trace.log",
-  "analysisQuestion": "Why did fast charging fold back?"
+  "analysisQuestion": "Why did fast charging fold back?",
+  "relatedParameterId": "fast-charge-current"
 }
 ```
 
@@ -208,10 +240,13 @@ POST   /api/v1/parameter-import-batches/:batchId/apply
 {
   "id": "job_1",
   "kind": "log-analysis",
+  "logId": "log_1",
+  "runId": "run_1",
   "status": "processing",
   "progress": 65,
   "currentStage": "rootcause",
-  "error": null
+  "error": null,
+  "updatedAt": "2026-05-25T02:05:00.000Z"
 }
 ```
 

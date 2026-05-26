@@ -10,12 +10,40 @@ const roleRank: Record<BackendRoleId, number> = {
 };
 
 const rolePermissions: Record<BackendRoleId, BackendPermission[]> = {
-  guest: ["parameter:view"],
-  "hardware-user": ["parameter:view", "parameter:edit", "debugging:use", "logs:upload"],
-  "software-user": ["parameter:view", "parameter:edit", "debugging:use", "logs:upload"],
-  "hardware-committer": ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review"],
-  "software-committer": ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review"],
-  admin: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review", "admin:access", "users:manage"]
+  guest: ["parameter:view", "logs:view"],
+  "hardware-user": ["parameter:view", "parameter:edit", "debugging:use", "logs:view", "logs:upload", "logs:feedback"],
+  "software-user": ["parameter:view", "parameter:edit", "debugging:use", "logs:view", "logs:upload", "logs:feedback"],
+  "hardware-committer": [
+    "parameter:view",
+    "parameter:edit",
+    "debugging:use",
+    "logs:view",
+    "logs:upload",
+    "logs:feedback",
+    "parameter:review"
+  ],
+  "software-committer": [
+    "parameter:view",
+    "parameter:edit",
+    "debugging:use",
+    "logs:view",
+    "logs:upload",
+    "logs:feedback",
+    "parameter:review"
+  ],
+  admin: [
+    "parameter:view",
+    "parameter:edit",
+    "debugging:use",
+    "logs:view",
+    "logs:upload",
+    "logs:feedback",
+    "logs:analyze",
+    "logs:archive",
+    "parameter:review",
+    "admin:access",
+    "users:manage"
+  ]
 };
 
 export function compareRoles(left: BackendRoleId, right: BackendRoleId) {

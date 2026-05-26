@@ -17,7 +17,19 @@ export const developmentAuthContext: AuthContext = {
     name: "ChargeLab"
   },
   roles: [{ projectId: null, roleId: "admin" }],
-  permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review", "admin:access", "users:manage"]
+  permissions: [
+    "parameter:view",
+    "parameter:edit",
+    "debugging:use",
+    "logs:view",
+    "logs:upload",
+    "logs:feedback",
+    "logs:analyze",
+    "logs:archive",
+    "parameter:review",
+    "admin:access",
+    "users:manage"
+  ]
 };
 
 export function registerAuthRoutes(router: WiseEffRouter, options: { db?: Queryable }) {

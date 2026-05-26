@@ -10,7 +10,11 @@ export type BackendPermission =
   | "parameter:view"
   | "parameter:edit"
   | "debugging:use"
+  | "logs:view"
   | "logs:upload"
+  | "logs:analyze"
+  | "logs:archive"
+  | "logs:feedback"
   | "parameter:review"
   | "admin:access"
   | "users:manage";
