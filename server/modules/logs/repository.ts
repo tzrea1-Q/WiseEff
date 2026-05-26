@@ -2,6 +2,7 @@ import type { AuthContext } from "../auth/types";
 import { createLogAnalysisJob } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
+import type { AnalyzeLogEvidence, LogAnalysisSeverity } from "./analyzer";
 import type { LogArchiveState, LogFeedbackRating, LogRecordDto } from "./types";
 import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 
@@ -62,6 +63,20 @@ type RunRow = {
   updated_at: string | Date;
 };
 
+type WorkerLogRunSnapshotRow = {
+  job_id: string;
+  organization_id: string;
+  run_id: string;
+  log_id: string;
+  file_object_id: string;
+  file_name: string;
+  storage_key: string;
+  analysis_question: string | null;
+  job_status: LogRunStatus;
+  run_status: LogRunStatus;
+  record_status: LogRecordStatus;
+};
+
 export type LogFileObjectDto = {
   id: string;
   organizationId: string;
@@ -97,6 +112,35 @@ export type CreateLogRecordWithRunAndJobInput = {
   submittedByUserId: string;
   analysisQuestion?: string;
   relatedParameterId?: string;
+};
+
+export type LogWorkerRunSnapshot = {
+  jobId: string;
+  organizationId: string;
+  runId: string;
+  logId: string;
+  fileObjectId: string;
+  fileName: string;
+  storageKey: string;
+  analysisQuestion: string | null;
+  jobStatus: LogRunStatus;
+  runStatus: LogRunStatus;
+  recordStatus: LogRecordStatus;
+};
+
+export type PersistLogAnalysisReportInput = {
+  organizationId: string;
+  logId: string;
+  runId: string;
+  report: {
+    confidence: number;
+    conclusion: string;
+    impact: string;
+    severity: LogAnalysisSeverity;
+    suggestedActions: string[];
+    rawLines: string[];
+  };
+  evidence: AnalyzeLogEvidence[];
 };
 
 function dateTimeToIso(value: string | Date) {
@@ -179,6 +223,22 @@ function toRunDto(row: RunRow): LogRunDto {
     progress: Number(row.progress),
     error: row.error_message,
     updatedAt: dateTimeToIso(row.updated_at)
+  };
+}
+
+function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnapshot {
+  return {
+    jobId: row.job_id,
+    organizationId: row.organization_id,
+    runId: row.run_id,
+    logId: row.log_id,
+    fileObjectId: row.file_object_id,
+    fileName: row.file_name,
+    storageKey: row.storage_key,
+    analysisQuestion: row.analysis_question,
+    jobStatus: row.job_status,
+    runStatus: row.run_status,
+    recordStatus: row.record_status
   };
 }
 
@@ -523,6 +583,153 @@ export async function updateRunProgress(
     `,
     [input.organizationId, input.runId, input.status, input.currentStage, input.progress]
   );
+}
+
+export async function updateRunStageProgress(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    runId: string;
+    status: LogRunStatus;
+    stageStatus?: LogRunStatus;
+    stage: LogStage;
+    progress: number;
+    message: string;
+  }
+) {
+  await updateRunProgress(db, {
+    organizationId: input.organizationId,
+    runId: input.runId,
+    status: input.status,
+    currentStage: input.stage,
+    progress: input.progress
+  });
+  await db.query(
+    `
+    insert into log_analysis_stages (
+      id, organization_id, run_id, stage, status, progress, message, started_at, completed_at
+    )
+    values (
+      $1, $2, $3, $4, $5, $6, $7,
+      case when $5 = 'processing' then now() else null end,
+      case when $5 in ('complete', 'failed') then now() else null end
+    )
+    on conflict (run_id, stage) do update
+    set status = excluded.status,
+      progress = excluded.progress,
+      message = excluded.message,
+      started_at = coalesce(log_analysis_stages.started_at, excluded.started_at),
+      completed_at = excluded.completed_at
+    `,
+    [
+      `stage-${input.runId}-${input.stage}`,
+      input.organizationId,
+      input.runId,
+      input.stage,
+      input.stageStatus ?? input.status,
+      input.progress,
+      input.message
+    ]
+  );
+}
+
+export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
+  const result = await db.query<WorkerLogRunSnapshotRow>(
+    `
+    select
+      job.id as job_id,
+      job.organization_id,
+      run.id as run_id,
+      lr.id as log_id,
+      lr.file_object_id,
+      lr.file_name,
+      lfo.storage_key,
+      lr.analysis_question,
+      job.status as job_status,
+      run.status as run_status,
+      lr.status as record_status
+    from jobs job
+    inner join log_analysis_runs run
+      on run.id = job.target_id
+      and run.organization_id = job.organization_id
+    inner join log_records lr
+      on lr.id = run.log_record_id
+      and lr.organization_id = job.organization_id
+      and lr.current_run_id = run.id
+    inner join log_file_objects lfo
+      on lfo.id = lr.file_object_id
+      and lfo.organization_id = job.organization_id
+    where job.id = $1
+    limit 1
+    `,
+    [jobId]
+  );
+
+  return result.rows[0] ? toWorkerLogRunSnapshot(result.rows[0]) : null;
+}
+
+export async function persistLogAnalysisReport(db: Database, input: PersistLogAnalysisReportInput) {
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `
+      insert into log_analysis_reports (
+        id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
+        severity, suggested_actions, raw_lines
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      on conflict (id) do update
+      set confidence = excluded.confidence,
+        conclusion = excluded.conclusion,
+        impact = excluded.impact,
+        severity = excluded.severity,
+        suggested_actions = excluded.suggested_actions,
+        raw_lines = excluded.raw_lines
+      `,
+      [
+        `report-${input.runId}`,
+        input.organizationId,
+        input.logId,
+        input.runId,
+        input.report.confidence,
+        input.report.conclusion,
+        input.report.impact,
+        input.report.severity,
+        input.report.suggestedActions,
+        input.report.rawLines
+      ]
+    );
+    await tx.query(
+      `
+      delete from log_evidence
+      where organization_id = $1
+        and run_id = $2
+      `,
+      [input.organizationId, input.runId]
+    );
+
+    for (const [index, evidence] of input.evidence.entries()) {
+      await tx.query(
+        `
+        insert into log_evidence (
+          id, organization_id, log_record_id, run_id, stage, line_numbers,
+          inference, suggested_action, rule_hit
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+          `evidence-${input.runId}-${index}`,
+          input.organizationId,
+          input.logId,
+          input.runId,
+          evidence.stageId,
+          evidence.lineNumbers,
+          evidence.inference,
+          evidence.suggestedAction,
+          evidence.ruleHit
+        ]
+      );
+    }
+  });
 }
 
 export async function completeRun(

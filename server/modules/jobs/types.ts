@@ -14,3 +14,11 @@ export type LogAnalysisJobDto = {
   error: string | null;
   updatedAt: string;
 };
+
+export type ClaimedLogAnalysisJobDto = LogAnalysisJobDto & {
+  organizationId: string;
+};
+
+export type LogAnalysisJobSnapshotDto = ClaimedLogAnalysisJobDto & {
+  logId: string;
+};

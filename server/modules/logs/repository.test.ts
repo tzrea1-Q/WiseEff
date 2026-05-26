@@ -10,7 +10,9 @@ import {
   getFileObjectById,
   getLogDetail,
   listLogs,
-  listRuns
+  listRuns,
+  persistLogAnalysisReport,
+  updateRunStageProgress
 } from "./repository";
 
 type QueryCall = {
@@ -316,5 +318,70 @@ describe("log repository", () => {
     expect(txCalls[1].text).toContain("update log_records");
     expect(txCalls[1].text).toContain("current_run_id = $3");
     expect(txCalls[1].values).toEqual(["org-1", "log-1", "run-old", "Parser failed."]);
+  });
+
+  it("updateRunStageProgress records visible stage progress for a run", async () => {
+    const { db, calls } = createFakeDb([[], []]);
+
+    await updateRunStageProgress(db, {
+      organizationId: "org-1",
+      runId: "run-1",
+      status: "processing",
+      stage: "pattern",
+      progress: 40,
+      message: "Finding known patterns."
+    });
+
+    expect(calls[0].text).toContain("update log_analysis_runs");
+    expect(calls[0].values).toEqual(["org-1", "run-1", "processing", "pattern", 40]);
+    expect(calls[1].text).toContain("insert into log_analysis_stages");
+    expect(calls[1].text).toContain("on conflict (run_id, stage)");
+    expect(calls[1].values).toEqual(["stage-run-1-pattern", "org-1", "run-1", "pattern", "processing", 40, "Finding known patterns."]);
+  });
+
+  it("persistLogAnalysisReport replaces existing evidence for stable reruns", async () => {
+    const { db, txCalls, transactions } = createFakeDb([[], [], []]);
+
+    await persistLogAnalysisReport(db, {
+      organizationId: "org-1",
+      logId: "log-1",
+      runId: "run-1",
+      report: {
+        confidence: 0.85,
+        conclusion: "Charging behavior is consistent with thermal foldback protection.",
+        impact: "Charging throughput may be reduced.",
+        severity: "Warning",
+        suggestedActions: ["Inspect pack temperature."],
+        rawLines: ["WARN thermal foldback"]
+      },
+      evidence: [
+        {
+          stageId: "rootcause",
+          lineNumbers: [1],
+          inference: "Thermal protection reduced charging output.",
+          suggestedAction: "Inspect pack temperature.",
+          ruleHit: "thermal-foldback"
+        }
+      ]
+    });
+
+    expect(transactions).toHaveLength(1);
+    expect(txCalls[0].text).toContain("insert into log_analysis_reports");
+    expect(txCalls[0].text).toContain("on conflict (id) do update");
+    expect(txCalls[0].values[0]).toBe("report-run-1");
+    expect(txCalls[1].text).toContain("delete from log_evidence");
+    expect(txCalls[1].values).toEqual(["org-1", "run-1"]);
+    expect(txCalls[2].text).toContain("insert into log_evidence");
+    expect(txCalls[2].values).toEqual([
+      "evidence-run-1-0",
+      "org-1",
+      "log-1",
+      "run-1",
+      "rootcause",
+      [1],
+      "Thermal protection reduced charging output.",
+      "Inspect pack temperature.",
+      "thermal-foldback"
+    ]);
   });
 });
