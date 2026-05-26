@@ -1,10 +1,48 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { initialState } from "./mockData";
+import { initialState, type LogRecord } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+const completedApiLog: LogRecord = {
+  ...initialState.logs[0],
+  id: "api-complete-log",
+  reportId: "API-COMPLETE-10C",
+  fileName: "api-complete.log",
+  status: "Complete",
+  stage: "report",
+  confidence: 94,
+  updatedAtIso: "2026-05-26T02:00:00.000Z",
+  updatedAt: "2026-05-26 10:00",
+  rawLines: ["2026-05-26T02:00:00.000Z INFO analysis complete"],
+  evidence: []
+};
+const failedApiLog: LogRecord = {
+  ...initialState.logs[0],
+  id: "api-failed-log",
+  reportId: "API-FAILED-10C",
+  fileName: "api-failed.log",
+  status: "Failed",
+  stage: "parse",
+  confidence: 0,
+  updatedAtIso: "2026-05-26T02:05:00.000Z",
+  updatedAt: "2026-05-26 10:05",
+  failureReason: "ASCII API failure reason summary",
+  rawLines: [],
+  evidence: []
+};
+const archivedApiLog: LogRecord = {
+  ...completedApiLog,
+  id: "api-archived-log",
+  reportId: "API-ARCHIVED-10C",
+  fileName: "api-archived.log",
+  updatedAtIso: "2026-05-26T02:10:00.000Z"
+};
+
+function todayStatusCounts(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll(".topic-segmented-summary strong")).map((node) => node.textContent ?? "");
+}
 
 afterEach(() => {
   cleanup();
@@ -61,6 +99,51 @@ describe("LogDashboardPage", () => {
     expect(screen.getByText("处理队列稳定")).toBeInTheDocument();
     expect(screen.getByText("需要人工介入")).toBeInTheDocument();
     expect(screen.queryByText("charging_thermal_trace_20260504.log")).not.toBeInTheDocument();
+  });
+
+  it("hydrates completed and failed API logs into dashboard counts and failure summary", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+
+    const { container } = render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "user",
+          logs: [completedApiLog, failedApiLog],
+          archivedLogIds: []
+        }}
+      />
+    );
+
+    const primaryMetrics = Array.from(container.querySelectorAll(".topic-primary-metric strong")).map((node) => node.textContent ?? "");
+    expect(primaryMetrics[0]).toBe("2");
+    expect(primaryMetrics[2]).toBe("1");
+    expect(todayStatusCounts(container)).toEqual(["1", "0", "1"]);
+    expect(screen.getByText("ASCII API failure reason summary")).toBeInTheDocument();
+  });
+
+  it("excludes archived logs from dashboard hydration until an admin view requests them", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-26T12:00:00+08:00"));
+    window.history.replaceState(null, "", "/log-dashboard");
+
+    const { container } = render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          logs: [completedApiLog, failedApiLog, archivedApiLog],
+          archivedLogIds: [archivedApiLog.id]
+        }}
+      />
+    );
+
+    const primaryMetrics = Array.from(container.querySelectorAll(".topic-primary-metric strong")).map((node) => node.textContent ?? "");
+    expect(primaryMetrics[0]).toBe("2");
+    expect(todayStatusCounts(container)).toEqual(["1", "0", "1"]);
+    expect(screen.queryByText("api-archived.log")).not.toBeInTheDocument();
   });
 
   it("can navigate from dashboard to log admin and log analysis", async () => {
