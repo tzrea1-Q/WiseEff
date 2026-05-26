@@ -257,7 +257,7 @@ export function createLogRuntimeActions({
 
       await runApiMutation(async (api) => {
         await api.unarchiveLog(logId);
-        await refresh({ includeArchived: true });
+        await refresh();
       });
     },
     async submitFeedback(input) {

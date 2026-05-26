@@ -191,6 +191,23 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 
+  it("uses default active-log refresh after unarchive instead of including archived logs", async () => {
+    const dispatch = vi.fn();
+    const activeLogs = [{ ...apiLog, reportId: "RPT-ACTIVE" }];
+    const repository = createRepository({
+      listLogs: vi.fn().mockResolvedValue(activeLogs)
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await actions.unarchive(apiLog.id);
+
+    expect(repository.unarchiveLog).toHaveBeenCalledWith(apiLog.id);
+    expect(repository.listLogs).toHaveBeenCalledTimes(1);
+    expect(repository.listLogs).toHaveBeenCalledWith(undefined);
+    expect(repository.listLogs).not.toHaveBeenCalledWith(expect.objectContaining({ includeArchived: true }));
+    expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_LOG_RUNTIME", logs: activeLogs });
+  });
+
   it("ignores stale terminal upserts when a newer poll supersedes the same log", async () => {
     const dispatch = vi.fn();
     const firstLog = { ...apiLog, reportId: "RPT-FIRST" };
