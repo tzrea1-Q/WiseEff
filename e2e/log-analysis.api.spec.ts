@@ -52,10 +52,10 @@ async function cleanupM2E2ELogs(client: Client) {
     await client.query("delete from log_evidence where run_id = any($1::text[])", [runIds]);
     await client.query("delete from log_analysis_stages where run_id = any($1::text[])", [runIds]);
     await client.query("delete from log_analysis_reports where run_id = any($1::text[])", [runIds]);
+    await client.query("delete from jobs where kind = 'log-analysis' and target_id = any($1::text[])", [runIds]);
   }
   if (logIds.length > 0) {
     await client.query("delete from log_feedback where log_record_id = any($1::text[])", [logIds]);
-    await client.query("delete from jobs where kind = 'log-analysis' and target_id = any($1::text[])", [logIds]);
     await client.query("update log_records set current_run_id = null where id = any($1::text[])", [logIds]);
     await client.query("delete from log_analysis_runs where log_record_id = any($1::text[])", [logIds]);
     await client.query("delete from audit_events where app = 'log-analysis' and target_id = any($1::text[])", [logIds]);
@@ -104,7 +104,9 @@ async function seedM2AdminUser(client: Client) {
 async function latestLogByFile(page: Page, fileName: string) {
   const response = await page.request.get(`${apiBaseUrl}/api/v1/logs?projectId=${projectId}&includeArchived=true`);
   expect(response.ok()).toBe(true);
-  const body = (await response.json()) as { items: Array<{ id: string; fileName: string; status: string; failureReason?: string | null }> };
+  const body = (await response.json()) as {
+    items: Array<{ id: string; fileName: string; status: string; archiveState?: string; failureReason?: string | null }>;
+  };
   const matches = body.items.filter((item) => item.fileName === fileName);
   expect(matches.length).toBeGreaterThan(0);
   return matches[0];
@@ -184,8 +186,8 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
 
   await page.locator('button:has(svg[class*="lucide-archive"])').click();
   await expect
-    .poll(async () => (await latestLogByFile(page, supportedFileName)).status)
-    .toBe("complete");
+    .poll(async () => (await latestLogByFile(page, supportedFileName)).archiveState)
+    .toBe("archived");
 
   await page.goto(`/logs?project=${projectId}`);
   await page.reload();
@@ -201,6 +203,7 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
       return `${log.status}:${log.failureReason ?? ""}`;
     }, { timeout: 30_000 })
     .toMatch(/^failed:.*unsupported/i);
-  await expect(historyItem(page, unsupportedFileName)).toContainText(/失败|Failed|0%/);
+  await expect(historyItem(page, unsupportedFileName)).toBeVisible();
+  await expect(historyItem(page, unsupportedFileName)).toContainText(/Failed|0%/);
   await expect(page.getByRole("alert")).toContainText(/unsupported|support|\.log|\.txt|\.json/i);
 });
