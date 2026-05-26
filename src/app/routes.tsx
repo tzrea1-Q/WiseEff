@@ -13,6 +13,7 @@ import type {
   ParameterRuntimeRefreshResult,
   ParameterRuntimeVoidResult
 } from "@/application/parameters/parameterRuntime";
+import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -44,6 +45,7 @@ export type PageProps = {
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
   runtimeMode?: WiseEffRuntimeMode;
@@ -67,6 +69,7 @@ export function PageRouter({
   dispatch,
   onNavigate,
   search,
+  logActions,
   parameterActions,
   parameterHomeTimeWindow,
   runtimeMode,
@@ -145,7 +148,7 @@ export function PageRouter({
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
+      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     case "debugging":
@@ -153,7 +156,7 @@ export function PageRouter({
     case "node-debugging":
       return <NodeDebuggingPage state={state} />;
     case "debugging-admin":
-      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
+      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
     case "user-permissions":
       return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:

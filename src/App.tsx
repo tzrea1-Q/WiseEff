@@ -34,6 +34,13 @@ import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
 import {
+  createLogRuntimeActions,
+  type HydrateLogRuntimeAction,
+  type LogRuntimeActions
+} from "@/application/logs/logRuntime";
+import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
+import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
+import {
   createParameterRuntimeActions,
   type HydrateParameterRuntimeAction,
   type ParameterRuntimeActions
@@ -155,6 +162,7 @@ export type AppAction =
       roleId: string;
     }
   | HydrateParameterRuntimeAction
+  | HydrateLogRuntimeAction
   | {
       type: "SUBMIT_PARAMETER_INITIALIZATION";
       draft: {
@@ -192,6 +200,8 @@ export type AppAction =
   | { type: "AI_FEEDBACK"; requestId: string; feedback: "up" | "down"; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "SIMULATE_LOG_UPLOAD"; fileName: string; supported: boolean; question?: string }
+  | { type: "UPSERT_LOG_RECORD"; log: LogRecord }
+  | { type: "LOG_JOB_PROGRESS"; job: LogJobSnapshot }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
   | { type: "PUSH_DEBUG_VALUES"; parameterIds: string[] }
@@ -971,6 +981,37 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     }
+    case "HYDRATE_LOG_RUNTIME":
+      return {
+        ...state,
+        logs: action.logs
+      };
+    case "UPSERT_LOG_RECORD": {
+      const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
+      if (existingIndex === -1) {
+        return {
+          ...state,
+          logs: [action.log, ...state.logs]
+        };
+      }
+
+      return {
+        ...state,
+        logs: state.logs.map((log) => (log.id === action.log.id ? action.log : log))
+      };
+    }
+    case "LOG_JOB_PROGRESS":
+      return {
+        ...state,
+        logs: state.logs.map((log) =>
+          log.id === action.job.logId
+            ? {
+                ...log,
+                stage: action.job.currentStage
+              }
+            : log
+        )
+      };
     case "CONNECT_DEVICE": {
       if (!canPerform(activeRoleId, "debugging.use")) return state;
       const now = new Date().toISOString();
@@ -1612,17 +1653,25 @@ export const appReducer = reducer;
 type AppProps = {
   authClient?: WiseEffAuthClient;
   initialAppState?: PrototypeState;
+  logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   runtimeMode?: WiseEffRuntimeMode;
 };
 
-function App({ authClient, initialAppState = initialState, parameterRepository, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
+function App({
+  authClient,
+  initialAppState = initialState,
+  logAnalysisRepository,
+  parameterRepository,
+  runtimeMode = wiseEffRuntimeMode
+}: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
         authClient={authClient}
         initialAppState={initialAppState}
         key={mockDataFingerprint}
+        logAnalysisRepository={logAnalysisRepository}
         parameterRepository={parameterRepository}
         runtimeMode={runtimeMode}
       />
@@ -1633,11 +1682,13 @@ function App({ authClient, initialAppState = initialState, parameterRepository, 
 function AppShell({
   authClient,
   initialAppState,
+  logAnalysisRepository,
   parameterRepository,
   runtimeMode
 }: {
   authClient?: WiseEffAuthClient;
   initialAppState: PrototypeState;
+  logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   runtimeMode: WiseEffRuntimeMode;
 }) {
@@ -1659,6 +1710,10 @@ function AppShell({
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
   );
+  const logAnalysisRepositoryClient = useMemo(
+    () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
+    [logAnalysisRepository, runtimeMode]
+  );
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
@@ -1669,11 +1724,22 @@ function AppShell({
       }),
     [parameterRepositoryClient, runtimeMode]
   );
+  const logActions = useMemo<LogRuntimeActions>(
+    () =>
+      createLogRuntimeActions({
+        mode: runtimeMode,
+        repository: logAnalysisRepositoryClient,
+        dispatch,
+        getState: () => stateRef.current
+      }),
+    [logAnalysisRepositoryClient, runtimeMode]
+  );
   const DebuggingAdminPageWithRuntime = useCallback(
     (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
     [runtimeMode]
   );
   const parameterRuntimeConnectedRef = useRef(false);
+  const logRuntimeConnectedRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1706,11 +1772,25 @@ function AppShell({
             lastActive: "just now"
           }
         });
-        const parameterRefreshResult = await parameterActions.refresh({ notifyOnFailure: false });
+        const [parameterRefreshResult, logRefreshResult] = await Promise.allSettled([
+          parameterActions.refresh({ notifyOnFailure: false }),
+          logActions.refresh()
+        ]);
         if (cancelled) return;
-        if (parameterRefreshResult && "notification" in parameterRefreshResult) {
+        if (
+          parameterRefreshResult.status === "rejected" ||
+          (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
+        ) {
           dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
           return;
+        }
+        if (logRefreshResult.status === "rejected") {
+          if (!(logRefreshResult.reason instanceof Error && "alreadyNotified" in logRefreshResult.reason)) {
+            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载 WiseEff 日志 API，已保留本地演示数据" });
+          }
+        } else if (!logRuntimeConnectedRef.current) {
+          logRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 日志 API" });
         }
         if (!parameterRuntimeConnectedRef.current) {
           parameterRuntimeConnectedRef.current = true;
@@ -1724,7 +1804,7 @@ function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [authClient, parameterActions, runtimeMode]);
+  }, [authClient, logActions, parameterActions, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1785,6 +1865,7 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
                 search={search}
@@ -1805,6 +1886,7 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
                 search={search}
