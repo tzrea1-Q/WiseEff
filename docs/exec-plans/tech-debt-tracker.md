@@ -11,6 +11,10 @@ This tracker captures known work that should not live only in chat or TODO comme
 | TD-003 | Contracts | API contract is documented but not yet enforced by generated schema/client. | Frontend DTOs and backend responses can drift as endpoints grow. | Keep this open after M1 parameter acceptance; introduce OpenAPI or schema generation before the next broad API surface. |
 | TD-004 | Generated Docs | `docs/generated/db-schema.md` is manually derived from migration. | Schema summary can become stale if migrations change. | Add a script or CI check when migrations expand. |
 | TD-005 | Doc Hygiene | Some historical feature plans are now in completed plans but may not state implementation status clearly. | Future agents may over-trust old implementation details. | Review completed plans during related feature work and mark superseded sections. |
+| TD-006 | Log Storage | M2 uses local filesystem object storage through `OBJECT_STORE_ROOT`. | Local/staging behavior does not prove object retention, encryption, lifecycle, or multi-node access. | Replace with production object storage adapter and retention policy. |
+| TD-007 | Log Worker | M2 worker is an in-process polling loop without distributed locks. | Multiple API processes could double-process jobs; crashed workers rely on later process logic. | Introduce durable queue leasing, retry/backoff policy, and worker ownership locks. |
+| TD-008 | Contracts | Log-analysis client and DTOs are handwritten. | API/frontend drift can break M2 E2E late. | Generate or validate an OpenAPI client for M1/M2 endpoints. |
+| TD-009 | AI Adapter | M2 analysis is deterministic fixture/rule-driven logic. | Product behavior does not yet exercise real model latency, cost, hallucination controls, or prompt/version traceability. | Add an AI adapter boundary with golden tests and model trace metadata. |
 
 ## Completed
 

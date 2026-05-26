@@ -127,6 +127,14 @@ stateDiagram-v2
 - 分析结果必须能追溯到具体 run 和 stage。
 - 证据行号必须基于原始文本日志或解析后的稳定索引。
 
+M2 implementation notes:
+
+- `LogRecord.status` is `uploaded`, `processing`, `complete`, or `failed`; archive state is modeled separately as `active` or `archived`.
+- A supported upload creates `LogFileObject`, `LogRecord`, one `LogAnalysisRun`, and one `jobs` row in a transaction. The worker later writes stages, report, evidence, and terminal job/run state.
+- An unsupported upload creates `LogFileObject` and a terminal failed `LogRecord` without a run or job. The failure reason is preserved on the record.
+- Archive/unarchive updates only `LogRecord.archive_state`; default list queries include only `active` records, and admin queries can request archived records with `includeArchived=true`.
+- Feedback is append-only in `log_feedback` and linked to the log record plus audit event.
+
 ### 2.5 调试平台
 
 | 实体 | 说明 |
@@ -193,4 +201,3 @@ stateDiagram-v2
 - 业务写操作必须产生审计。
 - 审计不可由普通业务接口修改。
 - 审计查询需要权限过滤。
-

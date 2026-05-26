@@ -133,15 +133,25 @@ function createFakeWorkerDb(fixture = createFixture()) {
         fixture.job.status = "processing";
         return { rows: [fixture.job as Row], rowCount: 1 };
       }
-      if (normalized.startsWith("select") && normalized.includes("from jobs job") && normalized.includes("inner join log_records")) {
-        if (fixture.log.current_run_id !== fixture.run.id) {
-          return { rows: [], rowCount: 0 };
-        }
+      if (
+        normalized.startsWith("select") &&
+        normalized.includes("job.target_id") &&
+        normalized.includes("run.log_record_id as log_id")
+      ) {
         return {
           rows: [
             {
-              job_id: fixture.job.id,
+              id: fixture.job.id,
               organization_id: fixture.job.organization_id,
+              kind: fixture.job.kind,
+              target_id: fixture.job.target_id,
+              status: fixture.job.status,
+              progress: fixture.job.progress,
+              current_stage: fixture.job.current_stage,
+              error_message: fixture.job.error_message,
+              updated_at: fixture.job.updated_at,
+              job_id: fixture.job.id,
+              project_id: fixture.log.project_id,
               run_id: fixture.run.id,
               log_id: fixture.log.id,
               file_object_id: fixture.log.file_object_id,
@@ -156,18 +166,17 @@ function createFakeWorkerDb(fixture = createFixture()) {
           rowCount: 1
         };
       }
-      if (normalized.startsWith("select") && normalized.includes("from jobs job") && normalized.includes("inner join log_analysis_runs")) {
+      if (
+        normalized.startsWith("select") &&
+        normalized.includes("from jobs job") &&
+        normalized.includes("lr.file_object_id")
+      ) {
+        if (fixture.log.current_run_id !== fixture.run.id) {
+          return { rows: [], rowCount: 0 };
+        }
         return {
           rows: [
             {
-              id: fixture.job.id,
-              kind: fixture.job.kind,
-              target_id: fixture.job.target_id,
-              status: fixture.job.status,
-              progress: fixture.job.progress,
-              current_stage: fixture.job.current_stage,
-              error_message: fixture.job.error_message,
-              updated_at: fixture.job.updated_at,
               job_id: fixture.job.id,
               organization_id: fixture.job.organization_id,
               run_id: fixture.run.id,

@@ -76,13 +76,19 @@ Seed the M2 log-analysis sample data. Run this after `npm run db:migrate`, `npm 
 npm run test:e2e
 ```
 
-Run the M1 parameter management Playwright smoke against API mode. This requires `DATABASE_URL`; the Playwright config starts `npm run dev:api` on port `8787` and `npm run dev` with `VITE_WISEEFF_RUNTIME_MODE=api`.
+Run the API-mode Playwright smokes for M1 parameter management and M2 log analysis. This requires `DATABASE_URL`; the Playwright config starts `npm run dev:api` on port `8787` and `npm run dev` with `VITE_WISEEFF_RUNTIME_MODE=api`, `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`, and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
 
 ```bash
 npm run test:m1
 ```
 
 Run the M1 verification gate: frontend tests, backend tests, production build, then the API-mode E2E smoke.
+
+```bash
+npm run test:m2
+```
+
+Run the M2 verification gate: frontend tests, backend tests, production build, then all API-mode E2E smokes. Use this before landing log-analysis MVP changes when a local PostgreSQL `DATABASE_URL` is available.
 
 ```bash
 npm run preview
@@ -99,7 +105,7 @@ VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 ```
 
-For M1 parameter-management API mode, use:
+For M2 API mode, use:
 
 ```bash
 DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
@@ -113,6 +119,14 @@ VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 np
 ```
 
 `OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
+
+M2 log-analysis verification in API mode:
+
+1. Start PostgreSQL and export `DATABASE_URL`.
+2. Run `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, and `npm run db:seed:m2`.
+3. Start `npm run dev:api` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
+5. Open `/logs?project=aurora`, upload `test-fixtures/logs/charging-foldback.log`, ask `Why did fast charging fold back?`, and verify the report reaches `Complete` with thermal/foldback evidence. Upload `test-fixtures/logs/unsupported.bin` to verify a `Failed` record with a readable unsupported-format reason.
 
 生产构建不允许使用 `mock` 作为业务数据源。
 

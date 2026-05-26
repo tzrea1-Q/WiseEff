@@ -40,6 +40,14 @@ For M1 parameter management:
 - Review advancement and rejection require the matching hardware/software workflow role or admin privilege.
 - Merge writes require the software-user workflow slot or admin privilege and re-check high-risk review evidence before updating the current value.
 
+For M2 log analysis:
+
+- Log reads require `logs:view` and are project-scoped through the authenticated role bindings.
+- Log uploads require active-user `logs:upload`; unsupported file extensions still create a failed record with a readable reason instead of bypassing audit.
+- Rerun analysis requires `logs:analyze`.
+- Archive and unarchive require active-user `logs:archive`; default log lists exclude archived records unless `includeArchived=true`.
+- Feedback requires active-user `logs:feedback` and stores only the rating/note needed for quality review.
+
 ## Audit Requirements
 
 Audit records should capture:
@@ -56,6 +64,8 @@ Audit records should capture:
 Audit should cover login/security events, parameter writes, review decisions, log uploads/reruns/archive actions, device reads/writes, Agent tools, admin changes, and exports.
 
 M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
+
+M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-failed`, `log-rerun`, `log-archive`, `log-unarchive`, and `log-feedback`. The UI may hide or disable actions by role, but the server permission check and audit write are the authoritative boundary.
 
 ## Agent Safety
 

@@ -22,7 +22,10 @@ async function requestText(server: ReturnType<typeof createHttpServer>, path: st
     return { response, text: await response.text() };
   } finally {
     await new Promise<void>((resolve, reject) => {
-      server.close((error) => (error ? reject(error) : resolve()));
+      server.close((error) => (error ? reject(error) : undefined));
+      server.closeIdleConnections();
+      server.closeAllConnections();
+      setImmediate(resolve);
     });
   }
 }
@@ -205,13 +208,25 @@ describe("createHttpServer", () => {
         };
       }
     });
-    const formData = new FormData();
-    formData.append("projectId", "aurora");
-    formData.append("file", new File(["timestamp,message\n1,ok"], "diagnostics.csv", { type: "text/csv" }));
+    const boundary = "----wiseeff-test-boundary";
+    const body = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="projectId"',
+      "",
+      "aurora",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="file"; filename="diagnostics.csv"',
+      "Content-Type: text/csv",
+      "",
+      "timestamp,message\n1,ok",
+      `--${boundary}--`,
+      ""
+    ].join("\r\n");
 
     const { response, text } = await requestText(server, "/api/v1/logs", {
       method: "POST",
-      body: formData
+      headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+      body
     });
 
     expect(response.status).toBe(200);
