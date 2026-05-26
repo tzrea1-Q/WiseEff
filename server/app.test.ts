@@ -74,6 +74,29 @@ describe("WiseEff API", () => {
     expect(response.body).toEqual({ risk: ["High", "Low"], q: "thermal" });
   });
 
+  it("serves browser CORS preflight for API mode", async () => {
+    const server = createHttpServer({
+      handle: async () => ({
+        status: 200,
+        body: { ok: true }
+      })
+    });
+
+    const response = await requestJson(server, "/api/v1/parameters", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://127.0.0.1:5173",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+      }
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:5173");
+    expect(response.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(response.headers.get("access-control-allow-headers")).toContain("content-type");
+  });
+
   it("uses request auth context for integrated parameter routes", async () => {
     const { calls, db } = createAuthBoundaryDb();
 

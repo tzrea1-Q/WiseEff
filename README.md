@@ -19,6 +19,8 @@ npm run db:seed:m1
 npm run dev
 ```
 
+The database commands require `DATABASE_URL` to point at a local PostgreSQL database. They create the M0 foundation rows and the M1 parameter-management seed data used by API mode and acceptance tests.
+
 开发服务绑定到 `127.0.0.1`。启动后 Vite 会在终端输出实际访问地址，通常是：
 
 ```text
@@ -64,6 +66,18 @@ npm run dev:api
 启动 M0 后端 API，默认监听 `http://127.0.0.1:8787`。
 
 ```bash
+npm run test:e2e
+```
+
+Run the M1 parameter management Playwright smoke against API mode. This requires `DATABASE_URL`; the Playwright config starts `npm run dev:api` on port `8787` and `npm run dev` with `VITE_WISEEFF_RUNTIME_MODE=api`.
+
+```bash
+npm run test:m1
+```
+
+Run the M1 verification gate: frontend tests, backend tests, production build, then the API-mode E2E smoke.
+
+```bash
 npm run preview
 ```
 
@@ -76,6 +90,17 @@ npm run preview
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
+```
+
+For M1 parameter-management API mode, use:
+
+```bash
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+npm run db:migrate
+npm run db:seed:m0
+npm run db:seed:m1
+npm run dev:api
+VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 npm run dev
 ```
 
 生产构建不允许使用 `mock` 作为业务数据源。
