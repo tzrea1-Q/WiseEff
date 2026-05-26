@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 
+function createFetchMock(response: Response) {
+  return vi.fn<typeof fetch>(async () => response);
+}
+
 describe("createApiClient", () => {
   it("requests JSON from the configured base URL", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
 
     await expect(client.get("/api/v1/health")).resolves.toEqual({ ok: true });
@@ -14,7 +18,7 @@ describe("createApiClient", () => {
   });
 
   it("sends DELETE requests with JSON accept headers", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
 
     await expect(client.delete("/api/v1/parameter-drafts/draft-1")).resolves.toEqual({ ok: true });
@@ -27,7 +31,7 @@ describe("createApiClient", () => {
   });
 
   it("sends PUT requests with JSON bodies", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
 
     await expect(client.put("/api/v1/parameters/p-1", { value: 42 })).resolves.toEqual({ ok: true });
@@ -39,7 +43,7 @@ describe("createApiClient", () => {
   });
 
   it("uploads files as FormData with optional fields", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ id: "log-1" }), { status: 201 }));
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ id: "log-1" }), { status: 201 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
     const file = new File(["timestamp,message\n1,ok"], "diagnostics.csv", { type: "text/csv" });
 
@@ -59,7 +63,7 @@ describe("createApiClient", () => {
   });
 
   it("maps API error responses", async () => {
-    const fetchMock = vi.fn(async () =>
+    const fetchMock = createFetchMock(
       new Response(
         JSON.stringify({
           error: {

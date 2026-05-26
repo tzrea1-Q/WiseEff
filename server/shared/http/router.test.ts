@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./errors";
-import { createRouter } from "./router";
+import { createRouter, type RouteResponse } from "./router";
 import { createHttpServer, type MultipartBody, type RawBody } from "./server";
+
+function expectJsonResponse(response: RouteResponse) {
+  if ("sse" in response) {
+    throw new Error("Expected a JSON route response, but received an SSE response.");
+  }
+  return response;
+}
 
 async function requestText(server: ReturnType<typeof createHttpServer>, path: string, init: RequestInit = {}) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -75,7 +82,7 @@ describe("createRouter", () => {
       body: undefined
     });
 
-    expect(response.body).toEqual({
+    expect(expectJsonResponse(response).body).toEqual({
       logId: "log-123",
       limit: "20",
       status: ["complete", "failed"]
@@ -97,7 +104,7 @@ describe("createRouter", () => {
       body: undefined
     });
 
-    expect(response.body).toEqual({ exact: true });
+    expect(expectJsonResponse(response).body).toEqual({ exact: true });
   });
 
   it("prefers static segments over dynamic segments position by position", async () => {
@@ -121,7 +128,7 @@ describe("createRouter", () => {
       body: undefined
     });
 
-    expect(response.body).toEqual({ route: "parameter", parameterId: "search" });
+    expect(expectJsonResponse(response).body).toEqual({ route: "parameter", parameterId: "search" });
   });
 
   it("returns a validation error for malformed dynamic route encoding", async () => {
