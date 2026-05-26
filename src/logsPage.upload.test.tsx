@@ -144,6 +144,14 @@ describe("reducer · SIMULATE_LOG_UPLOAD", () => {
 });
 
 describe("LogsPage api upload wiring", () => {
+  it("does not restrict file input accept in api mode", () => {
+    renderApiLogs();
+
+    openUploadDialog();
+
+    expect(document.querySelector("input[type='file']")).not.toHaveAttribute("accept");
+  });
+
   it("passes the selected File and question to the log repository", async () => {
     vi.useFakeTimers();
     const repository = renderApiLogs();

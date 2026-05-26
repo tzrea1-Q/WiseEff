@@ -3930,6 +3930,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       />
       {uploadDialogOpen ? (
         <UploadLogDialog
+          accept={logActions ? null : ".log,.txt,.json"}
           onClose={() => setUploadDialogOpen(false)}
           onUpload={handleUploadLog}
         />
@@ -3967,9 +3968,11 @@ function isSupportedLogFile(fileName: string) {
 }
 
 function UploadLogDialog({
+  accept = ".log,.txt,.json",
   onClose,
   onUpload
 }: {
+  accept?: string | null;
   onClose: () => void;
   onUpload: (file: File, supported: boolean, question?: string) => Promise<void> | void;
 }) {
@@ -4095,7 +4098,7 @@ function UploadLogDialog({
           onDrop={handleDrop}
         >
           <span>选择日志文件（支持拖放多份）</span>
-          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept=".log,.txt,.json" multiple onChange={handleFileChange} />
+          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept={accept ?? undefined} multiple onChange={handleFileChange} />
         </label>
         <label className="upload-question-field" htmlFor="upload-analysis-question">
           <span>分析问题（可选）</span>
@@ -4230,6 +4233,10 @@ function LogConclusionCard({
         <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
           <Download size={16} />
           导出报告
+        </button>
+        <button className="button danger" disabled={log.status !== "Complete"} type="button" onClick={onRetry}>
+          <RotateCcw size={16} />
+          重新分析
         </button>
         <button className="button subtle" type="button" onClick={onCopyLink}>
           <Copy size={16} />
