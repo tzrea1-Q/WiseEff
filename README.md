@@ -16,10 +16,11 @@ npm ci
 npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
+npm run db:seed:m2
 npm run dev
 ```
 
-The database commands require `DATABASE_URL` to point at a local PostgreSQL database. They create the M0 foundation rows and the M1 parameter-management seed data used by API mode and acceptance tests.
+The database commands require `DATABASE_URL` to point at a local PostgreSQL database. They create the M0 foundation rows, M1 parameter-management seed data, and M2 log-analysis sample records used by API mode and acceptance tests.
 
 开发服务绑定到 `127.0.0.1`。启动后 Vite 会在终端输出实际访问地址，通常是：
 
@@ -66,6 +67,12 @@ npm run dev:api
 启动 M0 后端 API，默认监听 `http://127.0.0.1:8787`。
 
 ```bash
+npm run db:seed:m2
+```
+
+Seed the M2 log-analysis sample data. Run this after `npm run db:migrate`, `npm run db:seed:m0`, and `npm run db:seed:m1`.
+
+```bash
 npm run test:e2e
 ```
 
@@ -96,12 +103,16 @@ For M1 parameter-management API mode, use:
 
 ```bash
 DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+OBJECT_STORE_ROOT=.wiseeff-object-store
 npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
+npm run db:seed:m2
 npm run dev:api
 VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 npm run dev
 ```
+
+`OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
 
 生产构建不允许使用 `mock` 作为业务数据源。
 

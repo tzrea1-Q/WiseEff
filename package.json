@@ -15,6 +15,7 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed:m0": "tsx scripts/seed-m0.ts",
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",
+    "db:seed:m2": "tsx scripts/seed-m2-logs.ts",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
