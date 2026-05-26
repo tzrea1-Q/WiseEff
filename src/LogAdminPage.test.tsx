@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
@@ -250,6 +250,48 @@ describe("LogAdminPage · row click + drawer actions", () => {
     });
   });
 
+  it("keeps the drawer open and skips undo toast when runtime archive rejects", async () => {
+    const archive = deferred();
+    const logActions = createLogActions({ archive: vi.fn(() => archive.promise) });
+    const { dispatch } = renderPage({ logActions });
+    const row = getLogRow(/charging_thermal_trace/);
+
+    await userEvent.click(row);
+    const archiveButton = screen.getByRole("button", { name: /归档/ });
+    await userEvent.click(archiveButton);
+
+    await act(async () => {
+      archive.reject(Object.assign(new Error("archive failed"), { alreadyNotified: true as const }));
+      await archive.promise.catch(() => undefined);
+    });
+
+    expect(archiveButton).toBeInTheDocument();
+    expect(archiveButton).not.toBeDisabled();
+    expect(archiveButton).not.toHaveAttribute("aria-busy", "true");
+    expect(screen.queryByRole("button", { name: "撤销" })).not.toBeInTheDocument();
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_ARCHIVE_LOG" }));
+  });
+
+  it("keeps the drawer open when runtime rerun rejects", async () => {
+    const rerun = deferred();
+    const logActions = createLogActions({ rerun: vi.fn(() => rerun.promise) });
+    renderPage({ logActions });
+    const row = getLogRow(/charging_thermal_trace/);
+
+    await userEvent.click(row);
+    const rerunButton = screen.getByRole("button", { name: /重新分析/ });
+    await userEvent.click(rerunButton);
+
+    await act(async () => {
+      rerun.reject(Object.assign(new Error("rerun failed"), { alreadyNotified: true as const }));
+      await rerun.promise.catch(() => undefined);
+    });
+
+    expect(rerunButton).toBeInTheDocument();
+    expect(rerunButton).not.toBeDisabled();
+    expect(rerunButton).not.toHaveAttribute("aria-busy", "true");
+  });
+
   it("calls runtime unarchive from undo toast and prevents duplicate undo clicks while pending", async () => {
     const unarchive = deferred();
     const logActions = createLogActions({ unarchive: vi.fn(() => unarchive.promise) });
@@ -273,6 +315,27 @@ describe("LogAdminPage · row click + drawer actions", () => {
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: "撤销" })).not.toBeInTheDocument();
     });
+  });
+
+  it("keeps the undo toast when runtime unarchive rejects", async () => {
+    const unarchive = deferred();
+    const logActions = createLogActions({ unarchive: vi.fn(() => unarchive.promise) });
+    renderPage({ logActions });
+    const row = getLogRow(/charging_thermal_trace/);
+
+    await userEvent.click(row);
+    await userEvent.click(screen.getByRole("button", { name: /归档/ }));
+    const undoButton = await screen.findByRole("button", { name: "撤销" });
+
+    await userEvent.click(undoButton);
+    await act(async () => {
+      unarchive.reject(Object.assign(new Error("unarchive failed"), { alreadyNotified: true as const }));
+      await unarchive.promise.catch(() => undefined);
+    });
+
+    expect(screen.getByRole("button", { name: "撤销" })).toBeInTheDocument();
+    expect(undoButton).not.toBeDisabled();
+    expect(undoButton).not.toHaveAttribute("aria-busy", "true");
   });
 
   it("calls runtime feedback from the drawer", async () => {

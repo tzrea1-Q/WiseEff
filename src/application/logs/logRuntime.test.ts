@@ -215,14 +215,14 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_LOG_RUNTIME", logs: [apiLog] });
   });
 
-  it("notifies without optimistic log mutation when an api repository call fails", async () => {
+  it("rejects and notifies without optimistic log mutation when an api repository call fails", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({
       uploadLog: vi.fn().mockRejectedValue(new Error("upload unavailable"))
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await actions.upload({ projectId: "api-project", file: createFile() });
+    await expect(actions.upload({ projectId: "api-project", file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
@@ -230,14 +230,14 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_LOG_RUNTIME" }));
   });
 
-  it("does not duplicate notifications when a mutation succeeds but refresh fails", async () => {
+  it("rejects without duplicate notifications when a mutation succeeds but refresh fails", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({
       listLogs: vi.fn().mockRejectedValue(new Error("refresh unavailable"))
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await actions.archive(apiLog.id);
+    await expect(actions.archive(apiLog.id)).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(repository.archiveLog).toHaveBeenCalledWith(apiLog.id);
     expect(dispatch).toHaveBeenCalledTimes(1);

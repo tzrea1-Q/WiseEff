@@ -3862,7 +3862,12 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       const beforeLogIds = new Set(state.logs.map((log) => log.id));
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
-      await logActions.upload({ projectId: state.activeProjectId, file, analysisQuestion: question });
+      try {
+        await logActions.upload({ projectId: state.activeProjectId, file, analysisQuestion: question });
+      } catch (error) {
+        setPendingUpload(null);
+        throw error;
+      }
     },
     [dispatch, logActions, state.activeProjectId, state.logs]
   );
@@ -4076,7 +4081,9 @@ function UploadLogDialog({
       return;
     }
     setUploading(true);
-    void Promise.resolve(onUpload(selectedFile, supported, question)).finally(() => setUploading(false));
+    void Promise.resolve(onUpload(selectedFile, supported, question))
+      .catch(() => undefined)
+      .finally(() => setUploading(false));
   };
 
   return (

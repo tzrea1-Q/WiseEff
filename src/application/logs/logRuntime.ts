@@ -192,9 +192,10 @@ export function createLogRuntimeActions({
     try {
       await mutation(requireRepository(repository));
     } catch (error) {
-      if (!isAlreadyNotified(error)) {
-        notifyFailure(dispatch);
+      if (isAlreadyNotified(error)) {
+        throw error;
       }
+      throw notifyFailure(dispatch);
     }
   };
 

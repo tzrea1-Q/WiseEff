@@ -107,6 +107,14 @@ async function confirmSelectedFile(selector = ".upload-dialog__actions .button.p
   });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
+}
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
@@ -233,6 +241,36 @@ describe("LogsPage api upload wiring", () => {
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(document.body).toHaveTextContent(logRuntimeFailureNotification);
+  });
+
+  it("does not close the dialog from stale pending upload state after upload rejects", async () => {
+    vi.useFakeTimers();
+    const hydratedLog = {
+      ...apiLog,
+      id: "api-hydrated-log",
+      fileName: "hydrated.log"
+    };
+    const refresh = deferred<typeof initialState.logs>();
+    const repository = renderApiLogs(
+      createLogRepository({
+        uploadLog: vi.fn().mockRejectedValue(new Error("boom")),
+        listLogs: vi.fn().mockReturnValue(refresh.promise)
+      })
+    );
+
+    openUploadDialog();
+    chooseFile(new File(["line"], "reject.log", { type: "text/plain" }));
+    await confirmSelectedFile();
+
+    expect(document.body).toHaveTextContent(logRuntimeFailureNotification);
+
+    await act(async () => {
+      refresh.resolve([hydratedLog, ...initialState.logs]);
+      await refresh.promise;
+    });
+
+    expect(repository.listLogs).toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });
 
