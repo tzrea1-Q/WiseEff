@@ -17,6 +17,7 @@ import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 import { useTopBarActions } from "./components/layout";
+import type { ParameterPageActions } from "./app/routes";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
@@ -29,6 +30,7 @@ type ParameterDraftItem = {
 
 type ParametersPageAction =
   | { type: "SET_PROJECT"; projectId: string }
+  | { type: "ADD_NOTIFICATION"; message: string }
   | {
       type: "ADD_PARAMETER_SUBMISSION_ROUND";
       items: ParameterDraftItem[];
@@ -45,6 +47,7 @@ type ParametersPageProps = {
   dispatch: Dispatch<ParametersPageAction>;
   onNavigate: (path: string) => void;
   search: string;
+  parameterActions?: ParameterPageActions;
   effectiveProjectId?: string;
   topBarProjectId?: string;
   canEdit?: boolean;
@@ -93,6 +96,7 @@ export function ParametersPage({
   dispatch,
   onNavigate,
   search,
+  parameterActions,
   effectiveProjectId,
   topBarProjectId,
   canEdit = true,
@@ -109,6 +113,8 @@ export function ParametersPage({
   const [viewingParameterId, setViewingParameterId] = useState<string | null>(null);
   const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
+  const [submittingRound, setSubmittingRound] = useState(false);
+  const [stashingRound, setStashingRound] = useState(false);
   const todayKey = new Date().toISOString().slice(0, 10);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
   const insightStorageKey = `parameter-workbench-insight:${resolvedProjectId}:${todayKey}`;
@@ -535,8 +541,21 @@ export function ParametersPage({
     setSheetOpen(false);
   };
 
-  const submitRound = (assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }) => {
+  const notifyActionFailure = (result: Awaited<ReturnType<ParameterPageActions["submitChanges"]>>) => {
+    if (result && "notification" in result) {
+      if (!result.alreadyNotified) {
+        dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const submitRound = async (assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }) => {
     if (!effectiveCanEdit) {
+      return;
+    }
+    if (submittingRound) {
       return;
     }
     if (!allSelectedDraftsHaveTargets) {
@@ -546,24 +565,63 @@ export function ParametersPage({
     if (itemsToSubmit.length === 0) {
       return;
     }
-    dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, assignees });
-    setSelectedIds(new Set());
-    setDrafts({});
-    setSheetOpen(false);
-    setConfirmOpen(false);
+    setSubmittingRound(true);
+    try {
+      const submitInput = {
+        projectId: resolvedProjectId,
+        items: itemsToSubmit,
+        assignees
+      };
+      if (!parameterActions) {
+        dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: itemsToSubmit, assignees });
+        setSelectedIds(new Set());
+        setDrafts({});
+        setSheetOpen(false);
+        setConfirmOpen(false);
+        return;
+      }
+      const result = await parameterActions.submitChanges(submitInput);
+      if (notifyActionFailure(result)) {
+        return;
+      }
+      setSelectedIds(new Set());
+      setDrafts({});
+      setSheetOpen(false);
+      setConfirmOpen(false);
+    } finally {
+      setSubmittingRound(false);
+    }
   };
-  const stashRound = () => {
+  const stashRound = async () => {
     if (!effectiveCanEdit) {
+      return;
+    }
+    if (stashingRound) {
       return;
     }
     const itemsToStash = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
     if (itemsToStash.length === 0) {
       return;
     }
-    dispatch({ type: "STASH_PARAMETER_SUBMISSION_ROUND", items: itemsToStash });
-    setSelectedIds(new Set());
-    setDrafts({});
-    setSheetOpen(false);
+    setStashingRound(true);
+    try {
+      if (!parameterActions) {
+        dispatch({ type: "STASH_PARAMETER_SUBMISSION_ROUND", items: itemsToStash });
+        setSelectedIds(new Set());
+        setDrafts({});
+        setSheetOpen(false);
+        return;
+      }
+      const result = await parameterActions.stashChanges(itemsToStash);
+      if (notifyActionFailure(result)) {
+        return;
+      }
+      setSelectedIds(new Set());
+      setDrafts({});
+      setSheetOpen(false);
+    } finally {
+      setStashingRound(false);
+    }
   };
   const previewItems = pendingSubmissionItems;
   const handleAiAuditClick = () => {
@@ -579,7 +637,7 @@ export function ParametersPage({
   const roundActions =
     modifiedParameters.length > 0 ? (
       <div className="parameters-bottom-actions">
-        <button className="button subtle" type="button" disabled={!effectiveCanEdit || pendingSubmissionItems.length === 0} onClick={stashRound}>
+        <button className="button subtle" type="button" disabled={!effectiveCanEdit || pendingSubmissionItems.length === 0 || stashingRound} onClick={stashRound}>
           暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
         </button>
         <button className="button primary" type="button" disabled={!effectiveCanEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
@@ -785,6 +843,7 @@ export function ParametersPage({
           candidates={workflowCandidates}
           onCancel={() => setConfirmOpen(false)}
           onConfirm={submitRound}
+          submitting={submittingRound}
         />
       ) : null}
       {viewingParameter ? (
@@ -912,7 +971,8 @@ function ParameterSubmissionDialog({
   items,
   candidates,
   onCancel,
-  onConfirm
+  onConfirm,
+  submitting
 }: {
   items: Array<ParameterDraftItem & { parameter: ParameterRecord }>;
   candidates: {
@@ -922,6 +982,7 @@ function ParameterSubmissionDialog({
   };
   onCancel: () => void;
   onConfirm: (assignees: { hardwareCommitterId: string; softwareCommitterId: string; softwareUserId: string }) => void;
+  submitting: boolean;
 }) {
   const [hardwareCommitterId, setHardwareCommitterId] = useState(candidates.hardwareCommitters[0]?.id ?? "");
   const [softwareCommitterId, setSoftwareCommitterId] = useState(candidates.softwareCommitters[0]?.id ?? "");
@@ -929,7 +990,7 @@ function ParameterSubmissionDialog({
   const canSubmit = Boolean(hardwareCommitterId && softwareCommitterId && softwareUserId);
   const hasComplexItems = items.some(isComplexSubmissionItem);
   const submitWithAssignees = () => {
-    if (!canSubmit) {
+    if (!canSubmit || submitting) {
       return;
     }
     onConfirm({ hardwareCommitterId, softwareCommitterId, softwareUserId });
@@ -1023,11 +1084,11 @@ function ParameterSubmissionDialog({
           })}
         </div>
         <div className="dialog-actions">
-          <button className="button subtle" type="button" onClick={onCancel}>
+          <button className="button subtle" type="button" disabled={submitting} onClick={onCancel}>
             返回修改
           </button>
-          <button className="button primary" type="button" disabled={!canSubmit} onClick={submitWithAssignees}>
-            确认提交
+          <button className="button primary" type="button" disabled={!canSubmit || submitting} onClick={submitWithAssignees}>
+            {submitting ? "提交中" : "确认提交"}
           </button>
         </div>
       </div>

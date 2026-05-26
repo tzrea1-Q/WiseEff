@@ -16,6 +16,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - Page/action permission helpers live in `src/app/permissions.ts`.
 - M0 backend auth context lives in `server/modules/auth/`.
 - M0 audit boundary lives in `server/modules/audit/`.
+- M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, and imports.
 - Security governance design lives in `design-docs/security-governance.md`.
 
 ## Permission Model
@@ -32,6 +33,13 @@ Current frontend permissions include:
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
 
+For M1 parameter management:
+
+- Parameter reads require `parameter:view`.
+- Drafts and submission rounds require project-scoped `parameter:edit`.
+- Review advancement and rejection require the matching hardware/software workflow role or admin privilege.
+- Merge writes require the software-user workflow slot or admin privilege and re-check high-risk review evidence before updating the current value.
+
 ## Audit Requirements
 
 Audit records should capture:
@@ -47,6 +55,8 @@ Audit records should capture:
 
 Audit should cover login/security events, parameter writes, review decisions, log uploads/reruns/archive actions, device reads/writes, Agent tools, admin changes, and exports.
 
+M1 parameter-management writes emit audit events from the backend for `parameter-submit`, `parameter-review-advance`, `parameter-review-reject`, `parameter-merge`, and `batch-import`. The frontend audit drawer is not the security boundary; audit creation happens server-side with the authenticated actor and request trace id.
+
 ## Agent Safety
 
 Agent tools should be classified as:
@@ -56,6 +66,8 @@ Agent tools should be classified as:
 - Mutating: must create an approval record and wait for human approval.
 
 Approval-time execution must re-check permissions and business state.
+
+Agent-generated parameter changes may prepare drafts or recommendations, but production parameter writes still require a human-submitted draft/review path. Future Agent or device write tools must create an explicit approval record and then execute through the same server-side authz and audit boundary.
 
 ## Device Safety
 

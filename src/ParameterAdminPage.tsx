@@ -2,6 +2,7 @@ import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
+import type { ParameterImportBatchDto, ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
@@ -18,15 +19,32 @@ import { useBeforeUnload } from "./hooks/useBeforeUnload";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
 import { serializePowerManagementConfig, type PowerManagementParameterTemplate } from "./powerManagementConfig";
+import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
-export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch }: PageProps) {
+function isEligibleImportItem(item: ParameterImportBatchDto["items"][number]) {
+  return item.classification === "added" || item.classification === "updated";
+}
+
+function getImportClassificationLabel(item: ParameterImportBatchDto["items"][number]) {
+  return isEligibleImportItem(item) ? item.classification : `${item.classification} · not eligible`;
+}
+
+export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions, runtimeMode }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importSourceName, setImportSourceName] = useState("pasted-import.json");
+  const [importPreview, setImportPreview] = useState<ParameterImportBatchDto | null>(null);
+  const [selectedImportItemIds, setSelectedImportItemIds] = useState<string[]>([]);
+  const [importPending, setImportPending] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
   const [saving, setSaving] = useState(false);
+  const isApiMode = (runtimeMode ?? wiseEffRuntimeMode) === "api";
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
@@ -111,6 +129,10 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   };
 
   const saveConfig = async () => {
+    if (isApiMode) {
+      setSyncMessage("API 模式下参数库修改通过导入批次或审阅流程写入。");
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch("/api/power-management-config", {
@@ -223,10 +245,85 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
     setSelectedParameterId(library.find((parameter) => parameter.id !== deleteTargetId)?.id ?? "");
     setDeleteTargetId(null);
   };
+
+  const openImportDialog = () => {
+    setImportDialogOpen(true);
+    setImportPreview(null);
+    setSelectedImportItemIds([]);
+    setImportMessage("");
+  };
+
+  const handleImportFileChange = (file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+    setImportSourceName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setImportText(String(reader.result ?? ""));
+    reader.readAsText(file);
+  };
+
+  const createPreview = async () => {
+    const items = parseImportItems(importText);
+    if (items.length === 0) {
+      setImportMessage("没有可预览的导入项。");
+      return;
+    }
+    setImportPending(true);
+    setImportMessage("");
+    try {
+      const result = parameterActions
+        ? await parameterActions.createImportPreview({
+            projectId: state.activeProjectId,
+            sourceName: importSourceName || "pasted-import.json",
+            items
+          })
+        : createLocalImportPreview(state.activeProjectId, importSourceName || "pasted-import.json", items);
+      if ("notification" in result) {
+        if (!result.alreadyNotified) {
+          dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        }
+        setImportMessage(result.notification);
+        return;
+      }
+      setImportPreview(result);
+      setSelectedImportItemIds(result.items.filter(isEligibleImportItem).map((item) => item.id));
+    } finally {
+      setImportPending(false);
+    }
+  };
+
+  const applyPreview = async () => {
+    if (!importPreview) {
+      return;
+    }
+    if (selectedImportItemIds.length === 0) {
+      setImportMessage("请选择至少一个导入项。");
+      return;
+    }
+    setImportPending(true);
+    setImportMessage("");
+    try {
+      const result = parameterActions
+        ? await parameterActions.applyImportBatch({ batchId: importPreview.id, selectedItemIds: selectedImportItemIds })
+        : await Promise.resolve(dispatch({ type: "IMPORT_PARAMETERS" }));
+      if (result && "notification" in result) {
+        if (!result.alreadyNotified) {
+          dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        }
+        setImportMessage(result.notification);
+        return;
+      }
+      setImportDialogOpen(false);
+    } finally {
+      setImportPending(false);
+    }
+  };
+
   useTopBarActions(
     <>
       <DirtyIndicator count={dirtyCount} onInspect={() => openExportFlow("preview")} />
-      <button className="button primary" type="button" onClick={() => console.info("m2: open import wizard")}>
+      <button className="button primary" type="button" onClick={openImportDialog}>
         <Upload size={16} />
         批量参数导入
       </button>
@@ -253,7 +350,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         审计
       </button>
     </>,
-    [dirtyCount, onNavigate, saving, search.audit, syncMessage]
+    [dirtyCount, onNavigate, saving, search.audit, syncMessage, importText, importSourceName, importPreview, selectedImportItemIds, importPending, parameterActions]
   );
 
   return (
@@ -311,7 +408,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
                 <button className="button primary" type="button" onClick={() => dispatch({ type: "ADD_PROJECT_PARAMETER" })}>
                   新增参数
                 </button>
-                <button className="button subtle" type="button" onClick={() => console.info("m2: import")}>
+                <button className="button subtle" type="button" onClick={openImportDialog}>
                   批量导入
                 </button>
               </div>
@@ -359,6 +456,28 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
           setCreateDialogOpen(false);
         }}
       />
+      {isApiMode ? (
+        <div className="permission-inline-note" role="status">
+          API 模式下参数库修改通过导入批次或审阅流程写入。
+        </div>
+      ) : null}
+      {importDialogOpen ? (
+        <ParameterImportDialog
+          sourceName={importSourceName}
+          sourceText={importText}
+          preview={importPreview}
+          selectedItemIds={selectedImportItemIds}
+          pending={importPending}
+          message={importMessage}
+          onSourceNameChange={setImportSourceName}
+          onSourceTextChange={setImportText}
+          onFileChange={handleImportFileChange}
+          onPreview={createPreview}
+          onApply={applyPreview}
+          onSelectedItemIdsChange={setSelectedImportItemIds}
+          onClose={() => setImportDialogOpen(false)}
+        />
+      ) : null}
       {state._undoStack ? (
         <UndoableToast
           message={state._undoStack.message}
@@ -369,6 +488,202 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       ) : null}
     </div>
   );
+}
+
+function ParameterImportDialog({
+  sourceName,
+  sourceText,
+  preview,
+  selectedItemIds,
+  pending,
+  message,
+  onSourceNameChange,
+  onSourceTextChange,
+  onFileChange,
+  onPreview,
+  onApply,
+  onSelectedItemIdsChange,
+  onClose
+}: {
+  sourceName: string;
+  sourceText: string;
+  preview: ParameterImportBatchDto | null;
+  selectedItemIds: string[];
+  pending: boolean;
+  message: string;
+  onSourceNameChange: (value: string) => void;
+  onSourceTextChange: (value: string) => void;
+  onFileChange: (file: File | undefined) => void;
+  onPreview: () => void;
+  onApply: () => void;
+  onSelectedItemIdsChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const toggleItem = (itemId: string) => {
+    onSelectedItemIdsChange(
+      selectedItemIds.includes(itemId)
+        ? selectedItemIds.filter((id) => id !== itemId)
+        : [...selectedItemIds, itemId]
+    );
+  };
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="参数导入">
+      <div className="submission-dialog">
+        <div className="submission-dialog-head">
+          <div>
+            <span className="eyebrow">参数导入</span>
+            <p>选择文件或粘贴导入内容，先生成预览后再应用。</p>
+          </div>
+        </div>
+        <div className="form-grid">
+          <label>
+            <span>导入文件</span>
+            <input type="file" accept=".json,.csv,.txt" onChange={(event) => onFileChange(event.target.files?.[0])} />
+          </label>
+          <label>
+            <span>来源名称</span>
+            <input value={sourceName} onChange={(event) => onSourceNameChange(event.target.value)} />
+          </label>
+          <label className="full-row">
+            <span>粘贴导入内容</span>
+            <textarea rows={8} value={sourceText} onChange={(event) => onSourceTextChange(event.target.value)} />
+          </label>
+        </div>
+        {message ? <p role="status">{message}</p> : null}
+        {preview ? (
+          <section aria-label="导入预览">
+            <div className="kpi-strip">
+              <span>新增 {preview.summary.added}</span>
+              <span>更新 {preview.summary.updated}</span>
+              <span>不变 {preview.summary.unchanged}</span>
+              <span>冲突 {preview.summary.conflict}</span>
+              <span>高风险 {preview.summary.highRisk}</span>
+            </div>
+            <div className="submission-diff-list">
+              {preview.items.map((item) => {
+                const eligible = isEligibleImportItem(item);
+                return (
+                  <label className="submission-diff-card" key={item.id}>
+                    <input
+                      type="checkbox"
+                      checked={selectedItemIds.includes(item.id)}
+                      disabled={!eligible}
+                      onChange={() => toggleItem(item.id)}
+                    />
+                    <strong>{item.name}</strong>
+                    <small>{getImportClassificationLabel(item)}</small>
+                    <small>{item.module} · {item.risk}</small>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
+        <div className="dialog-actions">
+          <button className="button subtle" type="button" disabled={pending} onClick={onClose}>
+            关闭
+          </button>
+          <button className="button subtle" type="button" disabled={pending || !sourceText.trim()} onClick={onPreview}>
+            {pending && !preview ? "预览中" : "生成预览"}
+          </button>
+          <button className="button primary" type="button" disabled={pending || !preview || selectedItemIds.length === 0} onClick={onApply}>
+            {pending && preview ? "应用中" : "应用导入"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function createLocalImportPreview(projectId: string, sourceName: string, items: ParameterImportSourceItem[]): ParameterImportBatchDto {
+  return {
+    id: `local-import-${Date.now()}`,
+    projectId,
+    sourceName,
+    status: "previewed",
+    createdAt: new Date().toISOString(),
+    summary: {
+      added: items.length,
+      updated: 0,
+      unchanged: 0,
+      conflict: 0,
+      highRisk: items.filter((item) => item.risk === "High").length
+    },
+    items: items.map((item, index) => ({
+      ...item,
+      id: `local-import-item-${index + 1}`,
+      classification: "added",
+      riskFlag: item.risk === "High"
+    }))
+  };
+}
+
+function parseImportItems(source: string): ParameterImportSourceItem[] {
+  const trimmed = source.trim();
+  if (!trimmed) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    const rows: unknown[] = Array.isArray(parsed) ? parsed : Array.isArray(parsed.items) ? parsed.items : [];
+    return rows.map(normalizeImportItem).filter((item): item is ParameterImportSourceItem => Boolean(item));
+  } catch {
+    return parseCsvImportItems(trimmed);
+  }
+}
+
+function parseCsvImportItems(source: string): ParameterImportSourceItem[] {
+  const [headerLine, ...lines] = source.split(/\r?\n/).filter((line) => line.trim());
+  if (!headerLine) {
+    return [];
+  }
+  const headers = splitCsvLine(headerLine).map((header) => header.trim());
+  return lines
+    .map((line) => {
+      const values = splitCsvLine(line);
+      const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
+      return normalizeImportItem(row);
+    })
+    .filter((item): item is ParameterImportSourceItem => Boolean(item));
+}
+
+function splitCsvLine(line: string) {
+  return line.split(",").map((value) => value.trim().replace(/^"|"$/g, ""));
+}
+
+function normalizeImportItem(row: unknown): ParameterImportSourceItem | null {
+  if (!row || typeof row !== "object") {
+    return null;
+  }
+  const record = row as Record<string, unknown>;
+  const name = String(record.name ?? "").trim();
+  const module = String(record.module ?? "").trim();
+  const risk = normalizeRisk(record.risk);
+  const unit = String(record.unit ?? "").trim();
+  const range = String(record.range ?? "").trim();
+  if (!name || !module || !risk || !unit || !range) {
+    return null;
+  }
+  return {
+    name,
+    module,
+    risk,
+    unit,
+    range,
+    currentValue: String(record.currentValue ?? ""),
+    recommendedValue: String(record.recommendedValue ?? ""),
+    description: String(record.description ?? ""),
+    explanation: String(record.explanation ?? ""),
+    configFormat: String(record.configFormat ?? "")
+  };
+}
+
+function normalizeRisk(value: unknown): ParameterImportSourceItem["risk"] | null {
+  if (value === "High" || value === "Medium" || value === "Low") {
+    return value;
+  }
+  return null;
 }
 
 function computeExportDiff(lastExportedSnapshot: string, library: readonly PowerManagementParameterTemplate[]): ExportDiff {

@@ -1,0 +1,299 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AuthContext } from "../auth/types";
+import type { Database } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
+import { createHttpServer } from "../../shared/http/server";
+import { createRouter } from "../../shared/http/router";
+import { requestJson } from "../../test/testClient";
+import * as repository from "./repository";
+import { registerParameterRoutes } from "./routes";
+import * as service from "./service";
+
+vi.mock("./repository", () => ({
+  getParameterById: vi.fn(),
+  listParameterHistory: vi.fn(),
+  listParameters: vi.fn(),
+  listProjectModules: vi.fn(),
+  listProjects: vi.fn()
+}));
+
+vi.mock("./service", () => ({
+  applyImportBatch: vi.fn(),
+  createImportPreview: vi.fn(),
+  deleteDraft: vi.fn(),
+  listChangeRequests: vi.fn(),
+  listDrafts: vi.fn(),
+  listSubmissionRounds: vi.fn(),
+  reviewChange: vi.fn(),
+  saveDraft: vi.fn(),
+  submitParameterChanges: vi.fn()
+}));
+
+function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
+  return {
+    user: {
+      id: "user-1",
+      organizationId: "org-1",
+      name: "Riley Chen",
+      email: "riley@example.com",
+      title: "Software User",
+      isActive: true
+    },
+    organization: { id: "org-1", name: "ChargeLab" },
+    roles: [{ projectId: "aurora", roleId: "software-user" }],
+    permissions: ["parameter:view", "parameter:edit"],
+    ...overrides
+  };
+}
+
+function makeDb(): Database {
+  return {
+    query: vi.fn(),
+    transaction: vi.fn()
+  };
+}
+
+function makeServer(options: { db?: Database; auth?: AuthContext } = {}) {
+  const router = createRouter();
+  registerParameterRoutes(router, {
+    db: options.db,
+    getCurrentAuthContext: () => options.auth ?? makeAuth()
+  });
+  return createHttpServer(router);
+}
+
+describe("parameter routes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("GET /api/v1/projects returns items", async () => {
+    const db = makeDb();
+    const project = { id: "aurora", name: "Aurora", code: "AUR" };
+    vi.mocked(repository.listProjects).mockResolvedValue([project]);
+
+    const response = await requestJson<{ items: typeof project[] }>(makeServer({ db }), "/api/v1/projects");
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [project] });
+    expect(repository.listProjects).toHaveBeenCalledWith(db, { organizationId: "org-1" });
+  });
+
+  it("GET /api/v1/parameters passes filters", async () => {
+    const db = makeDb();
+    vi.mocked(repository.listParameters).mockResolvedValue([]);
+
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v1/parameters?projectId=aurora&risk=High&q=charge"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [] });
+    expect(repository.listParameters).toHaveBeenCalledWith(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      risk: "High",
+      q: "charge"
+    });
+  });
+
+  it("auth without parameter view permission cannot read parameters", async () => {
+    const db = makeDb();
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:edit"] }) }),
+      "/api/v1/parameters"
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Parameter view permission is required."
+    });
+    expect(repository.listParameters).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters/:parameterId/history uses route params", async () => {
+    const db = makeDb();
+    const history = { version: "7", value: "3100", changedAt: "2026-05-25T05:00:00.000Z", changedBy: "Riley Chen" };
+    vi.mocked(repository.listParameterHistory).mockResolvedValue([history]);
+
+    const response = await requestJson<{ items: typeof history[] }>(
+      makeServer({ db }),
+      "/api/v1/parameters/param-1/history"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [history] });
+    expect(repository.listParameterHistory).toHaveBeenCalledWith(db, {
+      organizationId: "org-1",
+      parameterId: "param-1"
+    });
+  });
+
+  it("missing database returns INTERNAL_ERROR", async () => {
+    const response = await requestJson<{ error: { code: string } }>(makeServer(), "/api/v1/projects");
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.code).toBe("INTERNAL_ERROR");
+  });
+
+  it("validation failure returns VALIDATION_FAILED", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string; details: { issues?: unknown[] } } }>(
+      makeServer({ db }),
+      "/api/v1/parameters?risk=Critical"
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(response.body.error.details.issues).toEqual(expect.any(Array));
+    expect(repository.listParameters).not.toHaveBeenCalled();
+  });
+
+  it("forbidden submission returns FORBIDDEN", async () => {
+    const db = makeDb();
+    vi.mocked(service.submitParameterChanges).mockRejectedValue(
+      new ApiError("FORBIDDEN", "Parameter edit permission is required.", 403)
+    );
+
+    const response = await requestJson<{ error: { code: string } }>(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "aurora",
+        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }]
+      })
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("submit route passes workflow assignees through to the service", async () => {
+    const db = makeDb();
+    const round = {
+      id: "round-1",
+      projectId: "aurora",
+      projectName: "Aurora",
+      submitter: "Riley Chen",
+      createdAt: "2026-05-25T05:00:00.000Z",
+      status: "hardware_review" as const,
+      summary: "Parameter changes submitted.",
+      items: []
+    };
+    vi.mocked(service.submitParameterChanges).mockResolvedValue(round);
+
+    const response = await requestJson<{ item: typeof round }>(makeServer({ db }), "/api/v1/parameter-submission-rounds", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "aurora",
+        items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+        assignees: {
+          hardwareCommitterId: "u-hardware",
+          softwareCommitterId: "u-software-committer",
+          softwareUserId: "u-software-user"
+        }
+      })
+    });
+
+    expect(response.status).toBe(201);
+    expect(service.submitParameterChanges).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "aurora",
+      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+      assignees: {
+        hardwareCommitterId: "u-hardware",
+        softwareCommitterId: "u-software-committer",
+        softwareUserId: "u-software-user"
+      }
+    });
+  });
+
+  it("submit route rejects partial workflow assignees before the service", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string; details: { issues?: unknown[] } } }>(
+      makeServer({ db }),
+      "/api/v1/parameter-submission-rounds",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+          assignees: {
+            hardwareCommitterId: "u-hardware"
+          }
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(response.body.error.details.issues).toEqual(expect.any(Array));
+    expect(service.submitParameterChanges).not.toHaveBeenCalled();
+  });
+
+  it("review route can return merged request after service success", async () => {
+    const db = makeDb();
+    const mergedRequest = {
+      id: "request-1",
+      projectId: "aurora",
+      parameterId: "param-1",
+      module: "Charging Policy",
+      title: "fast_charge_current_limit_ma",
+      currentValue: "3100",
+      targetValue: "3100",
+      submitter: "Riley Chen",
+      createdAt: "2026-05-25T05:00:00.000Z",
+      createdAtTs: "2026-05-25T05:00:00.000Z",
+      updatedAt: "2026-05-25T05:15:00.000Z",
+      status: "merged" as const,
+      aiSummary: "Merged request.",
+      waitingHours: 0,
+      aiSuggestion: {
+        recommendation: "advance" as const,
+        confidence: "high" as const,
+        summary: "Merged request.",
+        reasons: [],
+        similarRequests: []
+      },
+      impact: []
+    };
+    vi.mocked(service.reviewChange).mockResolvedValue(mergedRequest);
+
+    const response = await requestJson<{ item: typeof mergedRequest }>(
+      makeServer({ db }),
+      "/api/v1/parameter-change-requests/request-1/review",
+      {
+        method: "POST",
+        body: JSON.stringify({ decision: "advance", expectedVersion: 7, note: "Merge approved." })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item: mergedRequest });
+    expect(service.reviewChange).toHaveBeenCalledWith(db, makeAuth(), {
+      requestId: "request-1",
+      decision: "advance",
+      expectedVersion: 7,
+      note: "Merge approved."
+    });
+  });
+
+  it("review route rejects conflicting path and body request ids", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db }),
+      "/api/v1/parameter-change-requests/request-1/review",
+      {
+        method: "POST",
+        body: JSON.stringify({ requestId: "request-2", decision: "advance" })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.reviewChange).not.toHaveBeenCalled();
+  });
+});

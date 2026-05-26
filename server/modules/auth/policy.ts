@@ -23,7 +23,7 @@ export function compareRoles(left: BackendRoleId, right: BackendRoleId) {
 }
 
 export function permissionsForRoles(roleIds: BackendRoleId[]): BackendPermission[] {
-  return Array.from(new Set(roleIds.flatMap((roleId) => rolePermissions[roleId])));
+  return Array.from(new Set(roleIds.flatMap((roleId) => rolePermissions[roleId] ?? [])));
 }
 
 export function canPerform(roleId: BackendRoleId, permission: BackendPermission) {

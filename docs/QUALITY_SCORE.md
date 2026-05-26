@@ -1,6 +1,6 @@
 # Quality Score
 
-Date: 2026-05-25
+Date: 2026-05-26
 
 This is a living quality dashboard for WiseEff. Update it when major features land, tests change materially, or a quality gap is closed.
 
@@ -9,7 +9,7 @@ This is a living quality dashboard for WiseEff. Update it when major features la
 | Area | Score | Evidence | Main Gap |
 | --- | ---: | --- | --- |
 | Frontend prototype | 8/10 | Broad Vitest and Testing Library coverage across pages, components, permissions, admin flows, logs, debugging, and Agent UI. | Some workflows remain mock-backed. |
-| Backend M0 foundation | 6/10 | TypeScript server skeleton, auth context, audit routes, migrations, backend tests. | Business modules beyond auth/audit are not implemented yet. |
+| Backend M0/M1 foundation | 7/10 | TypeScript server skeleton, auth context, audit routes, M1 parameter migrations/services, CORS preflight support, backend tests, and an API-mode Playwright smoke. | E2E currently requires external PostgreSQL setup and API contracts are still handwritten. |
 | Product specs | 8/10 | Product spec, prototype spec, MVP scope, onboarding spec. | Future user research and acceptance examples should be added as productization continues. |
 | Architecture docs | 8/10 | Full-stack architecture, domain model, API contract, deployment, security, testing docs. | API contract is not yet mechanically enforced. |
 | Security model | 7/10 | RBAC, audit, Agent approval, and device safety are documented and partly represented in code. | Production auth, server-side business permissions, and negative tests need expansion. |
@@ -24,6 +24,7 @@ For code changes:
 - Run `npm run build` for TypeScript, Vite, routing, shared type, or package changes.
 - Run `npm test` for frontend-impacting changes.
 - Run `npm run test:server` for backend-impacting changes.
+- Run `npm run test:e2e` for M1 parameter-management acceptance when `DATABASE_URL` and seed data are available.
 
 For documentation-only changes:
 

@@ -16,7 +16,8 @@ export async function requestJson<Body = unknown>(server: Server, path: string, 
         ...(init.headers ?? {})
       }
     });
-    const body = (await response.json()) as Body;
+    const text = await response.text();
+    const body = (text ? JSON.parse(text) : null) as Body;
     return { status: response.status, body, headers: response.headers };
   } finally {
     await new Promise<void>((resolve, reject) => {

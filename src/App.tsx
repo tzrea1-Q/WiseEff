@@ -33,6 +33,12 @@ import type {
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
+import {
+  createParameterRuntimeActions,
+  type HydrateParameterRuntimeAction,
+  type ParameterRuntimeActions
+} from "@/application/parameters/parameterRuntime";
+import type { ParameterDraftDto, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
   applyInitializationDraftToConfig,
@@ -133,6 +139,7 @@ import { Badge as UiBadge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { createAuthClient, type AuthContextDto } from "@/infrastructure/http/authClient";
+import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 type WiseEffAuthClient = {
@@ -147,6 +154,7 @@ export type AppAction =
       user: User;
       roleId: string;
     }
+  | HydrateParameterRuntimeAction
   | {
       type: "SUBMIT_PARAMETER_INITIALIZATION";
       draft: {
@@ -446,6 +454,47 @@ function canSubmitParameterChangesForProject(state: PrototypeState, projectId: s
   return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
 }
 
+function buildDraftSubmissionRounds(
+  drafts: ParameterDraftDto[] | undefined,
+  parameters: ParameterRecord[],
+  apiProjects: ProjectSummary[],
+  submitter: string
+): ParameterSubmissionRound[] {
+  if (!drafts?.length) {
+    return [];
+  }
+
+  const parameterById = new Map(parameters.map((parameter) => [parameter.id, parameter]));
+  const projectById = new Map(apiProjects.map((project) => [project.id, project]));
+
+  return drafts.map((draft) => {
+    const parameter = parameterById.get(draft.parameterId);
+    const project = projectById.get(draft.projectId);
+    const item: ParameterSubmissionItem = {
+      requestId: "",
+      parameterId: draft.parameterId,
+      name: parameter?.name ?? draft.parameterId,
+      module: parameter?.module ?? "",
+      currentValue: parameter?.currentValue ?? "",
+      targetValue: draft.targetValue,
+      unit: parameter?.unit ?? "",
+      risk: parameter?.risk ?? "Medium",
+      reason: draft.reason
+    };
+
+    return {
+      id: `draft-${draft.id}`,
+      projectId: draft.projectId,
+      projectName: project?.name ?? draft.projectId,
+      submitter,
+      createdAt: draft.updatedAt,
+      status: "\u5df2\u6682\u5b58",
+      summary: `API draft contains 1 parameter change`,
+      items: [item]
+    };
+  });
+}
+
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const auditActor = currentUser?.name ?? "system";
@@ -463,6 +512,24 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         users: [action.user, ...existingUsers],
         currentUserId: action.user.id,
         activeRoleId: action.roleId
+      };
+    }
+    case "HYDRATE_PARAMETER_RUNTIME": {
+      const draftSubmissionRounds = buildDraftSubmissionRounds(
+        action.parameterDrafts,
+        action.parameters,
+        action.projects,
+        currentUser?.name ?? "API draft"
+      );
+      return {
+        ...state,
+        parameters: action.parameters,
+        changeRequests: action.changeRequests,
+        parameterSubmissionRounds: [...draftSubmissionRounds, ...action.parameterSubmissionRounds],
+        configDraft: {
+          ...state.configDraft,
+          projects: action.projects.map((project) => ({ ...project }))
+        }
       };
     }
     case "SUBMIT_PARAMETER_INITIALIZATION": {
@@ -1545,13 +1612,20 @@ export const appReducer = reducer;
 type AppProps = {
   authClient?: WiseEffAuthClient;
   initialAppState?: PrototypeState;
+  parameterRepository?: ParameterRepository;
   runtimeMode?: WiseEffRuntimeMode;
 };
 
-function App({ authClient, initialAppState = initialState, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
+function App({ authClient, initialAppState = initialState, parameterRepository, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell authClient={authClient} initialAppState={initialAppState} key={mockDataFingerprint} runtimeMode={runtimeMode} />
+      <AppShell
+        authClient={authClient}
+        initialAppState={initialAppState}
+        key={mockDataFingerprint}
+        parameterRepository={parameterRepository}
+        runtimeMode={runtimeMode}
+      />
     </TooltipProvider>
   );
 }
@@ -1559,13 +1633,16 @@ function App({ authClient, initialAppState = initialState, runtimeMode = wiseEff
 function AppShell({
   authClient,
   initialAppState,
+  parameterRepository,
   runtimeMode
 }: {
   authClient?: WiseEffAuthClient;
   initialAppState: PrototypeState;
+  parameterRepository?: ParameterRepository;
   runtimeMode: WiseEffRuntimeMode;
 }) {
   const [state, dispatch] = useReducer(reducer, initialAppState);
+  const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
@@ -1578,6 +1655,29 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const parameterRepositoryClient = useMemo(
+    () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
+    [parameterRepository, runtimeMode]
+  );
+  const parameterActions = useMemo<ParameterRuntimeActions>(
+    () =>
+      createParameterRuntimeActions({
+        runtimeMode,
+        repository: parameterRepositoryClient,
+        dispatch,
+        getParameterProjectId: (parameterId) => stateRef.current.parameters.find((parameter) => parameter.id === parameterId)?.projectId
+      }),
+    [parameterRepositoryClient, runtimeMode]
+  );
+  const DebuggingAdminPageWithRuntime = useCallback(
+    (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
+    [runtimeMode]
+  );
+  const parameterRuntimeConnectedRef = useRef(false);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     if (runtimeMode !== "api") {
@@ -1589,7 +1689,7 @@ function AppShell({
 
     client
       .getCurrentAuthContext()
-      .then((context) => {
+      .then(async (context) => {
         if (cancelled) return;
         const primaryRole = context.roles[0]?.roleId ?? "guest";
         dispatch({
@@ -1606,6 +1706,16 @@ function AppShell({
             lastActive: "just now"
           }
         });
+        const parameterRefreshResult = await parameterActions.refresh({ notifyOnFailure: false });
+        if (cancelled) return;
+        if (parameterRefreshResult && "notification" in parameterRefreshResult) {
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
+          return;
+        }
+        if (!parameterRuntimeConnectedRef.current) {
+          parameterRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
+        }
       })
       .catch(() => {
         dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
@@ -1614,7 +1724,7 @@ function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [authClient, runtimeMode]);
+  }, [authClient, parameterActions, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1675,6 +1785,8 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                parameterActions={parameterActions}
+                runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
@@ -1682,7 +1794,7 @@ function AppShell({
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
                 LogsPage={LogsPage}
-                DebuggingAdminPage={DebuggingAdminPage}
+                DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
           ) : (
@@ -1693,6 +1805,8 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                parameterActions={parameterActions}
+                runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
@@ -1700,7 +1814,7 @@ function AppShell({
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
                 LogsPage={LogsPage}
-                DebuggingAdminPage={DebuggingAdminPage}
+                DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </main>
           )}
@@ -2732,7 +2846,7 @@ function ReviewMultiFilter({ label, options, selected, onChange }: { label: stri
   );
 }
 
-function ParameterReviewPage({ state, dispatch, search }: PageProps) {
+function ParameterReviewPage({ state, dispatch, search, parameterActions }: PageProps) {
   const [selectedId, setSelectedId] = useState(
     state.parameterInitializationReviews[0]?.id ?? state.changeRequests[0]?.id ?? ""
   );
@@ -2925,7 +3039,17 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     }
   }, [reviewRows, selectedId]);
 
-  const rejectSelected = (reason: string) => {
+  const dispatchParameterActionFailure = (result: Awaited<ReturnType<NonNullable<PageProps["parameterActions"]>["reviewChange"]>>) => {
+    if (result && "notification" in result) {
+      if (!result.alreadyNotified) {
+        dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const rejectSelected = async (reason: string) => {
     if (selectedInitialization) {
       dispatch({ type: "REJECT_PARAMETER_INITIALIZATION", reviewId: selectedInitialization.review.id, reason });
       setRejectOpen(false);
@@ -2934,8 +3058,27 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
     if (!selected) {
       return;
     }
-    dispatch({ type: "REJECT_REVIEW", requestId: selected.id, reason });
+    const result = parameterActions
+      ? await parameterActions.reviewChange({ requestId: selected.id, decision: "reject", note: reason })
+      : await Promise.resolve(dispatch({ type: "REJECT_REVIEW", requestId: selected.id, reason }));
+    if (dispatchParameterActionFailure(result)) {
+      return;
+    }
     setRejectOpen(false);
+  };
+  const advanceSelected = async () => {
+    if (!selected) {
+      return;
+    }
+    const input = {
+      requestId: selected.id,
+      decision: "advance" as const,
+      ...(selected.baseVersion !== undefined ? { expectedVersion: selected.baseVersion } : {})
+    };
+    const result = parameterActions
+      ? await parameterActions.reviewChange(input)
+      : await Promise.resolve(dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id }));
+    dispatchParameterActionFailure(result);
   };
   const openSubmissionDetail = (request: ChangeRequest) => {
     setSelectedId(request.id);
@@ -3265,7 +3408,7 @@ function ParameterReviewPage({ state, dispatch, search }: PageProps) {
               <VerticalTimeline items={selectedWorkflowItems} />
             </div>
             <div className="action-panel">
-              <Button className="full" type="button" onClick={() => dispatch({ type: "ADVANCE_REVIEW", requestId: selected.id })}>
+              <Button className="full" type="button" onClick={advanceSelected}>
                 <CheckCircle2 size={17} />
                 推进流程
               </Button>
@@ -3365,7 +3508,7 @@ function RejectReviewDialog({
   );
 }
 
-function ConfigExportActions({ configJson }: { configJson: string }) {
+function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; runtimeMode: WiseEffRuntimeMode }) {
   const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
   const [saving, setSaving] = useState(false);
   const exportConfig = () => {
@@ -3389,6 +3532,10 @@ function ConfigExportActions({ configJson }: { configJson: string }) {
     }
   };
   const saveConfig = async () => {
+    if (runtimeMode === "api") {
+      setSyncMessage("API 模式下参数库修改通过导入批次或审阅流程写入。");
+      return;
+    }
     setSaving(true);
     try {
       const response = await fetch("/api/power-management-config", {
@@ -4438,7 +4585,11 @@ function LogsAuxPanel({
   );
 }
 
-function DebuggingAdminPage({ state, dispatch }: PageProps) {
+function DebuggingAdminPage({
+  state,
+  dispatch,
+  runtimeMode = wiseEffRuntimeMode
+}: PageProps & { runtimeMode?: WiseEffRuntimeMode }) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.debugParameters[0]?.id ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRisk, setFilterRisk] = useState<string[]>([]);
@@ -4674,7 +4825,7 @@ function DebuggingAdminPage({ state, dispatch }: PageProps) {
         {jsonExpanded ? (
           <div className="debug-admin-json-content">
             <pre>{configJson}</pre>
-            <ConfigExportActions configJson={configJson} />
+            <ConfigExportActions configJson={configJson} runtimeMode={runtimeMode} />
           </div>
         ) : null}
       </section>

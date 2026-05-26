@@ -13,6 +13,17 @@ describe("createApiClient", () => {
     });
   });
 
+  it("sends DELETE requests with JSON accept headers", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
+
+    await expect(client.delete("/api/v1/parameter-drafts/draft-1")).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/parameter-drafts/draft-1", {
+      headers: { Accept: "application/json" },
+      method: "DELETE"
+    });
+  });
+
   it("maps API error responses", async () => {
     const fetchMock = vi.fn(async () =>
       new Response(

@@ -111,6 +111,25 @@ Idempotency-Key: <uuid>   # 写操作推荐
 
 ## 5. Parameters
 
+M1 endpoint shape is locked as:
+
+```text
+GET    /api/v1/projects
+GET    /api/v1/projects/:projectId/modules
+GET    /api/v1/parameters
+GET    /api/v1/parameters/:parameterId
+GET    /api/v1/parameters/:parameterId/history
+POST   /api/v1/parameter-drafts
+GET    /api/v1/parameter-drafts/mine
+DELETE /api/v1/parameter-drafts/:draftId
+POST   /api/v1/parameter-submission-rounds
+GET    /api/v1/parameter-submission-rounds
+GET    /api/v1/parameter-change-requests
+POST   /api/v1/parameter-change-requests/:requestId/review
+POST   /api/v1/parameter-import-batches
+POST   /api/v1/parameter-import-batches/:batchId/apply
+```
+
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | `GET` | `/api/v1/parameters` | 参数列表，支持 projectId、module、risk、q |
@@ -267,4 +286,3 @@ Agent 会话上下文：
 - `targetId`
 - `from`
 - `to`
-

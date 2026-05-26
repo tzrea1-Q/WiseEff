@@ -136,6 +136,7 @@ export type ChangeRequest = {
   submissionRoundId?: string;
   projectId?: string;
   parameterId: string;
+  baseVersion?: number;
   module: string;
   title: string;
   currentValue: string;
