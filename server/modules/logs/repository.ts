@@ -800,42 +800,18 @@ export async function failRun(
 }
 
 async function setArchiveState(db: Queryable, auth: AuthContext, logId: string, archiveState: LogArchiveState) {
-  const result = await db.query<LogRecordRow>(
+  await db.query(
     `
     update log_records
     set archive_state = $3,
       updated_at = now()
     where organization_id = $1
       and id = $2
-    returning
-      id,
-      current_run_id,
-      null::text as report_id,
-      file_name,
-      project_id,
-      source,
-      (select file_size_bytes from log_file_objects where id = log_records.file_object_id) as file_size_bytes,
-      status,
-      archive_state,
-      'parse'::text as stage,
-      null::numeric as confidence,
-      null::text as conclusion,
-      null::text as impact,
-      null::jsonb as suggested_actions,
-      null::text as severity,
-      null::jsonb as raw_lines,
-      captured_at,
-      updated_at,
-      (select name from users where id = log_records.submitted_by_user_id) as submitted_by,
-      related_parameter_id,
-      failure_reason,
-      analysis_question
     `,
     [auth.organization.id, logId, archiveState]
   );
 
-  const row = result.rows[0];
-  return row ? toLogDto(row) : null;
+  return getLogDetail(db, auth, logId);
 }
 
 export async function archiveLog(db: Queryable, auth: AuthContext, logId: string) {

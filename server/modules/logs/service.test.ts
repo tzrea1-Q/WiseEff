@@ -370,14 +370,40 @@ describe("log service", () => {
   });
 
   it("non-admin cannot archive; admin can archive and unarchive", async () => {
+    const completedRow = logRow({
+      current_run_id: "run-1",
+      report_id: "report-1",
+      status: "complete",
+      stage: "report",
+      confidence: "0.91",
+      conclusion: "Charge current derated after thermal warning.",
+      impact: "Fast charge throughput reduced.",
+      severity: "Warning",
+      suggested_actions: ["Inspect coolant loop"],
+      raw_lines: ["12 WARN temp=74", "21 INFO derate=1"]
+    });
+    const evidence = [
+      {
+        id: "evidence-1",
+        stage: "rootcause",
+        line_numbers: [12, 21],
+        inference: "Thermal warnings cluster before derating.",
+        suggested_action: "Check pack coolant loop.",
+        rule_hit: "thermal-foldback"
+      }
+    ];
     const { db, txCalls } = createFakeDb([
-      [logRow({ archive_state: "archived" })],
+      [completedRow],
+      evidence,
       [],
-      [logRow({ archive_state: "archived" })],
+      [logRow({ ...completedRow, archive_state: "archived" })],
+      evidence,
       [],
-      [logRow({ archive_state: "active" })],
+      [completedRow],
+      evidence,
       [],
-      [logRow({ archive_state: "active" })],
+      [logRow({ ...completedRow, archive_state: "active" })],
+      evidence,
       []
     ]);
 
@@ -388,8 +414,20 @@ describe("log service", () => {
     const archived = await archiveLogRecord(db, adminAuth(), "log-1");
     const unarchived = await unarchiveLogRecord(db, adminAuth(), "log-1");
 
-    expect(archived.archiveState).toBe("archived");
-    expect(unarchived.archiveState).toBe("active");
+    expect(archived).toMatchObject({
+      archiveState: "archived",
+      reportId: "report-1",
+      conclusion: "Charge current derated after thermal warning.",
+      rawLines: ["12 WARN temp=74", "21 INFO derate=1"],
+      evidence: [{ id: "evidence-1", lineNumbers: [12, 21] }]
+    });
+    expect(unarchived).toMatchObject({
+      archiveState: "active",
+      reportId: "report-1",
+      conclusion: "Charge current derated after thermal warning.",
+      rawLines: ["12 WARN temp=74", "21 INFO derate=1"],
+      evidence: [{ id: "evidence-1", lineNumbers: [12, 21] }]
+    });
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-archive");
     expect(txCalls.filter((call) => call.text.includes("insert into audit_events"))[1].values).toContain("log-unarchive");
   });

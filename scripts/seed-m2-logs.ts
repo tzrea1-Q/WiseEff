@@ -18,7 +18,6 @@ const completedReportId = "report-aurora-charging-foldback";
 const completedJobId = "job-aurora-charging-foldback";
 const failedLogId = "log-aurora-unsupported";
 const failedFileObjectId = "log-file-aurora-unsupported";
-const failedJobId = "job-aurora-unsupported";
 
 function checksum(bytes: Buffer) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -309,7 +308,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         current_stage,
         updated_at
       )
-      values ($1, $2, 'log-analysis', 'log_record', $3, 'complete', 100, 'report', $4)
+      values ($1, $2, 'log-analysis', 'log-analysis-run', $3, 'complete', 100, 'report', $4)
       on conflict (id) do update set
         target_type = excluded.target_type,
         target_id = excluded.target_id,
@@ -319,7 +318,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         error_message = null,
         updated_at = excluded.updated_at
       `,
-      [completedJobId, organizationId, completedLogId, "2026-05-25T10:03:34.000Z"]
+      [completedJobId, organizationId, completedRunId, "2026-05-25T10:03:34.000Z"]
     );
 
     await tx.query(
@@ -364,38 +363,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       ]
     );
 
-    await tx.query(
-      `
-      insert into jobs (
-        id,
-        organization_id,
-        kind,
-        target_type,
-        target_id,
-        status,
-        progress,
-        current_stage,
-        error_message,
-        updated_at
-      )
-      values ($1, $2, 'log-analysis', 'log_record', $3, 'failed', 0, null, $4, $5)
-      on conflict (id) do update set
-        target_type = excluded.target_type,
-        target_id = excluded.target_id,
-        status = excluded.status,
-        progress = excluded.progress,
-        current_stage = excluded.current_stage,
-        error_message = excluded.error_message,
-        updated_at = excluded.updated_at
-      `,
-      [
-        failedJobId,
-        organizationId,
-        failedLogId,
-        "Unsupported log format: .bin files are not accepted in M2.",
-        "2026-05-25T10:04:00.000Z"
-      ]
-    );
   });
 }
 

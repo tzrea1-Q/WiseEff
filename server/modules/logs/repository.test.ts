@@ -3,6 +3,7 @@ import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import {
   appendFeedback,
+  archiveLog,
   completeRun,
   createFileObject,
   createLogRecordWithRunAndJob,
@@ -12,6 +13,7 @@ import {
   listLogs,
   listRuns,
   persistLogAnalysisReport,
+  unarchiveLog,
   updateRunStageProgress
 } from "./repository";
 
@@ -254,6 +256,65 @@ describe("log repository", () => {
 
     expect(calls[0].text).toContain("insert into log_feedback");
     expect(calls[0].values).toEqual(["feedback-1", "org-1", "log-1", "user-1", "helpful", "This matched the incident."]);
+  });
+
+  it("archive and unarchive return full log detail including report, evidence, and raw lines", async () => {
+    const completeDetail = logRow({
+      current_run_id: "run-1",
+      report_id: "report-1",
+      status: "complete",
+      stage: "report",
+      confidence: "0.91",
+      conclusion: "Charge current derated after thermal warning.",
+      impact: "Fast charge throughput reduced.",
+      severity: "Warning",
+      suggested_actions: ["Inspect coolant loop"],
+      raw_lines: ["12 WARN temp=74", "21 INFO derate=1"]
+    });
+    const evidence = [
+      {
+        id: "evidence-1",
+        stage: "rootcause",
+        line_numbers: [12, 21],
+        inference: "Thermal warnings cluster before derating.",
+        suggested_action: "Check pack coolant loop.",
+        rule_hit: "thermal-foldback"
+      }
+    ];
+    const { db, calls } = createFakeDb([
+      [],
+      [logRow({ ...completeDetail, archive_state: "archived" })],
+      evidence,
+      [],
+      [logRow({ ...completeDetail, archive_state: "active" })],
+      evidence
+    ]);
+
+    const archived = await archiveLog(db, auth(), "log-1");
+    const unarchived = await unarchiveLog(db, auth(), "log-1");
+
+    expect(calls[0].text).toContain("update log_records");
+    expect(calls[0].values).toEqual(["org-1", "log-1", "archived"]);
+    expect(calls[1].text).toContain("left join log_analysis_reports");
+    expect(calls[2].text).toContain("from log_evidence");
+    expect(calls[3].text).toContain("update log_records");
+    expect(calls[3].values).toEqual(["org-1", "log-1", "active"]);
+    expect(calls[4].text).toContain("left join log_analysis_reports");
+    expect(calls[5].text).toContain("from log_evidence");
+    expect(archived).toMatchObject({
+      reportId: "report-1",
+      archiveState: "archived",
+      conclusion: "Charge current derated after thermal warning.",
+      rawLines: ["12 WARN temp=74", "21 INFO derate=1"],
+      evidence: [{ id: "evidence-1", stageId: "rootcause", lineNumbers: [12, 21] }]
+    });
+    expect(unarchived).toMatchObject({
+      reportId: "report-1",
+      archiveState: "active",
+      conclusion: "Charge current derated after thermal warning.",
+      rawLines: ["12 WARN temp=74", "21 INFO derate=1"],
+      evidence: [{ id: "evidence-1", stageId: "rootcause", lineNumbers: [12, 21] }]
+    });
   });
 
   it("loads file objects by organization and id for ownership validation", async () => {
