@@ -52,6 +52,10 @@ type LogRuntimeOptions = {
 const terminalJobStatuses = new Set<LogJobSnapshot["status"]>(["complete", "failed"]);
 const supportedMockUploadExtensions = new Set(["log", "txt", "json"]);
 export type LogRuntimeNotifiedFailure = Error & { alreadyNotified: true };
+type PollGenerationTracker = {
+  begin(logId: string): number;
+  isCurrent(logId: string, generation: number): boolean;
+};
 
 function requireRepository(repository?: LogAnalysisRepository): LogAnalysisRepository {
   if (!repository) {
@@ -63,6 +67,10 @@ function requireRepository(repository?: LogAnalysisRepository): LogAnalysisRepos
 function notifyFailure(dispatch: LogRuntimeOptions["dispatch"]): LogRuntimeNotifiedFailure {
   dispatch({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   return Object.assign(new Error(logRuntimeFailureNotification), { alreadyNotified: true as const });
+}
+
+function isAlreadyNotified(error: unknown): error is LogRuntimeNotifiedFailure {
+  return error instanceof Error && "alreadyNotified" in error;
 }
 
 function delay(ms: number) {
@@ -81,21 +89,26 @@ async function pollJobUntilTerminal(
   initialJob: LogJobSnapshot,
   dispatch: LogRuntimeOptions["dispatch"],
   pollIntervalMs: number,
-  maxPollAttempts: number
+  maxPollAttempts: number,
+  generations: PollGenerationTracker
 ) {
   let job = initialJob;
+  const generation = generations.begin(initialJob.logId);
 
   for (let attempt = 0; attempt < maxPollAttempts && !terminalJobStatuses.has(job.status); attempt += 1) {
     if (pollIntervalMs > 0) {
       await delay(pollIntervalMs);
     }
     job = await api.getJob(job.id);
+    if (!generations.isCurrent(job.logId, generation)) {
+      return;
+    }
     dispatch({ type: "LOG_JOB_PROGRESS", job });
   }
 
-  if (terminalJobStatuses.has(job.status)) {
+  if (terminalJobStatuses.has(job.status) && generations.isCurrent(job.logId, generation)) {
     const latestLog = await api.getLog(job.logId);
-    if (latestLog) {
+    if (latestLog && generations.isCurrent(job.logId, generation)) {
       dispatch({ type: "UPSERT_LOG_RECORD", log: latestLog });
     }
   }
@@ -109,6 +122,18 @@ export function createLogRuntimeActions({
   pollIntervalMs = 1000,
   maxPollAttempts = 60
 }: LogRuntimeOptions): LogRuntimeActions {
+  const pollGenerations = new Map<string, number>();
+  const generations: PollGenerationTracker = {
+    begin(logId) {
+      const next = (pollGenerations.get(logId) ?? 0) + 1;
+      pollGenerations.set(logId, next);
+      return next;
+    },
+    isCurrent(logId, generation) {
+      return pollGenerations.get(logId) === generation;
+    }
+  };
+
   const refresh = async (query?: LogListQuery) => {
     if (mode !== "api") {
       return;
@@ -125,8 +150,10 @@ export function createLogRuntimeActions({
   const runApiMutation = async (mutation: (api: LogAnalysisRepository) => Promise<void>) => {
     try {
       await mutation(requireRepository(repository));
-    } catch {
-      notifyFailure(dispatch);
+    } catch (error) {
+      if (!isAlreadyNotified(error)) {
+        notifyFailure(dispatch);
+      }
     }
   };
 
@@ -147,7 +174,7 @@ export function createLogRuntimeActions({
         const result = await api.uploadLog(input);
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
         if (result.job) {
-          await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts);
+          await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations);
         }
       });
     },
@@ -160,7 +187,7 @@ export function createLogRuntimeActions({
       await runApiMutation(async (api) => {
         const result = await api.rerunLog(input);
         dispatch({ type: "UPSERT_LOG_RECORD", log: result.log });
-        await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts);
+        await pollJobUntilTerminal(api, result.job, dispatch, pollIntervalMs, maxPollAttempts, generations);
       });
     },
     async archive(logId) {

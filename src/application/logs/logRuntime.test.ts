@@ -176,4 +176,76 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "UPSERT_LOG_RECORD" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_LOG_RUNTIME" }));
   });
+
+  it("does not duplicate notifications when a mutation succeeds but refresh fails", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      listLogs: vi.fn().mockRejectedValue(new Error("refresh unavailable"))
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await actions.archive(apiLog.id);
+
+    expect(repository.archiveLog).toHaveBeenCalledWith(apiLog.id);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+  });
+
+  it("ignores stale terminal upserts when a newer poll supersedes the same log", async () => {
+    const dispatch = vi.fn();
+    const firstLog = { ...apiLog, reportId: "RPT-FIRST" };
+    const secondLog = { ...apiLog, reportId: "RPT-SECOND", confidence: 36 };
+    const staleTerminalLog = { ...completedApiLog, reportId: "RPT-STALE", conclusion: "Older result" };
+    const latestTerminalLog = { ...completedApiLog, reportId: "RPT-LATEST", conclusion: "Newer result" };
+    const firstJob: LogJobSnapshot = { ...queuedJob, id: "job-first", runId: "run-first" };
+    const secondJob: LogJobSnapshot = { ...queuedJob, id: "job-second", runId: "run-second" };
+    const firstCompleteJob: LogJobSnapshot = { ...completeJob, id: firstJob.id, runId: firstJob.runId };
+    const secondCompleteJob: LogJobSnapshot = { ...completeJob, id: secondJob.id, runId: secondJob.runId };
+    let resolveFirstJob: (job: LogJobSnapshot) => void = () => undefined;
+    let resolveSecondJob: (job: LogJobSnapshot) => void = () => undefined;
+    const firstJobPromise = new Promise<LogJobSnapshot>((resolve) => {
+      resolveFirstJob = resolve;
+    });
+    const secondJobPromise = new Promise<LogJobSnapshot>((resolve) => {
+      resolveSecondJob = resolve;
+    });
+    const repository = createRepository({
+      uploadLog: vi
+        .fn()
+        .mockResolvedValueOnce({ log: firstLog, job: firstJob })
+        .mockResolvedValueOnce({ log: secondLog, job: secondJob }),
+      getJob: vi.fn((jobId: string) => {
+        if (jobId === firstJob.id) return firstJobPromise;
+        if (jobId === secondJob.id) return secondJobPromise;
+        throw new Error(`Unexpected job ${jobId}`);
+      }),
+      getLog: vi.fn((logId: string) => {
+        expect(logId).toBe(apiLog.id);
+        const progressActions = dispatch.mock.calls
+          .map(([action]) => action)
+          .filter((action) => action.type === "LOG_JOB_PROGRESS");
+        return Promise.resolve(progressActions.at(-1)?.job.id === firstJob.id ? staleTerminalLog : latestTerminalLog);
+      })
+    });
+    const actions = createLogRuntimeActions({
+      mode: "api",
+      repository,
+      dispatch,
+      getState: () => initialState,
+      pollIntervalMs: 0
+    });
+
+    const firstUpload = actions.upload({ projectId: "api-project", file: createFile("first.log") });
+    await Promise.resolve();
+    const secondUpload = actions.upload({ projectId: "api-project", file: createFile("second.log") });
+    await Promise.resolve();
+
+    resolveSecondJob(secondCompleteJob);
+    await secondUpload;
+    resolveFirstJob(firstCompleteJob);
+    await firstUpload;
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: latestTerminalLog });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: staleTerminalLog });
+  });
 });
