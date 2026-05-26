@@ -55,7 +55,10 @@ function createFetchMock(body: unknown, status = 200) {
 }
 
 function createRepository(fetchMock: typeof fetch) {
-  return createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }));
+  return createHttpLogAnalysisRepository({
+    apiClient: createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }),
+    baseUrl: "http://127.0.0.1:8787"
+  });
 }
 
 describe("createHttpLogAnalysisRepository", () => {
@@ -163,7 +166,8 @@ describe("createHttpLogAnalysisRepository", () => {
       Object.assign(this as Record<string, unknown>, { addEventListener, close });
     });
     vi.stubGlobal("EventSource", EventSourceStub);
-    const repository = createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }), {
+    const repository = createHttpLogAnalysisRepository({
+      apiClient: createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }),
       baseUrl: "http://127.0.0.1:8787"
     });
     const onEvent = vi.fn();
@@ -178,6 +182,27 @@ describe("createHttpLogAnalysisRepository", () => {
     expect(close).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the same custom base URL for injected HTTP client and EventSource", async () => {
+    const fetchMock = createFetchMock({ item: baseJobDto });
+    const addEventListener = vi.fn();
+    const close = vi.fn();
+    const EventSourceStub = vi.fn(function EventSource(this: unknown, _url: string) {
+      Object.assign(this as Record<string, unknown>, { addEventListener, close });
+    });
+    vi.stubGlobal("EventSource", EventSourceStub);
+    const repository = createHttpLogAnalysisRepository({
+      apiClient: createApiClient({ baseUrl: "https://logs.example.test", fetchImpl: fetchMock }),
+      baseUrl: "https://logs.example.test"
+    });
+
+    await repository.getJob("job-1");
+    const cleanup = repository.watchJob?.("job-1", vi.fn());
+    cleanup?.();
+
+    expect(fetchMock.mock.calls[0][0]).toBe("https://logs.example.test/api/v1/jobs/job-1");
+    expect(EventSourceStub).toHaveBeenCalledWith("https://logs.example.test/api/v1/jobs/job-1/events");
+  });
+
   it("falls back to polling when EventSource errors before terminal status", async () => {
     vi.useFakeTimers();
     const fetchMock = createFetchMock({ item: { ...baseJobDto, status: "complete", progress: 100 } });
@@ -187,7 +212,8 @@ describe("createHttpLogAnalysisRepository", () => {
       Object.assign(this, { addEventListener, close });
     });
     vi.stubGlobal("EventSource", EventSourceStub);
-    const repository = createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }), {
+    const repository = createHttpLogAnalysisRepository({
+      apiClient: createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }),
       baseUrl: "http://127.0.0.1:8787"
     });
     const onEvent = vi.fn();
@@ -213,7 +239,8 @@ describe("createHttpLogAnalysisRepository", () => {
       Object.assign(this, { addEventListener, close });
     });
     vi.stubGlobal("EventSource", EventSourceStub);
-    const repository = createHttpLogAnalysisRepository(createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }), {
+    const repository = createHttpLogAnalysisRepository({
+      apiClient: createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock }),
       baseUrl: "http://127.0.0.1:8787"
     });
     const onEvent = vi.fn();

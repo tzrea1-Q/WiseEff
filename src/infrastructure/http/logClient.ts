@@ -21,7 +21,7 @@ type ItemEnvelope<T> = { item: T };
 type OkEnvelope = { ok: true };
 type LogUploadResponse = { fileObject: unknown; log: LogRecordDto; job: LogJobDto | null };
 type LogRerunResponse = { log: LogRecordDto; job: LogJobDto };
-type HttpLogAnalysisRepositoryOptions = { baseUrl?: string };
+type HttpLogAnalysisRepositoryOptions = { apiClient?: undefined; baseUrl?: string } | { apiClient: ApiClient; baseUrl: string };
 
 const terminalJobStatuses = new Set(["complete", "failed"]);
 
@@ -94,9 +94,11 @@ function isTerminalStatus(status: string | undefined) {
 }
 
 export function createHttpLogAnalysisRepository(
-  apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl }),
-  { baseUrl = wiseEffApiBaseUrl }: HttpLogAnalysisRepositoryOptions = {}
+  options: HttpLogAnalysisRepositoryOptions = {}
 ): LogAnalysisRepository {
+  const baseUrl = options.baseUrl ?? wiseEffApiBaseUrl;
+  const apiClient = options.apiClient ?? createApiClient({ baseUrl });
+
   const repository: LogAnalysisRepository = {
     async listLogs(query?: LogListQuery) {
       const response = await apiClient.get<{ items: LogRecordDto[] }>(buildLogsPath(query));
