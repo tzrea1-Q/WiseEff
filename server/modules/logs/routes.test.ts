@@ -109,6 +109,19 @@ function jobRecord() {
   };
 }
 
+function runRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "run-1",
+    logId: "log-1",
+    status: "queued" as const,
+    currentStage: "parse" as const,
+    progress: 0,
+    error: null,
+    updatedAt: "2026-05-25T02:00:00.000Z",
+    ...overrides
+  };
+}
+
 function fileObject(overrides: Record<string, unknown> = {}) {
   return {
     id: "file-1",
@@ -258,6 +271,98 @@ describe("log routes", () => {
     expect(service.getLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-route");
   });
 
+  it("POST /api/v1/logs validates body and delegates to createLogFromFile", async () => {
+    const db = makeDb();
+    const log = logRecord({ id: "log-from-file" });
+    const job = jobRecord();
+    vi.mocked(service.createLogFromFile).mockResolvedValue({ log, job });
+
+    const response = await requestJson<{ log: typeof log; job: typeof job }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          fileObjectId: "file-1",
+          fileName: "charging-foldback.log",
+          analysisQuestion: "Why did fast charging fold back?",
+          relatedParameterId: "param-1"
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ log, job });
+    expect(service.createLogFromFile).toHaveBeenCalledWith(db, makeAuth(), {
+      projectId: "aurora",
+      fileObjectId: "file-1",
+      fileName: "charging-foldback.log",
+      analysisQuestion: "Why did fast charging fold back?",
+      relatedParameterId: "param-1"
+    });
+  });
+
+  it("POST /api/v1/logs rejects invalid create body before service", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string; details: { issues?: unknown[] } } }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          fileObjectId: "file-1"
+        })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(response.body.error.details.issues).toEqual(expect.any(Array));
+    expect(service.createLogFromFile).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/logs/:logId/runs uses route params and returns items", async () => {
+    const db = makeDb();
+    const run = runRecord({ id: "run-route", logId: "log-route" });
+    vi.mocked(service.listLogRuns).mockResolvedValue([run]);
+
+    const response = await requestJson<{ items: typeof run[] }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs/log-route/runs"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [run] });
+    expect(service.listLogRuns).toHaveBeenCalledWith(db, makeAuth(), "log-route");
+  });
+
+  it("POST /api/v1/logs/:logId/rerun uses route params and body", async () => {
+    const db = makeDb();
+    const log = logRecord({ id: "log-route" });
+    const job = jobRecord();
+    const runs = [runRecord({ id: "run-new", logId: "log-route" })];
+    vi.mocked(service.rerunLogAnalysis).mockResolvedValue({ log, job, runs });
+
+    const response = await requestJson<{ log: typeof log; job: typeof job; runs: typeof runs }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs/log-route/rerun",
+      {
+        method: "POST",
+        body: JSON.stringify({ analysisQuestion: "Try again with charger context." })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ log, job, runs });
+    expect(service.rerunLogAnalysis).toHaveBeenCalledWith(db, makeAuth(), {
+      logId: "log-route",
+      analysisQuestion: "Try again with charger context."
+    });
+  });
+
   it("validation failure returns VALIDATION_FAILED", async () => {
     const db = makeDb();
 
@@ -293,6 +398,22 @@ describe("log routes", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("POST /api/v1/logs/:logId/unarchive uses route params", async () => {
+    const db = makeDb();
+    const log = logRecord({ id: "log-route", archiveState: "active" });
+    vi.mocked(service.unarchiveLogRecord).mockResolvedValue(log);
+
+    const response = await requestJson<{ item: typeof log }>(
+      makeServer({ db, objectStore: makeObjectStore() }),
+      "/api/v1/logs/log-route/unarchive",
+      { method: "POST", body: "{}" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item: log });
+    expect(service.unarchiveLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-route");
   });
 
   it("feedback route writes through service", async () => {
