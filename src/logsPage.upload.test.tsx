@@ -2,9 +2,110 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { reducer } from "./App";
+import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
+import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
+import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import type { AuthContextDto } from "@/infrastructure/http/authClient";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
+const apiLog = {
+  ...initialState.logs[0],
+  id: "api-upload-log",
+  fileName: "api-upload.log",
+  status: "Processing" as const,
+  stage: "parse" as const,
+  updatedAtIso: "2026-05-26T08:00:00.000Z"
+};
+
+function createAuthClient() {
+  const context: AuthContextDto = {
+    user: {
+      id: "user-api",
+      organizationId: "org-api",
+      name: "API User",
+      email: "api@example.com",
+      title: "Engineer",
+      isActive: true
+    },
+    organization: { id: "org-api", name: "API Org" },
+    roles: [{ projectId: userState.activeProjectId, roleId: "user" }],
+    permissions: []
+  };
+
+  return {
+    getCurrentAuthContext: vi.fn().mockResolvedValue(context)
+  };
+}
+
+function createParameterRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
+  return {
+    listProjects: vi.fn().mockResolvedValue([]),
+    listParameters: vi.fn().mockResolvedValue([]),
+    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
+    listParameterHistory: vi.fn().mockResolvedValue([]),
+    listDrafts: vi.fn().mockResolvedValue([]),
+    saveDraft: vi.fn(),
+    deleteDraft: vi.fn().mockResolvedValue(undefined),
+    listChangeRequests: vi.fn().mockResolvedValue([]),
+    listSubmissionRounds: vi.fn().mockResolvedValue([]),
+    submitParameterChanges: vi.fn(),
+    reviewChange: vi.fn(),
+    createImportPreview: vi.fn(),
+    applyImportBatch: vi.fn(),
+    ...overrides
+  };
+}
+
+function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): LogAnalysisRepository {
+  return {
+    listLogs: vi.fn().mockResolvedValue(initialState.logs),
+    getLog: vi.fn().mockResolvedValue(apiLog),
+    uploadLog: vi.fn().mockResolvedValue({ log: apiLog, job: null }),
+    getJob: vi.fn(),
+    rerunLog: vi.fn(),
+    archiveLog: vi.fn().mockResolvedValue(undefined),
+    unarchiveLog: vi.fn().mockResolvedValue(undefined),
+    submitFeedback: vi.fn().mockResolvedValue(undefined),
+    ...overrides
+  };
+}
+
+function renderApiLogs(repository = createLogRepository()) {
+  window.history.replaceState(null, "", "/logs");
+  render(
+    <App
+      authClient={createAuthClient()}
+      initialAppState={userState}
+      logAnalysisRepository={repository}
+      parameterRepository={createParameterRepository()}
+      runtimeMode="api"
+    />
+  );
+  return repository;
+}
+
+function openUploadDialog() {
+  fireEvent.click(document.querySelector(".topbar-page-actions .button.primary") as HTMLButtonElement);
+  return screen.getByRole("dialog");
+}
+
+function chooseFile(file: File) {
+  fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [file] } });
+}
+
+function setQuestion(value: string) {
+  fireEvent.change(document.querySelector("#upload-analysis-question") as HTMLTextAreaElement, { target: { value } });
+}
+
+async function confirmSelectedFile(selector = ".upload-dialog__actions .button.primary") {
+  await act(async () => {
+    vi.advanceTimersByTime(250);
+  });
+  await act(async () => {
+    fireEvent.click(document.querySelector(selector) as HTMLButtonElement);
+  });
+}
 
 afterEach(() => {
   cleanup();
@@ -39,6 +140,91 @@ describe("reducer · SIMULATE_LOG_UPLOAD", () => {
 
     expect(next.logs[0].analysisQuestion).toBe("为什么充电后段降频？");
     expect(next.logs[0].rawLines[0]).toContain("question.log");
+  });
+});
+
+describe("LogsPage api upload wiring", () => {
+  it("passes the selected File and question to the log repository", async () => {
+    vi.useFakeTimers();
+    const repository = renderApiLogs();
+    const file = new File(["line"], "runtime.log", { type: "text/plain" });
+
+    openUploadDialog();
+    chooseFile(file);
+    setQuestion("why");
+    await confirmSelectedFile();
+
+    expect(repository.uploadLog).toHaveBeenCalledWith({
+      projectId: userState.activeProjectId,
+      file,
+      analysisQuestion: "why"
+    });
+  });
+
+  it("allows unsupported extensions to reach the runtime", async () => {
+    vi.useFakeTimers();
+    const failedLog = {
+      ...apiLog,
+      id: "api-failed-log",
+      fileName: "thermal.bin",
+      status: "Failed" as const,
+      stage: "parse" as const,
+      failureReason: "Unsupported file extension"
+    };
+    const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockResolvedValue({ log: failedLog, job: null }) }));
+    const file = new File(["bin"], "thermal.bin", { type: "application/octet-stream" });
+
+    openUploadDialog();
+    chooseFile(file);
+    await confirmSelectedFile(".upload-dialog__actions .button.danger");
+
+    expect(repository.uploadLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: userState.activeProjectId,
+        file
+      })
+    );
+    expect(document.body).toHaveTextContent("Unsupported file extension");
+  });
+
+  it("disables the upload action while the runtime upload is pending", async () => {
+    vi.useFakeTimers();
+    let resolveUpload: (value: { log: typeof apiLog; job: null }) => void = () => {};
+    const uploadPromise = new Promise<{ log: typeof apiLog; job: null }>((resolve) => {
+      resolveUpload = resolve;
+    });
+    renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockReturnValue(uploadPromise) }));
+
+    openUploadDialog();
+    chooseFile(new File(["line"], "pending.log", { type: "text/plain" }));
+    await act(async () => {
+      vi.advanceTimersByTime(250);
+    });
+
+    const uploadButton = document.querySelector(".upload-dialog__actions .button.primary") as HTMLButtonElement;
+    await act(async () => {
+      fireEvent.click(uploadButton);
+    });
+
+    expect(uploadButton).toBeDisabled();
+    expect(uploadButton).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
+      resolveUpload({ log: apiLog, job: null });
+      await uploadPromise;
+    });
+  });
+
+  it("keeps the dialog open and shows the runtime failure notification when upload rejects", async () => {
+    vi.useFakeTimers();
+    renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockRejectedValue(new Error("boom")) }));
+
+    openUploadDialog();
+    chooseFile(new File(["line"], "reject.log", { type: "text/plain" }));
+    await confirmSelectedFile();
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent(logRuntimeFailureNotification);
   });
 });
 

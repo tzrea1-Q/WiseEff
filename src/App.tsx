@@ -1738,6 +1738,10 @@ function AppShell({
     (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
     [runtimeMode]
   );
+  const LogsPageWithRuntime = useCallback(
+    (props: PageProps) => <LogsPage {...props} logActions={runtimeMode === "api" ? props.logActions : undefined} />,
+    [runtimeMode]
+  );
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
 
@@ -1874,7 +1878,7 @@ function AppShell({
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
-                LogsPage={LogsPage}
+                LogsPage={LogsPageWithRuntime}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
@@ -1895,7 +1899,7 @@ function AppShell({
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
-                LogsPage={LogsPage}
+                LogsPage={LogsPageWithRuntime}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </main>
@@ -3660,9 +3664,10 @@ function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; 
 }
 
 
-function LogsPage({ state, dispatch, onNavigate }: PageProps) {
+function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState("");
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
@@ -3728,6 +3733,18 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
       setActiveMatchIndex(Math.max(matchLines.length - 1, 0));
     }
   }, [activeMatchIndex, matchLines.length]);
+
+  useEffect(() => {
+    if (!pendingUpload) {
+      return;
+    }
+
+    const createdLog = state.logs.find((log) => !pendingUpload.previousLogIds.has(log.id));
+    if (createdLog) {
+      setPendingUpload(null);
+      setUploadDialogOpen(false);
+    }
+  }, [pendingUpload, state.logs]);
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -3834,6 +3851,29 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
   const openUploadDialog = useCallback(() => setUploadDialogOpen(true), []);
+  const handleUploadLog = useCallback(
+    async (file: File, supported: boolean, question?: string) => {
+      if (!logActions) {
+        dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
+        setUploadDialogOpen(false);
+        return;
+      }
+
+      const beforeLogIds = new Set(state.logs.map((log) => log.id));
+      setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
+
+      await logActions.upload({ projectId: state.activeProjectId, file, analysisQuestion: question });
+    },
+    [dispatch, logActions, state.activeProjectId, state.logs]
+  );
+  const handleRetryLog = useCallback(() => {
+    if (!logActions) {
+      setUploadDialogOpen(true);
+      return;
+    }
+
+    void logActions.rerun({ logId: activeLog.id, analysisQuestion: activeLog.analysisQuestion });
+  }, [activeLog.analysisQuestion, activeLog.id, logActions]);
 
   return (
     <div className="logs-v2">
@@ -3849,7 +3889,7 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
-          onRetry={() => setUploadDialogOpen(true)}
+          onRetry={handleRetryLog}
         />
         <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
         <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
@@ -3891,10 +3931,7 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
       {uploadDialogOpen ? (
         <UploadLogDialog
           onClose={() => setUploadDialogOpen(false)}
-          onUpload={(fileName, supported, question) => {
-            dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName, supported, question });
-            setUploadDialogOpen(false);
-          }}
+          onUpload={handleUploadLog}
         />
       ) : null}
       {selectedFeedbackLog ? (
@@ -3916,6 +3953,11 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
           {feedbackToast}
         </div>
       ) : null}
+      {state.notifications[0] ? (
+        <div className="logs-feedback-toast" role="status" aria-live="polite">
+          {state.notifications[0]}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3929,13 +3971,15 @@ function UploadLogDialog({
   onUpload
 }: {
   onClose: () => void;
-  onUpload: (fileName: string, supported: boolean, question?: string) => void;
+  onUpload: (file: File, supported: boolean, question?: string) => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -3963,10 +4007,11 @@ function UploadLogDialog({
     };
   }, []);
 
-  const validateFile = (fileName: string) => {
-    const nextSupported = isSupportedLogFile(fileName);
+  const validateFile = (file: File) => {
+    const nextSupported = isSupportedLogFile(file.name);
 
-    setSelectedFileName(fileName);
+    setSelectedFile(file);
+    setSelectedFileName(file.name);
     setSupported(nextSupported);
     setPhase("validating");
 
@@ -3982,6 +4027,7 @@ function UploadLogDialog({
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) {
+      setSelectedFile(null);
       setSelectedFileName("");
       setSupported(false);
       setPhase("idle");
@@ -3989,11 +4035,11 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        onUpload(files[i].name, isSupportedLogFile(files[i].name), question);
+        void onUpload(files[i], isSupportedLogFile(files[i].name), question);
       }
       return;
     }
-    validateFile(files[0].name);
+    validateFile(files[0]);
   };
 
   const handleDrop = (event: React.DragEvent) => {
@@ -4003,15 +4049,16 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        onUpload(files[i].name, isSupportedLogFile(files[i].name), question);
+        void onUpload(files[i], isSupportedLogFile(files[i].name), question);
       }
       return;
     }
-    validateFile(files[0].name);
+    validateFile(files[0]);
   };
 
   const resetSelection = () => {
     setPhase("idle");
+    setSelectedFile(null);
     setSelectedFileName("");
     setSupported(false);
     setQuestion("");
@@ -4022,10 +4069,11 @@ function UploadLogDialog({
   };
 
   const uploadSelected = () => {
-    if (!selectedFileName) {
+    if (!selectedFile || uploading) {
       return;
     }
-    onUpload(selectedFileName, supported, question);
+    setUploading(true);
+    void Promise.resolve(onUpload(selectedFile, supported, question)).finally(() => setUploading(false));
   };
 
   return (
@@ -4076,17 +4124,17 @@ function UploadLogDialog({
               知道了
             </button>
           ) : (
-            <button className="button subtle" type="button" onClick={onClose}>
+            <button className="button subtle" type="button" disabled={uploading} onClick={onClose}>
               取消
             </button>
           )}
           {phase === "confirm" ? (
-            <button className="button primary" type="button" onClick={uploadSelected}>
+            <button className="button primary" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading} onClick={uploadSelected}>
               确认上传
             </button>
           ) : null}
           {phase === "unsupported" ? (
-            <button className="button danger" type="button" onClick={uploadSelected}>
+            <button className="button danger" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading} onClick={uploadSelected}>
               仍然上传
             </button>
           ) : null}
