@@ -1,11 +1,9 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { ObjectStore } from "./objectStore";
-import type { LogFileObjectDto } from "./repository";
 import {
   archiveLogRecord,
   createLogFromFile,
@@ -54,69 +52,8 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
   return parsed.data;
 }
 
-async function getAuth(
-  getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext,
-  request: RouteRequest
-) {
+async function getAuth(getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext, request: RouteRequest) {
   return getCurrentAuthContext(request);
-}
-
-type LogFileObjectRow = {
-  id: string;
-  organization_id: string;
-  project_id: string;
-  storage_key: string;
-  file_name: string;
-  content_type: string;
-  file_size_bytes: number | string;
-  checksum_sha256: string;
-  uploaded_by_user_id: string | null;
-  created_at: string | Date;
-};
-
-function dateTimeToIso(value: string | Date) {
-  return value instanceof Date ? value.toISOString() : value;
-}
-
-function toFileObjectDto(row: LogFileObjectRow): LogFileObjectDto {
-  return {
-    id: row.id,
-    organizationId: row.organization_id,
-    projectId: row.project_id,
-    storageKey: row.storage_key,
-    fileName: row.file_name,
-    contentType: row.content_type,
-    fileSizeBytes: Number(row.file_size_bytes),
-    checksumSha256: row.checksum_sha256,
-    uploadedByUserId: row.uploaded_by_user_id,
-    createdAt: dateTimeToIso(row.created_at)
-  };
-}
-
-async function getUploadedFileObject(
-  db: Database,
-  auth: AuthContext,
-  input: { projectId: string; fileName: string; checksumSha256: string }
-) {
-  const result = await db.query<LogFileObjectRow>(
-    `
-    select *
-    from log_file_objects
-    where organization_id = $1
-      and project_id = $2
-      and file_name = $3
-      and checksum_sha256 = $4
-    order by created_at desc
-    limit 1
-    `,
-    [auth.organization.id, input.projectId, input.fileName, input.checksumSha256]
-  );
-
-  if (!result.rows[0]) {
-    throw new ApiError("NOT_FOUND", "Uploaded file object was not found.", 404, input);
-  }
-
-  return toFileObjectDto(result.rows[0]);
 }
 
 export function registerLogRoutes(
@@ -141,13 +78,8 @@ export function registerLogRoutes(
       analysisQuestion: body.analysisQuestion,
       relatedParameterId: body.relatedParameterId
     });
-    const fileObject = await getUploadedFileObject(db, auth, {
-      projectId: body.projectId,
-      fileName: body.fileName,
-      checksumSha256: createHash("sha256").update(bytes).digest("hex")
-    });
 
-    return { status: 201, body: { fileObject, log: result.log, job: result.job } };
+    return { status: 201, body: { fileObject: result.fileObject, log: result.log, job: result.job } };
   });
 
   router.post("/api/v1/logs", async (request) => {

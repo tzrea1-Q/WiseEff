@@ -7,8 +7,8 @@ import { createPostgresDatabase } from "./shared/database/client";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL) : undefined;
-const objectStore = createLocalObjectStore(env.OBJECT_STORE_ROOT);
-const stopLogWorker = db ? startLogWorkerLoop({ db, objectStore }) : undefined;
+const objectStore = db ? createLocalObjectStore(env.OBJECT_STORE_ROOT) : undefined;
+const stopLogWorker = db && objectStore ? startLogWorkerLoop({ db, objectStore }) : undefined;
 const server = createWiseEffServer({ db, objectStore });
 
 function shutdown() {

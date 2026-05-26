@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
-import { requireLogView } from "../logs/policy";
+import { requireLogProjectAccess, requireLogView } from "../logs/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -40,12 +40,18 @@ async function loadVisibleJob(db: Database, auth: AuthContext, jobId: string) {
   if (!item || item.organizationId !== auth.organization.id) {
     throw new ApiError("NOT_FOUND", "Job was not found.", 404, { jobId });
   }
+  requireLogProjectAccess(auth, item.projectId);
 
   return item;
 }
 
-async function* streamJobEvents(db: Database, auth: AuthContext, jobId: string): AsyncIterable<{ event: string; data: LogAnalysisJobSnapshotDto }> {
-  let snapshot = await loadVisibleJob(db, auth, jobId);
+async function* streamJobEvents(
+  db: Database,
+  auth: AuthContext,
+  jobId: string,
+  initialSnapshot: LogAnalysisJobSnapshotDto
+): AsyncIterable<{ event: string; data: LogAnalysisJobSnapshotDto }> {
+  let snapshot = initialSnapshot;
   yield { event: "job", data: snapshot };
 
   const stopAt = Date.now() + 10_000;
@@ -73,7 +79,8 @@ export function registerJobRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithJobIdSchema, request.params);
+    const initialSnapshot = await loadVisibleJob(db, auth, params.jobId);
 
-    return { status: 200, sse: streamJobEvents(db, auth, params.jobId) };
+    return { status: 200, sse: streamJobEvents(db, auth, params.jobId, initialSnapshot) };
   });
 }

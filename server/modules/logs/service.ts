@@ -142,7 +142,7 @@ export async function uploadLogFile(
   objectStore: ObjectStore,
   auth: AuthContext,
   input: UploadLogFileInput
-): Promise<{ log: LogRecordDto; job: LogAnalysisJobDto | null }> {
+): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
   requireLogProjectAccess(auth, input.projectId);
   const supported = isSupportedLogFile(input.fileName);
@@ -182,7 +182,7 @@ export async function uploadLogFile(
         metadata: { fileName: input.fileName, failureReason: log.failureReason }
       });
 
-      return { log, job: null };
+      return { fileObject, log, job: null };
     });
   }
 
@@ -215,7 +215,7 @@ export async function uploadLogFile(
       metadata: { fileName: input.fileName, runId: job.runId, jobId: job.id }
     });
 
-    return { log, job };
+    return { fileObject, log, job };
   });
 }
 

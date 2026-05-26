@@ -146,7 +146,7 @@ describe("log routes", () => {
     const log = logRecord();
     const job = jobRecord();
     const file = fileObject();
-    vi.mocked(service.uploadLogFile).mockResolvedValue({ log, job });
+    vi.mocked(service.uploadLogFile).mockResolvedValue({ fileObject: file, log, job });
 
     const response = await requestJson<{ fileObject: typeof file; log: typeof log; job: typeof job }>(
       makeServer({ db, objectStore }),
@@ -165,6 +165,7 @@ describe("log routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ fileObject: file, log, job });
+    expect(db.query).not.toHaveBeenCalled();
     expect(service.uploadLogFile).toHaveBeenCalledWith(db, objectStore, makeAuth(), {
       projectId: "aurora",
       fileName: "charging-foldback.log",
@@ -172,12 +173,35 @@ describe("log routes", () => {
       bytes: Buffer.from("WARN foldback"),
       analysisQuestion: "Why did fast charging fold back?"
     });
-    expect(db.query).toHaveBeenCalledWith(expect.stringContaining("from log_file_objects"), [
-      "org-1",
-      "aurora",
-      "charging-foldback.log",
-      "21f424dddb7b51ec5ebcd23a570cd3fcc24f2e271b774ff918aea9dae1afa10b"
-    ]);
+  });
+
+  it("POST /api/v1/log-files returns the created file object without looking up older matching rows", async () => {
+    const priorFile = fileObject({ id: "file-prior", storageKey: "org-1/old-charging-foldback.log" });
+    const createdFile = fileObject({ id: "file-created", storageKey: "org-1/new-charging-foldback.log" });
+    const db = makeDb([fileObjectRow({ id: priorFile.id, storage_key: priorFile.storageKey })]);
+    const objectStore = makeObjectStore();
+    const log = logRecord();
+    const job = jobRecord();
+    vi.mocked(service.uploadLogFile).mockResolvedValue({ fileObject: createdFile, log, job });
+
+    const response = await requestJson<{ fileObject: typeof createdFile; log: typeof log; job: typeof job }>(
+      makeServer({ db, objectStore }),
+      "/api/v1/log-files",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          fileName: "charging-foldback.log",
+          contentType: "text/plain",
+          contentBase64: Buffer.from("WARN foldback").toString("base64")
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body.fileObject).toEqual(createdFile);
+    expect(response.body.fileObject).not.toEqual(priorFile);
+    expect(db.query).not.toHaveBeenCalled();
   });
 
   it("unsupported file returns 201 with failed log and null job", async () => {
@@ -185,11 +209,7 @@ describe("log routes", () => {
     const objectStore = makeObjectStore();
     const log = logRecord({ fileName: "dump.bin", status: "failed", failureReason: "Unsupported log format." });
     const file = fileObject({ fileName: "dump.bin", contentType: "application/octet-stream" });
-    vi.mocked(service.uploadLogFile).mockResolvedValue({ log, job: null });
-    vi.mocked(db.query).mockResolvedValue({
-      rows: [fileObjectRow({ file_name: "dump.bin", content_type: "application/octet-stream" })],
-      rowCount: 1
-    });
+    vi.mocked(service.uploadLogFile).mockResolvedValue({ fileObject: file, log, job: null });
 
     const response = await requestJson<{ fileObject: typeof file; log: typeof log; job: null }>(
       makeServer({ db, objectStore }),
@@ -209,6 +229,7 @@ describe("log routes", () => {
     expect(response.body.log).toMatchObject({ status: "failed", failureReason: "Unsupported log format." });
     expect(response.body.job).toBeNull();
     expect(response.body.fileObject).toEqual(file);
+    expect(db.query).not.toHaveBeenCalled();
   });
 
   it("GET /api/v1/logs passes filters", async () => {

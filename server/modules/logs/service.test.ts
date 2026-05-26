@@ -249,6 +249,11 @@ describe("log service", () => {
     });
 
     expect(puts).toHaveLength(1);
+    expect(result.fileObject).toMatchObject({
+      id: "file-1",
+      storageKey: "org-1/checksum-pack-controller.log",
+      fileName: "pack-controller.log"
+    });
     expect(result.log.status).toBe("processing");
     expect(result.job).toMatchObject({ kind: "log-analysis", status: "queued", currentStage: "parse" });
     expect(txCalls.some((call) => call.text.includes("insert into log_file_objects"))).toBe(true);
@@ -292,6 +297,11 @@ describe("log service", () => {
     });
 
     expect(puts).toHaveLength(0);
+    expect(result.fileObject).toMatchObject({
+      id: "file-1",
+      storageKey: "org-1/checksum-pack-controller.bin",
+      fileName: "pack-controller.bin"
+    });
     expect(result.log.status).toBe("failed");
     expect(result.log.failureReason).toContain("Unsupported log format");
     expect(result.job).toBeNull();

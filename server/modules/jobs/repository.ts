@@ -16,6 +16,7 @@ type JobRow = {
 
 type JobSnapshotRow = JobRow & {
   organization_id: string;
+  project_id: string;
   log_id: string;
 };
 
@@ -47,7 +48,8 @@ function toClaimedLogAnalysisJobDto(row: JobRow & { organization_id: string }): 
 function toLogAnalysisJobSnapshotDto(row: JobSnapshotRow): LogAnalysisJobSnapshotDto {
   return {
     ...toLogAnalysisJobDto(row, row.log_id, row.target_id),
-    organizationId: row.organization_id
+    organizationId: row.organization_id,
+    projectId: row.project_id
   };
 }
 
@@ -105,11 +107,15 @@ export async function getJobSnapshot(db: Queryable, jobId: string) {
       job.current_stage,
       job.error_message,
       job.updated_at,
+      log.project_id,
       run.log_record_id as log_id
     from jobs job
     inner join log_analysis_runs run
       on run.id = job.target_id
       and run.organization_id = job.organization_id
+    inner join log_records log
+      on log.id = run.log_record_id
+      and log.organization_id = job.organization_id
     where job.id = $1
     limit 1
     `,
