@@ -1,4 +1,4 @@
-import { Archive, ExternalLink, RefreshCw } from "lucide-react";
+import { Archive, ExternalLink, RefreshCw, ThumbsUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,11 @@ export type LogRecordDrawerProps = {
   onNavigateToWorkbench: (recordId: string) => void;
   onReanalyze: (recordId: string) => void;
   onArchive: (recordId: string) => void;
+  onSubmitHelpfulFeedback?: (recordId: string) => void;
   canAct: boolean;
+  reanalyzePending?: boolean;
+  archivePending?: boolean;
+  feedbackPending?: boolean;
 };
 
 export function LogRecordDrawer({
@@ -21,7 +25,11 @@ export function LogRecordDrawer({
   onNavigateToWorkbench,
   onReanalyze,
   onArchive,
-  canAct
+  onSubmitHelpfulFeedback,
+  canAct,
+  reanalyzePending = false,
+  archivePending = false,
+  feedbackPending = false
 }: LogRecordDrawerProps) {
   if (!record) {
     return null;
@@ -114,7 +122,8 @@ export function LogRecordDrawer({
           <Button
             variant="secondary"
             size="sm"
-            disabled={!canAct}
+            disabled={!canAct || reanalyzePending}
+            aria-busy={reanalyzePending || undefined}
             title={canAct ? undefined : "需要 Editor 或 Admin 权限"}
             onClick={() => onReanalyze(record.id)}
           >
@@ -122,9 +131,21 @@ export function LogRecordDrawer({
             重新分析
           </Button>
           <Button
+            variant="outline"
+            size="sm"
+            disabled={!canAct || feedbackPending}
+            aria-busy={feedbackPending || undefined}
+            title={canAct ? undefined : "需要 Editor 或 Admin 权限"}
+            onClick={() => onSubmitHelpfulFeedback?.(record.id)}
+          >
+            <ThumbsUp data-icon="inline-start" />
+            有帮助
+          </Button>
+          <Button
             variant="destructive"
             size="sm"
-            disabled={!canAct}
+            disabled={!canAct || archivePending}
+            aria-busy={archivePending || undefined}
             title={canAct ? undefined : "需要 Editor 或 Admin 权限"}
             onClick={() => onArchive(record.id)}
           >
