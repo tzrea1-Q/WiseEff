@@ -143,6 +143,7 @@ export function createLogRuntimeActions({
 }: LogRuntimeOptions): LogRuntimeActions {
   const pollGenerations = new Map<string, number>();
   let nextPollGeneration = 0;
+  let nextUploadReservation = 0;
   const generations: PollGenerationTracker = {
     begin(logId) {
       const next = nextPollGeneration + 1;
@@ -210,7 +211,8 @@ export function createLogRuntimeActions({
         return;
       }
 
-      const activeGeneration = reserveGeneration(`upload:${input.projectId}:${input.file.name}`);
+      nextUploadReservation += 1;
+      const activeGeneration = reserveGeneration(`upload:${nextUploadReservation}`);
       await runApiMutation(async (api) => {
         const result = await api.uploadLog(input);
         if (!generations.bind(activeGeneration, result.log.id)) {

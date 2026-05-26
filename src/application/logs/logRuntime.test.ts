@@ -123,6 +123,59 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).toHaveBeenNthCalledWith(4, { type: "UPSERT_LOG_RECORD", log: completedApiLog });
   });
 
+  it("keeps concurrent same-file uploads isolated until each backend log id is known", async () => {
+    const dispatch = vi.fn();
+    const firstLog: LogRecord = { ...apiLog, id: "api-log-first", fileName: "x.log", reportId: "RPT-FIRST" };
+    const secondLog: LogRecord = { ...apiLog, id: "api-log-second", fileName: "x.log", reportId: "RPT-SECOND" };
+    const firstCompletedLog: LogRecord = { ...completedApiLog, id: firstLog.id, fileName: "x.log", reportId: "RPT-FIRST-DONE" };
+    const secondCompletedLog: LogRecord = { ...completedApiLog, id: secondLog.id, fileName: "x.log", reportId: "RPT-SECOND-DONE" };
+    const firstJob: LogJobSnapshot = { ...queuedJob, id: "job-first-upload", logId: firstLog.id, runId: "run-first-upload" };
+    const secondJob: LogJobSnapshot = { ...queuedJob, id: "job-second-upload", logId: secondLog.id, runId: "run-second-upload" };
+    const firstCompleteJob: LogJobSnapshot = { ...completeJob, id: firstJob.id, logId: firstLog.id, runId: firstJob.runId };
+    const secondCompleteJob: LogJobSnapshot = { ...completeJob, id: secondJob.id, logId: secondLog.id, runId: secondJob.runId };
+    let resolveFirstUpload: (result: { log: LogRecord; job: LogJobSnapshot }) => void = () => undefined;
+    let resolveSecondUpload: (result: { log: LogRecord; job: LogJobSnapshot }) => void = () => undefined;
+    const firstUploadResult = new Promise<{ log: LogRecord; job: LogJobSnapshot }>((resolve) => {
+      resolveFirstUpload = resolve;
+    });
+    const secondUploadResult = new Promise<{ log: LogRecord; job: LogJobSnapshot }>((resolve) => {
+      resolveSecondUpload = resolve;
+    });
+    const repository = createRepository({
+      uploadLog: vi.fn().mockReturnValueOnce(firstUploadResult).mockReturnValueOnce(secondUploadResult),
+      getJob: vi.fn((jobId: string) => {
+        if (jobId === firstJob.id) return Promise.resolve(firstCompleteJob);
+        if (jobId === secondJob.id) return Promise.resolve(secondCompleteJob);
+        throw new Error(`Unexpected job ${jobId}`);
+      }),
+      getLog: vi.fn((logId: string) => {
+        if (logId === firstLog.id) return Promise.resolve(firstCompletedLog);
+        if (logId === secondLog.id) return Promise.resolve(secondCompletedLog);
+        throw new Error(`Unexpected log ${logId}`);
+      })
+    });
+    const actions = createLogRuntimeActions({
+      mode: "api",
+      repository,
+      dispatch,
+      getState: () => initialState,
+      pollIntervalMs: 0
+    });
+    const firstUpload = actions.upload({ projectId: "api-project", file: createFile("x.log") });
+    const secondUpload = actions.upload({ projectId: "api-project", file: createFile("x.log") });
+
+    resolveFirstUpload({ log: firstLog, job: firstJob });
+    resolveSecondUpload({ log: secondLog, job: secondJob });
+    await Promise.all([firstUpload, secondUpload]);
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: firstLog });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: secondLog });
+    expect(dispatch).toHaveBeenCalledWith({ type: "LOG_JOB_PROGRESS", job: firstCompleteJob });
+    expect(dispatch).toHaveBeenCalledWith({ type: "LOG_JOB_PROGRESS", job: secondCompleteJob });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: firstCompletedLog });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: secondCompletedLog });
+  });
+
   it("reruns api log analysis and polls the returned job", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({
