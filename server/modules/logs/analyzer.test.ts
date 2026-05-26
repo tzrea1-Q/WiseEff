@@ -51,6 +51,34 @@ describe("createRuleBasedLogAnalyzer", () => {
     );
   });
 
+  it("does not report charge-current reduction for request-only lines", async () => {
+    const parsed = parseLogText({
+      fileName: "request-only.log",
+      content: Buffer.from("INFO charge request requested_ma=5000\n", "utf8")
+    });
+    if (!parsed.ok) throw new Error(parsed.reason);
+
+    const report = await createRuleBasedLogAnalyzer().analyze({ parsed });
+
+    expect(report.evidence).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ ruleHit: "charge-current-reduction" })])
+    );
+  });
+
+  it("reports charge-current reduction when requested and delivered current differ", async () => {
+    const parsed = parseLogText({
+      fileName: "current-reduction.log",
+      content: Buffer.from("WARN charge_current_ma=3200 requested_ma=5000\n", "utf8")
+    });
+    if (!parsed.ok) throw new Error(parsed.reason);
+
+    const report = await createRuleBasedLogAnalyzer().analyze({ parsed });
+
+    expect(report.evidence).toEqual(
+      expect.arrayContaining([expect.objectContaining({ ruleHit: "charge-current-reduction", lineNumbers: [1] })])
+    );
+  });
+
   it("reports offline and disconnect evidence as device-offline", async () => {
     const parsed = parseLogText({
       fileName: "offline.txt",

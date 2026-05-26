@@ -56,10 +56,14 @@ export function parseLogText(input: ParseLogTextInput): ParseResult {
 
 function decodeUtf8(content: ParseLogTextInput["content"]): { ok: true; text: string } | { ok: false; reason: string } {
   if (typeof content === "string") {
-    return { ok: true, text: content };
+    return decodeUtf8Bytes(Buffer.from(content, "utf8"));
   }
 
   const bytes = content instanceof Buffer ? content : Buffer.from(content);
+  return decodeUtf8Bytes(bytes);
+}
+
+function decodeUtf8Bytes(bytes: Buffer): { ok: true; text: string } | { ok: false; reason: string } {
   if (bytes.length > 0) {
     const nullBytes = bytes.reduce((count, byte) => count + (byte === 0x00 ? 1 : 0), 0);
     if (nullBytes / bytes.length > 0.05) {

@@ -69,4 +69,11 @@ describe("parseLogText", () => {
     if (!invalidUtf8.ok) expect(invalidUtf8.reason).toMatch(/utf-?8|decode/i);
     if (!nullHeavy.ok) expect(nullHeavy.reason).toMatch(/binary|null/i);
   });
+
+  it("rejects null-byte-heavy string content with a readable reason", () => {
+    const result = parseLogText({ fileName: "events.log", content: "\0\0\0INFO" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toMatch(/binary|null/i);
+  });
 });

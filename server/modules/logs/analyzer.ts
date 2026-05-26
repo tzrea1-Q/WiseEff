@@ -46,6 +46,7 @@ type Rule = {
   stageId: LogAnalysisStageId;
   inference: string;
   suggestedAction: string;
+  matches?: (entry: ParsedLogEntry) => boolean;
 };
 
 const rules: Rule[] = [
@@ -58,10 +59,11 @@ const rules: Rule[] = [
   },
   {
     id: "charge-current-reduction",
-    patterns: [/charge_current/i, /current reduced/i, /requested_ma/i],
+    patterns: [/current reduced/i, /foldback/i],
     stageId: "pattern",
     inference: "Requested charge current was reduced by the controller.",
-    suggestedAction: "Compare requested and delivered current around the event window."
+    suggestedAction: "Compare requested and delivered current around the event window.",
+    matches: matchesChargeCurrentReduction
   },
   {
     id: "communication-timeout",
@@ -143,7 +145,23 @@ function matchesRule(rule: Rule, entry: ParsedLogEntry): boolean {
     .map(([key, value]) => `${key}=${value}`)
     .join(" ")}`;
 
-  return rule.patterns.some((pattern) => pattern.test(searchable));
+  return rule.patterns.some((pattern) => pattern.test(searchable)) || rule.matches?.(entry) === true;
+}
+
+function matchesChargeCurrentReduction(entry: ParsedLogEntry): boolean {
+  const requestedCurrent = parseNumericToken(entry.tokens.requested_ma);
+  const deliveredCurrent = parseNumericToken(entry.tokens.charge_current_ma ?? entry.tokens.current_ma);
+
+  return requestedCurrent !== undefined && deliveredCurrent !== undefined && deliveredCurrent < requestedCurrent;
+}
+
+function parseNumericToken(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const numericValue = Number(value);
+  return Number.isFinite(numericValue) ? numericValue : undefined;
 }
 
 function evidenceLineHit(evidence: AnalyzeLogEvidence[], entry: ParsedLogEntry): boolean {
