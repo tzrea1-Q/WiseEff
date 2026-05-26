@@ -45,10 +45,29 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
       }),
+    put: <T>(path: string, body: unknown) =>
+      request<T>(path, {
+        method: "PUT",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }),
     delete: <T>(path: string) =>
       request<T>(path, {
         method: "DELETE",
         headers: { Accept: "application/json" }
-      })
+      }),
+    upload: <T>(path: string, file: File, fields: Record<string, string> = {}) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      for (const [key, value] of Object.entries(fields)) {
+        formData.append(key, value);
+      }
+
+      return request<T>(path, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        body: formData
+      });
+    }
   };
 }

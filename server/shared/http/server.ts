@@ -7,27 +7,62 @@ const allowedCorsOrigins = new Set(["http://127.0.0.1:5173", "http://localhost:5
 const corsMethods = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
 const defaultCorsHeaders = "accept,content-type,x-request-id,x-wiseeff-user";
 
-async function readJsonBody(request: IncomingMessage): Promise<unknown> {
-  if (request.method === "GET" || request.method === "DELETE") {
-    return undefined;
-  }
+export type RawBody = {
+  kind: "raw";
+  contentType: string;
+  bytes: Buffer;
+};
 
+async function readRequestBytes(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
 
-  if (chunks.length === 0) {
+  return Buffer.concat(chunks);
+}
+
+function getContentType(request: IncomingMessage) {
+  const contentType = request.headers["content-type"];
+  return (Array.isArray(contentType) ? contentType[0] : contentType)?.split(";")[0].trim().toLowerCase() ?? "";
+}
+
+async function readBody(request: IncomingMessage): Promise<unknown> {
+  if (request.method === "GET" || request.method === "DELETE") {
     return undefined;
   }
 
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  const bytes = await readRequestBytes(request);
+  if (bytes.length === 0) {
+    return undefined;
+  }
+
+  const contentType = getContentType(request);
+  if (contentType === "text/plain" || contentType === "text/csv" || contentType === "application/octet-stream") {
+    return { kind: "raw", contentType, bytes } satisfies RawBody;
+  }
+
+  return JSON.parse(bytes.toString("utf8"));
 }
 
 function sendJson(response: ServerResponse, status: number, body: unknown) {
   response.statusCode = status;
   response.setHeader("Content-Type", "application/json");
   response.end(JSON.stringify(body));
+}
+
+async function sendSse(response: ServerResponse, events: AsyncIterable<{ event: string; data: unknown }>) {
+  response.statusCode = 200;
+  response.setHeader("Content-Type", "text/event-stream");
+  response.setHeader("Cache-Control", "no-cache");
+  response.setHeader("Connection", "keep-alive");
+
+  for await (const event of events) {
+    response.write(`event: ${event.event}\n`);
+    response.write(`data: ${JSON.stringify(event.data)}\n\n`);
+  }
+
+  response.end();
 }
 
 function setCorsHeaders(request: IncomingMessage, response: ServerResponse) {
@@ -93,11 +128,15 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
         query: parseQuery(url.searchParams),
         headers: request.headers,
         requestId,
-        body: await readJsonBody(request)
+        body: await readBody(request)
       });
 
       response.setHeader("X-Request-Id", requestId);
-      sendJson(response, routeResponse.status, routeResponse.body);
+      if ("sse" in routeResponse) {
+        await sendSse(response, routeResponse.sse);
+      } else {
+        sendJson(response, routeResponse.status, routeResponse.body);
+      }
     } catch (error) {
       response.setHeader("X-Request-Id", requestId);
       sendJson(response, getErrorStatus(error), serializeApiError(error, requestId));

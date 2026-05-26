@@ -15,6 +15,9 @@ export type RouteRequest = {
 export type RouteResponse = {
   status: number;
   body: unknown;
+} | {
+  status: 200;
+  sse: AsyncIterable<{ event: string; data: unknown }>;
 };
 
 export type RouteHandler = (request: RouteRequest) => Promise<RouteResponse>;
@@ -23,6 +26,7 @@ type RouteEntry = {
   method: HttpMethod;
   pattern: string;
   segments: string[];
+  staticCount: number;
   handler: RouteHandler;
 };
 
@@ -65,7 +69,7 @@ function matchRoute(entry: RouteEntry, request: RouteRequest) {
   return params;
 }
 
-function compareRoutePrecedence(left: RouteEntry, right: RouteEntry) {
+function compareEqualStaticCountPrecedence(left: RouteEntry, right: RouteEntry) {
   for (let index = 0; index < left.segments.length; index += 1) {
     const leftIsDynamic = left.segments[index].startsWith(":");
     const rightIsDynamic = right.segments[index].startsWith(":");
@@ -81,7 +85,9 @@ export function createRouter() {
   const routes: RouteEntry[] = [];
 
   function add(method: HttpMethod, path: string, handler: RouteHandler) {
-    routes.push({ method, pattern: path, segments: splitPath(path), handler });
+    const segments = splitPath(path);
+    const staticCount = segments.filter((segment) => !segment.startsWith(":")).length;
+    routes.push({ method, pattern: path, segments, staticCount, handler });
   }
 
   return {
@@ -94,7 +100,7 @@ export function createRouter() {
       const matchingRoutes = routes
         .map((route) => ({ route, params: matchRoute(route, request) }))
         .filter((match): match is { route: RouteEntry; params: Record<string, string> } => match.params !== undefined)
-        .sort((left, right) => compareRoutePrecedence(left.route, right.route));
+        .sort((left, right) => right.route.staticCount - left.route.staticCount || compareEqualStaticCountPrecedence(left.route, right.route));
       const match = matchingRoutes[0];
       if (!match) {
         throw new ApiError("NOT_FOUND", "Route not found.", 404, { path: request.path });
