@@ -39,6 +39,22 @@ describe("parseLogText", () => {
     expect(result.entries.map((entry) => entry.lineNumber)).toEqual([1, 3]);
   });
 
+  it("extracts space-separated timestamps and trims the message", () => {
+    const result = parseLogText({
+      fileName: "sample.log",
+      content: Buffer.from("2026-05-25 10:03:12 WARN retry=1\n", "utf8")
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.entries[0]).toMatchObject({
+      timestamp: "2026-05-25 10:03:12",
+      message: "WARN retry=1",
+      severity: "warn",
+      tokens: { retry: "1" }
+    });
+  });
+
   it("accepts .csv and .txt files", () => {
     const txt = parseLogText({ fileName: "events.txt", content: Buffer.from("INFO ok", "utf8") });
     const csv = parseLogText({ fileName: "events.csv", content: Buffer.from("level,message\nERROR,bad", "utf8") });

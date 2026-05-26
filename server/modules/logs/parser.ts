@@ -23,7 +23,7 @@ export type ParseResult =
   | { ok: false; reason: string };
 
 const supportedExtensions = new Set<string>(supportedLogExtensions);
-const isoishTimestampPattern = /^\d{4}-\d{2}-\d{2}[T ][^\s]+/;
+const isoishTimestampPattern = /^\d{4}-\d{2}-\d{2}(?:T[^\s]+| \d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)/;
 const keyValuePattern = /(?:^|\s)([A-Za-z_][A-Za-z0-9_.-]*)=("[^"]*"|'[^']*'|\S+)/g;
 
 export function parseLogText(input: ParseLogTextInput): ParseResult {
@@ -79,8 +79,8 @@ function decodeUtf8Bytes(bytes: Buffer): { ok: true; text: string } | { ok: fals
 }
 
 function parseLine(line: string, lineNumber: number): ParsedLogEntry {
-  const parts = line.split(/\s+/);
-  const timestamp = isoishTimestampPattern.test(parts[0] ?? "") ? parts[0] : undefined;
+  const timestampMatch = line.match(isoishTimestampPattern);
+  const timestamp = timestampMatch?.[0];
   const messageStart = timestamp ? line.slice(timestamp.length).trimStart() : line;
 
   return {

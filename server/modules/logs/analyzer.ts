@@ -59,7 +59,7 @@ const rules: Rule[] = [
   },
   {
     id: "charge-current-reduction",
-    patterns: [/current reduced/i, /foldback/i],
+    patterns: [/current reduced/i, /reduced current/i, /charge current reduced/i],
     stageId: "pattern",
     inference: "Requested charge current was reduced by the controller.",
     suggestedAction: "Compare requested and delivered current around the event window.",

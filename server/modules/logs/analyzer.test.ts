@@ -65,6 +65,23 @@ describe("createRuleBasedLogAnalyzer", () => {
     );
   });
 
+  it("does not report charge-current reduction for generic foldback lines", async () => {
+    const parsed = parseLogText({
+      fileName: "foldback.log",
+      content: Buffer.from("WARN controller entered foldback mode reason=policy\n", "utf8")
+    });
+    if (!parsed.ok) throw new Error(parsed.reason);
+
+    const report = await createRuleBasedLogAnalyzer().analyze({ parsed });
+
+    expect(report.evidence).toEqual(
+      expect.arrayContaining([expect.objectContaining({ ruleHit: "thermal-foldback", lineNumbers: [1] })])
+    );
+    expect(report.evidence).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ ruleHit: "charge-current-reduction" })])
+    );
+  });
+
   it("reports charge-current reduction when requested and delivered current differ", async () => {
     const parsed = parseLogText({
       fileName: "current-reduction.log",
