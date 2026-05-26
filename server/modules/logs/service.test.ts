@@ -402,7 +402,9 @@ describe("log service", () => {
     });
 
     expect(txCalls.some((call) => call.text.includes("insert into log_feedback"))).toBe(true);
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-feedback");
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall?.values).toContain("log-feedback");
+    expect(auditCall?.values).toContain("project-1");
   });
 
   it("rerun requires logs:analyze or admin, creates a new run and job, and keeps old run history", async () => {

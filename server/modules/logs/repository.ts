@@ -540,6 +540,7 @@ export async function completeRun(
         updated_at = now()
       where organization_id = $1
         and id = $2
+        and log_record_id = $3
       `,
       [input.organizationId, input.runId, input.logId, input.currentStage ?? "report"]
     );
@@ -572,6 +573,7 @@ export async function failRun(
         updated_at = now()
       where organization_id = $1
         and id = $2
+        and log_record_id = $3
       `,
       [input.organizationId, input.runId, input.logId, input.currentStage ?? "parse", input.error]
     );

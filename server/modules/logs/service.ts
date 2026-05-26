@@ -428,6 +428,7 @@ export async function submitLogFeedback(db: Database, auth: AuthContext, input: 
     await createLogAudit(tx, auth, {
       kind: "log-feedback",
       action: "feedback",
+      projectId: log.projectId,
       logId: input.logId,
       severity: "Low",
       metadata: { rating: input.rating, note: input.note }

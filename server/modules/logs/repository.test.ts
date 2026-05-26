@@ -292,6 +292,8 @@ describe("log repository", () => {
 
     expect(transactions).toHaveLength(1);
     expect(txCalls[0].text).toContain("update log_analysis_runs");
+    expect(txCalls[0].text).toContain("log_record_id = $3");
+    expect(txCalls[0].values).toEqual(["org-1", "run-old", "log-1", "report"]);
     expect(txCalls[1].text).toContain("update log_records");
     expect(txCalls[1].text).toContain("current_run_id = $3");
     expect(txCalls[1].values).toEqual(["org-1", "log-1", "run-old"]);
@@ -309,6 +311,8 @@ describe("log repository", () => {
 
     expect(transactions).toHaveLength(1);
     expect(txCalls[0].text).toContain("update log_analysis_runs");
+    expect(txCalls[0].text).toContain("log_record_id = $3");
+    expect(txCalls[0].values).toEqual(["org-1", "run-old", "log-1", "parse", "Parser failed."]);
     expect(txCalls[1].text).toContain("update log_records");
     expect(txCalls[1].text).toContain("current_run_id = $3");
     expect(txCalls[1].values).toEqual(["org-1", "log-1", "run-old", "Parser failed."]);
