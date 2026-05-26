@@ -71,6 +71,15 @@ export async function processNextLogAnalysisJob({
       : "Unable to load log analysis job target.";
 
     if (jobSnapshot) {
+      await updateRunStageProgress(db, {
+        organizationId: jobSnapshot.organizationId,
+        runId: jobSnapshot.runId,
+        status: "failed",
+        stageStatus: "failed",
+        stage: jobSnapshot.currentStage,
+        progress: jobSnapshot.progress,
+        message: staleReason
+      });
       await failRun(db, {
         organizationId: jobSnapshot.organizationId,
         logId: jobSnapshot.logId,

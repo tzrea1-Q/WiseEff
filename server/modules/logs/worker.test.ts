@@ -160,6 +160,14 @@ function createFakeWorkerDb(fixture = createFixture()) {
         return {
           rows: [
             {
+              id: fixture.job.id,
+              kind: fixture.job.kind,
+              target_id: fixture.job.target_id,
+              status: fixture.job.status,
+              progress: fixture.job.progress,
+              current_stage: fixture.job.current_stage,
+              error_message: fixture.job.error_message,
+              updated_at: fixture.job.updated_at,
               job_id: fixture.job.id,
               organization_id: fixture.job.organization_id,
               run_id: fixture.run.id,
@@ -399,6 +407,14 @@ describe("log worker", () => {
     expect(fixture.job.status).toBe("failed");
     expect(fixture.job.error_message).toBe("Log analysis job is stale because its run is no longer current.");
     expect(fixture.log.current_run_id).toBe("run-2");
+    expect(fixture.stages).toEqual([
+      {
+        stage: "parse",
+        status: "failed",
+        progress: 0,
+        message: "Log analysis job is stale because its run is no longer current."
+      }
+    ]);
   });
 
   it("runs at most one job per tick and stops after cleanup", async () => {
