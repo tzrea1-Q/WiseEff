@@ -150,7 +150,7 @@ export function PageRouter({
     case "logs":
       return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
     case "log-admin":
-      return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "debugging":
       return <DebuggingPage state={state} dispatch={dispatch} />;
     case "node-debugging":

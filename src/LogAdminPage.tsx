@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
+import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "./App";
 
 export type LogAdminPageProps = {
@@ -20,6 +21,7 @@ export type LogAdminPageProps = {
   dispatch: React.Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  logActions?: LogRuntimeActions;
 };
 
 const statusLabels: Record<LogStatus, string> = {
@@ -65,7 +67,7 @@ function writeInsightDismissed(): void {
   }
 }
 
-export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: LogAdminPageProps) {
+export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions: _logActions }: LogAdminPageProps) {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
