@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
-import { processNextLogAnalysisJob } from "./worker";
+import { processNextLogAnalysisJob, startLogWorkerLoop } from "./worker";
 
 type JobRow = {
   id: string;
@@ -125,13 +125,36 @@ function createFakeWorkerDb(fixture = createFixture()) {
 
   const queryable: Queryable = {
     async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
-      calls.push(text);
       const normalized = text.replace(/\s+/g, " ").trim();
+      calls.push(normalized);
 
       if (normalized.startsWith("update jobs set status = 'processing'")) {
         if (fixture.job.status !== "queued") return { rows: [], rowCount: 0 };
         fixture.job.status = "processing";
         return { rows: [fixture.job as Row], rowCount: 1 };
+      }
+      if (normalized.startsWith("select") && normalized.includes("from jobs job") && normalized.includes("inner join log_records")) {
+        if (fixture.log.current_run_id !== fixture.run.id) {
+          return { rows: [], rowCount: 0 };
+        }
+        return {
+          rows: [
+            {
+              job_id: fixture.job.id,
+              organization_id: fixture.job.organization_id,
+              run_id: fixture.run.id,
+              log_id: fixture.log.id,
+              file_object_id: fixture.log.file_object_id,
+              file_name: fixture.log.file_name,
+              storage_key: fixture.file.storage_key,
+              analysis_question: fixture.log.analysis_question,
+              job_status: fixture.job.status,
+              run_status: fixture.run.status,
+              record_status: fixture.log.status
+            } as Row
+          ],
+          rowCount: 1
+        };
       }
       if (normalized.startsWith("select") && normalized.includes("from jobs job") && normalized.includes("inner join log_analysis_runs")) {
         return {
@@ -275,7 +298,8 @@ describe("log worker", () => {
       ["pattern", "complete", 55],
       ["rootcause", "processing", 65],
       ["rootcause", "complete", 80],
-      ["report", "processing", 90]
+      ["report", "processing", 90],
+      ["report", "complete", 100]
     ]);
   });
 
@@ -287,6 +311,7 @@ describe("log worker", () => {
     expect(fixture.job).toMatchObject({ status: "complete", progress: 100, current_stage: "report" });
     expect(fixture.run).toMatchObject({ status: "complete", progress: 100, current_stage: "report" });
     expect(fixture.log).toMatchObject({ status: "complete" });
+    expect(fixture.stages.at(-1)).toMatchObject({ stage: "report", status: "complete", progress: 100 });
   });
 
   it("persists report and evidence rows with stable line numbers", async () => {
@@ -331,6 +356,12 @@ describe("log worker", () => {
       status: "failed",
       failure_reason: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log."
     });
+    expect(fixture.stages.at(-1)).toMatchObject({
+      stage: "parse",
+      status: "failed",
+      progress: 10,
+      message: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log."
+    });
   });
 
   it("does not duplicate evidence when the worker runs again after completion", async () => {
@@ -343,5 +374,67 @@ describe("log worker", () => {
 
     expect(secondResult).toBe("idle");
     expect(fixture.evidence).toEqual(evidenceAfterFirstRun);
+  });
+
+  it("fails a stale queued run when the job is no longer current", async () => {
+    const fixture = createFixture({
+      log: {
+        id: "log-1",
+        organization_id: "org-1",
+        project_id: "project-1",
+        file_object_id: "file-1",
+        file_name: "pack-controller.log",
+        status: "processing",
+        current_run_id: "run-2",
+        analysis_question: "Why was current reduced?",
+        failure_reason: null
+      }
+    });
+    const { db } = createFakeWorkerDb(fixture);
+
+    const result = await processNextLogAnalysisJob({ db, objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")) });
+
+    expect(result).toBe("processed");
+    expect(fixture.run.status).toBe("failed");
+    expect(fixture.job.status).toBe("failed");
+    expect(fixture.job.error_message).toBe("Log analysis job is stale because its run is no longer current.");
+    expect(fixture.log.current_run_id).toBe("run-2");
+  });
+
+  it("runs at most one job per tick and stops after cleanup", async () => {
+    vi.useFakeTimers();
+    try {
+      let releaseParse = () => {};
+      const parseGate = new Promise<void>((resolve) => {
+        releaseParse = resolve;
+      });
+      const objectStore: ObjectStore = {
+        async put() {
+          throw new Error("put is not used by the worker");
+        },
+        async get() {
+          await parseGate;
+          return Buffer.from("WARN thermal foldback\n");
+        }
+      };
+      const { db, calls } = createFakeWorkerDb();
+
+      const stop = startLogWorkerLoop({ db, objectStore }, 10);
+
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(50);
+      const claimCountWhileBlocked = calls.filter((call) => call.includes("update jobs set status = 'processing'")).length;
+      expect(claimCountWhileBlocked).toBe(1);
+
+      stop();
+      releaseParse();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(50);
+
+      const claimCountAfterCleanup = calls.filter((call) => call.includes("update jobs set status = 'processing'")).length;
+      expect(claimCountAfterCleanup).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

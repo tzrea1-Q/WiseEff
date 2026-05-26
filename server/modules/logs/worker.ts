@@ -1,4 +1,4 @@
-import { claimNextJob, completeJob, failJob, updateJobProgress } from "../jobs/repository";
+import { claimNextJob, completeJob, failJob, getJobSnapshot, updateJobProgress } from "../jobs/repository";
 import type { Database } from "../../shared/database/client";
 import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
@@ -6,7 +6,7 @@ import { parseLogText } from "./parser";
 import {
   completeRun,
   failRun,
-  getLogWorkerRunSnapshot,
+  getLogWorkerRunSnapshot as getActiveLogWorkerRunSnapshot,
   persistLogAnalysisReport,
   updateRunStageProgress
 } from "./repository";
@@ -62,19 +62,34 @@ export async function processNextLogAnalysisJob({
   if (!job) return "idle";
 
   const options = { db, objectStore, analyzer };
-  const snapshot = await getLogWorkerRunSnapshot(db, job.id);
+  const jobSnapshot = await getJobSnapshot(db, job.id);
+  const snapshot = await getActiveLogWorkerRunSnapshot(db, job.id);
 
   if (!snapshot) {
+    const staleReason = jobSnapshot
+      ? "Log analysis job is stale because its run is no longer current."
+      : "Unable to load log analysis job target.";
+
+    if (jobSnapshot) {
+      await failRun(db, {
+        organizationId: jobSnapshot.organizationId,
+        logId: jobSnapshot.logId,
+        runId: jobSnapshot.runId,
+        currentStage: jobSnapshot.currentStage,
+        error: staleReason
+      });
+    }
     await failJob(db, {
       organizationId: job.organizationId,
       jobId: job.id,
       currentStage: "parse",
-      error: "Unable to load log analysis job target."
+      error: staleReason
     });
     return "processed";
   }
 
   let currentStage: LogStage = "parse";
+  let currentProgress = 0;
 
   try {
     await markProgress(options, {
@@ -86,6 +101,7 @@ export async function processNextLogAnalysisJob({
       progress: 10,
       message: "Reading and parsing the uploaded log."
     });
+    currentProgress = 10;
 
     const bytes = await objectStore.get(snapshot.storageKey);
     const parsed = parseLogText({ fileName: snapshot.fileName, content: bytes });
@@ -102,6 +118,7 @@ export async function processNextLogAnalysisJob({
       progress: 30,
       message: "Log parsing complete."
     });
+    currentProgress = 30;
 
     currentStage = "pattern";
     await markProgress(options, {
@@ -113,6 +130,7 @@ export async function processNextLogAnalysisJob({
       progress: 40,
       message: "Finding known operational patterns."
     });
+    currentProgress = 40;
 
     const analysis = await analyzer.analyze({
       parsed,
@@ -128,6 +146,7 @@ export async function processNextLogAnalysisJob({
       progress: 55,
       message: "Pattern analysis complete."
     });
+    currentProgress = 55;
 
     currentStage = "rootcause";
     await markProgress(options, {
@@ -139,6 +158,7 @@ export async function processNextLogAnalysisJob({
       progress: 65,
       message: "Linking evidence to likely root causes."
     });
+    currentProgress = 65;
 
     await markProgress(options, {
       organizationId: snapshot.organizationId,
@@ -149,6 +169,7 @@ export async function processNextLogAnalysisJob({
       progress: 80,
       message: "Root cause evidence prepared."
     });
+    currentProgress = 80;
 
     currentStage = "report";
     await markProgress(options, {
@@ -160,6 +181,7 @@ export async function processNextLogAnalysisJob({
       progress: 90,
       message: "Writing report and evidence."
     });
+    currentProgress = 90;
 
     await persistLogAnalysisReport(db, {
       organizationId: snapshot.organizationId,
@@ -174,6 +196,22 @@ export async function processNextLogAnalysisJob({
         rawLines: parsed.rawLines
       },
       evidence: analysis.evidence
+    });
+
+    await updateRunStageProgress(options.db, {
+      organizationId: snapshot.organizationId,
+      runId: snapshot.runId,
+      status: "complete",
+      stageStatus: "complete",
+      stage: "report",
+      progress: 100,
+      message: "Report generation complete."
+    });
+    await updateJobProgress(options.db, {
+      organizationId: snapshot.organizationId,
+      jobId: snapshot.jobId,
+      progress: 100,
+      currentStage: "report"
     });
 
     await completeRun(db, {
@@ -191,6 +229,15 @@ export async function processNextLogAnalysisJob({
     return "processed";
   } catch (error) {
     const message = readableError(error);
+    await updateRunStageProgress(options.db, {
+      organizationId: snapshot.organizationId,
+      runId: snapshot.runId,
+      status: "failed",
+      stageStatus: "failed",
+      stage: currentStage,
+      progress: currentProgress,
+      message
+    });
     await failRun(db, {
       organizationId: snapshot.organizationId,
       logId: snapshot.logId,
@@ -215,9 +262,13 @@ export function startLogWorkerLoop(options: ProcessLogWorkerOptions, intervalMs 
   const tick = () => {
     if (stopped || running) return;
     running = true;
-    void processNextLogAnalysisJob(options).finally(() => {
-      running = false;
-    });
+    void processNextLogAnalysisJob(options)
+      .catch(() => {
+        // Intentionally swallow unexpected loop-level failures after they have been surfaced by the worker tests.
+      })
+      .finally(() => {
+        running = false;
+      });
   };
 
   const interval = setInterval(tick, intervalMs);
