@@ -240,6 +240,31 @@ export type AppAction =
   | { type: "LOG_ADMIN_EXPORT_REPORT"; timeWindow: TimeWindow }
   | { type: "OPEN_AGENT_WITH_PRESET"; preset: string };
 
+function updateArchivedLogIdsForLog(archivedLogIds: string[], log: LogRecord): string[] {
+  if (log.archiveState === "archived") {
+    return archivedLogIds.includes(log.id) ? archivedLogIds : [...archivedLogIds, log.id];
+  }
+
+  if (log.archiveState === "active") {
+    return archivedLogIds.filter((id) => id !== log.id);
+  }
+
+  return archivedLogIds;
+}
+
+function archivedLogIdsFromHydratedLogs(archivedLogIds: string[], logs: LogRecord[]): string[] {
+  const hydratedIds = new Set(logs.map((log) => log.id));
+  const next = archivedLogIds.filter((id) => !hydratedIds.has(id));
+
+  for (const log of logs) {
+    if (log.archiveState === "archived" && !next.includes(log.id)) {
+      next.push(log.id);
+    }
+  }
+
+  return next;
+}
+
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
   { value: "7d", label: "7天" },
   { value: "30d", label: "30天" },
@@ -984,20 +1009,24 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "HYDRATE_LOG_RUNTIME":
       return {
         ...state,
-        logs: action.logs
+        logs: action.logs,
+        archivedLogIds: archivedLogIdsFromHydratedLogs(state.archivedLogIds, action.logs)
       };
     case "UPSERT_LOG_RECORD": {
       const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
+      const archivedLogIds = updateArchivedLogIdsForLog(state.archivedLogIds, action.log);
       if (existingIndex === -1) {
         return {
           ...state,
-          logs: [action.log, ...state.logs]
+          logs: [action.log, ...state.logs],
+          archivedLogIds
         };
       }
 
       return {
         ...state,
-        logs: state.logs.map((log) => (log.id === action.log.id ? action.log : log))
+        logs: state.logs.map((log) => (log.id === action.log.id ? action.log : log)),
+        archivedLogIds
       };
     }
     case "LOG_JOB_PROGRESS":
@@ -1789,7 +1818,12 @@ function AppShell({
           return;
         }
         if (logRefreshResult.status === "rejected") {
-          if (!(logRefreshResult.reason instanceof Error && "alreadyNotified" in logRefreshResult.reason)) {
+          if (
+            !(
+              logRefreshResult.reason instanceof Error &&
+              (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
+            )
+          ) {
             dispatch({ type: "ADD_NOTIFICATION", message: "无法加载 WiseEff 日志 API，已保留本地演示数据" });
           }
         } else if (!logRuntimeConnectedRef.current) {

@@ -47,9 +47,16 @@ describe("log http dto mappers", () => {
     expect(logRecordFromDto(baseLogDto)).toMatchObject({
       id: "log-1",
       status: "Complete",
+      archiveState: "active",
       fileSizeMB: 1.5,
       updatedAtIso: "2026-05-25T02:05:00.000Z"
     });
+  });
+
+  it("maps archived backend logs to frontend archiveState", () => {
+    const archived = logRecordFromDto({ ...baseLogDto, archiveState: "archived" });
+
+    expect(archived.archiveState).toBe("archived");
   });
 
   it("maps backend failed status to frontend Failed and keeps failureReason", () => {

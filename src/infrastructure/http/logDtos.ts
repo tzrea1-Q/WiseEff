@@ -69,7 +69,8 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     relatedParameterId: dto.relatedParameterId,
     device: dto.device,
     failureReason: dto.failureReason,
-    analysisQuestion: dto.analysisQuestion
+    analysisQuestion: dto.analysisQuestion,
+    archiveState: dto.archiveState
   };
 }
 

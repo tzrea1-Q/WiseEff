@@ -244,6 +244,18 @@ describe("createLogRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 
+  it("does not treat alreadyNotified false as a handled runtime failure", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      uploadLog: vi.fn().mockRejectedValue(Object.assign(new Error("upload unavailable"), { alreadyNotified: false }))
+    });
+    const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+
+    await expect(actions.upload({ projectId: "api-project", file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+  });
+
   it("uses default active-log refresh after unarchive instead of including archived logs", async () => {
     const dispatch = vi.fn();
     const activeLogs = [{ ...apiLog, reportId: "RPT-ACTIVE" }];

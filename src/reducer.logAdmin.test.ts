@@ -4,6 +4,34 @@ import { createPrototypeState } from "./mockData";
 
 const createLogAdminState = () => ({ ...createPrototypeState(), activeRoleId: "admin" });
 
+describe("reducer log runtime archive state", () => {
+  it("derives archivedLogIds from hydrated api logs while preserving ids outside the payload", () => {
+    const state = createLogAdminState();
+    const existingArchivedId = state.logs[0].id;
+    const activeApiLog = { ...state.logs[1], id: "api-log-active", archiveState: "active" as const };
+    const archivedApiLog = { ...state.logs[2], id: "api-log-archived", archiveState: "archived" as const };
+    const next = reducer(
+      { ...state, archivedLogIds: [existingArchivedId] },
+      { type: "HYDRATE_LOG_RUNTIME", logs: [activeApiLog, archivedApiLog] }
+    );
+
+    expect(next.archivedLogIds).toContain(existingArchivedId);
+    expect(next.archivedLogIds).toContain(archivedApiLog.id);
+    expect(next.archivedLogIds).not.toContain(activeApiLog.id);
+  });
+
+  it("updates archivedLogIds when api upserts archived and active logs", () => {
+    const state = createLogAdminState();
+    const archivedApiLog = { ...state.logs[0], id: "api-log-archived", archiveState: "archived" as const };
+    const activeApiLog = { ...archivedApiLog, archiveState: "active" as const };
+    const archived = reducer(state, { type: "UPSERT_LOG_RECORD", log: archivedApiLog });
+    const active = reducer(archived, { type: "UPSERT_LOG_RECORD", log: activeApiLog });
+
+    expect(archived.archivedLogIds).toContain(archivedApiLog.id);
+    expect(active.archivedLogIds).not.toContain(archivedApiLog.id);
+  });
+});
+
 describe("reducer · LOG_ADMIN_REANALYZE_LOG", () => {
   it("sets log.status to Processing and stage to 日志解析", () => {
     const state = createLogAdminState();

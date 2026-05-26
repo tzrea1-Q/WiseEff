@@ -75,7 +75,7 @@ function notifyFailure(dispatch: LogRuntimeOptions["dispatch"]): LogRuntimeNotif
 }
 
 function isAlreadyNotified(error: unknown): error is LogRuntimeNotifiedFailure {
-  return error instanceof Error && "alreadyNotified" in error;
+  return error instanceof Error && (error as { alreadyNotified?: unknown }).alreadyNotified === true;
 }
 
 function delay(ms: number) {

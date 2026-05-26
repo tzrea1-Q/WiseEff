@@ -74,7 +74,7 @@ function pendingKey(kind: PendingLogAction, logId: string): string {
 }
 
 function runtimeAlreadyNotified(error: unknown): boolean {
-  return error instanceof Error && "alreadyNotified" in error;
+  return error instanceof Error && (error as { alreadyNotified?: unknown }).alreadyNotified === true;
 }
 
 export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions }: LogAdminPageProps) {
@@ -443,6 +443,8 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         }}
         onSubmitHelpfulFeedback={(id) => {
           if (!logActions) {
+            const log = state.logs.find((item) => item.id === id);
+            dispatch({ type: "ADD_NOTIFICATION", message: log ? `${log.fileName} 反馈已记录` : "日志反馈已记录" });
             return;
           }
 

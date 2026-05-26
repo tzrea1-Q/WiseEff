@@ -349,6 +349,16 @@ describe("LogAdminPage · row click + drawer actions", () => {
     expect(logActions.submitFeedback).toHaveBeenCalledWith({ logId: "log-active", rating: "helpful" });
   });
 
+  it("dispatches a feedback notification from the drawer without runtime actions", async () => {
+    const { dispatch } = renderPage();
+    const row = getLogRow(/charging_thermal_trace/);
+
+    await userEvent.click(row);
+    await userEvent.click(screen.getByRole("button", { name: "有帮助" }));
+
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_NOTIFICATION" }));
+  });
+
   it("disables drawer action buttons for non-admin roles", async () => {
     const state = createPrototypeState();
     const viewerState = { ...state, activeRoleId: "hardware" };

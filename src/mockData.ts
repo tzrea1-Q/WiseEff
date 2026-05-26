@@ -65,6 +65,7 @@ export type RequestStatus =
 export type LogStageId = "parse" | "pattern" | "rootcause" | "report";
 export type LogStatus = "Processing" | "Complete" | "Failed";
 export type LogSeverity = "Critical" | "Warning" | "Info";
+export type LogArchiveState = "active" | "archived";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
 export type LogAdminRole = "Admin" | "Editor" | "Viewer";
 export type LogAdminUserAvatarTone = "blue" | "teal" | "violet" | "slate";
@@ -211,6 +212,7 @@ export type LogRecord = {
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;
+  archiveState?: LogArchiveState;
 };
 
 export type Device = {
