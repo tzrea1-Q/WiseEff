@@ -1,7 +1,8 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { getContextQuery } from "./App";
+import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
@@ -95,6 +96,13 @@ function renderApiLogs(repository = createLogRepository()) {
   return repository;
 }
 
+async function waitForApiRuntime(repository: LogAnalysisRepository) {
+  await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
@@ -112,6 +120,25 @@ describe("LogsPage api rerun wiring", () => {
       logId: "log-auth",
       analysisQuestion: completeLog.analysisQuestion
     });
+  });
+
+  it("absorbs handled runtime failures when api rerun rejects", async () => {
+    const repository = renderApiLogs(createLogRepository({ rerunLog: vi.fn().mockRejectedValue(new Error("boom")) }));
+    await waitForApiRuntime(repository);
+
+    const history = document.querySelector(".logs-aux-panel") as HTMLElement;
+    fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
+    await act(async () => {
+      fireEvent.click(document.querySelector(".logs-conclusion-actions .button.danger") as HTMLButtonElement);
+      await Promise.resolve();
+    });
+
+    expect(repository.rerunLog).toHaveBeenCalledWith({
+      logId: "log-auth",
+      analysisQuestion: completeLog.analysisQuestion
+    });
+    await waitFor(() => expect(document.body).toHaveTextContent(logRuntimeFailureNotification));
+    expect(screen.getByRole("main")).toBeInTheDocument();
   });
 });
 

@@ -3877,7 +3877,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       return;
     }
 
-    void logActions.rerun({ logId: activeLog.id, analysisQuestion: activeLog.analysisQuestion });
+    void logActions.rerun({ logId: activeLog.id, analysisQuestion: activeLog.analysisQuestion }).catch(() => undefined);
   }, [activeLog.analysisQuestion, activeLog.id, logActions]);
 
   return (
@@ -4043,7 +4043,7 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void onUpload(files[i], isSupportedLogFile(files[i].name), question);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question)).catch(() => undefined);
       }
       return;
     }
@@ -4057,7 +4057,7 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        void onUpload(files[i], isSupportedLogFile(files[i].name), question);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question)).catch(() => undefined);
       }
       return;
     }

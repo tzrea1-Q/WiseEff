@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { reducer } from "./App";
@@ -83,6 +83,13 @@ function renderApiLogs(repository = createLogRepository()) {
     />
   );
   return repository;
+}
+
+async function waitForApiRuntime(repository: LogAnalysisRepository) {
+  await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
+  await act(async () => {
+    await Promise.resolve();
+  });
 }
 
 function openUploadDialog() {
@@ -241,6 +248,24 @@ describe("LogsPage api upload wiring", () => {
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(document.body).toHaveTextContent(logRuntimeFailureNotification);
+  });
+
+  it("absorbs handled runtime failures when multiple selected files include a rejected upload", async () => {
+    const uploadLog = vi.fn().mockRejectedValue(new Error("boom"));
+    const repository = renderApiLogs(createLogRepository({ uploadLog }));
+    const first = new File(["line"], "first.log", { type: "text/plain" });
+    const second = new File(["line"], "second.log", { type: "text/plain" });
+
+    openUploadDialog();
+    await waitForApiRuntime(repository);
+    await act(async () => {
+      fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [first, second] } });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(document.body).toHaveTextContent(logRuntimeFailureNotification));
+    expect(repository.uploadLog).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("does not close the dialog from stale pending upload state after upload rejects", async () => {
