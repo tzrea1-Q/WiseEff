@@ -95,6 +95,35 @@ describe("createRuleBasedLogAnalyzer", () => {
     );
   });
 
+  it("extracts machine-readable error codes with stable evidence lines", async () => {
+    const parsed = parseLogText({
+      fileName: "error-codes.log",
+      content: Buffer.from(
+        [
+          "INFO controller started",
+          "ERROR code=E_TIMEOUT module=modem detail=\"request timed out\"",
+          "WARN retry=1",
+          "ERROR code=DEVICE_UNAVAILABLE device offline"
+        ].join("\n"),
+        "utf8"
+      )
+    });
+    if (!parsed.ok) throw new Error(parsed.reason);
+
+    const report = await createRuleBasedLogAnalyzer().analyze({ parsed });
+
+    expect(report.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ruleHit: "error-code",
+          lineNumbers: [2, 4],
+          inference: expect.stringMatching(/error code/i),
+          suggestedAction: expect.stringMatching(/error code/i)
+        })
+      ])
+    );
+  });
+
   it("reports no findings with low confidence and a collect-more-context action", async () => {
     const parsed = parseLogText({
       fileName: "quiet.csv",
