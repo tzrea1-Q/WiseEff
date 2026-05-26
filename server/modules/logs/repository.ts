@@ -257,6 +257,27 @@ export async function createFileObject(
   return toFileObjectDto(result.rows[0]);
 }
 
+export async function getFileObjectById(
+  db: Queryable,
+  query: {
+    organizationId: string;
+    fileObjectId: string;
+  }
+) {
+  const result = await db.query<LogFileObjectRow>(
+    `
+    select *
+    from log_file_objects
+    where organization_id = $1
+      and id = $2
+    limit 1
+    `,
+    [query.organizationId, query.fileObjectId]
+  );
+
+  return result.rows[0] ? toFileObjectDto(result.rows[0]) : null;
+}
+
 export async function createLogRecordWithRunAndJob(db: Database, input: CreateLogRecordWithRunAndJobInput) {
   return db.transaction(async (tx) => {
     await tx.query<LogRecordRow>(
@@ -400,13 +421,22 @@ export async function markUnsupportedLog(
 export async function listLogs(
   db: Queryable,
   auth: AuthContext,
-  query: { projectId?: string; status?: LogRecordStatus; timeWindow?: "today" | "7d" | "30d"; includeArchived?: boolean }
+  query: {
+    projectId?: string;
+    status?: LogRecordStatus;
+    timeWindow?: "today" | "7d" | "30d";
+    includeArchived?: boolean;
+    allowedProjectIds?: string[] | null;
+  }
 ) {
   const values: unknown[] = [auth.organization.id];
   const where = ["lr.organization_id = $1"];
 
   if (!query.includeArchived) {
     where.push("lr.archive_state = 'active'");
+  }
+  if (query.allowedProjectIds !== undefined && query.allowedProjectIds !== null) {
+    addCondition(where, values, (placeholder) => `lr.project_id = any(${placeholder}::text[])`, query.allowedProjectIds);
   }
   if (query.projectId) {
     addCondition(where, values, (placeholder) => `lr.project_id = ${placeholder}`, query.projectId);
@@ -496,62 +526,68 @@ export async function updateRunProgress(
 }
 
 export async function completeRun(
-  db: Queryable,
+  db: Database,
   input: { organizationId: string; logId: string; runId: string; currentStage?: LogStage }
 ) {
-  await db.query(
-    `
-    update log_analysis_runs
-    set status = 'complete',
-      current_stage = $4,
-      progress = 100,
-      completed_at = now(),
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-    `,
-    [input.organizationId, input.runId, input.logId, input.currentStage ?? "report"]
-  );
-  await db.query(
-    `
-    update log_records
-    set status = 'complete',
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-    `,
-    [input.organizationId, input.logId]
-  );
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `
+      update log_analysis_runs
+      set status = 'complete',
+        current_stage = $4,
+        progress = 100,
+        completed_at = now(),
+        updated_at = now()
+      where organization_id = $1
+        and id = $2
+      `,
+      [input.organizationId, input.runId, input.logId, input.currentStage ?? "report"]
+    );
+    await tx.query(
+      `
+      update log_records
+      set status = 'complete',
+        updated_at = now()
+      where organization_id = $1
+        and id = $2
+        and current_run_id = $3
+      `,
+      [input.organizationId, input.logId, input.runId]
+    );
+  });
 }
 
 export async function failRun(
-  db: Queryable,
+  db: Database,
   input: { organizationId: string; logId: string; runId: string; currentStage?: LogStage; error: string }
 ) {
-  await db.query(
-    `
-    update log_analysis_runs
-    set status = 'failed',
-      current_stage = $4,
-      error_message = $5,
-      completed_at = now(),
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-    `,
-    [input.organizationId, input.runId, input.logId, input.currentStage ?? "parse", input.error]
-  );
-  await db.query(
-    `
-    update log_records
-    set status = 'failed',
-      failure_reason = $3,
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-    `,
-    [input.organizationId, input.logId, input.error]
-  );
+  await db.transaction(async (tx) => {
+    await tx.query(
+      `
+      update log_analysis_runs
+      set status = 'failed',
+        current_stage = $4,
+        error_message = $5,
+        completed_at = now(),
+        updated_at = now()
+      where organization_id = $1
+        and id = $2
+      `,
+      [input.organizationId, input.runId, input.logId, input.currentStage ?? "parse", input.error]
+    );
+    await tx.query(
+      `
+      update log_records
+      set status = 'failed',
+        failure_reason = $4,
+        updated_at = now()
+      where organization_id = $1
+        and id = $2
+        and current_run_id = $3
+      `,
+      [input.organizationId, input.logId, input.runId, input.error]
+    );
+  });
 }
 
 async function setArchiveState(db: Queryable, auth: AuthContext, logId: string, archiveState: LogArchiveState) {

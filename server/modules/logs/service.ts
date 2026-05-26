@@ -13,6 +13,7 @@ import {
   createFileObject,
   createLogRecordWithRunAndJob,
   createRerunWithJob,
+  getFileObjectById,
   getLogDetail,
   listLogs,
   listRuns,
@@ -21,7 +22,15 @@ import {
   type LogFileObjectDto,
   type LogRunDto
 } from "./repository";
-import { requireLogAnalyze, requireLogArchive, requireLogFeedback, requireLogUpload, requireLogView } from "./policy";
+import {
+  getAllowedLogProjectIds,
+  requireLogAnalyze,
+  requireLogArchive,
+  requireLogFeedback,
+  requireLogProjectAccess,
+  requireLogUpload,
+  requireLogView
+} from "./policy";
 import { supportedLogExtensions } from "./status";
 import type { LogFeedbackRating, LogRecordDto } from "./types";
 
@@ -135,6 +144,7 @@ export async function uploadLogFile(
   input: UploadLogFileInput
 ): Promise<{ log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
+  requireLogProjectAccess(auth, input.projectId);
   const supported = isSupportedLogFile(input.fileName);
   const stored = supported
     ? await objectStore.put({
@@ -211,14 +221,36 @@ export async function uploadLogFile(
 
 export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput) {
   requireLogUpload(auth);
-  if (!isSupportedLogFile(input.fileName)) {
+  requireLogProjectAccess(auth, input.projectId);
+
+  const fileObject = await getFileObjectById(db, {
+    organizationId: auth.organization.id,
+    fileObjectId: input.fileObjectId
+  });
+  if (!fileObject) {
+    throw new ApiError("NOT_FOUND", "File object was not found.", 404, { fileObjectId: input.fileObjectId });
+  }
+  if (fileObject.projectId !== input.projectId) {
+    throw new ApiError("VALIDATION_FAILED", "File object does not belong to the requested project.", 400, {
+      fileObjectId: input.fileObjectId,
+      projectId: input.projectId
+    });
+  }
+  if (input.fileName !== fileObject.fileName) {
+    throw new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.", 400, {
+      fileObjectId: input.fileObjectId,
+      fileName: input.fileName
+    });
+  }
+
+  if (!isSupportedLogFile(fileObject.fileName)) {
     return db.transaction(async (tx) => {
       const log = await markUnsupportedLog(tx, {
         id: randomUUID(),
         organizationId: auth.organization.id,
         projectId: input.projectId,
         fileObjectId: input.fileObjectId,
-        fileName: input.fileName,
+        fileName: fileObject.fileName,
         source: "upload",
         submittedByUserId: auth.user.id,
         failureReason: unsupportedReason(),
@@ -232,7 +264,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         projectId: input.projectId,
         logId: log.id,
         severity: "Low",
-        metadata: { fileName: input.fileName, failureReason: log.failureReason }
+        metadata: { fileName: fileObject.fileName, failureReason: log.failureReason }
       });
       return { log, job: null };
     });
@@ -251,7 +283,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         organizationId: auth.organization.id,
         projectId: input.projectId,
         fileObjectId: input.fileObjectId,
-        fileName: input.fileName,
+        fileName: fileObject.fileName,
         source: "upload",
         submittedByUserId: auth.user.id,
         analysisQuestion: input.analysisQuestion,
@@ -263,7 +295,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
       action: "upload",
       projectId: input.projectId,
       logId: result.log.id,
-      metadata: { fileName: input.fileName, runId: result.job.runId, jobId: result.job.id }
+      metadata: { fileName: fileObject.fileName, runId: result.job.runId, jobId: result.job.id }
     });
     return result;
   });
@@ -271,7 +303,10 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
 
 export async function listLogRecords(db: Queryable, auth: AuthContext, query: ListLogRecordsQuery = {}) {
   requireLogView(auth);
-  return { items: await listLogs(db, auth, query) };
+  if (query.projectId) {
+    requireLogProjectAccess(auth, query.projectId);
+  }
+  return { items: await listLogs(db, auth, { ...query, allowedProjectIds: getAllowedLogProjectIds(auth) }) };
 }
 
 export async function getLogRecord(db: Queryable, auth: AuthContext, logId: string) {
@@ -280,11 +315,13 @@ export async function getLogRecord(db: Queryable, auth: AuthContext, logId: stri
   if (!log) {
     throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
   }
+  requireLogProjectAccess(auth, log.projectId);
   return log;
 }
 
 export async function listLogRuns(db: Queryable, auth: AuthContext, logId: string): Promise<LogRunDto[]> {
   requireLogView(auth);
+  await getLogRecord(db, auth, logId);
   return listRuns(db, auth, logId);
 }
 
@@ -296,6 +333,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
     }
+    requireLogProjectAccess(auth, existing.projectId);
 
     const job = await createRerunWithJob(tx, {
       runId: randomUUID(),
@@ -308,6 +346,7 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
     if (!log) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
     }
+    requireLogProjectAccess(auth, log.projectId);
     await createLogAudit(tx, auth, {
       kind: "log-rerun",
       action: "rerun",
@@ -324,6 +363,11 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
 export async function archiveLogRecord(db: Database, auth: AuthContext, logId: string) {
   requireLogArchive(auth);
   return db.transaction(async (tx) => {
+    const existing = await getLogDetail(tx, auth, logId);
+    if (!existing) {
+      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+    }
+    requireLogProjectAccess(auth, existing.projectId);
     const log = await archiveLog(tx, auth, logId);
     if (!log) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
@@ -342,6 +386,11 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
 export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId: string) {
   requireLogArchive(auth);
   return db.transaction(async (tx) => {
+    const existing = await getLogDetail(tx, auth, logId);
+    if (!existing) {
+      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
+    }
+    requireLogProjectAccess(auth, existing.projectId);
     const log = await unarchiveLog(tx, auth, logId);
     if (!log) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
@@ -360,6 +409,11 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
 export async function submitLogFeedback(db: Database, auth: AuthContext, input: SubmitLogFeedbackInput) {
   requireLogFeedback(auth);
   return db.transaction(async (tx) => {
+    const log = await getLogDetail(tx, auth, input.logId);
+    if (!log) {
+      throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
+    }
+    requireLogProjectAccess(auth, log.projectId);
     await appendFeedback(tx, auth, {
       id: randomUUID(),
       logId: input.logId,

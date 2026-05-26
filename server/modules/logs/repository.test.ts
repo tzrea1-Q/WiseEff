@@ -3,8 +3,11 @@ import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import {
   appendFeedback,
+  completeRun,
   createFileObject,
   createLogRecordWithRunAndJob,
+  failRun,
+  getFileObjectById,
   getLogDetail,
   listLogs,
   listRuns
@@ -249,5 +252,65 @@ describe("log repository", () => {
 
     expect(calls[0].text).toContain("insert into log_feedback");
     expect(calls[0].values).toEqual(["feedback-1", "org-1", "log-1", "user-1", "helpful", "This matched the incident."]);
+  });
+
+  it("loads file objects by organization and id for ownership validation", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "file-1",
+          organization_id: "org-1",
+          project_id: "project-1",
+          storage_key: "org-1/checksum-pack-controller.log",
+          file_name: "pack-controller.log",
+          content_type: "text/plain",
+          file_size_bytes: 2048,
+          checksum_sha256: "checksum",
+          uploaded_by_user_id: "user-1",
+          created_at: "2026-05-25T02:00:00.000Z"
+        }
+      ]
+    ]);
+
+    const fileObject = await getFileObjectById(db, { organizationId: "org-1", fileObjectId: "file-1" });
+
+    expect(calls[0].text).toContain("from log_file_objects");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("id = $2");
+    expect(calls[0].values).toEqual(["org-1", "file-1"]);
+    expect(fileObject).toMatchObject({ id: "file-1", projectId: "project-1", fileName: "pack-controller.log" });
+  });
+
+  it("completeRun is transactional and only updates the log when the run is still current", async () => {
+    const { db, txCalls, transactions } = createFakeDb([[], []]);
+
+    await completeRun(db, {
+      organizationId: "org-1",
+      logId: "log-1",
+      runId: "run-old"
+    });
+
+    expect(transactions).toHaveLength(1);
+    expect(txCalls[0].text).toContain("update log_analysis_runs");
+    expect(txCalls[1].text).toContain("update log_records");
+    expect(txCalls[1].text).toContain("current_run_id = $3");
+    expect(txCalls[1].values).toEqual(["org-1", "log-1", "run-old"]);
+  });
+
+  it("failRun is transactional and only updates the log when the run is still current", async () => {
+    const { db, txCalls, transactions } = createFakeDb([[], []]);
+
+    await failRun(db, {
+      organizationId: "org-1",
+      logId: "log-1",
+      runId: "run-old",
+      error: "Parser failed."
+    });
+
+    expect(transactions).toHaveLength(1);
+    expect(txCalls[0].text).toContain("update log_analysis_runs");
+    expect(txCalls[1].text).toContain("update log_records");
+    expect(txCalls[1].text).toContain("current_run_id = $3");
+    expect(txCalls[1].values).toEqual(["org-1", "log-1", "run-old", "Parser failed."]);
   });
 });

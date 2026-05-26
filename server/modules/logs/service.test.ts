@@ -5,6 +5,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
   archiveLogRecord,
+  createLogFromFile,
+  getLogRecord,
   listLogRecords,
   rerunLogAnalysis,
   submitLogFeedback,
@@ -98,6 +100,13 @@ function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   });
 }
 
+function crossProjectAuth(overrides: Partial<AuthContext> = {}): AuthContext {
+  return makeAuth({
+    roles: [{ projectId: "project-2", roleId: "software-user" }],
+    ...overrides
+  });
+}
+
 function logRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "log-1",
@@ -145,6 +154,67 @@ describe("log service", () => {
       })
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "logs:upload" }));
     expect(puts).toHaveLength(0);
+  });
+
+  it("scopes list queries to the caller project roles", async () => {
+    const { db, calls } = createFakeDb([[logRow()]]);
+
+    await listLogRecords(db, makeAuth(), {});
+
+    expect(calls[0].text).toContain("lr.project_id = any");
+    expect(calls[0].values).toEqual(["org-1", ["project-1"]]);
+  });
+
+  it("denies cross-project list and upload before object storage", async () => {
+    const { db } = createFakeDb();
+    const { objectStore, puts } = makeObjectStore();
+
+    await expect(listLogRecords(db, crossProjectAuth(), { projectId: "project-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Log project access is required.", 403)
+    );
+    await expect(
+      uploadLogFile(db, objectStore, crossProjectAuth(), {
+        projectId: "project-1",
+        fileName: "pack-controller.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("line one")
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Log project access is required.", 403));
+
+    expect(puts).toHaveLength(0);
+  });
+
+  it("denies cross-project get, rerun, archive, and feedback before writes", async () => {
+    const { db, calls, txCalls } = createFakeDb([
+      [logRow({ project_id: "project-1" })],
+      [],
+      [logRow({ project_id: "project-1" })],
+      [],
+      [logRow({ project_id: "project-1" })],
+      [],
+      [logRow({ project_id: "project-1" })],
+      []
+    ]);
+
+    await expect(getLogRecord(db, crossProjectAuth(), "log-1")).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Log project access is required.", 403)
+    );
+    await expect(rerunLogAnalysis(db, adminAuth({ roles: [{ projectId: "project-2", roleId: "admin" }] }), { logId: "log-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Log project access is required.", 403)
+    );
+    await expect(archiveLogRecord(db, adminAuth({ roles: [{ projectId: "project-2", roleId: "admin" }] }), "log-1")).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Log project access is required.", 403)
+    );
+    await expect(
+      submitLogFeedback(db, crossProjectAuth(), {
+        logId: "log-1",
+        rating: "helpful"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Log project access is required.", 403));
+
+    expect(calls.length + txCalls.length).toBeGreaterThan(0);
+    expect(txCalls.some((call) => call.text.includes("insert into jobs"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
   });
 
   it("user with logs:upload can upload supported .log, creating processing record and queued job", async () => {
@@ -229,9 +299,42 @@ describe("log service", () => {
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-upload-failed");
   });
 
+  it("createLogFromFile validates file object ownership and canonical file name", async () => {
+    const { db, txCalls } = createFakeDb([
+      [
+        {
+          id: "file-1",
+          organization_id: "org-1",
+          project_id: "project-2",
+          storage_key: "org-1/checksum-pack-controller.log",
+          file_name: "pack-controller.log",
+          content_type: "text/plain",
+          file_size_bytes: 2048,
+          checksum_sha256: "checksum",
+          uploaded_by_user_id: "user-1",
+          created_at: "2026-05-25T02:00:00.000Z"
+        }
+      ]
+    ]);
+
+    await expect(
+      createLogFromFile(db, makeAuth(), {
+        projectId: "project-1",
+        fileObjectId: "file-1",
+        fileName: "caller-name.log"
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "File object does not belong to the requested project.", 400));
+
+    expect(txCalls.some((call) => call.text.includes("insert into log_records"))).toBe(false);
+  });
+
   it("non-admin cannot archive; admin can archive and unarchive", async () => {
     const { db, txCalls } = createFakeDb([
       [logRow({ archive_state: "archived" })],
+      [],
+      [logRow({ archive_state: "archived" })],
+      [],
+      [logRow({ archive_state: "active" })],
       [],
       [logRow({ archive_state: "active" })],
       []
@@ -251,7 +354,7 @@ describe("log service", () => {
   });
 
   it("feedback requires logs:feedback and writes audit", async () => {
-    const { db, txCalls } = createFakeDb([[], []]);
+    const { db, txCalls } = createFakeDb([[logRow()], [], [], []]);
 
     await expect(
       submitLogFeedback(db, makeAuth({ permissions: ["logs:view"] }), {

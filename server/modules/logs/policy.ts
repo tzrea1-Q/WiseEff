@@ -33,3 +33,24 @@ export function requireLogArchive(auth: AuthContext) {
 export function requireLogFeedback(auth: AuthContext) {
   requirePermission(auth, "logs:feedback", { requireActive: true });
 }
+
+export function getAllowedLogProjectIds(auth: AuthContext) {
+  if (auth.roles.some((role) => role.roleId === "admin" && role.projectId === null)) {
+    return null;
+  }
+
+  return auth.roles
+    .map((role) => role.projectId)
+    .filter((projectId): projectId is string => typeof projectId === "string" && projectId.length > 0);
+}
+
+export function canAccessLogProject(auth: AuthContext, projectId: string) {
+  const allowedProjectIds = getAllowedLogProjectIds(auth);
+  return allowedProjectIds === null || allowedProjectIds.includes(projectId);
+}
+
+export function requireLogProjectAccess(auth: AuthContext, projectId: string) {
+  if (!canAccessLogProject(auth, projectId)) {
+    throw new ApiError("FORBIDDEN", "Log project access is required.", 403, { projectId });
+  }
+}
