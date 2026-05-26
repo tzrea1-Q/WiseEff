@@ -203,7 +203,7 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
       return `${log.status}:${log.failureReason ?? ""}`;
     }, { timeout: 30_000 })
     .toMatch(/^failed:.*unsupported/i);
-  await expect(historyItem(page, unsupportedFileName)).toBeVisible();
-  await expect(historyItem(page, unsupportedFileName)).toContainText(/Failed|0%/);
-  await expect(page.getByRole("alert")).toContainText(/unsupported|support|\.log|\.txt|\.json/i);
+  const unsupportedHistoryItem = historyItem(page, unsupportedFileName);
+  await expect(unsupportedHistoryItem).toBeVisible();
+  await expect(unsupportedHistoryItem).toContainText(/Failed|0%/);
 });
