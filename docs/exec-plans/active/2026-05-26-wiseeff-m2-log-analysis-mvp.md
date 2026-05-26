@@ -158,7 +158,7 @@ Modify:
 - Modify: `src/infrastructure/http/apiClient.ts`
 - Modify: `src/infrastructure/http/apiClient.test.ts`
 
-- [ ] **Step 1: Write failing router tests**
+- [x] **Step 1: Write failing router tests**
 
 Add tests in `server/shared/http/router.test.ts`:
 
@@ -218,7 +218,7 @@ npm run test:server -- server/shared/http/router.test.ts
 
 Expected: FAIL because `RouteRequest` has no `params` or `query`, and the router only performs exact map lookup.
 
-- [ ] **Step 2: Implement route matching and query shape**
+- [x] **Step 2: Implement route matching and query shape**
 
 In `server/shared/http/router.ts`:
 
@@ -236,7 +236,7 @@ router.post("/api/v1/logs/:logId/rerun", handler);
 router.get("/api/v1/jobs/:jobId/events", handler);
 ```
 
-- [ ] **Step 3: Parse query strings and upload body variants**
+- [x] **Step 3: Parse query strings and upload body variants**
 
 In `server/shared/http/server.ts`:
 
@@ -267,7 +267,7 @@ event: job
 data: {"id":"job_1","status":"processing"}
 ```
 
-- [ ] **Step 4: Add transaction support**
+- [x] **Step 4: Add transaction support**
 
 In `server/shared/database/client.ts`, introduce:
 
@@ -279,7 +279,7 @@ export type Database = Queryable & {
 
 `createPostgresDatabase` must use `pool.connect()` for transactions so `begin`, work, and `commit` run on the same client. `createDatabase` can provide a test fallback that issues `begin`, calls `fn`, then commits or rolls back.
 
-- [ ] **Step 5: Extend API client**
+- [x] **Step 5: Extend API client**
 
 In `src/infrastructure/http/apiClient.ts`, add:
 
@@ -291,7 +291,7 @@ upload: <T>(path: string, file: File, fields?: Record<string, string>) => reques
 
 Tests in `src/infrastructure/http/apiClient.test.ts` must assert that upload uses `FormData`, DELETE sends no JSON body, and errors remain `WiseEffApiError`.
 
-- [ ] **Step 6: Run foundation tests**
+- [x] **Step 6: Run foundation tests**
 
 Run:
 
@@ -302,7 +302,7 @@ npm test -- src/infrastructure/http/apiClient.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/shared/http/router.ts server/shared/http/router.test.ts server/shared/http/server.ts server/shared/database/client.ts server/shared/database/client.test.ts server/shared/http/errors.ts src/infrastructure/http/apiClient.ts src/infrastructure/http/apiClient.test.ts
@@ -327,7 +327,7 @@ git commit -m "feat: support log api routing uploads and jobs"
 - Modify: `server/modules/auth/types.ts`
 - Modify: `server/modules/auth/policy.ts`
 
-- [ ] **Step 1: Expand auth permissions for M2**
+- [x] **Step 1: Expand auth permissions for M2**
 
 Update `server/modules/auth/types.ts` so `BackendPermission` includes:
 
@@ -353,7 +353,7 @@ npm run test:server -- server/modules/auth/policy.test.ts
 
 Expected: PASS after updating expected permission lists.
 
-- [ ] **Step 2: Expand `LogAnalysisRepository`**
+- [x] **Step 2: Expand `LogAnalysisRepository`**
 
 Update `src/application/ports/LogAnalysisRepository.ts`:
 
@@ -405,7 +405,7 @@ export interface LogAnalysisRepository {
 
 Keep `LogListQuery` compatible with current call sites.
 
-- [ ] **Step 3: Add DTO mapper tests**
+- [x] **Step 3: Add DTO mapper tests**
 
 Create `src/infrastructure/http/logDtos.test.ts` with cases:
 
@@ -423,7 +423,7 @@ npm test -- src/infrastructure/http/logDtos.test.ts
 
 Expected: FAIL because the file does not exist.
 
-- [ ] **Step 4: Implement frontend DTO mappers**
+- [x] **Step 4: Implement frontend DTO mappers**
 
 Create `src/infrastructure/http/logDtos.ts` with DTO types:
 
@@ -463,7 +463,7 @@ Export:
 
 Set `fileSizeMB = Math.round((fileSizeBytes / 1024 / 1024) * 10) / 10`.
 
-- [ ] **Step 5: Add server schemas and status helpers**
+- [x] **Step 5: Add server schemas and status helpers**
 
 Create `server/modules/logs/status.ts`:
 
@@ -494,7 +494,7 @@ export function requireLogFeedback(auth: AuthContext) { requirePermission(auth, 
 
 Use the existing auth policy style and `ApiError("FORBIDDEN", ...)` conventions.
 
-- [ ] **Step 6: Document final M2 endpoint shape**
+- [x] **Step 6: Document final M2 endpoint shape**
 
 Update `docs/design-docs/api-contract.md` logs/jobs sections with these exact endpoints:
 
@@ -514,7 +514,7 @@ GET  /api/v1/jobs/:jobId/events
 
 Document that `POST /api/v1/log-files` accepts JSON base64 in M2 and may later be replaced by signed upload credentials.
 
-- [ ] **Step 7: Run contract tests**
+- [x] **Step 7: Run contract tests**
 
 Run:
 
@@ -525,7 +525,7 @@ npm run test:server -- server/modules/auth/policy.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add docs/design-docs/api-contract.md src/application/ports/LogAnalysisRepository.ts src/infrastructure/http/logDtos.ts src/infrastructure/http/logDtos.test.ts server/modules/logs/types.ts server/modules/logs/schemas.ts server/modules/logs/status.ts server/modules/logs/policy.ts server/modules/auth/types.ts server/modules/auth/policy.ts server/modules/auth/policy.test.ts
@@ -552,7 +552,7 @@ git commit -m "feat: define m2 log analysis contract"
 - Modify: `docs/generated/db-schema.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add migration**
+- [x] **Step 1: Add migration**
 
 Create `server/migrations/0003_m2_logs.sql`:
 
@@ -686,7 +686,7 @@ npm run test:server -- server/shared/database/migrations.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 2: Add object store env**
+- [x] **Step 2: Add object store env**
 
 Update `server/config/env.ts`:
 
@@ -707,7 +707,7 @@ npm run test:server -- server/config/env.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Implement local object store adapter**
+- [x] **Step 3: Implement local object store adapter**
 
 Create `server/modules/logs/objectStore.ts`:
 
@@ -735,7 +735,7 @@ export interface ObjectStore {
 
 Tests in `objectStore.test.ts` cover write/read, checksum, and path traversal rejection.
 
-- [ ] **Step 4: Add log fixtures and seed script**
+- [x] **Step 4: Add log fixtures and seed script**
 
 Create `test-fixtures/logs/charging-foldback.log`:
 
@@ -759,7 +759,7 @@ Create `scripts/seed-m2-logs.ts` that inserts one completed sample log and one f
 "db:seed:m2": "tsx scripts/seed-m2-logs.ts"
 ```
 
-- [ ] **Step 5: Update ignore and docs**
+- [x] **Step 5: Update ignore and docs**
 
 Add `.wiseeff-object-store/` to `.gitignore`.
 
@@ -768,7 +768,7 @@ Update:
 - `docs/generated/db-schema.md` with M2 tables and key relationships.
 - `README.md` with `npm run db:seed:m2` and object store root instructions.
 
-- [ ] **Step 6: Run schema and object store tests**
+- [x] **Step 6: Run schema and object store tests**
 
 Run:
 
@@ -778,7 +778,7 @@ npm run test:server -- server/modules/logs/objectStore.test.ts server/shared/dat
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/migrations/0003_m2_logs.sql server/modules/logs/objectStore.ts server/modules/logs/objectStore.test.ts scripts/seed-m2-logs.ts test-fixtures/logs/charging-foldback.log test-fixtures/logs/unsupported.bin server/config/env.ts server/config/env.test.ts package.json .gitignore docs/generated/db-schema.md README.md
@@ -798,7 +798,7 @@ git commit -m "feat: add log persistence and local object storage"
 - Create: `server/modules/logs/analyzer.test.ts`
 - Modify: `server/modules/logs/types.ts`
 
-- [ ] **Step 1: Write parser tests**
+- [x] **Step 1: Write parser tests**
 
 In `parser.test.ts`, cover:
 
@@ -835,7 +835,7 @@ npm run test:server -- server/modules/logs/parser.test.ts
 
 Expected: FAIL because parser does not exist.
 
-- [ ] **Step 2: Implement parser**
+- [x] **Step 2: Implement parser**
 
 Create `parseLogText(input)` returning:
 
@@ -853,7 +853,7 @@ Rules:
 - `ParsedLogEntry` includes `lineNumber`, `timestamp?: string`, `severity: "error" | "warn" | "info"`, `message`, and `tokens`.
 - Severity is derived from `ERROR`, `ERR`, `WARN`, `WARNING`, `INFO`; default is `info`.
 
-- [ ] **Step 3: Write analyzer tests**
+- [x] **Step 3: Write analyzer tests**
 
 In `analyzer.test.ts`, cover:
 
@@ -871,7 +871,7 @@ npm run test:server -- server/modules/logs/analyzer.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement deterministic analyzer and AI seam**
+- [x] **Step 4: Implement deterministic analyzer and AI seam**
 
 Create:
 
@@ -910,7 +910,7 @@ Confidence rules:
 - `0.72` if timeout/retry evidence exists.
 - `0.42` if no rule hit.
 
-- [ ] **Step 5: Run parser/analyzer tests**
+- [x] **Step 5: Run parser/analyzer tests**
 
 Run:
 
@@ -920,7 +920,7 @@ npm run test:server -- server/modules/logs/parser.test.ts server/modules/logs/an
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/modules/logs/parser.ts server/modules/logs/parser.test.ts server/modules/logs/analyzer.ts server/modules/logs/analyzer.test.ts server/modules/logs/types.ts
@@ -942,7 +942,7 @@ git commit -m "feat: analyze text logs with stable evidence lines"
 - Create: `server/modules/logs/service.test.ts`
 - Modify: `server/modules/logs/types.ts`
 
-- [ ] **Step 1: Write repository tests**
+- [x] **Step 1: Write repository tests**
 
 In `server/modules/logs/repository.test.ts`, use the existing test database style. Cover:
 
@@ -961,7 +961,7 @@ npm run test:server -- server/modules/logs/repository.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement repository DTO mapping**
+- [x] **Step 2: Implement repository DTO mapping**
 
 Create repository functions:
 
@@ -982,7 +982,7 @@ appendFeedback(db, auth, input)
 
 The detail mapper must return the server `LogRecordDto` shape defined in Task 2.
 
-- [ ] **Step 3: Write service tests**
+- [x] **Step 3: Write service tests**
 
 In `server/modules/logs/service.test.ts`, cover:
 
@@ -1001,7 +1001,7 @@ npm run test:server -- server/modules/logs/service.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement service**
+- [x] **Step 4: Implement service**
 
 Create `server/modules/logs/service.ts` with:
 
@@ -1031,7 +1031,7 @@ Important behavior:
   - `log-feedback`
 - Use `db.transaction` for multi-table writes.
 
-- [ ] **Step 5: Run service and repository tests**
+- [x] **Step 5: Run service and repository tests**
 
 Run:
 
@@ -1041,7 +1041,7 @@ npm run test:server -- server/modules/logs/repository.test.ts server/modules/log
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/modules/jobs/types.ts server/modules/jobs/repository.ts server/modules/logs/repository.ts server/modules/logs/repository.test.ts server/modules/logs/service.ts server/modules/logs/service.test.ts server/modules/logs/types.ts
@@ -1062,7 +1062,7 @@ git commit -m "feat: persist log analysis records and actions"
 - Modify: `server/modules/logs/repository.ts`
 - Modify: `server/modules/logs/repository.test.ts`
 
-- [ ] **Step 1: Write worker tests**
+- [x] **Step 1: Write worker tests**
 
 In `worker.test.ts`, cover:
 
@@ -1080,7 +1080,7 @@ npm run test:server -- server/modules/logs/worker.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement job claiming and progress repository helpers**
+- [x] **Step 2: Implement job claiming and progress repository helpers**
 
 In `server/modules/jobs/repository.ts`, add:
 
@@ -1100,7 +1100,7 @@ Claiming rules:
 
 In M2 tests this does not need `SKIP LOCKED`; document that distributed locking is M5+.
 
-- [ ] **Step 3: Implement `processNextLogAnalysisJob`**
+- [x] **Step 3: Implement `processNextLogAnalysisJob`**
 
 Create `server/modules/logs/worker.ts`:
 
@@ -1128,7 +1128,7 @@ Processing steps:
 
 Failures call `failRun` and `failJob`, set record `status="failed"`, and preserve `failureReason`.
 
-- [ ] **Step 4: Add dev worker loop**
+- [x] **Step 4: Add dev worker loop**
 
 In `server/modules/logs/worker.ts`, add:
 
@@ -1138,7 +1138,7 @@ export function startLogWorkerLoop(options, intervalMs = 1000): () => void
 
 The loop processes at most one job per tick and returns a cleanup function. Tests use fake timers or direct `processNextLogAnalysisJob`, not a long-running loop.
 
-- [ ] **Step 5: Run worker tests**
+- [x] **Step 5: Run worker tests**
 
 Run:
 
@@ -1148,7 +1148,7 @@ npm run test:server -- server/modules/logs/worker.test.ts server/modules/logs/re
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/modules/logs/worker.ts server/modules/logs/worker.test.ts server/modules/jobs/repository.ts server/modules/jobs/types.ts server/modules/logs/repository.ts server/modules/logs/repository.test.ts
@@ -1169,7 +1169,7 @@ git commit -m "feat: process log analysis jobs"
 - Modify: `server/app.ts`
 - Modify: `server/index.ts`
 
-- [ ] **Step 1: Write logs route tests**
+- [x] **Step 1: Write logs route tests**
 
 In `server/modules/logs/routes.test.ts`, cover:
 
@@ -1189,7 +1189,7 @@ npm run test:server -- server/modules/logs/routes.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Write jobs route tests**
+- [x] **Step 2: Write jobs route tests**
 
 In `server/modules/jobs/routes.test.ts`, cover:
 
@@ -1205,7 +1205,7 @@ npm run test:server -- server/modules/jobs/routes.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implement log route registration**
+- [x] **Step 3: Implement log route registration**
 
 Create `registerLogRoutes(router, { db, objectStore, getCurrentAuthContext })`.
 
@@ -1235,7 +1235,7 @@ For M2, `POST /api/v1/log-files` body is:
 }
 ```
 
-- [ ] **Step 4: Implement job route registration**
+- [x] **Step 4: Implement job route registration**
 
 Create `registerJobRoutes(router, { db, getCurrentAuthContext })`.
 
@@ -1245,7 +1245,7 @@ Create `registerJobRoutes(router, { db, getCurrentAuthContext })`.
 2. poll up to 10 seconds in dev runtime;
 3. stop when status is `complete` or `failed`.
 
-- [ ] **Step 5: Register routes and worker in app/index**
+- [x] **Step 5: Register routes and worker in app/index**
 
 Update `server/app.ts`:
 
@@ -1268,7 +1268,7 @@ Update `server/index.ts`:
 - start `startLogWorkerLoop` when `DATABASE_URL` exists;
 - stop loop on process shutdown.
 
-- [ ] **Step 6: Run backend route suite**
+- [x] **Step 6: Run backend route suite**
 
 Run:
 
@@ -1278,7 +1278,7 @@ npm run test:server -- server/modules/logs/routes.test.ts server/modules/jobs/ro
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add server/modules/logs/routes.ts server/modules/logs/routes.test.ts server/modules/jobs/routes.ts server/modules/jobs/routes.test.ts server/app.ts server/index.ts
@@ -1298,7 +1298,7 @@ git commit -m "feat: expose log analysis api and jobs"
 - Modify: `src/infrastructure/http/apiClient.test.ts`
 - Modify: `src/mockData.logs.test.ts`
 
-- [ ] **Step 1: Write HTTP repository tests**
+- [x] **Step 1: Write HTTP repository tests**
 
 Create `src/infrastructure/http/logClient.test.ts`. Mock `fetch` and assert:
 
@@ -1318,7 +1318,7 @@ npm test -- src/infrastructure/http/logClient.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement query and status mapping helpers**
+- [x] **Step 2: Implement query and status mapping helpers**
 
 In `logClient.ts`, implement helpers:
 
@@ -1340,7 +1340,7 @@ async function fileToBase64(file: File) {
 
 Use `URLSearchParams`; never concatenate unencoded user input.
 
-- [ ] **Step 3: Implement `createHttpLogAnalysisRepository`**
+- [x] **Step 3: Implement `createHttpLogAnalysisRepository`**
 
 Create:
 
@@ -1362,11 +1362,11 @@ Methods:
 - `unarchiveLog` -> `POST /api/v1/logs/:logId/unarchive`
 - `submitFeedback` -> `POST /api/v1/logs/:logId/feedback`
 
-- [ ] **Step 4: Preserve mock expectations**
+- [x] **Step 4: Preserve mock expectations**
 
 Update any mock tests affected by the expanded port shape. Mock mode can keep existing reducer behavior but must satisfy the new interface through an adapter in Task 9.
 
-- [ ] **Step 5: Run repository tests**
+- [x] **Step 5: Run repository tests**
 
 Run:
 
@@ -1376,7 +1376,7 @@ npm test -- src/infrastructure/http/logDtos.test.ts src/infrastructure/http/logC
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/infrastructure/http/logClient.ts src/infrastructure/http/logClient.test.ts src/infrastructure/http/apiClient.ts src/infrastructure/http/apiClient.test.ts src/mockData.logs.test.ts
@@ -1396,7 +1396,7 @@ git commit -m "feat: add http log analysis repository"
 - Modify: `src/app/routes.tsx`
 - Modify: `src/App.test.tsx`
 
-- [ ] **Step 1: Add runtime coordinator tests**
+- [x] **Step 1: Add runtime coordinator tests**
 
 Create `src/application/logs/logRuntime.test.ts`. Test:
 
@@ -1415,7 +1415,7 @@ npm test -- src/application/logs/logRuntime.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Add hydration and job actions**
+- [x] **Step 2: Add hydration and job actions**
 
 In `src/App.tsx`, add reducer actions:
 
@@ -1431,7 +1431,7 @@ Reducer behavior:
 - `UPSERT_LOG_RECORD` replaces by id or prepends newest.
 - `LOG_JOB_PROGRESS` updates matching log `stage` from `job.currentStage`; terminal result is fetched through repository and `UPSERT_LOG_RECORD`.
 
-- [ ] **Step 3: Implement runtime action factory**
+- [x] **Step 3: Implement runtime action factory**
 
 Create:
 
@@ -1453,7 +1453,7 @@ export type LogRuntimeActions = {
 - polling interval in tests is injectable and defaults to 1000ms;
 - max poll attempts defaults to 60.
 
-- [ ] **Step 4: Wire runtime into app shell**
+- [x] **Step 4: Wire runtime into app shell**
 
 `AppProps` gains optional:
 
@@ -1470,7 +1470,7 @@ When `runtimeMode === "api"`:
 
 Pass `logActions` through `PageProps` in `src/app/routes.tsx`.
 
-- [ ] **Step 5: Run app/runtime tests**
+- [x] **Step 5: Run app/runtime tests**
 
 Run:
 
@@ -1480,7 +1480,7 @@ npm test -- src/application/logs/logRuntime.test.ts src/App.test.tsx src/permiss
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/application/logs/logRuntime.ts src/application/logs/logRuntime.test.ts src/App.tsx src/App.test.tsx src/app/routes.tsx
@@ -1505,7 +1505,7 @@ git commit -m "feat: hydrate log runtime from api"
 - Modify: `src/LogAdminPage.test.tsx`
 - Modify: `src/reducer.logAdmin.test.ts`
 
-- [ ] **Step 1: Update upload dialog tests**
+- [x] **Step 1: Update upload dialog tests**
 
 In `src/logsPage.upload.test.tsx`, add tests:
 
@@ -1522,7 +1522,7 @@ npm test -- src/logsPage.upload.test.tsx
 
 Expected: FAIL.
 
-- [ ] **Step 2: Update `LogsPage` upload and rerun**
+- [x] **Step 2: Update `LogsPage` upload and rerun**
 
 `LogsPage` currently lives in `src/App.tsx`. Replace direct dispatch with `logActions`:
 
@@ -1531,7 +1531,7 @@ Expected: FAIL.
 
 Keep local search, filters, selected log, evidence panel, and raw line view behavior unchanged.
 
-- [ ] **Step 3: Update evidence linkage tests**
+- [x] **Step 3: Update evidence linkage tests**
 
 Ensure `src/logsPage.evidenceLinkage.test.tsx` asserts:
 
@@ -1539,7 +1539,7 @@ Ensure `src/logsPage.evidenceLinkage.test.tsx` asserts:
 - clicking evidence does not assume mock-only line ids;
 - duplicate line numbers are de-duplicated for highlight but preserved in data.
 
-- [ ] **Step 4: Update dashboard hydration behavior**
+- [x] **Step 4: Update dashboard hydration behavior**
 
 `LogDashboardPage` should derive metrics from `state.logs` after API hydration. Update tests so:
 
@@ -1547,7 +1547,7 @@ Ensure `src/logsPage.evidenceLinkage.test.tsx` asserts:
 - a failed API log contributes to failure count and failure reason summary;
 - archived logs are excluded unless admin view requests them.
 
-- [ ] **Step 5: Update admin archive, unarchive, and feedback**
+- [x] **Step 5: Update admin archive, unarchive, and feedback**
 
 In `src/LogAdminPage.tsx`:
 
@@ -1557,7 +1557,7 @@ In `src/LogAdminPage.tsx`:
 - show pending state per row/action;
 - preserve existing mock reducer tests by routing mock mode actions through the runtime adapter.
 
-- [ ] **Step 6: Run log frontend targeted tests**
+- [x] **Step 6: Run log frontend targeted tests**
 
 Run:
 
@@ -1567,7 +1567,7 @@ npm test -- src/logsPage.upload.test.tsx src/logsPage.test.tsx src/logsPage.sear
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/App.tsx src/LogAdminPage.tsx src/logsPage.upload.test.tsx src/logsPage.test.tsx src/logsPage.search.test.tsx src/logsPage.primaryAction.test.tsx src/logsPage.evidenceLinkage.test.tsx src/LogDashboardPage.test.tsx src/LogAdminPage.test.tsx src/reducer.logAdmin.test.ts
@@ -1594,7 +1594,7 @@ git commit -m "feat: persist log workflows through api mode"
 - Modify: `README.md`
 - Modify: `docs/exec-plans/tech-debt-tracker.md` if any M2 gap remains.
 
-- [ ] **Step 1: Add E2E scripts**
+- [x] **Step 1: Add E2E scripts**
 
 Add scripts if absent:
 
@@ -1616,7 +1616,7 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 OBJECT_STORE_ROOT=.wiseeff-object-store
 ```
 
-- [ ] **Step 2: Write M2 E2E smoke**
+- [x] **Step 2: Write M2 E2E smoke**
 
 `e2e/log-analysis.api.spec.ts` should:
 
@@ -1632,7 +1632,7 @@ OBJECT_STORE_ROOT=.wiseeff-object-store
 10. Upload `test-fixtures/logs/unsupported.bin`.
 11. Assert a `Failed` record appears with a readable unsupported format reason.
 
-- [ ] **Step 3: Update CI**
+- [x] **Step 3: Update CI**
 
 Update `.github/workflows/ci.yml`:
 
@@ -1640,7 +1640,7 @@ Update `.github/workflows/ci.yml`:
 - add `npm run test:e2e` only if CI has a database service and object store directory configured;
 - otherwise document `test:m2` as a local/staging release gate in README and keep CI on unit/integration/build.
 
-- [ ] **Step 4: Update docs**
+- [x] **Step 4: Update docs**
 
 Docs updates:
 
@@ -1653,7 +1653,7 @@ Docs updates:
 - `docs/design-docs/testing-strategy.md`: actual M2 commands and fixtures.
 - `docs/exec-plans/tech-debt-tracker.md`: record deferred work such as real object storage, distributed worker locks, generated OpenAPI client, AI adapter integration.
 
-- [ ] **Step 5: Final verification**
+- [x] **Step 5: Final verification**
 
 Run:
 
@@ -1666,7 +1666,7 @@ git diff --check
 
 Expected: all PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add e2e/log-analysis.api.spec.ts playwright.config.ts package.json .github/workflows/ci.yml docs/FRONTEND.md docs/SECURITY.md docs/RELIABILITY.md docs/QUALITY_SCORE.md docs/design-docs/domain-model.md docs/design-docs/testing-strategy.md README.md docs/exec-plans/tech-debt-tracker.md
