@@ -328,6 +328,37 @@ describe("log service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into log_records"))).toBe(false);
   });
 
+  it("createLogFromFile rejects file objects uploaded by another user before writes", async () => {
+    const { db, txCalls } = createFakeDb([
+      [
+        {
+          id: "file-1",
+          organization_id: "org-1",
+          project_id: "project-1",
+          storage_key: "org-1/checksum-pack-controller.log",
+          file_name: "pack-controller.log",
+          content_type: "text/plain",
+          file_size_bytes: 2048,
+          checksum_sha256: "checksum",
+          uploaded_by_user_id: "other-user",
+          created_at: "2026-05-25T02:00:00.000Z"
+        }
+      ]
+    ]);
+
+    await expect(
+      createLogFromFile(db, makeAuth(), {
+        projectId: "project-1",
+        fileObjectId: "file-1",
+        fileName: "pack-controller.log"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "File object ownership is required.", 403));
+
+    expect(txCalls.some((call) => call.text.includes("insert into log_records"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into jobs"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+  });
+
   it("non-admin cannot archive; admin can archive and unarchive", async () => {
     const { db, txCalls } = createFakeDb([
       [logRow({ archive_state: "archived" })],

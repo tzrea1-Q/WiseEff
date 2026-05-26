@@ -236,6 +236,11 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
       projectId: input.projectId
     });
   }
+  if (fileObject.uploadedByUserId !== auth.user.id) {
+    throw new ApiError("FORBIDDEN", "File object ownership is required.", 403, {
+      fileObjectId: input.fileObjectId
+    });
+  }
   if (input.fileName !== fileObject.fileName) {
     throw new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.", 400, {
       fileObjectId: input.fileObjectId,
