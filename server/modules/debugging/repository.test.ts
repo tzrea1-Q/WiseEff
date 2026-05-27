@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
 import {
+  claimSnapshotForRollback,
   createDebugSession,
   createDebugSnapshot,
   insertDebugEvent,
@@ -11,6 +12,7 @@ import {
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
+  restoreSnapshotValid,
   updateDebugParameterValues,
   upsertDetectedTargets
 } from "./repository";
@@ -74,6 +76,17 @@ describe("debugging repository", () => {
         lastSeenAt: timestamp
       }
     ]);
+  });
+
+  it("listDebugDevices filters by allowed project IDs when no single project is selected", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await listDebugDevices(db, { organizationId: "org-1", projectIds: ["aurora", "zephyr"] });
+
+    expect(calls[0].text).toContain("from debugging_devices");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("project_id = any($2::text[])");
+    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
   });
 
   it("getDebugDevice scopes device lookup by organization", async () => {
@@ -193,6 +206,20 @@ describe("debugging repository", () => {
     expect(calls[0].values).toEqual(["org-1", "aurora", "Battery", ["High"]]);
     expect(parameters.map((parameter) => parameter.id)).toEqual(["param-temp-limit", "param-fast-charge"]);
     expect(parameters[0]).toMatchObject({ minValue: 0, maxValue: 70, sortOrder: 10 });
+  });
+
+  it("listDebugParameters filters by allowed project IDs when no single project is selected", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await listDebugParameters(db, {
+      organizationId: "org-1",
+      projectIds: ["aurora", "zephyr"]
+    });
+
+    expect(calls[0].text).toContain("from debugging_parameters");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("project_id = any($2::text[])");
+    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
   });
 
   it("updateDebugParameterValues stores current and target values for a scoped parameter", async () => {
@@ -385,7 +412,7 @@ describe("debugging repository", () => {
     expect(calls[0].text).toContain("update debugging_snapshots");
     expect(calls[0].text).toContain("status = 'consumed'");
     expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("status = 'valid'");
+    expect(calls[0].text).toContain("status in ('valid', 'rollback_pending')");
     expect(calls[0].values).toEqual(["org-1", "snapshot-1"]);
     expect(snapshot?.status).toBe("consumed");
   });
@@ -396,6 +423,72 @@ describe("debugging repository", () => {
     const snapshot = await markSnapshotConsumed(db, { organizationId: "org-1", snapshotId: "snapshot-1" });
 
     expect(snapshot).toBeNull();
+  });
+
+  it("claimSnapshotForRollback atomically moves only valid scoped snapshots to rollback_pending", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "snapshot-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          session_id: "session-1",
+          operation_id: null,
+          status: "rollback_pending",
+          risk: "High",
+          entries: [],
+          created_at: timestamp,
+          consumed_at: null
+        }
+      ]
+    ]);
+
+    const snapshot = await claimSnapshotForRollback(db, { organizationId: "org-1", snapshotId: "snapshot-1" });
+
+    expect(calls[0].text).toContain("update debugging_snapshots");
+    expect(calls[0].text).toContain("status = 'rollback_pending'");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("id = $2");
+    expect(calls[0].text).toContain("status = 'valid'");
+    expect(calls[0].values).toEqual(["org-1", "snapshot-1"]);
+    expect(snapshot).toMatchObject({ id: "snapshot-1", organizationId: "org-1", status: "rollback_pending" });
+  });
+
+  it("claimSnapshotForRollback returns null when no valid scoped snapshot is updated", async () => {
+    const { db } = createFakeDb([[]]);
+
+    const snapshot = await claimSnapshotForRollback(db, { organizationId: "org-1", snapshotId: "snapshot-1" });
+
+    expect(snapshot).toBeNull();
+  });
+
+  it("restoreSnapshotValid moves only rollback_pending scoped snapshots back to valid", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "snapshot-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          session_id: "session-1",
+          operation_id: null,
+          status: "valid",
+          risk: "High",
+          entries: [],
+          created_at: timestamp,
+          consumed_at: null
+        }
+      ]
+    ]);
+
+    const snapshot = await restoreSnapshotValid(db, { organizationId: "org-1", snapshotId: "snapshot-1" });
+
+    expect(calls[0].text).toContain("update debugging_snapshots");
+    expect(calls[0].text).toContain("status = 'valid'");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("id = $2");
+    expect(calls[0].text).toContain("status = 'rollback_pending'");
+    expect(calls[0].values).toEqual(["org-1", "snapshot-1"]);
+    expect(snapshot).toMatchObject({ id: "snapshot-1", status: "valid" });
   });
 
   it("listDebugSessionEvents returns operations newest-last for UI history", async () => {

@@ -48,7 +48,10 @@ function createFakeDb(results: QueuedResult[] = []) {
   return { calls, txCalls, transactions, rollbacks, db };
 }
 
-function makeAuth(permissions: AuthContext["permissions"]): AuthContext {
+function makeAuth(
+  permissions: AuthContext["permissions"],
+  roles: AuthContext["roles"] = [{ projectId: "aurora", roleId: "software-user" }]
+): AuthContext {
   return {
     user: {
       id: "user-1",
@@ -59,7 +62,7 @@ function makeAuth(permissions: AuthContext["permissions"]): AuthContext {
       isActive: true
     },
     organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "aurora", roleId: "software-user" }],
+    roles,
     permissions
   };
 }
@@ -201,8 +204,63 @@ function snapshotRow(overrides: Record<string, unknown> = {}) {
 const readAuth = makeAuth(["debugging:view", "debugging:read"]);
 const writeAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"]);
 const rollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]);
+const otherProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [{ projectId: "zephyr", roleId: "software-user" }]);
+const otherProjectWriteAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"], [
+  { projectId: "zephyr", roleId: "software-user" }
+]);
+const otherProjectRollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"], [
+  { projectId: "zephyr", roleId: "software-user" }
+]);
+const multiProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [
+  { projectId: "aurora", roleId: "software-user" },
+  { projectId: "zephyr", roleId: "software-user" }
+]);
 
 describe("debugging service", () => {
+  it("listDevices and listParameters deny different-project auth before querying", async () => {
+    const { db, calls } = createFakeDb();
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listDevices(otherProjectReadAuth, { projectId: "aurora" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+    await expect(service.listParameters(otherProjectReadAuth, { projectId: "aurora" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it("listDevices and listParameters scope unfiltered non-admin queries to auth projects", async () => {
+    const { db, calls } = createFakeDb([[deviceRow()], [parameterRow()]]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listDevices(multiProjectReadAuth)).resolves.toEqual([expect.objectContaining({ id: "device-1" })]);
+    await expect(service.listParameters(multiProjectReadAuth)).resolves.toEqual([expect.objectContaining({ id: "param-1" })]);
+
+    expect(calls[0].text).toContain("project_id = any($2::text[])");
+    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
+    expect(calls[1].text).toContain("project_id = any($2::text[])");
+    expect(calls[1].values).toEqual(["org-1", ["aurora", "zephyr"]]);
+  });
+
+  it("detectTargets and createSession deny different-project auth before gateway or writes", async () => {
+    const { db, txCalls } = createFakeDb();
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.detectTargets(otherProjectReadAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+    await expect(
+      service.createSession(otherProjectReadAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" }));
+
+    expect(gateway.detectTargets).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+    expect(txCalls).toHaveLength(0);
+  });
+
   it("detectTargets requires debugging:read, calls gateway, persists targets, writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       (call) => [targetRow({ id: call.values[3], target_ref: call.values[4], label: call.values[5], status: call.values[6] })],
@@ -383,6 +441,17 @@ describe("debugging service", () => {
     expect(writeOnlyGateway.readNode).not.toHaveBeenCalled();
   });
 
+  it("readNode denies sessions outside the auth project scope before gateway call", async () => {
+    const { db } = createFakeDb([[sessionRow()]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.readNode(otherProjectReadAuth, { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
+  });
+
   it("readNode records failed gateway reads as failed operations with audit metadata", async () => {
     const { db } = createFakeDb([[sessionRow()], [targetRow()], (call) => [operationRow(call)]]);
     const audit = createAuditSpy();
@@ -501,6 +570,18 @@ describe("debugging service", () => {
     await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.", 400)
     );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode denies sessions outside the auth project scope before gateway call", async () => {
+    const { db } = createFakeDb([[sessionRow()]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(otherProjectWriteAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
@@ -750,6 +831,56 @@ describe("debugging service", () => {
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
+  it("rollbackSnapshot denies sessions outside the auth project scope before gateway writes", async () => {
+    const { db } = createFakeDb([[sessionRow()]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      service.rollbackSnapshot(otherProjectRollbackAuth, {
+        sessionId: "session-1",
+        snapshotId: "snapshot-1",
+        confirmationToken: "confirm-rollback"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" }));
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("rollbackSnapshot claims snapshot before gateway writes and conflicts when claim fails", async () => {
+    const callOrder: string[] = [];
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [snapshotRow()],
+      (call) => {
+        callOrder.push(call.text.includes("rollback_pending") ? "claim" : "unexpected-update");
+        return [];
+      }
+    ]);
+    const gateway = makeGateway({
+      writeNode: vi.fn(async () => {
+        callOrder.push("gateway-write");
+        return {
+          ok: true,
+          verified: true,
+          writeResult: { ok: true, value: "3000", durationMs: 3 },
+          readResult: { ok: true, value: "3000", durationMs: 4 }
+        };
+      })
+    });
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      service.rollbackSnapshot(rollbackAuth, {
+        sessionId: "session-1",
+        snapshotId: "snapshot-1",
+        confirmationToken: "confirm-rollback"
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.", 409));
+
+    expect(callOrder).toEqual(["claim"]);
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
   it("rollbackSnapshot keeps snapshot valid and inserts a failed event on partial failure", async () => {
     const entries = [
       { parameterId: "param-1", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" },
@@ -758,9 +889,11 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
       [snapshotRow({ entries })],
+      [snapshotRow({ entries, status: "rollback_pending" })],
       [targetRow()],
       (call) => [operationRow(call, { status: "succeeded" })],
       (call) => [operationRow(call, { status: "failed", failure_reason: "Rollback write failed." })],
+      [snapshotRow({ entries, status: "valid" })],
       []
     ]);
     const gateway = makeGateway({
@@ -792,7 +925,8 @@ describe("debugging service", () => {
       expect.objectContaining({ status: "succeeded", requestedValue: "3000" }),
       expect.objectContaining({ status: "failed", requestedValue: "12" })
     ]);
-    expect(txCalls.some((call) => call.text.includes("update debugging_snapshots"))).toBe(false);
+    expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.text.includes("status = 'rollback_pending'"))).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.text.includes("status = 'valid'"))).toBe(true);
     const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
     expect(eventCall?.values.slice(1, 8)).toEqual(["org-1", "aurora", "session-1", null, "rollback-failed", "error", "Snapshot rollback failed."]);
     expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", failures: [expect.objectContaining({ status: "failed" })] });
@@ -802,6 +936,7 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
       [snapshotRow()],
+      [snapshotRow({ status: "rollback_pending" })],
       [targetRow()],
       (call) => [operationRow(call)],
       [snapshotRow({ status: "consumed" })],
@@ -820,6 +955,9 @@ describe("debugging service", () => {
     expect(gateway.writeNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current", value: "3000", readBack: true });
     expect(result.operations).toEqual([expect.objectContaining({ operationType: "rollback", status: "succeeded", requestedValue: "3000" })]);
     expect(result.snapshot).toEqual(expect.objectContaining({ id: "snapshot-1", status: "consumed" }));
+    expect(txCalls.findIndex((call) => call.text.includes("rollback_pending"))).toBeLessThan(
+      txCalls.findIndex((call) => call.text.includes("insert into node_operations"))
+    );
     expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.values.includes("snapshot-1"))).toBe(true);
     expect(audit.events[0]).toMatchObject({ kind: "debug-snapshot-rollback", action: "rollback", targetId: "snapshot-1" });
   });
@@ -828,6 +966,7 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
       [snapshotRow()],
+      [snapshotRow({ status: "rollback_pending" })],
       [targetRow()],
       (call) => [operationRow(call)],
       [snapshotRow({ status: "consumed" })],
@@ -859,6 +998,7 @@ describe("debugging service", () => {
     const { db, calls } = createFakeDb([
       [deviceRow()],
       [parameterRow()],
+      [sessionRow()],
       [sessionRow()],
       [
         {
@@ -909,10 +1049,23 @@ describe("debugging service", () => {
       expect.objectContaining({ id: "operation-1", operationType: "read" })
     ]);
 
-    expect(calls).toHaveLength(4);
+    expect(calls).toHaveLength(5);
     expect(calls[0].text).toContain("from debugging_devices");
     expect(calls[1].text).toContain("from debugging_parameters");
     expect(calls[2].text).toContain("from debugging_sessions");
-    expect(calls[3].text).toContain("from node_operations");
+    expect(calls[3].text).toContain("from debugging_sessions");
+    expect(calls[4].text).toContain("from node_operations");
+  });
+
+  it("getSession and listSessionEvents deny session-backed records outside the auth project scope", async () => {
+    const { db } = createFakeDb([[sessionRow()], [sessionRow()]]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.getSession(otherProjectReadAuth, { sessionId: "session-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+    await expect(service.listSessionEvents(otherProjectReadAuth, { sessionId: "session-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
   });
 });

@@ -267,13 +267,15 @@ const nodeOperationColumns = `
 
 export async function listDebugDevices(
   db: Queryable,
-  input: { organizationId: string; projectId?: string }
+  input: { organizationId: string; projectId?: string; projectIds?: string[] }
 ): Promise<DebugDeviceRecord[]> {
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
   if (input.projectId) {
     addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, input.projectId);
+  } else if (input.projectIds?.length) {
+    addCondition(where, values, (placeholder) => `project_id = any(${placeholder}::text[])`, input.projectIds);
   }
 
   const result = await db.query<DebugDeviceRow>(
@@ -309,13 +311,15 @@ export async function getDebugDevice(
 
 export async function listDebugParameters(
   db: Queryable,
-  input: { organizationId: string; projectId?: string; module?: string; risk?: string[] }
+  input: { organizationId: string; projectId?: string; projectIds?: string[]; module?: string; risk?: string[] }
 ): Promise<DebugParameterRecord[]> {
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
   if (input.projectId) {
     addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, input.projectId);
+  } else if (input.projectIds?.length) {
+    addCondition(where, values, (placeholder) => `project_id = any(${placeholder}::text[])`, input.projectIds);
   }
   if (input.module) {
     addCondition(where, values, (placeholder) => `module = ${placeholder}`, input.module);
@@ -641,7 +645,45 @@ export async function markSnapshotConsumed(
       consumed_at = now()
     where organization_id = $1
       and id = $2
+      and status in ('valid', 'rollback_pending')
+    returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    `,
+    [input.organizationId, input.snapshotId]
+  );
+
+  return result.rows[0] ? toDebugSnapshotRecord(result.rows[0]) : null;
+}
+
+export async function claimSnapshotForRollback(
+  db: Queryable,
+  input: { organizationId: string; snapshotId: string }
+): Promise<DebugSnapshotRecord | null> {
+  const result = await db.query<DebugSnapshotRow>(
+    `
+    update debugging_snapshots
+    set status = 'rollback_pending'
+    where organization_id = $1
+      and id = $2
       and status = 'valid'
+    returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    `,
+    [input.organizationId, input.snapshotId]
+  );
+
+  return result.rows[0] ? toDebugSnapshotRecord(result.rows[0]) : null;
+}
+
+export async function restoreSnapshotValid(
+  db: Queryable,
+  input: { organizationId: string; snapshotId: string }
+): Promise<DebugSnapshotRecord | null> {
+  const result = await db.query<DebugSnapshotRow>(
+    `
+    update debugging_snapshots
+    set status = 'valid'
+    where organization_id = $1
+      and id = $2
+      and status = 'rollback_pending'
     returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
     `,
     [input.organizationId, input.snapshotId]

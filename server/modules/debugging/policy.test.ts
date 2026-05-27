@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import {
+  canAccessDebugProject,
   requireDebugAdmin,
+  requireDebugProjectAccess,
   requireDebugRead,
   requireDebugRollback,
   requireDebugView,
@@ -47,5 +49,25 @@ describe("debugging policy", () => {
         user: { ...baseAuth.user, isActive: false }
       })
     ).toThrow(/Missing permission: debugging:read\./);
+  });
+
+  it("allows project access for an org-wide admin role", () => {
+    const auth = {
+      ...baseAuth,
+      roles: [{ projectId: null, roleId: "admin" as const }]
+    };
+
+    expect(canAccessDebugProject(auth, "other-project")).toBe(true);
+    expect(() => requireDebugProjectAccess(auth, "other-project")).not.toThrow();
+  });
+
+  it("allows project access for a role on the same project", () => {
+    expect(canAccessDebugProject(baseAuth, "aurora")).toBe(true);
+    expect(() => requireDebugProjectAccess(baseAuth, "aurora")).not.toThrow();
+  });
+
+  it("denies project access for a role on a different project", () => {
+    expect(canAccessDebugProject(baseAuth, "zephyr")).toBe(false);
+    expect(() => requireDebugProjectAccess(baseAuth, "zephyr")).toThrow(/Debug project access is required\./);
   });
 });

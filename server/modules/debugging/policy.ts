@@ -26,3 +26,24 @@ export function requireDebugRollback(auth: AuthContext) {
 export function requireDebugAdmin(auth: AuthContext) {
   requirePermission(auth, "debugging:admin");
 }
+
+export function getAllowedDebugProjectIds(auth: AuthContext) {
+  if (auth.roles.some((role) => role.roleId === "admin" && role.projectId === null)) {
+    return null;
+  }
+
+  return auth.roles
+    .map((role) => role.projectId)
+    .filter((projectId): projectId is string => typeof projectId === "string" && projectId.length > 0);
+}
+
+export function canAccessDebugProject(auth: AuthContext, projectId: string) {
+  const allowedProjectIds = getAllowedDebugProjectIds(auth);
+  return allowedProjectIds === null || allowedProjectIds.includes(projectId);
+}
+
+export function requireDebugProjectAccess(auth: AuthContext, projectId: string) {
+  if (!canAccessDebugProject(auth, projectId)) {
+    throw new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId });
+  }
+}

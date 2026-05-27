@@ -6,8 +6,16 @@ import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
-import { requireDebugRead, requireDebugRollback, requireDebugView, requireDebugWrite } from "./policy";
 import {
+  getAllowedDebugProjectIds,
+  requireDebugProjectAccess,
+  requireDebugRead,
+  requireDebugRollback,
+  requireDebugView,
+  requireDebugWrite
+} from "./policy";
+import {
+  claimSnapshotForRollback,
   createDebugSession,
   createDebugSnapshot,
   getDebugDevice,
@@ -22,6 +30,7 @@ import {
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
+  restoreSnapshotValid,
   updateDebugParameterValues,
   upsertDetectedTargets
 } from "./repository";
@@ -37,6 +46,10 @@ type ServiceOptions = {
 
 type ProjectQuery = {
   projectId?: string;
+};
+
+type ScopedProjectQuery<T extends ProjectQuery> = T & {
+  projectIds?: string[];
 };
 
 type DetectTargetsInput = {
@@ -158,6 +171,23 @@ function writeStatus(result: GatewayWriteResult) {
   return result.verified ? ("succeeded" as const) : ("readback_mismatch" as const);
 }
 
+function scopedProjectQuery<T extends ProjectQuery>(auth: AuthContext, query: T): ScopedProjectQuery<T> {
+  if (query.projectId) {
+    requireDebugProjectAccess(auth, query.projectId);
+    return query;
+  }
+
+  const allowedProjectIds = getAllowedDebugProjectIds(auth);
+  if (allowedProjectIds?.length === 1) {
+    return { ...query, projectId: allowedProjectIds[0] };
+  }
+  if (allowedProjectIds && allowedProjectIds.length > 1) {
+    return { ...query, projectIds: allowedProjectIds };
+  }
+
+  return query;
+}
+
 export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
   const gateway = options.gateway;
@@ -166,11 +196,13 @@ export function createDebuggingService(options: ServiceOptions) {
   return {
     async listDevices(auth: AuthContext, query: ProjectQuery = {}) {
       requireDebugView(auth);
-      return listDebugDevices(db, { organizationId: organizationIdFor(auth), projectId: query.projectId });
+      const scopedQuery = scopedProjectQuery(auth, query);
+      return listDebugDevices(db, { organizationId: organizationIdFor(auth), projectId: scopedQuery.projectId, projectIds: scopedQuery.projectIds });
     },
 
     async detectTargets(auth: AuthContext, input: DetectTargetsInput) {
       requireDebugRead(auth);
+      requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
 
       const result = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
@@ -220,11 +252,13 @@ export function createDebuggingService(options: ServiceOptions) {
 
     async listParameters(auth: AuthContext, query: ProjectQuery & { module?: string; risk?: string[] } = {}) {
       requireDebugView(auth);
-      return listDebugParameters(db, { organizationId: organizationIdFor(auth), ...query });
+      const scopedQuery = scopedProjectQuery(auth, query);
+      return listDebugParameters(db, { organizationId: organizationIdFor(auth), ...scopedQuery });
     },
 
     async createSession(auth: AuthContext, input: CreateSessionInput) {
       requireDebugRead(auth);
+      requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
 
       return db.transaction(async (tx) => {
@@ -283,12 +317,22 @@ export function createDebuggingService(options: ServiceOptions) {
 
     async getSession(auth: AuthContext, input: { sessionId: string }) {
       requireDebugView(auth);
-      return getDebugSessionRecord(db, { organizationId: organizationIdFor(auth), sessionId: input.sessionId });
+      const session = await getDebugSessionRecord(db, { organizationId: organizationIdFor(auth), sessionId: input.sessionId });
+      if (session) {
+        requireDebugProjectAccess(auth, session.projectId);
+      }
+      return session;
     },
 
     async listSessionEvents(auth: AuthContext, input: { sessionId: string }) {
       requireDebugView(auth);
-      return listDebugSessionEvents(db, { organizationId: organizationIdFor(auth), sessionId: input.sessionId });
+      const organizationId = organizationIdFor(auth);
+      const session = await getDebugSessionRecord(db, { organizationId, sessionId: input.sessionId });
+      if (!session) {
+        throw new ApiError("NOT_FOUND", "Debug session was not found.", 404);
+      }
+      requireDebugProjectAccess(auth, session.projectId);
+      return listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId });
     },
 
     async readNode(auth: AuthContext, input: ReadNodeInput) {
@@ -297,6 +341,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
       return db.transaction(async (tx) => {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
         if (input.parameterId) {
           ensureReadable(await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }), session, input.nodePath);
         }
@@ -350,6 +395,7 @@ export function createDebuggingService(options: ServiceOptions) {
 
       return db.transaction(async (tx) => {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
         const parameter = ensureWritable(await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }), session, input);
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
@@ -464,12 +510,17 @@ export function createDebuggingService(options: ServiceOptions) {
 
       return db.transaction(async (tx) => {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
         const snapshot = await getDebugSnapshot(tx, { organizationId, snapshotId: input.snapshotId });
         if (!snapshot) {
           throw new ApiError("NOT_FOUND", "Snapshot was not found.", 404);
         }
         if (snapshot.status !== "valid" || snapshot.sessionId !== session.id || snapshot.projectId !== session.projectId) {
           throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400);
+        }
+        const claimedSnapshot = await claimSnapshotForRollback(tx, { organizationId, snapshotId: snapshot.id });
+        if (!claimedSnapshot) {
+          throw new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.", 409);
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
@@ -501,7 +552,9 @@ export function createDebuggingService(options: ServiceOptions) {
         }
 
         const failed = operations.some((operation) => operation.status !== "succeeded");
-        const consumedSnapshot = failed ? snapshot : await markSnapshotConsumed(tx, { organizationId, snapshotId: snapshot.id });
+        const finalSnapshot = failed
+          ? await restoreSnapshotValid(tx, { organizationId, snapshotId: claimedSnapshot.id })
+          : await markSnapshotConsumed(tx, { organizationId, snapshotId: claimedSnapshot.id });
         await insertDebugEvent(tx, {
           organizationId,
           projectId: session.projectId,
@@ -510,8 +563,8 @@ export function createDebuggingService(options: ServiceOptions) {
           severity: failed ? "error" : "info",
           message: failed ? "Snapshot rollback failed." : "Snapshot rollback succeeded.",
           metadata: failed
-            ? { snapshotId: snapshot.id, failures: operations.filter((operation) => operation.status !== "succeeded") }
-            : { snapshotId: snapshot.id, operationCount: operations.length }
+            ? { snapshotId: claimedSnapshot.id, failures: operations.filter((operation) => operation.status !== "succeeded") }
+            : { snapshotId: claimedSnapshot.id, operationCount: operations.length }
         });
 
         await writeAudit(
@@ -522,12 +575,12 @@ export function createDebuggingService(options: ServiceOptions) {
             action: "rollback",
             severity: failed ? "High" : "Medium",
             targetType: "debug-snapshot",
-            targetId: snapshot.id,
+            targetId: claimedSnapshot.id,
             metadata: { sessionId: session.id, operationIds: operations.map((operation) => operation.id), failed }
           })
         );
 
-        return { operations, snapshot: consumedSnapshot };
+        return { operations, snapshot: finalSnapshot ?? claimedSnapshot };
       });
     }
   };

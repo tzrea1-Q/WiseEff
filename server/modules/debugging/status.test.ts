@@ -20,7 +20,7 @@ describe("debugging status helpers", () => {
     expect(debugSessionStatuses).toEqual(["active", "closed"]);
     expect(debugOperationTypes).toEqual(["detect", "read", "write", "rollback"]);
     expect(debugOperationStatuses).toEqual(["pending", "succeeded", "failed", "readback_mismatch"]);
-    expect(debugSnapshotStatuses).toEqual(["valid", "consumed", "invalid"]);
+    expect(debugSnapshotStatuses).toEqual(["valid", "rollback_pending", "consumed", "invalid"]);
   });
 
   it("treats pending as the only nonterminal node operation status", () => {
