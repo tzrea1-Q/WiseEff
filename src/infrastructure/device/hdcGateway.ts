@@ -1,5 +1,6 @@
 import type {
   DebuggingGateway,
+  DetectTargetsInput,
   DeviceTarget,
   NodeReadResult,
   NodeWriteResult,
@@ -10,7 +11,7 @@ import { detectHdcTargets, readNodeValue, writeNodeValue } from "@/hdcClient";
 
 export function createHdcGateway(): DebuggingGateway {
   return {
-    async detectTargets(): Promise<DeviceTarget[]> {
+    async detectTargets(_input?: DetectTargetsInput): Promise<DeviceTarget[]> {
       const response = await detectHdcTargets();
       if (response.ok === false) {
         throw new Error(response.error || response.stderr || "HDC target detection failed");
