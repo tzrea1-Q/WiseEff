@@ -2,6 +2,7 @@ import { registerAuditRoutes } from "./modules/audit/routes";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import { registerJobRoutes } from "./modules/jobs/routes";
+import type { DebugDeviceGateway } from "./modules/debugging/gateway";
 import { registerLogRoutes } from "./modules/logs/routes";
 import type { ObjectStore } from "./modules/logs/objectStore";
 import { registerParameterRoutes } from "./modules/parameters/routes";
@@ -14,7 +15,7 @@ async function getCurrentAuthContext(options: { db?: Database }, request: RouteR
   return options.db ? getAuthContext(options.db, userId) : developmentAuthContext;
 }
 
-export function createWiseEffServer(options: { db?: Database; objectStore?: ObjectStore } = {}) {
+export function createWiseEffServer(options: { db?: Database; objectStore?: ObjectStore; debugGateway?: DebugDeviceGateway } = {}) {
   const router = createRouter();
 
   router.get("/api/v1/health", async () => ({

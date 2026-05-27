@@ -5,6 +5,7 @@ const rawEnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8787),
   DATABASE_URL: z.string().optional(),
   OBJECT_STORE_ROOT: z.string().default(".wiseeff-object-store"),
+  DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator"]).default("simulator"),
   MOCK_RUNTIME_ENABLED: z
     .enum(["true", "false"])
     .default("false")
