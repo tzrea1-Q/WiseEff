@@ -34,9 +34,11 @@ Planned endpoints:
 - `/health/live`: process is alive.
 - `/health/ready`: database, Redis, object storage, and required dependencies are ready.
 
-Current endpoint:
+Current endpoints:
 
-- `/api/v1/health`: M0 API smoke endpoint.
+- `/health/live`: process is alive and can serve HTTP without checking dependencies.
+- `/health/ready`: commercial readiness check for configured dependencies. It currently checks database connectivity and returns 503 with a dependency reason when the API process has no database connection.
+- `/api/v1/health`: compatibility smoke endpoint for existing clients.
 
 ## M2 Log Analysis Operations
 
