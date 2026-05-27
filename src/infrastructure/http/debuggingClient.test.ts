@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import { createHttpDebuggingGateway } from "./debuggingClient";
+import type { GetSessionResponseEnvelope } from "./debuggingClient";
+import type { DebugSessionSnapshot } from "@/application/ports/DebuggingGateway";
 import type {
   DebugDeviceDto,
   DebugParameterDto,
@@ -21,6 +23,19 @@ function createFetchMock(body: unknown, status = 200) {
 function createGateway(fetchMock: typeof fetch) {
   return createHttpDebuggingGateway(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
 }
+
+type Equal<Actual, Expected> =
+  (<T>() => T extends Actual ? 1 : 2) extends <T>() => T extends Expected ? 1 : 2
+    ? (<T>() => T extends Expected ? 1 : 2) extends <T>() => T extends Actual ? 1 : 2
+      ? true
+      : false
+    : false;
+
+type Expect<T extends true> = T;
+
+export type GetSessionResponseEnvelopeContract = Expect<
+  Equal<GetSessionResponseEnvelope, { item: DebugSessionSnapshot | null }>
+>;
 
 const deviceDto: DebugDeviceDto = {
   id: "device-1",
@@ -232,6 +247,13 @@ describe("createHttpDebuggingGateway", () => {
       },
       404
     );
+    const gateway = createGateway(fetchMock);
+
+    await expect(gateway.getSession?.("missing")).resolves.toBeNull();
+  });
+
+  it("returns null when getSession receives an empty successful envelope", async () => {
+    const fetchMock = createFetchMock({ item: null });
     const gateway = createGateway(fetchMock);
 
     await expect(gateway.getSession?.("missing")).resolves.toBeNull();

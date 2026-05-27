@@ -25,6 +25,7 @@ import { wiseEffApiBaseUrl } from "./runtimeMode";
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
+export type GetSessionResponseEnvelope = ItemEnvelope<DebugSessionSnapshot | null>;
 type WriteNodeResponse = { operation: NodeOperationDto; snapshot?: DebugSnapshotDto };
 type RollbackSnapshotResponse = { snapshot: DebugSnapshotDto; operations: NodeOperationDto[] };
 
@@ -67,7 +68,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createApiClien
     },
     async getSession(sessionId) {
       try {
-        const response = await apiClient.get<ItemEnvelope<DebugSessionSnapshot>>(sessionPath(sessionId));
+        const response = await apiClient.get<GetSessionResponseEnvelope>(sessionPath(sessionId));
         return response.item;
       } catch (error) {
         if (error instanceof WiseEffApiError && error.code === "NOT_FOUND") {
