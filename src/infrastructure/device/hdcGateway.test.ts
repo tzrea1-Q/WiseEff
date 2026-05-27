@@ -26,6 +26,19 @@ describe("createHdcGateway", () => {
     ]);
   });
 
+  it("accepts api-mode detection input while preserving local hdc behavior", async () => {
+    vi.mocked(detectHdcTargets).mockResolvedValueOnce({
+      ok: true,
+      targets: ["target-a"],
+      activeTarget: "target-a"
+    });
+
+    await expect(createHdcGateway().detectTargets({ projectId: "aurora", deviceId: "sim-device-1" })).resolves.toEqual([
+      { id: "target-a", label: "target-a（当前）" }
+    ]);
+    expect(detectHdcTargets).toHaveBeenCalledWith();
+  });
+
   it("surfaces failed hdc target detection responses", async () => {
     vi.mocked(detectHdcTargets).mockResolvedValueOnce({
       ok: false,
