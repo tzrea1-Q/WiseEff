@@ -125,6 +125,7 @@ function eventFromOperation(operation: NodeOperationSnapshot, rows: RuntimeRow[]
 }
 
 type CommandResultMeta = { returncode?: number };
+type DiagnosticError = Error & { stderr?: string; stdout?: string; returncode?: number };
 type ReadResultWithOperation = NodeReadResult & CommandResultMeta & { operation?: NodeOperationSnapshot };
 type WriteResultWithOperation = NodeWriteResult & { operation?: NodeOperationSnapshot };
 type DetectResultWithOperation = Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>> & {
@@ -260,6 +261,7 @@ export function NodeDebuggingPage({
   const [target, setTarget] = useState<string | undefined>();
   const [detecting, setDetecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const [detectDiagnosticError, setDetectDiagnosticError] = useState("");
   const [events, setEvents] = useState<PageNodeOperationEvent[]>([]);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -270,6 +272,7 @@ export function NodeDebuggingPage({
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
   const didAutoDetectRef = useRef(false);
+  const rowOperationSeqRef = useRef<Record<string, number>>({});
   const selectAllRef = useRef<HTMLInputElement>(null);
 
   const appendEvent = (event: Omit<PageNodeOperationEvent, "id" | "at"> & { at?: string }) => {
@@ -279,6 +282,16 @@ export function NodeDebuggingPage({
     ]);
   };
 
+  const nextRowOperationSeq = (rowId: string) => {
+    const nextSeq = (rowOperationSeqRef.current[rowId] ?? 0) + 1;
+    rowOperationSeqRef.current[rowId] = nextSeq;
+    return nextSeq;
+  };
+
+  const isLatestRowOperation = (rowId: string, operationSeq: number) =>
+    rowOperationSeqRef.current[rowId] === operationSeq;
+
+  const diagnosticConnectionError = detectDiagnosticError.trim();
   const connected = Boolean(target);
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -367,6 +380,7 @@ export function NodeDebuggingPage({
 
   const readRowWithTarget = async (row: RuntimeRow, activeTarget?: string, sessionId?: string) => {
     if ((!activeTarget && !sessionId) || !canRead(row)) return;
+    const operationSeq = nextRowOperationSeq(row.id);
     updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
     const result: ReadResultWithOperation = debuggingActions
       ? await debuggingActions.readNode({
@@ -376,15 +390,16 @@ export function NodeDebuggingPage({
           nodePath: row.nodePath
         })
       : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
+    const isLatest = isLatestRowOperation(row.id, operationSeq);
     if (result.ok) {
       const value = result.value ?? result.stdout?.trim() ?? "";
-      updateRow(row.id, {
+      if (isLatest) updateRow(row.id, {
         runtimeCurrentValue: value,
         lastReadValue: value,
         runtimeStatus: "成功"
       });
     } else {
-      updateRow(row.id, {
+      if (isLatest) updateRow(row.id, {
         runtimeStatus: "失败",
         error: result.error || result.stderr || "读取失败"
       });
@@ -416,6 +431,7 @@ export function NodeDebuggingPage({
 
   const detect = async () => {
     setDetecting(true);
+    setDetectDiagnosticError("");
     try {
       if (debuggingActions) {
         const result = await debuggingActions.detectAndStartSession(state.activeProjectId) as DetectResultWithOperation;
@@ -454,7 +470,23 @@ export function NodeDebuggingPage({
       setTarget(undefined);
       setActiveSessionId(undefined);
       setActiveTargetId(undefined);
-      setConnectionError(error instanceof Error ? error.message : "检测失败");
+      const diagnosticError = error instanceof Error ? error as DiagnosticError : undefined;
+      const detectFailureMessage = diagnosticError?.message || "检测失败";
+      const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
+      setConnectionError(detectFailureMessage);
+      setDetectDiagnosticError(detectFailureMessage);
+      if (debuggingActions) {
+        appendEvent({
+          parameterName: "HDC 设备",
+          parameterKey: "debugging.detect",
+          accessMode: "RO",
+          action: "detect",
+          status: "检测失败",
+          returncode: diagnosticError?.returncode ?? 1,
+          stdout: diagnosticError?.stdout,
+          stderr: detectFailureStderr
+        });
+      }
     } finally {
       setDetecting(false);
     }
@@ -469,6 +501,7 @@ export function NodeDebuggingPage({
   const writeRow = async (row: RuntimeRow) => {
     if ((!target && !activeSessionId) || !canWrite(row)) return;
     const readBack = row.accessMode === "RW";
+    const operationSeq = nextRowOperationSeq(row.id);
     updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
     const result: WriteResultWithOperation = debuggingActions
       ? await debuggingActions.writeNode({
@@ -481,6 +514,8 @@ export function NodeDebuggingPage({
           risk: row.risk
         })
       : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
+
+    if (!isLatestRowOperation(row.id, operationSeq)) return;
 
     if (!result.ok) {
       updateRow(row.id, {
@@ -563,6 +598,9 @@ export function NodeDebuggingPage({
           latestEvent={latestEvent}
           onDetect={() => void detect()}
         />
+        {diagnosticConnectionError ? (
+          <p className="node-row-error">{diagnosticConnectionError}</p>
+        ) : null}
 
         <section className="debug-table">
           <div className="panel-header">

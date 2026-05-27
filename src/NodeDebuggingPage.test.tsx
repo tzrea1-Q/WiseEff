@@ -92,6 +92,16 @@ function currentValueCell(row: HTMLElement) {
   return cell as HTMLElement;
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/node-debugging");
 });
@@ -182,6 +192,97 @@ describe("/node-debugging", () => {
 
     await within(row).findByText(/^失败$/);
     expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
+  });
+
+  it("keeps a failed write state when a stale API auto-read resolves later", async () => {
+    const delayedRead = createDeferred<Awaited<ReturnType<DebuggingRuntimeActions["readNode"]>> & { operation?: unknown }>();
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn((input) => {
+        if (input.parameterId === "dbg-charge-input-current") {
+          return delayedRead.promise;
+        }
+        return Promise.resolve({
+          ok: true,
+          value: "12",
+          stdout: "12\n"
+        });
+      }),
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        value: "3600",
+        verified: false,
+        error: "readback mismatch: expected 3700, got 3600",
+        writeResult: { ok: true, stdout: "write ok\n" },
+        readResult: { ok: true, value: "3600", stdout: "3600\n" },
+        operation: {
+          id: "op-write-mismatch",
+          sessionId: apiSession.id,
+          parameterId: "dbg-charge-input-current",
+          nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+          operationType: "write",
+          status: "readback_mismatch",
+          requestedValue: "3700",
+          readbackValue: "3600",
+          verified: false,
+          failureReason: "readback mismatch: expected 3700, got 3600",
+          durationMs: 18,
+          createdAt: "2026-05-27T09:00:02.000Z"
+        }
+      })
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByRole("textbox"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
+
+    await within(row).findByText(/^失败$/);
+    expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
+
+    delayedRead.resolve({
+      ok: true,
+      value: "3651",
+      stdout: "3651\n",
+      operation: {
+        id: "op-read-stale",
+        sessionId: apiSession.id,
+        parameterId: "dbg-charge-input-current",
+        nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+        operationType: "read",
+        status: "succeeded",
+        readValue: "3651",
+        verified: true,
+        durationMs: 7,
+        createdAt: "2026-05-27T09:00:03.000Z"
+      }
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("8 条"));
+    expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
+    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    expect(within(row).queryByText(/^成功$/)).not.toBeInTheDocument();
+  });
+
+  it("records a diagnostic event when API detect rejects", async () => {
+    const detectError = Object.assign(new Error("gateway session create failed"), {
+      stderr: "ECONNRESET from debugging gateway",
+      returncode: 52
+    });
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn().mockRejectedValue(detectError)
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/gateway session create failed/);
+    fireEvent.click(screen.getByRole("button", { name: /节点操作记录/ }));
+
+    const events = await screen.findByRole("list", { name: "节点操作事件列表" });
+    expect(events).toHaveTextContent("检测失败");
+    expect(events).toHaveTextContent("返回码 52");
+    expect(events).toHaveTextContent("ECONNRESET from debugging gateway");
   });
 
   it("sends only pending writable rows during API bulk write", async () => {
