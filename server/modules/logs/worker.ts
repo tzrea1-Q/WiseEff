@@ -1,13 +1,12 @@
-import { claimNextJob, completeJob, failJob, getJobSnapshot, updateJobProgress } from "../jobs/repository";
+import { claimNextJob, failJob, getJobSnapshot, updateJobProgress } from "../jobs/repository";
 import type { Database } from "../../shared/database/client";
 import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
 import {
-  completeRun,
+  completeLogAnalysisJobWithReport,
   failRun,
   getLogWorkerRunSnapshot as getActiveLogWorkerRunSnapshot,
-  persistLogAnalysisReport,
   updateRunStageProgress
 } from "./repository";
 import type { LogStage } from "./status";
@@ -16,9 +15,23 @@ export type ProcessLogWorkerOptions = {
   db: Database;
   objectStore: ObjectStore;
   analyzer?: LogAnalysisAdapter;
+  workerId?: string;
+  leaseTtlMs?: number;
 };
 
 type StageStatus = "processing" | "complete" | "failed";
+
+class JobLeaseLostError extends Error {
+  constructor() {
+    super("Log analysis job lease was lost before the worker write completed.");
+  }
+}
+
+function assertActiveJobLease(updated: boolean) {
+  if (!updated) {
+    throw new JobLeaseLostError();
+  }
+}
 
 async function markProgress(
   options: ProcessLogWorkerOptions,
@@ -30,8 +43,18 @@ async function markProgress(
     status: StageStatus;
     progress: number;
     message: string;
+    leaseOwner: string;
   }
 ) {
+  assertActiveJobLease(
+    await updateJobProgress(options.db, {
+      organizationId: input.organizationId,
+      jobId: input.jobId,
+      progress: input.progress,
+      currentStage: input.stage,
+      leaseOwner: input.leaseOwner
+    })
+  );
   await updateRunStageProgress(options.db, {
     organizationId: input.organizationId,
     runId: input.runId,
@@ -40,12 +63,6 @@ async function markProgress(
     stage: input.stage,
     progress: input.progress,
     message: input.message
-  });
-  await updateJobProgress(options.db, {
-    organizationId: input.organizationId,
-    jobId: input.jobId,
-    progress: input.progress,
-    currentStage: input.stage
   });
 }
 
@@ -56,10 +73,13 @@ function readableError(error: unknown) {
 export async function processNextLogAnalysisJob({
   db,
   objectStore,
-  analyzer = createRuleBasedLogAnalyzer()
+  analyzer = createRuleBasedLogAnalyzer(),
+  workerId = "wiseeff-log-worker",
+  leaseTtlMs = 60_000
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
-  const job = await claimNextJob(db, { kind: "log-analysis" });
+  const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
+  const leaseOwner = job.leaseOwner ?? workerId;
 
   const options = { db, objectStore, analyzer };
   const jobSnapshot = await getJobSnapshot(db, job.id);
@@ -69,6 +89,15 @@ export async function processNextLogAnalysisJob({
     const staleReason = jobSnapshot
       ? "Log analysis job is stale because its run is no longer current."
       : "Unable to load log analysis job target.";
+
+    const failedJob = await failJob(db, {
+      organizationId: job.organizationId,
+      jobId: job.id,
+      currentStage: "parse",
+      error: staleReason,
+      leaseOwner
+    });
+    if (!failedJob) return "idle";
 
     if (jobSnapshot) {
       await updateRunStageProgress(db, {
@@ -88,12 +117,6 @@ export async function processNextLogAnalysisJob({
         error: staleReason
       });
     }
-    await failJob(db, {
-      organizationId: job.organizationId,
-      jobId: job.id,
-      currentStage: "parse",
-      error: staleReason
-    });
     return "processed";
   }
 
@@ -108,7 +131,8 @@ export async function processNextLogAnalysisJob({
       stage: "parse",
       status: "processing",
       progress: 10,
-      message: "Reading and parsing the uploaded log."
+      message: "Reading and parsing the uploaded log.",
+      leaseOwner
     });
     currentProgress = 10;
 
@@ -125,7 +149,8 @@ export async function processNextLogAnalysisJob({
       stage: "parse",
       status: "complete",
       progress: 30,
-      message: "Log parsing complete."
+      message: "Log parsing complete.",
+      leaseOwner
     });
     currentProgress = 30;
 
@@ -137,7 +162,8 @@ export async function processNextLogAnalysisJob({
       stage: "pattern",
       status: "processing",
       progress: 40,
-      message: "Finding known operational patterns."
+      message: "Finding known operational patterns.",
+      leaseOwner
     });
     currentProgress = 40;
 
@@ -153,7 +179,8 @@ export async function processNextLogAnalysisJob({
       stage: "pattern",
       status: "complete",
       progress: 55,
-      message: "Pattern analysis complete."
+      message: "Pattern analysis complete.",
+      leaseOwner
     });
     currentProgress = 55;
 
@@ -165,7 +192,8 @@ export async function processNextLogAnalysisJob({
       stage: "rootcause",
       status: "processing",
       progress: 65,
-      message: "Linking evidence to likely root causes."
+      message: "Linking evidence to likely root causes.",
+      leaseOwner
     });
     currentProgress = 65;
 
@@ -176,7 +204,8 @@ export async function processNextLogAnalysisJob({
       stage: "rootcause",
       status: "complete",
       progress: 80,
-      message: "Root cause evidence prepared."
+      message: "Root cause evidence prepared.",
+      leaseOwner
     });
     currentProgress = 80;
 
@@ -188,14 +217,17 @@ export async function processNextLogAnalysisJob({
       stage: "report",
       status: "processing",
       progress: 90,
-      message: "Writing report and evidence."
+      message: "Writing report and evidence.",
+      leaseOwner
     });
     currentProgress = 90;
 
-    await persistLogAnalysisReport(db, {
+    const completed = await completeLogAnalysisJobWithReport(db, {
       organizationId: snapshot.organizationId,
       logId: snapshot.logId,
       runId: snapshot.runId,
+      jobId: snapshot.jobId,
+      leaseOwner,
       report: {
         confidence: analysis.confidence,
         conclusion: analysis.conclusion,
@@ -206,38 +238,23 @@ export async function processNextLogAnalysisJob({
       },
       evidence: analysis.evidence
     });
-
-    await updateRunStageProgress(options.db, {
-      organizationId: snapshot.organizationId,
-      runId: snapshot.runId,
-      status: "complete",
-      stageStatus: "complete",
-      stage: "report",
-      progress: 100,
-      message: "Report generation complete."
-    });
-    await updateJobProgress(options.db, {
-      organizationId: snapshot.organizationId,
-      jobId: snapshot.jobId,
-      progress: 100,
-      currentStage: "report"
-    });
-
-    await completeRun(db, {
-      organizationId: snapshot.organizationId,
-      logId: snapshot.logId,
-      runId: snapshot.runId,
-      currentStage: "report"
-    });
-    await completeJob(db, {
-      organizationId: snapshot.organizationId,
-      jobId: snapshot.jobId,
-      currentStage: "report"
-    });
+    if (!completed) return "idle";
 
     return "processed";
   } catch (error) {
+    if (error instanceof JobLeaseLostError) {
+      return "idle";
+    }
     const message = readableError(error);
+    const failedJob = await failJob(db, {
+      organizationId: snapshot.organizationId,
+      jobId: snapshot.jobId,
+      currentStage,
+      error: message,
+      leaseOwner
+    });
+    if (!failedJob) return "idle";
+
     await updateRunStageProgress(options.db, {
       organizationId: snapshot.organizationId,
       runId: snapshot.runId,
@@ -251,12 +268,6 @@ export async function processNextLogAnalysisJob({
       organizationId: snapshot.organizationId,
       logId: snapshot.logId,
       runId: snapshot.runId,
-      currentStage,
-      error: message
-    });
-    await failJob(db, {
-      organizationId: snapshot.organizationId,
-      jobId: snapshot.jobId,
       currentStage,
       error: message
     });

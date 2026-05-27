@@ -12,6 +12,9 @@ type JobRow = {
   current_stage: LogAnalysisJobDto["currentStage"] | null;
   error_message: string | null;
   updated_at: string | Date;
+  lease_owner?: string | null;
+  lease_expires_at?: string | Date | null;
+  attempt_count?: number | string;
 };
 
 type JobSnapshotRow = JobRow & {
@@ -22,6 +25,11 @@ type JobSnapshotRow = JobRow & {
 
 function dateTimeToIso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
+}
+
+function nullableDateTimeToIso(value: string | Date | null | undefined) {
+  if (!value) return null;
+  return dateTimeToIso(value);
 }
 
 function toLogAnalysisJobDto(row: JobRow, logId: string, runId: string): LogAnalysisJobDto {
@@ -41,7 +49,10 @@ function toLogAnalysisJobDto(row: JobRow, logId: string, runId: string): LogAnal
 function toClaimedLogAnalysisJobDto(row: JobRow & { organization_id: string }): ClaimedLogAnalysisJobDto {
   return {
     ...toLogAnalysisJobDto(row, "", row.target_id),
-    organizationId: row.organization_id
+    organizationId: row.organization_id,
+    leaseOwner: row.lease_owner ?? null,
+    leaseExpiresAt: nullableDateTimeToIso(row.lease_expires_at),
+    attemptCount: Number(row.attempt_count ?? 0)
   };
 }
 
@@ -71,24 +82,41 @@ export async function createLogAnalysisJob(
   return toLogAnalysisJobDto(result.rows[0], input.logId, input.runId);
 }
 
-export async function claimNextJob(db: Queryable, input: { kind: LogAnalysisJobKind }) {
-  // Distributed-safe locking with SKIP LOCKED is intentionally deferred until M5+.
+export async function claimNextJob(
+  db: Queryable,
+  input: { kind: LogAnalysisJobKind; leaseOwner?: string; leaseTtlMs?: number }
+) {
+  const leaseOwner = input.leaseOwner ?? "wiseeff-log-worker";
+  const leaseTtlMs = input.leaseTtlMs ?? 60_000;
   const result = await db.query<JobRow & { organization_id: string }>(
     `
     update jobs
     set status = 'processing',
+      lease_owner = $2,
+      lease_expires_at = now() + ($3 * interval '1 millisecond'),
+      attempt_count = coalesce(attempt_count, 0) + 1,
+      error_message = null,
       updated_at = now()
     where id = (
       select id
       from jobs
       where kind = $1
-        and status = 'queued'
+        and (
+          status = 'queued'
+          or (
+            status = 'processing'
+            and lease_expires_at is not null
+            and lease_expires_at <= now()
+          )
+        )
       order by created_at asc, id asc
+      for update skip locked
       limit 1
     )
-    returning id, organization_id, kind, target_id, status, progress, current_stage, error_message, updated_at
+    returning id, organization_id, kind, target_id, status, progress, current_stage, error_message, updated_at,
+      lease_owner, lease_expires_at, attempt_count
     `,
-    [input.kind]
+    [input.kind, leaseOwner, leaseTtlMs]
   );
 
   return result.rows[0] ? toClaimedLogAnalysisJobDto(result.rows[0]) : null;
@@ -127,9 +155,9 @@ export async function getJobSnapshot(db: Queryable, jobId: string) {
 
 export async function updateJobProgress(
   db: Queryable,
-  input: { organizationId: string; jobId: string; progress: number; currentStage: LogStage }
+  input: { organizationId: string; jobId: string; progress: number; currentStage: LogStage; leaseOwner: string }
 ) {
-  await db.query(
+  const result = await db.query(
     `
     update jobs
     set progress = $3,
@@ -138,16 +166,20 @@ export async function updateJobProgress(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and lease_owner = $5
+      and lease_expires_at > now()
     `,
-    [input.organizationId, input.jobId, input.progress, input.currentStage]
+    [input.organizationId, input.jobId, input.progress, input.currentStage, input.leaseOwner]
   );
+
+  return result.rowCount === 1;
 }
 
 export async function completeJob(
   db: Queryable,
-  input: { organizationId: string; jobId: string; currentStage?: LogStage }
+  input: { organizationId: string; jobId: string; currentStage?: LogStage; leaseOwner: string }
 ) {
-  await db.query(
+  const result = await db.query(
     `
     update jobs
     set status = 'complete',
@@ -157,16 +189,20 @@ export async function completeJob(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and lease_owner = $4
+      and lease_expires_at > now()
     `,
-    [input.organizationId, input.jobId, input.currentStage ?? "report"]
+    [input.organizationId, input.jobId, input.currentStage ?? "report", input.leaseOwner]
   );
+
+  return result.rowCount === 1;
 }
 
 export async function failJob(
   db: Queryable,
-  input: { organizationId: string; jobId: string; error: string; currentStage?: LogStage }
+  input: { organizationId: string; jobId: string; error: string; currentStage?: LogStage; leaseOwner: string }
 ) {
-  await db.query(
+  const result = await db.query(
     `
     update jobs
     set status = 'failed',
@@ -175,7 +211,11 @@ export async function failJob(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and lease_owner = $5
+      and lease_expires_at > now()
     `,
-    [input.organizationId, input.jobId, input.error, input.currentStage ?? "parse"]
+    [input.organizationId, input.jobId, input.error, input.currentStage ?? "parse", input.leaseOwner]
   );
+
+  return result.rowCount === 1;
 }

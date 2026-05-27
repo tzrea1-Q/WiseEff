@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { claimNextJob } from "../jobs/repository";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { processNextLogAnalysisJob, startLogWorkerLoop } from "./worker";
@@ -13,6 +14,9 @@ type JobRow = {
   current_stage: string | null;
   error_message: string | null;
   updated_at: string;
+  lease_owner: string | null;
+  lease_expires_at: string | null;
+  attempt_count: number;
 };
 
 type Fixture = {
@@ -66,7 +70,10 @@ function createFixture(overrides: Partial<Fixture> = {}): Fixture {
       progress: 0,
       current_stage: "parse",
       error_message: null,
-      updated_at: "2026-05-25T02:00:00.000Z"
+      updated_at: "2026-05-25T02:00:00.000Z",
+      lease_owner: null,
+      lease_expires_at: null,
+      attempt_count: 0
     },
     run: {
       id: "run-1",
@@ -122,6 +129,9 @@ function createObjectStore(bytes: Buffer): ObjectStore {
 
 function createFakeWorkerDb(fixture = createFixture()) {
   const calls: string[] = [];
+  let rejectNextProgressForLease = false;
+  let rejectNextCompleteForLease = false;
+  let rejectNextFailForLease = false;
 
   const queryable: Queryable = {
     async query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
@@ -131,6 +141,9 @@ function createFakeWorkerDb(fixture = createFixture()) {
       if (normalized.startsWith("update jobs set status = 'processing'")) {
         if (fixture.job.status !== "queued") return { rows: [], rowCount: 0 };
         fixture.job.status = "processing";
+        fixture.job.lease_owner = values[1] as string;
+        fixture.job.lease_expires_at = "2026-05-25T02:01:00.000Z";
+        fixture.job.attempt_count += 1;
         return { rows: [fixture.job as Row], rowCount: 1 };
       }
       if (
@@ -221,6 +234,10 @@ function createFakeWorkerDb(fixture = createFixture()) {
         return { rows: [], rowCount: 1 };
       }
       if (normalized.startsWith("update jobs set progress")) {
+        if (rejectNextProgressForLease) {
+          rejectNextProgressForLease = false;
+          return { rows: [], rowCount: 0 };
+        }
         fixture.job.progress = values[2] as number;
         fixture.job.current_stage = values[3] as string;
         fixture.job.error_message = null;
@@ -259,12 +276,20 @@ function createFakeWorkerDb(fixture = createFixture()) {
         return { rows: [], rowCount: 1 };
       }
       if (normalized.startsWith("update jobs set status = 'complete'")) {
+        if (rejectNextCompleteForLease) {
+          rejectNextCompleteForLease = false;
+          return { rows: [], rowCount: 0 };
+        }
         fixture.job.status = "complete";
         fixture.job.progress = 100;
         fixture.job.current_stage = values[2] as string;
         return { rows: [], rowCount: 1 };
       }
       if (normalized.startsWith("update jobs set status = 'failed'")) {
+        if (rejectNextFailForLease) {
+          rejectNextFailForLease = false;
+          return { rows: [], rowCount: 0 };
+        }
         fixture.job.status = "failed";
         fixture.job.error_message = values[2] as string;
         fixture.job.current_stage = values[3] as string;
@@ -286,13 +311,137 @@ function createFakeWorkerDb(fixture = createFixture()) {
 
   const db: Database = {
     query: queryable.query,
-    transaction: async (fn) => fn(queryable)
+    transaction: async (fn) => {
+      const before = structuredClone(fixture);
+      try {
+        return await fn(queryable);
+      } catch (error) {
+        Object.assign(fixture.job, before.job);
+        Object.assign(fixture.run, before.run);
+        Object.assign(fixture.log, before.log);
+        Object.assign(fixture.file, before.file);
+        fixture.stages.splice(0, fixture.stages.length, ...before.stages);
+        fixture.reports.splice(0, fixture.reports.length, ...before.reports);
+        fixture.evidence.splice(0, fixture.evidence.length, ...before.evidence);
+        throw error;
+      }
+    }
   };
 
-  return { db, fixture, calls };
+  return {
+    db,
+    fixture,
+    calls,
+    rejectNextProgressForLease: () => {
+      rejectNextProgressForLease = true;
+    },
+    rejectNextCompleteForLease: () => {
+      rejectNextCompleteForLease = true;
+    },
+    rejectNextFailForLease: () => {
+      rejectNextFailForLease = true;
+    }
+  };
 }
 
 describe("log worker", () => {
+  it("leases a queued job to one worker and prevents a second claim", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+
+    const firstClaim = await claimNextJob(db, {
+      kind: "log-analysis",
+      leaseOwner: "worker-a",
+      leaseTtlMs: 60_000
+    });
+    const secondClaim = await claimNextJob(db, {
+      kind: "log-analysis",
+      leaseOwner: "worker-b",
+      leaseTtlMs: 60_000
+    });
+
+    expect(firstClaim).toMatchObject({
+      id: "job-1",
+      status: "processing",
+      leaseOwner: "worker-a",
+      leaseExpiresAt: "2026-05-25T02:01:00.000Z",
+      attemptCount: 1
+    });
+    expect(secondClaim).toBeNull();
+    expect(fixture.job).toMatchObject({
+      status: "processing",
+      lease_owner: "worker-a",
+      lease_expires_at: "2026-05-25T02:01:00.000Z",
+      attempt_count: 1
+    });
+  });
+
+  it("stops before run mutations when the claimed job lease is lost", async () => {
+    const workerDb = createFakeWorkerDb();
+    workerDb.rejectNextProgressForLease();
+    const objectStore = createObjectStore(Buffer.from("WARN thermal foldback\n"));
+
+    const result = await processNextLogAnalysisJob({
+      db: workerDb.db,
+      objectStore,
+      workerId: "worker-a",
+      leaseTtlMs: 60_000
+    });
+
+    expect(result).toBe("idle");
+    expect(workerDb.fixture.stages).toEqual([]);
+    expect(workerDb.fixture.run).toMatchObject({ status: "queued", progress: 0, current_stage: "parse" });
+    expect(workerDb.fixture.job).toMatchObject({ status: "processing", progress: 0, current_stage: "parse" });
+  });
+
+  it("does not fail a stale run when the claimed job lease is lost", async () => {
+    const fixture = createFixture({
+      log: {
+        id: "log-1",
+        organization_id: "org-1",
+        project_id: "project-1",
+        file_object_id: "file-1",
+        file_name: "pack-controller.log",
+        status: "processing",
+        current_run_id: "run-2",
+        analysis_question: "Why was current reduced?",
+        failure_reason: null
+      }
+    });
+    const workerDb = createFakeWorkerDb(fixture);
+    workerDb.rejectNextFailForLease();
+
+    const result = await processNextLogAnalysisJob({
+      db: workerDb.db,
+      objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")),
+      workerId: "worker-a",
+      leaseTtlMs: 60_000
+    });
+
+    expect(result).toBe("idle");
+    expect(workerDb.fixture.stages).toEqual([]);
+    expect(workerDb.fixture.run).toMatchObject({ status: "queued", progress: 0, current_stage: "parse", error_message: null });
+    expect(workerDb.fixture.job).toMatchObject({ status: "processing", progress: 0, current_stage: "parse", error_message: null });
+    expect(workerDb.fixture.log).toMatchObject({ status: "processing", current_run_id: "run-2", failure_reason: null });
+  });
+
+  it("does not persist report or evidence when the final job lease write is rejected", async () => {
+    const workerDb = createFakeWorkerDb();
+    workerDb.rejectNextCompleteForLease();
+
+    const result = await processNextLogAnalysisJob({
+      db: workerDb.db,
+      objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")),
+      workerId: "worker-a",
+      leaseTtlMs: 60_000
+    });
+
+    expect(result).toBe("idle");
+    expect(workerDb.fixture.reports).toEqual([]);
+    expect(workerDb.fixture.evidence).toEqual([]);
+    expect(workerDb.fixture.log).toMatchObject({ status: "processing" });
+    expect(workerDb.fixture.job).toMatchObject({ status: "processing" });
+  });
+
   it("processes a queued supported log and updates stages in order", async () => {
     const { db, fixture } = createFakeWorkerDb();
     const objectStore = createObjectStore(
