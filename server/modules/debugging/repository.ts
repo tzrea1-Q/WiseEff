@@ -577,35 +577,42 @@ export async function createDebugSnapshot(
 
 export async function linkOperationSnapshot(
   db: Queryable,
-  input: { operationId: string; snapshotId: string }
+  input: { organizationId: string; operationId: string; snapshotId: string }
 ): Promise<void> {
   await db.query(
     `
     update node_operations
-    set snapshot_id = $2
-    where id = $1
+    set snapshot_id = $3
+    from debugging_snapshots
+    where node_operations.id = $2
+      and debugging_snapshots.id = $3
+      and node_operations.organization_id = $1
+      and debugging_snapshots.organization_id = $1
+      and node_operations.project_id = debugging_snapshots.project_id
+      and node_operations.session_id = debugging_snapshots.session_id
     `,
-    [input.operationId, input.snapshotId]
+    [input.organizationId, input.operationId, input.snapshotId]
   );
 }
 
 export async function markSnapshotConsumed(
   db: Queryable,
-  input: { snapshotId: string }
-): Promise<DebugSnapshotRecord> {
+  input: { organizationId: string; snapshotId: string }
+): Promise<DebugSnapshotRecord | null> {
   const result = await db.query<DebugSnapshotRow>(
     `
     update debugging_snapshots
     set status = 'consumed',
       consumed_at = now()
-    where id = $1
+    where organization_id = $1
+      and id = $2
       and status = 'valid'
     returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
     `,
-    [input.snapshotId]
+    [input.organizationId, input.snapshotId]
   );
 
-  return toDebugSnapshotRecord(result.rows[0]);
+  return result.rows[0] ? toDebugSnapshotRecord(result.rows[0]) : null;
 }
 
 export async function insertDebugEvent(

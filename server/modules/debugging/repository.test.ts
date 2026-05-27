@@ -335,13 +335,22 @@ describe("debugging repository", () => {
       ]
     ]);
 
-    const snapshot = await markSnapshotConsumed(db, { snapshotId: "snapshot-1" });
+    const snapshot = await markSnapshotConsumed(db, { organizationId: "org-1", snapshotId: "snapshot-1" });
 
     expect(calls[0].text).toContain("update debugging_snapshots");
     expect(calls[0].text).toContain("status = 'consumed'");
+    expect(calls[0].text).toContain("organization_id = $1");
     expect(calls[0].text).toContain("status = 'valid'");
-    expect(calls[0].values).toEqual(["snapshot-1"]);
-    expect(snapshot.status).toBe("consumed");
+    expect(calls[0].values).toEqual(["org-1", "snapshot-1"]);
+    expect(snapshot?.status).toBe("consumed");
+  });
+
+  it("markSnapshotConsumed returns null when no valid scoped snapshot is updated", async () => {
+    const { db } = createFakeDb([[]]);
+
+    const snapshot = await markSnapshotConsumed(db, { organizationId: "org-1", snapshotId: "snapshot-1" });
+
+    expect(snapshot).toBeNull();
   });
 
   it("listDebugSessionEvents returns operations newest-last for UI history", async () => {
@@ -403,7 +412,7 @@ describe("debugging repository", () => {
   it("links operation snapshots and inserts debug events with metadata", async () => {
     const { db, calls } = createFakeDb([[], []]);
 
-    await linkOperationSnapshot(db, { operationId: "operation-1", snapshotId: "snapshot-1" });
+    await linkOperationSnapshot(db, { organizationId: "org-1", operationId: "operation-1", snapshotId: "snapshot-1" });
     await insertDebugEvent(db, {
       id: "event-1",
       organizationId: "org-1",
@@ -417,7 +426,14 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("update node_operations");
-    expect(calls[0].values).toEqual(["operation-1", "snapshot-1"]);
+    expect(calls[0].text).toContain("from debugging_snapshots");
+    expect(calls[0].text).toContain("node_operations.id = $2");
+    expect(calls[0].text).toContain("debugging_snapshots.id = $3");
+    expect(calls[0].text).toContain("node_operations.organization_id = $1");
+    expect(calls[0].text).toContain("debugging_snapshots.organization_id = $1");
+    expect(calls[0].text).toContain("node_operations.project_id = debugging_snapshots.project_id");
+    expect(calls[0].text).toContain("node_operations.session_id = debugging_snapshots.session_id");
+    expect(calls[0].values).toEqual(["org-1", "operation-1", "snapshot-1"]);
     expect(calls[1].text).toContain("insert into debugging_events");
     expect(calls[1].text).toContain("$9::jsonb");
     expect(calls[1].values).toEqual([
