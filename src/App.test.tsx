@@ -341,8 +341,8 @@ describe("WiseEff app shell", () => {
 
     expect(debuggingCase).toContain("debuggingActions={debuggingActions}");
     expect(debuggingCase).toContain("debuggingGateway={debuggingGateway}");
-    expect(nodeDebuggingCase).toContain("debuggingActions={debuggingActions}");
-    expect(nodeDebuggingCase).toContain("debuggingGateway={debuggingGateway}");
+    expect(nodeDebuggingCase).toContain('debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}');
+    expect(nodeDebuggingCase).not.toContain("debuggingGateway={debuggingGateway}");
   });
 
   it("advances an API-hydrated review with the request baseVersion as expectedVersion", async () => {
