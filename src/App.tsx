@@ -34,6 +34,16 @@ import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
 import {
+  createDebuggingRuntimeActions,
+  type DebuggingRuntimeActions,
+  type HydrateDebugRuntimeAction,
+  type SetDebugActiveSessionAction,
+  type UpsertDebugNodeOperationAction,
+  type UpsertDebugSnapshotAction
+} from "@/application/debugging/debuggingRuntime";
+import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
+import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
+import {
   createLogRuntimeActions,
   type HydrateLogRuntimeAction,
   type LogRuntimeActions
@@ -207,6 +217,10 @@ export type AppAction =
   | { type: "PUSH_DEBUG_VALUES"; parameterIds: string[] }
   | { type: "ROLLBACK_LAST_SNAPSHOT" }
   | { type: "ROLLBACK_UNDO_PUSH" }
+  | HydrateDebugRuntimeAction
+  | SetDebugActiveSessionAction
+  | UpsertDebugNodeOperationAction
+  | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
   | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string }
@@ -487,6 +501,15 @@ function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
 
 function canSubmitParameterChangesForProject(state: PrototypeState, projectId: string) {
   return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
+}
+
+function debugSnapshotFromSummary(snapshot: UpsertDebugSnapshotAction["snapshot"]): DebugSnapshot {
+  return {
+    id: snapshot.id,
+    createdAt: snapshot.createdAt,
+    entries: [],
+    risk: snapshot.risk
+  };
 }
 
 function buildDraftSubmissionRounds(
@@ -1011,6 +1034,56 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...state,
         logs: action.logs,
         archivedLogIds: archivedLogIdsFromHydratedLogs(state.archivedLogIds, action.logs)
+      };
+    case "HYDRATE_DEBUG_RUNTIME":
+      return {
+        ...state,
+        devices: action.devices,
+        debugParameters: action.debugParameters,
+        configDraft: {
+          ...state.configDraft,
+          debugParameters: action.debugParameters
+        }
+      };
+    case "SET_DEBUG_ACTIVE_SESSION":
+      return {
+        ...state,
+        debuggingSessionStartedAt: action.session?.startedAt ?? null
+      };
+    case "UPSERT_DEBUG_NODE_OPERATION": {
+      const event =
+        action.operation.operationType === "rollback"
+          ? {
+              kind: "rollback" as const,
+              snapshotId: action.operation.snapshotId ?? action.operation.id,
+              parameterIds: action.operation.parameterId ? [action.operation.parameterId] : [],
+              at: action.operation.createdAt
+            }
+          : action.operation.operationType === "write"
+            ? {
+                kind: "push" as const,
+                snapshotId: action.operation.snapshotId ?? action.operation.id,
+                parameterIds: action.operation.parameterId ? [action.operation.parameterId] : [],
+                at: action.operation.createdAt,
+                risk: state.debugParameters.find((parameter) => parameter.id === action.operation.parameterId)?.risk ?? "Low"
+              }
+            : {
+                kind: "connect" as const,
+                deviceId: action.operation.nodePath,
+                at: action.operation.createdAt
+              };
+      return {
+        ...state,
+        debugEvents: [...state.debugEvents, event]
+      };
+    }
+    case "UPSERT_DEBUG_SNAPSHOT":
+      if (action.snapshot.status !== "valid") {
+        return state;
+      }
+      return {
+        ...state,
+        lastDebugSnapshot: debugSnapshotFromSummary(action.snapshot)
       };
     case "UPSERT_LOG_RECORD": {
       const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
@@ -1681,6 +1754,7 @@ export const appReducer = reducer;
 
 type AppProps = {
   authClient?: WiseEffAuthClient;
+  debuggingGateway?: DebuggingGateway;
   initialAppState?: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
@@ -1689,6 +1763,7 @@ type AppProps = {
 
 function App({
   authClient,
+  debuggingGateway,
   initialAppState = initialState,
   logAnalysisRepository,
   parameterRepository,
@@ -1698,6 +1773,7 @@ function App({
     <TooltipProvider delayDuration={0}>
       <AppShell
         authClient={authClient}
+        debuggingGateway={debuggingGateway}
         initialAppState={initialAppState}
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
@@ -1710,12 +1786,14 @@ function App({
 
 function AppShell({
   authClient,
+  debuggingGateway,
   initialAppState,
   logAnalysisRepository,
   parameterRepository,
   runtimeMode
 }: {
   authClient?: WiseEffAuthClient;
+  debuggingGateway?: DebuggingGateway;
   initialAppState: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
@@ -1743,6 +1821,10 @@ function AppShell({
     () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
     [logAnalysisRepository, runtimeMode]
   );
+  const debuggingGatewayClient = useMemo(
+    () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
+    [debuggingGateway, runtimeMode]
+  );
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
@@ -1763,6 +1845,16 @@ function AppShell({
       }),
     [logAnalysisRepositoryClient, runtimeMode]
   );
+  const debuggingActions = useMemo<DebuggingRuntimeActions>(
+    () =>
+      createDebuggingRuntimeActions({
+        mode: runtimeMode,
+        gateway: debuggingGatewayClient,
+        dispatch,
+        getState: () => stateRef.current
+      }),
+    [debuggingGatewayClient, runtimeMode]
+  );
   const DebuggingAdminPageWithRuntime = useCallback(
     (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
     [runtimeMode]
@@ -1773,6 +1865,7 @@ function AppShell({
   );
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
+  const debuggingRuntimeConnectedRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1805,9 +1898,10 @@ function AppShell({
             lastActive: "just now"
           }
         });
-        const [parameterRefreshResult, logRefreshResult] = await Promise.allSettled([
+        const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
           parameterActions.refresh({ notifyOnFailure: false }),
-          logActions.refresh()
+          logActions.refresh(),
+          debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
         ]);
         if (cancelled) return;
         if (
@@ -1834,6 +1928,19 @@ function AppShell({
           parameterRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
         }
+        if (debuggingRefreshResult.status === "rejected") {
+          if (
+            !(
+              debuggingRefreshResult.reason instanceof Error &&
+              (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
+            )
+          ) {
+            dispatch({ type: "ADD_NOTIFICATION", message: "Cannot load WiseEff debugging API; local demo data is retained." });
+          }
+        } else if (!debuggingRuntimeConnectedRef.current) {
+          debuggingRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "Connected to WiseEff debugging API" });
+        }
       })
       .catch(() => {
         dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
@@ -1842,7 +1949,7 @@ function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [authClient, logActions, parameterActions, runtimeMode]);
+  }, [authClient, debuggingActions, logActions, parameterActions, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1903,6 +2010,8 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                debuggingActions={debuggingActions}
+                debuggingGateway={debuggingGatewayClient}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
@@ -1924,6 +2033,8 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                debuggingActions={debuggingActions}
+                debuggingGateway={debuggingGatewayClient}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}

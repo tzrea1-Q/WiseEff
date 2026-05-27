@@ -13,6 +13,8 @@ import type {
   ParameterRuntimeRefreshResult,
   ParameterRuntimeVoidResult
 } from "@/application/parameters/parameterRuntime";
+import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
+import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
@@ -45,6 +47,8 @@ export type PageProps = {
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  debuggingActions?: DebuggingRuntimeActions;
+  debuggingGateway?: DebuggingGateway;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
@@ -69,6 +73,8 @@ export function PageRouter({
   dispatch,
   onNavigate,
   search,
+  debuggingActions,
+  debuggingGateway,
   logActions,
   parameterActions,
   parameterHomeTimeWindow,
@@ -156,7 +162,7 @@ export function PageRouter({
     case "node-debugging":
       return <NodeDebuggingPage state={state} />;
     case "debugging-admin":
-      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
+      return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} debuggingActions={debuggingActions} debuggingGateway={debuggingGateway} logActions={logActions} parameterActions={parameterActions} />;
     case "user-permissions":
       return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
     default:
