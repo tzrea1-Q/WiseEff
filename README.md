@@ -135,6 +135,12 @@ VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 np
 
 `OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
 
+Commercial production mode fails fast when required runtime dependencies are unsafe or missing:
+
+- `NODE_ENV=production` requires `DATABASE_URL`.
+- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
+
 M2 log-analysis verification in API mode:
 
 1. Start PostgreSQL and export `DATABASE_URL`.

@@ -5,7 +5,7 @@ WiseEff reliability work should protect user trust in parameter changes, log ana
 ## Current Baseline
 
 - Frontend build and tests are available through npm scripts.
-- Backend M0 exposes `/api/v1/health`.
+- Backend exposes `/health/live`, `/health/ready`, and compatibility `/api/v1/health`.
 - SQL migrations live in `server/migrations/`.
 - Deployment and operations design lives in `design-docs/deployment-operations.md`.
 - Testing strategy lives in `design-docs/testing-strategy.md`.
@@ -39,6 +39,13 @@ Current endpoints:
 - `/health/live`: process is alive and can serve HTTP without checking dependencies.
 - `/health/ready`: commercial readiness check for configured dependencies. It currently checks database connectivity and returns 503 with a dependency reason when the API process has no database connection.
 - `/api/v1/health`: compatibility smoke endpoint for existing clients.
+
+## Production Configuration Gate
+
+- `NODE_ENV=production` requires `DATABASE_URL`.
+- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
+- Missing or unsafe production settings should stop the API process before it accepts traffic.
 
 ## M2 Log Analysis Operations
 

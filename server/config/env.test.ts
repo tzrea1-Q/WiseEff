@@ -38,4 +38,24 @@ describe("loadServerEnv", () => {
       })
     ).toThrow("MOCK_RUNTIME_ENABLED cannot be true in production");
   });
+
+  it("requires DATABASE_URL in production", () => {
+    expect(() =>
+      loadServerEnv({
+        NODE_ENV: "production",
+        MOCK_RUNTIME_ENABLED: "false"
+      })
+    ).toThrow("DATABASE_URL is required in production");
+  });
+
+  it("requires OBJECT_STORE_ROOT in production", () => {
+    expect(() =>
+      loadServerEnv({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        MOCK_RUNTIME_ENABLED: "false",
+        OBJECT_STORE_ROOT: " "
+      })
+    ).toThrow("OBJECT_STORE_ROOT is required in production");
+  });
 });
