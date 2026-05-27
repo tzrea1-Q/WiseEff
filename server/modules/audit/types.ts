@@ -1,5 +1,9 @@
 export type AuditSeverity = "High" | "Medium" | "Low";
 
+export type AuditCorrelationContext = {
+  requestId?: string;
+};
+
 export type CreateAuditEventInput = {
   id: string;
   organizationId: string;

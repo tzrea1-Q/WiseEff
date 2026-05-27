@@ -666,7 +666,11 @@ describe("debugging service", () => {
     ]);
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
-    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+    const operation = await service.writeNode(
+      writeAuth,
+      { sessionId: "session-1", parameterId: "param-1", value: "3200" },
+      { requestId: "request-debug-write-1" }
+    );
 
     expect(callOrder).toEqual(["gateway-read", "snapshot", "gateway-write"]);
     const snapshotCall = txCalls.find((call) => call.text.includes("insert into debugging_snapshots"));
@@ -722,7 +726,11 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+    const operation = await service.writeNode(
+      writeAuth,
+      { sessionId: "session-1", parameterId: "param-1", value: "3200" },
+      { requestId: "request-debug-write-1" }
+    );
 
     expect(operation).toMatchObject({
       operationType: "write",
@@ -796,7 +804,11 @@ describe("debugging service", () => {
     const audit = createAuditSpy();
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
 
-    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+    const operation = await service.writeNode(
+      writeAuth,
+      { sessionId: "session-1", parameterId: "param-1", value: "3200" },
+      { requestId: "request-debug-write-1" }
+    );
 
     expect(audit.events[0]).toMatchObject({
       kind: "debug-node-write",
@@ -815,6 +827,7 @@ describe("debugging service", () => {
         snapshotId: expect.any(String)
       })
     });
+    expect(audit.events[0].traceId).toBe("request-debug-write-1");
   });
 
   it("writeNode treats audit write failure as operation failure and transaction failure", async () => {

@@ -215,7 +215,7 @@ export function registerParameterRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(submitRoundBodySchema, request.body);
-    const item = await submitParameterChanges(db, auth, body);
+    const item = await submitParameterChanges(db, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
   });
@@ -249,7 +249,7 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
-    const item = await reviewChange(db, auth, body);
+    const item = await reviewChange(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -268,7 +268,7 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithBatchIdSchema, request.params);
     const body = parseWithSchema(applyImportBatchBodySchema, withRouteField(request.body, "batchId", params.batchId));
-    const item = await applyImportBatch(db, auth, body);
+    const item = await applyImportBatch(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });

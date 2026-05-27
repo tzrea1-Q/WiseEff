@@ -77,6 +77,8 @@ M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-f
 
 M3 debugging emits backend audit events for target detection, session creation, node reads, node writes, and snapshot rollback. Write audit metadata includes the session, operation, node path, requested value, previous value, readback value, verification result, failure reason, and snapshot id when applicable.
 
+M3.5 request correlation uses `X-Request-Id` as the HTTP request id. The server reflects a client-provided id or generates one, includes it in error responses, and passes it through M1 parameter, M2 log, and M3 debugging write services as audit `traceId`. Direct service calls without an HTTP request still generate a trace id.
+
 ## Agent Safety
 
 Agent tools should be classified as:

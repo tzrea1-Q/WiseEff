@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
-import type { CreateAuditEventInput } from "../audit/types";
+import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -85,18 +85,24 @@ type RollbackSnapshotInput = {
   confirmationToken: string;
 };
 
+type ServiceContext = AuditCorrelationContext;
+
 function organizationIdFor(auth: AuthContext) {
   return auth.organization.id || auth.user.organizationId;
 }
 
-function auditInput(auth: AuthContext, input: Omit<CreateAuditEventInput, "id" | "organizationId" | "actorUserId" | "actorType" | "app" | "traceId">): CreateAuditEventInput {
+function auditInput(
+  auth: AuthContext,
+  input: Omit<CreateAuditEventInput, "id" | "organizationId" | "actorUserId" | "actorType" | "app" | "traceId">,
+  context: ServiceContext = {}
+): CreateAuditEventInput {
   return {
     id: randomUUID(),
     organizationId: organizationIdFor(auth),
     actorUserId: auth.user.id,
     actorType: "user",
     app: "debugging",
-    traceId: randomUUID(),
+    traceId: context.requestId ?? randomUUID(),
     ...input
   };
 }
@@ -219,7 +225,7 @@ export function createDebuggingService(options: ServiceOptions) {
       return listDebugDevices(db, { organizationId: organizationIdFor(auth), projectId: scopedQuery.projectId, projectIds: scopedQuery.projectIds });
     },
 
-    async detectTargets(auth: AuthContext, input: DetectTargetsInput) {
+    async detectTargets(auth: AuthContext, input: DetectTargetsInput, context: ServiceContext = {}) {
       requireDebugRead(auth);
       requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
@@ -262,15 +268,19 @@ export function createDebuggingService(options: ServiceOptions) {
 
         await writeAudit(
           tx,
-          auditInput(auth, {
-            projectId: input.projectId,
-            kind: "debug-target-detect",
-            action: "detect",
-            severity: "Low",
-            targetType: "debug-device",
-            targetId: input.deviceId ?? null,
-            metadata: { targetCount: targets.length, deviceId: input.deviceId }
-          })
+          auditInput(
+            auth,
+            {
+              projectId: input.projectId,
+              kind: "debug-target-detect",
+              action: "detect",
+              severity: "Low",
+              targetType: "debug-device",
+              targetId: input.deviceId ?? null,
+              metadata: { targetCount: targets.length, deviceId: input.deviceId }
+            },
+            context
+          )
         );
 
         return targets;
@@ -283,7 +293,7 @@ export function createDebuggingService(options: ServiceOptions) {
       return listDebugParameters(db, { organizationId: organizationIdFor(auth), ...scopedQuery });
     },
 
-    async createSession(auth: AuthContext, input: CreateSessionInput) {
+    async createSession(auth: AuthContext, input: CreateSessionInput, context: ServiceContext = {}) {
       requireDebugRead(auth);
       requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
@@ -327,15 +337,19 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         await writeAudit(
           tx,
-          auditInput(auth, {
-            projectId: input.projectId,
-            kind: "debug-session-create",
-            action: "create",
-            severity: "Low",
-            targetType: "debug-session",
-            targetId: session.id,
-            metadata: { deviceId: input.deviceId, targetId: input.targetId }
-          })
+          auditInput(
+            auth,
+            {
+              projectId: input.projectId,
+              kind: "debug-session-create",
+              action: "create",
+              severity: "Low",
+              targetType: "debug-session",
+              targetId: session.id,
+              metadata: { deviceId: input.deviceId, targetId: input.targetId }
+            },
+            context
+          )
         );
 
         return session;
@@ -362,7 +376,7 @@ export function createDebuggingService(options: ServiceOptions) {
       return listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId });
     },
 
-    async readNode(auth: AuthContext, input: ReadNodeInput) {
+    async readNode(auth: AuthContext, input: ReadNodeInput, context: ServiceContext = {}) {
       requireDebugRead(auth);
       const organizationId = organizationIdFor(auth);
 
@@ -395,28 +409,32 @@ export function createDebuggingService(options: ServiceOptions) {
 
         await writeAudit(
           tx,
-          auditInput(auth, {
-            projectId: session.projectId,
-            kind: "debug-node-read",
-            action: "read",
-            severity: result.ok ? "Low" : "Medium",
-            targetType: "debug-node",
-            targetId: input.parameterId ?? input.nodePath,
-            metadata: {
-              sessionId: session.id,
-              operationId: operation.id,
-              nodePath: input.nodePath,
-              readValue: operation.readValue,
-              failureReason: operation.failureReason
-            }
-          })
+          auditInput(
+            auth,
+            {
+              projectId: session.projectId,
+              kind: "debug-node-read",
+              action: "read",
+              severity: result.ok ? "Low" : "Medium",
+              targetType: "debug-node",
+              targetId: input.parameterId ?? input.nodePath,
+              metadata: {
+                sessionId: session.id,
+                operationId: operation.id,
+                nodePath: input.nodePath,
+                readValue: operation.readValue,
+                failureReason: operation.failureReason
+              }
+            },
+            context
+          )
         );
 
         return operation;
       });
     },
 
-    async writeNode(auth: AuthContext, input: WriteNodeInput) {
+    async writeNode(auth: AuthContext, input: WriteNodeInput, context: ServiceContext = {}) {
       requireDebugWrite(auth);
       const organizationId = organizationIdFor(auth);
 
@@ -448,15 +466,19 @@ export function createDebuggingService(options: ServiceOptions) {
           });
           await writeAudit(
             tx,
-            auditInput(auth, {
-              projectId: session.projectId,
-              kind: "debug-node-write",
-              action: "write",
-              severity: "High",
-              targetType: "debug-node",
-              targetId: parameter.id,
-              metadata: { sessionId: session.id, operationId: operation.id, nodePath: parameter.nodePath, failureReason: operation.failureReason }
-            })
+            auditInput(
+              auth,
+              {
+                projectId: session.projectId,
+                kind: "debug-node-write",
+                action: "write",
+                severity: "High",
+                targetType: "debug-node",
+                targetId: parameter.id,
+                metadata: { sessionId: session.id, operationId: operation.id, nodePath: parameter.nodePath, failureReason: operation.failureReason }
+              },
+              context
+            )
           );
           return operation;
         }
@@ -504,32 +526,40 @@ export function createDebuggingService(options: ServiceOptions) {
 
         await writeAudit(
           tx,
-          auditInput(auth, {
-            projectId: session.projectId,
-            kind: "debug-node-write",
-            action: "write",
-            severity: status === "succeeded" ? "Medium" : "High",
-            targetType: "debug-node",
-            targetId: parameter.id,
-            metadata: {
-              sessionId: session.id,
-              operationId: operation.id,
-              nodePath: parameter.nodePath,
-              requestedValue: input.value,
-              previousValue,
-              readbackValue: operation.readbackValue,
-              verified: operation.verified,
-              failureReason: operation.failureReason,
-              snapshotId: snapshot.id
-            }
-          })
+          auditInput(
+            auth,
+            {
+              projectId: session.projectId,
+              kind: "debug-node-write",
+              action: "write",
+              severity: status === "succeeded" ? "Medium" : "High",
+              targetType: "debug-node",
+              targetId: parameter.id,
+              metadata: {
+                sessionId: session.id,
+                operationId: operation.id,
+                nodePath: parameter.nodePath,
+                requestedValue: input.value,
+                previousValue,
+                readbackValue: operation.readbackValue,
+                verified: operation.verified,
+                failureReason: operation.failureReason,
+                snapshotId: snapshot.id
+              }
+            },
+            context
+          )
         );
 
         return operation;
       });
     },
 
-    async rollbackSnapshot(auth: AuthContext, input: RollbackSnapshotInput): Promise<{ operations: NodeOperationRecord[]; snapshot: Awaited<ReturnType<typeof markSnapshotConsumed>> }> {
+    async rollbackSnapshot(
+      auth: AuthContext,
+      input: RollbackSnapshotInput,
+      context: ServiceContext = {}
+    ): Promise<{ operations: NodeOperationRecord[]; snapshot: Awaited<ReturnType<typeof markSnapshotConsumed>> }> {
       requireDebugRollback(auth);
       if (input.confirmationToken !== "confirm-rollback") {
         throw new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.", 400);
@@ -598,15 +628,19 @@ export function createDebuggingService(options: ServiceOptions) {
 
         await writeAudit(
           tx,
-          auditInput(auth, {
-            projectId: session.projectId,
-            kind: "debug-snapshot-rollback",
-            action: "rollback",
-            severity: failed ? "High" : "Medium",
-            targetType: "debug-snapshot",
-            targetId: claimedSnapshot.id,
-            metadata: { sessionId: session.id, operationIds: operations.map((operation) => operation.id), failed }
-          })
+          auditInput(
+            auth,
+            {
+              projectId: session.projectId,
+              kind: "debug-snapshot-rollback",
+              action: "rollback",
+              severity: failed ? "High" : "Medium",
+              targetType: "debug-snapshot",
+              targetId: claimedSnapshot.id,
+              metadata: { sessionId: session.id, operationIds: operations.map((operation) => operation.id), failed }
+            },
+            context
+          )
         );
 
         return { operations, snapshot: finalSnapshot ?? claimedSnapshot };

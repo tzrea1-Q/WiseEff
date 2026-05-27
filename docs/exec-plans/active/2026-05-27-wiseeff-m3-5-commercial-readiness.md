@@ -413,11 +413,11 @@ git commit -m "fix: enforce debugging device leases"
 - Modify: `server/modules/audit/types.ts`
 - Modify: `docs/SECURITY.md`
 
-- [ ] **Step 1: Write failing request-id tests**
+- [x] **Step 1: Write failing request-id tests**
 
 Require `x-request-id` to be reflected or generated and passed into route request context.
 
-- [ ] **Step 2: Implement request id propagation**
+- [x] **Step 2: Implement request id propagation**
 
 Route handlers receive a stable `request.requestId`; audit helpers use it when available.
 

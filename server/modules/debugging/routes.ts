@@ -90,7 +90,7 @@ export function registerDebuggingRoutes(
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(detectTargetsBodySchema, request.body);
-    const items = await service.detectTargets(auth, body);
+    const items = await service.detectTargets(auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { items } };
   });
@@ -111,7 +111,7 @@ export function registerDebuggingRoutes(
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(createDebugSessionBodySchema, request.body);
-    const item = await service.createSession(auth, body);
+    const item = await service.createSession(auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
   });
@@ -138,7 +138,7 @@ export function registerDebuggingRoutes(
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(readNodeBodySchema, request.body);
-    const operation = await service.readNode(auth, body);
+    const operation = await service.readNode(auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { operation } };
   });
@@ -147,13 +147,17 @@ export function registerDebuggingRoutes(
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const body = parseWithSchema(writeNodeBodySchema, request.body);
-    const result = await service.writeNode(auth, {
-      sessionId: body.sessionId,
-      parameterId: body.parameterId,
-      value: body.value,
-      confirmationToken: body.confirmationToken,
-      approvalId: body.approvalId
-    });
+    const result = await service.writeNode(
+      auth,
+      {
+        sessionId: body.sessionId,
+        parameterId: body.parameterId,
+        value: body.value,
+        confirmationToken: body.confirmationToken,
+        approvalId: body.approvalId
+      },
+      { requestId: request.requestId }
+    );
 
     return { status: 200, body: writeResponse(result) };
   });
@@ -163,10 +167,14 @@ export function registerDebuggingRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithSnapshotIdSchema, request.params);
     const body = parseWithSchema(rollbackSnapshotBodySchema, request.body);
-    const result = await service.rollbackSnapshot(auth, {
-      snapshotId: params.snapshotId,
-      confirmationToken: body.confirmationToken
-    });
+    const result = await service.rollbackSnapshot(
+      auth,
+      {
+        snapshotId: params.snapshotId,
+        confirmationToken: body.confirmationToken
+      },
+      { requestId: request.requestId }
+    );
 
     return { status: 200, body: result };
   });

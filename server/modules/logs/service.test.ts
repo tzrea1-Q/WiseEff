@@ -443,16 +443,22 @@ describe("log service", () => {
       })
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Forbidden.", 403, { permission: "logs:feedback" }));
 
-    await submitLogFeedback(db, makeAuth(), {
-      logId: "log-1",
-      rating: "helpful",
-      note: "Matched the incident."
-    });
+    await submitLogFeedback(
+      db,
+      makeAuth(),
+      {
+        logId: "log-1",
+        rating: "helpful",
+        note: "Matched the incident."
+      },
+      { requestId: "request-log-feedback-1" }
+    );
 
     expect(txCalls.some((call) => call.text.includes("insert into log_feedback"))).toBe(true);
     const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
     expect(auditCall?.values).toContain("log-feedback");
     expect(auditCall?.values).toContain("project-1");
+    expect(auditCall?.values[12]).toBe("request-log-feedback-1");
   });
 
   it("rerun requires logs:analyze or admin, creates a new run and job, and keeps old run history", async () => {

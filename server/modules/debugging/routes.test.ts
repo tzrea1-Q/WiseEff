@@ -222,7 +222,11 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [target] });
-    expect(serviceMocks.detectTargets).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora", deviceId: "device-1" });
+    expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
+      makeAuth(),
+      { projectId: "aurora", deviceId: "device-1" },
+      { requestId: "test-request" }
+    );
   });
 
   it("GET /api/v1/debugging/parameters?projectId=aurora returns debug parameter DTOs", async () => {
@@ -254,11 +258,15 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ item: session });
-    expect(serviceMocks.createSession).toHaveBeenCalledWith(makeAuth(), {
-      projectId: "aurora",
-      deviceId: "device-1",
-      targetId: "target-1"
-    });
+    expect(serviceMocks.createSession).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        projectId: "aurora",
+        deviceId: "device-1",
+        targetId: "target-1"
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("GET /api/v1/debugging/sessions/:sessionId returns a session from route params", async () => {
@@ -310,11 +318,15 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ operation });
-    expect(serviceMocks.readNode).toHaveBeenCalledWith(makeAuth(), {
-      sessionId: "session-1",
-      parameterId: "param-1",
-      nodePath: "/sys/current"
-    });
+    expect(serviceMocks.readNode).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        sessionId: "session-1",
+        parameterId: "param-1",
+        nodePath: "/sys/current"
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("POST /api/v1/debugging/nodes/write returns an operation and snapshot when available", async () => {
@@ -342,12 +354,16 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ operation, snapshot });
-    expect(serviceMocks.writeNode).toHaveBeenCalledWith(makeAuth(), {
-      sessionId: "session-1",
-      parameterId: "param-1",
-      value: "3200",
-      confirmationToken: "confirm-high-risk-write"
-    });
+    expect(serviceMocks.writeNode).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        sessionId: "session-1",
+        parameterId: "param-1",
+        value: "3200",
+        confirmationToken: "confirm-high-risk-write"
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("POST /api/v1/debugging/nodes/write returns operation only when the service does not return a snapshot", async () => {
@@ -387,10 +403,14 @@ describe("debugging routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ operations: [operation], snapshot });
-    expect(serviceMocks.rollbackSnapshot).toHaveBeenCalledWith(makeAuth(), {
-      snapshotId: "snapshot-1",
-      confirmationToken: "confirm-rollback"
-    });
+    expect(serviceMocks.rollbackSnapshot).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        snapshotId: "snapshot-1",
+        confirmationToken: "confirm-rollback"
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("missing DB or gateway returns INTERNAL_ERROR", async () => {
