@@ -66,6 +66,18 @@ Idempotency-Key: <uuid>   # 写操作推荐
 - `DEVICE_UNAVAILABLE`
 - `INTERNAL_ERROR`
 
+## M3.5 Route Manifest Guard
+
+`server/modules/contracts/routeManifest.ts` is the static route manifest for the M1-M3 API surface and M3.5 operations endpoints. When a route path, method, or module ownership changes, update the manifest in the same change as the route handler and HTTP client/DTO mapper.
+
+The manifest currently locks the commercial pilot critical paths:
+
+- `parameters.reviewChangeRequest`: `POST /api/v1/parameter-change-requests/:requestId/review`
+- `logs.upload`: `POST /api/v1/logs`
+- `debugging.writeNode`: `POST /api/v1/debugging/nodes/write`
+- `operations.live`: `GET /health/live`
+- `operations.ready`: `GET /health/ready`
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

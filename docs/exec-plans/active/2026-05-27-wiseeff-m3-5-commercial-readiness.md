@@ -289,7 +289,7 @@ git commit -m "fix: enforce production environment contract"
 - route groups include `parameters`, `logs`, `jobs`, `debugging`, and `operations`.
 - `debugging.writeNode` is `POST /api/v1/debugging/nodes/write`.
 - `logs.upload` is `POST /api/v1/logs`.
-- `parameters.mergeChangeRequest` is `POST /api/v1/parameter-change-requests/:requestId/merge`.
+- `parameters.reviewChangeRequest` is `POST /api/v1/parameter-change-requests/:requestId/review`.
 
 - [ ] **Step 2: Implement static manifest**
 
