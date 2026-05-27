@@ -13,10 +13,12 @@
     "test:e2e": "playwright test",
     "test:m1": "npm run test:all && npm run build && npm run test:e2e",
     "test:m2": "npm run test:all && npm run build && npm run test:e2e",
+    "test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed:m0": "tsx scripts/seed-m0.ts",
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",
     "db:seed:m2": "tsx scripts/seed-m2-logs.ts",
+    "db:seed:m3": "tsx scripts/seed-m3-debugging.ts",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

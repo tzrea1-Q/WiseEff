@@ -17,10 +17,11 @@ npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
 npm run db:seed:m2
+npm run db:seed:m3
 npm run dev
 ```
 
-The database commands require `DATABASE_URL` to point at a local PostgreSQL database. They create the M0 foundation rows, M1 parameter-management seed data, and M2 log-analysis sample records used by API mode and acceptance tests.
+The database commands require `DATABASE_URL` to point at a local PostgreSQL database. They create the M0 foundation rows, M1 parameter-management seed data, M2 log-analysis sample records, and M3 simulator debugging catalog used by API mode and acceptance tests.
 
 开发服务绑定到 `127.0.0.1`。启动后 Vite 会在终端输出实际访问地址，通常是：
 
@@ -73,6 +74,12 @@ npm run db:seed:m2
 Seed the M2 log-analysis sample data. Run this after `npm run db:migrate`, `npm run db:seed:m0`, and `npm run db:seed:m1`.
 
 ```bash
+npm run db:seed:m3
+```
+
+Seed the M3 simulator debugging device, detected target, and Aurora debugging parameter catalog. Run this after `npm run db:migrate`, `npm run db:seed:m0`, and `npm run db:seed:m1`.
+
+```bash
 npm run test:e2e
 ```
 
@@ -89,6 +96,12 @@ npm run test:m2
 ```
 
 Run the M2 verification gate: frontend tests, backend tests, production build, then all API-mode E2E smokes. Use this before landing log-analysis MVP changes when a local PostgreSQL `DATABASE_URL` is available.
+
+```bash
+npm run test:m3
+```
+
+Run the M3 verification gate: frontend tests, backend tests, production build, then the M3 debugging API-mode Playwright smoke.
 
 ```bash
 npm run preview
@@ -114,6 +127,7 @@ npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
 npm run db:seed:m2
+npm run db:seed:m3
 npm run dev:api
 VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 npm run dev
 ```
