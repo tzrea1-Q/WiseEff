@@ -1,0 +1,475 @@
+import { describe, expect, it, vi } from "vitest";
+import type { Database, QueryResult, Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
+import type { AuthContext } from "../auth/types";
+import type { CreateAuditEventInput } from "../audit/types";
+import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
+import { createDebuggingService } from "./service";
+
+type QueryCall = {
+  text: string;
+  values: unknown[];
+};
+
+type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
+
+function createFakeDb(results: QueuedResult[] = []) {
+  const calls: QueryCall[] = [];
+  const txCalls: QueryCall[] = [];
+  const transactions: QueryCall[][] = [];
+  const rollbacks: QueryCall[][] = [];
+
+  const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+    const call = { text, values };
+    target.push(call);
+    const next = results.shift() ?? [];
+    const rows = typeof next === "function" ? next(call) : next;
+    return { rows: rows as Row[], rowCount: rows.length };
+  };
+
+  const tx: Queryable = {
+    query: (text, values = []) => runQuery(txCalls, text, values)
+  };
+  const db: Database = {
+    query: (text, values = []) => runQuery(calls, text, values),
+    transaction: async <T,>(fn: (queryable: Queryable) => Promise<T>) => {
+      const start = txCalls.length;
+      try {
+        const result = await fn(tx);
+        transactions.push(txCalls.slice(start));
+        return result;
+      } catch (error) {
+        rollbacks.push(txCalls.slice(start));
+        throw error;
+      }
+    }
+  };
+
+  return { calls, txCalls, transactions, rollbacks, db };
+}
+
+function makeAuth(permissions: AuthContext["permissions"]): AuthContext {
+  return {
+    user: {
+      id: "user-1",
+      organizationId: "org-1",
+      name: "Riley Chen",
+      email: "riley@example.com",
+      title: "Software User",
+      isActive: true
+    },
+    organization: { id: "org-1", name: "ChargeLab" },
+    roles: [{ projectId: "aurora", roleId: "software-user" }],
+    permissions
+  };
+}
+
+function makeGateway(overrides: Partial<DebugDeviceGateway> = {}): DebugDeviceGateway {
+  return {
+    detectTargets: vi.fn(async () => ({
+      ok: true,
+      targets: [{ id: "target-1", deviceId: "device-1", targetRef: "simulator://aurora-1", label: "Aurora Target", online: true }]
+    })),
+    readNode: vi.fn(async () => ({ ok: true, value: "3000", stdout: "3000", durationMs: 5 })),
+    writeNode: vi.fn(async () => ({
+      ok: true,
+      value: "3200",
+      verified: true,
+      writeResult: { ok: true, value: "3200", stdout: "3200", durationMs: 7 },
+      readResult: { ok: true, value: "3200", stdout: "3200", durationMs: 8 }
+    })),
+    ...overrides
+  };
+}
+
+function createAuditSpy() {
+  const events: CreateAuditEventInput[] = [];
+  const createAuditEvent = vi.fn(async (_db: Queryable, input: CreateAuditEventInput) => {
+    events.push(input);
+  });
+
+  return { createAuditEvent, events };
+}
+
+const timestamp = "2026-05-27T10:00:00.000Z";
+
+function deviceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "device-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    name: "Aurora Simulator",
+    transport: "simulator",
+    status: "online",
+    firmware: "sim-1.0",
+    last_seen_at: timestamp,
+    ...overrides
+  };
+}
+
+function targetRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "target-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    device_id: "device-1",
+    target_ref: "simulator://aurora-1",
+    label: "Aurora Target",
+    status: "detected",
+    detected_at: timestamp,
+    ...overrides
+  };
+}
+
+function parameterRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "param-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    name: "Fast charge current",
+    key: "fast_charge_current",
+    description: "Controls constant charge current.",
+    module: "Battery",
+    node_path: "/sys/current",
+    access_mode: "RW",
+    unit: "mA",
+    range_label: "0-5000",
+    min_value: "0",
+    max_value: "5000",
+    risk: "Medium",
+    current_value: "3000",
+    target_value: "3200",
+    sort_order: 10,
+    ...overrides
+  };
+}
+
+function sessionRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "session-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    device_id: "device-1",
+    target_id: "target-1",
+    actor_user_id: "user-1",
+    status: "active",
+    started_at: timestamp,
+    ended_at: null,
+    ...overrides
+  };
+}
+
+function operationRow(call: QueryCall, overrides: Record<string, unknown> = {}) {
+  return {
+    id: call.values[0],
+    organization_id: call.values[1],
+    project_id: call.values[2],
+    session_id: call.values[3],
+    parameter_id: call.values[4],
+    node_path: call.values[5],
+    operation_type: call.values[6],
+    status: call.values[7],
+    requested_value: call.values[8],
+    previous_value: call.values[9],
+    read_value: call.values[10],
+    readback_value: call.values[11],
+    verified: call.values[12],
+    failure_reason: call.values[13],
+    duration_ms: call.values[14],
+    approval_id: call.values[15],
+    snapshot_id: call.values[16],
+    created_at: timestamp,
+    ...overrides
+  };
+}
+
+function snapshotRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "snapshot-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    session_id: "session-1",
+    operation_id: null,
+    status: "valid",
+    risk: "Medium",
+    entries: [{ parameterId: "param-1", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" }],
+    created_at: timestamp,
+    ...overrides
+  };
+}
+
+const readAuth = makeAuth(["debugging:view", "debugging:read"]);
+const writeAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"]);
+const rollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]);
+
+describe("debugging service", () => {
+  it("detectTargets requires debugging:read, calls gateway, persists targets, writes audit", async () => {
+    const { db, txCalls } = createFakeDb([
+      (call) => [targetRow({ id: call.values[3], target_ref: call.values[4], label: call.values[5], status: call.values[6] })],
+      []
+    ]);
+    const gateway = makeGateway();
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+
+    await expect(service.detectTargets(makeAuth(["debugging:view"]), { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
+    );
+
+    const targets = await service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" });
+
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets"))).toBe(true);
+    expect(targets).toEqual([expect.objectContaining({ id: "target-1", status: "detected", targetRef: "simulator://aurora-1" })]);
+    expect(audit.events[0]).toMatchObject({
+      organizationId: "org-1",
+      projectId: "aurora",
+      actorUserId: "user-1",
+      app: "debugging",
+      kind: "debug-target-detect",
+      action: "detect"
+    });
+  });
+
+  it("detectTargets commits a failed debug event when gateway detection fails", async () => {
+    const { db, transactions } = createFakeDb([[]]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: false, targets: [], error: "USB bridge unavailable." })) }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
+      new ApiError("DEVICE_UNAVAILABLE", "USB bridge unavailable.", 409)
+    );
+
+    expect(transactions).toHaveLength(1);
+    expect(transactions[0].some((call) => call.text.includes("insert into debugging_events"))).toBe(true);
+  });
+
+  it("createSession rejects offline or lost targets and persists an active session", async () => {
+    const lost = createFakeDb([[deviceRow()], [targetRow({ status: "lost" })]]);
+    const serviceForLost = createDebuggingService({ db: lost.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      serviceForLost.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+    ).rejects.toMatchObject(new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.", 409));
+
+    const offline = createFakeDb([[deviceRow({ status: "offline" })], [targetRow()]]);
+    const serviceForOffline = createDebuggingService({ db: offline.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      serviceForOffline.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+    ).rejects.toMatchObject(new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.", 409));
+
+    const { db, txCalls } = createFakeDb([[deviceRow()], [targetRow()], (call) => [sessionRow({ id: call.values[0] })], []]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+    const session = await service.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" });
+
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_sessions"))).toBe(true);
+    expect(session).toMatchObject({ projectId: "aurora", deviceId: "device-1", targetId: "target-1", status: "active" });
+    expect(audit.events[0]).toMatchObject({ kind: "debug-session-create", action: "create", targetId: session.id });
+  });
+
+  it("readNode requires debugging:read, rejects catalog/path mismatch, records operation, writes audit", async () => {
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [parameterRow({ node_path: "/sys/other" })],
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => [operationRow(call)]
+    ]);
+    const gateway = makeGateway();
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+
+    await expect(service.readNode(makeAuth(["debugging:view"]), { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
+    );
+    await expect(
+      service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter does not match requested node path.", 400));
+
+    const operation = await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" });
+
+    expect(gateway.readNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current" });
+    expect(operation).toMatchObject({ operationType: "read", status: "succeeded", readValue: "3000", verified: true });
+    expect(txCalls.some((call) => call.text.includes("insert into node_operations"))).toBe(true);
+    expect(audit.events[0]).toMatchObject({ kind: "debug-node-read", action: "read", targetType: "debug-node" });
+  });
+
+  it("writeNode rejects RO parameters before gateway call", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ access_mode: "RO" })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400)
+    );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode rejects numeric values outside minValue/maxValue", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ min_value: "0", max_value: "5000" })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "6000" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400)
+    );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode rejects High-risk parameters without confirmation token or approval", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ risk: "High" })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.", 400)
+    );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode creates a pre-write snapshot with previous value before calling gateway", async () => {
+    const callOrder: string[] = [];
+    const gateway = makeGateway({
+      readNode: vi.fn(async () => {
+        callOrder.push("gateway-read");
+        return { ok: true, value: "3000", stdout: "3000", durationMs: 5 };
+      }),
+      writeNode: vi.fn(async () => {
+        callOrder.push("gateway-write");
+        return {
+          ok: true,
+          value: "3200",
+          verified: true,
+          writeResult: { ok: true, value: "3200", stdout: "3200", durationMs: 7 },
+          readResult: { ok: true, value: "3200", stdout: "3200", durationMs: 8 }
+        };
+      })
+    });
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => {
+        callOrder.push("snapshot");
+        return [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })];
+      },
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      [],
+      []
+    ]);
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    expect(callOrder).toEqual(["gateway-read", "snapshot", "gateway-write"]);
+    const snapshotCall = txCalls.find((call) => call.text.includes("insert into debugging_snapshots"));
+    expect(JSON.parse(String(snapshotCall?.values[7]))).toEqual([
+      { parameterId: "param-1", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" }
+    ]);
+    expect(operation).toMatchObject({ status: "succeeded", previousValue: "3000", snapshotId: "snapshot-1" });
+  });
+
+  it("writeNode stores readback_mismatch when gateway verified=false", async () => {
+    const gatewayResult: GatewayWriteResult = {
+      ok: true,
+      value: "3200",
+      verified: false,
+      error: "Readback mismatch.",
+      writeResult: { ok: true, value: "3200", stdout: "3200", durationMs: 7 },
+      readResult: { ok: true, value: "3100", stdout: "3100", durationMs: 8 }
+    };
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    expect(operation).toMatchObject({
+      operationType: "write",
+      status: "readback_mismatch",
+      readbackValue: "3100",
+      verified: false,
+      failureReason: "Readback mismatch."
+    });
+  });
+
+  it("writeNode treats audit write failure as operation failure and transaction failure", async () => {
+    const { db, rollbacks } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      []
+    ]);
+    const createAuditEvent = vi.fn(async () => {
+      throw new Error("audit unavailable");
+    });
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toThrow(
+      "audit unavailable"
+    );
+
+    expect(rollbacks).toHaveLength(1);
+    expect(rollbacks[0].some((call) => call.text.includes("insert into node_operations"))).toBe(true);
+  });
+
+  it("rollbackSnapshot rejects missing, consumed, invalid, or cross-session snapshots", async () => {
+    for (const snapshot of [null, snapshotRow({ status: "consumed" }), snapshotRow({ status: "invalid" }), snapshotRow({ session_id: "other-session" })]) {
+      const { db } = createFakeDb([[sessionRow()], snapshot ? [snapshot] : []]);
+      const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+      await expect(
+        service.rollbackSnapshot(rollbackAuth, {
+          sessionId: "session-1",
+          snapshotId: "snapshot-1",
+          confirmationToken: "confirm-rollback"
+        })
+      ).rejects.toMatchObject(new ApiError(snapshot ? "VALIDATION_FAILED" : "NOT_FOUND", snapshot ? "Snapshot is not valid for this session." : "Snapshot was not found.", snapshot ? 400 : 404));
+    }
+  });
+
+  it("rollbackSnapshot writes previous values, records rollback operations, marks snapshot consumed", async () => {
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [snapshotRow()],
+      [targetRow()],
+      (call) => [operationRow(call)],
+      [snapshotRow({ status: "consumed" })],
+      []
+    ]);
+    const gateway = makeGateway();
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+
+    const result = await service.rollbackSnapshot(rollbackAuth, {
+      sessionId: "session-1",
+      snapshotId: "snapshot-1",
+      confirmationToken: "confirm-rollback"
+    });
+
+    expect(gateway.writeNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current", value: "3000", readBack: true });
+    expect(result.operations).toEqual([expect.objectContaining({ operationType: "rollback", status: "succeeded", requestedValue: "3000" })]);
+    expect(result.snapshot).toEqual(expect.objectContaining({ id: "snapshot-1", status: "consumed" }));
+    expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.values.includes("snapshot-1"))).toBe(true);
+    expect(audit.events[0]).toMatchObject({ kind: "debug-snapshot-rollback", action: "rollback", targetId: "snapshot-1" });
+  });
+});

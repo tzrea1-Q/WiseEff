@@ -6,10 +6,12 @@ import {
   insertDebugEvent,
   insertNodeOperation,
   linkOperationSnapshot,
+  getDebugDevice,
   listDebugDevices,
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
+  updateDebugParameterValues,
   upsertDetectedTargets
 } from "./repository";
 
@@ -72,6 +74,31 @@ describe("debugging repository", () => {
         lastSeenAt: timestamp
       }
     ]);
+  });
+
+  it("getDebugDevice scopes device lookup by organization", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "device-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          name: "Aurora Simulator",
+          transport: "simulator",
+          status: "online",
+          firmware: "sim-1.0",
+          last_seen_at: timestamp
+        }
+      ]
+    ]);
+
+    const device = await getDebugDevice(db, { organizationId: "org-1", deviceId: "device-1" });
+
+    expect(calls[0].text).toContain("from debugging_devices");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("id = $2");
+    expect(calls[0].values).toEqual(["org-1", "device-1"]);
+    expect(device).toMatchObject({ id: "device-1", organizationId: "org-1", projectId: "aurora", status: "online" });
   });
 
   it("upsertDetectedTargets updates target status and device last_seen_at", async () => {
@@ -166,6 +193,24 @@ describe("debugging repository", () => {
     expect(calls[0].values).toEqual(["org-1", "aurora", "Battery", ["High"]]);
     expect(parameters.map((parameter) => parameter.id)).toEqual(["param-temp-limit", "param-fast-charge"]);
     expect(parameters[0]).toMatchObject({ minValue: 0, maxValue: 70, sortOrder: 10 });
+  });
+
+  it("updateDebugParameterValues stores current and target values for a scoped parameter", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await updateDebugParameterValues(db, {
+      organizationId: "org-1",
+      parameterId: "param-1",
+      currentValue: "3200",
+      targetValue: "3200"
+    });
+
+    expect(calls[0].text).toContain("update debugging_parameters");
+    expect(calls[0].text).toContain("current_value = $3");
+    expect(calls[0].text).toContain("target_value = $4");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("id = $2");
+    expect(calls[0].values).toEqual(["org-1", "param-1", "3200", "3200"]);
   });
 
   it("createDebugSession persists an active session for actor", async () => {

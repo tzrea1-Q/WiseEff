@@ -289,6 +289,24 @@ export async function listDebugDevices(
   return result.rows.map(toDebugDeviceRecord);
 }
 
+export async function getDebugDevice(
+  db: Queryable,
+  input: { organizationId: string; deviceId: string }
+): Promise<DebugDeviceRecord | null> {
+  const result = await db.query<DebugDeviceRow>(
+    `
+    select id, organization_id, project_id, name, transport, status, firmware, last_seen_at
+    from debugging_devices
+    where organization_id = $1
+      and id = $2
+    limit 1
+    `,
+    [input.organizationId, input.deviceId]
+  );
+
+  return result.rows[0] ? toDebugDeviceRecord(result.rows[0]) : null;
+}
+
 export async function listDebugParameters(
   db: Queryable,
   input: { organizationId: string; projectId?: string; module?: string; risk?: string[] }
@@ -335,6 +353,23 @@ export async function getDebugParameter(
   );
 
   return result.rows[0] ? toDebugParameterRecord(result.rows[0]) : null;
+}
+
+export async function updateDebugParameterValues(
+  db: Queryable,
+  input: { organizationId: string; parameterId: string; currentValue: string; targetValue: string }
+): Promise<void> {
+  await db.query(
+    `
+    update debugging_parameters
+    set current_value = $3,
+      target_value = $4,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    `,
+    [input.organizationId, input.parameterId, input.currentValue, input.targetValue]
+  );
 }
 
 export async function getDebugSession(
