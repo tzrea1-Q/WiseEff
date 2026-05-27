@@ -155,6 +155,17 @@ M2 implementation notes:
 - 写入操作必须记录目标值、回读值、验证结果和错误。
 - 回滚必须引用快照。
 
+M3 implementation notes:
+
+- `debugging_devices` stores simulator or future HDC devices; the M3 seed creates `Aurora Simulator Device`.
+- `debugging_targets` stores detected gateway targets; the simulator target is `Aurora Simulator 1`.
+- `debugging_parameters` stores catalog rows with node path, access mode, range, risk, current value, target value, and sort order. `Cycle count` is RO; `Fast charge current` and `Readback mismatch probe` are RW.
+- `debugging_sessions` represents an active user/device/target session. Node reads and writes require an active session.
+- `debugging_snapshots` stores pre-write entries with `previousValue` and `targetValue`. Rollback claims a valid snapshot, writes previous values back, then consumes the snapshot only when all rollback operations succeed.
+- `debugging_node_operations` records detect/read/write/rollback operation status, requested value, previous value, readback value, verification, failure reason, approval id, and snapshot linkage.
+- `debugging_events` records session-level events such as session creation and rollback success/failure.
+- `audit_events` is the cross-domain audit stream for debugging target detection, session creation, node reads, node writes, and snapshot rollback.
+
 ### 2.6 Agent
 
 | 实体 | 说明 |

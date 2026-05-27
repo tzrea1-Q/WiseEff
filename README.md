@@ -101,7 +101,7 @@ Run the M2 verification gate: frontend tests, backend tests, production build, t
 npm run test:m3
 ```
 
-Run the M3 verification gate: frontend tests, backend tests, production build, then the M3 debugging API-mode Playwright smoke when present. During the Task 2 intermediate state, the targeted Playwright command allows no matching tests until Task 11 adds `e2e/debugging.api.spec.ts`.
+Run the M3 verification gate: frontend tests, backend tests, production build, then `e2e/debugging.api.spec.ts`. The smoke requires `DATABASE_URL`, seeds `db:seed:m3`, starts the API in simulator mode, reads `Aurora Simulator 1`, writes fast charge current with readback, verifies the read-only and readback-mismatch paths, rolls back the snapshot, and checks debugging audit events.
 
 ```bash
 npm run preview
@@ -118,11 +118,12 @@ VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 ```
 
-For M2 API mode, use:
+For M2/M3 API mode, use:
 
 ```bash
 DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
 OBJECT_STORE_ROOT=.wiseeff-object-store
+DEBUG_DEVICE_GATEWAY_MODE=simulator
 npm run db:migrate
 npm run db:seed:m0
 npm run db:seed:m1
@@ -141,6 +142,15 @@ M2 log-analysis verification in API mode:
 3. Start `npm run dev:api` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
 4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
 5. Open `/logs?project=aurora`, upload `test-fixtures/logs/charging-foldback.log`, ask `Why did fast charging fold back?`, and verify the report reaches `Complete` with thermal/foldback evidence. Upload `test-fixtures/logs/unsupported.bin` to verify a `Failed` record with a readable unsupported-format reason.
+
+M3 debugging verification in API mode:
+
+1. Start PostgreSQL and export `DATABASE_URL`.
+2. Run `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, and `npm run db:seed:m3`.
+3. Start `npm run dev:api` with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
+5. Open `/node-debugging?project=aurora` and verify `Aurora Simulator 1`, `Fast charge current` reads `3000`, a write to `3100` succeeds with readback, `Cycle count` remains read-only, and `Readback mismatch probe` reports a mismatch.
+6. Run `npm run test:m3` for the full local M3 gate.
 
 生产构建不允许使用 `mock` 作为业务数据源。
 
