@@ -78,7 +78,6 @@ type WriteNodeInput = {
 };
 
 type RollbackSnapshotInput = {
-  sessionId: string;
   snapshotId: string;
   confirmationToken: string;
 };
@@ -517,12 +516,12 @@ export function createDebuggingService(options: ServiceOptions) {
       const organizationId = organizationIdFor(auth);
 
       return db.transaction(async (tx) => {
-        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
-        requireDebugProjectAccess(auth, session.projectId);
         const snapshot = await getDebugSnapshot(tx, { organizationId, snapshotId: input.snapshotId });
         if (!snapshot) {
           throw new ApiError("NOT_FOUND", "Snapshot was not found.", 404);
         }
+        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: snapshot.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
         if (snapshot.status !== "valid" || snapshot.sessionId !== session.id || snapshot.projectId !== session.projectId) {
           throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400);
         }

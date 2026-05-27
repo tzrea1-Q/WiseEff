@@ -369,27 +369,26 @@ describe("debugging routes", () => {
     expect(response.body).toEqual({ operation });
   });
 
-  it("POST /api/v1/debugging/snapshots/:snapshotId/rollback returns rollback operations and snapshot", async () => {
+  it("POST /api/v1/debugging/snapshots/:snapshotId/rollback infers session from snapshot and returns rollback result", async () => {
     const db = makeDb();
     const gateway = makeGateway();
     const operation = operationRecord({ id: "op-rollback", operationType: "rollback", requestedValue: "3000" });
-    const snapshot = snapshotRecord({ id: "snapshot-route", status: "consumed" });
+    const snapshot = snapshotRecord({ id: "snapshot-1", status: "consumed" });
     serviceMocks.rollbackSnapshot.mockResolvedValue({ operations: [operation], snapshot });
 
     const response = await requestJson<{ operations: NodeOperationRecord[]; snapshot: DebugSnapshotRecord }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/snapshots/snapshot-route/rollback",
+      "/api/v1/debugging/snapshots/snapshot-1/rollback",
       {
         method: "POST",
-        body: JSON.stringify({ sessionId: "session-1", confirmationToken: "confirm-rollback" })
+        body: JSON.stringify({ confirmationToken: "confirm-rollback" })
       }
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ operations: [operation], snapshot });
     expect(serviceMocks.rollbackSnapshot).toHaveBeenCalledWith(makeAuth(), {
-      sessionId: "session-1",
-      snapshotId: "snapshot-route",
+      snapshotId: "snapshot-1",
       confirmationToken: "confirm-rollback"
     });
   });

@@ -793,7 +793,6 @@ describe("debugging service", () => {
 
     await expect(
       permissionService.rollbackSnapshot(writeAuth, {
-        sessionId: "session-1",
         snapshotId: "snapshot-1",
         confirmationToken: "confirm-rollback"
       })
@@ -809,7 +808,6 @@ describe("debugging service", () => {
 
     await expect(
       tokenService.rollbackSnapshot(rollbackAuth, {
-        sessionId: "session-1",
         snapshotId: "snapshot-1",
         confirmationToken: "wrong-token"
       })
@@ -819,12 +817,11 @@ describe("debugging service", () => {
 
   it("rollbackSnapshot rejects missing, consumed, invalid, or cross-session snapshots", async () => {
     for (const snapshot of [null, snapshotRow({ status: "consumed" }), snapshotRow({ status: "invalid" }), snapshotRow({ session_id: "other-session" })]) {
-      const { db } = createFakeDb([[sessionRow()], snapshot ? [snapshot] : []]);
+      const { db } = createFakeDb([snapshot ? [snapshot] : [], snapshot ? [sessionRow()] : []]);
       const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
       await expect(
         service.rollbackSnapshot(rollbackAuth, {
-          sessionId: "session-1",
           snapshotId: "snapshot-1",
           confirmationToken: "confirm-rollback"
         })
@@ -833,13 +830,12 @@ describe("debugging service", () => {
   });
 
   it("rollbackSnapshot rejects snapshots from a different project", async () => {
-    const { db } = createFakeDb([[sessionRow()], [snapshotRow({ project_id: "other-project" })]]);
+    const { db } = createFakeDb([[snapshotRow({ project_id: "other-project" })], [sessionRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
     await expect(
       service.rollbackSnapshot(rollbackAuth, {
-        sessionId: "session-1",
         snapshotId: "snapshot-1",
         confirmationToken: "confirm-rollback"
       })
@@ -847,26 +843,27 @@ describe("debugging service", () => {
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
-  it("rollbackSnapshot denies sessions outside the auth project scope before gateway writes", async () => {
-    const { db } = createFakeDb([[sessionRow()]]);
+  it("rollbackSnapshot loads snapshot first, then denies inferred sessions outside the auth project scope before gateway writes", async () => {
+    const { db, txCalls } = createFakeDb([[snapshotRow()], [sessionRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
     await expect(
       service.rollbackSnapshot(otherProjectRollbackAuth, {
-        sessionId: "session-1",
         snapshotId: "snapshot-1",
         confirmationToken: "confirm-rollback"
       })
     ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" }));
+    expect(txCalls[0].text).toContain("from debugging_snapshots");
+    expect(txCalls[1].text).toContain("from debugging_sessions");
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
   it("rollbackSnapshot claims snapshot before gateway writes and conflicts when claim fails", async () => {
     const callOrder: string[] = [];
     const { db } = createFakeDb([
-      [sessionRow()],
       [snapshotRow()],
+      [sessionRow()],
       (call) => {
         callOrder.push(call.text.includes("rollback_pending") ? "claim" : "unexpected-update");
         return [];
@@ -887,7 +884,6 @@ describe("debugging service", () => {
 
     await expect(
       service.rollbackSnapshot(rollbackAuth, {
-        sessionId: "session-1",
         snapshotId: "snapshot-1",
         confirmationToken: "confirm-rollback"
       })
@@ -903,8 +899,8 @@ describe("debugging service", () => {
       { parameterId: "param-2", nodePath: "/sys/voltage", previousValue: "12", targetValue: "14" }
     ];
     const { db, txCalls } = createFakeDb([
-      [sessionRow()],
       [snapshotRow({ entries })],
+      [sessionRow()],
       [snapshotRow({ entries, status: "rollback_pending" })],
       [targetRow()],
       (call) => [operationRow(call, { status: "succeeded" })],
@@ -931,7 +927,6 @@ describe("debugging service", () => {
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
     const result = await service.rollbackSnapshot(rollbackAuth, {
-      sessionId: "session-1",
       snapshotId: "snapshot-1",
       confirmationToken: "confirm-rollback"
     });
@@ -950,8 +945,8 @@ describe("debugging service", () => {
 
   it("rollbackSnapshot writes previous values, records rollback operations, marks snapshot consumed", async () => {
     const { db, txCalls } = createFakeDb([
-      [sessionRow()],
       [snapshotRow()],
+      [sessionRow()],
       [snapshotRow({ status: "rollback_pending" })],
       [targetRow()],
       (call) => [operationRow(call)],
@@ -963,7 +958,6 @@ describe("debugging service", () => {
     const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
 
     const result = await service.rollbackSnapshot(rollbackAuth, {
-      sessionId: "session-1",
       snapshotId: "snapshot-1",
       confirmationToken: "confirm-rollback"
     });
@@ -980,8 +974,8 @@ describe("debugging service", () => {
 
   it("rollbackSnapshot inserts a succeeded event after successful rollback", async () => {
     const { db, txCalls } = createFakeDb([
-      [sessionRow()],
       [snapshotRow()],
+      [sessionRow()],
       [snapshotRow({ status: "rollback_pending" })],
       [targetRow()],
       (call) => [operationRow(call)],
@@ -992,7 +986,6 @@ describe("debugging service", () => {
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
     await service.rollbackSnapshot(rollbackAuth, {
-      sessionId: "session-1",
       snapshotId: "snapshot-1",
       confirmationToken: "confirm-rollback"
     });

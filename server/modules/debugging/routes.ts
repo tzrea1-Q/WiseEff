@@ -162,12 +162,8 @@ export function registerDebuggingRoutes(
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithSnapshotIdSchema, request.params);
-    const body = parseWithSchema(
-      rollbackSnapshotBodySchema.extend({ sessionId: z.string().trim().min(1) }),
-      request.body
-    );
+    const body = parseWithSchema(rollbackSnapshotBodySchema, request.body);
     const result = await service.rollbackSnapshot(auth, {
-      sessionId: body.sessionId,
       snapshotId: params.snapshotId,
       confirmationToken: body.confirmationToken
     });
