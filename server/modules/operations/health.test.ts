@@ -16,15 +16,19 @@ describe("operations health", () => {
     const db: Pick<Queryable, "query"> = {
       query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
     };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
 
-    await expect(buildReadyHealth({ db })).resolves.toMatchObject({
+    await expect(buildReadyHealth({ db, objectStore })).resolves.toMatchObject({
       status: 200,
       body: {
         ok: true,
         service: "wiseeff-api",
         status: "ready",
         dependencies: {
-          database: { ok: true, status: "ready" }
+          database: { ok: true, status: "ready" },
+          objectStore: { ok: true, status: "ready" }
         }
       }
     });
@@ -42,7 +46,60 @@ describe("operations health", () => {
             ok: false,
             status: "missing",
             message: "DATABASE_URL is not configured for this API process."
+          },
+          objectStore: {
+            ok: false,
+            status: "missing",
+            message: "OBJECT_STORE_ROOT is not configured for this API process."
           }
+        }
+      }
+    });
+  });
+
+  it("returns 503 when object store readiness fails", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({
+        ok: false as const,
+        status: "failed" as const,
+        message: "Object store probe failed."
+      })
+    };
+
+    await expect(buildReadyHealth({ db, objectStore })).resolves.toMatchObject({
+      status: 503,
+      body: {
+        ok: false,
+        status: "not_ready",
+        dependencies: {
+          database: { ok: true, status: "ready" },
+          objectStore: { ok: false, status: "failed", message: "Object store probe failed." }
+        }
+      }
+    });
+  });
+
+  it("returns 503 when object store readiness throws", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => {
+        throw new Error("object store permission denied");
+      }
+    };
+
+    await expect(buildReadyHealth({ db, objectStore })).resolves.toMatchObject({
+      status: 503,
+      body: {
+        ok: false,
+        status: "not_ready",
+        dependencies: {
+          database: { ok: true, status: "ready" },
+          objectStore: { ok: false, status: "failed", message: "object store permission denied" }
         }
       }
     });

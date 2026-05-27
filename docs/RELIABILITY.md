@@ -37,7 +37,7 @@ Planned endpoints:
 Current endpoints:
 
 - `/health/live`: process is alive and can serve HTTP without checking dependencies.
-- `/health/ready`: commercial readiness check for configured dependencies. It currently checks database connectivity and returns 503 with a dependency reason when the API process has no database connection.
+- `/health/ready`: commercial readiness check for configured dependencies. It currently checks database connectivity and object-store readiness, returning 503 with per-dependency reasons when either dependency is missing or failed.
 - `/api/v1/health`: compatibility smoke endpoint for existing clients.
 
 ## Production Configuration Gate
@@ -49,7 +49,7 @@ Current endpoints:
 
 ## M2 Log Analysis Operations
 
-- Local object storage is configured with `OBJECT_STORE_ROOT` and defaults to `.wiseeff-object-store`. Uploaded log bytes are stored under an organization-scoped key derived from the checksum and sanitized file name.
+- Local object storage is configured with `OBJECT_STORE_ROOT` and defaults to `.wiseeff-object-store`. Uploaded log bytes are stored under an organization-scoped key derived from the checksum and sanitized file name. Readiness uses a small write/read/delete probe under the configured root.
 - The M2 worker is an in-process loop started by `npm run dev:api` when both `DATABASE_URL` and the local object store are configured. This is sufficient for local/staging smoke tests but is not a distributed worker model.
 - Jobs move through queued/running/complete/failed states with parse, pattern, rootcause, and report stages. The frontend currently uses job polling through `LogAnalysisRepository`; SSE endpoints exist in the API shape but polling remains the reliable local path.
 - Unsupported file formats do not enter the worker. They create a terminal failed log record immediately with an unsupported-format reason.

@@ -18,6 +18,12 @@ function createReadyDb(): Database {
   return db;
 }
 
+function createReadyObjectStore() {
+  return {
+    checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+  };
+}
+
 describe("operations routes", () => {
   it("serves /health/live", async () => {
     const router = createRouter();
@@ -32,7 +38,7 @@ describe("operations routes", () => {
   it("serves /health/ready with database status", async () => {
     const router = createRouter();
     const db = createReadyDb();
-    registerOperationsRoutes(router, { db });
+    registerOperationsRoutes(router, { db, objectStore: createReadyObjectStore() });
 
     const response = await requestJson(createHttpServer(router), "/health/ready");
 
@@ -40,7 +46,10 @@ describe("operations routes", () => {
     expect(response.body).toMatchObject({
       ok: true,
       status: "ready",
-      dependencies: { database: { ok: true, status: "ready" } }
+      dependencies: {
+        database: { ok: true, status: "ready" },
+        objectStore: { ok: true, status: "ready" }
+      }
     });
   });
 
@@ -54,7 +63,10 @@ describe("operations routes", () => {
     expect(response.body).toMatchObject({
       ok: false,
       status: "not_ready",
-      dependencies: { database: { ok: false, status: "missing" } }
+      dependencies: {
+        database: { ok: false, status: "missing" },
+        objectStore: { ok: false, status: "missing" }
+      }
     });
   });
 
