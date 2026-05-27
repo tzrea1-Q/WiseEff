@@ -59,6 +59,9 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
+  const [pendingRuntimeAction, setPendingRuntimeAction] = useState<"connect" | "push" | "rollback" | null>(null);
+  const pendingRuntimeActionRef = useRef<"connect" | "push" | "rollback" | null>(null);
+  const runtimeRequestSeqRef = useRef(0);
 
   const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0];
   const debugParameters = state.debugParameters;
@@ -192,14 +195,36 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
     });
   };
 
-  const pushParameterIds = async (parameterIds: string[]) => {
+  const runRuntimeAction = async (
+    action: "connect" | "push" | "rollback",
+    run: () => Promise<void>,
+    fallbackMessage: string
+  ) => {
+    if (pendingRuntimeActionRef.current === action) return;
+
+    const requestSeq = runtimeRequestSeqRef.current + 1;
+    runtimeRequestSeqRef.current = requestSeq;
+    pendingRuntimeActionRef.current = action;
     setRuntimeNotice(null);
-    if (debuggingActions) {
-      try {
-        await debuggingActions.pushValues(parameterIds);
-      } catch (error) {
-        setRuntimeNotice(error instanceof Error ? error.message : "Debug push failed");
+    setPendingRuntimeAction(action);
+
+    try {
+      await run();
+    } catch (error) {
+      if (runtimeRequestSeqRef.current === requestSeq) {
+        setRuntimeNotice(error instanceof Error ? error.message : fallbackMessage);
       }
+    } finally {
+      if (runtimeRequestSeqRef.current === requestSeq) {
+        pendingRuntimeActionRef.current = null;
+        setPendingRuntimeAction(null);
+      }
+    }
+  };
+
+  const pushParameterIds = async (parameterIds: string[]) => {
+    if (debuggingActions) {
+      await runRuntimeAction("push", () => debuggingActions.pushValues(parameterIds), "Debug push failed");
       return;
     }
 
@@ -235,20 +260,24 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
         className="link-button"
         type="button"
         onClick={() => {
-          setRuntimeNotice(null);
           if (debuggingActions) {
-            void debuggingActions.detectAndStartSession(state.activeProjectId).catch((error) => {
-              setRuntimeNotice(error instanceof Error ? error.message : "Debug connection failed");
-            });
+            void runRuntimeAction(
+              "connect",
+              async () => {
+                await debuggingActions.detectAndStartSession(state.activeProjectId);
+              },
+              "Debug connection failed"
+            );
             return;
           }
           dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id });
         }}
+        disabled={pendingRuntimeAction === "connect"}
       >
         连接
       </button>
     </div>,
-    [activeDevice.id, activeDevice.name, connected, debuggingActions, state.activeProjectId]
+    [activeDevice.id, activeDevice.name, connected, debuggingActions, pendingRuntimeAction, state.activeProjectId]
   );
 
   return (
@@ -373,7 +402,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
-                disabled={!connected || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
+                disabled={!connected || pendingRuntimeAction === "push" || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
                 onClick={pushPendingValues}
               >
                 <Send size={16} />
@@ -408,7 +437,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
-                disabled={!connected || editingParameter.status !== "待下发"}
+                disabled={!connected || pendingRuntimeAction === "push" || editingParameter.status !== "待下发"}
                 onClick={() => {
                   void pushParameterIds([editingParameter.id]);
                   setSheetOpen(false);
@@ -473,14 +502,15 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
           onConfirm={() => {
             const snapshot = state.lastDebugSnapshot;
             if (!snapshot) return;
-            setRuntimeNotice(null);
             if (debuggingActions) {
-              void debuggingActions.rollbackSnapshot({
-                snapshotId: snapshot.id,
-                confirmationToken: "confirm-rollback"
-              }).catch((error) => {
-                setRuntimeNotice(error instanceof Error ? error.message : "Debug rollback failed");
-              });
+              void runRuntimeAction(
+                "rollback",
+                () => debuggingActions.rollbackSnapshot({
+                  snapshotId: snapshot.id,
+                  confirmationToken: "confirm-rollback"
+                }),
+                "Debug rollback failed"
+              );
             } else {
               dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
             }

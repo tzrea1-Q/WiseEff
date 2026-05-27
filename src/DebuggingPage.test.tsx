@@ -103,6 +103,16 @@ function getRollbackButton() {
   return button;
 }
 
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}
+
 function getRollbackConfirmButton() {
   const button = document.querySelector<HTMLButtonElement>(".rollback-confirm-dialog .button.danger");
   if (!button) throw new Error("Cannot find rollback confirm button.");
@@ -324,6 +334,27 @@ describe("/debugging runtime wiring", () => {
     for (const parameter of pendingParameters) {
       expect(getDebugRow(parameter.key)).toHaveTextContent(parameter.status);
     }
+  });
+
+  it("API mode disables push while a runtime write is in flight", async () => {
+    const pendingPush = createDeferred();
+    const actions = createDebuggingActions({
+      pushValues: vi.fn().mockReturnValue(pendingPush.promise)
+    });
+    const pendingIds = getPendingDebugParameters().map((parameter) => parameter.id);
+
+    renderDebuggingPage({ state: runtimePendingUserState, debuggingActions: actions });
+
+    const pushButton = getPushButton();
+    fireEvent.click(pushButton);
+    fireEvent.click(pushButton);
+
+    expect(actions.pushValues).toHaveBeenCalledTimes(1);
+    expect(actions.pushValues).toHaveBeenCalledWith(pendingIds);
+    expect(pushButton).toBeDisabled();
+
+    pendingPush.resolve();
+    await waitFor(() => expect(pushButton).not.toBeDisabled());
   });
 
   it("mock mode still dispatches connect, push, and rollback actions", () => {
