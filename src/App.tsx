@@ -1909,7 +1909,9 @@ function AppShell({
           (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
         ) {
           dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
-          return;
+        } else if (!parameterRuntimeConnectedRef.current) {
+          parameterRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
         }
         if (logRefreshResult.status === "rejected") {
           if (
@@ -1923,10 +1925,6 @@ function AppShell({
         } else if (!logRuntimeConnectedRef.current) {
           logRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 日志 API" });
-        }
-        if (!parameterRuntimeConnectedRef.current) {
-          parameterRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
         }
         if (debuggingRefreshResult.status === "rejected") {
           if (

@@ -291,6 +291,60 @@ describe("WiseEff app shell", () => {
     await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
   });
 
+  it("keeps debugging runtime hydration independent when parameter refresh fails", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const debuggingGateway = createAppDebuggingGateway();
+    const parameterRepository = createAppParameterRepository({
+      listProjects: vi.fn().mockRejectedValue(new Error("parameter API unavailable"))
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-debug-independent",
+              organizationId: "org-chargelab",
+              name: "API Debug Independent",
+              email: "api-debug-independent@chargelab.cn",
+              title: "API Debug Engineer",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "debugging:use"]
+          })
+        }}
+        debuggingGateway={debuggingGateway}
+        initialAppState={adminState}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByDisplayValue("api_debug_runtime_parameter")).toBeInTheDocument();
+    expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
+    expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
+    expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId });
+  });
+
+  it("threads debugging runtime props through debugging route cases", () => {
+    const routesSource = readFileSync("src/app/routes.tsx", "utf8");
+    const debuggingCase = routesSource.slice(
+      routesSource.indexOf('case "debugging":'),
+      routesSource.indexOf('case "node-debugging":')
+    );
+    const nodeDebuggingCase = routesSource.slice(
+      routesSource.indexOf('case "node-debugging":'),
+      routesSource.indexOf('case "debugging-admin":')
+    );
+
+    expect(debuggingCase).toContain("debuggingActions={debuggingActions}");
+    expect(debuggingCase).toContain("debuggingGateway={debuggingGateway}");
+    expect(nodeDebuggingCase).toContain("debuggingActions={debuggingActions}");
+    expect(nodeDebuggingCase).toContain("debuggingGateway={debuggingGateway}");
+  });
+
   it("advances an API-hydrated review with the request baseVersion as expectedVersion", async () => {
     window.history.replaceState(null, "", "/parameter-review");
     const apiReview = {

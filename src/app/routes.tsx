@@ -33,6 +33,9 @@ import type { PrototypeState } from "@/mockData";
 import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
 import type { ParameterDraftItem } from "@/domain/parameters/types";
 
+const DebuggingPageWithRuntimeProps = DebuggingPage as (props: Pick<PageProps, "state" | "dispatch" | "debuggingActions" | "debuggingGateway">) => ReactNode;
+const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (props: Pick<PageProps, "state" | "debuggingActions" | "debuggingGateway">) => ReactNode;
+
 export type ParameterPageActions = {
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
@@ -158,9 +161,22 @@ export function PageRouter({
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "debugging":
-      return <DebuggingPage state={state} dispatch={dispatch} />;
+      return (
+        <DebuggingPageWithRuntimeProps
+          state={state}
+          dispatch={dispatch}
+          debuggingActions={debuggingActions}
+          debuggingGateway={debuggingGateway}
+        />
+      );
     case "node-debugging":
-      return <NodeDebuggingPage state={state} />;
+      return (
+        <NodeDebuggingPageWithRuntimeProps
+          state={state}
+          debuggingActions={debuggingActions}
+          debuggingGateway={debuggingGateway}
+        />
+      );
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} debuggingActions={debuggingActions} debuggingGateway={debuggingGateway} logActions={logActions} parameterActions={parameterActions} />;
     case "user-permissions":
