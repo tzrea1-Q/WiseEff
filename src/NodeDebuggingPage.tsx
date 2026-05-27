@@ -5,6 +5,8 @@ import { ColumnFilter } from "./components/ColumnFilter";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
+import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import type { NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 type NodeRuntimeStatus =
@@ -21,6 +23,10 @@ type RuntimeRow = DebugParameter & {
   runtimeStatus: NodeRuntimeStatus;
   error?: string;
   lastReadValue?: string;
+};
+
+type PageNodeOperationEvent = NodeOperationEvent & {
+  durationMs?: number;
 };
 
 function canRead(row: Pick<DebugParameter, "accessMode" | "nodePath">) {
@@ -62,7 +68,7 @@ function formatSessionDuration(startedAt: string | null, now: Date) {
   return `${Math.max(0, Math.floor((now.getTime() - startTime) / 60_000))} 分钟`;
 }
 
-function isSuccessfulWriteEvent(event: NodeOperationEvent) {
+function isSuccessfulWriteEvent(event: PageNodeOperationEvent) {
   return (event.action === "write" || event.action === "write-readback") &&
     (event.status === "写入成功" || event.status === "回读一致");
 }
@@ -72,6 +78,58 @@ function compactNodeEventStatus(status: string) {
   if (status.includes("成功") || status.includes("一致") || status.includes("已连接")) return "成功";
   return status;
 }
+
+function eventActionFromOperation(operation: NodeOperationSnapshot): NodeOperationEvent["action"] {
+  if (operation.operationType === "write") {
+    return operation.readbackValue !== undefined || operation.status === "readback_mismatch" ? "write-readback" : "write";
+  }
+  return operation.operationType === "detect" ? "detect" : "read";
+}
+
+function eventStatusFromOperation(operation: NodeOperationSnapshot) {
+  if (operation.status === "succeeded") {
+    if (operation.operationType === "detect") return "已连接";
+    if (operation.operationType === "read") return "读取成功";
+    return operation.readbackValue !== undefined ? "回读一致" : "写入成功";
+  }
+  if (operation.status === "readback_mismatch") return "回读不一致";
+  if (operation.operationType === "detect") return "检测失败";
+  if (operation.operationType === "read") return "读取失败";
+  return "写入失败";
+}
+
+function returncodeFromOperation(operation: NodeOperationSnapshot) {
+  return operation.status === "succeeded" ? 0 : 1;
+}
+
+function findOperationParameter(operation: NodeOperationSnapshot, rows: RuntimeRow[]) {
+  return rows.find((row) => row.id === operation.parameterId || row.nodePath === operation.nodePath);
+}
+
+function eventFromOperation(operation: NodeOperationSnapshot, rows: RuntimeRow[]): Omit<PageNodeOperationEvent, "id" | "at"> & { at?: string } {
+  const row = findOperationParameter(operation, rows);
+  const stdout = operation.readbackValue ?? operation.readValue ?? operation.previousValue ?? operation.requestedValue;
+  return {
+    parameterName: row?.name ?? (operation.operationType === "detect" ? "HDC 设备" : operation.parameterId ?? operation.nodePath),
+    parameterKey: row?.key ?? operation.parameterId ?? operation.nodePath,
+    accessMode: row?.accessMode ?? "RO",
+    action: eventActionFromOperation(operation),
+    status: eventStatusFromOperation(operation),
+    returncode: returncodeFromOperation(operation),
+    stdout,
+    stderr: operation.failureReason,
+    nodePath: operation.nodePath,
+    durationMs: operation.durationMs,
+    at: operation.createdAt
+  };
+}
+
+type CommandResultMeta = { returncode?: number };
+type ReadResultWithOperation = NodeReadResult & CommandResultMeta & { operation?: NodeOperationSnapshot };
+type WriteResultWithOperation = NodeWriteResult & { operation?: NodeOperationSnapshot };
+type DetectResultWithOperation = Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>> & {
+  operation?: NodeOperationSnapshot;
+};
 
 function NodeSessionSummaryCard({
   connected,
@@ -184,7 +242,13 @@ function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
   );
 }
 
-export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
+export function NodeDebuggingPage({
+  state,
+  debuggingActions
+}: {
+  state: PrototypeState;
+  debuggingActions?: DebuggingRuntimeActions;
+}) {
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => ({
       ...parameter,
@@ -196,20 +260,22 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   const [target, setTarget] = useState<string | undefined>();
   const [detecting, setDetecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
-  const [events, setEvents] = useState<NodeOperationEvent[]>([]);
+  const [events, setEvents] = useState<PageNodeOperationEvent[]>([]);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [nowTick, setNowTick] = useState(() => new Date());
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
+  const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
+  const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
   const didAutoDetectRef = useRef(false);
   const selectAllRef = useRef<HTMLInputElement>(null);
 
-  const appendEvent = (event: Omit<NodeOperationEvent, "id" | "at">) => {
+  const appendEvent = (event: Omit<PageNodeOperationEvent, "id" | "at"> & { at?: string }) => {
     setEvents((current) => [
       ...current,
-      { ...event, id: `node-event-${current.length + 1}`, at: new Date().toISOString() }
+      { ...event, id: `node-event-${current.length + 1}`, at: event.at ?? new Date().toISOString() }
     ]);
   };
 
@@ -299,10 +365,17 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
     setEditingRowId(null);
   };
 
-  const readRowWithTarget = async (row: RuntimeRow, activeTarget?: string) => {
-    if (!activeTarget || !canRead(row)) return;
+  const readRowWithTarget = async (row: RuntimeRow, activeTarget?: string, sessionId?: string) => {
+    if ((!activeTarget && !sessionId) || !canRead(row)) return;
     updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
-    const result = await readNodeValue({ target: activeTarget, nodePath: row.nodePath });
+    const result: ReadResultWithOperation = debuggingActions
+      ? await debuggingActions.readNode({
+          sessionId,
+          target: activeTarget,
+          parameterId: row.id,
+          nodePath: row.nodePath
+        })
+      : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
     if (result.ok) {
       const value = result.value ?? result.stdout?.trim() ?? "";
       updateRow(row.id, {
@@ -316,23 +389,27 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
         error: result.error || result.stderr || "读取失败"
       });
     }
-    appendEvent({
-      parameterName: row.name,
-      parameterKey: row.key,
-      accessMode: row.accessMode,
-      action: "read",
-      status: result.ok ? "读取成功" : "读取失败",
-      returncode: result.returncode,
-      stdout: result.stdout,
-      stderr: result.stderr || result.error,
-      nodePath: row.nodePath
-    });
+    if (result.operation) {
+      appendEvent(eventFromOperation(result.operation, rows));
+    } else {
+      appendEvent({
+        parameterName: row.name,
+        parameterKey: row.key,
+        accessMode: row.accessMode,
+        action: "read",
+        status: result.ok ? "读取成功" : "读取失败",
+        returncode: result.returncode,
+        stdout: result.stdout,
+        stderr: result.stderr || result.error,
+        nodePath: row.nodePath
+      });
+    }
   };
 
-  const readReadableRows = async (activeTarget: string, currentRows: RuntimeRow[]) => {
+  const readReadableRows = async (activeTarget: string | undefined, currentRows: RuntimeRow[], sessionId?: string) => {
     for (const row of currentRows) {
       if (canRead(row)) {
-        await readRowWithTarget(row, activeTarget);
+        await readRowWithTarget(row, activeTarget, sessionId);
       }
     }
   };
@@ -340,8 +417,24 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   const detect = async () => {
     setDetecting(true);
     try {
+      if (debuggingActions) {
+        const result = await debuggingActions.detectAndStartSession(state.activeProjectId) as DetectResultWithOperation;
+        const { session, target: detectedTarget } = result;
+        setActiveSessionId(session.id);
+        setActiveTargetId(detectedTarget.id);
+        setTarget(detectedTarget.label);
+        setConnectionError("");
+        setSessionStartedAt((current) => current ?? session.startedAt);
+        if (result.operation) {
+          appendEvent(eventFromOperation(result.operation, rows));
+        }
+        await readReadableRows(detectedTarget.id, rows, session.id);
+        return;
+      }
+
       const result = await detectHdcTargets();
       setTarget(result.activeTarget);
+      setActiveTargetId(result.activeTarget);
       setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");
       appendEvent({
         parameterName: "HDC 设备",
@@ -359,6 +452,8 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
       }
     } catch (error) {
       setTarget(undefined);
+      setActiveSessionId(undefined);
+      setActiveTargetId(undefined);
       setConnectionError(error instanceof Error ? error.message : "检测失败");
     } finally {
       setDetecting(false);
@@ -372,10 +467,20 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
   }, []);
 
   const writeRow = async (row: RuntimeRow) => {
-    if (!target || !canWrite(row)) return;
+    if ((!target && !activeSessionId) || !canWrite(row)) return;
     const readBack = row.accessMode === "RW";
     updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
-    const result = await writeNodeValue({ target, nodePath: row.nodePath, value: row.draftValue, readBack });
+    const result: WriteResultWithOperation = debuggingActions
+      ? await debuggingActions.writeNode({
+          sessionId: activeSessionId,
+          target: activeTargetId,
+          parameterId: row.id,
+          nodePath: row.nodePath,
+          value: row.draftValue,
+          readBack,
+          risk: row.risk
+        })
+      : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
 
     if (!result.ok) {
       updateRow(row.id, {
@@ -390,23 +495,28 @@ export function NodeDebuggingPage({ state }: { state: PrototypeState }) {
       updateRow(row.id, {
         runtimeCurrentValue: value ?? row.runtimeCurrentValue,
         lastReadValue: value ?? row.lastReadValue,
-        runtimeStatus: "失败"
+        runtimeStatus: "失败",
+        error: result.error || result.readResult?.stderr || "回读不一致"
       });
     } else {
       updateRow(row.id, { runtimeStatus: "成功" });
     }
 
-    appendEvent({
-      parameterName: row.name,
-      parameterKey: row.key,
-      accessMode: row.accessMode,
-      action: readBack ? "write-readback" : "write",
-      status: !result.ok ? "写入失败" : readBack ? (result.verified ? "回读一致" : "回读不一致") : "写入成功",
-      returncode: result.writeResult?.returncode,
-      stdout: result.readResult?.stdout || result.writeResult?.stdout,
-      stderr: result.readResult?.stderr || result.writeResult?.stderr || result.error,
-      nodePath: row.nodePath
-    });
+    if (result.operation) {
+      appendEvent(eventFromOperation(result.operation, rows));
+    } else {
+      appendEvent({
+        parameterName: row.name,
+        parameterKey: row.key,
+        accessMode: row.accessMode,
+        action: readBack ? "write-readback" : "write",
+        status: !result.ok ? "写入失败" : readBack ? (result.verified ? "回读一致" : "回读不一致") : "写入成功",
+        returncode: (result.writeResult as CommandResultMeta | undefined)?.returncode,
+        stdout: result.readResult?.stdout || result.writeResult?.stdout,
+        stderr: result.readResult?.stderr || result.writeResult?.stderr || result.error,
+        nodePath: row.nodePath
+      });
+    }
   };
 
   const bulkWriteRows = async () => {

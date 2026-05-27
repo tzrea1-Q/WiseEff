@@ -1,9 +1,71 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
+const apiSession = {
+  id: "api-session-1",
+  projectId: userState.activeProjectId,
+  deviceId: "api-device-1",
+  targetId: "api-target-1",
+  status: "active" as const,
+  startedAt: "2026-05-27T09:00:00.000Z",
+  endedAt: null
+};
+const apiTarget = { id: "api-target-1", deviceId: "api-device-1", label: "API Gateway Target" };
+
+function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
+  return {
+    refresh: vi.fn(),
+    detectAndStartSession: vi.fn().mockResolvedValue({ session: apiSession, target: apiTarget }),
+    readNode: vi.fn(async (input) => ({
+      ok: true,
+      value: input.parameterId === "dbg-charge-input-current" ? "3651" : "12",
+      stdout: `${input.parameterId === "dbg-charge-input-current" ? "3651" : "12"}\n`,
+      durationMs: 7,
+      operation: {
+        id: `op-read-${input.parameterId}`,
+        sessionId: apiSession.id,
+        parameterId: input.parameterId,
+        nodePath: input.nodePath,
+        operationType: "read",
+        status: "succeeded",
+        readValue: input.parameterId === "dbg-charge-input-current" ? "3651" : "12",
+        verified: true,
+        durationMs: 7,
+        createdAt: "2026-05-27T09:00:01.000Z"
+      }
+    })),
+    writeNode: vi.fn().mockResolvedValue({
+      ok: true,
+      value: "3700",
+      verified: true,
+      writeResult: { ok: true, stdout: "write ok\n", durationMs: 8 },
+      readResult: { ok: true, value: "3700", stdout: "3700\n", durationMs: 9 },
+      operation: {
+        id: "op-write-1",
+        sessionId: apiSession.id,
+        parameterId: "dbg-charge-input-current",
+        nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+        operationType: "write",
+        status: "succeeded",
+        requestedValue: "3700",
+        readbackValue: "3700",
+        verified: true,
+        durationMs: 17,
+        createdAt: "2026-05-27T09:00:02.000Z"
+      }
+    }),
+    pushValues: vi.fn(),
+    rollbackSnapshot: vi.fn(),
+    rollbackLastSnapshot: vi.fn(),
+    connectDevice: vi.fn(),
+    ...overrides
+  };
+}
 
 function mockFetchSequence(responses: unknown[]) {
   vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async () => {
@@ -41,6 +103,156 @@ afterEach(() => {
 });
 
 describe("/node-debugging", () => {
+  it("uses API gateway actions to auto-detect and shows the returned target label", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId));
+    expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
+  });
+
+  it("uses API gateway actions to read initial readable node rows", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: apiSession.id,
+      parameterId: "dbg-charge-input-current",
+      nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma"
+    })));
+    expect(debuggingActions.readNode).not.toHaveBeenCalledWith(expect.objectContaining({
+      parameterId: "dbg-trickle-start"
+    }));
+    expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
+  });
+
+  it("writes edited writable rows through API gateway actions with session and readback context", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/在线 · API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+
+    await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: apiSession.id,
+      parameterId: "dbg-charge-input-current",
+      nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+      value: "3700",
+      readBack: true
+    })));
+  });
+
+  it("shows API readback mismatches as failed row status with the returned error", async () => {
+    const debuggingActions = createDebuggingActions({
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        value: "3600",
+        verified: false,
+        error: "readback mismatch: expected 3700, got 3600",
+        writeResult: { ok: true, stdout: "write ok\n" },
+        readResult: { ok: true, value: "3600", stdout: "3600\n" },
+        operation: {
+          id: "op-write-mismatch",
+          sessionId: apiSession.id,
+          parameterId: "dbg-charge-input-current",
+          nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
+          operationType: "write",
+          status: "readback_mismatch",
+          requestedValue: "3700",
+          readbackValue: "3600",
+          verified: false,
+          failureReason: "readback mismatch: expected 3700, got 3600",
+          durationMs: 18,
+          createdAt: "2026-05-27T09:00:02.000Z"
+        }
+      })
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/在线 · API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+
+    await within(row).findByText(/^失败$/);
+    expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
+  });
+
+  it("sends only pending writable rows during API bulk write", async () => {
+    const debuggingActions = createDebuggingActions({
+      writeNode: vi.fn(async (input) => ({
+        ok: true,
+        value: input.value,
+        verified: true,
+        operation: {
+          id: `op-write-${input.parameterId}`,
+          sessionId: apiSession.id,
+          parameterId: input.parameterId,
+          nodePath: input.nodePath,
+          operationType: "write",
+          status: "succeeded",
+          requestedValue: input.value,
+          verified: true,
+          durationMs: 11,
+          createdAt: "2026-05-27T09:00:02.000Z"
+        }
+      }))
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/在线 · API Gateway Target/);
+
+    const pendingWoRow = findRowByText("charger.trickle_switch_soc");
+    const syncedRwRow = findRowByText("battery.thermal_foldback_pct");
+    fireEvent.click(within(pendingWoRow).getByRole("checkbox", { name: /选择 涓流切换电量点/ }));
+    fireEvent.click(within(syncedRwRow).getByRole("checkbox", { name: /选择 热降额触发点/ }));
+    fireEvent.click(screen.getByRole("button", { name: /下发选中 \(1\)/ }));
+
+    await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledTimes(1));
+    expect(debuggingActions.writeNode).toHaveBeenCalledWith(expect.objectContaining({
+      parameterId: "dbg-trickle-start",
+      value: "95",
+      readBack: false
+    }));
+  });
+
+  it("falls back to local HDC calls when API gateway actions are not supplied", async () => {
+    mockFetchSequence([
+      { ok: true, targets: ["target-a"], activeTarget: "target-a" },
+      { ok: true, value: "3600", returncode: 0, stdout: "3600\n", stderr: "" },
+      { ok: true, value: "43", returncode: 0, stdout: "43\n", stderr: "" },
+      { ok: true, value: "1", returncode: 0, stdout: "1\n", stderr: "" },
+      { ok: true, value: "68", returncode: 0, stdout: "68\n", stderr: "" },
+      { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
+      { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
+      { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      {
+        ok: true,
+        verified: true,
+        value: "3700",
+        writeResult: { returncode: 0, stdout: "write ok\n", stderr: "" },
+        readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
+      }
+    ]);
+    render(<NodeDebuggingPage state={userState} />);
+    await screen.findByText(/在线 · target-a/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/targets"));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/read-node", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/write-node", expect.objectContaining({ method: "POST" })));
+  });
+
   it("auto-detects hdc targets on entry", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
     render(<App initialAppState={userState} />);
