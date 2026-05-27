@@ -3,6 +3,7 @@ import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import { registerJobRoutes } from "./modules/jobs/routes";
 import type { DebugDeviceGateway } from "./modules/debugging/gateway";
+import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import type { ObjectStore } from "./modules/logs/objectStore";
 import { registerParameterRoutes } from "./modules/parameters/routes";
@@ -39,6 +40,11 @@ export function createWiseEffServer(options: { db?: Database; objectStore?: Obje
   });
   registerJobRoutes(router, {
     db: options.db,
+    getCurrentAuthContext: (request) => getCurrentAuthContext(options, request)
+  });
+  registerDebuggingRoutes(router, {
+    db: options.db,
+    debugGateway: options.debugGateway,
     getCurrentAuthContext: (request) => getCurrentAuthContext(options, request)
   });
 
