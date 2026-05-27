@@ -28,7 +28,7 @@ export type DebugSessionSnapshot = {
 export type DebugSnapshotSummary = {
   id: string;
   sessionId: string;
-  status: "valid" | "consumed" | "invalid";
+  status: "valid" | "rollback_pending" | "consumed" | "invalid";
   risk: "Low" | "Medium" | "High";
   createdAt: string;
 };

@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   debugDeviceFromDto,
   debugParameterFromDto,
+  debugSnapshotFromDto,
   debugTargetFromDto,
   nodeOperationFromDto,
   nodeReadResultFromDto,
   nodeWriteResultFromDto,
   type DebugDeviceDto,
   type DebugParameterDto,
+  type DebugSnapshotDto,
   type DebugTargetDto,
   type NodeOperationDto
 } from "./debuggingDtos";
@@ -76,6 +78,14 @@ const writeOperationDto: NodeOperationDto = {
   snapshotId: "snap-1"
 };
 
+const rollbackPendingSnapshotDto: DebugSnapshotDto = {
+  id: "snap-1",
+  sessionId: "session-1",
+  status: "rollback_pending",
+  risk: "High",
+  createdAt: "2026-05-25T02:00:00.000Z"
+};
+
 describe("debugging dto mappers", () => {
   it("maps debug device status to the existing domain literal", () => {
     expect(debugDeviceFromDto(deviceDto)).toMatchObject({
@@ -104,6 +114,13 @@ describe("debugging dto mappers", () => {
     expect(nodeOperationFromDto(writeOperationDto)).toMatchObject({
       failureReason: "Readback mismatch.",
       snapshotId: "snap-1"
+    });
+  });
+
+  it("maps rollback pending snapshot status without dropping claimed state", () => {
+    expect(debugSnapshotFromDto(rollbackPendingSnapshotDto)).toMatchObject({
+      id: "snap-1",
+      status: "rollback_pending"
     });
   });
 
