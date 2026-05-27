@@ -1,11 +1,121 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
-import App from "./App";
-import { initialState } from "./mockData";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import App, { type AppAction } from "./App";
+import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { TopBarActionsContext } from "./components/layout";
+import { DebuggingPage } from "./DebuggingPage";
+import { initialState, type PrototypeState } from "./mockData";
+import { useMemo, useState, type ReactNode } from "react";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const adminState = { ...initialState, activeRoleId: "admin" };
+const connectedStatus = initialState.devices.find((device) => device.id === "device-n07")?.status ?? initialState.devices[1]?.status ?? initialState.devices[0].status;
+const connectedUserState = {
+  ...userState,
+  debuggingSessionStartedAt: "2026-05-27T09:00:00.000Z",
+  devices: userState.devices.map((device, index) => index === 0 ? { ...device, status: connectedStatus } : device)
+};
+const runtimePendingUserState = {
+  ...connectedUserState,
+  debugParameters: connectedUserState.debugParameters.map((parameter, index) =>
+    index === 0
+      ? { ...parameter, status: "待下发" as const, targetValue: parameter.currentValue === "999" ? "998" : "999" }
+      : { ...parameter, status: "已同步" as const, targetValue: parameter.currentValue }
+  )
+};
+const apiSnapshot = {
+  ...(initialState.lastDebugSnapshot ?? { createdAt: "2026-05-27T09:05:00.000Z", risk: "High" as const }),
+  id: "api-snapshot-1",
+  entries: [
+    {
+      parameterId: initialState.debugParameters[0].id,
+      previousValue: initialState.debugParameters[0].currentValue,
+      nextValue: initialState.debugParameters[0].targetValue
+    }
+  ]
+};
+
+function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
+  return {
+    refresh: vi.fn(),
+    detectAndStartSession: vi.fn().mockResolvedValue({
+      session: {
+        id: "api-session-1",
+        projectId: userState.activeProjectId,
+        deviceId: userState.devices[0].id,
+        targetId: "api-target-1",
+        status: "active",
+        startedAt: "2026-05-27T09:00:00.000Z",
+        endedAt: null
+      },
+      target: { id: "api-target-1", deviceId: userState.devices[0].id, label: "API Target" }
+    }),
+    readNode: vi.fn(),
+    writeNode: vi.fn(),
+    pushValues: vi.fn().mockResolvedValue(undefined),
+    rollbackSnapshot: vi.fn().mockResolvedValue(undefined),
+    rollbackLastSnapshot: vi.fn(),
+    connectDevice: vi.fn(),
+    ...overrides
+  };
+}
+
+function renderDebuggingPage({
+  state = userState,
+  debuggingActions,
+  dispatch = vi.fn()
+}: {
+  state?: typeof userState;
+  debuggingActions?: DebuggingRuntimeActions;
+  dispatch?: (action: AppAction) => void;
+} = {}) {
+  function DebuggingHarness() {
+    const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
+    const context = useMemo(() => ({ setActions: setTopBarActions }), []);
+    return (
+      <TopBarActionsContext.Provider value={context}>
+        <div className="topbar-page-actions">{topBarActions}</div>
+        <DebuggingPage state={state} dispatch={dispatch} debuggingActions={debuggingActions} />
+      </TopBarActionsContext.Provider>
+    );
+  }
+
+  render(<DebuggingHarness />);
+  return { dispatch };
+}
+
+function getTopbarConnectButton() {
+  const button = document.querySelector<HTMLButtonElement>(".device-pill .link-button");
+  if (!button) throw new Error("Cannot find topbar connect button.");
+  return button;
+}
+
+function getPushButton() {
+  const button = document.querySelector<HTMLButtonElement>(".debugging-deploy-button");
+  if (!button) throw new Error("Cannot find push button.");
+  return button;
+}
+
+function getRollbackButton() {
+  const button = document.querySelector<HTMLButtonElement>(".session-summary-card button");
+  if (!button) throw new Error("Cannot find rollback button.");
+  return button;
+}
+
+function getRollbackConfirmButton() {
+  const button = document.querySelector<HTMLButtonElement>(".rollback-confirm-dialog .button.danger");
+  if (!button) throw new Error("Cannot find rollback confirm button.");
+  return button;
+}
+
+function getPendingDebugParameters(state = runtimePendingUserState) {
+  return state.debugParameters.filter((parameter) => parameter.status === "待下发");
+}
+
+function withSnapshot<T extends PrototypeState>(state: T): T {
+  return { ...state, lastDebugSnapshot: apiSnapshot };
+}
 
 afterEach(() => {
   cleanup();
@@ -142,6 +252,120 @@ describe("/debugging 单栏骨架", () => {
     expect(screen.queryByText(/10:50:11/)).not.toBeInTheDocument();
     expect(screen.queryByText(/10:52:30/)).not.toBeInTheDocument();
     expect(screen.queryByText(/读取全量充电参数快照/)).not.toBeInTheDocument();
+  });
+});
+
+describe("/debugging runtime wiring", () => {
+  it("API mode connect button starts a runtime debugging session for the active project", async () => {
+    const actions = createDebuggingActions();
+
+    renderDebuggingPage({ debuggingActions: actions });
+
+    fireEvent.click(getTopbarConnectButton());
+
+    await waitFor(() => expect(actions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId));
+    expect(actions.detectAndStartSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("API mode pushes pending values through runtime actions instead of direct dispatch", async () => {
+    const actions = createDebuggingActions();
+    const dispatch = vi.fn();
+    const pendingParameters = getPendingDebugParameters();
+    const pendingIds = pendingParameters.map((parameter) => parameter.id);
+    if (pendingIds.length === 0) {
+      throw new Error("Expected at least one pending debug parameter in fixture data.");
+    }
+
+    renderDebuggingPage({ state: runtimePendingUserState, debuggingActions: actions, dispatch });
+
+    expect(getPushButton()).not.toBeDisabled();
+    fireEvent.click(getPushButton());
+
+    await waitFor(() => expect(actions.pushValues).toHaveBeenCalledWith(pendingIds));
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingIds });
+  });
+
+  it("API mode rollback confirmation calls the runtime rollback action with the fixed confirmation token", async () => {
+    const actions = createDebuggingActions();
+    const state = withSnapshot(connectedUserState);
+    const dispatch = vi.fn();
+
+    renderDebuggingPage({ state, debuggingActions: actions, dispatch });
+
+    fireEvent.click(getRollbackButton());
+    fireEvent.click(getRollbackConfirmButton());
+
+    await waitFor(() =>
+      expect(actions.rollbackSnapshot).toHaveBeenCalledWith({
+        snapshotId: apiSnapshot.id,
+        confirmationToken: "confirm-rollback"
+      })
+    );
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "ROLLBACK_LAST_SNAPSHOT" });
+  });
+
+  it("failed API push shows a user-facing notice and leaves pending rows untouched", async () => {
+    const actions = createDebuggingActions({
+      pushValues: vi.fn().mockRejectedValue(new Error("Gateway write failed"))
+    });
+    const dispatch = vi.fn();
+    const pendingParameters = getPendingDebugParameters();
+    const pendingIds = pendingParameters.map((parameter) => parameter.id);
+    if (pendingIds.length === 0) {
+      throw new Error("Expected at least one pending debug parameter in fixture data.");
+    }
+
+    renderDebuggingPage({ state: runtimePendingUserState, debuggingActions: actions, dispatch });
+
+    fireEvent.click(getPushButton());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Gateway write failed");
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingIds });
+    for (const parameter of pendingParameters) {
+      expect(getDebugRow(parameter.key)).toHaveTextContent(parameter.status);
+    }
+  });
+
+  it("mock mode still dispatches connect, push, and rollback actions", () => {
+    const dispatch = vi.fn();
+    const state = withSnapshot(runtimePendingUserState);
+    const pendingIds = getPendingDebugParameters(state).map((parameter) => parameter.id);
+    if (pendingIds.length === 0) {
+      throw new Error("Expected at least one pending debug parameter in fixture data.");
+    }
+
+    renderDebuggingPage({ state, dispatch });
+
+    fireEvent.click(getTopbarConnectButton());
+    fireEvent.click(getPushButton());
+    fireEvent.click(getRollbackButton());
+    fireEvent.click(getRollbackConfirmButton());
+
+    expect(dispatch).toHaveBeenCalledWith({ type: "CONNECT_DEVICE", deviceId: state.devices[0].id });
+    expect(dispatch).toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingIds });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ROLLBACK_LAST_SNAPSHOT" });
+  });
+});
+
+describe("/debugging-admin API mode", () => {
+  it("renders DebuggingAdmin as read-only with helper text in API mode", () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    render(
+      <App
+        authClient={{ getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("offline")) }}
+        initialAppState={adminState}
+        runtimeMode="api"
+      />
+    );
+
+    expect(document.querySelector(".debug-admin-helper")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /\+/ })).toBeDisabled();
+    const deleteButtons = document.querySelectorAll<HTMLButtonElement>(".debug-admin-row-delete");
+    expect(deleteButtons.length).toBeGreaterThan(0);
+    expect(Array.from(deleteButtons).every((button) => button.disabled)).toBe(true);
+    const editorInputs = document.querySelectorAll<HTMLInputElement | HTMLSelectElement>(".debug-admin-editor input, .debug-admin-editor select");
+    expect(editorInputs.length).toBeGreaterThan(0);
+    expect(Array.from(editorInputs).every((input) => input.disabled)).toBe(true);
   });
 });
 

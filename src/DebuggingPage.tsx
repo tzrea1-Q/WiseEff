@@ -1,6 +1,7 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "./App";
+import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
@@ -44,9 +45,10 @@ function compareRows(a: DebugParameter, b: DebugParameter, sort: SortState) {
 type DebuggingPageProps = {
   state: PrototypeState;
   dispatch: (action: AppAction) => void;
+  debuggingActions?: DebuggingRuntimeActions;
 };
 
-export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
+export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPageProps) {
   const [nowTick, setNowTick] = useState(() => new Date());
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,6 +58,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
 
   const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0];
   const debugParameters = state.debugParameters;
@@ -189,14 +192,28 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     });
   };
 
+  const pushParameterIds = async (parameterIds: string[]) => {
+    setRuntimeNotice(null);
+    if (debuggingActions) {
+      try {
+        await debuggingActions.pushValues(parameterIds);
+      } catch (error) {
+        setRuntimeNotice(error instanceof Error ? error.message : "Debug push failed");
+      }
+      return;
+    }
+
+    dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds });
+  };
+
   const pushPendingValues = () => {
     if (selectedIds.size > 0) {
       if (pendingSelected.length === 0) return;
-      dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingSelected.map((p) => p.id) });
+      void pushParameterIds(pendingSelected.map((p) => p.id));
       setSelectedIds(new Set());
     } else {
       if (pendingParameters.length === 0) return;
-      dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingParameters.map((p) => p.id) });
+      void pushParameterIds(pendingParameters.map((p) => p.id));
     }
   };
 
@@ -214,11 +231,24 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     <div className="device-pill">
       <span className={connected ? "live-dot" : "idle-dot"} />
       {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
-      <button className="link-button" type="button" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
+      <button
+        className="link-button"
+        type="button"
+        onClick={() => {
+          setRuntimeNotice(null);
+          if (debuggingActions) {
+            void debuggingActions.detectAndStartSession(state.activeProjectId).catch((error) => {
+              setRuntimeNotice(error instanceof Error ? error.message : "Debug connection failed");
+            });
+            return;
+          }
+          dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id });
+        }}
+      >
         连接
       </button>
     </div>,
-    [activeDevice.id, activeDevice.name, connected]
+    [activeDevice.id, activeDevice.name, connected, debuggingActions, state.activeProjectId]
   );
 
   return (
@@ -230,6 +260,11 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           onRollbackRequest={() => setRollbackDialogOpen(true)}
         />
         <section className="debug-table">
+          {runtimeNotice ? (
+            <div className="inline-alert" role="alert">
+              {runtimeNotice}
+            </div>
+          ) : null}
           <div className="panel-header">
             <strong>实时可调参数</strong>
             <span>{connected ? "设备在线" : "需要连接"}</span>
@@ -375,7 +410,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
                 type="button"
                 disabled={!connected || editingParameter.status !== "待下发"}
                 onClick={() => {
-                  dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: [editingParameter.id] });
+                  void pushParameterIds([editingParameter.id]);
                   setSheetOpen(false);
                   setEditingId(null);
                 }}
@@ -436,7 +471,19 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           parameters={state.debugParameters}
           onCancel={() => setRollbackDialogOpen(false)}
           onConfirm={() => {
-            dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
+            const snapshot = state.lastDebugSnapshot;
+            if (!snapshot) return;
+            setRuntimeNotice(null);
+            if (debuggingActions) {
+              void debuggingActions.rollbackSnapshot({
+                snapshotId: snapshot.id,
+                confirmationToken: "confirm-rollback"
+              }).catch((error) => {
+                setRuntimeNotice(error instanceof Error ? error.message : "Debug rollback failed");
+              });
+            } else {
+              dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
+            }
             setRollbackDialogOpen(false);
           }}
         />

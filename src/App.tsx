@@ -298,7 +298,8 @@ function SelectControl<Value extends string>({
   ariaLabel,
   id,
   className,
-  placeholder
+  placeholder,
+  disabled
 }: {
   value: Value;
   onValueChange: (value: Value) => void;
@@ -307,9 +308,10 @@ function SelectControl<Value extends string>({
   id?: string;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)}>
+    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)} disabled={disabled}>
       <SelectTrigger id={id} aria-label={ariaLabel} className={className} data-value={value}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
@@ -4872,6 +4874,7 @@ function DebuggingAdminPage({
   const [filterModule, setFilterModule] = useState<string[]>([]);
   const [jsonExpanded, setJsonExpanded] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
+  const isApiMode = runtimeMode === "api";
   const selectedParameter =
     state.configDraft.debugParameters.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.debugParameters[0];
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
@@ -4901,21 +4904,22 @@ function DebuggingAdminPage({
   );
 
   const updateDebug = (patch: Partial<DebugParameterEditorDraft>) => {
+    if (isApiMode) return;
     if (!selectedParameter) return;
     dispatch({ type: "UPDATE_DEBUG_PARAMETER", parameterId: selectedParameter.id, patch });
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
   };
 
-  const highRiskCount = state.debugParameters.filter((p) => p.risk === "High").length;
+  const highRiskCount = state.configDraft.debugParameters.filter((p) => p.risk === "High").length;
   useTopBarActions(
     <div className="debug-admin-strip debug-admin-strip--topbar">
-      <span className="debug-admin-stat">可调参数 <strong>{state.debugParameters.length}</strong></span>
+      <span className="debug-admin-stat">可调参数 <strong>{state.configDraft.debugParameters.length}</strong></span>
       <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
       <span className="debug-admin-stat">在线设备 <strong>{state.devices.filter((d) => d.status === "已连接").length}/{state.devices.length}</strong></span>
       <span className={`debug-admin-save-indicator${saveFlash ? " visible" : ""}`}>✓ 已自动保存</span>
     </div>,
-    [highRiskCount, saveFlash, state.debugParameters.length, state.devices]
+    [highRiskCount, saveFlash, state.configDraft.debugParameters.length, state.devices]
   );
 
   return (
@@ -4928,7 +4932,9 @@ function DebuggingAdminPage({
             <Button
               variant="outline"
               type="button"
+              disabled={isApiMode}
               onClick={() => {
+                if (isApiMode) return;
                 dispatch({ type: "ADD_DEBUG_PARAMETER" });
                 setSelectedParameterId(`dbg-new-parameter-${state.configDraft.debugParameters.length + 1}`);
               }}
@@ -4936,6 +4942,11 @@ function DebuggingAdminPage({
               + 新增
             </Button>
           </div>
+          {isApiMode ? (
+            <p className="debug-admin-helper">
+              API 妯″紡涓嬭皟璇曞弬鏁扮洰褰曠敱鍚庣绉嶅瓙鍜岃縼绉荤鐞嗭紱鏈〉鐢ㄤ簬鏌ョ湅鑺傜偣璺緞銆佽闂ā寮忓拰椋庨櫓閰嶇疆銆俙
+            </p>
+          ) : null}
           <div className="debug-admin-list-filters">
             <div className="debug-admin-list-search">
               <Search size={14} aria-hidden />
@@ -4972,9 +4983,10 @@ function DebuggingAdminPage({
                   type="button"
                   className="debug-admin-row-delete"
                   aria-label={`删除 ${parameter.name}`}
-                  disabled={state.configDraft.debugParameters.length <= 1}
+                  disabled={isApiMode || state.configDraft.debugParameters.length <= 1}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (isApiMode) return;
                     dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: parameter.id });
                     if (parameter.id === selectedParameterId) {
                       setSelectedParameterId(state.configDraft.debugParameters.find((p) => p.id !== parameter.id)?.id ?? "");
@@ -4996,11 +5008,11 @@ function DebuggingAdminPage({
                 <div className="debug-admin-form-fields">
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">参数名称</span>
-                    <Input value={selectedParameter.name} onChange={(e) => updateDebug({ name: e.target.value })} />
+                    <Input value={selectedParameter.name} disabled={isApiMode} onChange={(e) => updateDebug({ name: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">参数 key</span>
-                    <Input value={selectedParameter.key} onChange={(e) => updateDebug({ key: e.target.value })} />
+                    <Input value={selectedParameter.key} disabled={isApiMode} onChange={(e) => updateDebug({ key: e.target.value })} />
                   </label>
                 </div>
               </div>
@@ -5009,19 +5021,19 @@ function DebuggingAdminPage({
                 <div className="debug-admin-form-fields">
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">当前值</span>
-                    <Input value={selectedParameter.currentValue} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
+                    <Input value={selectedParameter.currentValue} disabled={isApiMode} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">目标值</span>
-                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
+                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} disabled={isApiMode} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">范围</span>
-                    <Input value={selectedParameter.range} onChange={(e) => updateDebug({ range: e.target.value })} />
+                    <Input value={selectedParameter.range} disabled={isApiMode} onChange={(e) => updateDebug({ range: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">单位</span>
-                    <Input value={selectedParameter.unit} onChange={(e) => updateDebug({ unit: e.target.value })} />
+                    <Input value={selectedParameter.unit} disabled={isApiMode} onChange={(e) => updateDebug({ unit: e.target.value })} />
                   </label>
                 </div>
               </div>
@@ -5033,6 +5045,7 @@ function DebuggingAdminPage({
                     <SelectControl
                       value={selectedParameter.risk}
                       onValueChange={(risk) => updateDebug({ risk })}
+                      disabled={isApiMode}
                       options={[
                         { value: "High", label: "高" },
                         { value: "Medium", label: "中" },
@@ -5045,6 +5058,7 @@ function DebuggingAdminPage({
                     <SelectControl
                       value={selectedParameter.status}
                       onValueChange={(status) => updateDebug({ status })}
+                      disabled={isApiMode}
                       options={[
                         { value: "已同步", label: "已同步" },
                         { value: "待下发", label: "待下发" },
@@ -5062,6 +5076,7 @@ function DebuggingAdminPage({
                     <Input
                       aria-label="节点路径"
                       value={selectedParameter.nodePath}
+                      disabled={isApiMode}
                       onChange={(e) => updateDebug({ nodePath: e.target.value })}
                     />
                   </label>
@@ -5071,6 +5086,7 @@ function DebuggingAdminPage({
                       ariaLabel="访问模式"
                       value={selectedParameter.accessMode}
                       onValueChange={(accessMode) => updateDebug({ accessMode })}
+                      disabled={isApiMode}
                       options={[
                         { value: "RO", label: "RO · 只读" },
                         { value: "WO", label: "WO · 只写" },
