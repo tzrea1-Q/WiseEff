@@ -78,6 +78,38 @@ describe("simulator debugging gateway", () => {
     );
   });
 
+  it("rejects writes to unknown nodes without creating them", async () => {
+    const gateway = createSimulatorDebugDeviceGateway();
+    const nodePath = "/sys/class/power_supply/battery/unknown_limit";
+
+    const result = await gateway.writeNode({
+      targetRef: "simulator://aurora-1",
+      nodePath,
+      value: "3100",
+      readBack: true
+    });
+    const readAfterWrite = await gateway.readNode({
+      targetRef: "simulator://aurora-1",
+      nodePath
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.verified).toBe(false);
+    expect(result.error).toContain("not found");
+    expect(result.writeResult).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.stringContaining("not found")
+      })
+    );
+    expect(readAfterWrite).toEqual(
+      expect.objectContaining({
+        ok: false,
+        error: expect.stringContaining("not found")
+      })
+    );
+  });
+
   it("reports deterministic durations for read and write results", async () => {
     const timestamps = [10, 14, 20, 27, 30, 36];
     const gateway = createSimulatorDebugDeviceGateway({

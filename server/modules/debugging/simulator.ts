@@ -154,6 +154,22 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
         };
       }
 
+      if (!nodeValues.get(input.targetRef)?.has(input.nodePath)) {
+        const writeResult: GatewayNodeResult = {
+          ok: false,
+          stderr: `Node ${input.nodePath} was not found.`,
+          error: `Node ${input.nodePath} was not found.`,
+          durationMs: durationSince(startedAt)
+        };
+
+        return {
+          ok: false,
+          verified: false,
+          error: writeResult.error,
+          writeResult
+        };
+      }
+
       nodeValues.get(input.targetRef)?.set(input.nodePath, input.value);
 
       const writeResult: GatewayNodeResult = {
