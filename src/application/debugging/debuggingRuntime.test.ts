@@ -231,8 +231,8 @@ describe("createDebuggingRuntimeActions", () => {
   it("pushes selected API parameters sequentially so row failures stay deterministic", async () => {
     const dispatch = vi.fn();
     const callOrder: string[] = [];
-    const firstParameter = { ...apiParameter, id: "api-debug-param-1", targetValue: "15", status: initialState.debugParameters[0].status };
-    const secondParameter = { ...apiParameter, id: "api-debug-param-2", targetValue: "22", status: initialState.debugParameters[0].status };
+    const firstParameter = { ...apiParameter, id: "api-debug-param-1", targetValue: "15", status: "待下发" as const };
+    const secondParameter = { ...apiParameter, id: "api-debug-param-2", targetValue: "22", status: "待下发" as const };
     const gateway = createGateway({
       writeNode: vi.fn(async (input) => {
         callOrder.push(input.parameterId ?? "");
@@ -245,6 +245,7 @@ describe("createDebuggingRuntimeActions", () => {
       dispatch,
       getState: () => ({
         ...initialState,
+        debuggingSessionStartedAt: apiSession.startedAt,
         debugParameters: [firstParameter, secondParameter]
       })
     });
@@ -260,6 +261,46 @@ describe("createDebuggingRuntimeActions", () => {
       2,
       expect.objectContaining({ parameterId: firstParameter.id, value: firstParameter.targetValue })
     );
+  });
+
+  it("skips non-writable and already-synced API parameters while preserving writable pending order", async () => {
+    const dispatch = vi.fn();
+    const callOrder: string[] = [];
+    const pendingStatus = "待下发" as const;
+    const syncedStatus = "已同步" as const;
+    const readOnlyParameter = { ...apiParameter, id: "api-debug-readonly", accessMode: "RO" as const, status: pendingStatus, targetValue: "99" };
+    const syncedParameter = { ...apiParameter, id: "api-debug-synced", accessMode: "RW" as const, status: syncedStatus, targetValue: "11" };
+    const writableFirst = { ...apiParameter, id: "api-debug-writable-1", accessMode: "RW" as const, status: pendingStatus, targetValue: "15" };
+    const writableSecond = { ...apiParameter, id: "api-debug-writable-2", accessMode: "WO" as const, status: pendingStatus, targetValue: "22" };
+    const gateway = createGateway({
+      writeNode: vi.fn(async (input) => {
+        callOrder.push(input.parameterId ?? "");
+        return {
+          ok: true,
+          value: input.value,
+          verified: true,
+          operation: { ...writeOperation, id: `op-${input.parameterId}`, parameterId: input.parameterId }
+        };
+      })
+    });
+    const actions = createDebuggingRuntimeActions({
+      mode: "api",
+      gateway,
+      dispatch,
+      getState: () => ({
+        ...initialState,
+        debuggingSessionStartedAt: apiSession.startedAt,
+        debugParameters: [readOnlyParameter, writableFirst, syncedParameter, writableSecond]
+      })
+    });
+
+    await actions.pushValues([readOnlyParameter.id, syncedParameter.id, writableSecond.id, writableFirst.id]);
+
+    expect(callOrder).toEqual([writableSecond.id, writableFirst.id]);
+    expect(gateway.writeNode).toHaveBeenCalledTimes(2);
+    expect(gateway.writeNode).toHaveBeenNthCalledWith(1, expect.objectContaining({ parameterId: writableSecond.id }));
+    expect(gateway.writeNode).toHaveBeenNthCalledWith(2, expect.objectContaining({ parameterId: writableFirst.id }));
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: expect.any(Array) });
   });
 
   it("rolls back an API snapshot and refreshes operations", async () => {
@@ -279,21 +320,28 @@ describe("createDebuggingRuntimeActions", () => {
 
   it("notifies on failed gateway calls without optimistic success dispatches", async () => {
     const dispatch = vi.fn();
-    const gateway = createGateway({
-      writeNode: vi.fn().mockRejectedValue(new Error("gateway unavailable"))
-    });
+    const gateway = createGateway();
     const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+    const cause = new Error("gateway unavailable");
+    vi.mocked(gateway.writeNode).mockRejectedValueOnce(cause);
 
-    await expect(
-      actions.writeNode({
+    let failure: unknown;
+    try {
+      await actions.writeNode({
         sessionId: apiSession.id,
         parameterId: apiParameter.id,
         nodePath: apiParameter.nodePath,
         value: "15",
         readBack: true,
         risk: "High"
-      })
-    ).rejects.toThrow(debuggingRuntimeFailureNotification);
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure).toMatchObject({ alreadyNotified: true, cause });
+    expect(failure).toHaveProperty("message", debuggingRuntimeFailureNotification);
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: debuggingRuntimeFailureNotification });

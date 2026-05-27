@@ -70,7 +70,7 @@ type DebuggingRuntimeOptions = {
   getState: () => PrototypeState;
 };
 
-export type DebuggingRuntimeNotifiedFailure = Error & { alreadyNotified: true };
+export type DebuggingRuntimeNotifiedFailure = Error & { alreadyNotified: true; cause: unknown };
 
 function requireGateway(gateway?: DebuggingGateway): DebuggingGateway {
   if (!gateway) {
@@ -79,9 +79,9 @@ function requireGateway(gateway?: DebuggingGateway): DebuggingGateway {
   return gateway;
 }
 
-function notifyFailure(dispatch: DebuggingRuntimeOptions["dispatch"]): DebuggingRuntimeNotifiedFailure {
+function notifyFailure(dispatch: DebuggingRuntimeOptions["dispatch"], cause: unknown): DebuggingRuntimeNotifiedFailure {
   dispatch({ type: "ADD_NOTIFICATION", message: debuggingRuntimeFailureNotification });
-  return Object.assign(new Error(debuggingRuntimeFailureNotification), { alreadyNotified: true as const });
+  return Object.assign(new Error(debuggingRuntimeFailureNotification, { cause }), { alreadyNotified: true as const, cause });
 }
 
 function deviceStatusFromApi(status: DebugDeviceSnapshot["status"]): Device["status"] {
@@ -120,9 +120,20 @@ function dispatchSnapshot(dispatch: DebuggingRuntimeOptions["dispatch"], snapsho
 async function runApi<T>(dispatch: DebuggingRuntimeOptions["dispatch"], action: () => Promise<T>): Promise<T> {
   try {
     return await action();
-  } catch {
-    throw notifyFailure(dispatch);
+  } catch (error) {
+    throw notifyFailure(dispatch, error);
   }
+}
+
+function isWritablePendingDebugParameter(
+  parameter: DebugParameter,
+  state: PrototypeState
+): parameter is DebugParameter & { nodePath: string; targetValue: string } {
+  return Boolean(state.debuggingSessionStartedAt)
+    && Boolean(parameter.nodePath)
+    && Boolean(parameter.targetValue)
+    && (parameter.accessMode === "WO" || parameter.accessMode === "RW")
+    && parameter.status === "待下发";
 }
 
 export function createDebuggingRuntimeActions({
@@ -226,10 +237,11 @@ export function createDebuggingRuntimeActions({
       }
 
       await runApi(dispatch, async () => {
-        const parameterById = new Map(getState().debugParameters.map((parameter) => [parameter.id, parameter]));
+        const state = getState();
+        const parameterById = new Map(state.debugParameters.map((parameter) => [parameter.id, parameter]));
         const parameters = parameterIds.flatMap((parameterId) => {
           const parameter = parameterById.get(parameterId);
-          return parameter ? [parameter] : [];
+          return parameter && isWritablePendingDebugParameter(parameter, state) ? [parameter] : [];
         });
         for (const parameter of parameters) {
           const result = (await requireGateway(gateway).writeNode({

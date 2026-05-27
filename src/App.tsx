@@ -503,15 +503,6 @@ function canSubmitParameterChangesForProject(state: PrototypeState, projectId: s
   return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
 }
 
-function debugSnapshotFromSummary(snapshot: UpsertDebugSnapshotAction["snapshot"]): DebugSnapshot {
-  return {
-    id: snapshot.id,
-    createdAt: snapshot.createdAt,
-    entries: [],
-    risk: snapshot.risk
-  };
-}
-
 function buildDraftSubmissionRounds(
   drafts: ParameterDraftDto[] | undefined,
   parameters: ParameterRecord[],
@@ -1081,10 +1072,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       if (action.snapshot.status !== "valid") {
         return state;
       }
-      return {
-        ...state,
-        lastDebugSnapshot: debugSnapshotFromSummary(action.snapshot)
-      };
+      return state;
     case "UPSERT_LOG_RECORD": {
       const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
       const archivedLogIds = updateArchivedLogIdsForLog(state.archivedLogIds, action.log);

@@ -483,7 +483,7 @@ describe("WiseEff app shell", () => {
     expect(next.configDraft.debugParameters).toEqual([apiDebugParameter]);
   });
 
-  it("stores API debug sessions, operation events, and only valid snapshots", () => {
+  it("stores API debug sessions and operation events while ignoring snapshot summaries", () => {
     const startedAt = "2026-05-25T08:01:00.000Z";
     const sessionState = appReducer(adminState, {
       type: "SET_DEBUG_ACTIVE_SESSION",
@@ -542,7 +542,22 @@ describe("WiseEff app shell", () => {
       parameterIds: [initialState.debugParameters[0].id]
     });
     expect(invalidSnapshotState.lastDebugSnapshot).toBeNull();
-    expect(validSnapshotState.lastDebugSnapshot).toMatchObject({ id: "snapshot-valid", risk: "High" });
+    expect(validSnapshotState.lastDebugSnapshot).toBeNull();
+  });
+
+  it("does not convert valid API snapshot summaries into empty rollback snapshots", () => {
+    const next = appReducer(initialState, {
+      type: "UPSERT_DEBUG_SNAPSHOT",
+      snapshot: {
+        id: "snapshot-summary-only",
+        sessionId: "session-1",
+        status: "valid",
+        risk: "High",
+        createdAt: "2026-05-25T08:03:00.000Z"
+      }
+    });
+
+    expect(next.lastDebugSnapshot).toBeNull();
   });
 
   it("keeps the platform homepage inside the app scroll container", () => {
