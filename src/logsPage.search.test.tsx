@@ -15,9 +15,12 @@ describe("LogsPage · 原始日志搜索", () => {
     window.history.replaceState(null, "", "/logs");
     render(<App initialAppState={userState} />);
 
-    fireEvent.change(screen.getByRole("searchbox", { name: "在日志中搜索" }), { target: { value: "thermal" } });
+    const rawLog = screen.getByRole("region", { name: "原始日志" });
+    fireEvent.change(within(rawLog).getByRole("searchbox", { name: "在日志中搜索" }), {
+      target: { value: "thermal" }
+    });
 
-    expect(screen.getByRole("status", { name: "" })).toHaveTextContent(/1 \/ \d+ 匹配/);
+    expect(within(rawLog).getByRole("status")).toHaveTextContent(/1 \/ \d+ 匹配/);
     expect(screen.getByTestId("rawlog-line-6")).toHaveClass("rawlog-line--match-current");
   });
 

@@ -1,0 +1,24 @@
+{
+  "targets": [
+    {
+      "id": "sim-target-aurora-1",
+      "deviceId": "sim-device-aurora-1",
+      "targetRef": "simulator://aurora-1",
+      "label": "Aurora Simulator 1",
+      "online": true,
+      "nodes": {
+        "/sys/class/power_supply/battery/constant_charge_current": "3000",
+        "/sys/class/power_supply/battery/input_current_limit": "2800",
+        "/sys/class/power_supply/battery/temp_limit": "45",
+        "/sys/class/power_supply/battery/cycle_count": "128",
+        "/sys/class/power_supply/battery/readback_mismatch": "1"
+      },
+      "readOnlyNodes": [
+        "/sys/class/power_supply/battery/cycle_count"
+      ],
+      "readbackMismatchNodes": [
+        "/sys/class/power_supply/battery/readback_mismatch"
+      ]
+    }
+  ]
+}

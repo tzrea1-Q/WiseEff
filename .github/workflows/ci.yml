@@ -35,5 +35,5 @@ jobs:
       - name: Backend tests
         run: npm run test:server
 
-      - name: M1 E2E gate
-        run: echo "Run npm run test:e2e locally or in staging with DATABASE_URL, db:migrate, db:seed:m0, and db:seed:m1. CI does not run it by default because this workflow has no PostgreSQL service."
+      - name: M2 E2E gate
+        run: echo "Run npm run test:m2 locally or in staging with DATABASE_URL, OBJECT_STORE_ROOT, db:migrate, db:seed:m0, db:seed:m1, and db:seed:m2. CI does not run Playwright by default because this workflow has no PostgreSQL service."

@@ -34,6 +34,23 @@ import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
 import {
+  createDebuggingRuntimeActions,
+  type DebuggingRuntimeActions,
+  type HydrateDebugRuntimeAction,
+  type SetDebugActiveSessionAction,
+  type UpsertDebugNodeOperationAction,
+  type UpsertDebugSnapshotAction
+} from "@/application/debugging/debuggingRuntime";
+import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
+import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
+import {
+  createLogRuntimeActions,
+  type HydrateLogRuntimeAction,
+  type LogRuntimeActions
+} from "@/application/logs/logRuntime";
+import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
+import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
+import {
   createParameterRuntimeActions,
   type HydrateParameterRuntimeAction,
   type ParameterRuntimeActions
@@ -155,6 +172,7 @@ export type AppAction =
       roleId: string;
     }
   | HydrateParameterRuntimeAction
+  | HydrateLogRuntimeAction
   | {
       type: "SUBMIT_PARAMETER_INITIALIZATION";
       draft: {
@@ -192,11 +210,17 @@ export type AppAction =
   | { type: "AI_FEEDBACK"; requestId: string; feedback: "up" | "down"; note?: string }
   | { type: "ADVANCE_LOG"; logId: string }
   | { type: "SIMULATE_LOG_UPLOAD"; fileName: string; supported: boolean; question?: string }
+  | { type: "UPSERT_LOG_RECORD"; log: LogRecord }
+  | { type: "LOG_JOB_PROGRESS"; job: LogJobSnapshot }
   | { type: "CONNECT_DEVICE"; deviceId: string }
   | { type: "PUSH_DEBUG_VALUE"; parameterId: string }
   | { type: "PUSH_DEBUG_VALUES"; parameterIds: string[] }
   | { type: "ROLLBACK_LAST_SNAPSHOT" }
   | { type: "ROLLBACK_UNDO_PUSH" }
+  | HydrateDebugRuntimeAction
+  | SetDebugActiveSessionAction
+  | UpsertDebugNodeOperationAction
+  | UpsertDebugSnapshotAction
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
   | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string }
@@ -230,6 +254,31 @@ export type AppAction =
   | { type: "LOG_ADMIN_EXPORT_REPORT"; timeWindow: TimeWindow }
   | { type: "OPEN_AGENT_WITH_PRESET"; preset: string };
 
+function updateArchivedLogIdsForLog(archivedLogIds: string[], log: LogRecord): string[] {
+  if (log.archiveState === "archived") {
+    return archivedLogIds.includes(log.id) ? archivedLogIds : [...archivedLogIds, log.id];
+  }
+
+  if (log.archiveState === "active") {
+    return archivedLogIds.filter((id) => id !== log.id);
+  }
+
+  return archivedLogIds;
+}
+
+function archivedLogIdsFromHydratedLogs(archivedLogIds: string[], logs: LogRecord[]): string[] {
+  const hydratedIds = new Set(logs.map((log) => log.id));
+  const next = archivedLogIds.filter((id) => !hydratedIds.has(id));
+
+  for (const log of logs) {
+    if (log.archiveState === "archived" && !next.includes(log.id)) {
+      next.push(log.id);
+    }
+  }
+
+  return next;
+}
+
 const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
   { value: "7d", label: "7天" },
   { value: "30d", label: "30天" },
@@ -249,7 +298,8 @@ function SelectControl<Value extends string>({
   ariaLabel,
   id,
   className,
-  placeholder
+  placeholder,
+  disabled
 }: {
   value: Value;
   onValueChange: (value: Value) => void;
@@ -258,9 +308,10 @@ function SelectControl<Value extends string>({
   id?: string;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)}>
+    <Select value={value} onValueChange={(nextValue) => onValueChange(nextValue as Value)} disabled={disabled}>
       <SelectTrigger id={id} aria-label={ariaLabel} className={className} data-value={value}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
@@ -971,6 +1022,89 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ]
       };
     }
+    case "HYDRATE_LOG_RUNTIME":
+      return {
+        ...state,
+        logs: action.logs,
+        archivedLogIds: archivedLogIdsFromHydratedLogs(state.archivedLogIds, action.logs)
+      };
+    case "HYDRATE_DEBUG_RUNTIME":
+      return {
+        ...state,
+        devices: action.devices,
+        debugParameters: action.debugParameters,
+        configDraft: {
+          ...state.configDraft,
+          debugParameters: action.debugParameters
+        }
+      };
+    case "SET_DEBUG_ACTIVE_SESSION":
+      return {
+        ...state,
+        debuggingSessionStartedAt: action.session?.startedAt ?? null,
+        debuggingActiveSessionId: action.session?.id ?? null
+      };
+    case "UPSERT_DEBUG_NODE_OPERATION": {
+      const event =
+        action.operation.operationType === "rollback"
+          ? {
+              kind: "rollback" as const,
+              snapshotId: action.operation.snapshotId ?? action.operation.id,
+              parameterIds: action.operation.parameterId ? [action.operation.parameterId] : [],
+              at: action.operation.createdAt
+            }
+          : action.operation.operationType === "write"
+            ? {
+                kind: "push" as const,
+                snapshotId: action.operation.snapshotId ?? action.operation.id,
+                parameterIds: action.operation.parameterId ? [action.operation.parameterId] : [],
+                at: action.operation.createdAt,
+                risk: state.debugParameters.find((parameter) => parameter.id === action.operation.parameterId)?.risk ?? "Low"
+              }
+            : {
+                kind: "connect" as const,
+                deviceId: action.operation.nodePath,
+                at: action.operation.createdAt
+              };
+      return {
+        ...state,
+        debugEvents: [...state.debugEvents, event]
+      };
+    }
+    case "UPSERT_DEBUG_SNAPSHOT":
+      if (action.snapshot.status !== "valid") {
+        return state;
+      }
+      return state;
+    case "UPSERT_LOG_RECORD": {
+      const existingIndex = state.logs.findIndex((log) => log.id === action.log.id);
+      const archivedLogIds = updateArchivedLogIdsForLog(state.archivedLogIds, action.log);
+      if (existingIndex === -1) {
+        return {
+          ...state,
+          logs: [action.log, ...state.logs],
+          archivedLogIds
+        };
+      }
+
+      return {
+        ...state,
+        logs: state.logs.map((log) => (log.id === action.log.id ? action.log : log)),
+        archivedLogIds
+      };
+    }
+    case "LOG_JOB_PROGRESS":
+      return {
+        ...state,
+        logs: state.logs.map((log) =>
+          log.id === action.job.logId
+            ? {
+                ...log,
+                stage: action.job.currentStage
+              }
+            : log
+        )
+      };
     case "CONNECT_DEVICE": {
       if (!canPerform(activeRoleId, "debugging.use")) return state;
       const now = new Date().toISOString();
@@ -1611,18 +1745,29 @@ export const appReducer = reducer;
 
 type AppProps = {
   authClient?: WiseEffAuthClient;
+  debuggingGateway?: DebuggingGateway;
   initialAppState?: PrototypeState;
+  logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   runtimeMode?: WiseEffRuntimeMode;
 };
 
-function App({ authClient, initialAppState = initialState, parameterRepository, runtimeMode = wiseEffRuntimeMode }: AppProps = {}) {
+function App({
+  authClient,
+  debuggingGateway,
+  initialAppState = initialState,
+  logAnalysisRepository,
+  parameterRepository,
+  runtimeMode = wiseEffRuntimeMode
+}: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
         authClient={authClient}
+        debuggingGateway={debuggingGateway}
         initialAppState={initialAppState}
         key={mockDataFingerprint}
+        logAnalysisRepository={logAnalysisRepository}
         parameterRepository={parameterRepository}
         runtimeMode={runtimeMode}
       />
@@ -1632,12 +1777,16 @@ function App({ authClient, initialAppState = initialState, parameterRepository, 
 
 function AppShell({
   authClient,
+  debuggingGateway,
   initialAppState,
+  logAnalysisRepository,
   parameterRepository,
   runtimeMode
 }: {
   authClient?: WiseEffAuthClient;
+  debuggingGateway?: DebuggingGateway;
   initialAppState: PrototypeState;
+  logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   runtimeMode: WiseEffRuntimeMode;
 }) {
@@ -1659,6 +1808,14 @@ function AppShell({
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
   );
+  const logAnalysisRepositoryClient = useMemo(
+    () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
+    [logAnalysisRepository, runtimeMode]
+  );
+  const debuggingGatewayClient = useMemo(
+    () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
+    [debuggingGateway, runtimeMode]
+  );
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
       createParameterRuntimeActions({
@@ -1669,11 +1826,37 @@ function AppShell({
       }),
     [parameterRepositoryClient, runtimeMode]
   );
+  const logActions = useMemo<LogRuntimeActions>(
+    () =>
+      createLogRuntimeActions({
+        mode: runtimeMode,
+        repository: logAnalysisRepositoryClient,
+        dispatch,
+        getState: () => stateRef.current
+      }),
+    [logAnalysisRepositoryClient, runtimeMode]
+  );
+  const debuggingActions = useMemo<DebuggingRuntimeActions>(
+    () =>
+      createDebuggingRuntimeActions({
+        mode: runtimeMode,
+        gateway: debuggingGatewayClient,
+        dispatch,
+        getState: () => stateRef.current
+      }),
+    [debuggingGatewayClient, runtimeMode]
+  );
   const DebuggingAdminPageWithRuntime = useCallback(
     (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
     [runtimeMode]
   );
+  const LogsPageWithRuntime = useCallback(
+    (props: PageProps) => <LogsPage {...props} logActions={runtimeMode === "api" ? props.logActions : undefined} />,
+    [runtimeMode]
+  );
   const parameterRuntimeConnectedRef = useRef(false);
+  const logRuntimeConnectedRef = useRef(false);
+  const debuggingRuntimeConnectedRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1706,15 +1889,46 @@ function AppShell({
             lastActive: "just now"
           }
         });
-        const parameterRefreshResult = await parameterActions.refresh({ notifyOnFailure: false });
+        const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
+          parameterActions.refresh({ notifyOnFailure: false }),
+          logActions.refresh(),
+          debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
+        ]);
         if (cancelled) return;
-        if (parameterRefreshResult && "notification" in parameterRefreshResult) {
+        if (
+          parameterRefreshResult.status === "rejected" ||
+          (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
+        ) {
           dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
-          return;
-        }
-        if (!parameterRuntimeConnectedRef.current) {
+        } else if (!parameterRuntimeConnectedRef.current) {
           parameterRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
+        }
+        if (logRefreshResult.status === "rejected") {
+          if (
+            !(
+              logRefreshResult.reason instanceof Error &&
+              (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
+            )
+          ) {
+            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载 WiseEff 日志 API，已保留本地演示数据" });
+          }
+        } else if (!logRuntimeConnectedRef.current) {
+          logRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 日志 API" });
+        }
+        if (debuggingRefreshResult.status === "rejected") {
+          if (
+            !(
+              debuggingRefreshResult.reason instanceof Error &&
+              (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
+            )
+          ) {
+            dispatch({ type: "ADD_NOTIFICATION", message: "Cannot load WiseEff debugging API; local demo data is retained." });
+          }
+        } else if (!debuggingRuntimeConnectedRef.current) {
+          debuggingRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "Connected to WiseEff debugging API" });
         }
       })
       .catch(() => {
@@ -1724,7 +1938,7 @@ function AppShell({
     return () => {
       cancelled = true;
     };
-  }, [authClient, parameterActions, runtimeMode]);
+  }, [authClient, debuggingActions, logActions, parameterActions, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -1785,6 +1999,9 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                debuggingActions={debuggingActions}
+                debuggingGateway={debuggingGatewayClient}
+                logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
                 search={search}
@@ -1793,7 +2010,7 @@ function AppShell({
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
-                LogsPage={LogsPage}
+                LogsPage={LogsPageWithRuntime}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </div>
@@ -1805,6 +2022,9 @@ function AppShell({
                 dispatch={dispatch}
                 onNavigate={navigate}
                 onNewProject={() => setProjectInitOpen(true)}
+                debuggingActions={debuggingActions}
+                debuggingGateway={debuggingGatewayClient}
+                logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
                 search={search}
@@ -1813,7 +2033,7 @@ function AppShell({
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
                 LogDashboardPage={LogDashboardPage}
-                LogsPage={LogsPage}
+                LogsPage={LogsPageWithRuntime}
                 DebuggingAdminPage={DebuggingAdminPageWithRuntime}
               />
             </main>
@@ -3578,9 +3798,10 @@ function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; 
 }
 
 
-function LogsPage({ state, dispatch, onNavigate }: PageProps) {
+function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
   const [feedbackToast, setFeedbackToast] = useState("");
   const [auxTab, setAuxTab] = useState<LogsAuxTab>("history");
@@ -3646,6 +3867,18 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
       setActiveMatchIndex(Math.max(matchLines.length - 1, 0));
     }
   }, [activeMatchIndex, matchLines.length]);
+
+  useEffect(() => {
+    if (!pendingUpload) {
+      return;
+    }
+
+    const createdLog = state.logs.find((log) => !pendingUpload.previousLogIds.has(log.id));
+    if (createdLog) {
+      setPendingUpload(null);
+      setUploadDialogOpen(false);
+    }
+  }, [pendingUpload, state.logs]);
 
   useEffect(() => {
     const focusSearch = (event: KeyboardEvent) => {
@@ -3752,6 +3985,34 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;
   const openUploadDialog = useCallback(() => setUploadDialogOpen(true), []);
+  const handleUploadLog = useCallback(
+    async (file: File, supported: boolean, question?: string) => {
+      if (!logActions) {
+        dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName: file.name, supported, question });
+        setUploadDialogOpen(false);
+        return;
+      }
+
+      const beforeLogIds = new Set(state.logs.map((log) => log.id));
+      setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
+
+      try {
+        await logActions.upload({ projectId: state.activeProjectId, file, analysisQuestion: question });
+      } catch (error) {
+        setPendingUpload(null);
+        throw error;
+      }
+    },
+    [dispatch, logActions, state.activeProjectId, state.logs]
+  );
+  const handleRetryLog = useCallback(() => {
+    if (!logActions) {
+      setUploadDialogOpen(true);
+      return;
+    }
+
+    void logActions.rerun({ logId: activeLog.id, analysisQuestion: activeLog.analysisQuestion }).catch(() => undefined);
+  }, [activeLog.analysisQuestion, activeLog.id, logActions]);
 
   return (
     <div className="logs-v2">
@@ -3767,7 +4028,7 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
           onExport={onExport}
           onFeedback={() => setFeedbackLogId(activeLog.id)}
           onPrimary={onPrimary}
-          onRetry={() => setUploadDialogOpen(true)}
+          onRetry={handleRetryLog}
         />
         <LogStageTimeline stage={activeLog.stage} status={activeLog.status} />
         <section className="analysis-card logs-v2-analysis" aria-label="分析结果">
@@ -3808,11 +4069,9 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
       />
       {uploadDialogOpen ? (
         <UploadLogDialog
+          accept={logActions ? null : ".log,.txt,.json"}
           onClose={() => setUploadDialogOpen(false)}
-          onUpload={(fileName, supported, question) => {
-            dispatch({ type: "SIMULATE_LOG_UPLOAD", fileName, supported, question });
-            setUploadDialogOpen(false);
-          }}
+          onUpload={handleUploadLog}
         />
       ) : null}
       {selectedFeedbackLog ? (
@@ -3834,6 +4093,11 @@ function LogsPage({ state, dispatch, onNavigate }: PageProps) {
           {feedbackToast}
         </div>
       ) : null}
+      {state.notifications[0] ? (
+        <div className="logs-feedback-toast" role="status" aria-live="polite">
+          {state.notifications[0]}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3843,17 +4107,21 @@ function isSupportedLogFile(fileName: string) {
 }
 
 function UploadLogDialog({
+  accept = ".log,.txt,.json",
   onClose,
   onUpload
 }: {
+  accept?: string | null;
   onClose: () => void;
-  onUpload: (fileName: string, supported: boolean, question?: string) => void;
+  onUpload: (file: File, supported: boolean, question?: string) => Promise<void> | void;
 }) {
   const [phase, setPhase] = useState<UploadDialogPhase>("idle");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState("");
   const [question, setQuestion] = useState("");
   const [supported, setSupported] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
@@ -3881,10 +4149,11 @@ function UploadLogDialog({
     };
   }, []);
 
-  const validateFile = (fileName: string) => {
-    const nextSupported = isSupportedLogFile(fileName);
+  const validateFile = (file: File) => {
+    const nextSupported = isSupportedLogFile(file.name);
 
-    setSelectedFileName(fileName);
+    setSelectedFile(file);
+    setSelectedFileName(file.name);
     setSupported(nextSupported);
     setPhase("validating");
 
@@ -3900,6 +4169,7 @@ function UploadLogDialog({
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) {
+      setSelectedFile(null);
       setSelectedFileName("");
       setSupported(false);
       setPhase("idle");
@@ -3907,11 +4177,11 @@ function UploadLogDialog({
     }
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        onUpload(files[i].name, isSupportedLogFile(files[i].name), question);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question)).catch(() => undefined);
       }
       return;
     }
-    validateFile(files[0].name);
+    validateFile(files[0]);
   };
 
   const handleDrop = (event: React.DragEvent) => {
@@ -3921,15 +4191,16 @@ function UploadLogDialog({
     if (!files || files.length === 0) return;
     if (files.length > 1) {
       for (let i = 0; i < files.length; i++) {
-        onUpload(files[i].name, isSupportedLogFile(files[i].name), question);
+        void Promise.resolve(onUpload(files[i], isSupportedLogFile(files[i].name), question)).catch(() => undefined);
       }
       return;
     }
-    validateFile(files[0].name);
+    validateFile(files[0]);
   };
 
   const resetSelection = () => {
     setPhase("idle");
+    setSelectedFile(null);
     setSelectedFileName("");
     setSupported(false);
     setQuestion("");
@@ -3940,10 +4211,13 @@ function UploadLogDialog({
   };
 
   const uploadSelected = () => {
-    if (!selectedFileName) {
+    if (!selectedFile || uploading) {
       return;
     }
-    onUpload(selectedFileName, supported, question);
+    setUploading(true);
+    void Promise.resolve(onUpload(selectedFile, supported, question))
+      .catch(() => undefined)
+      .finally(() => setUploading(false));
   };
 
   return (
@@ -3965,7 +4239,7 @@ function UploadLogDialog({
           onDrop={handleDrop}
         >
           <span>选择日志文件（支持拖放多份）</span>
-          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept=".log,.txt,.json" multiple onChange={handleFileChange} />
+          <input aria-label="选择日志文件" ref={fileInputRef} type="file" accept={accept ?? undefined} multiple onChange={handleFileChange} />
         </label>
         <label className="upload-question-field" htmlFor="upload-analysis-question">
           <span>分析问题（可选）</span>
@@ -3994,17 +4268,17 @@ function UploadLogDialog({
               知道了
             </button>
           ) : (
-            <button className="button subtle" type="button" onClick={onClose}>
+            <button className="button subtle" type="button" disabled={uploading} onClick={onClose}>
               取消
             </button>
           )}
           {phase === "confirm" ? (
-            <button className="button primary" type="button" onClick={uploadSelected}>
+            <button className="button primary" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading} onClick={uploadSelected}>
               确认上传
             </button>
           ) : null}
           {phase === "unsupported" ? (
-            <button className="button danger" type="button" onClick={uploadSelected}>
+            <button className="button danger" type="button" aria-busy={uploading ? "true" : undefined} disabled={uploading} onClick={uploadSelected}>
               仍然上传
             </button>
           ) : null}
@@ -4100,6 +4374,10 @@ function LogConclusionCard({
         <button className="button subtle" disabled={log.status !== "Complete"} type="button" onClick={onExport}>
           <Download size={16} />
           导出报告
+        </button>
+        <button className="button danger" disabled={log.status !== "Complete"} type="button" onClick={onRetry}>
+          <RotateCcw size={16} />
+          重新分析
         </button>
         <button className="button subtle" type="button" onClick={onCopyLink}>
           <Copy size={16} />
@@ -4597,6 +4875,7 @@ function DebuggingAdminPage({
   const [filterModule, setFilterModule] = useState<string[]>([]);
   const [jsonExpanded, setJsonExpanded] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
+  const isApiMode = runtimeMode === "api";
   const selectedParameter =
     state.configDraft.debugParameters.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.debugParameters[0];
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
@@ -4626,21 +4905,22 @@ function DebuggingAdminPage({
   );
 
   const updateDebug = (patch: Partial<DebugParameterEditorDraft>) => {
+    if (isApiMode) return;
     if (!selectedParameter) return;
     dispatch({ type: "UPDATE_DEBUG_PARAMETER", parameterId: selectedParameter.id, patch });
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
   };
 
-  const highRiskCount = state.debugParameters.filter((p) => p.risk === "High").length;
+  const highRiskCount = state.configDraft.debugParameters.filter((p) => p.risk === "High").length;
   useTopBarActions(
     <div className="debug-admin-strip debug-admin-strip--topbar">
-      <span className="debug-admin-stat">可调参数 <strong>{state.debugParameters.length}</strong></span>
+      <span className="debug-admin-stat">可调参数 <strong>{state.configDraft.debugParameters.length}</strong></span>
       <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
       <span className="debug-admin-stat">在线设备 <strong>{state.devices.filter((d) => d.status === "已连接").length}/{state.devices.length}</strong></span>
       <span className={`debug-admin-save-indicator${saveFlash ? " visible" : ""}`}>✓ 已自动保存</span>
     </div>,
-    [highRiskCount, saveFlash, state.debugParameters.length, state.devices]
+    [highRiskCount, saveFlash, state.configDraft.debugParameters.length, state.devices]
   );
 
   return (
@@ -4653,7 +4933,9 @@ function DebuggingAdminPage({
             <Button
               variant="outline"
               type="button"
+              disabled={isApiMode}
               onClick={() => {
+                if (isApiMode) return;
                 dispatch({ type: "ADD_DEBUG_PARAMETER" });
                 setSelectedParameterId(`dbg-new-parameter-${state.configDraft.debugParameters.length + 1}`);
               }}
@@ -4661,6 +4943,11 @@ function DebuggingAdminPage({
               + 新增
             </Button>
           </div>
+          {isApiMode ? (
+            <p className="debug-admin-helper">
+              API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。
+            </p>
+          ) : null}
           <div className="debug-admin-list-filters">
             <div className="debug-admin-list-search">
               <Search size={14} aria-hidden />
@@ -4697,9 +4984,10 @@ function DebuggingAdminPage({
                   type="button"
                   className="debug-admin-row-delete"
                   aria-label={`删除 ${parameter.name}`}
-                  disabled={state.configDraft.debugParameters.length <= 1}
+                  disabled={isApiMode || state.configDraft.debugParameters.length <= 1}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (isApiMode) return;
                     dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: parameter.id });
                     if (parameter.id === selectedParameterId) {
                       setSelectedParameterId(state.configDraft.debugParameters.find((p) => p.id !== parameter.id)?.id ?? "");
@@ -4721,11 +5009,11 @@ function DebuggingAdminPage({
                 <div className="debug-admin-form-fields">
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">参数名称</span>
-                    <Input value={selectedParameter.name} onChange={(e) => updateDebug({ name: e.target.value })} />
+                    <Input value={selectedParameter.name} disabled={isApiMode} onChange={(e) => updateDebug({ name: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">参数 key</span>
-                    <Input value={selectedParameter.key} onChange={(e) => updateDebug({ key: e.target.value })} />
+                    <Input value={selectedParameter.key} disabled={isApiMode} onChange={(e) => updateDebug({ key: e.target.value })} />
                   </label>
                 </div>
               </div>
@@ -4734,19 +5022,19 @@ function DebuggingAdminPage({
                 <div className="debug-admin-form-fields">
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">当前值</span>
-                    <Input value={selectedParameter.currentValue} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
+                    <Input value={selectedParameter.currentValue} disabled={isApiMode} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">目标值</span>
-                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
+                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} disabled={isApiMode} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">范围</span>
-                    <Input value={selectedParameter.range} onChange={(e) => updateDebug({ range: e.target.value })} />
+                    <Input value={selectedParameter.range} disabled={isApiMode} onChange={(e) => updateDebug({ range: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">单位</span>
-                    <Input value={selectedParameter.unit} onChange={(e) => updateDebug({ unit: e.target.value })} />
+                    <Input value={selectedParameter.unit} disabled={isApiMode} onChange={(e) => updateDebug({ unit: e.target.value })} />
                   </label>
                 </div>
               </div>
@@ -4758,6 +5046,7 @@ function DebuggingAdminPage({
                     <SelectControl
                       value={selectedParameter.risk}
                       onValueChange={(risk) => updateDebug({ risk })}
+                      disabled={isApiMode}
                       options={[
                         { value: "High", label: "高" },
                         { value: "Medium", label: "中" },
@@ -4770,6 +5059,7 @@ function DebuggingAdminPage({
                     <SelectControl
                       value={selectedParameter.status}
                       onValueChange={(status) => updateDebug({ status })}
+                      disabled={isApiMode}
                       options={[
                         { value: "已同步", label: "已同步" },
                         { value: "待下发", label: "待下发" },
@@ -4787,6 +5077,7 @@ function DebuggingAdminPage({
                     <Input
                       aria-label="节点路径"
                       value={selectedParameter.nodePath}
+                      disabled={isApiMode}
                       onChange={(e) => updateDebug({ nodePath: e.target.value })}
                     />
                   </label>
@@ -4796,6 +5087,7 @@ function DebuggingAdminPage({
                       ariaLabel="访问模式"
                       value={selectedParameter.accessMode}
                       onValueChange={(accessMode) => updateDebug({ accessMode })}
+                      disabled={isApiMode}
                       options={[
                         { value: "RO", label: "RO · 只读" },
                         { value: "WO", label: "WO · 只写" },

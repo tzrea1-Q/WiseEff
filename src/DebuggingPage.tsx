@@ -1,6 +1,7 @@
 import { Pencil, Search, Send } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppAction } from "./App";
+import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { OperationHistoryPanel } from "./components/OperationHistoryPanel";
 import { RollbackConfirmDialog } from "./components/RollbackConfirmDialog";
@@ -44,9 +45,12 @@ function compareRows(a: DebugParameter, b: DebugParameter, sort: SortState) {
 type DebuggingPageProps = {
   state: PrototypeState;
   dispatch: (action: AppAction) => void;
+  debuggingActions?: DebuggingRuntimeActions;
 };
 
-export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
+type RuntimeActionName = "connect" | "push" | "rollback";
+
+export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPageProps) {
   const [nowTick, setNowTick] = useState(() => new Date());
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -56,6 +60,10 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
+  const [pendingRuntimeActions, setPendingRuntimeActions] = useState<Set<RuntimeActionName>>(() => new Set());
+  const pendingRuntimeActionsRef = useRef<Set<RuntimeActionName>>(new Set());
+  const runtimeRequestSeqRef = useRef<Record<RuntimeActionName, number>>({ connect: 0, push: 0, rollback: 0 });
 
   const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0];
   const debugParameters = state.debugParameters;
@@ -189,14 +197,54 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     });
   };
 
+  const runRuntimeAction = async (
+    action: RuntimeActionName,
+    run: () => Promise<void>,
+    fallbackMessage: string
+  ) => {
+    if (pendingRuntimeActionsRef.current.has(action)) return;
+
+    const requestSeq = runtimeRequestSeqRef.current[action] + 1;
+    runtimeRequestSeqRef.current[action] = requestSeq;
+    const nextPending = new Set(pendingRuntimeActionsRef.current);
+    nextPending.add(action);
+    pendingRuntimeActionsRef.current = nextPending;
+    setRuntimeNotice(null);
+    setPendingRuntimeActions(nextPending);
+
+    try {
+      await run();
+    } catch (error) {
+      if (runtimeRequestSeqRef.current[action] === requestSeq) {
+        setRuntimeNotice(error instanceof Error ? error.message : fallbackMessage);
+      }
+    } finally {
+      if (runtimeRequestSeqRef.current[action] === requestSeq) {
+        const remainingPending = new Set(pendingRuntimeActionsRef.current);
+        remainingPending.delete(action);
+        pendingRuntimeActionsRef.current = remainingPending;
+        setPendingRuntimeActions(remainingPending);
+      }
+    }
+  };
+
+  const pushParameterIds = async (parameterIds: string[]) => {
+    if (debuggingActions) {
+      await runRuntimeAction("push", () => debuggingActions.pushValues(parameterIds), "Debug push failed");
+      return;
+    }
+
+    dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds });
+  };
+
   const pushPendingValues = () => {
     if (selectedIds.size > 0) {
       if (pendingSelected.length === 0) return;
-      dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingSelected.map((p) => p.id) });
+      void pushParameterIds(pendingSelected.map((p) => p.id));
       setSelectedIds(new Set());
     } else {
       if (pendingParameters.length === 0) return;
-      dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: pendingParameters.map((p) => p.id) });
+      void pushParameterIds(pendingParameters.map((p) => p.id));
     }
   };
 
@@ -214,11 +262,28 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
     <div className="device-pill">
       <span className={connected ? "live-dot" : "idle-dot"} />
       {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
-      <button className="link-button" type="button" onClick={() => dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id })}>
+      <button
+        className="link-button"
+        type="button"
+        onClick={() => {
+          if (debuggingActions) {
+            void runRuntimeAction(
+              "connect",
+              async () => {
+                await debuggingActions.detectAndStartSession(state.activeProjectId);
+              },
+              "Debug connection failed"
+            );
+            return;
+          }
+          dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id });
+        }}
+        disabled={pendingRuntimeActions.has("connect")}
+      >
         连接
       </button>
     </div>,
-    [activeDevice.id, activeDevice.name, connected]
+    [activeDevice.id, activeDevice.name, connected, debuggingActions, pendingRuntimeActions, state.activeProjectId]
   );
 
   return (
@@ -230,6 +295,11 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           onRollbackRequest={() => setRollbackDialogOpen(true)}
         />
         <section className="debug-table">
+          {runtimeNotice ? (
+            <div className="inline-alert" role="alert">
+              {runtimeNotice}
+            </div>
+          ) : null}
           <div className="panel-header">
             <strong>实时可调参数</strong>
             <span>{connected ? "设备在线" : "需要连接"}</span>
@@ -338,7 +408,7 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
               <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
-                disabled={!connected || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
+                disabled={!connected || pendingRuntimeActions.has("push") || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
                 onClick={pushPendingValues}
               >
                 <Send size={16} />
@@ -373,9 +443,9 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
               <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
-                disabled={!connected || editingParameter.status !== "待下发"}
+                disabled={!connected || pendingRuntimeActions.has("push") || editingParameter.status !== "待下发"}
                 onClick={() => {
-                  dispatch({ type: "PUSH_DEBUG_VALUES", parameterIds: [editingParameter.id] });
+                  void pushParameterIds([editingParameter.id]);
                   setSheetOpen(false);
                   setEditingId(null);
                 }}
@@ -436,7 +506,20 @@ export function DebuggingPage({ state, dispatch }: DebuggingPageProps) {
           parameters={state.debugParameters}
           onCancel={() => setRollbackDialogOpen(false)}
           onConfirm={() => {
-            dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
+            const snapshot = state.lastDebugSnapshot;
+            if (!snapshot) return;
+            if (debuggingActions) {
+              void runRuntimeAction(
+                "rollback",
+                () => debuggingActions.rollbackSnapshot({
+                  snapshotId: snapshot.id,
+                  confirmationToken: "confirm-rollback"
+                }),
+                "Debug rollback failed"
+              );
+            } else {
+              dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
+            }
             setRollbackDialogOpen(false);
           }}
         />

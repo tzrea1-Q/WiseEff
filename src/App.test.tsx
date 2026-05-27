@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
+import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 
 const userState = { ...initialState, activeRoleId: "user" };
@@ -18,6 +19,20 @@ const apiProject = {
   id: initialState.activeProjectId,
   name: "API Runtime Project",
   code: "API-RUN"
+};
+const apiDebugDevice = {
+  id: "api-debug-device",
+  name: "API Debug Device",
+  projectId: initialState.activeProjectId,
+  firmware: "v1.0.0",
+  status: "online" as const,
+  lastSeenAt: "2026-05-25T08:00:00.000Z"
+};
+const apiDebugParameter = {
+  ...initialState.debugParameters[0],
+  id: "api-debug-param",
+  name: "api_debug_runtime_parameter",
+  projectId: initialState.activeProjectId
 };
 
 function createAppParameterRepository(overrides: Partial<ParameterRepository> = {}): ParameterRepository {
@@ -59,6 +74,17 @@ function createAppParameterRepository(overrides: Partial<ParameterRepository> = 
       summary: { added: 0, updated: 0, unchanged: 0, conflict: 0, highRisk: 0 },
       items: []
     }),
+    ...overrides
+  };
+}
+
+function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): DebuggingGateway {
+  return {
+    listDevices: vi.fn().mockResolvedValue([apiDebugDevice]),
+    listParameters: vi.fn().mockResolvedValue([apiDebugParameter]),
+    detectTargets: vi.fn().mockResolvedValue([]),
+    readNode: vi.fn().mockResolvedValue({ ok: true }),
+    writeNode: vi.fn().mockResolvedValue({ ok: true }),
     ...overrides
   };
 }
@@ -232,6 +258,93 @@ describe("WiseEff app shell", () => {
     expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
   });
 
+  it("hydrates debugging runtime data from the API gateway after auth", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const debuggingGateway = createAppDebuggingGateway();
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-debug",
+              organizationId: "org-chargelab",
+              name: "API Debugger",
+              email: "api-debugger@chargelab.cn",
+              title: "API Debug Engineer",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "debugging:use"]
+          })
+        }}
+        debuggingGateway={debuggingGateway}
+        initialAppState={adminState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByDisplayValue("api_debug_runtime_parameter")).toBeInTheDocument();
+    expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
+  });
+
+  it("keeps debugging runtime hydration independent when parameter refresh fails", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const debuggingGateway = createAppDebuggingGateway();
+    const parameterRepository = createAppParameterRepository({
+      listProjects: vi.fn().mockRejectedValue(new Error("parameter API unavailable"))
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-debug-independent",
+              organizationId: "org-chargelab",
+              name: "API Debug Independent",
+              email: "api-debug-independent@chargelab.cn",
+              title: "API Debug Engineer",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "debugging:use"]
+          })
+        }}
+        debuggingGateway={debuggingGateway}
+        initialAppState={adminState}
+        parameterRepository={parameterRepository}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByDisplayValue("api_debug_runtime_parameter")).toBeInTheDocument();
+    expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
+    expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
+    expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId });
+  });
+
+  it("threads debugging runtime props through debugging route cases", () => {
+    const routesSource = readFileSync("src/app/routes.tsx", "utf8");
+    const debuggingCase = routesSource.slice(
+      routesSource.indexOf('case "debugging":'),
+      routesSource.indexOf('case "node-debugging":')
+    );
+    const nodeDebuggingCase = routesSource.slice(
+      routesSource.indexOf('case "node-debugging":'),
+      routesSource.indexOf('case "debugging-admin":')
+    );
+
+    expect(debuggingCase).toContain("debuggingActions={debuggingActions}");
+    expect(debuggingCase).toContain("debuggingGateway={debuggingGateway}");
+    expect(nodeDebuggingCase).toContain('debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}');
+    expect(nodeDebuggingCase).not.toContain("debuggingGateway={debuggingGateway}");
+  });
+
   it("advances an API-hydrated review with the request baseVersion as expectedVersion", async () => {
     window.history.replaceState(null, "", "/parameter-review");
     const apiReview = {
@@ -334,6 +447,118 @@ describe("WiseEff app shell", () => {
     expect(next.logs).toBe(state.logs);
     expect(next.debugParameters).toBe(state.debugParameters);
     expect(next.users).toBe(state.users);
+  });
+
+  it("hydrates debugging runtime state and mirrors parameters into the config draft", () => {
+    const state = {
+      ...adminState,
+      debugParameters: initialState.debugParameters,
+      configDraft: {
+        ...adminState.configDraft,
+        debugParameters: initialState.debugParameters
+      }
+    };
+    const next = appReducer(state, {
+      type: "HYDRATE_DEBUG_RUNTIME",
+      devices: [
+        {
+          id: apiDebugDevice.id,
+          name: apiDebugDevice.name,
+          projectId: apiDebugDevice.projectId,
+          firmware: apiDebugDevice.firmware,
+          status: "已连接",
+          lastSeen: apiDebugDevice.lastSeenAt
+        }
+      ],
+      debugParameters: [apiDebugParameter]
+    });
+
+    expect(next.devices).toEqual([
+      expect.objectContaining({
+        id: apiDebugDevice.id,
+        name: apiDebugDevice.name
+      })
+    ]);
+    expect(next.debugParameters).toEqual([apiDebugParameter]);
+    expect(next.configDraft.debugParameters).toEqual([apiDebugParameter]);
+  });
+
+  it("stores API debug sessions and operation events while ignoring snapshot summaries", () => {
+    const startedAt = "2026-05-25T08:01:00.000Z";
+    const sessionState = appReducer(adminState, {
+      type: "SET_DEBUG_ACTIVE_SESSION",
+      session: {
+        id: "session-1",
+        projectId: initialState.activeProjectId,
+        deviceId: apiDebugDevice.id,
+        targetId: "target-1",
+        status: "active",
+        startedAt,
+        endedAt: null
+      },
+      target: { id: "target-1", deviceId: apiDebugDevice.id, label: "API Target" }
+    });
+    const operationState = appReducer(sessionState, {
+      type: "UPSERT_DEBUG_NODE_OPERATION",
+      operation: {
+        id: "op-write-1",
+        sessionId: "session-1",
+        parameterId: initialState.debugParameters[0].id,
+        nodePath: initialState.debugParameters[0].nodePath,
+        operationType: "write",
+        status: "succeeded",
+        requestedValue: "4200",
+        verified: true,
+        durationMs: 12,
+        snapshotId: "snapshot-valid",
+        createdAt: "2026-05-25T08:02:00.000Z"
+      }
+    });
+    const invalidSnapshotState = appReducer(operationState, {
+      type: "UPSERT_DEBUG_SNAPSHOT",
+      snapshot: {
+        id: "snapshot-invalid",
+        sessionId: "session-1",
+        status: "invalid",
+        risk: "High",
+        createdAt: "2026-05-25T08:02:00.000Z"
+      }
+    });
+    const validSnapshotState = appReducer(invalidSnapshotState, {
+      type: "UPSERT_DEBUG_SNAPSHOT",
+      snapshot: {
+        id: "snapshot-valid",
+        sessionId: "session-1",
+        status: "valid",
+        risk: "High",
+        createdAt: "2026-05-25T08:03:00.000Z"
+      }
+    });
+
+    expect(sessionState.debuggingSessionStartedAt).toBe(startedAt);
+    expect(sessionState.debuggingActiveSessionId).toBe("session-1");
+    expect(operationState.debugEvents.at(-1)).toMatchObject({
+      kind: "push",
+      snapshotId: "snapshot-valid",
+      parameterIds: [initialState.debugParameters[0].id]
+    });
+    expect(invalidSnapshotState.lastDebugSnapshot).toBeNull();
+    expect(validSnapshotState.lastDebugSnapshot).toBeNull();
+  });
+
+  it("does not convert valid API snapshot summaries into empty rollback snapshots", () => {
+    const next = appReducer(initialState, {
+      type: "UPSERT_DEBUG_SNAPSHOT",
+      snapshot: {
+        id: "snapshot-summary-only",
+        sessionId: "session-1",
+        status: "valid",
+        risk: "High",
+        createdAt: "2026-05-25T08:03:00.000Z"
+      }
+    });
+
+    expect(next.lastDebugSnapshot).toBeNull();
   });
 
   it("keeps the platform homepage inside the app scroll container", () => {

@@ -4,6 +4,8 @@ export type LogStatus = "Processing" | "Complete" | "Failed";
 
 export type LogSeverity = "Critical" | "Warning" | "Info";
 
+export type LogArchiveState = "active" | "archived";
+
 export type TimeWindow = "today" | "7d" | "30d";
 
 export type LogAdminRole = "Admin" | "Editor" | "Viewer";
@@ -43,6 +45,7 @@ export type LogRecord = {
   device?: string;
   failureReason?: string;
   analysisQuestion?: string;
+  archiveState?: LogArchiveState;
 };
 
 export type LogAdminUser = {

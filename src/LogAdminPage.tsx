@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from "@/logAdminAnalytics";
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
+import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "./App";
 
 export type LogAdminPageProps = {
@@ -20,6 +21,7 @@ export type LogAdminPageProps = {
   dispatch: React.Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  logActions?: LogRuntimeActions;
 };
 
 const statusLabels: Record<LogStatus, string> = {
@@ -65,7 +67,17 @@ function writeInsightDismissed(): void {
   }
 }
 
-export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: LogAdminPageProps) {
+type PendingLogAction = "archive" | "reanalyze" | "feedback" | "unarchive";
+
+function pendingKey(kind: PendingLogAction, logId: string): string {
+  return `${kind}:${logId}`;
+}
+
+function runtimeAlreadyNotified(error: unknown): boolean {
+  return error instanceof Error && (error as { alreadyNotified?: unknown }).alreadyNotified === true;
+}
+
+export function LogAdminPage({ state, dispatch, onNavigate, search: _search, logActions }: LogAdminPageProps) {
   const [timeWindow, setTimeWindow] = useState<TimeWindow>("today");
   const [tableQuery, setTableQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<LogStatus[]>([]);
@@ -74,6 +86,26 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [undoArchive, setUndoArchive] = useState<{ logId: string; fileName: string } | null>(null);
   const [insightDismissed, setInsightDismissed] = useState<boolean>(() => readInsightDismissed());
+  const [pendingActions, setPendingActions] = useState<Set<string>>(() => new Set());
+  const [syncPending, setSyncPending] = useState(false);
+
+  const runPendingAction = async (kind: PendingLogAction, logId: string, action: () => Promise<void>) => {
+    const key = pendingKey(kind, logId);
+    setPendingActions((current) => new Set(current).add(key));
+    try {
+      await action();
+    } catch (error) {
+      if (!runtimeAlreadyNotified(error)) {
+        dispatch({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+      }
+    } finally {
+      setPendingActions((current) => {
+        const next = new Set(current);
+        next.delete(key);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     if (!undoArchive) {
@@ -259,9 +291,28 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
     dispatch({ type: "LOG_ADMIN_EXPORT_REPORT", timeWindow });
   };
 
-  const handleSync = () => {
-    dispatch({ type: "LOG_ADMIN_SYNC_LOGS" });
+  const handleSync = async () => {
+    if (!logActions) {
+      dispatch({ type: "LOG_ADMIN_SYNC_LOGS" });
+      return;
+    }
+
+    setSyncPending(true);
+    try {
+      await logActions.refresh({ includeArchived: true });
+    } catch (error) {
+      if (!runtimeAlreadyNotified(error)) {
+        dispatch({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+      }
+    } finally {
+      setSyncPending(false);
+    }
   };
+
+  const selectedRecordArchivePending = selectedRecord ? pendingActions.has(pendingKey("archive", selectedRecord.id)) : false;
+  const selectedRecordReanalyzePending = selectedRecord ? pendingActions.has(pendingKey("reanalyze", selectedRecord.id)) : false;
+  const selectedRecordFeedbackPending = selectedRecord ? pendingActions.has(pendingKey("feedback", selectedRecord.id)) : false;
+  const undoArchivePending = undoArchive ? pendingActions.has(pendingKey("unarchive", undoArchive.logId)) : false;
 
   const hasActiveFilters = tableQuery !== "" || statusFilter.length > 0 || moduleFilter.length > 0;
   useTopBarActions(
@@ -271,12 +322,12 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
         <Download data-icon="inline-start" />
         导出报表
       </Button>
-      <Button size="sm" onClick={handleSync}>
+      <Button size="sm" onClick={handleSync} disabled={syncPending} aria-busy={syncPending || undefined}>
         <RefreshCw data-icon="inline-start" />
         同步日志
       </Button>
     </>,
-    [filteredRows, metrics, timeWindow]
+    [filteredRows, metrics, syncPending, timeWindow]
   );
 
   return (
@@ -360,18 +411,51 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
           setSelectedRecordId(null);
         }}
         onReanalyze={(id) => {
-          dispatch({ type: "LOG_ADMIN_REANALYZE_LOG", logId: id });
-          setSelectedRecordId(null);
+          if (!logActions) {
+            dispatch({ type: "LOG_ADMIN_REANALYZE_LOG", logId: id });
+            setSelectedRecordId(null);
+            return;
+          }
+
+          void runPendingAction("reanalyze", id, async () => {
+            await logActions.rerun({ logId: id });
+            setSelectedRecordId(null);
+          });
         }}
         onArchive={(id) => {
           const log = state.logs.find((item) => item.id === id);
-          dispatch({ type: "LOG_ADMIN_ARCHIVE_LOG", logId: id });
-          if (log) {
-            setUndoArchive({ logId: id, fileName: log.fileName });
+          if (!logActions) {
+            dispatch({ type: "LOG_ADMIN_ARCHIVE_LOG", logId: id });
+            if (log) {
+              setUndoArchive({ logId: id, fileName: log.fileName });
+            }
+            setSelectedRecordId(null);
+            return;
           }
-          setSelectedRecordId(null);
+
+          void runPendingAction("archive", id, async () => {
+            await logActions.archive(id);
+            if (log) {
+              setUndoArchive({ logId: id, fileName: log.fileName });
+            }
+            setSelectedRecordId(null);
+          });
+        }}
+        onSubmitHelpfulFeedback={(id) => {
+          if (!logActions) {
+            const log = state.logs.find((item) => item.id === id);
+            dispatch({ type: "ADD_NOTIFICATION", message: log ? `${log.fileName} 反馈已记录` : "日志反馈已记录" });
+            return;
+          }
+
+          void runPendingAction("feedback", id, async () => {
+            await logActions.submitFeedback({ logId: id, rating: "helpful" });
+          });
         }}
         canAct={canAct}
+        reanalyzePending={selectedRecordReanalyzePending}
+        archivePending={selectedRecordArchivePending}
+        feedbackPending={selectedRecordFeedbackPending}
       />
 
       {undoArchive ? (
@@ -385,11 +469,22 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search }: L
           </span>
           <button
             type="button"
+            disabled={undoArchivePending}
+            aria-busy={undoArchivePending || undefined}
             onClick={() => {
-              dispatch({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId: undoArchive.logId });
-              setUndoArchive(null);
+              const { logId } = undoArchive;
+              if (!logActions) {
+                dispatch({ type: "LOG_ADMIN_UNARCHIVE_LOG", logId });
+                setUndoArchive(null);
+                return;
+              }
+
+              void runPendingAction("unarchive", logId, async () => {
+                await logActions.unarchive(logId);
+                setUndoArchive(null);
+              });
             }}
-            className="text-sm font-medium text-primary hover:underline"
+            className="text-sm font-medium text-primary hover:underline disabled:pointer-events-none disabled:opacity-50"
           >
             撤销
           </button>

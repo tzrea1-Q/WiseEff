@@ -127,6 +127,14 @@ stateDiagram-v2
 - 分析结果必须能追溯到具体 run 和 stage。
 - 证据行号必须基于原始文本日志或解析后的稳定索引。
 
+M2 implementation notes:
+
+- `LogRecord.status` is `uploaded`, `processing`, `complete`, or `failed`; archive state is modeled separately as `active` or `archived`.
+- A supported upload creates `LogFileObject`, `LogRecord`, one `LogAnalysisRun`, and one `jobs` row in a transaction. The worker later writes stages, report, evidence, and terminal job/run state.
+- An unsupported upload creates `LogFileObject` and a terminal failed `LogRecord` without a run or job. The failure reason is preserved on the record.
+- Archive/unarchive updates only `LogRecord.archive_state`; default list queries include only `active` records, and admin queries can request archived records with `includeArchived=true`.
+- Feedback is append-only in `log_feedback` and linked to the log record plus audit event.
+
 ### 2.5 调试平台
 
 | 实体 | 说明 |
@@ -146,6 +154,17 @@ stateDiagram-v2
 - 高风险写入必须确认。
 - 写入操作必须记录目标值、回读值、验证结果和错误。
 - 回滚必须引用快照。
+
+M3 implementation notes:
+
+- `debugging_devices` stores simulator or future HDC devices; the M3 seed creates `Aurora Simulator Device`.
+- `debugging_targets` stores detected gateway targets; the simulator target is `Aurora Simulator 1`.
+- `debugging_parameters` stores catalog rows with node path, access mode, range, risk, current value, target value, and sort order. `Cycle count` is RO; `Fast charge current` and `Readback mismatch probe` are RW.
+- `debugging_sessions` represents an active user/device/target session. Node reads and writes require an active session.
+- `debugging_snapshots` stores pre-write entries with `previousValue` and `targetValue`. Rollback claims a valid snapshot, writes previous values back, then consumes the snapshot only when all rollback operations succeed.
+- `debugging_node_operations` records detect/read/write/rollback operation status, requested value, previous value, readback value, verification, failure reason, approval id, and snapshot linkage.
+- `debugging_events` records session-level events such as session creation and rollback success/failure.
+- `audit_events` is the cross-domain audit stream for debugging target detection, session creation, node reads, node writes, and snapshot rollback.
 
 ### 2.6 Agent
 
@@ -193,4 +212,3 @@ stateDiagram-v2
 - 业务写操作必须产生审计。
 - 审计不可由普通业务接口修改。
 - 审计查询需要权限过滤。
-

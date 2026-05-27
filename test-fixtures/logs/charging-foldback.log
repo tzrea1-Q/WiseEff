@@ -1,0 +1,5 @@
+2026-05-25T10:03:12.120Z INFO charger session started device=PACK-A01 mode=fast_charge
+2026-05-25T10:03:18.444Z WARN battery_temp_c=47.8 threshold_c=45 action=monitor
+2026-05-25T10:03:20.010Z WARN charge_current_ma=3200 requested_ma=5000 reason=thermal_foldback
+2026-05-25T10:03:24.990Z ERROR code=E_THERMAL_FOLDBACK module=bms detail="current reduced to protect pack"
+2026-05-25T10:03:29.500Z INFO charger session stabilized current_ma=2800

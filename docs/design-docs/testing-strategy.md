@@ -79,6 +79,26 @@ MVP 必须覆盖：
 5. 设备调试闭环：检测模拟设备、读取节点、写入、回读、查看调试历史。
 6. Agent 审批边界：Agent 可以生成写操作申请，但不能绕过批准。
 
+Current M2 acceptance command:
+
+```bash
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m2
+```
+
+`npm run test:m2` runs `npm run test:all`, `npm run build`, and `npm run test:e2e`. The M2 Playwright smoke in `e2e/log-analysis.api.spec.ts` runs migrations and seeds `db:seed:m0`, `db:seed:m1`, and `db:seed:m2` in `beforeAll`, then uses `test-fixtures/logs/charging-foldback.log` and `test-fixtures/logs/unsupported.bin`.
+
+The smoke proves the supported upload reaches `Complete`, the conclusion/evidence mention thermal foldback, raw line 3 or 4 highlights from the evidence card, helpful feedback audits, admin archive hides the log from default `/logs`, and unsupported upload creates a readable `Failed` record.
+
+Current M3 acceptance command:
+
+```bash
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff DEBUG_DEVICE_GATEWAY_MODE=simulator OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m3
+```
+
+`npm run test:m3` runs `npm run test:all`, `npm run build`, and `npm run test:e2e -- e2e/debugging.api.spec.ts`. The M3 Playwright smoke runs migrations and seeds `db:seed:m0`, `db:seed:m1`, and `db:seed:m3` in `beforeAll`, then uses the built-in simulator fixture exposed as `Aurora Simulator 1`.
+
+The smoke proves the simulator target is detected, fast charge current reads `3000`, writing `3100` succeeds with readback, `Cycle count` is not writable from the UI, `Readback mismatch probe` reports mismatch text, rollback returns fast charge current to `3000`, and debugging write/rollback audit events exist. If `/debugging` has no enabled rollback card for an API write snapshot, the test records that UI-state gap and verifies rollback through the backend API rather than faking the UI path.
+
 ## 6. 契约测试
 
 每次 API 合同变更必须：
@@ -105,4 +125,3 @@ MVP 必须覆盖：
 - API 压测覆盖列表、搜索和审计查询。
 - worker 压测覆盖日志任务并发。
 - 设备网关模拟超时、断连、stderr 和回读不一致。
-

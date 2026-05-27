@@ -1,0 +1,594 @@
+import { randomUUID } from "node:crypto";
+
+import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
+import type { CreateAuditEventInput } from "../audit/types";
+import type { AuthContext } from "../auth/types";
+import type { Database, Queryable } from "../../shared/database/client";
+import { ApiError } from "../../shared/http/errors";
+import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
+import {
+  getAllowedDebugProjectIds,
+  requireDebugProjectAccess,
+  requireDebugRead,
+  requireDebugRollback,
+  requireDebugView,
+  requireDebugWrite
+} from "./policy";
+import {
+  claimSnapshotForRollback,
+  createDebugSession,
+  createDebugSnapshot,
+  getDebugDevice,
+  getDebugParameter,
+  getDebugSession as getDebugSessionRecord,
+  getDebugSnapshot,
+  getDebugTarget,
+  insertDebugEvent,
+  insertNodeOperation,
+  linkOperationSnapshot,
+  listDebugDevices,
+  listDebugParameters,
+  listDebugSessionEvents,
+  markSnapshotConsumed,
+  restoreSnapshotValid,
+  updateDebugParameterValues,
+  upsertDetectedTargets
+} from "./repository";
+import type { DebugParameterRecord, DebugSessionRecord, NodeOperationRecord } from "./types";
+
+type AuditWriter = typeof defaultCreateAuditEvent;
+
+type ServiceOptions = {
+  db: Database;
+  gateway: DebugDeviceGateway;
+  createAuditEvent?: AuditWriter;
+};
+
+type ProjectQuery = {
+  projectId?: string;
+};
+
+type ScopedProjectQuery<T extends ProjectQuery> = T & {
+  projectIds?: string[];
+};
+
+type DetectTargetsInput = {
+  projectId: string;
+  deviceId?: string;
+};
+
+type CreateSessionInput = {
+  projectId: string;
+  deviceId: string;
+  targetId: string;
+};
+
+type ReadNodeInput = {
+  sessionId: string;
+  parameterId?: string;
+  nodePath: string;
+};
+
+type WriteNodeInput = {
+  sessionId: string;
+  parameterId: string;
+  value: string;
+  confirmationToken?: string;
+  approvalId?: string;
+};
+
+type RollbackSnapshotInput = {
+  snapshotId: string;
+  confirmationToken: string;
+};
+
+function organizationIdFor(auth: AuthContext) {
+  return auth.organization.id || auth.user.organizationId;
+}
+
+function auditInput(auth: AuthContext, input: Omit<CreateAuditEventInput, "id" | "organizationId" | "actorUserId" | "actorType" | "app" | "traceId">): CreateAuditEventInput {
+  return {
+    id: randomUUID(),
+    organizationId: organizationIdFor(auth),
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "debugging",
+    traceId: randomUUID(),
+    ...input
+  };
+}
+
+function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRecord {
+  if (!session) {
+    throw new ApiError("NOT_FOUND", "Debug session was not found.", 404);
+  }
+  if (session.status !== "active") {
+    throw new ApiError("VALIDATION_FAILED", "Debug session is not active.", 400);
+  }
+
+  return session;
+}
+
+function ensureProjectMatch(actualProjectId: string, expectedProjectId: string, message: string) {
+  if (actualProjectId !== expectedProjectId) {
+    throw new ApiError("VALIDATION_FAILED", message, 400, { projectId: expectedProjectId });
+  }
+}
+
+function ensureReadable(parameter: DebugParameterRecord | null, session: DebugSessionRecord, nodePath: string) {
+  if (!parameter) {
+    throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
+  }
+  ensureProjectMatch(parameter.projectId, session.projectId, "Parameter does not belong to the session project.");
+  if (parameter.nodePath !== nodePath) {
+    throw new ApiError("VALIDATION_FAILED", "Parameter does not match requested node path.", 400);
+  }
+  if (parameter.accessMode !== "RO" && parameter.accessMode !== "RW") {
+    throw new ApiError("VALIDATION_FAILED", "Parameter is not readable.", 400);
+  }
+}
+
+function ensureWritable(parameter: DebugParameterRecord | null, session: DebugSessionRecord, input: WriteNodeInput): DebugParameterRecord {
+  if (!parameter) {
+    throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
+  }
+  ensureProjectMatch(parameter.projectId, session.projectId, "Parameter does not belong to the session project.");
+  if (parameter.accessMode !== "WO" && parameter.accessMode !== "RW") {
+    throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400);
+  }
+
+  const hasNumericRange = parameter.minValue !== null || parameter.maxValue !== null;
+  const numericValue = Number(input.value);
+  if (hasNumericRange && !Number.isFinite(numericValue)) {
+    throw new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, {
+      minValue: parameter.minValue,
+      maxValue: parameter.maxValue
+    });
+  }
+  if (hasNumericRange) {
+    if ((parameter.minValue !== null && numericValue < parameter.minValue) || (parameter.maxValue !== null && numericValue > parameter.maxValue)) {
+      throw new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400, {
+        minValue: parameter.minValue,
+        maxValue: parameter.maxValue
+      });
+    }
+  }
+
+  if (parameter.risk === "High" && input.confirmationToken !== "confirm-high-risk-write" && !input.approvalId?.trim()) {
+    throw new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.", 400);
+  }
+
+  return parameter;
+}
+
+function failureReason(error: string | undefined, fallback: string) {
+  return error?.trim() || fallback;
+}
+
+function writeStatus(result: GatewayWriteResult) {
+  if (!result.ok) return "failed" as const;
+  return result.verified ? ("succeeded" as const) : ("readback_mismatch" as const);
+}
+
+function scopedProjectQuery<T extends ProjectQuery>(auth: AuthContext, query: T): ScopedProjectQuery<T> {
+  if (query.projectId) {
+    requireDebugProjectAccess(auth, query.projectId);
+    return query;
+  }
+
+  const allowedProjectIds = getAllowedDebugProjectIds(auth);
+  if (allowedProjectIds?.length === 1) {
+    return { ...query, projectId: allowedProjectIds[0] };
+  }
+  if (allowedProjectIds && allowedProjectIds.length > 1) {
+    return { ...query, projectIds: allowedProjectIds };
+  }
+
+  return query;
+}
+
+export function createDebuggingService(options: ServiceOptions) {
+  const db = options.db;
+  const gateway = options.gateway;
+  const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+
+  return {
+    async listDevices(auth: AuthContext, query: ProjectQuery = {}) {
+      requireDebugView(auth);
+      const scopedQuery = scopedProjectQuery(auth, query);
+      return listDebugDevices(db, { organizationId: organizationIdFor(auth), projectId: scopedQuery.projectId, projectIds: scopedQuery.projectIds });
+    },
+
+    async detectTargets(auth: AuthContext, input: DetectTargetsInput) {
+      requireDebugRead(auth);
+      requireDebugProjectAccess(auth, input.projectId);
+      const organizationId = organizationIdFor(auth);
+
+      if (input.deviceId) {
+        const device = await getDebugDevice(db, { organizationId, deviceId: input.deviceId });
+        if (!device) {
+          throw new ApiError("NOT_FOUND", "Debug device was not found.", 404);
+        }
+        ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
+      }
+
+      const result = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
+      if (!result.ok) {
+        await db.transaction(async (tx) => {
+          await insertDebugEvent(tx, {
+            organizationId,
+            projectId: input.projectId,
+            kind: "target-detect-failed",
+            severity: "error",
+            message: failureReason(result.error, "Debug target detection failed."),
+            metadata: { deviceId: input.deviceId, error: result.error }
+          });
+        });
+        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(result.error, "Debug target detection failed."), 409);
+      }
+
+      return db.transaction(async (tx) => {
+        const targets = await upsertDetectedTargets(tx, {
+          organizationId,
+          projectId: input.projectId,
+          deviceId: input.deviceId ?? result.targets[0]?.deviceId ?? "",
+          targets: result.targets.map((target) => ({
+            id: target.id,
+            targetRef: target.targetRef,
+            label: target.label,
+            online: target.online
+          }))
+        });
+
+        await writeAudit(
+          tx,
+          auditInput(auth, {
+            projectId: input.projectId,
+            kind: "debug-target-detect",
+            action: "detect",
+            severity: "Low",
+            targetType: "debug-device",
+            targetId: input.deviceId ?? null,
+            metadata: { targetCount: targets.length, deviceId: input.deviceId }
+          })
+        );
+
+        return targets;
+      });
+    },
+
+    async listParameters(auth: AuthContext, query: ProjectQuery & { module?: string; risk?: string[] } = {}) {
+      requireDebugView(auth);
+      const scopedQuery = scopedProjectQuery(auth, query);
+      return listDebugParameters(db, { organizationId: organizationIdFor(auth), ...scopedQuery });
+    },
+
+    async createSession(auth: AuthContext, input: CreateSessionInput) {
+      requireDebugRead(auth);
+      requireDebugProjectAccess(auth, input.projectId);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const device = await getDebugDevice(tx, { organizationId, deviceId: input.deviceId });
+        if (!device) {
+          throw new ApiError("NOT_FOUND", "Debug device was not found.", 404);
+        }
+        const target = await getDebugTarget(tx, { organizationId, targetId: input.targetId });
+        if (!target) {
+          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+        }
+        ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
+        ensureProjectMatch(target.projectId, input.projectId, "Debug target does not belong to the requested project.");
+        if (target.deviceId !== device.id) {
+          throw new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.", 400);
+        }
+        if (device.status !== "online") {
+          throw new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.", 409);
+        }
+        if (target.status !== "detected") {
+          throw new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.", 409);
+        }
+
+        const session = await createDebugSession(tx, {
+          organizationId,
+          projectId: input.projectId,
+          deviceId: input.deviceId,
+          targetId: input.targetId,
+          actorUserId: auth.user.id
+        });
+        await insertDebugEvent(tx, {
+          organizationId,
+          projectId: input.projectId,
+          sessionId: session.id,
+          kind: "session-created",
+          severity: "info",
+          message: "Debug session created.",
+          metadata: { deviceId: input.deviceId, targetId: input.targetId }
+        });
+        await writeAudit(
+          tx,
+          auditInput(auth, {
+            projectId: input.projectId,
+            kind: "debug-session-create",
+            action: "create",
+            severity: "Low",
+            targetType: "debug-session",
+            targetId: session.id,
+            metadata: { deviceId: input.deviceId, targetId: input.targetId }
+          })
+        );
+
+        return session;
+      });
+    },
+
+    async getSession(auth: AuthContext, input: { sessionId: string }) {
+      requireDebugView(auth);
+      const session = await getDebugSessionRecord(db, { organizationId: organizationIdFor(auth), sessionId: input.sessionId });
+      if (session) {
+        requireDebugProjectAccess(auth, session.projectId);
+      }
+      return session;
+    },
+
+    async listSessionEvents(auth: AuthContext, input: { sessionId: string }) {
+      requireDebugView(auth);
+      const organizationId = organizationIdFor(auth);
+      const session = await getDebugSessionRecord(db, { organizationId, sessionId: input.sessionId });
+      if (!session) {
+        throw new ApiError("NOT_FOUND", "Debug session was not found.", 404);
+      }
+      requireDebugProjectAccess(auth, session.projectId);
+      return listDebugSessionEvents(db, { organizationId, sessionId: input.sessionId });
+    },
+
+    async readNode(auth: AuthContext, input: ReadNodeInput) {
+      requireDebugRead(auth);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
+        if (input.parameterId) {
+          ensureReadable(await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }), session, input.nodePath);
+        }
+        const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
+        if (!target) {
+          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+        }
+
+        const result = await gateway.readNode({ targetRef: target.targetRef, nodePath: input.nodePath });
+        const operation = await insertNodeOperation(tx, {
+          organizationId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          parameterId: input.parameterId ?? null,
+          nodePath: input.nodePath,
+          operationType: "read",
+          status: result.ok ? "succeeded" : "failed",
+          readValue: result.value ?? result.stdout,
+          verified: result.ok,
+          failureReason: result.ok ? undefined : failureReason(result.error ?? result.stderr, "Node read failed."),
+          durationMs: result.durationMs,
+          actorUserId: auth.user.id
+        });
+
+        await writeAudit(
+          tx,
+          auditInput(auth, {
+            projectId: session.projectId,
+            kind: "debug-node-read",
+            action: "read",
+            severity: result.ok ? "Low" : "Medium",
+            targetType: "debug-node",
+            targetId: input.parameterId ?? input.nodePath,
+            metadata: {
+              sessionId: session.id,
+              operationId: operation.id,
+              nodePath: input.nodePath,
+              readValue: operation.readValue,
+              failureReason: operation.failureReason
+            }
+          })
+        );
+
+        return operation;
+      });
+    },
+
+    async writeNode(auth: AuthContext, input: WriteNodeInput) {
+      requireDebugWrite(auth);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
+        const parameter = ensureWritable(await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }), session, input);
+        const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
+        if (!target) {
+          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+        }
+
+        const previous = await gateway.readNode({ targetRef: target.targetRef, nodePath: parameter.nodePath });
+        if (!previous.ok) {
+          const operation = await insertNodeOperation(tx, {
+            organizationId,
+            projectId: session.projectId,
+            sessionId: session.id,
+            parameterId: parameter.id,
+            nodePath: parameter.nodePath,
+            operationType: "write",
+            status: "failed",
+            requestedValue: input.value,
+            failureReason: failureReason(previous.error ?? previous.stderr, "Pre-write read failed."),
+            durationMs: previous.durationMs,
+            approvalId: input.approvalId,
+            actorUserId: auth.user.id
+          });
+          await writeAudit(
+            tx,
+            auditInput(auth, {
+              projectId: session.projectId,
+              kind: "debug-node-write",
+              action: "write",
+              severity: "High",
+              targetType: "debug-node",
+              targetId: parameter.id,
+              metadata: { sessionId: session.id, operationId: operation.id, nodePath: parameter.nodePath, failureReason: operation.failureReason }
+            })
+          );
+          return operation;
+        }
+
+        const previousValue = previous.value ?? previous.stdout ?? "";
+        const snapshot = await createDebugSnapshot(tx, {
+          organizationId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          risk: parameter.risk,
+          entries: [{ parameterId: parameter.id, nodePath: parameter.nodePath, previousValue, targetValue: input.value }],
+          createdByUserId: auth.user.id
+        });
+        const result = await gateway.writeNode({ targetRef: target.targetRef, nodePath: parameter.nodePath, value: input.value, readBack: true });
+        const status = writeStatus(result);
+        const operation = await insertNodeOperation(tx, {
+          organizationId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          parameterId: parameter.id,
+          nodePath: parameter.nodePath,
+          operationType: "write",
+          status,
+          requestedValue: input.value,
+          previousValue,
+          readValue: previousValue,
+          readbackValue: result.readResult?.value ?? result.readResult?.stdout ?? result.value,
+          verified: result.ok && result.verified,
+          failureReason: status === "succeeded" ? undefined : failureReason(result.error ?? result.writeResult.error ?? result.readResult?.error, "Node write failed."),
+          durationMs: Math.max(result.writeResult.durationMs, result.readResult?.durationMs ?? 0),
+          approvalId: input.approvalId,
+          snapshotId: snapshot.id,
+          actorUserId: auth.user.id
+        });
+        await linkOperationSnapshot(tx, { organizationId, operationId: operation.id, snapshotId: snapshot.id });
+
+        if (result.ok && result.verified) {
+          await updateDebugParameterValues(tx, {
+            organizationId,
+            parameterId: parameter.id,
+            currentValue: input.value,
+            targetValue: input.value
+          });
+        }
+
+        await writeAudit(
+          tx,
+          auditInput(auth, {
+            projectId: session.projectId,
+            kind: "debug-node-write",
+            action: "write",
+            severity: status === "succeeded" ? "Medium" : "High",
+            targetType: "debug-node",
+            targetId: parameter.id,
+            metadata: {
+              sessionId: session.id,
+              operationId: operation.id,
+              nodePath: parameter.nodePath,
+              requestedValue: input.value,
+              previousValue,
+              readbackValue: operation.readbackValue,
+              verified: operation.verified,
+              failureReason: operation.failureReason,
+              snapshotId: snapshot.id
+            }
+          })
+        );
+
+        return operation;
+      });
+    },
+
+    async rollbackSnapshot(auth: AuthContext, input: RollbackSnapshotInput): Promise<{ operations: NodeOperationRecord[]; snapshot: Awaited<ReturnType<typeof markSnapshotConsumed>> }> {
+      requireDebugRollback(auth);
+      if (input.confirmationToken !== "confirm-rollback") {
+        throw new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.", 400);
+      }
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const snapshot = await getDebugSnapshot(tx, { organizationId, snapshotId: input.snapshotId });
+        if (!snapshot) {
+          throw new ApiError("NOT_FOUND", "Snapshot was not found.", 404);
+        }
+        const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: snapshot.sessionId }));
+        requireDebugProjectAccess(auth, session.projectId);
+        if (snapshot.status !== "valid" || snapshot.sessionId !== session.id || snapshot.projectId !== session.projectId) {
+          throw new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400);
+        }
+        const claimedSnapshot = await claimSnapshotForRollback(tx, { organizationId, snapshotId: snapshot.id });
+        if (!claimedSnapshot) {
+          throw new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.", 409);
+        }
+        const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
+        if (!target) {
+          throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
+        }
+
+        const operations: NodeOperationRecord[] = [];
+        for (const entry of snapshot.entries) {
+          const result = await gateway.writeNode({ targetRef: target.targetRef, nodePath: entry.nodePath, value: entry.previousValue, readBack: true });
+          const status = writeStatus(result);
+          operations.push(
+            await insertNodeOperation(tx, {
+              organizationId,
+              projectId: session.projectId,
+              sessionId: session.id,
+              parameterId: entry.parameterId,
+              nodePath: entry.nodePath,
+              operationType: "rollback",
+              status,
+              requestedValue: entry.previousValue,
+              readbackValue: result.readResult?.value ?? result.readResult?.stdout ?? result.value,
+              verified: result.ok && result.verified,
+              failureReason: status === "succeeded" ? undefined : failureReason(result.error ?? result.writeResult.error ?? result.readResult?.error, "Rollback write failed."),
+              durationMs: Math.max(result.writeResult.durationMs, result.readResult?.durationMs ?? 0),
+              snapshotId: snapshot.id,
+              actorUserId: auth.user.id
+            })
+          );
+        }
+
+        const failed = operations.some((operation) => operation.status !== "succeeded");
+        const finalSnapshot = failed
+          ? await restoreSnapshotValid(tx, { organizationId, snapshotId: claimedSnapshot.id })
+          : await markSnapshotConsumed(tx, { organizationId, snapshotId: claimedSnapshot.id });
+        await insertDebugEvent(tx, {
+          organizationId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          kind: failed ? "rollback-failed" : "rollback-succeeded",
+          severity: failed ? "error" : "info",
+          message: failed ? "Snapshot rollback failed." : "Snapshot rollback succeeded.",
+          metadata: failed
+            ? { snapshotId: claimedSnapshot.id, failures: operations.filter((operation) => operation.status !== "succeeded") }
+            : { snapshotId: claimedSnapshot.id, operationCount: operations.length }
+        });
+
+        await writeAudit(
+          tx,
+          auditInput(auth, {
+            projectId: session.projectId,
+            kind: "debug-snapshot-rollback",
+            action: "rollback",
+            severity: failed ? "High" : "Medium",
+            targetType: "debug-snapshot",
+            targetId: claimedSnapshot.id,
+            metadata: { sessionId: session.id, operationIds: operations.map((operation) => operation.id), failed }
+          })
+        );
+
+        return { operations, snapshot: finalSnapshot ?? claimedSnapshot };
+      });
+    }
+  };
+}

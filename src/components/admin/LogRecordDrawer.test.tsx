@@ -52,7 +52,8 @@ describe("LogRecordDrawer", () => {
     onClose: vi.fn(),
     onNavigateToWorkbench: vi.fn(),
     onReanalyze: vi.fn(),
-    onArchive: vi.fn()
+    onArchive: vi.fn(),
+    onSubmitHelpfulFeedback: vi.fn()
   };
 
   it("renders nothing when record is null", () => {
@@ -90,6 +91,7 @@ describe("LogRecordDrawer", () => {
 
     expect(screen.getByRole("button", { name: /重新分析/ })).toBeDisabled();
     expect(screen.getByRole("button", { name: /归档/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /有帮助/ })).toBeDisabled();
   });
 
   it("calls onNavigateToWorkbench on 跳转", async () => {
@@ -144,5 +146,32 @@ describe("LogRecordDrawer", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /归档/ }));
     expect(onArchive).toHaveBeenCalledWith("log-active");
+  });
+
+  it("calls onSubmitHelpfulFeedback on 有帮助", async () => {
+    const onSubmitHelpfulFeedback = vi.fn();
+    render(
+      <LogRecordDrawer
+        record={record}
+        open
+        onClose={vi.fn()}
+        onNavigateToWorkbench={vi.fn()}
+        onReanalyze={vi.fn()}
+        onArchive={vi.fn()}
+        onSubmitHelpfulFeedback={onSubmitHelpfulFeedback}
+        canAct
+      />
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /有帮助/ }));
+    expect(onSubmitHelpfulFeedback).toHaveBeenCalledWith("log-active");
+  });
+
+  it("marks pending action buttons busy", () => {
+    render(<LogRecordDrawer record={record} open {...handlers} canAct reanalyzePending archivePending feedbackPending />);
+
+    expect(screen.getByRole("button", { name: /重新分析/ })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: /归档/ })).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: /有帮助/ })).toHaveAttribute("aria-busy", "true");
   });
 });
