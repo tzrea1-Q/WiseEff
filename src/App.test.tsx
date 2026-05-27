@@ -536,6 +536,7 @@ describe("WiseEff app shell", () => {
     });
 
     expect(sessionState.debuggingSessionStartedAt).toBe(startedAt);
+    expect(sessionState.debuggingActiveSessionId).toBe("session-1");
     expect(operationState.debugEvents.at(-1)).toMatchObject({
       kind: "push",
       snapshotId: "snapshot-valid",

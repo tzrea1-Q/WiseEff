@@ -343,6 +343,7 @@ export type PrototypeState = {
   debugEvents: DebugEvent[];
   pushedDebugIds: string[];
   debuggingSessionStartedAt: string | null;
+  debuggingActiveSessionId: string | null;
   persistedConfigSnapshot: PowerManagementConfig;
   users: User[];
   currentUserId: string;
@@ -1059,6 +1060,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     debugEvents: [],
     pushedDebugIds: [],
     debuggingSessionStartedAt: null,
+    debuggingActiveSessionId: null,
     persistedConfigSnapshot: clonePowerManagementConfig(configDraft),
     users,
     currentUserId,

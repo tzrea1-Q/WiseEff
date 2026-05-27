@@ -1041,7 +1041,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
     case "SET_DEBUG_ACTIVE_SESSION":
       return {
         ...state,
-        debuggingSessionStartedAt: action.session?.startedAt ?? null
+        debuggingSessionStartedAt: action.session?.startedAt ?? null,
+        debuggingActiveSessionId: action.session?.id ?? null
       };
     case "UPSERT_DEBUG_NODE_OPERATION": {
       const event =

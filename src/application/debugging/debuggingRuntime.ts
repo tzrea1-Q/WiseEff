@@ -129,7 +129,7 @@ function isWritablePendingDebugParameter(
   parameter: DebugParameter,
   state: PrototypeState
 ): parameter is DebugParameter & { nodePath: string; targetValue: string } {
-  return Boolean(state.debuggingSessionStartedAt)
+  return Boolean(state.debuggingActiveSessionId)
     && Boolean(parameter.nodePath)
     && Boolean(parameter.targetValue)
     && (parameter.accessMode === "WO" || parameter.accessMode === "RW")
@@ -238,6 +238,10 @@ export function createDebuggingRuntimeActions({
 
       await runApi(dispatch, async () => {
         const state = getState();
+        const sessionId = state.debuggingActiveSessionId;
+        if (!sessionId) {
+          return;
+        }
         const parameterById = new Map(state.debugParameters.map((parameter) => [parameter.id, parameter]));
         const parameters = parameterIds.flatMap((parameterId) => {
           const parameter = parameterById.get(parameterId);
@@ -245,6 +249,7 @@ export function createDebuggingRuntimeActions({
         });
         for (const parameter of parameters) {
           const result = (await requireGateway(gateway).writeNode({
+            sessionId,
             parameterId: parameter.id,
             nodePath: parameter.nodePath,
             value: parameter.targetValue,

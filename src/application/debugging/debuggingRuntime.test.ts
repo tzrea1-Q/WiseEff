@@ -246,6 +246,7 @@ describe("createDebuggingRuntimeActions", () => {
       getState: () => ({
         ...initialState,
         debuggingSessionStartedAt: apiSession.startedAt,
+        debuggingActiveSessionId: apiSession.id,
         debugParameters: [firstParameter, secondParameter]
       })
     });
@@ -255,11 +256,19 @@ describe("createDebuggingRuntimeActions", () => {
     expect(callOrder).toEqual([secondParameter.id, firstParameter.id]);
     expect(gateway.writeNode).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ parameterId: secondParameter.id, value: secondParameter.targetValue })
+      expect.objectContaining({
+        sessionId: apiSession.id,
+        parameterId: secondParameter.id,
+        value: secondParameter.targetValue
+      })
     );
     expect(gateway.writeNode).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ parameterId: firstParameter.id, value: firstParameter.targetValue })
+      expect.objectContaining({
+        sessionId: apiSession.id,
+        parameterId: firstParameter.id,
+        value: firstParameter.targetValue
+      })
     );
   });
 
@@ -290,6 +299,7 @@ describe("createDebuggingRuntimeActions", () => {
       getState: () => ({
         ...initialState,
         debuggingSessionStartedAt: apiSession.startedAt,
+        debuggingActiveSessionId: apiSession.id,
         debugParameters: [readOnlyParameter, writableFirst, syncedParameter, writableSecond]
       })
     });
@@ -298,8 +308,43 @@ describe("createDebuggingRuntimeActions", () => {
 
     expect(callOrder).toEqual([writableSecond.id, writableFirst.id]);
     expect(gateway.writeNode).toHaveBeenCalledTimes(2);
-    expect(gateway.writeNode).toHaveBeenNthCalledWith(1, expect.objectContaining({ parameterId: writableSecond.id }));
-    expect(gateway.writeNode).toHaveBeenNthCalledWith(2, expect.objectContaining({ parameterId: writableFirst.id }));
+    expect(gateway.writeNode).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ sessionId: apiSession.id, parameterId: writableSecond.id })
+    );
+    expect(gateway.writeNode).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ sessionId: apiSession.id, parameterId: writableFirst.id })
+    );
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: expect.any(Array) });
+  });
+
+  it("does not push API parameters without an active debug session id", async () => {
+    const dispatch = vi.fn();
+    const pendingParameter = { ...apiParameter, accessMode: "RW" as const, targetValue: "15" };
+    const gateway = createGateway({
+      writeNode: vi.fn(async (input) => ({
+        ok: true,
+        value: input.value,
+        verified: true,
+        operation: { ...writeOperation, id: `op-${input.parameterId}`, parameterId: input.parameterId }
+      }))
+    });
+    const actions = createDebuggingRuntimeActions({
+      mode: "api",
+      gateway,
+      dispatch,
+      getState: () => ({
+        ...initialState,
+        debuggingSessionStartedAt: apiSession.startedAt,
+        debuggingActiveSessionId: null,
+        debugParameters: [pendingParameter]
+      })
+    });
+
+    await actions.pushValues([pendingParameter.id]);
+
+    expect(gateway.writeNode).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: expect.any(Array) });
   });
 
