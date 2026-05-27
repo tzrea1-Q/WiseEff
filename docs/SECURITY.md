@@ -51,9 +51,9 @@ For M2 log analysis:
 For M3 debugging:
 
 - Device and parameter reads require `debugging:view` and `debugging:read`.
-- Node writes require `debugging:write`, project access, an active session, a writable access mode, range validation, and a pre-write snapshot.
+- Node writes require `debugging:write`, project access, an active session, a writable access mode, range validation, an active device lease for the session, and a pre-write snapshot.
 - High-risk writes require `confirm-high-risk-write` or a future approval id.
-- Snapshot rollback requires `debugging:rollback` and `confirm-rollback`.
+- Snapshot rollback requires `debugging:rollback`, `confirm-rollback`, and an active device lease for the session.
 - Frontend disabled buttons are UX only; the backend rejects read-only writes, missing confirmations, bad ranges, inactive sessions, and unauthorized actors.
 
 ## Audit Requirements
@@ -103,7 +103,7 @@ Device access must go through a gateway boundary. Write requests need:
 - pre-write snapshot,
 - readback result or failure reason.
 
-The M3 simulator-backed path implements this boundary for local verification. A production HDC gateway must preserve the same safety contract: no direct frontend device writes, no write without a snapshot, no rollback without an explicit confirmation token, and no audit bypass.
+The M3 simulator-backed path implements this boundary for local verification. M3.5 adds `debug_device_leases` so node writes and snapshot rollback cannot proceed when another active session owns the device lease; the same session can renew the lease, and repository helpers can expire/release it. A production HDC gateway must preserve the same safety contract: no direct frontend device writes, no write without a lease and snapshot, no rollback without an explicit confirmation token, and no audit bypass.
 
 ## References
 

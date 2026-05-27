@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Queryable } from "../../shared/database/client";
 import type {
   DebugDeviceRecord,
+  DebugDeviceLeaseRecord,
   DebugParameterRecord,
   DebugSessionRecord,
   DebugSnapshotEntry,
@@ -29,6 +30,17 @@ type DebugDeviceRow = {
   status: DebugDeviceStatus;
   firmware: string;
   last_seen_at: string | Date | null;
+};
+
+type DebugDeviceLeaseRow = {
+  organization_id: string;
+  project_id: string;
+  device_id: string;
+  session_id: string;
+  lease_owner_user_id: string;
+  expires_at: string | Date;
+  acquired_at: string | Date;
+  updated_at: string | Date;
 };
 
 type DebugTargetRow = {
@@ -130,6 +142,19 @@ function toDebugDeviceRecord(row: DebugDeviceRow): DebugDeviceRecord {
     status: row.status,
     firmware: row.firmware,
     lastSeenAt: dateTimeToIso(row.last_seen_at)
+  };
+}
+
+function toDebugDeviceLeaseRecord(row: DebugDeviceLeaseRow): DebugDeviceLeaseRecord {
+  return {
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    deviceId: row.device_id,
+    sessionId: row.session_id,
+    leaseOwnerUserId: row.lease_owner_user_id,
+    expiresAt: dateTimeToIso(row.expires_at) ?? "",
+    acquiredAt: dateTimeToIso(row.acquired_at) ?? "",
+    updatedAt: dateTimeToIso(row.updated_at) ?? ""
   };
 }
 
@@ -519,6 +544,68 @@ export async function createDebugSession(
   );
 
   return toDebugSessionRecord(result.rows[0]);
+}
+
+export async function acquireDebugDeviceLease(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    deviceId: string;
+    sessionId: string;
+    actorUserId: string;
+    leaseTtlMs: number;
+  }
+): Promise<DebugDeviceLeaseRecord | null> {
+  const result = await db.query<DebugDeviceLeaseRow>(
+    `
+    insert into debug_device_leases (
+      organization_id, project_id, device_id, session_id, lease_owner_user_id, expires_at
+    )
+    values ($1, $2, $3, $4, $5, now() + ($6 * interval '1 millisecond'))
+    on conflict (organization_id, project_id, device_id) do update
+    set session_id = excluded.session_id,
+      lease_owner_user_id = excluded.lease_owner_user_id,
+      expires_at = excluded.expires_at,
+      acquired_at = case
+        when debug_device_leases.session_id = excluded.session_id then debug_device_leases.acquired_at
+        else now()
+      end,
+      updated_at = now()
+    where debug_device_leases.session_id = excluded.session_id
+      or debug_device_leases.expires_at <= now()
+    returning organization_id, project_id, device_id, session_id, lease_owner_user_id, expires_at, acquired_at, updated_at
+    `,
+    [input.organizationId, input.projectId, input.deviceId, input.sessionId, input.actorUserId, input.leaseTtlMs]
+  );
+
+  return result.rows[0] ? toDebugDeviceLeaseRecord(result.rows[0]) : null;
+}
+
+export async function releaseDebugDeviceLease(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    deviceId: string;
+    sessionId: string;
+  }
+): Promise<DebugDeviceLeaseRecord | null> {
+  const result = await db.query<DebugDeviceLeaseRow>(
+    `
+    update debug_device_leases
+    set expires_at = now(),
+      updated_at = now()
+    where organization_id = $1
+      and project_id = $2
+      and device_id = $3
+      and session_id = $4
+    returning organization_id, project_id, device_id, session_id, lease_owner_user_id, expires_at, acquired_at, updated_at
+    `,
+    [input.organizationId, input.projectId, input.deviceId, input.sessionId]
+  );
+
+  return result.rows[0] ? toDebugDeviceLeaseRecord(result.rows[0]) : null;
 }
 
 export async function insertNodeOperation(

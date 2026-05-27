@@ -63,6 +63,17 @@ export type DebugSessionRecord = {
   endedAt: string | null;
 };
 
+export type DebugDeviceLeaseRecord = {
+  organizationId: string;
+  projectId: string;
+  deviceId: string;
+  sessionId: string;
+  leaseOwnerUserId: string;
+  expiresAt: string;
+  acquiredAt: string;
+  updatedAt: string;
+};
+
 export type DebugSnapshotEntry = {
   parameterId: string;
   nodePath: string;

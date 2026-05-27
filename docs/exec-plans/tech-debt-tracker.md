@@ -16,7 +16,6 @@ This tracker captures known work that should not live only in chat or TODO comme
 | TD-008 | Contracts | Log-analysis client and DTOs are handwritten. | API/frontend drift can break M2 E2E late. | Generate or validate an OpenAPI client for M1/M2 endpoints. |
 | TD-009 | AI Adapter | M2 analysis is deterministic fixture/rule-driven logic. | Product behavior does not yet exercise real model latency, cost, hallucination controls, or prompt/version traceability. | Add an AI adapter boundary with golden tests and model trace metadata. |
 | TD-010 | Debugging Gateway | M3 uses the simulator gateway for acceptance. | Simulator proves the loop but not real HDC discovery, command timeout, stderr normalization, or device-lab rollout. | Add a production HDC gateway adapter behind the existing `DebugDeviceGateway` contract. |
-| TD-011 | Debugging Safety | Device/session leases are not modeled. | Concurrent operators could target the same device/session without explicit ownership. | Add device leases, expiration, conflict handling, and audit metadata before real-device writes. |
 | TD-012 | Contracts | Parameter, log, and debugging HTTP clients/DTOs are handwritten. | API/frontend drift can break acceptance late and duplicate schema rules. | Generate an OpenAPI client or add schema contract validation across M1-M3 endpoints. |
 | TD-013 | Agent Approvals | Agent approvals are documented but not persisted for debugging writes. | Future Agent/device tools could lack a durable approval chain. | Add approval records and require approval ids for mutating Agent/device tool execution. |
 | TD-014 | Debugging Catalog | M3 seeds the debugging parameter catalog; CRUD/governance is not productized. | Operators cannot safely manage node definitions, access modes, or risk metadata outside seed scripts. | Add catalog CRUD with admin permissions, validation, import/export, and audit. |
@@ -27,3 +26,4 @@ This tracker captures known work that should not live only in chat or TODO comme
 | ID | Area | Resolution |
 | --- | --- | --- |
 | TD-000 | Knowledge Base | Reorganized product, design, execution, generated, and reference docs into harness-style structure on 2026-05-25. |
+| TD-011 | Debugging Safety | M3.5 added `debug_device_leases`, acquisition/release helpers, and service-level conflict handling before node writes and rollback. |

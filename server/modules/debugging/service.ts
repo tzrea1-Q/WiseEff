@@ -15,6 +15,7 @@ import {
   requireDebugWrite
 } from "./policy";
 import {
+  acquireDebugDeviceLease,
   claimSnapshotForRollback,
   createDebugSession,
   createDebugSnapshot,
@@ -37,6 +38,8 @@ import {
 import type { DebugParameterRecord, DebugSessionRecord, NodeOperationRecord } from "./types";
 
 type AuditWriter = typeof defaultCreateAuditEvent;
+
+const DEVICE_LEASE_TTL_MS = 5 * 60 * 1000;
 
 type ServiceOptions = {
   db: Database;
@@ -168,6 +171,23 @@ function failureReason(error: string | undefined, fallback: string) {
 function writeStatus(result: GatewayWriteResult) {
   if (!result.ok) return "failed" as const;
   return result.verified ? ("succeeded" as const) : ("readback_mismatch" as const);
+}
+
+async function requireDeviceLease(tx: Queryable, auth: AuthContext, session: DebugSessionRecord) {
+  const lease = await acquireDebugDeviceLease(tx, {
+    organizationId: organizationIdFor(auth),
+    projectId: session.projectId,
+    deviceId: session.deviceId,
+    sessionId: session.id,
+    actorUserId: auth.user.id,
+    leaseTtlMs: DEVICE_LEASE_TTL_MS
+  });
+  if (!lease) {
+    throw new ApiError("CONFLICT", "Debug device is leased by another active session.", 409, {
+      deviceId: session.deviceId,
+      sessionId: session.id
+    });
+  }
 }
 
 function scopedProjectQuery<T extends ProjectQuery>(auth: AuthContext, query: T): ScopedProjectQuery<T> {
@@ -408,6 +428,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
+        await requireDeviceLease(tx, auth, session);
 
         const previous = await gateway.readNode({ targetRef: target.targetRef, nodePath: parameter.nodePath });
         if (!previous.ok) {
@@ -533,6 +554,7 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
+        await requireDeviceLease(tx, auth, session);
 
         const operations: NodeOperationRecord[] = [];
         for (const entry of snapshot.entries) {
