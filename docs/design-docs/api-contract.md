@@ -258,6 +258,8 @@ GET  /api/v1/jobs/:jobId/events
 | `POST` | `/api/v1/debugging/targets/detect` | 检测目标 |
 | `GET` | `/api/v1/debugging/parameters` | 可调参数列表 |
 | `POST` | `/api/v1/debugging/sessions` | 创建调试会话 |
+| `GET` | `/api/v1/debugging/sessions/:sessionId` | 调试会话详情 |
+| `GET` | `/api/v1/debugging/sessions/:sessionId/events` | 调试会话事件 |
 | `POST` | `/api/v1/debugging/nodes/read` | 读取节点 |
 | `POST` | `/api/v1/debugging/nodes/write` | 写入节点 |
 | `POST` | `/api/v1/debugging/snapshots/:snapshotId/rollback` | 回滚 |
@@ -267,11 +269,19 @@ GET  /api/v1/jobs/:jobId/events
 ```json
 {
   "sessionId": "dbg_1",
-  "target": "device-x01",
+  "parameterId": "dbg-fast-charge-current",
   "nodePath": "/sys/class/power_supply/battery/constant_charge_current",
-  "value": "3200",
+  "value": "3100",
   "readBack": true,
-  "approvalId": "approval_1"
+  "confirmationToken": "confirm-high-risk-write"
+}
+```
+
+回滚快照：
+
+```json
+{
+  "confirmationToken": "confirm-rollback"
 }
 ```
 

@@ -8,6 +8,8 @@ import type { Plugin } from "vite";
 import { hdcApiBridge } from "./viteHdcApi";
 
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
+const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
+const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 
 function powerManagementConfigWriter(): Plugin {
   return {
@@ -61,7 +63,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: [...configDefaults.exclude, ".worktrees/**", "e2e/**"],
+    exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**"],
     setupFiles: "./src/test/setup.ts"
   }
 });

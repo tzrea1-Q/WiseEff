@@ -37,6 +37,31 @@ describe("auth policy", () => {
     );
   });
 
+  it("grants debugging permissions by role", () => {
+    expect(permissionsForRoles(["guest"])).not.toEqual(expect.arrayContaining(["debugging:view", "debugging:read"]));
+    expect(permissionsForRoles(["hardware-user"])).toEqual(
+      expect.arrayContaining(["debugging:view", "debugging:read"])
+    );
+    expect(permissionsForRoles(["software-user"])).toEqual(
+      expect.arrayContaining(["debugging:view", "debugging:read"])
+    );
+    expect(permissionsForRoles(["hardware-committer"])).toEqual(
+      expect.arrayContaining(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"])
+    );
+    expect(permissionsForRoles(["software-committer"])).toEqual(
+      expect.arrayContaining(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"])
+    );
+    expect(permissionsForRoles(["admin"])).toEqual(
+      expect.arrayContaining([
+        "debugging:view",
+        "debugging:read",
+        "debugging:write",
+        "debugging:rollback",
+        "debugging:admin"
+      ])
+    );
+  });
+
   it("limits analyze and archive permissions to admin", () => {
     expect(canPerform("guest", "logs:view")).toBe(true);
     expect(canPerform("guest", "logs:upload")).toBe(false);
