@@ -4944,7 +4944,7 @@ function DebuggingAdminPage({
           </div>
           {isApiMode ? (
             <p className="debug-admin-helper">
-              API 妯″紡涓嬭皟璇曞弬鏁扮洰褰曠敱鍚庣绉嶅瓙鍜岃縼绉荤鐞嗭紱鏈〉鐢ㄤ簬鏌ョ湅鑺傜偣璺緞銆佽闂ā寮忓拰椋庨櫓閰嶇疆銆俙
+              API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。
             </p>
           ) : null}
           <div className="debug-admin-list-filters">

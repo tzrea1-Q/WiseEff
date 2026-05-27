@@ -358,7 +358,7 @@ describe("/debugging-admin API mode", () => {
       />
     );
 
-    expect(document.querySelector(".debug-admin-helper")).toBeInTheDocument();
+    expect(screen.getByText("API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+/ })).toBeDisabled();
     const deleteButtons = document.querySelectorAll<HTMLButtonElement>(".debug-admin-row-delete");
     expect(deleteButtons.length).toBeGreaterThan(0);
