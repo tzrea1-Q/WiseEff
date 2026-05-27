@@ -48,6 +48,8 @@ type DebuggingPageProps = {
   debuggingActions?: DebuggingRuntimeActions;
 };
 
+type RuntimeActionName = "connect" | "push" | "rollback";
+
 export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPageProps) {
   const [nowTick, setNowTick] = useState(() => new Date());
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false);
@@ -59,9 +61,9 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
   const [editingId, setEditingId] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [runtimeNotice, setRuntimeNotice] = useState<string | null>(null);
-  const [pendingRuntimeAction, setPendingRuntimeAction] = useState<"connect" | "push" | "rollback" | null>(null);
-  const pendingRuntimeActionRef = useRef<"connect" | "push" | "rollback" | null>(null);
-  const runtimeRequestSeqRef = useRef(0);
+  const [pendingRuntimeActions, setPendingRuntimeActions] = useState<Set<RuntimeActionName>>(() => new Set());
+  const pendingRuntimeActionsRef = useRef<Set<RuntimeActionName>>(new Set());
+  const runtimeRequestSeqRef = useRef<Record<RuntimeActionName, number>>({ connect: 0, push: 0, rollback: 0 });
 
   const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0];
   const debugParameters = state.debugParameters;
@@ -196,28 +198,32 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
   };
 
   const runRuntimeAction = async (
-    action: "connect" | "push" | "rollback",
+    action: RuntimeActionName,
     run: () => Promise<void>,
     fallbackMessage: string
   ) => {
-    if (pendingRuntimeActionRef.current === action) return;
+    if (pendingRuntimeActionsRef.current.has(action)) return;
 
-    const requestSeq = runtimeRequestSeqRef.current + 1;
-    runtimeRequestSeqRef.current = requestSeq;
-    pendingRuntimeActionRef.current = action;
+    const requestSeq = runtimeRequestSeqRef.current[action] + 1;
+    runtimeRequestSeqRef.current[action] = requestSeq;
+    const nextPending = new Set(pendingRuntimeActionsRef.current);
+    nextPending.add(action);
+    pendingRuntimeActionsRef.current = nextPending;
     setRuntimeNotice(null);
-    setPendingRuntimeAction(action);
+    setPendingRuntimeActions(nextPending);
 
     try {
       await run();
     } catch (error) {
-      if (runtimeRequestSeqRef.current === requestSeq) {
+      if (runtimeRequestSeqRef.current[action] === requestSeq) {
         setRuntimeNotice(error instanceof Error ? error.message : fallbackMessage);
       }
     } finally {
-      if (runtimeRequestSeqRef.current === requestSeq) {
-        pendingRuntimeActionRef.current = null;
-        setPendingRuntimeAction(null);
+      if (runtimeRequestSeqRef.current[action] === requestSeq) {
+        const remainingPending = new Set(pendingRuntimeActionsRef.current);
+        remainingPending.delete(action);
+        pendingRuntimeActionsRef.current = remainingPending;
+        setPendingRuntimeActions(remainingPending);
       }
     }
   };
@@ -272,12 +278,12 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
           }
           dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id });
         }}
-        disabled={pendingRuntimeAction === "connect"}
+        disabled={pendingRuntimeActions.has("connect")}
       >
         连接
       </button>
     </div>,
-    [activeDevice.id, activeDevice.name, connected, debuggingActions, pendingRuntimeAction, state.activeProjectId]
+    [activeDevice.id, activeDevice.name, connected, debuggingActions, pendingRuntimeActions, state.activeProjectId]
   );
 
   return (
@@ -402,7 +408,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
-                disabled={!connected || pendingRuntimeAction === "push" || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
+                disabled={!connected || pendingRuntimeActions.has("push") || (selectedIds.size > 0 ? pendingSelected.length === 0 : pendingParameters.length === 0)}
                 onClick={pushPendingValues}
               >
                 <Send size={16} />
@@ -437,7 +443,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               <button
                 className="submit-round-button debugging-deploy-button"
                 type="button"
-                disabled={!connected || pendingRuntimeAction === "push" || editingParameter.status !== "待下发"}
+                disabled={!connected || pendingRuntimeActions.has("push") || editingParameter.status !== "待下发"}
                 onClick={() => {
                   void pushParameterIds([editingParameter.id]);
                   setSheetOpen(false);

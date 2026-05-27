@@ -357,6 +357,40 @@ describe("/debugging runtime wiring", () => {
     await waitFor(() => expect(pushButton).not.toBeDisabled());
   });
 
+  it("keeps push disabled while connect starts during an in-flight runtime write", async () => {
+    const pendingPush = createDeferred();
+    const pendingConnect = createDeferred<{ session: Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>>["session"]; target: Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>>["target"] }>();
+    const actions = createDebuggingActions({
+      detectAndStartSession: vi.fn().mockReturnValue(pendingConnect.promise),
+      pushValues: vi.fn().mockReturnValue(pendingPush.promise)
+    });
+
+    renderDebuggingPage({ state: runtimePendingUserState, debuggingActions: actions });
+
+    const pushButton = getPushButton();
+    fireEvent.click(pushButton);
+    fireEvent.click(getTopbarConnectButton());
+    fireEvent.click(pushButton);
+
+    expect(actions.pushValues).toHaveBeenCalledTimes(1);
+    expect(pushButton).toBeDisabled();
+
+    pendingConnect.resolve({
+      session: {
+        id: "api-session-1",
+        projectId: userState.activeProjectId,
+        deviceId: userState.devices[0].id,
+        targetId: "api-target-1",
+        status: "active",
+        startedAt: "2026-05-27T09:00:00.000Z",
+        endedAt: null
+      },
+      target: { id: "api-target-1", deviceId: userState.devices[0].id, label: "API Target" }
+    });
+    pendingPush.resolve();
+    await waitFor(() => expect(pushButton).not.toBeDisabled());
+  });
+
   it("mock mode still dispatches connect, push, and rollback actions", () => {
     const dispatch = vi.fn();
     const state = withSnapshot(runtimePendingUserState);
