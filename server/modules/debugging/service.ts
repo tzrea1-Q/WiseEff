@@ -125,8 +125,15 @@ function ensureWritable(parameter: DebugParameterRecord | null, session: DebugSe
     throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400);
   }
 
+  const hasNumericRange = parameter.minValue !== null || parameter.maxValue !== null;
   const numericValue = Number(input.value);
-  if (!Number.isNaN(numericValue)) {
+  if (hasNumericRange && !Number.isFinite(numericValue)) {
+    throw new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, {
+      minValue: parameter.minValue,
+      maxValue: parameter.maxValue
+    });
+  }
+  if (hasNumericRange) {
     if ((parameter.minValue !== null && numericValue < parameter.minValue) || (parameter.maxValue !== null && numericValue > parameter.maxValue)) {
       throw new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400, {
         minValue: parameter.minValue,
@@ -495,17 +502,17 @@ export function createDebuggingService(options: ServiceOptions) {
 
         const failed = operations.some((operation) => operation.status !== "succeeded");
         const consumedSnapshot = failed ? snapshot : await markSnapshotConsumed(tx, { organizationId, snapshotId: snapshot.id });
-        if (failed) {
-          await insertDebugEvent(tx, {
-            organizationId,
-            projectId: session.projectId,
-            sessionId: session.id,
-            kind: "rollback-failed",
-            severity: "error",
-            message: "Snapshot rollback failed.",
-            metadata: { snapshotId: snapshot.id, failures: operations.filter((operation) => operation.status !== "succeeded") }
-          });
-        }
+        await insertDebugEvent(tx, {
+          organizationId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          kind: failed ? "rollback-failed" : "rollback-succeeded",
+          severity: failed ? "error" : "info",
+          message: failed ? "Snapshot rollback failed." : "Snapshot rollback succeeded.",
+          metadata: failed
+            ? { snapshotId: snapshot.id, failures: operations.filter((operation) => operation.status !== "succeeded") }
+            : { snapshotId: snapshot.id, operationCount: operations.length }
+        });
 
         await writeAudit(
           tx,

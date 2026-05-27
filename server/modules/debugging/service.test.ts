@@ -273,6 +273,60 @@ describe("debugging service", () => {
     expect(audit.events[0]).toMatchObject({ kind: "debug-session-create", action: "create", targetId: session.id });
   });
 
+  it("createSession rejects cross-project devices, cross-project targets, and mismatched device targets", async () => {
+    const crossProjectDevice = createFakeDb([[deviceRow({ project_id: "other-project" })], [targetRow()]]);
+    const serviceForDevice = createDebuggingService({
+      db: crossProjectDevice.db,
+      gateway: makeGateway(),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      serviceForDevice.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug device does not belong to the requested project.", 400));
+
+    const crossProjectTarget = createFakeDb([[deviceRow()], [targetRow({ project_id: "other-project" })]]);
+    const serviceForTarget = createDebuggingService({
+      db: crossProjectTarget.db,
+      gateway: makeGateway(),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      serviceForTarget.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested project.", 400));
+
+    const mismatchedTarget = createFakeDb([[deviceRow()], [targetRow({ device_id: "device-2" })]]);
+    const serviceForMismatch = createDebuggingService({
+      db: mismatchedTarget.db,
+      gateway: makeGateway(),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      serviceForMismatch.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.", 400));
+  });
+
+  it("createSession inserts a session-created debug event", async () => {
+    const { db, txCalls } = createFakeDb([[deviceRow()], [targetRow()], (call) => [sessionRow({ id: call.values[0] })], []]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    const session = await service.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" });
+
+    const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
+    expect(eventCall?.values.slice(1, 8)).toEqual([
+      "org-1",
+      "aurora",
+      session.id,
+      null,
+      "session-created",
+      "info",
+      "Debug session created."
+    ]);
+    expect(JSON.parse(String(eventCall?.values[8]))).toEqual({ deviceId: "device-1", targetId: "target-1" });
+  });
+
   it("readNode requires debugging:read, rejects catalog/path mismatch, records operation, writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
@@ -301,6 +355,99 @@ describe("debugging service", () => {
     expect(audit.events[0]).toMatchObject({ kind: "debug-node-read", action: "read", targetType: "debug-node" });
   });
 
+  it("readNode rejects inactive sessions and WO parameters before gateway call", async () => {
+    const inactive = createFakeDb([[sessionRow({ status: "closed" })]]);
+    const inactiveGateway = makeGateway();
+    const inactiveService = createDebuggingService({
+      db: inactive.db,
+      gateway: inactiveGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(inactiveService.readNode(readAuth, { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Debug session is not active.", 400)
+    );
+    expect(inactiveGateway.readNode).not.toHaveBeenCalled();
+
+    const writeOnly = createFakeDb([[sessionRow()], [parameterRow({ access_mode: "WO" })]]);
+    const writeOnlyGateway = makeGateway();
+    const writeOnlyService = createDebuggingService({
+      db: writeOnly.db,
+      gateway: writeOnlyGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      writeOnlyService.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter is not readable.", 400));
+    expect(writeOnlyGateway.readNode).not.toHaveBeenCalled();
+  });
+
+  it("readNode records failed gateway reads as failed operations with audit metadata", async () => {
+    const { db } = createFakeDb([[sessionRow()], [targetRow()], (call) => [operationRow(call)]]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({ readNode: vi.fn(async () => ({ ok: false, stderr: "node missing", error: "node missing", durationMs: 12 })) }),
+      createAuditEvent: audit.createAuditEvent
+    });
+
+    const operation = await service.readNode(readAuth, { sessionId: "session-1", nodePath: "/sys/current" });
+
+    expect(operation).toMatchObject({
+      operationType: "read",
+      status: "failed",
+      readValue: null,
+      verified: false,
+      failureReason: "node missing"
+    });
+    expect(audit.events[0]).toMatchObject({
+      kind: "debug-node-read",
+      severity: "Medium",
+      metadata: expect.objectContaining({ operationId: operation.id, failureReason: "node missing" })
+    });
+  });
+
+  it("readNode treats audit write failure as operation failure and transaction failure", async () => {
+    const { db, rollbacks } = createFakeDb([[sessionRow()], [targetRow()], (call) => [operationRow(call)]]);
+    const createAuditEvent = vi.fn(async () => {
+      throw new Error("audit unavailable");
+    });
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent });
+
+    await expect(service.readNode(readAuth, { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toThrow("audit unavailable");
+
+    expect(rollbacks).toHaveLength(1);
+    expect(rollbacks[0].some((call) => call.text.includes("insert into node_operations"))).toBe(true);
+  });
+
+  it("writeNode requires debugging:write and rejects inactive sessions before gateway call", async () => {
+    const permissionGateway = makeGateway();
+    const permissionService = createDebuggingService({
+      db: createFakeDb().db,
+      gateway: permissionGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(permissionService.writeNode(readAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:write.", 403, { permission: "debugging:write" })
+    );
+    expect(permissionGateway.writeNode).not.toHaveBeenCalled();
+
+    const inactive = createFakeDb([[sessionRow({ status: "closed" })]]);
+    const inactiveGateway = makeGateway();
+    const inactiveService = createDebuggingService({
+      db: inactive.db,
+      gateway: inactiveGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(inactiveService.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Debug session is not active.", 400)
+    );
+    expect(inactiveGateway.writeNode).not.toHaveBeenCalled();
+  });
+
   it("writeNode rejects RO parameters before gateway call", async () => {
     const { db } = createFakeDb([[sessionRow()], [parameterRow({ access_mode: "RO" })]]);
     const gateway = makeGateway();
@@ -319,6 +466,29 @@ describe("debugging service", () => {
 
     await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "6000" })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400)
+    );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode rejects non-numeric values when a parameter has a numeric range", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ min_value: "0", max_value: "5000" })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "not-a-number" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, { minValue: 0, maxValue: 5000 })
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode rejects parameters from a different project before gateway call", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ project_id: "other-project" })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Parameter does not belong to the session project.", 400)
     );
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
@@ -410,6 +580,90 @@ describe("debugging service", () => {
     });
   });
 
+  it("writeNode stores failed status when gateway write fails", async () => {
+    const gatewayResult: GatewayWriteResult = {
+      ok: false,
+      verified: false,
+      error: "Write failed.",
+      writeResult: { ok: false, stderr: "permission denied", error: "permission denied", durationMs: 7 }
+    };
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    expect(operation).toMatchObject({
+      operationType: "write",
+      status: "failed",
+      readbackValue: null,
+      verified: false,
+      failureReason: "Write failed."
+    });
+  });
+
+  it("writeNode updates parameter current and target values after a verified write", async () => {
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      [],
+      []
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    const updateCall = txCalls.find((call) => call.text.includes("update debugging_parameters"));
+    expect(updateCall?.values).toEqual(["org-1", "param-1", "3200", "3200"]);
+  });
+
+  it("writeNode writes audit metadata for successful writes", async () => {
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      [],
+      []
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    expect(audit.events[0]).toMatchObject({
+      kind: "debug-node-write",
+      action: "write",
+      severity: "Medium",
+      targetType: "debug-node",
+      targetId: "param-1",
+      metadata: expect.objectContaining({
+        sessionId: "session-1",
+        operationId: operation.id,
+        nodePath: "/sys/current",
+        requestedValue: "3200",
+        previousValue: "3000",
+        readbackValue: "3200",
+        verified: true,
+        snapshotId: expect.any(String)
+      })
+    });
+  });
+
   it("writeNode treats audit write failure as operation failure and transaction failure", async () => {
     const { db, rollbacks } = createFakeDb([
       [sessionRow()],
@@ -432,6 +686,40 @@ describe("debugging service", () => {
     expect(rollbacks[0].some((call) => call.text.includes("insert into node_operations"))).toBe(true);
   });
 
+  it("rollbackSnapshot requires debugging:rollback and confirmation token before gateway call", async () => {
+    const permissionGateway = makeGateway();
+    const permissionService = createDebuggingService({
+      db: createFakeDb().db,
+      gateway: permissionGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      permissionService.rollbackSnapshot(writeAuth, {
+        sessionId: "session-1",
+        snapshotId: "snapshot-1",
+        confirmationToken: "confirm-rollback"
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Missing permission: debugging:rollback.", 403, { permission: "debugging:rollback" }));
+    expect(permissionGateway.writeNode).not.toHaveBeenCalled();
+
+    const tokenGateway = makeGateway();
+    const tokenService = createDebuggingService({
+      db: createFakeDb().db,
+      gateway: tokenGateway,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      tokenService.rollbackSnapshot(rollbackAuth, {
+        sessionId: "session-1",
+        snapshotId: "snapshot-1",
+        confirmationToken: "wrong-token"
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Rollback confirmation is required.", 400));
+    expect(tokenGateway.writeNode).not.toHaveBeenCalled();
+  });
+
   it("rollbackSnapshot rejects missing, consumed, invalid, or cross-session snapshots", async () => {
     for (const snapshot of [null, snapshotRow({ status: "consumed" }), snapshotRow({ status: "invalid" }), snapshotRow({ session_id: "other-session" })]) {
       const { db } = createFakeDb([[sessionRow()], snapshot ? [snapshot] : []]);
@@ -445,6 +733,69 @@ describe("debugging service", () => {
         })
       ).rejects.toMatchObject(new ApiError(snapshot ? "VALIDATION_FAILED" : "NOT_FOUND", snapshot ? "Snapshot is not valid for this session." : "Snapshot was not found.", snapshot ? 400 : 404));
     }
+  });
+
+  it("rollbackSnapshot rejects snapshots from a different project", async () => {
+    const { db } = createFakeDb([[sessionRow()], [snapshotRow({ project_id: "other-project" })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      service.rollbackSnapshot(rollbackAuth, {
+        sessionId: "session-1",
+        snapshotId: "snapshot-1",
+        confirmationToken: "confirm-rollback"
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400));
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("rollbackSnapshot keeps snapshot valid and inserts a failed event on partial failure", async () => {
+    const entries = [
+      { parameterId: "param-1", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" },
+      { parameterId: "param-2", nodePath: "/sys/voltage", previousValue: "12", targetValue: "14" }
+    ];
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [snapshotRow({ entries })],
+      [targetRow()],
+      (call) => [operationRow(call, { status: "succeeded" })],
+      (call) => [operationRow(call, { status: "failed", failure_reason: "Rollback write failed." })],
+      []
+    ]);
+    const gateway = makeGateway({
+      writeNode: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          verified: true,
+          writeResult: { ok: true, value: "3000", durationMs: 3 },
+          readResult: { ok: true, value: "3000", durationMs: 4 }
+        })
+        .mockResolvedValueOnce({
+          ok: false,
+          verified: false,
+          error: "Rollback write failed.",
+          writeResult: { ok: false, error: "Rollback write failed.", durationMs: 5 }
+        })
+    });
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    const result = await service.rollbackSnapshot(rollbackAuth, {
+      sessionId: "session-1",
+      snapshotId: "snapshot-1",
+      confirmationToken: "confirm-rollback"
+    });
+
+    expect(result.snapshot).toMatchObject({ id: "snapshot-1", status: "valid" });
+    expect(result.operations).toEqual([
+      expect.objectContaining({ status: "succeeded", requestedValue: "3000" }),
+      expect.objectContaining({ status: "failed", requestedValue: "12" })
+    ]);
+    expect(txCalls.some((call) => call.text.includes("update debugging_snapshots"))).toBe(false);
+    const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
+    expect(eventCall?.values.slice(1, 8)).toEqual(["org-1", "aurora", "session-1", null, "rollback-failed", "error", "Snapshot rollback failed."]);
+    expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", failures: [expect.objectContaining({ status: "failed" })] });
   });
 
   it("rollbackSnapshot writes previous values, records rollback operations, marks snapshot consumed", async () => {
@@ -471,5 +822,97 @@ describe("debugging service", () => {
     expect(result.snapshot).toEqual(expect.objectContaining({ id: "snapshot-1", status: "consumed" }));
     expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.values.includes("snapshot-1"))).toBe(true);
     expect(audit.events[0]).toMatchObject({ kind: "debug-snapshot-rollback", action: "rollback", targetId: "snapshot-1" });
+  });
+
+  it("rollbackSnapshot inserts a succeeded event after successful rollback", async () => {
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [snapshotRow()],
+      [targetRow()],
+      (call) => [operationRow(call)],
+      [snapshotRow({ status: "consumed" })],
+      [],
+      []
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await service.rollbackSnapshot(rollbackAuth, {
+      sessionId: "session-1",
+      snapshotId: "snapshot-1",
+      confirmationToken: "confirm-rollback"
+    });
+
+    const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
+    expect(eventCall?.values.slice(1, 8)).toEqual([
+      "org-1",
+      "aurora",
+      "session-1",
+      null,
+      "rollback-succeeded",
+      "info",
+      "Snapshot rollback succeeded."
+    ]);
+    expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", operationCount: 1 });
+  });
+
+  it("listDevices, listParameters, getSession, and listSessionEvents require view permission and return records", async () => {
+    const { db, calls } = createFakeDb([
+      [deviceRow()],
+      [parameterRow()],
+      [sessionRow()],
+      [
+        {
+          id: "operation-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          session_id: "session-1",
+          parameter_id: "param-1",
+          node_path: "/sys/current",
+          operation_type: "read",
+          status: "succeeded",
+          requested_value: null,
+          previous_value: null,
+          read_value: "3000",
+          readback_value: null,
+          verified: true,
+          failure_reason: null,
+          duration_ms: 5,
+          approval_id: null,
+          snapshot_id: null,
+          created_at: timestamp
+        }
+      ]
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listDevices(makeAuth([]), { projectId: "aurora" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+    );
+    await expect(service.listParameters(makeAuth([]), { projectId: "aurora" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+    );
+    await expect(service.getSession(makeAuth([]), { sessionId: "session-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+    );
+    await expect(service.listSessionEvents(makeAuth([]), { sessionId: "session-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
+    );
+
+    await expect(service.listDevices(readAuth, { projectId: "aurora" })).resolves.toEqual([
+      expect.objectContaining({ id: "device-1", projectId: "aurora" })
+    ]);
+    await expect(service.listParameters(readAuth, { projectId: "aurora", module: "Battery", risk: ["Medium"] })).resolves.toEqual([
+      expect.objectContaining({ id: "param-1", nodePath: "/sys/current" })
+    ]);
+    await expect(service.getSession(readAuth, { sessionId: "session-1" })).resolves.toMatchObject({ id: "session-1", status: "active" });
+    await expect(service.listSessionEvents(readAuth, { sessionId: "session-1" })).resolves.toEqual([
+      expect.objectContaining({ id: "operation-1", operationType: "read" })
+    ]);
+
+    expect(calls).toHaveLength(4);
+    expect(calls[0].text).toContain("from debugging_devices");
+    expect(calls[1].text).toContain("from debugging_parameters");
+    expect(calls[2].text).toContain("from debugging_sessions");
+    expect(calls[3].text).toContain("from node_operations");
   });
 });
