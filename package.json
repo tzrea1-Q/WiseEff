@@ -13,7 +13,7 @@
     "test:e2e": "playwright test",
     "test:m1": "npm run test:all && npm run build && npm run test:e2e",
     "test:m2": "npm run test:all && npm run build && npm run test:e2e",
-    "test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
+    "test:m3": "npm run test:all && npm run build && npm run test:e2e -- --pass-with-no-tests e2e/debugging.api.spec.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed:m0": "tsx scripts/seed-m0.ts",
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",

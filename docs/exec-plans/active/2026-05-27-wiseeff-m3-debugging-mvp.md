@@ -949,7 +949,7 @@ Create `scripts/seed-m3-debugging.ts`:
 
 - Connect through the existing `createPostgresDatabase`.
 - Require `DATABASE_URL`.
-- Upsert one simulator device for `org_seed` and project `aurora`.
+- Upsert one simulator device for `org-chargelab` and project `aurora`.
 - Upsert one detected target `sim-target-aurora-1`.
 - Upsert five `debugging_parameters` mapped to the simulator fixture nodes:
   - `dbg-fast-charge-current`, RW, High, range `0-5000`, current `3000`, target `3100`.
@@ -966,7 +966,7 @@ Update `package.json`:
 
 ```json
 "db:seed:m3": "tsx scripts/seed-m3-debugging.ts",
-"test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts"
+"test:m3": "npm run test:all && npm run build && npm run test:e2e -- --pass-with-no-tests e2e/debugging.api.spec.ts"
 ```
 
 - [ ] **Step 6: Update generated schema docs**

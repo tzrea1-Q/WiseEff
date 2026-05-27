@@ -101,7 +101,7 @@ Run the M2 verification gate: frontend tests, backend tests, production build, t
 npm run test:m3
 ```
 
-Run the M3 verification gate: frontend tests, backend tests, production build, then the M3 debugging API-mode Playwright smoke.
+Run the M3 verification gate: frontend tests, backend tests, production build, then the M3 debugging API-mode Playwright smoke when present. During the Task 2 intermediate state, the targeted Playwright command allows no matching tests until Task 11 adds `e2e/debugging.api.spec.ts`.
 
 ```bash
 npm run preview

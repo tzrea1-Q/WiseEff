@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
 
-const organizationId = "org_seed";
+const organizationId = "org-chargelab";
 const projectId = "aurora";
 const deviceId = "sim-device-aurora-1";
 const targetId = "sim-target-aurora-1";
@@ -124,7 +124,7 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       values ($1, $2)
       on conflict (id) do update set name = excluded.name
       `,
-      [organizationId, "Seed Organization"]
+      [organizationId, "ChargeLab"]
     );
 
     await tx.query(
