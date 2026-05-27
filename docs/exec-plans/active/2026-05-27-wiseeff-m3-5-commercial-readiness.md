@@ -77,7 +77,7 @@ Modify:
 - Modify: `server/app.ts`
 - Modify: `docs/RELIABILITY.md`
 
-- [ ] **Step 1: Write failing health model tests**
+- [x] **Step 1: Write failing health model tests**
 
 Add `server/modules/operations/health.test.ts`:
 
@@ -130,7 +130,7 @@ describe("operations health", () => {
 });
 ```
 
-- [ ] **Step 2: Run model tests to verify RED**
+- [x] **Step 2: Run model tests to verify RED**
 
 Run:
 
@@ -140,11 +140,11 @@ npm run test:server -- server/modules/operations/health.test.ts
 
 Expected: FAIL because `server/modules/operations/health.ts` does not exist.
 
-- [ ] **Step 3: Implement minimal health model**
+- [x] **Step 3: Implement minimal health model**
 
 Create `server/modules/operations/health.ts` with the public functions `buildLiveHealth()` and `buildReadyHealth({ db })`. `buildReadyHealth` must call `db.query("select 1 as ok")` when `db` exists, return status 200 when it succeeds, return status 503 when `db` is missing, and return status 503 with a failure message when the query throws.
 
-- [ ] **Step 4: Run model tests to verify GREEN**
+- [x] **Step 4: Run model tests to verify GREEN**
 
 Run:
 
@@ -154,7 +154,7 @@ npm run test:server -- server/modules/operations/health.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Write failing route tests**
+- [x] **Step 5: Write failing route tests**
 
 Add `server/modules/operations/routes.test.ts` with tests for:
 
@@ -163,7 +163,7 @@ Add `server/modules/operations/routes.test.ts` with tests for:
 - `GET /health/ready` returns 503 with `dependencies.database.status === "missing"` when no db is injected.
 - `GET /api/v1/health` remains compatible and returns `{ ok: true, service: "wiseeff-api" }`.
 
-- [ ] **Step 6: Run route tests to verify RED**
+- [x] **Step 6: Run route tests to verify RED**
 
 Run:
 
@@ -173,7 +173,7 @@ npm run test:server -- server/modules/operations/routes.test.ts
 
 Expected: FAIL because `registerOperationsRoutes` does not exist.
 
-- [ ] **Step 7: Implement routes and app registration**
+- [x] **Step 7: Implement routes and app registration**
 
 Create `server/modules/operations/routes.ts` exporting:
 
@@ -191,7 +191,7 @@ Modify `server/app.ts` to import `registerOperationsRoutes`, remove the inline `
 registerOperationsRoutes(router, { db: options.db });
 ```
 
-- [ ] **Step 8: Run route and app tests to verify GREEN**
+- [x] **Step 8: Run route and app tests to verify GREEN**
 
 Run:
 
@@ -201,7 +201,7 @@ npm run test:server -- server/modules/operations/health.test.ts server/modules/o
 
 Expected: PASS.
 
-- [ ] **Step 9: Update reliability docs**
+- [x] **Step 9: Update reliability docs**
 
 In `docs/RELIABILITY.md`, update Health Checks to list:
 
@@ -209,7 +209,7 @@ In `docs/RELIABILITY.md`, update Health Checks to list:
 - `/health/ready`: commercial readiness check for configured dependencies.
 - `/api/v1/health`: compatibility smoke endpoint for existing clients.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 Run:
 
@@ -226,7 +226,7 @@ git commit -m "feat: add commercial readiness health checks"
 - Modify: `README.md`
 - Modify: `docs/RELIABILITY.md`
 
-- [ ] **Step 1: Write failing env tests**
+- [x] **Step 1: Write failing env tests**
 
 Add tests proving:
 
@@ -234,7 +234,7 @@ Add tests proving:
 - production throws `OBJECT_STORE_ROOT is required in production` when `OBJECT_STORE_ROOT` is blank.
 - production still throws `MOCK_RUNTIME_ENABLED cannot be true in production` when mock runtime is enabled.
 
-- [ ] **Step 2: Run env tests to verify RED**
+- [x] **Step 2: Run env tests to verify RED**
 
 Run:
 
@@ -244,7 +244,7 @@ npm run test:server -- server/config/env.test.ts
 
 Expected: FAIL for missing production gates.
 
-- [ ] **Step 3: Implement production gates**
+- [x] **Step 3: Implement production gates**
 
 In `server/config/env.ts`, after parsing:
 
@@ -257,7 +257,7 @@ if (env.NODE_ENV === "production" && !env.OBJECT_STORE_ROOT.trim()) {
 }
 ```
 
-- [ ] **Step 4: Run env tests to verify GREEN**
+- [x] **Step 4: Run env tests to verify GREEN**
 
 Run:
 
@@ -267,7 +267,7 @@ npm run test:server -- server/config/env.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/config/env.ts server/config/env.test.ts README.md docs/RELIABILITY.md
@@ -281,7 +281,7 @@ git commit -m "fix: enforce production environment contract"
 - Create: `server/modules/contracts/routeManifest.test.ts`
 - Modify: `docs/design-docs/api-contract.md`
 
-- [ ] **Step 1: Write failing manifest tests**
+- [x] **Step 1: Write failing manifest tests**
 
 `routeManifest.test.ts` must assert:
 
@@ -291,17 +291,17 @@ git commit -m "fix: enforce production environment contract"
 - `logs.upload` is `POST /api/v1/logs`.
 - `parameters.reviewChangeRequest` is `POST /api/v1/parameter-change-requests/:requestId/review`.
 
-- [ ] **Step 2: Implement static manifest**
+- [x] **Step 2: Implement static manifest**
 
 Add route entries with `id`, `method`, `path`, `module`, and `stability: "mvp" | "commercial-readiness"`.
 
-- [ ] **Step 3: Run contract tests**
+- [x] **Step 3: Run contract tests**
 
 ```bash
 npm run test:server -- server/modules/contracts/routeManifest.test.ts
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add server/modules/contracts docs/design-docs/api-contract.md
@@ -317,11 +317,11 @@ git commit -m "test: add api route contract manifest"
 - Modify: `server/modules/logs/worker.test.ts`
 - Create: `server/migrations/0006_m3_5_job_leases.sql`
 
-- [ ] **Step 1: Write failing worker tests**
+- [x] **Step 1: Write failing worker tests**
 
 Add a worker test where two claim attempts target the same queued job and only one receives it. The second call must receive no job or a clear already-claimed result.
 
-- [ ] **Step 2: Add job lease migration**
+- [x] **Step 2: Add job lease migration**
 
 Add:
 
@@ -331,17 +331,17 @@ alter table jobs add column if not exists lease_expires_at timestamptz;
 alter table jobs add column if not exists attempt_count integer not null default 0;
 ```
 
-- [ ] **Step 3: Implement claim semantics**
+- [x] **Step 3: Implement claim semantics**
 
 Add a repository method that atomically claims queued or expired jobs by setting `lease_owner`, `lease_expires_at`, `status`, and `attempt_count`, returning the claimed row.
 
-- [ ] **Step 4: Run worker tests**
+- [x] **Step 4: Run worker tests**
 
 ```bash
 npm run test:server -- server/modules/logs/worker.test.ts
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/modules/jobs server/modules/logs server/migrations/0006_m3_5_job_leases.sql
@@ -357,19 +357,19 @@ git commit -m "fix: lease log analysis jobs"
 - Modify: `server/modules/operations/health.test.ts`
 - Modify: `docs/RELIABILITY.md`
 
-- [ ] **Step 1: Write failing readiness tests**
+- [x] **Step 1: Write failing readiness tests**
 
 Add tests requiring object-store readiness to report `ready`, `missing`, and `failed` statuses.
 
-- [ ] **Step 2: Implement object-store `checkHealth()`**
+- [x] **Step 2: Implement object-store `checkHealth()`**
 
 The local adapter must verify the root directory and perform a small write/read/delete probe in test/development.
 
-- [ ] **Step 3: Include object store in `/health/ready`**
+- [x] **Step 3: Include object store in `/health/ready`**
 
 Readiness returns 503 if object store is missing or failed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add server/modules/logs/objectStore.ts server/modules/operations docs/RELIABILITY.md
@@ -386,19 +386,19 @@ git commit -m "feat: include object store readiness"
 - Create: `server/migrations/0007_m3_5_device_leases.sql`
 - Modify: `docs/SECURITY.md`
 
-- [ ] **Step 1: Write failing service tests**
+- [x] **Step 1: Write failing service tests**
 
 Add tests proving a second active session cannot write to a leased device until the lease expires or is released.
 
-- [ ] **Step 2: Add lease migration**
+- [x] **Step 2: Add lease migration**
 
 Add a `debug_device_leases` table keyed by device/project with owner session, expiration, and audit timestamps.
 
-- [ ] **Step 3: Enforce lease on write and rollback**
+- [x] **Step 3: Enforce lease on write and rollback**
 
 Before node write or rollback, the service must acquire or validate a lease for the session.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add server/modules/debugging server/migrations/0007_m3_5_device_leases.sql docs/SECURITY.md
@@ -421,7 +421,7 @@ Require `x-request-id` to be reflected or generated and passed into route reques
 
 Route handlers receive a stable `request.requestId`; audit helpers use it when available.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add server/shared/http server/modules/audit docs/SECURITY.md
@@ -437,7 +437,7 @@ git commit -m "feat: propagate request ids through audit"
 - Modify: `docs/FRONTEND.md`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add M3.5 verification script**
+- [x] **Step 1: Add M3.5 verification script**
 
 Add:
 
@@ -445,11 +445,11 @@ Add:
 "test:m3-5": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts"
 ```
 
-- [ ] **Step 2: Update docs**
+- [x] **Step 2: Update docs**
 
 Document readiness commands, environment variables, known production gaps, and which technical debt IDs are reduced but still open.
 
-- [ ] **Step 3: Final verification**
+- [x] **Step 3: Final verification**
 
 Run:
 
@@ -465,7 +465,7 @@ Run E2E if `DATABASE_URL` is available:
 npm run test:m3-5
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add package.json docs
