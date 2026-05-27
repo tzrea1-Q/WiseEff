@@ -49,6 +49,57 @@ describe("simulator debugging gateway", () => {
     expect(result.error).toBe("Node is read-only.");
   });
 
+  it("writes a writable node, verifies readback, and persists the new value", async () => {
+    const gateway = createSimulatorDebugDeviceGateway();
+    const nodePath = "/sys/class/power_supply/battery/input_current_limit";
+
+    const result = await gateway.writeNode({
+      targetRef: "simulator://aurora-1",
+      nodePath,
+      value: "3100",
+      readBack: true
+    });
+    const readAfterWrite = await gateway.readNode({
+      targetRef: "simulator://aurora-1",
+      nodePath
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.verified).toBe(true);
+    expect(result.value).toBe("3100");
+    expect(result.readResult?.value).toBe("3100");
+    expect(result.readResult?.stdout).toBe("3100");
+    expect(readAfterWrite).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: "3100",
+        stdout: "3100"
+      })
+    );
+  });
+
+  it("reports deterministic durations for read and write results", async () => {
+    const timestamps = [10, 14, 20, 27, 30, 36];
+    const gateway = createSimulatorDebugDeviceGateway({
+      now: () => timestamps.shift() ?? 36
+    });
+
+    const readResult = await gateway.readNode({
+      targetRef: "simulator://aurora-1",
+      nodePath: "/sys/class/power_supply/battery/constant_charge_current"
+    });
+    const writeResult = await gateway.writeNode({
+      targetRef: "simulator://aurora-1",
+      nodePath: "/sys/class/power_supply/battery/temp_limit",
+      value: "46",
+      readBack: true
+    });
+
+    expect(readResult.durationMs).toBe(4);
+    expect(writeResult.writeResult.durationMs).toBe(7);
+    expect(writeResult.readResult?.durationMs).toBe(10);
+  });
+
   it("reports readback mismatch for configured mismatch nodes", async () => {
     const gateway = createSimulatorDebugDeviceGateway();
 
