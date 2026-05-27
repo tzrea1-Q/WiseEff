@@ -205,6 +205,14 @@ export function createDebuggingService(options: ServiceOptions) {
       requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
 
+      if (input.deviceId) {
+        const device = await getDebugDevice(db, { organizationId, deviceId: input.deviceId });
+        if (!device) {
+          throw new ApiError("NOT_FOUND", "Debug device was not found.", 404);
+        }
+        ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
+      }
+
       const result = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
       if (!result.ok) {
         await db.transaction(async (tx) => {

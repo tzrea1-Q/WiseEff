@@ -261,8 +261,24 @@ describe("debugging service", () => {
     expect(txCalls).toHaveLength(0);
   });
 
+  it("detectTargets rejects a device from another project before gateway or writes", async () => {
+    const { db, txCalls } = createFakeDb([[deviceRow({ project_id: "other-project" })]]);
+    const gateway = makeGateway();
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+
+    await expect(service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Debug device does not belong to the requested project.", 400)
+    );
+
+    expect(gateway.detectTargets).not.toHaveBeenCalled();
+    expect(txCalls).toHaveLength(0);
+    expect(audit.createAuditEvent).not.toHaveBeenCalled();
+  });
+
   it("detectTargets requires debugging:read, calls gateway, persists targets, writes audit", async () => {
     const { db, txCalls } = createFakeDb([
+      [deviceRow()],
       (call) => [targetRow({ id: call.values[3], target_ref: call.values[4], label: call.values[5], status: call.values[6] })],
       []
     ]);
@@ -290,7 +306,7 @@ describe("debugging service", () => {
   });
 
   it("detectTargets commits a failed debug event when gateway detection fails", async () => {
-    const { db, transactions } = createFakeDb([[]]);
+    const { db, transactions } = createFakeDb([[deviceRow()], []]);
     const service = createDebuggingService({
       db,
       gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: false, targets: [], error: "USB bridge unavailable." })) }),
