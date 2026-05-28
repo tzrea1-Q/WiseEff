@@ -4,6 +4,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { AuthContext } from "../auth/types";
 import { createAgentOrchestrator } from "./orchestrator";
+import { getAgentApproval, getAgentToolCall } from "./repository";
 import {
   approveAgentApprovalBodySchema,
   createAgentSessionBodySchema,
@@ -43,6 +44,24 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
   return parsed.data;
 }
 
+function sessionResourceNotFound(sessionId: string) {
+  return new ApiError("NOT_FOUND", "Agent session resource was not found.", 404, { sessionId });
+}
+
+async function requireToolCallInSession(db: Database, auth: AuthContext, sessionId: string, toolCallId: string) {
+  const toolCall = await getAgentToolCall(db, auth.organization.id, toolCallId);
+  if (!toolCall || toolCall.sessionId !== sessionId) {
+    throw sessionResourceNotFound(sessionId);
+  }
+}
+
+async function requireApprovalInSession(db: Database, auth: AuthContext, sessionId: string, approvalId: string) {
+  const approval = await getAgentApproval(db, auth.organization.id, approvalId);
+  if (!approval || approval.sessionId !== sessionId) {
+    throw sessionResourceNotFound(sessionId);
+  }
+}
+
 export function registerAgentRoutes(
   router: WiseEffRouter,
   options: { db?: Database; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
@@ -78,6 +97,7 @@ export function registerAgentRoutes(
     parseWithSchema(runAgentToolCallBodySchema, request.body);
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
+    await requireToolCallInSession(db, auth, params.sessionId, params.toolCallId);
     const orchestrator = createAgentOrchestrator({ db });
     const turn = await orchestrator.runToolCall({
       auth,
@@ -93,6 +113,7 @@ export function registerAgentRoutes(
     parseWithSchema(approveAgentApprovalBodySchema, request.body);
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
+    await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
     const orchestrator = createAgentOrchestrator({ db });
     const turn = await orchestrator.approveToolCall({
       auth,
@@ -109,6 +130,7 @@ export function registerAgentRoutes(
     const body = parseWithSchema(rejectAgentApprovalBodySchema, request.body);
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
+    await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
     const orchestrator = createAgentOrchestrator({ db });
     const turn = await orchestrator.rejectToolCall({
       auth,

@@ -269,6 +269,17 @@ async function createApprovalRequiredToolCall(db: Database) {
   return { sessionId, toolCallId: toolCall.id, approvalId: toolCall.approvalId };
 }
 
+async function createCrossSessionApprovalScenario(db: Database) {
+  const sessionAResponse = await createRouteSession(db);
+  const sessionB = await createApprovalRequiredToolCall(db);
+
+  return {
+    wrongSessionId: sessionAResponse.body.turn.session.id,
+    toolCallId: sessionB.toolCallId,
+    approvalId: sessionB.approvalId
+  };
+}
+
 describe("agent routes", () => {
   it("rejects session creation without a database adapter", async () => {
     const response = await requestJson<{ error: { code: string } }>(
@@ -342,6 +353,24 @@ describe("agent routes", () => {
     expect(response.body.error.code).toBe("APPROVAL_REQUIRED");
   });
 
+  it("rejects run requests when the tool call belongs to a different session", async () => {
+    const { db } = createMemoryDb();
+    const { wrongSessionId, toolCallId } = await createCrossSessionApprovalScenario(db);
+
+    const response = await requestJson<{ error?: { code: string }; turn?: { session: { id: string } } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${wrongSessionId}/tool-calls/${toolCallId}/run`,
+      {
+        method: "POST",
+        body: JSON.stringify({ payload: {} })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error?.code).toBe("NOT_FOUND");
+    expect(response.body.turn).toBeUndefined();
+  });
+
   it("rejects approvals without inserting parameter drafts", async () => {
     const { db, tables } = createMemoryDb();
     const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
@@ -357,6 +386,27 @@ describe("agent routes", () => {
     expect(response.body.turn.approvals[0]).toMatchObject({ id: approvalId, status: "rejected" });
     expect(response.body.turn.toolCalls).toEqual(expect.arrayContaining([expect.objectContaining({ status: "rejected" })]));
     expect(tables.parameterDrafts).toHaveLength(0);
+  });
+
+  it("rejects approval rejections when the approval belongs to a different session", async () => {
+    const { db, tables } = createMemoryDb();
+    const { wrongSessionId, approvalId } = await createCrossSessionApprovalScenario(db);
+
+    const response = await requestJson<{ error?: { code: string }; turn?: { session: { id: string } } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${wrongSessionId}/approvals/${approvalId}/reject`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason: "Wrong session path." })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error?.code).toBe("NOT_FOUND");
+    expect(response.body.turn).toBeUndefined();
+    const approval = tables.approvals.find((item) => item.id === approvalId);
+    expect(approval?.status).toBe("pending");
+    expect(tables.toolCalls.find((toolCall) => toolCall.id === approval?.tool_call_id)?.status).toBe("pending_approval");
   });
 
   it("approves approvals and returns a succeeded tool call", async () => {
@@ -380,5 +430,25 @@ describe("agent routes", () => {
       ])
     );
     expect(tables.parameterDrafts).toHaveLength(1);
+  });
+
+  it("rejects approval approvals when the approval belongs to a different session", async () => {
+    const { db, tables } = createMemoryDb();
+    const { wrongSessionId, approvalId } = await createCrossSessionApprovalScenario(db);
+
+    const response = await requestJson<{ error?: { code: string }; turn?: { session: { id: string } } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${wrongSessionId}/approvals/${approvalId}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({})
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error?.code).toBe("NOT_FOUND");
+    expect(response.body.turn).toBeUndefined();
+    expect(tables.approvals.find((approval) => approval.id === approvalId)?.status).toBe("pending");
+    expect(tables.parameterDrafts).toHaveLength(0);
   });
 });
