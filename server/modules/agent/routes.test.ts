@@ -269,6 +269,16 @@ async function createApprovalRequiredToolCall(db: Database) {
   return { sessionId, toolCallId: toolCall.id, approvalId: toolCall.approvalId };
 }
 
+async function createApprovalRequiredToolCallWithTables(db: Database, tables: ReturnType<typeof createMemoryDb>["tables"]) {
+  const ids = await createApprovalRequiredToolCall(db);
+  const toolCall = tables.toolCalls.find((item) => item.id === ids.toolCallId);
+  if (!toolCall) {
+    throw new Error("Test setup did not retain the approval-required tool call.");
+  }
+
+  return { ...ids, toolCall };
+}
+
 async function createCrossSessionApprovalScenario(db: Database) {
   const sessionAResponse = await createRouteSession(db);
   const sessionB = await createApprovalRequiredToolCall(db);
@@ -388,6 +398,23 @@ describe("agent routes", () => {
     expect(tables.parameterDrafts).toHaveLength(0);
   });
 
+  it("accepts bodyless approval rejections", async () => {
+    const { db } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{
+      turn: { approvals: { id: string; status: string; reason?: string }[]; toolCalls: { status: string; error?: string }[] };
+    }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/reject`, {
+      method: "POST"
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.turn.approvals[0]).toMatchObject({ id: approvalId, status: "rejected", reason: "Rejected" });
+    expect(response.body.turn.toolCalls).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: "rejected", error: "Rejected" })])
+    );
+  });
+
   it("rejects approval rejections when the approval belongs to a different session", async () => {
     const { db, tables } = createMemoryDb();
     const { wrongSessionId, approvalId } = await createCrossSessionApprovalScenario(db);
@@ -418,6 +445,73 @@ describe("agent routes", () => {
     }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`, {
       method: "POST",
       body: JSON.stringify({})
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.turn.toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "succeeded",
+          result: expect.objectContaining({ summary: "Created one parameter draft for human review." })
+        })
+      ])
+    );
+    expect(tables.parameterDrafts).toHaveLength(1);
+  });
+
+  it("approves when expected tool call status still matches", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{
+      turn: { toolCalls: { status: string; result?: { summary: string } }[] };
+    }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ expectedToolCallStatus: "pending_approval" })
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.turn.toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "succeeded",
+          result: expect.objectContaining({ summary: "Created one parameter draft for human review." })
+        })
+      ])
+    );
+    expect(tables.parameterDrafts).toHaveLength(1);
+  });
+
+  it("rejects approvals when the expected tool call status is stale", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId, toolCall } = await createApprovalRequiredToolCallWithTables(db, tables);
+    toolCall.status = "running";
+
+    const response = await requestJson<{
+      error: { code: string; details: { expectedToolCallStatus?: string; actualToolCallStatus?: string } };
+    }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ expectedToolCallStatus: "pending_approval" })
+    });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("CONFLICT");
+    expect(response.body.error.details).toMatchObject({
+      expectedToolCallStatus: "pending_approval",
+      actualToolCallStatus: "running"
+    });
+    expect(tables.approvals.find((approval) => approval.id === approvalId)?.status).toBe("pending");
+    expect(tables.parameterDrafts).toHaveLength(0);
+  });
+
+  it("accepts bodyless approval approvals", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{
+      turn: { toolCalls: { status: string; result?: { summary: string } }[] };
+    }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`, {
+      method: "POST"
     });
 
     expect(response.status).toBe(200);

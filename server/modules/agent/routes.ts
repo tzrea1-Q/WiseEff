@@ -5,6 +5,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { AuthContext } from "../auth/types";
 import { createAgentOrchestrator } from "./orchestrator";
 import { getAgentApproval, getAgentToolCall } from "./repository";
+import type { AgentApprovalRecord, AgentToolCallRecord } from "./repository";
 import {
   approveAgentApprovalBodySchema,
   createAgentSessionBodySchema,
@@ -53,12 +54,38 @@ async function requireToolCallInSession(db: Database, auth: AuthContext, session
   if (!toolCall || toolCall.sessionId !== sessionId) {
     throw sessionResourceNotFound(sessionId);
   }
+
+  return toolCall;
 }
 
 async function requireApprovalInSession(db: Database, auth: AuthContext, sessionId: string, approvalId: string) {
   const approval = await getAgentApproval(db, auth.organization.id, approvalId);
   if (!approval || approval.sessionId !== sessionId) {
     throw sessionResourceNotFound(sessionId);
+  }
+
+  return approval;
+}
+
+async function requireApprovalToolCallStatus(
+  db: Database,
+  auth: AuthContext,
+  approval: AgentApprovalRecord,
+  expectedToolCallStatus: AgentToolCallRecord["status"] | undefined
+) {
+  if (!expectedToolCallStatus) {
+    return;
+  }
+
+  const toolCall = await getAgentToolCall(db, auth.organization.id, approval.toolCallId);
+  if (!toolCall || toolCall.sessionId !== approval.sessionId) {
+    throw sessionResourceNotFound(approval.sessionId);
+  }
+  if (toolCall.status !== expectedToolCallStatus) {
+    throw new ApiError("CONFLICT", "Agent tool call status changed before approval.", 409, {
+      expectedToolCallStatus,
+      actualToolCallStatus: toolCall.status
+    });
   }
 }
 
@@ -110,10 +137,11 @@ export function registerAgentRoutes(
 
   router.post("/api/v1/agent/sessions/:sessionId/approvals/:approvalId/approve", async (request) => {
     const params = parseWithSchema(paramsWithSessionAndApprovalIdSchema, request.params);
-    parseWithSchema(approveAgentApprovalBodySchema, request.body);
+    const body = parseWithSchema(approveAgentApprovalBodySchema, request.body ?? {});
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
+    const approval = await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
+    await requireApprovalToolCallStatus(db, auth, approval, body.expectedToolCallStatus);
     const orchestrator = createAgentOrchestrator({ db });
     const turn = await orchestrator.approveToolCall({
       auth,
@@ -127,7 +155,7 @@ export function registerAgentRoutes(
 
   router.post("/api/v1/agent/sessions/:sessionId/approvals/:approvalId/reject", async (request) => {
     const params = parseWithSchema(paramsWithSessionAndApprovalIdSchema, request.params);
-    const body = parseWithSchema(rejectAgentApprovalBodySchema, request.body);
+    const body = parseWithSchema(rejectAgentApprovalBodySchema, request.body ?? {});
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
