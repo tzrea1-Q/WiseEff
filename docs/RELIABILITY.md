@@ -63,10 +63,10 @@ Current endpoints:
 ## M3 Debugging Operations
 
 - Local debugging acceptance is simulator-first. `DEBUG_DEVICE_GATEWAY_MODE=simulator` uses the seeded Aurora target and deterministic node values, so read/write/readback/rollback can be verified without a physical device.
-- Gateway failures must surface as operation failures with readable timeout, offline, stderr, or readback mismatch text. The simulator currently covers read-only rejection and readback mismatch; production HDC must add timeout/offline fixtures before device rollout.
+- Gateway failures must surface as operation failures with readable timeout, offline, stderr, or readback mismatch text. The simulator covers read-only rejection and readback mismatch. The M5 HDC adapter adds fake-runner tests for target detection, nonzero/stderr failures, argv construction, command timeout text, and read-back mismatch.
 - A successful write creates a pre-write snapshot. Rollback is expected to write each snapshot entry back with readback, mark the snapshot consumed only if all writes succeed, and leave failed snapshots valid for retry.
 - Current residual UI gap: API write snapshots created on `/node-debugging` are not yet automatically surfaced in the `/debugging` rollback card. The backend rollback API and audit path are verified by M3 E2E; UI state promotion remains tracked as technical debt.
-- Production HDC gateway work remains open: real target discovery, connection leasing, command timeout policy, stderr normalization, and safe device-lab rollout.
+- Production HDC mode is selected with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_TIMEOUT_MS`; production rejects simulator mode unless `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is explicitly set for non-customer staging. Real target discovery/write/readback/snapshot-rollback evidence is covered by the HDC device-lab smoke only when `HDC_DEVICE_LAB_AVAILABLE=true` and the `HDC_SMOKE_*` target/session/parameter/node/value env vars are set; otherwise it remains an external pilot acceptance item, not proven by the local simulator or fake-runner tests.
 
 ## M4 Agent Operations
 
@@ -81,7 +81,7 @@ Current endpoints:
 - Frontend static assets should be quickly reversible.
 - Database migrations should be forward-compatible or include a recovery note.
 - Worker releases should avoid interrupting high-risk tasks.
-- Device gateway changes should be verified against a simulator before real devices.
+- Device gateway changes should be verified against the simulator and HDC fake-runner tests before real devices. Real-device rollout must then record target detection, read, write, timeout/offline, stderr, readback mismatch, and rollback evidence from the device lab.
 
 ## References
 

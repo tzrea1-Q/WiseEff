@@ -110,7 +110,7 @@ Device access must go through a gateway boundary. Write requests need:
 - pre-write snapshot,
 - readback result or failure reason.
 
-The M3 simulator-backed path implements this boundary for local verification. M3.5 adds `debug_device_leases` so node writes and snapshot rollback cannot proceed when another active session owns the device lease; the same session can renew the lease, and repository helpers can expire/release it. A production HDC gateway must preserve the same safety contract: no direct frontend device writes, no write without a lease and snapshot, no rollback without an explicit confirmation token, and no audit bypass.
+The M3 simulator-backed path implements this boundary for local verification. M3.5 adds `debug_device_leases` so node writes and snapshot rollback cannot proceed when another active session owns the device lease; the same session can renew the lease, and repository helpers can expire/release it. M5 adds an HDC adapter behind the same `DebugDeviceGateway` boundary with argv-based process execution, command timeouts, stderr/nonzero normalization, and read-back mismatch reporting. Production deployments must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`; `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is only acceptable for non-customer staging. Real hardware evidence still belongs in pilot/device-lab acceptance: no direct frontend device writes, no write without a lease and snapshot, no rollback without an explicit confirmation token, and no audit bypass.
 
 ## References
 

@@ -19,6 +19,8 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBeUndefined();
     expect(env.OBJECT_STORAGE_REGION).toBeUndefined();
     expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
+    expect(env.HDC_TIMEOUT_MS).toBe(5000);
+    expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
   });
 
   it("parses explicit API settings", () => {
@@ -29,7 +31,6 @@ describe("loadServerEnv", () => {
       AUTH_TOKEN_ISSUER: "wiseeff-test",
       AUTH_TOKEN_HMAC_SECRET: "short-test-secret",
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
-      DEBUG_DEVICE_GATEWAY_MODE: "simulator",
       MOCK_RUNTIME_ENABLED: "true",
       OBJECT_STORE_MODE: "s3",
       OBJECT_STORE_ROOT: "tmp/object-store",
@@ -37,7 +38,10 @@ describe("loadServerEnv", () => {
       OBJECT_STORAGE_BUCKET: "wiseeff-test",
       OBJECT_STORAGE_ACCESS_KEY_ID: "key",
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
-      OBJECT_STORAGE_REGION: "ap-southeast-1"
+      OBJECT_STORAGE_REGION: "ap-southeast-1",
+      DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+      HDC_TIMEOUT_MS: "2500",
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
     });
 
     expect(env.NODE_ENV).toBe("test");
@@ -46,7 +50,9 @@ describe("loadServerEnv", () => {
     expect(env.AUTH_TOKEN_ISSUER).toBe("wiseeff-test");
     expect(env.AUTH_TOKEN_HMAC_SECRET).toBe("short-test-secret");
     expect(env.DATABASE_URL).toBe("postgres://wiseeff:wiseeff@localhost:5432/wiseeff");
-    expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
+    expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("hdc");
+    expect(env.HDC_TIMEOUT_MS).toBe(2500);
+    expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(true);
     expect(env.MOCK_RUNTIME_ENABLED).toBe(true);
     expect(env.OBJECT_STORE_MODE).toBe("s3");
     expect(env.OBJECT_STORE_ROOT).toBe("tmp/object-store");
@@ -132,5 +138,31 @@ describe("loadServerEnv", () => {
         AUTH_TOKEN_HMAC_SECRET: "too-short"
       })
     ).toThrow("AUTH_TOKEN_HMAC_SECRET must be at least 32 characters outside tests");
+  });
+
+  it("requires the HDC gateway in production unless simulator staging is explicitly allowed", () => {
+    const productionEnv = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      OBJECT_STORE_MODE: "s3",
+      OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+      OBJECT_STORAGE_BUCKET: "wiseeff-prod",
+      OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      AUTH_MODE: "production",
+      AUTH_TOKEN_ISSUER: "wiseeff-prod",
+      AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length"
+    };
+
+    expect(() => loadServerEnv(productionEnv)).toThrow(
+      "DEBUG_DEVICE_GATEWAY_MODE=hdc is required when NODE_ENV=production. Set DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true only for non-customer staging environments that intentionally run the simulator."
+    );
+
+    expect(
+      loadServerEnv({
+        ...productionEnv,
+        DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      }).DEBUG_DEVICE_GATEWAY_MODE
+    ).toBe("simulator");
   });
 });

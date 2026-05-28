@@ -167,3 +167,12 @@ Device Gateway 健康检查：
 - The built-in HTTP transport issues HEAD/GET/PUT with WiseEff signing headers. It is an M5 runtime seam, not a full AWS SigV4 implementation or cloud-vendor SDK.
 - Pilot smoke should upload a supported log, confirm analysis can read it back, and verify `/health/ready` reports `dependencies.objectStore.status=ready`.
 - Cloud-provider SDK wiring, SigV4/provider-specific signing, bucket provisioning, lifecycle policy, KMS policy, replication, and credential rotation remain post-M5 deployment work unless the target environment has already provided them.
+
+## Device Gateway
+
+- Local and CI debugging smoke defaults to `DEBUG_DEVICE_GATEWAY_MODE=simulator`, which uses the seeded Aurora simulator target.
+- Customer production must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`. Set `HDC_TIMEOUT_MS` to the pilot lab's command timeout budget; the default is `5000`.
+- `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` bypasses the production HDC requirement only for explicitly marked non-customer staging environments.
+- The HDC adapter executes `hdc` with command plus argv arrays and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
+- Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it also requires `DATABASE_URL`, `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, and `HDC_SMOKE_WRITE_VALUE`. Optional settings are `HDC_SMOKE_EXPECT_READ_PATTERN` and `HDC_SMOKE_USER_ID`.
+- The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.

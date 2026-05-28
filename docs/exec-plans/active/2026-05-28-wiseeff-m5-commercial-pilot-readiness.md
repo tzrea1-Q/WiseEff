@@ -938,7 +938,7 @@ git commit -m "feat: add production object storage adapter"
 - Modify: `docs/design-docs/deployment-operations.md`
 - Modify: `docs/exec-plans/tech-debt-tracker.md`
 
-- [ ] **Step 1: Write failing HDC adapter tests**
+- [x] **Step 1: Write failing HDC adapter tests**
 
 Create `server/modules/debugging/hdcGateway.test.ts`:
 
@@ -997,7 +997,7 @@ npm run test:server -- server/modules/debugging/hdcGateway.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement HDC gateway adapter**
+- [x] **Step 2: Implement HDC gateway adapter**
 
 Create `server/modules/debugging/hdcGateway.ts` implementing `DebugDeviceGateway`.
 
@@ -1018,7 +1018,7 @@ npm run test:server -- server/modules/debugging/hdcGateway.test.ts server/module
 
 Expected: PASS.
 
-- [ ] **Step 3: Add gateway mode env gates and service integration**
+- [x] **Step 3: Add gateway mode env gates and service integration**
 
 Update `server/config/env.ts`:
 
@@ -1041,7 +1041,7 @@ npm run test:server -- server/config/env.test.ts server/modules/debugging/routes
 
 Expected: PASS.
 
-- [ ] **Step 4: Add device smoke and docs**
+- [x] **Step 4: Add device smoke and docs**
 
 Update `e2e/debugging.api.spec.ts` or add a tagged smoke case that can run against simulator by default and HDC when `DEBUG_DEVICE_GATEWAY_MODE=hdc`.
 

@@ -25,7 +25,7 @@ export default defineConfig({
         PORT: "8787",
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiURL,
-        DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+        DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",
         OBJECT_STORE_ROOT: process.env.OBJECT_STORE_ROOT ?? ".wiseeff-object-store",
         ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {})
       },
