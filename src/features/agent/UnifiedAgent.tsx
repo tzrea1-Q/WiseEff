@@ -28,6 +28,13 @@ const agentFabSize = 56;
 const agentPanelDesktopWidth = 430;
 const agentDragInset = 14;
 const agentDragThreshold = 4;
+const nonRetryableApprovalErrorCodes = new Set([
+  "NOT_FOUND",
+  "CONFLICT",
+  "APPROVAL_REQUIRED",
+  "INVALID_APPROVAL_STATE",
+  "AGENT_TOOL_FAILED"
+]);
 
 type AgentPosition = {
   right: number;
@@ -83,6 +90,10 @@ function updateParameterAdminQuery(patch: Record<string, string | undefined>) {
     window.history.pushState(null, "", next);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }
+}
+
+function isNonRetryableApprovalError(error: unknown) {
+  return error instanceof WiseEffApiError && nonRetryableApprovalErrorCodes.has(error.code);
 }
 
 function ApiAgentMessage({ message }: { message: AgentMessage }) {
@@ -334,6 +345,34 @@ export function UnifiedAgent({
     }
   };
 
+  const sendApiPrompt = async (value: string, onSettled?: () => void) => {
+    const request = beginApiTurnRequest();
+    if (!request) {
+      return;
+    }
+
+    try {
+      const activeSession = sessionRef.current ?? (await startApiSession());
+      if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
+        return;
+      }
+      const turn = await gateway.sendMessage(activeSession.id, value);
+      if (!isCurrentApiTurnRequest(request)) {
+        return;
+      }
+      applyAgentTurn(turn);
+    } catch {
+      if (isCurrentApiTurnRequest(request)) {
+        addAgentUnavailableMessage();
+      }
+    } finally {
+      if (isCurrentApiTurnRequest(request)) {
+        onSettled?.();
+        finishApiTurnRequest(request);
+      }
+    }
+  };
+
   const decideApiApproval = async (approval: AgentApproval, approved: boolean) => {
     const request = beginApiTurnRequest();
     if (!request) {
@@ -358,7 +397,7 @@ export function UnifiedAgent({
     } catch (error) {
       if (isCurrentApiTurnRequest(request)) {
         addAgentUnavailableMessage();
-        if (error instanceof WiseEffApiError) {
+        if (isNonRetryableApprovalError(error)) {
           setConfirmApproval(null);
         }
       }
@@ -463,31 +502,7 @@ export function UnifiedAgent({
       if (!value) {
         return;
       }
-      const request = beginApiTurnRequest();
-      if (!request) {
-        return;
-      }
-
-      try {
-        const activeSession = sessionRef.current ?? (await startApiSession());
-        if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
-          return;
-        }
-        const turn = await gateway.sendMessage(activeSession.id, value);
-        if (!isCurrentApiTurnRequest(request)) {
-          return;
-        }
-        applyAgentTurn(turn);
-      } catch {
-        if (isCurrentApiTurnRequest(request)) {
-          addAgentUnavailableMessage();
-        }
-      } finally {
-        if (isCurrentApiTurnRequest(request)) {
-          formElement.reset();
-          finishApiTurnRequest(request);
-        }
-      }
+      await sendApiPrompt(value, () => formElement.reset());
       return;
     }
     if (!value) {
@@ -587,7 +602,20 @@ export function UnifiedAgent({
         </div>
         <div className="quick-prompts">
           {plan.prompts.map((prompt) => (
-            <Button key={prompt} type="button" variant="outline" size="sm" onClick={() => setMessages((items) => [`已选择建议问题：${prompt}`, ...items])}>
+            <Button
+              key={prompt}
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={apiControlsDisabled}
+              onClick={() => {
+                if (isApiMode) {
+                  void sendApiPrompt(prompt);
+                  return;
+                }
+                setMessages((items) => [`已选择建议问题：${prompt}`, ...items]);
+              }}
+            >
               {prompt}
             </Button>
           ))}

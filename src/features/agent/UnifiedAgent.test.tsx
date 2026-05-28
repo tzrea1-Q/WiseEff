@@ -19,6 +19,11 @@ const parameterPlan = {
   ]
 } satisfies ReturnType<typeof createAgentPlan>;
 
+const quickPromptPlan = {
+  ...parameterPlan,
+  prompts: ["Summarize review queue"]
+} satisfies ReturnType<typeof createAgentPlan>;
+
 const staleComparisonPlan = {
   shellVariant: "unified-glass-agent",
   contextTitle: "Retired comparison Agent",
@@ -400,6 +405,27 @@ describe("UnifiedAgent permission boundaries", () => {
     expect(screen.getAllByText((_, node) => node?.textContent?.includes("max_concurrent_sessions") ?? false).length).toBeGreaterThan(0);
   });
 
+  it("keeps mock mode quick prompts local without a gateway", () => {
+    const { container } = render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        plan={quickPromptPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Summarize review queue" }));
+
+    expect(
+      Array.from(container.querySelectorAll(".agent-message")).some((message) =>
+        message.textContent?.includes("Summarize review queue")
+      )
+    ).toBe(true);
+  });
+
   it("ignores stale sendMessage responses after API context changes", async () => {
     const oldSend = createDeferred<AgentTurn>();
     const newSession = {
@@ -771,6 +797,125 @@ describe("UnifiedAgent permission boundaries", () => {
     await waitFor(() => expect(gateway.approveToolCall).toHaveBeenCalledWith("agent-session-1", "approval-prompt"));
   });
 
+  it("sends API quick prompts through sendMessage and renders the returned turn", async () => {
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn(async () => ({
+        session: apiSession,
+        messages: [
+          {
+            id: "agent-msg-quick",
+            role: "assistant",
+            content: "Quick prompt API answer.",
+            createdAt: "2026-05-27T00:00:00.000Z"
+          }
+        ],
+        toolCalls: [
+          {
+            id: "tool-call-quick",
+            name: "parameter.summarizeReviewQueue",
+            label: "Quick prompt tool",
+            payload: {},
+            requiresApproval: false,
+            status: "succeeded"
+          }
+        ],
+        approvals: []
+      } satisfies AgentTurn)),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+    const { container } = render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={quickPromptPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Summarize review queue" }));
+
+    expect(await screen.findByText("Quick prompt API answer.")).toBeInTheDocument();
+    expect(screen.getByText("Quick prompt tool")).toBeInTheDocument();
+    expect(screen.getByText("succeeded")).toBeInTheDocument();
+    expect(gateway.sendMessage).toHaveBeenCalledWith("agent-session-1", "Summarize review queue");
+    expect(
+      Array.from(container.querySelectorAll(".agent-message")).some((message) =>
+        message.textContent?.includes("Summarize review queue")
+      )
+    ).toBe(false);
+  });
+
+  it("opens API approvals returned from quick prompts", async () => {
+    const pendingTurn = {
+      session: apiSession,
+      messages: [
+        {
+          id: "agent-msg-quick-approval",
+          role: "assistant",
+          content: "Quick prompt needs approval.",
+          createdAt: "2026-05-27T00:00:00.000Z"
+        }
+      ],
+      toolCalls: [
+        {
+          id: "tool-call-quick-approval",
+          name: "parameter.submitChangeDraft",
+          label: "Quick prompt approval tool",
+          payload: {},
+          requiresApproval: true,
+          status: "pending_approval",
+          approvalId: "approval-quick"
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-quick",
+          toolCallId: "tool-call-quick-approval",
+          title: "Confirm quick prompt",
+          message: "Approve quick prompt?",
+          status: "pending"
+        }
+      ]
+    } satisfies AgentTurn;
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn(async () => pendingTurn),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+
+    render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={quickPromptPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Summarize review queue" }));
+
+    expect(await screen.findByText("Quick prompt needs approval.")).toBeInTheDocument();
+    expect(screen.getByText("Approve quick prompt?")).toBeInTheDocument();
+    expect(gateway.sendMessage).toHaveBeenCalledWith("agent-session-1", "Summarize review queue");
+  });
+
   it("keeps approval dialog retryable when approve fails once", async () => {
     const pendingTurn = {
       session: apiSession,
@@ -865,7 +1010,7 @@ describe("UnifiedAgent permission boundaries", () => {
       sendMessage: vi.fn(async () => pendingTurn),
       runAction: vi.fn(),
       approveToolCall: vi.fn(async () => {
-        throw new WiseEffApiError("AGENT_APPROVAL_NOT_PENDING", "Approval is no longer pending.", {}, "req-backend-error");
+        throw new WiseEffApiError("CONFLICT", "Approval is no longer pending.", {}, "req-backend-error");
       }),
       rejectToolCall: vi.fn()
     };
@@ -896,6 +1041,70 @@ describe("UnifiedAgent permission boundaries", () => {
     await waitFor(() => expect(screen.queryByText("Approve backend error draft?")).not.toBeInTheDocument());
     expect(screen.getByText("pending_approval")).toBeInTheDocument();
     expect(gateway.approveToolCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps approval dialog retryable when approve fails with a retryable backend API error", async () => {
+    const pendingTurn = {
+      session: apiSession,
+      messages: [],
+      toolCalls: [
+        {
+          id: "tool-call-retryable-api-error",
+          name: "parameter.submitChangeDraft",
+          label: "Submit parameter change",
+          payload: {},
+          requiresApproval: true,
+          status: "pending_approval",
+          approvalId: "approval-retryable-api-error"
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-retryable-api-error",
+          toolCallId: "tool-call-retryable-api-error",
+          title: "Confirm retryable API error draft",
+          message: "Approve retryable API error draft?",
+          status: "pending"
+        }
+      ]
+    } satisfies AgentTurn;
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn(async () => pendingTurn),
+      runAction: vi.fn(),
+      approveToolCall: vi
+        .fn()
+        .mockRejectedValueOnce(new WiseEffApiError("INTERNAL_ERROR", "Request failed.", {}, "req-retryable-api-error"))
+        .mockResolvedValueOnce({ ...pendingTurn, approvals: [{ ...pendingTurn.approvals[0], status: "approved" }] } satisfies AgentTurn),
+      rejectToolCall: vi.fn()
+    };
+
+    render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft parameter change" }));
+    expect(await screen.findByText("Approve retryable API error draft?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
+    await waitFor(() => expect(gateway.approveToolCall).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(agentUnavailableMessage)).toBeInTheDocument();
+    expect(screen.getByText("Approve retryable API error draft?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
+    await waitFor(() => expect(gateway.approveToolCall).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Approve retryable API error draft?")).not.toBeInTheDocument());
   });
 
   it("approves and rejects API approval requests from confirmed actions", async () => {
