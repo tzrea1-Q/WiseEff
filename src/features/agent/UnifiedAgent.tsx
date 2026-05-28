@@ -42,6 +42,11 @@ type AgentDragState = {
   moved: boolean;
 };
 
+type ApiTurnRequest = {
+  contextVersion: number;
+  sequence: number;
+};
+
 type UnifiedAgentProps = {
   path: string;
   pageKey: PageKey;
@@ -134,6 +139,40 @@ export function UnifiedAgent({
   const isApiMode = runtimeMode === "api";
   const apiContextKey = `${runtimeMode}|${path}|${pageKey}|${projectId ?? ""}|${roleId ?? ""}`;
   const apiContextVersionRef = useRef(0);
+  const apiTurnLockedRef = useRef(false);
+  const apiTurnSequenceRef = useRef(0);
+
+  const setApiBusyState = (busy: boolean) => {
+    setApiBusy(busy);
+  };
+
+  const isCurrentApiContext = (version: number) => apiContextVersionRef.current === version;
+
+  const beginApiTurnRequest = () => {
+    if (apiTurnLockedRef.current) {
+      return null;
+    }
+
+    const request = {
+      contextVersion: apiContextVersionRef.current,
+      sequence: apiTurnSequenceRef.current + 1
+    };
+    apiTurnSequenceRef.current = request.sequence;
+    apiTurnLockedRef.current = true;
+    setApiBusyState(true);
+    return request;
+  };
+
+  const isCurrentApiTurnRequest = (request: ApiTurnRequest) =>
+    isCurrentApiContext(request.contextVersion) && apiTurnSequenceRef.current === request.sequence;
+
+  const finishApiTurnRequest = (request: ApiTurnRequest) => {
+    if (!isCurrentApiTurnRequest(request)) {
+      return;
+    }
+    apiTurnLockedRef.current = false;
+    setApiBusyState(false);
+  };
 
   useEffect(() => {
     if (!dragging) {
@@ -180,6 +219,8 @@ export function UnifiedAgent({
 
   useEffect(() => {
     apiContextVersionRef.current += 1;
+    apiTurnSequenceRef.current += 1;
+    apiTurnLockedRef.current = false;
     sessionRef.current = null;
     startSessionPromiseRef.current = null;
     setSession(null);
@@ -187,10 +228,8 @@ export function UnifiedAgent({
     setApiToolCalls([]);
     setApiApprovals([]);
     setConfirmApproval(null);
-    setApiBusy(false);
+    setApiBusyState(false);
   }, [apiContextKey, gateway]);
-
-  const isCurrentApiContext = (version: number) => apiContextVersionRef.current === version;
 
   const setCurrentSession = (nextSession: AgentSession) => {
     sessionRef.current = nextSession;
@@ -225,7 +264,6 @@ export function UnifiedAgent({
     }
 
     const requestVersion = apiContextVersionRef.current;
-    setApiBusy(true);
     const promise: Promise<AgentSession | null> = gateway
       .startSession(buildAgentContext({ path, pageKey, projectId, roleId }))
       .then((nextSession) => {
@@ -244,7 +282,6 @@ export function UnifiedAgent({
       })
       .finally(() => {
         if (isCurrentApiContext(requestVersion)) {
-          setApiBusy(false);
           startSessionPromiseRef.current = null;
         }
       });
@@ -253,16 +290,18 @@ export function UnifiedAgent({
   };
 
   const runApiAction = async (id: string) => {
-    const activeSession = sessionRef.current ?? (await startApiSession());
-    if (!gateway || !activeSession) {
+    const request = beginApiTurnRequest();
+    if (!request) {
       return;
     }
 
-    const requestVersion = apiContextVersionRef.current;
-    setApiBusy(true);
     try {
+      const activeSession = sessionRef.current ?? (await startApiSession());
+      if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
+        return;
+      }
       const turn = await gateway.runAction(activeSession.id, id, { actionId: id, path, projectId });
-      if (!isCurrentApiContext(requestVersion)) {
+      if (!isCurrentApiTurnRequest(request)) {
         return;
       }
       applyAgentTurn(turn);
@@ -271,41 +310,43 @@ export function UnifiedAgent({
         setConfirmApproval(pendingApproval);
       }
     } catch {
-      if (isCurrentApiContext(requestVersion)) {
+      if (isCurrentApiTurnRequest(request)) {
         addAgentUnavailableMessage();
       }
     } finally {
-      if (isCurrentApiContext(requestVersion)) {
-        setApiBusy(false);
+      if (isCurrentApiTurnRequest(request)) {
+        finishApiTurnRequest(request);
       }
     }
   };
 
   const decideApiApproval = async (approval: AgentApproval, approved: boolean) => {
-    const activeSession = sessionRef.current;
-    if (!gateway || !activeSession) {
-      setConfirmApproval(null);
+    const request = beginApiTurnRequest();
+    if (!request) {
       return;
     }
 
-    const requestVersion = apiContextVersionRef.current;
-    setApiBusy(true);
     try {
+      const activeSession = sessionRef.current;
+      if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
+        setConfirmApproval(null);
+        return;
+      }
       const turn = approved
         ? await gateway.approveToolCall(activeSession.id, approval.id)
         : await gateway.rejectToolCall(activeSession.id, approval.id, "User cancelled in WiseAgent");
-      if (!isCurrentApiContext(requestVersion)) {
+      if (!isCurrentApiTurnRequest(request)) {
         return;
       }
       applyAgentTurn(turn);
     } catch {
-      if (isCurrentApiContext(requestVersion)) {
+      if (isCurrentApiTurnRequest(request)) {
         addAgentUnavailableMessage();
       }
     } finally {
-      if (isCurrentApiContext(requestVersion)) {
+      if (isCurrentApiTurnRequest(request)) {
         setConfirmApproval(null);
-        setApiBusy(false);
+        finishApiTurnRequest(request);
       }
     }
   };
@@ -401,27 +442,29 @@ export function UnifiedAgent({
       if (!value) {
         return;
       }
-      const activeSession = sessionRef.current ?? (await startApiSession());
-      if (!gateway || !activeSession) {
+      const request = beginApiTurnRequest();
+      if (!request) {
         return;
       }
 
-      const requestVersion = apiContextVersionRef.current;
-      setApiBusy(true);
       try {
+        const activeSession = sessionRef.current ?? (await startApiSession());
+        if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
+          return;
+        }
         const turn = await gateway.sendMessage(activeSession.id, value);
-        if (!isCurrentApiContext(requestVersion)) {
+        if (!isCurrentApiTurnRequest(request)) {
           return;
         }
         applyAgentTurn(turn);
       } catch {
-        if (isCurrentApiContext(requestVersion)) {
+        if (isCurrentApiTurnRequest(request)) {
           addAgentUnavailableMessage();
         }
       } finally {
-        if (isCurrentApiContext(requestVersion)) {
+        if (isCurrentApiTurnRequest(request)) {
           formElement.reset();
-          setApiBusy(false);
+          finishApiTurnRequest(request);
         }
       }
       return;
@@ -445,6 +488,7 @@ export function UnifiedAgent({
     const requiredAction = action.requiredPermission;
     return !requiredAction || canPerform(state.activeRoleId, requiredAction);
   });
+  const apiControlsDisabled = isApiMode && apiBusy;
 
   const startDraggingAgent = (event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -550,6 +594,7 @@ export function UnifiedAgent({
               key={action.id}
               type="button"
               variant={action.requiresConfirm ? "default" : "outline"}
+              disabled={apiControlsDisabled}
               onClick={() => {
                 if (isApiMode) {
                   void runApiAction(action.id);
@@ -569,8 +614,8 @@ export function UnifiedAgent({
         </div>
       </div>
       <form className="agent-input" onSubmit={submitPrompt}>
-        <Input name="agentPrompt" placeholder="询问 WiseAgent..." />
-        <Button type="submit" aria-label="发送" size="icon">
+        <Input name="agentPrompt" placeholder="询问 WiseAgent..." disabled={apiControlsDisabled} />
+        <Button type="submit" aria-label="发送" size="icon" disabled={apiControlsDisabled}>
           <Send size={17} />
         </Button>
       </form>
@@ -578,6 +623,7 @@ export function UnifiedAgent({
         <ConfirmDialog
           title={confirmApproval.title}
           message={confirmApproval.message}
+          disabled={apiControlsDisabled}
           onCancel={() => void decideApiApproval(confirmApproval, false)}
           onConfirm={() => void decideApiApproval(confirmApproval, true)}
         />
@@ -611,6 +657,7 @@ function ConfirmDialog({
   message,
   cancelLabel = "\u53d6\u6d88",
   confirmLabel = "\u786e\u8ba4\u6267\u884c",
+  disabled = false,
   onCancel,
   onConfirm
 }: {
@@ -618,19 +665,20 @@ function ConfirmDialog({
   message: string;
   cancelLabel?: string;
   confirmLabel?: string;
+  disabled?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   const decisionHandledRef = useRef(false);
   const cancelOnce = () => {
-    if (decisionHandledRef.current) {
+    if (disabled || decisionHandledRef.current) {
       return;
     }
     decisionHandledRef.current = true;
     onCancel();
   };
   const confirmOnce = () => {
-    if (decisionHandledRef.current) {
+    if (disabled || decisionHandledRef.current) {
       return;
     }
     decisionHandledRef.current = true;
@@ -645,8 +693,8 @@ function ConfirmDialog({
           <AlertDialogDescription>{message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel type="button" onClick={cancelOnce}>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction type="button" onClick={confirmOnce}>{confirmLabel}</AlertDialogAction>
+          <AlertDialogCancel type="button" onClick={cancelOnce} disabled={disabled}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction type="button" onClick={confirmOnce} disabled={disabled}>{confirmLabel}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

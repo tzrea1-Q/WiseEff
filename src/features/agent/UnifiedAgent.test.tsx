@@ -256,6 +256,148 @@ describe("UnifiedAgent permission boundaries", () => {
     expect(await screen.findByText(agentUnavailableMessage)).toBeInTheDocument();
   });
 
+  it("prevents duplicate API prompt submissions while a send is pending", async () => {
+    const pendingSend = createDeferred<AgentTurn>();
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn().mockReturnValueOnce(pendingSend.promise),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+
+    render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    await waitFor(() => expect(gateway.startSession).toHaveBeenCalled());
+    const promptInput = screen.getByPlaceholderText(/WiseAgent/);
+    const sendButton = promptInput.closest("form")!.querySelector("button")!;
+    fireEvent.change(promptInput, { target: { value: "Summarize review queue" } });
+    fireEvent.submit(promptInput.closest("form")!);
+    fireEvent.submit(promptInput.closest("form")!);
+
+    expect(gateway.sendMessage).toHaveBeenCalledTimes(1);
+    expect(promptInput).toBeDisabled();
+    expect(sendButton).toBeDisabled();
+
+    await act(async () => {
+      pendingSend.resolve({
+        session: apiSession,
+        messages: [
+          {
+            id: "agent-msg-pending",
+            role: "assistant",
+            content: "Pending prompt answered.",
+            createdAt: "2026-05-27T00:00:00.000Z"
+          }
+        ],
+        toolCalls: [],
+        approvals: []
+      } satisfies AgentTurn);
+      await pendingSend.promise;
+    });
+
+    expect(await screen.findByText("Pending prompt answered.")).toBeInTheDocument();
+    await waitFor(() => expect(promptInput).not.toBeDisabled());
+    expect(sendButton).not.toBeDisabled();
+  });
+
+  it("prevents duplicate API action clicks while an action is pending", async () => {
+    const pendingAction = createDeferred<AgentTurn>();
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn(),
+      runAction: vi.fn().mockReturnValueOnce(pendingAction.promise),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+
+    render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    await waitFor(() => expect(gateway.startSession).toHaveBeenCalled());
+    const actionButton = await screen.findByRole("button", { name: "Filter high risk" });
+    fireEvent.click(actionButton);
+    fireEvent.click(actionButton);
+
+    expect(gateway.runAction).toHaveBeenCalledTimes(1);
+    expect(actionButton).toBeDisabled();
+
+    await act(async () => {
+      pendingAction.resolve({
+        session: apiSession,
+        messages: [],
+        toolCalls: [
+          {
+            id: "tool-call-pending",
+            name: "parameter.summarizeReviewQueue",
+            label: "Pending action tool",
+            payload: {},
+            requiresApproval: false,
+            status: "succeeded"
+          }
+        ],
+        approvals: []
+      } satisfies AgentTurn);
+      await pendingAction.promise;
+    });
+
+    expect(await screen.findByText("Pending action tool")).toBeInTheDocument();
+    await waitFor(() => expect(actionButton).not.toBeDisabled());
+  });
+
+  it("keeps mock mode prompt and actions enabled", () => {
+    render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    const promptInput = screen.getByPlaceholderText(/WiseAgent/);
+    const sendButton = promptInput.closest("form")!.querySelector("button")!;
+    const actionButton = screen.getByRole("button", { name: "Filter high risk" });
+
+    expect(promptInput).not.toBeDisabled();
+    expect(sendButton).not.toBeDisabled();
+    expect(actionButton).not.toBeDisabled();
+
+    fireEvent.change(promptInput, { target: { value: "Local prompt" } });
+    fireEvent.submit(promptInput.closest("form")!);
+    expect(promptInput).toHaveValue("");
+
+    fireEvent.click(actionButton);
+    expect(screen.getAllByText((_, node) => node?.textContent?.includes("max_concurrent_sessions") ?? false).length).toBeGreaterThan(0);
+  });
+
   it("ignores stale sendMessage responses after API context changes", async () => {
     const oldSend = createDeferred<AgentTurn>();
     const newSession = {
