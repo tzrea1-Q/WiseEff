@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
+import type { AuthContext } from "../auth/types";
 import type { AgentToolExecutionContext } from "./toolRegistry";
 import { createAgentOrchestrator } from "./orchestrator";
 import { createDeterministicAgentProvider } from "./provider";
@@ -268,6 +269,7 @@ function createRegistry(
       }
       return definition;
     }),
+    authorize: vi.fn(),
     run: vi.fn(run)
   };
 }
@@ -586,6 +588,53 @@ describe("agent orchestrator", () => {
     ).rejects.toMatchObject({ code: "CONFLICT" });
 
     expect(registry.run).not.toHaveBeenCalled();
+  });
+
+  it("approveToolCall preserves pending approval state when approval-time authorization fails", async () => {
+    const { db, tables } = createMemoryDb();
+    const guestAuthContext: AuthContext = {
+      ...developmentAuthContext,
+      user: { ...developmentAuthContext.user, id: "u-guest" },
+      roles: [{ projectId: "aurora", roleId: "guest" }],
+      permissions: ["parameter:view"]
+    };
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    registry.authorize.mockImplementationOnce(() => {
+      throw new ApiError("FORBIDDEN", "Missing permission: parameter:edit.", 403, { permission: "parameter:edit" });
+    });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-tool",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "Stage draft" }
+      }
+    });
+
+    await expect(
+      orchestrator.approveToolCall({
+        auth: guestAuthContext,
+        requestId: "req-approve",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "Looks safe"
+      })
+    ).rejects.toMatchObject({ code: "FORBIDDEN", status: 403 });
+
+    expect(registry.authorize).toHaveBeenCalledTimes(1);
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(tables.approvals[0]).toMatchObject({ status: "pending", decided_by_user_id: null });
+    expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval", error_message: null });
   });
 
   it("approveToolCall records a failed tool call and failure audit when execution fails after approval claim", async () => {

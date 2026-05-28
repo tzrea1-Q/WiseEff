@@ -495,7 +495,9 @@ describe("agent routes", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(tables.approvals.find((approval) => approval.id === approvalId)?.status).toBe("pending");
+    const approval = tables.approvals.find((item) => item.id === approvalId);
+    expect(approval?.status).toBe("pending");
+    expect(tables.toolCalls.find((toolCall) => toolCall.id === approval?.tool_call_id)?.status).toBe("pending_approval");
     expect(tables.parameterDrafts).toHaveLength(0);
   });
 
@@ -515,9 +517,9 @@ describe("agent routes", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
-    expect(tables.approvals.find((approval) => approval.id === approvalId)?.status).toBe("approved");
     const approval = tables.approvals.find((item) => item.id === approvalId);
-    expect(tables.toolCalls.find((toolCall) => toolCall.id === approval?.tool_call_id)?.status).toBe("failed");
+    expect(approval?.status).toBe("pending");
+    expect(tables.toolCalls.find((toolCall) => toolCall.id === approval?.tool_call_id)?.status).toBe("pending_approval");
     expect(tables.parameterDrafts).toHaveLength(0);
   });
 

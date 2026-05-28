@@ -354,6 +354,14 @@ export function createAgentOrchestrator(options: {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
     }
 
+    const executionContext: AgentToolExecutionContext = {
+      auth: input.auth,
+      requestId: input.requestId,
+      sessionId: approval.sessionId,
+      projectId: toolCall.projectId ?? approval.projectId
+    };
+    toolRegistry.authorize(toolCall.name, executionContext, toolCall.payload);
+
     const approved = await markAgentApprovalApproved(db, input.auth.organization.id, approval.id, input.auth.user.id);
     if (!approved) {
       throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
@@ -361,16 +369,7 @@ export function createAgentOrchestrator(options: {
 
     let result;
     try {
-      result = await toolRegistry.run(
-        toolCall.name,
-        {
-          auth: input.auth,
-          requestId: input.requestId,
-          sessionId: approval.sessionId,
-          projectId: toolCall.projectId ?? approval.projectId
-        },
-        toolCall.payload
-      );
+      result = await toolRegistry.run(toolCall.name, executionContext, toolCall.payload);
     } catch (error) {
       const failed = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
         status: "failed",

@@ -35,6 +35,13 @@ function requireScopedProjectOrGlobalAdmin(context: AgentToolExecutionContext, p
   }
 }
 
+function authorizeTool(tool: AgentToolDefinition, context: AgentToolExecutionContext, payload: Record<string, unknown>) {
+  const projectId = readEffectiveProjectId(context, payload);
+  requireAgentPermission(context.auth, tool.permission);
+  requireScopedProjectOrGlobalAdmin(context, projectId);
+  requireAgentProjectAccess(context.auth, projectId);
+}
+
 export function createAgentToolRegistry(options: { db: Database | { query: Database["query"] } }) {
   const tools = [
     ...createParameterTools(options),
@@ -54,12 +61,13 @@ export function createAgentToolRegistry(options: { db: Database | { query: Datab
       }
       return tool;
     },
+    authorize(name: AgentToolName, context: AgentToolExecutionContext, payload: Record<string, unknown>) {
+      const tool = this.require(name);
+      authorizeTool(tool, context, payload);
+    },
     async run(name: AgentToolName, context: AgentToolExecutionContext, payload: Record<string, unknown>) {
       const tool = this.require(name);
-      const projectId = readEffectiveProjectId(context, payload);
-      requireAgentPermission(context.auth, tool.permission);
-      requireScopedProjectOrGlobalAdmin(context, projectId);
-      requireAgentProjectAccess(context.auth, projectId);
+      authorizeTool(tool, context, payload);
       return tool.run(context, payload);
     }
   };
