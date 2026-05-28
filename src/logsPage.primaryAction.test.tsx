@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { getContextQuery } from "./App";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
+import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
@@ -82,11 +83,22 @@ function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): Lo
   };
 }
 
+function createDebuggingGateway(): DebuggingGateway {
+  return {
+    listDevices: vi.fn().mockResolvedValue([]),
+    listParameters: vi.fn().mockResolvedValue([]),
+    detectTargets: vi.fn().mockResolvedValue([]),
+    readNode: vi.fn(),
+    writeNode: vi.fn()
+  };
+}
+
 function renderApiLogs(repository = createLogRepository()) {
   window.history.replaceState(null, "", "/logs");
   render(
     <App
       authClient={createAuthClient()}
+      debuggingGateway={createDebuggingGateway()}
       initialAppState={userState}
       logAnalysisRepository={repository}
       parameterRepository={createParameterRepository()}
@@ -98,9 +110,7 @@ function renderApiLogs(repository = createLogRepository()) {
 
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await waitFor(() => expect(document.body).toHaveTextContent("Connected to WiseEff debugging API"));
 }
 
 afterEach(() => {

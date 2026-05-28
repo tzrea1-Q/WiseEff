@@ -53,23 +53,29 @@ function toolNameForAction(actionId: string): AgentToolCall["name"] {
 }
 
 function toolCallsForPath(path: string): AgentToolCall[] {
+  const createdAt = nowIso();
   return createAgentPlan(path).actions.map((action) => ({
     id: `tool-${action.id}`,
     name: toolNameForAction(action.id),
     label: action.label,
     payload: { actionId: action.id, path },
-    requiresApproval: action.requiresConfirm
+    requiresApproval: action.requiresConfirm,
+    status: action.requiresConfirm ? "pending_approval" : "succeeded",
+    createdAt
   }));
 }
 
 function approvalsForToolCalls(toolCalls: AgentToolCall[]): AgentApproval[] {
+  const createdAt = nowIso();
   return toolCalls
     .filter((toolCall) => toolCall.requiresApproval)
     .map((toolCall) => ({
       id: `approval-${toolCall.id}`,
       toolCallId: toolCall.id,
       title: "确认执行 Agent 动作",
-      message: `${toolCall.label} 会改变当前业务状态，需要人工确认。`
+      message: `${toolCall.label} 会改变当前业务状态，需要人工确认。`,
+      status: "pending",
+      createdAt
     }));
 }
 
@@ -151,9 +157,50 @@ export function createMockAgentGateway(): AgentGateway {
 
     async approveToolCall(sessionId: string, approvalId: string) {
       const turn = createTurn(getSession(sessionId), `已确认 ${approvalId}`);
-      sessions.set(sessionId, turn.session);
+      const decidedAt = nowIso();
+      const approvedToolCallId = approvalId.replace(/^approval-/, "");
+      const matchingToolCall = turn.toolCalls.find((toolCall) => toolCall.id === approvedToolCallId);
+      const matchingApproval = turn.approvals.find((approval) => approval.id === approvalId);
+      const nextTurn: AgentTurn = {
+        ...turn,
+        toolCalls: matchingToolCall ? [{ ...matchingToolCall, status: "succeeded" }] : [],
+        approvals: matchingApproval
+          ? [
+              {
+                ...matchingApproval,
+                status: "approved",
+                decidedAt
+              }
+            ]
+          : []
+      };
+      sessions.set(sessionId, nextTurn.session);
 
-      return turn;
+      return nextTurn;
+    },
+
+    async rejectToolCall(sessionId: string, approvalId: string, reason?: string) {
+      const rejectedToolCallId = approvalId.replace(/^approval-/, "");
+      const turn = createTurn(getSession(sessionId), `Rejected ${approvalId}`);
+      const nextTurn: AgentTurn = {
+        ...turn,
+        toolCalls: turn.toolCalls.map((toolCall) =>
+          toolCall.id === rejectedToolCallId ? { ...toolCall, status: "rejected" } : toolCall
+        ),
+        approvals: turn.approvals.map((approval) =>
+          approval.id === approvalId
+            ? {
+                ...approval,
+                status: "rejected",
+                decidedAt: nowIso(),
+                reason
+              }
+            : approval
+        )
+      };
+      sessions.set(sessionId, nextTurn.session);
+
+      return nextTurn;
     }
   };
 }

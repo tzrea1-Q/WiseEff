@@ -14,7 +14,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including M0-M3 productization work, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
+Completed historical plans are preserved under `exec-plans/completed/`, including M0-M4 productization work, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
 
 ## Plan Rules
 

@@ -1,3 +1,5 @@
+import type { BackendPermission } from "../auth/types";
+
 export type AgentToolName =
   | "parameter.scanOrphans"
   | "parameter.draftCleanupPlan"
@@ -26,16 +28,10 @@ export type AgentCitation = {
 };
 
 export type AgentToolStatus = "requested" | "pending_approval" | "running" | "succeeded" | "failed" | "rejected";
-
 export type AgentApprovalStatus = "pending" | "approved" | "rejected";
+export type AgentToolKind = "read" | "preparation" | "mutating";
 
-export type AgentToolResult = {
-  summary: string;
-  data: Record<string, unknown>;
-  citations: AgentCitation[];
-};
-
-export type AgentMessage = {
+export type AgentMessageDto = {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
@@ -44,7 +40,13 @@ export type AgentMessage = {
   createdAt: string;
 };
 
-export type AgentToolCall = {
+export type AgentToolResult = {
+  summary: string;
+  data: Record<string, unknown>;
+  citations: AgentCitation[];
+};
+
+export type AgentToolCallDto = {
   id: string;
   name: AgentToolName;
   label: string;
@@ -59,7 +61,7 @@ export type AgentToolCall = {
   completedAt?: string;
 };
 
-export type AgentApproval = {
+export type AgentApprovalDto = {
   id: string;
   toolCallId: string;
   title: string;
@@ -71,15 +73,23 @@ export type AgentApproval = {
   reason?: string;
 };
 
-export type AgentSession = {
+export type AgentSessionDto = {
   id: string;
   context: AgentContext;
-  messages: AgentMessage[];
+  messages: AgentMessageDto[];
 };
 
-export type AgentTurn = {
-  session: AgentSession;
-  messages: AgentMessage[];
-  toolCalls: AgentToolCall[];
-  approvals: AgentApproval[];
+export type AgentTurnDto = {
+  session: AgentSessionDto;
+  messages: AgentMessageDto[];
+  toolCalls: AgentToolCallDto[];
+  approvals: AgentApprovalDto[];
+};
+
+export type AgentToolDefinition = {
+  name: AgentToolName;
+  label: string;
+  kind: AgentToolKind;
+  permission: BackendPermission;
+  requiresApproval: boolean;
 };

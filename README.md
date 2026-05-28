@@ -110,6 +110,12 @@ npm run test:m3-5
 Run the M3.5 commercial-readiness gate: frontend tests, backend tests, production build, then the simulator debugging API smoke. Use this before starting M4 Agent work in an environment with `DATABASE_URL`, `OBJECT_STORE_ROOT=.wiseeff-object-store`, and `DEBUG_DEVICE_GATEWAY_MODE=simulator`.
 
 ```bash
+npm run test:m4
+```
+
+Run the M4 Agent acceptance gate: frontend tests, backend tests, production build, then `e2e/agent.api.spec.ts`. The smoke requires `DATABASE_URL`, seeds M0/M1 data, starts API mode, opens WiseAgent on `/parameters`, sends a prompt through `AgentGateway`, and verifies a persisted approval-required parameter draft tool call.
+
+```bash
 npm run preview
 ```
 
@@ -171,6 +177,12 @@ M3.5 commercial-readiness verification:
 1. Run `npm run test:all` and `npm run build` on every M3.5 change.
 2. When PostgreSQL is available, export `DATABASE_URL`, then run `npm run test:m3-5`.
 3. Confirm `/health/ready` reports database and object-store readiness before treating a local/staging API process as pilot-ready.
+
+M4 Agent verification:
+
+1. Start PostgreSQL and export `DATABASE_URL`.
+2. Run `npm run test:m4`.
+3. Verify the WiseAgent API-mode smoke shows confidence rendering and an approval-required `Create parameter draft` tool call. Citation rendering remains covered by Agent DTO/runtime/UI tests. M4 uses deterministic provider logic rather than a live LLM provider.
 
 生产构建不允许使用 `mock` 作为业务数据源。
 

@@ -89,6 +89,24 @@ function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): D
   };
 }
 
+function createResolvedAuthClient() {
+  return {
+    getCurrentAuthContext: vi.fn(async () => ({
+      user: {
+        id: "u-api-user",
+        organizationId: "org-chargelab",
+        name: "API User",
+        email: "api-user@chargelab.cn",
+        title: "API Parameter User",
+        isActive: true
+      },
+      organization: { id: "org-chargelab", name: "ChargeLab" },
+      roles: [{ projectId: null, roleId: "user" }],
+      permissions: ["parameter:edit"]
+    }))
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -256,6 +274,23 @@ describe("WiseEff app shell", () => {
     expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the API Agent gateway into UnifiedAgent in api mode", async () => {
+    window.history.replaceState(null, "", "/parameters");
+    const agentGateway = {
+      startSession: vi.fn(async () => ({ id: "agent-session-1", context: { path: "/parameters", pageKey: "parameters" }, messages: [] })),
+      sendMessage: vi.fn(),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+
+    render(<App runtimeMode="api" agentGateway={agentGateway} authClient={createResolvedAuthClient()} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开 WiseAgent" }));
+
+    expect(await screen.findByText(/项目参数巡检 Agent/)).toBeInTheDocument();
+    expect(agentGateway.startSession).toHaveBeenCalled();
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {

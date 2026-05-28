@@ -66,6 +66,20 @@ The runtime coordinator hydrates devices and debugging parameters after auth, de
 
 The M3 API smoke lives in `e2e/debugging.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m3`. Playwright starts the backend with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and the frontend with `VITE_WISEEFF_RUNTIME_MODE=api`.
 
+## Agent Gateway
+
+`AgentGateway` is the frontend port for M4 WiseAgent API mode. `src/infrastructure/http/agentClient.ts` maps it to `/api/v1/agent` sessions, messages, persisted tool-call runs, and approval approve/reject endpoints.
+
+Runtime split:
+
+- `mock` mode preserves the existing UnifiedAgent plan prompts, local messages, and confirmation behavior for demos and component tests.
+- `api` mode creates an Agent session from the current path, page key, project, role, and auth context, then sends prompts through `sendMessage`.
+- API-mode quick prompts and plan actions also enter through `sendMessage`; the persisted tool-call run endpoint is only for existing backend-created toolCall ids.
+
+`UnifiedAgent` renders API assistant confidence as a percentage and shows citations from returned messages. Approval-required tool calls open the existing confirmation dialog and call `approveToolCall` or `rejectToolCall`; mutating tools remain backend-gated by approval state, authz, and audit.
+
+The M4 API smoke lives in `e2e/agent.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
+
 ## Commercial Readiness Notes
 
 M3.5 keeps the frontend architecture unchanged: pages still call `application/ports`, mock mode remains available for demos/tests, and API mode remains the production-oriented path. The backend now reflects `X-Request-Id` and propagates it into M1 parameter, M2 log, and M3 debugging audit traces, so HTTP client calls can be correlated with backend audit evidence.
@@ -99,6 +113,12 @@ Commercial-readiness gate:
 
 ```bash
 npm run test:m3-5
+```
+
+Agent acceptance gate:
+
+```bash
+npm run test:m4
 ```
 
 Testing priorities:

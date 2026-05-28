@@ -1,6 +1,6 @@
 import type { HttpMethod } from "../../shared/http/router";
 
-export type RouteModule = "auth" | "audit" | "parameters" | "logs" | "jobs" | "debugging" | "operations";
+export type RouteModule = "auth" | "audit" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
 export type RouteStability = "mvp" | "commercial-readiness";
 
 export type RouteManifestEntry = {
@@ -100,6 +100,30 @@ export const routeManifest = [
     method: "POST",
     path: "/api/v1/debugging/snapshots/:snapshotId/rollback",
     module: "debugging",
+    stability: "mvp"
+  },
+
+  { id: "agent.createSession", method: "POST", path: "/api/v1/agent/sessions", module: "agent", stability: "mvp" },
+  { id: "agent.sendMessage", method: "POST", path: "/api/v1/agent/sessions/:sessionId/messages", module: "agent", stability: "mvp" },
+  {
+    id: "agent.runToolCall",
+    method: "POST",
+    path: "/api/v1/agent/sessions/:sessionId/tool-calls/:toolCallId/run",
+    module: "agent",
+    stability: "mvp"
+  },
+  {
+    id: "agent.approveToolCall",
+    method: "POST",
+    path: "/api/v1/agent/sessions/:sessionId/approvals/:approvalId/approve",
+    module: "agent",
+    stability: "mvp"
+  },
+  {
+    id: "agent.rejectToolCall",
+    method: "POST",
+    path: "/api/v1/agent/sessions/:sessionId/approvals/:approvalId/reject",
+    module: "agent",
     stability: "mvp"
   },
 

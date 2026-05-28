@@ -63,6 +63,14 @@ Current endpoints:
 - Current residual UI gap: API write snapshots created on `/node-debugging` are not yet automatically surfaced in the `/debugging` rollback card. The backend rollback API and audit path are verified by M3 E2E; UI state promotion remains tracked as technical debt.
 - Production HDC gateway work remains open: real target discovery, connection leasing, command timeout policy, stderr normalization, and safe device-lab rollout.
 
+## M4 Agent Operations
+
+- PostgreSQL is the source of truth for Agent sessions, messages, tool calls, approvals, and run traces.
+- Tool failures must preserve conversation state, append readable failure context where possible, and keep audit records correlated by request id.
+- Approval execution is idempotent by approval state: only `pending` approvals can transition to `approved` or `rejected`; repeated approval attempts return `INVALID_APPROVAL_STATE`.
+- Approval-time execution must re-check authz and current business state before running the tool. If that check fails, the pending approval and tool call remain retryable.
+- `parameter.submitChangeDraft` creates human-review drafts only; it does not merge or apply production parameter values.
+
 ## Rollback Expectations
 
 - Frontend static assets should be quickly reversible.

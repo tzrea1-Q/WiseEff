@@ -8,15 +8,20 @@ describe("routeManifest", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("covers the M1-M3 commercial readiness route groups", () => {
+  it("covers the M1-M4 commercial readiness route groups", () => {
     const groups = [...new Set(routeManifest.map((route) => route.module))];
 
-    expect(groups).toEqual(expect.arrayContaining(["parameters", "logs", "jobs", "debugging", "operations"]));
+    expect(groups).toEqual(expect.arrayContaining(["parameters", "logs", "jobs", "debugging", "agent", "operations"]));
   });
 
-  it("locks high-risk M1-M3 route paths", () => {
+  it("locks high-risk M1-M4 route paths", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          id: "agent.approveToolCall",
+          method: "POST",
+          path: "/api/v1/agent/sessions/:sessionId/approvals/:approvalId/approve"
+        }),
         expect.objectContaining({
           id: "debugging.writeNode",
           method: "POST",

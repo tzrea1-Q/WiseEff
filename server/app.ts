@@ -1,4 +1,5 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
+import { registerAgentRoutes } from "./modules/agent/routes";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import { registerJobRoutes } from "./modules/jobs/routes";
@@ -45,6 +46,10 @@ export function createWiseEffServer(
   registerDebuggingRoutes(router, {
     db: options.db,
     debugGateway: options.debugGateway,
+    getCurrentAuthContext: (request) => getCurrentAuthContext(options, request)
+  });
+  registerAgentRoutes(router, {
+    db: options.db,
     getCurrentAuthContext: (request) => getCurrentAuthContext(options, request)
   });
 

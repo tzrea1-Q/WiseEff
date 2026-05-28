@@ -15,6 +15,11 @@ describe("mock agent gateway", () => {
     expect(turn.session.messages.length).toBeGreaterThan(session.messages.length);
     expect(turn.toolCalls.map((toolCall) => toolCall.name)).toContain("parameter.scanOrphans");
     expect(turn.approvals.some((approval) => approval.toolCallId === "tool-draft-cleanup")).toBe(true);
+    expect(turn.toolCalls.find((toolCall) => toolCall.id === "tool-scan-orphans")?.status).toBe("succeeded");
+    expect(turn.toolCalls.find((toolCall) => toolCall.id === "tool-draft-cleanup")?.status).toBe("pending_approval");
+    expect(turn.approvals.find((approval) => approval.toolCallId === "tool-draft-cleanup")?.status).toBe("pending");
+    expect(turn.toolCalls.find((toolCall) => toolCall.id === "tool-scan-orphans")?.createdAt).toEqual(expect.any(String));
+    expect(turn.approvals.find((approval) => approval.toolCallId === "tool-draft-cleanup")?.createdAt).toEqual(expect.any(String));
   });
 
   it("persists session messages across actions and approvals", async () => {
@@ -43,6 +48,37 @@ describe("mock agent gateway", () => {
     const approvalTurn = await gateway.approveToolCall(session.id, "approval-tool-draft-cleanup");
 
     expect(approvalTurn.session.messages.length).toBeGreaterThan(actionTurn.session.messages.length);
+    expect(approvalTurn.toolCalls.map((toolCall) => toolCall.id)).toEqual(["tool-draft-cleanup"]);
+    expect(approvalTurn.toolCalls[0].status).toBe("succeeded");
+    expect(approvalTurn.approvals).toHaveLength(1);
+    expect(approvalTurn.approvals[0]).toMatchObject({
+      id: "approval-tool-draft-cleanup",
+      status: "approved"
+    });
+    expect(approvalTurn.approvals[0].decidedAt).toEqual(expect.any(String));
+  });
+
+  it("returns a rejected approval turn when rejecting a tool call", async () => {
+    const gateway = createMockAgentGateway();
+    const session = await gateway.startSession({
+      path: "/parameter-admin",
+      pageKey: "parameter-admin",
+      projectId: "aurora"
+    });
+    const actionTurn = await gateway.runAction(session.id, "draft-cleanup", { source: "test" });
+
+    const rejectionTurn = await gateway.rejectToolCall(session.id, "approval-tool-draft-cleanup", "Needs clearer evidence");
+
+    expect(actionTurn.approvals[0]).toMatchObject({
+      id: "approval-tool-draft-cleanup",
+      status: "pending"
+    });
+    expect(rejectionTurn.session.messages.length).toBeGreaterThan(actionTurn.session.messages.length);
+    expect(rejectionTurn.toolCalls.find((toolCall) => toolCall.id === "tool-draft-cleanup")?.status).toBe("rejected");
+    expect(rejectionTurn.approvals.find((approval) => approval.id === "approval-tool-draft-cleanup")).toMatchObject({
+      status: "rejected",
+      reason: "Needs clearer evidence"
+    });
   });
 
   it("maps log checklist actions to the log checklist tool", async () => {

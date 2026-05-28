@@ -99,6 +99,16 @@ DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff DEBUG_DEVICE_GATE
 
 The smoke proves the simulator target is detected, fast charge current reads `3000`, writing `3100` succeeds with readback, `Cycle count` is not writable from the UI, `Readback mismatch probe` reports mismatch text, rollback returns fast charge current to `3000`, and debugging write/rollback audit events exist. If `/debugging` has no enabled rollback card for an API write snapshot, the test records that UI-state gap and verifies rollback through the backend API rather than faking the UI path.
 
+Current M4 acceptance command:
+
+```bash
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m4
+```
+
+`npm run test:m4` runs `npm run test:all`, `npm run build`, and `npm run test:e2e -- e2e/agent.api.spec.ts`. The M4 Playwright smoke runs migrations and seeds `db:seed:m0` and `db:seed:m1`, opens `/parameters` in API mode, starts WiseAgent, sends a prompt through `sendMessage`, and verifies the deterministic provider returns confidence plus an approval-required `Create parameter draft` tool call.
+
+Agent test coverage must include route envelopes, schema validation, deterministic provider planning, tool registry permission checks, approval creation, approval approve/reject transitions, stale approval rejection, and UnifiedAgent runtime rendering. Negative tests should cover `APPROVAL_REQUIRED`, `INVALID_APPROVAL_STATE`, `FORBIDDEN`, `VALIDATION_FAILED`, wrong-session approvals, inactive users, missing permissions, and tool execution failures.
+
 ## 6. 契约测试
 
 每次 API 合同变更必须：

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { reducer } from "./App";
 import { logRuntimeFailureNotification } from "@/application/logs/logRuntime";
+import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
@@ -71,11 +72,22 @@ function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): Lo
   };
 }
 
+function createDebuggingGateway(): DebuggingGateway {
+  return {
+    listDevices: vi.fn().mockResolvedValue([]),
+    listParameters: vi.fn().mockResolvedValue([]),
+    detectTargets: vi.fn().mockResolvedValue([]),
+    readNode: vi.fn(),
+    writeNode: vi.fn()
+  };
+}
+
 function renderApiLogs(repository = createLogRepository()) {
   window.history.replaceState(null, "", "/logs");
   render(
     <App
       authClient={createAuthClient()}
+      debuggingGateway={createDebuggingGateway()}
       initialAppState={userState}
       logAnalysisRepository={repository}
       parameterRepository={createParameterRepository()}
@@ -87,9 +99,7 @@ function renderApiLogs(repository = createLogRepository()) {
 
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
-  await act(async () => {
-    await Promise.resolve();
-  });
+  await waitFor(() => expect(document.body).toHaveTextContent("Connected to WiseEff debugging API"));
 }
 
 function openUploadDialog() {
@@ -239,8 +249,9 @@ describe("LogsPage api upload wiring", () => {
   });
 
   it("keeps the dialog open and shows the runtime failure notification when upload rejects", async () => {
+    const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockRejectedValue(new Error("boom")) }));
+    await waitForApiRuntime(repository);
     vi.useFakeTimers();
-    renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockRejectedValue(new Error("boom")) }));
 
     openUploadDialog();
     chooseFile(new File(["line"], "reject.log", { type: "text/plain" }));
@@ -269,7 +280,6 @@ describe("LogsPage api upload wiring", () => {
   });
 
   it("does not close the dialog from stale pending upload state after upload rejects", async () => {
-    vi.useFakeTimers();
     const hydratedLog = {
       ...apiLog,
       id: "api-hydrated-log",
@@ -282,6 +292,8 @@ describe("LogsPage api upload wiring", () => {
         listLogs: vi.fn().mockReturnValue(refresh.promise)
       })
     );
+    await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
+    vi.useFakeTimers();
 
     openUploadDialog();
     chooseFile(new File(["line"], "reject.log", { type: "text/plain" }));
