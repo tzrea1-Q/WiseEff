@@ -2,7 +2,39 @@ import { describe, expect, it } from "vitest";
 import { developmentAuthContext } from "../../auth/routes";
 import { createParameterTools } from "./parameterTools";
 
+function normalizeSql(sql: string) {
+  return sql.replace(/\s+/g, " ").trim();
+}
+
+function expectProjectScopedOrphanJoin(sql: string) {
+  const normalized = normalizeSql(sql);
+
+  expect(normalized).toContain(
+    "left join project_parameter_values ppv on ppv.parameter_definition_id = pd.id and ppv.organization_id = pd.organization_id and ($2::text is null or ppv.project_id = $2)"
+  );
+  expect(normalized).toContain("where pd.organization_id = $1");
+  expect(normalized).not.toContain("or ppv.project_id is null");
+}
+
 describe("agent parameter tools", () => {
+  it("scopes scan orphan project filtering in the left join", async () => {
+    let capturedSql = "";
+    const db = {
+      query: async <Row,>(text: string) => {
+        capturedSql = text;
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+    };
+    const tool = createParameterTools({ db }).find((item) => item.name === "parameter.scanOrphans");
+
+    await tool?.run(
+      { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1", projectId: "aurora" },
+      { projectId: "aurora" }
+    );
+
+    expectProjectScopedOrphanJoin(capturedSql);
+  });
+
   it("scans orphan parameters with citations", async () => {
     const db = {
       query: async <Row,>() => ({
@@ -58,6 +90,24 @@ describe("agent parameter tools", () => {
     expect(result?.summary).toContain("1");
     expect(result?.summary).toContain("No parameters were deleted");
     expect(result?.citations[0]).toEqual(expect.objectContaining({ type: "parameter", id: "param-cleanup-1" }));
+  });
+
+  it("scopes cleanup plan project filtering in the left join", async () => {
+    let capturedSql = "";
+    const db = {
+      query: async <Row,>(text: string) => {
+        capturedSql = text;
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+    };
+    const tool = createParameterTools({ db }).find((item) => item.name === "parameter.draftCleanupPlan");
+
+    await tool?.run(
+      { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1", projectId: "aurora" },
+      { projectId: "aurora" }
+    );
+
+    expectProjectScopedOrphanJoin(capturedSql);
   });
 
   it("summarizes review queue with citations", async () => {

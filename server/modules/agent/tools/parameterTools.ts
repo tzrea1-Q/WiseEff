@@ -56,9 +56,11 @@ select
   max(ppv.updated_at)::text as last_value_at,
   count(ppv.id) as usage_count
 from parameter_definitions pd
-left join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
+left join project_parameter_values ppv
+  on ppv.parameter_definition_id = pd.id
+  and ppv.organization_id = pd.organization_id
+  and ($2::text is null or ppv.project_id = $2)
 where pd.organization_id = $1
-  and ($2::text is null or ppv.project_id = $2 or ppv.project_id is null)
 group by pd.id, ppv.project_id, pd.name, pd.risk
 having count(ppv.id) = 0 or max(ppv.updated_at) is null
 order by pd.name asc
@@ -98,9 +100,11 @@ select
   max(ppv.updated_at)::text as last_value_at,
   count(ppv.id) as usage_count
 from parameter_definitions pd
-left join project_parameter_values ppv on ppv.parameter_definition_id = pd.id
+left join project_parameter_values ppv
+  on ppv.parameter_definition_id = pd.id
+  and ppv.organization_id = pd.organization_id
+  and ($2::text is null or ppv.project_id = $2)
 where pd.organization_id = $1
-  and ($2::text is null or ppv.project_id = $2 or ppv.project_id is null)
 group by pd.id, ppv.project_id, pd.name, pd.risk
 having count(ppv.id) = 0 or max(ppv.updated_at) is null
 order by pd.name asc
