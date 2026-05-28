@@ -364,7 +364,7 @@ git commit -m "feat: productionize API contract artifact"
 - Modify: `docs/SECURITY.md`
 - Modify: `docs/design-docs/deployment-operations.md`
 
-- [ ] **Step 1: Write failing token verifier tests**
+- [x] **Step 1: Write failing token verifier tests**
 
 Create `server/modules/auth/tokenVerifier.test.ts`:
 
@@ -427,7 +427,7 @@ npm run test:server -- server/modules/auth/tokenVerifier.test.ts
 
 Expected: FAIL because the verifier does not exist.
 
-- [ ] **Step 2: Implement production token verifier**
+- [x] **Step 2: Implement production token verifier**
 
 Create `server/modules/auth/tokenVerifier.ts` with an HMAC verifier suitable for local/staging pilot credentials. Keep the interface narrow so later OIDC JWT verification can replace internals:
 
@@ -456,7 +456,7 @@ npm run test:server -- server/modules/auth/tokenVerifier.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing auth context factory tests**
+- [x] **Step 3: Write failing auth context factory tests**
 
 Create `server/modules/auth/contextFactory.test.ts`:
 
@@ -499,7 +499,7 @@ npm run test:server -- server/modules/auth/contextFactory.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement auth context factory and env gates**
+- [x] **Step 4: Implement auth context factory and env gates**
 
 Create `server/modules/auth/contextFactory.ts` and update `server/config/env.ts`:
 
@@ -527,7 +527,7 @@ npm run test:server -- server/modules/auth/contextFactory.test.ts server/config/
 
 Expected: PASS.
 
-- [ ] **Step 5: Add production permission negative tests**
+- [x] **Step 5: Add production permission negative tests**
 
 Update route tests for at least one route per high-risk area:
 
@@ -544,7 +544,7 @@ npm run test:server -- server/modules/parameters/routes.test.ts server/modules/l
 
 Expected: PASS.
 
-- [ ] **Step 6: Document auth boundary and commit**
+- [x] **Step 6: Document auth boundary and commit**
 
 Update `docs/SECURITY.md` and `docs/design-docs/deployment-operations.md` with:
 

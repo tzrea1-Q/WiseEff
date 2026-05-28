@@ -15,6 +15,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - Frontend role model lives in `src/domain/users/types.ts`.
 - Page/action permission helpers live in `src/app/permissions.ts`.
 - M0 backend auth context lives in `server/modules/auth/`.
+- M5 production auth uses `AUTH_MODE=production` and verifies server-side bearer tokens before mapping signed user, organization, role, and permission claims into `AuthContext`.
 - M0 audit boundary lives in `server/modules/audit/`.
 - M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, and imports.
 - Security governance design lives in `design-docs/security-governance.md`.
@@ -32,6 +33,8 @@ Current frontend permissions include:
 - `users:manage`
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
+
+Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. The pilot verifier checks `Authorization: Bearer <payload>.<signature>` using HMAC-SHA256 over the base64url payload, validates issuer, subject, and organization claims, and maps only signed claims into the backend auth context. Production routes must not fall back to the development user.
 
 For M1 parameter management:
 

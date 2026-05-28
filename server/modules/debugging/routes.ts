@@ -69,6 +69,12 @@ function writeResponse(result: unknown) {
   return { operation: result };
 }
 
+function requireDebugWritePermission(auth: AuthContext) {
+  if (!auth.user.isActive || !auth.permissions.includes("debugging:write")) {
+    throw new ApiError("FORBIDDEN", "Missing permission: debugging:write.", 403, { permission: "debugging:write" });
+  }
+}
+
 export function registerDebuggingRoutes(
   router: WiseEffRouter,
   options: {
@@ -146,6 +152,7 @@ export function registerDebuggingRoutes(
   router.post("/api/v1/debugging/nodes/write", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
+    requireDebugWritePermission(auth);
     const body = parseWithSchema(writeNodeBodySchema, request.body);
     const result = await service.writeNode(
       auth,

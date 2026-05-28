@@ -149,4 +149,10 @@ Device Gateway 健康检查：
 - 日志任务大量失败。
 - 设备写入异常。
 - 权限校验异常。
+## M5 Production Auth Boundary
 
+- Local and test environments may use `AUTH_MODE=development`, the seeded development user, and `x-wiseeff-user` for deterministic tests.
+- Production must set `NODE_ENV=production`, `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`; short HMAC secrets are rejected outside tests.
+- The API verifies `Authorization: Bearer <payload>.<signature>` server-side before creating `AuthContext`. Signed claims must include issuer, subject, and organization, and may include roles and permissions.
+- `/api/v1/me` and business routes use the same auth resolver. Production requests without a valid bearer token fail with `UNAUTHENTICATED` instead of falling back to development auth.
+- High-risk writes still re-check permissions at execution time, including parameter review, log archive/rerun, debugging writes or rollback, and Agent approval-required tools.

@@ -467,4 +467,25 @@ describe("debugging routes", () => {
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
   });
+
+  it("write route rejects auth without debugging write permission before service work", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      makeServer({ db, gateway, auth: makeAuth({ permissions: ["debugging:view", "debugging:read"] }) }),
+      "/api/v1/debugging/nodes/write",
+      {
+        method: "POST",
+        body: JSON.stringify({ sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current", value: "3200" })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Missing permission: debugging:write."
+    });
+    expect(serviceMocks.writeNode).not.toHaveBeenCalled();
+  });
 });

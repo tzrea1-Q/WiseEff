@@ -1,7 +1,6 @@
-import type { Queryable } from "../../shared/database/client";
 import type { WiseEffRouter } from "../../shared/http/router";
-import { getAuthContext } from "./repository";
 import type { AuthContext } from "./types";
+import type { AuthContextResolver } from "./contextFactory";
 
 export const developmentAuthContext: AuthContext = {
   user: {
@@ -32,14 +31,15 @@ export const developmentAuthContext: AuthContext = {
   ]
 };
 
-export function registerAuthRoutes(router: WiseEffRouter, options: { db?: Queryable }) {
-  router.get("/api/v1/me", async (request) => {
-    const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
-    const context = options.db ? await getAuthContext(options.db, userId) : developmentAuthContext;
+export function registerAuthRoutes(router: WiseEffRouter, options: { getCurrentAuthContext: AuthContextResolver }) {
+  if (!options.getCurrentAuthContext) {
+    throw new Error("Auth context resolver is required for auth routes.");
+  }
 
+  router.get("/api/v1/me", async (request) => {
     return {
       status: 200,
-      body: context
+      body: await options.getCurrentAuthContext(request)
     };
   });
 }

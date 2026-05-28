@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createWiseEffServer } from "./app";
+import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
 import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator";
 import { createLocalObjectStore } from "./modules/logs/objectStore";
@@ -11,7 +11,7 @@ const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL) : undefin
 const objectStore = db ? createLocalObjectStore(env.OBJECT_STORE_ROOT) : undefined;
 const debugGateway = createSimulatorDebugDeviceGateway();
 const stopLogWorker = db && objectStore ? startLogWorkerLoop({ db, objectStore }) : undefined;
-const server = createWiseEffServer({ db, objectStore, objectStoreHealth: objectStore, debugGateway });
+const server = createWiseEffServerFromEnv({ db, objectStore, objectStoreHealth: objectStore, debugGateway, env });
 
 function shutdown() {
   stopLogWorker?.();
