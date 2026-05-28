@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UnifiedAgent } from "./UnifiedAgent";
@@ -34,6 +34,17 @@ const apiSession = {
 } satisfies AgentSession;
 
 const agentUnavailableMessage = /^Agent /;
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, reject, resolve };
+}
 
 afterEach(() => {
   cleanup();
@@ -243,6 +254,208 @@ describe("UnifiedAgent permission boundaries", () => {
     fireEvent.submit(screen.getByPlaceholderText("询问 WiseAgent...").closest("form")!);
 
     expect(await screen.findByText(agentUnavailableMessage)).toBeInTheDocument();
+  });
+
+  it("ignores stale sendMessage responses after API context changes", async () => {
+    const oldSend = createDeferred<AgentTurn>();
+    const newSession = {
+      id: "agent-session-new",
+      context: { path: "/logs", pageKey: "logs" },
+      messages: []
+    } satisfies AgentSession;
+    const staleTurn = {
+      session: apiSession,
+      messages: [
+        {
+          id: "agent-msg-stale",
+          role: "assistant",
+          content: "Stale parameter answer",
+          createdAt: "2026-05-27T00:00:00.000Z"
+        }
+      ],
+      toolCalls: [
+        {
+          id: "tool-call-stale",
+          name: "parameter.summarizeReviewQueue",
+          label: "Stale parameter tool",
+          payload: {},
+          requiresApproval: false,
+          status: "succeeded"
+        }
+      ],
+      approvals: []
+    } satisfies AgentTurn;
+    const gateway = {
+      startSession: vi.fn(async (context: AgentSession["context"]) => (context.path === "/logs" ? newSession : apiSession)),
+      sendMessage: vi
+        .fn()
+        .mockReturnValueOnce(oldSend.promise)
+        .mockImplementation(async (sessionId: string, message: string) => ({
+          session: sessionId === "agent-session-new" ? newSession : apiSession,
+          messages: [
+            {
+              id: `agent-msg-${sessionId}`,
+              role: "assistant",
+              content: `Fresh ${message}`,
+              createdAt: "2026-05-27T00:00:00.000Z"
+            }
+          ],
+          toolCalls: [],
+          approvals: []
+        } satisfies AgentTurn)),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+    const { rerender } = render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    await waitFor(() => expect(gateway.startSession).toHaveBeenCalledWith(expect.objectContaining({ path: "/parameters" })));
+    fireEvent.change(screen.getByPlaceholderText(/WiseAgent/), { target: { value: "Old prompt" } });
+    fireEvent.submit(screen.getByPlaceholderText(/WiseAgent/).closest("form")!);
+    await waitFor(() => expect(gateway.sendMessage).toHaveBeenCalledWith("agent-session-1", "Old prompt"));
+
+    rerender(
+      <UnifiedAgent
+        path="/logs"
+        pageKey="logs"
+        projectId="nebula"
+        roleId="software-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={{ ...parameterPlan, contextTitle: "Log Agent", contextSummary: "Log context" }}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+    await act(async () => {
+      oldSend.resolve(staleTurn);
+      await oldSend.promise;
+    });
+
+    expect(screen.queryByText("Stale parameter answer")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale parameter tool")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/WiseAgent/), { target: { value: "New prompt" } });
+    fireEvent.submit(screen.getByPlaceholderText(/WiseAgent/).closest("form")!);
+
+    await waitFor(() => expect(gateway.startSession).toHaveBeenCalledWith(expect.objectContaining({ path: "/logs" })));
+    expect(gateway.sendMessage).toHaveBeenLastCalledWith("agent-session-new", "New prompt");
+  });
+
+  it("ignores stale runAction responses after API context changes", async () => {
+    const oldAction = createDeferred<AgentTurn>();
+    const newSession = {
+      id: "agent-session-action-new",
+      context: { path: "/logs", pageKey: "logs" },
+      messages: []
+    } satisfies AgentSession;
+    const staleTurn = {
+      session: apiSession,
+      messages: [
+        {
+          id: "agent-msg-action-stale",
+          role: "assistant",
+          content: "Stale action answer",
+          createdAt: "2026-05-27T00:00:00.000Z"
+        }
+      ],
+      toolCalls: [
+        {
+          id: "tool-call-action-stale",
+          name: "parameter.summarizeReviewQueue",
+          label: "Stale action tool",
+          payload: {},
+          requiresApproval: false,
+          status: "succeeded"
+        }
+      ],
+      approvals: []
+    } satisfies AgentTurn;
+    const gateway = {
+      startSession: vi.fn(async (context: AgentSession["context"]) => (context.path === "/logs" ? newSession : apiSession)),
+      sendMessage: vi.fn(),
+      runAction: vi
+        .fn()
+        .mockReturnValueOnce(oldAction.promise)
+        .mockImplementation(async (sessionId: string, actionId: string) => ({
+          session: sessionId === "agent-session-action-new" ? newSession : apiSession,
+          messages: [],
+          toolCalls: [
+            {
+              id: `tool-call-${sessionId}`,
+              name: "parameter.summarizeReviewQueue",
+              label: `Fresh ${actionId}`,
+              payload: {},
+              requiresApproval: false,
+              status: "succeeded"
+            }
+          ],
+          approvals: []
+        } satisfies AgentTurn)),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+    const { rerender } = render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Filter high risk" }));
+    await waitFor(() => expect(gateway.runAction).toHaveBeenCalledWith("agent-session-1", "filter-high-risk", expect.any(Object)));
+
+    rerender(
+      <UnifiedAgent
+        path="/logs"
+        pageKey="logs"
+        projectId="nebula"
+        roleId="software-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={{ ...parameterPlan, contextTitle: "Log Agent", contextSummary: "Log context" }}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+    await act(async () => {
+      oldAction.resolve(staleTurn);
+      await oldAction.promise;
+    });
+
+    expect(screen.queryByText("Stale action answer")).not.toBeInTheDocument();
+    expect(screen.queryByText("Stale action tool")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Filter high risk" }));
+
+    await waitFor(() =>
+      expect(gateway.runAction).toHaveBeenLastCalledWith(
+        "agent-session-action-new",
+        "filter-high-risk",
+        expect.objectContaining({ path: "/logs", projectId: "nebula" })
+      )
+    );
   });
 
   it("runs API actions without local dispatch", async () => {

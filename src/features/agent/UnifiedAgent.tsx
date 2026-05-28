@@ -133,7 +133,7 @@ export function UnifiedAgent({
   const startSessionPromiseRef = useRef<Promise<AgentSession | null> | null>(null);
   const isApiMode = runtimeMode === "api";
   const apiContextKey = `${runtimeMode}|${path}|${pageKey}|${projectId ?? ""}|${roleId ?? ""}`;
-  const apiContextKeyRef = useRef(apiContextKey);
+  const apiContextVersionRef = useRef(0);
 
   useEffect(() => {
     if (!dragging) {
@@ -179,7 +179,7 @@ export function UnifiedAgent({
   }, [dragging]);
 
   useEffect(() => {
-    apiContextKeyRef.current = apiContextKey;
+    apiContextVersionRef.current += 1;
     sessionRef.current = null;
     startSessionPromiseRef.current = null;
     setSession(null);
@@ -189,6 +189,8 @@ export function UnifiedAgent({
     setConfirmApproval(null);
     setApiBusy(false);
   }, [apiContextKey, gateway]);
+
+  const isCurrentApiContext = (version: number) => apiContextVersionRef.current === version;
 
   const setCurrentSession = (nextSession: AgentSession) => {
     sessionRef.current = nextSession;
@@ -222,12 +224,12 @@ export function UnifiedAgent({
       return startSessionPromiseRef.current;
     }
 
-    const requestContextKey = apiContextKey;
+    const requestVersion = apiContextVersionRef.current;
     setApiBusy(true);
     const promise: Promise<AgentSession | null> = gateway
       .startSession(buildAgentContext({ path, pageKey, projectId, roleId }))
       .then((nextSession) => {
-        if (apiContextKeyRef.current !== requestContextKey) {
+        if (!isCurrentApiContext(requestVersion)) {
           return null;
         }
         setCurrentSession(nextSession);
@@ -235,13 +237,13 @@ export function UnifiedAgent({
         return nextSession;
       })
       .catch(() => {
-        if (apiContextKeyRef.current === requestContextKey) {
+        if (isCurrentApiContext(requestVersion)) {
           addAgentUnavailableMessage();
         }
         return null;
       })
       .finally(() => {
-        if (apiContextKeyRef.current === requestContextKey) {
+        if (isCurrentApiContext(requestVersion)) {
           setApiBusy(false);
           startSessionPromiseRef.current = null;
         }
@@ -256,18 +258,26 @@ export function UnifiedAgent({
       return;
     }
 
+    const requestVersion = apiContextVersionRef.current;
     setApiBusy(true);
     try {
       const turn = await gateway.runAction(activeSession.id, id, { actionId: id, path, projectId });
+      if (!isCurrentApiContext(requestVersion)) {
+        return;
+      }
       applyAgentTurn(turn);
       const pendingApproval = turn.approvals.find((approval) => approval.status === "pending");
       if (pendingApproval) {
         setConfirmApproval(pendingApproval);
       }
     } catch {
-      addAgentUnavailableMessage();
+      if (isCurrentApiContext(requestVersion)) {
+        addAgentUnavailableMessage();
+      }
     } finally {
-      setApiBusy(false);
+      if (isCurrentApiContext(requestVersion)) {
+        setApiBusy(false);
+      }
     }
   };
 
@@ -278,17 +288,25 @@ export function UnifiedAgent({
       return;
     }
 
+    const requestVersion = apiContextVersionRef.current;
     setApiBusy(true);
     try {
       const turn = approved
         ? await gateway.approveToolCall(activeSession.id, approval.id)
         : await gateway.rejectToolCall(activeSession.id, approval.id, "User cancelled in WiseAgent");
+      if (!isCurrentApiContext(requestVersion)) {
+        return;
+      }
       applyAgentTurn(turn);
     } catch {
-      addAgentUnavailableMessage();
+      if (isCurrentApiContext(requestVersion)) {
+        addAgentUnavailableMessage();
+      }
     } finally {
-      setConfirmApproval(null);
-      setApiBusy(false);
+      if (isCurrentApiContext(requestVersion)) {
+        setConfirmApproval(null);
+        setApiBusy(false);
+      }
     }
   };
 
@@ -388,14 +406,23 @@ export function UnifiedAgent({
         return;
       }
 
+      const requestVersion = apiContextVersionRef.current;
       setApiBusy(true);
       try {
-        applyAgentTurn(await gateway.sendMessage(activeSession.id, value));
+        const turn = await gateway.sendMessage(activeSession.id, value);
+        if (!isCurrentApiContext(requestVersion)) {
+          return;
+        }
+        applyAgentTurn(turn);
       } catch {
-        addAgentUnavailableMessage();
+        if (isCurrentApiContext(requestVersion)) {
+          addAgentUnavailableMessage();
+        }
       } finally {
-        formElement.reset();
-        setApiBusy(false);
+        if (isCurrentApiContext(requestVersion)) {
+          formElement.reset();
+          setApiBusy(false);
+        }
       }
       return;
     }
