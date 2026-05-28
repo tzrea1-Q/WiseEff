@@ -2,8 +2,10 @@ import { Bot, Lightbulb, LockKeyhole, Play, Send, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, Dispatch, FormEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { AppAction } from "@/App";
+import { buildAgentContext } from "@/application/agent/agentRuntime";
+import type { AgentGateway } from "@/application/ports/AgentGateway";
 import { canPerform, getDisabledReason } from "@/app/permissions";
-import type { createAgentPlan } from "@/appConfig";
+import type { createAgentPlan, PageKey } from "@/appConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,6 +20,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { getCoverage } from "@/parameterAdminAnalytics";
 import type { PrototypeState } from "@/mockData";
+import type { AgentApproval, AgentMessage, AgentSession, AgentToolCall, AgentTurn } from "@/domain/agent/types";
+import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 const agentFabSize = 56;
 const agentPanelDesktopWidth = 430;
@@ -36,6 +40,18 @@ type AgentDragState = {
   startRight: number;
   startBottom: number;
   moved: boolean;
+};
+
+type UnifiedAgentProps = {
+  path: string;
+  pageKey: PageKey;
+  projectId?: string;
+  roleId?: string;
+  runtimeMode?: WiseEffRuntimeMode;
+  gateway?: AgentGateway;
+  plan: ReturnType<typeof createAgentPlan>;
+  state: PrototypeState;
+  dispatch: Dispatch<AppAction>;
 };
 
 function clampAgentOffset(value: number, viewportSize: number) {
@@ -63,24 +79,59 @@ function updateParameterAdminQuery(patch: Record<string, string | undefined>) {
   }
 }
 
+function ApiAgentMessage({ message }: { message: AgentMessage }) {
+  const isAssistant = message.role === "assistant";
+
+  return (
+    <div className={message.role === "user" ? "agent-message user" : "agent-message"}>
+      <p>{message.content}</p>
+      {isAssistant && (message.confidence !== undefined || message.citations?.length) ? (
+        <div className="agent-message-meta">
+          {message.confidence !== undefined ? <small>{Math.round(message.confidence * 100)}%</small> : null}
+          {message.citations?.map((citation) =>
+            citation.href ? (
+              <a className="agent-citation" href={citation.href} key={`${citation.type}-${citation.id}`}>
+                <small>{citation.label}</small>
+              </a>
+            ) : (
+              <span className="agent-citation" key={`${citation.type}-${citation.id}`}>
+                <small>{citation.label}</small>
+              </span>
+            )
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function UnifiedAgent({
   path,
+  pageKey,
+  projectId,
+  roleId,
+  runtimeMode = "mock",
+  gateway,
   plan,
   state,
   dispatch
-}: {
-  path: string;
-  plan: ReturnType<typeof createAgentPlan>;
-  state: PrototypeState;
-  dispatch: Dispatch<AppAction>;
-}) {
+}: UnifiedAgentProps) {
   const [open, setOpen] = useState(false);
   const [agentPosition, setAgentPosition] = useState<AgentPosition>({ right: 24, bottom: 24 });
   const [dragging, setDragging] = useState(false);
   const [messages, setMessages] = useState<string[]>(["我会根据当前页面上下文给出建议。涉及状态变更的动作会先请求确认。"]);
+  const [session, setSession] = useState<AgentSession | null>(null);
+  const [apiMessages, setApiMessages] = useState<AgentMessage[]>([]);
+  const [apiToolCalls, setApiToolCalls] = useState<AgentToolCall[]>([]);
+  const [apiApprovals, setApiApprovals] = useState<AgentApproval[]>([]);
+  const [apiBusy, setApiBusy] = useState(false);
   const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const [confirmApproval, setConfirmApproval] = useState<AgentApproval | null>(null);
   const dragStateRef = useRef<AgentDragState | null>(null);
   const suppressNextClickRef = useRef(false);
+  const sessionRef = useRef<AgentSession | null>(null);
+  const startSessionPromiseRef = useRef<Promise<AgentSession | null> | null>(null);
+  const isApiMode = runtimeMode === "api";
 
   useEffect(() => {
     if (!dragging) {
@@ -124,6 +175,100 @@ export function UnifiedAgent({
       window.removeEventListener("pointercancel", stopDragging);
     };
   }, [dragging]);
+
+  const setCurrentSession = (nextSession: AgentSession) => {
+    sessionRef.current = nextSession;
+    setSession(nextSession);
+  };
+
+  const addAgentUnavailableMessage = () => {
+    setMessages((items) => ["Agent 暂时不可用，请稍后重试。", ...items]);
+  };
+
+  const applyAgentTurn = (turn: AgentTurn) => {
+    setCurrentSession(turn.session);
+    setApiMessages((items) => {
+      if (turn.messages.length) return turn.messages;
+      if (turn.session.messages.length) return turn.session.messages;
+      return items;
+    });
+    setApiToolCalls(turn.toolCalls);
+    setApiApprovals(turn.approvals);
+  };
+
+  const startApiSession = () => {
+    if (!gateway) {
+      addAgentUnavailableMessage();
+      return Promise.resolve(null);
+    }
+    if (sessionRef.current) {
+      return Promise.resolve(sessionRef.current);
+    }
+    if (startSessionPromiseRef.current) {
+      return startSessionPromiseRef.current;
+    }
+
+    setApiBusy(true);
+    const promise = gateway
+      .startSession(buildAgentContext({ path, pageKey, projectId, roleId }))
+      .then((nextSession) => {
+        setCurrentSession(nextSession);
+        setApiMessages((items) => [...items, ...nextSession.messages]);
+        return nextSession;
+      })
+      .catch(() => {
+        addAgentUnavailableMessage();
+        return null;
+      })
+      .finally(() => {
+        setApiBusy(false);
+        startSessionPromiseRef.current = null;
+      });
+    startSessionPromiseRef.current = promise;
+    return promise;
+  };
+
+  const runApiAction = async (id: string) => {
+    const activeSession = sessionRef.current ?? (await startApiSession());
+    if (!gateway || !activeSession) {
+      return;
+    }
+
+    setApiBusy(true);
+    try {
+      const turn = await gateway.runAction(activeSession.id, id, { actionId: id, path, projectId });
+      applyAgentTurn(turn);
+      const pendingApproval = turn.approvals.find((approval) => approval.status === "pending");
+      if (pendingApproval) {
+        setConfirmApproval(pendingApproval);
+      }
+    } catch {
+      addAgentUnavailableMessage();
+    } finally {
+      setApiBusy(false);
+    }
+  };
+
+  const decideApiApproval = async (approval: AgentApproval, approved: boolean) => {
+    const activeSession = sessionRef.current;
+    if (!gateway || !activeSession) {
+      setConfirmApproval(null);
+      return;
+    }
+
+    setApiBusy(true);
+    try {
+      const turn = approved
+        ? await gateway.approveToolCall(activeSession.id, approval.id)
+        : await gateway.rejectToolCall(activeSession.id, approval.id, "User cancelled in WiseAgent");
+      applyAgentTurn(turn);
+    } catch {
+      addAgentUnavailableMessage();
+    } finally {
+      setConfirmApproval(null);
+      setApiBusy(false);
+    }
+  };
 
   const executeAction = (id: string) => {
     const requiredAction = plan.actions.find((action) => action.id === id)?.requiredPermission;
@@ -207,15 +352,36 @@ export function UnifiedAgent({
     }
   };
 
-  const submitPrompt = (event: FormEvent<HTMLFormElement>) => {
+  const submitPrompt = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const value = String(form.get("agentPrompt") ?? "").trim();
+    if (isApiMode) {
+      if (!value) {
+        return;
+      }
+      const activeSession = sessionRef.current ?? (await startApiSession());
+      if (!gateway || !activeSession) {
+        return;
+      }
+
+      setApiBusy(true);
+      try {
+        applyAgentTurn(await gateway.sendMessage(activeSession.id, value));
+      } catch {
+        addAgentUnavailableMessage();
+      } finally {
+        formElement.reset();
+        setApiBusy(false);
+      }
+      return;
+    }
     if (!value) {
       return;
     }
     setMessages((items) => [`你问：${value}`, `WiseAgent：我已结合 ${plan.contextTitle} 上下文生成一组可执行建议。`, ...items]);
-    event.currentTarget.reset();
+    formElement.reset();
   };
 
   const agentPositionStyle: CSSProperties = {
@@ -251,6 +417,9 @@ export function UnifiedAgent({
       return;
     }
     setOpen(true);
+    if (isApiMode) {
+      void startApiSession();
+    }
   };
 
   if (!open) {
@@ -269,7 +438,14 @@ export function UnifiedAgent({
   }
 
   return (
-    <div className="agent-panel" data-path={path} style={agentPanelPositionStyle}>
+    <div
+      className="agent-panel"
+      data-path={path}
+      data-session-id={session?.id}
+      data-approval-count={apiApprovals.length}
+      aria-busy={apiBusy}
+      style={agentPanelPositionStyle}
+    >
       <div className="agent-header">
         <div className="agent-avatar">
           <Bot size={19} />
@@ -303,9 +479,18 @@ export function UnifiedAgent({
           ))}
         </div>
         <div className="agent-messages">
-          {messages.slice(0, 4).map((message, index) => (
+          {apiMessages.map((message) => (
+            <ApiAgentMessage key={message.id} message={message} />
+          ))}
+          {apiMessages.length === 0 ? messages.slice(0, 4).map((message, index) => (
             <div className={index % 2 === 0 ? "agent-message" : "agent-message user"} key={`${message}-${index}`}>
               {message}
+            </div>
+          )) : null}
+          {apiToolCalls.map((toolCall) => (
+            <div className="agent-tool-call" key={toolCall.id}>
+              <span>{toolCall.label}</span>
+              <span>{toolCall.status}</span>
             </div>
           ))}
         </div>
@@ -317,6 +502,10 @@ export function UnifiedAgent({
               type="button"
               variant={action.requiresConfirm ? "default" : "outline"}
               onClick={() => {
+                if (isApiMode) {
+                  void runApiAction(action.id);
+                  return;
+                }
                 if (action.requiresConfirm) {
                   setConfirmAction(action.id);
                 } else {
@@ -336,6 +525,14 @@ export function UnifiedAgent({
           <Send size={17} />
         </Button>
       </form>
+      {confirmApproval ? (
+        <ConfirmDialog
+          title={confirmApproval.title}
+          message={confirmApproval.message}
+          onCancel={() => void decideApiApproval(confirmApproval, false)}
+          onConfirm={() => void decideApiApproval(confirmApproval, true)}
+        />
+      ) : null}
       {confirmAction ? (
         <ConfirmDialog
           title="确认执行 Agent 动作"

@@ -41,8 +41,10 @@ import {
   type UpsertDebugNodeOperationAction,
   type UpsertDebugSnapshotAction
 } from "@/application/debugging/debuggingRuntime";
+import type { AgentGateway } from "@/application/ports/AgentGateway";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
+import { createHttpAgentGateway } from "@/infrastructure/http/agentClient";
 import {
   createLogRuntimeActions,
   type HydrateLogRuntimeAction,
@@ -1744,6 +1746,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 export const appReducer = reducer;
 
 type AppProps = {
+  agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
   debuggingGateway?: DebuggingGateway;
   initialAppState?: PrototypeState;
@@ -1753,6 +1756,7 @@ type AppProps = {
 };
 
 function App({
+  agentGateway,
   authClient,
   debuggingGateway,
   initialAppState = initialState,
@@ -1763,6 +1767,7 @@ function App({
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
+        agentGateway={agentGateway}
         authClient={authClient}
         debuggingGateway={debuggingGateway}
         initialAppState={initialAppState}
@@ -1776,6 +1781,7 @@ function App({
 }
 
 function AppShell({
+  agentGateway,
   authClient,
   debuggingGateway,
   initialAppState,
@@ -1783,6 +1789,7 @@ function AppShell({
   parameterRepository,
   runtimeMode
 }: {
+  agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
   debuggingGateway?: DebuggingGateway;
   initialAppState: PrototypeState;
@@ -1804,6 +1811,10 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const agentGatewayClient = useMemo(
+    () => agentGateway ?? (runtimeMode === "api" ? createHttpAgentGateway() : undefined),
+    [agentGateway, runtimeMode]
+  );
   const parameterRepositoryClient = useMemo(
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
@@ -2041,7 +2052,17 @@ function AppShell({
         </TopBarActionsContext.Provider>
       </div>
       {!isPlatformHome && canAccessCurrentPage ? (
-        <UnifiedAgent path={path} plan={agentPlan} state={state} dispatch={dispatch} />
+        <UnifiedAgent
+          path={path}
+          pageKey={page.key}
+          projectId={state.activeProjectId}
+          roleId={currentRoleId}
+          runtimeMode={runtimeMode}
+          gateway={agentGatewayClient}
+          plan={agentPlan}
+          state={state}
+          dispatch={dispatch}
+        />
       ) : null}
       {projectInitOpen ? (
         <ProjectParameterInitializationWizard
