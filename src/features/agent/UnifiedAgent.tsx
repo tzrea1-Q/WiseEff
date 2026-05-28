@@ -132,6 +132,8 @@ export function UnifiedAgent({
   const sessionRef = useRef<AgentSession | null>(null);
   const startSessionPromiseRef = useRef<Promise<AgentSession | null> | null>(null);
   const isApiMode = runtimeMode === "api";
+  const apiContextKey = `${runtimeMode}|${path}|${pageKey}|${projectId ?? ""}|${roleId ?? ""}`;
+  const apiContextKeyRef = useRef(apiContextKey);
 
   useEffect(() => {
     if (!dragging) {
@@ -176,6 +178,18 @@ export function UnifiedAgent({
     };
   }, [dragging]);
 
+  useEffect(() => {
+    apiContextKeyRef.current = apiContextKey;
+    sessionRef.current = null;
+    startSessionPromiseRef.current = null;
+    setSession(null);
+    setApiMessages([]);
+    setApiToolCalls([]);
+    setApiApprovals([]);
+    setConfirmApproval(null);
+    setApiBusy(false);
+  }, [apiContextKey, gateway]);
+
   const setCurrentSession = (nextSession: AgentSession) => {
     sessionRef.current = nextSession;
     setSession(nextSession);
@@ -208,21 +222,29 @@ export function UnifiedAgent({
       return startSessionPromiseRef.current;
     }
 
+    const requestContextKey = apiContextKey;
     setApiBusy(true);
-    const promise = gateway
+    const promise: Promise<AgentSession | null> = gateway
       .startSession(buildAgentContext({ path, pageKey, projectId, roleId }))
       .then((nextSession) => {
+        if (apiContextKeyRef.current !== requestContextKey) {
+          return null;
+        }
         setCurrentSession(nextSession);
         setApiMessages((items) => [...items, ...nextSession.messages]);
         return nextSession;
       })
       .catch(() => {
-        addAgentUnavailableMessage();
+        if (apiContextKeyRef.current === requestContextKey) {
+          addAgentUnavailableMessage();
+        }
         return null;
       })
       .finally(() => {
-        setApiBusy(false);
-        startSessionPromiseRef.current = null;
+        if (apiContextKeyRef.current === requestContextKey) {
+          setApiBusy(false);
+          startSessionPromiseRef.current = null;
+        }
       });
     startSessionPromiseRef.current = promise;
     return promise;
@@ -482,11 +504,11 @@ export function UnifiedAgent({
           {apiMessages.map((message) => (
             <ApiAgentMessage key={message.id} message={message} />
           ))}
-          {apiMessages.length === 0 ? messages.slice(0, 4).map((message, index) => (
+          {messages.slice(0, 4).map((message, index) => (
             <div className={index % 2 === 0 ? "agent-message" : "agent-message user"} key={`${message}-${index}`}>
               {message}
             </div>
-          )) : null}
+          ))}
           {apiToolCalls.map((toolCall) => (
             <div className="agent-tool-call" key={toolCall.id}>
               <span>{toolCall.label}</span>
@@ -572,16 +594,32 @@ function ConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const decisionHandledRef = useRef(false);
+  const cancelOnce = () => {
+    if (decisionHandledRef.current) {
+      return;
+    }
+    decisionHandledRef.current = true;
+    onCancel();
+  };
+  const confirmOnce = () => {
+    if (decisionHandledRef.current) {
+      return;
+    }
+    decisionHandledRef.current = true;
+    onConfirm();
+  };
+
   return (
-    <AlertDialog open onOpenChange={(open) => (!open ? onCancel() : undefined)}>
+    <AlertDialog open onOpenChange={(open) => (!open ? cancelOnce() : undefined)}>
       <AlertDialogContent className="confirm-dialog">
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           <AlertDialogDescription>{message}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel type="button" onClick={onCancel}>{cancelLabel}</AlertDialogCancel>
-          <AlertDialogAction type="button" onClick={onConfirm}>{confirmLabel}</AlertDialogAction>
+          <AlertDialogCancel type="button" onClick={cancelOnce}>{cancelLabel}</AlertDialogCancel>
+          <AlertDialogAction type="button" onClick={confirmOnce}>{confirmLabel}</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
