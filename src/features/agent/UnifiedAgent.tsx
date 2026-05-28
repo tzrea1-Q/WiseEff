@@ -21,6 +21,7 @@ import {
 import { getCoverage } from "@/parameterAdminAnalytics";
 import type { PrototypeState } from "@/mockData";
 import type { AgentApproval, AgentMessage, AgentSession, AgentToolCall, AgentTurn } from "@/domain/agent/types";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 const agentFabSize = 56;
@@ -354,9 +355,12 @@ export function UnifiedAgent({
       }
       applyAgentTurn(turn);
       completed = true;
-    } catch {
+    } catch (error) {
       if (isCurrentApiTurnRequest(request)) {
         addAgentUnavailableMessage();
+        if (error instanceof WiseEffApiError) {
+          setConfirmApproval(null);
+        }
       }
     } finally {
       if (isCurrentApiTurnRequest(request)) {

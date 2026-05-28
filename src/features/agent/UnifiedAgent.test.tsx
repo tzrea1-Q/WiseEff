@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { UnifiedAgent } from "./UnifiedAgent";
 import type { createAgentPlan } from "@/appConfig";
 import type { AgentSession, AgentTurn } from "@/domain/agent/types";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import { createPrototypeState } from "@/mockData";
 
 const parameterPlan = {
@@ -832,6 +833,69 @@ describe("UnifiedAgent permission boundaries", () => {
     fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
     await waitFor(() => expect(gateway.approveToolCall).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByText("Approve retry draft?")).not.toBeInTheDocument());
+  });
+
+  it("dismisses approval dialog when approve fails with a backend API error", async () => {
+    const pendingTurn = {
+      session: apiSession,
+      messages: [],
+      toolCalls: [
+        {
+          id: "tool-call-backend-error",
+          name: "parameter.submitChangeDraft",
+          label: "Submit parameter change",
+          payload: {},
+          requiresApproval: true,
+          status: "pending_approval",
+          approvalId: "approval-backend-error"
+        }
+      ],
+      approvals: [
+        {
+          id: "approval-backend-error",
+          toolCallId: "tool-call-backend-error",
+          title: "Confirm backend error draft",
+          message: "Approve backend error draft?",
+          status: "pending"
+        }
+      ]
+    } satisfies AgentTurn;
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn(async () => pendingTurn),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(async () => {
+        throw new WiseEffApiError("AGENT_APPROVAL_NOT_PENDING", "Approval is no longer pending.", {}, "req-backend-error");
+      }),
+      rejectToolCall: vi.fn()
+    };
+
+    render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /WiseAgent/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Draft parameter change" }));
+    expect(await screen.findByText("Approve backend error draft?")).toBeInTheDocument();
+    expect(screen.getByText("pending_approval")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
+
+    await waitFor(() => expect(gateway.approveToolCall).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(agentUnavailableMessage)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("Approve backend error draft?")).not.toBeInTheDocument());
+    expect(screen.getByText("pending_approval")).toBeInTheDocument();
+    expect(gateway.approveToolCall).toHaveBeenCalledTimes(1);
   });
 
   it("approves and rejects API approval requests from confirmed actions", async () => {
