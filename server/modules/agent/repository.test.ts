@@ -222,6 +222,20 @@ describe("agent repository", () => {
     expect(matchedCalls[0].text).toContain("updated_at = now()");
   });
 
+  it("guards terminal tool call status updates while allowing idempotent updates", async () => {
+    const { db, calls } = createRecordingDb([], 1);
+
+    const updated = await updateAgentToolCall(db, "org-chargelab", "tool-1", {
+      status: "succeeded",
+      result: { summary: "2 pending", data: { pending: 2 }, citations: [] }
+    });
+
+    expect(updated).toBe(true);
+    expect(calls[0].text).toContain("status not in ('succeeded', 'failed', 'rejected')");
+    expect(calls[0].text).toContain("status = $3");
+    expect(calls[0].text).toContain("$3 is null");
+  });
+
   it("returns approval decision success from rowCount and keeps pending guard", async () => {
     const { db: matchedDb, calls: matchedCalls } = createRecordingDb([], 1);
     const { db: missedDb } = createRecordingDb([], 0);

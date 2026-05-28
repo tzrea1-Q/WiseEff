@@ -332,6 +332,11 @@ export async function updateAgentToolCall(
       updated_at = now()
     where organization_id = $1
       and id = $2
+      and (
+        $3 is null
+        or status = $3
+        or status not in ('succeeded', 'failed', 'rejected')
+      )
     `,
     [
       organizationId,
