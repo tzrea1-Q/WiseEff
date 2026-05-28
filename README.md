@@ -182,7 +182,7 @@ M4 Agent verification:
 
 1. Start PostgreSQL and export `DATABASE_URL`.
 2. Run `npm run test:m4`.
-3. Verify the WiseAgent API-mode smoke shows confidence/citation rendering and an approval-required `Create parameter draft` tool call. M4 uses deterministic provider logic rather than a live LLM provider.
+3. Verify the WiseAgent API-mode smoke shows confidence rendering and an approval-required `Create parameter draft` tool call. Citation rendering remains covered by Agent DTO/runtime/UI tests. M4 uses deterministic provider logic rather than a live LLM provider.
 
 生产构建不允许使用 `mock` 作为业务数据源。
 

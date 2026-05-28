@@ -40,7 +40,7 @@ Remaining M2 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; 
 
 M3 is covered by backend debugging policy/schema/repository/service/route/simulator tests, frontend debugging DTO/runtime/page tests, and `e2e/debugging.api.spec.ts`. The E2E smoke detects `Aurora Simulator 1`, reads fast charge current as `3000`, writes `3100` with readback, verifies `Cycle count` cannot be written through the UI, writes the readback mismatch probe and expects mismatch text, rolls back the fast charge snapshot, verifies the value returns to `3000`, and checks debugging write/rollback audit events.
 
-Remaining M3 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; the gateway is simulator-backed rather than real HDC; `/node-debugging` write snapshots are not yet promoted into `/debugging` rollback UI state; OpenAPI/client generation, Agent approval records, and catalog CRUD remain deferred. Device leases are service-backed in M3.5 but still need real-device lab validation.
+Remaining M3 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; the gateway is simulator-backed rather than real HDC; `/node-debugging` write snapshots are not yet promoted into `/debugging` rollback UI state; OpenAPI/client generation and catalog CRUD remain deferred. Device leases are service-backed in M3.5, Agent approval records are covered by M4, and real-device lab validation is still needed.
 
 ## M3.5 Coverage
 
