@@ -13,3 +13,17 @@ describe("M1 parameter migration invariants", () => {
     expect(migration).toContain("on parameter_history_entries(project_parameter_value_id, version)");
   });
 });
+
+describe("M4 agent migration invariants", () => {
+  it("persists sessions, messages, tool calls, approvals, and traces", () => {
+    const migration = readFileSync(path.join(root, "server", "migrations", "0008_m4_agent.sql"), "utf8");
+
+    expect(migration).toContain("create table if not exists agent_sessions");
+    expect(migration).toContain("create table if not exists agent_messages");
+    expect(migration).toContain("create table if not exists agent_tool_calls");
+    expect(migration).toContain("create table if not exists agent_approvals");
+    expect(migration).toContain("create table if not exists agent_run_traces");
+    expect(migration).toContain("agent_approvals_tool_call_unique_idx");
+    expect(migration).toContain("agent_sessions_context_scope_idx");
+  });
+});
