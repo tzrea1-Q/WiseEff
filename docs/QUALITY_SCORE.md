@@ -28,6 +28,7 @@ For code changes:
 - Run `npm run test:m2` before landing M2 log-analysis MVP changes in a local or staging environment with PostgreSQL.
 - Run `npm run test:m3` before landing M3 debugging MVP changes in a local or staging environment with PostgreSQL.
 - Run `npm run test:m3-5` before treating the M1-M3 API-mode baseline as commercial-readiness complete in a local or staging environment with PostgreSQL.
+- Run `npm run test:m4` before landing M4 Agent changes in a local or staging environment with PostgreSQL.
 
 ## M2 Coverage
 
@@ -46,6 +47,12 @@ Remaining M3 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; 
 M3.5 is covered by operations health/readiness tests, production environment contract tests, route manifest tests, leased log-analysis job tests, local object-store readiness tests, debugging device lease tests, request/audit correlation tests, `npm run test:all`, `npm run build`, and `npm run test:m3-5` when `DATABASE_URL` is available.
 
 Remaining M3.5 risks: readiness checks still use local object storage rather than S3/OSS, the job worker is leased but still in-process, gateway readiness is simulator-first, and OpenAPI/client generation remains deferred.
+
+## M4 Coverage
+
+M4 is covered by Agent route, schema, orchestrator, tool registry, parameter/log/debugging/audit tool tests, frontend `AgentGateway` DTO/runtime tests, UnifiedAgent API-mode tests, and `e2e/agent.api.spec.ts`. Negative tests cover approval-required tool runs, stale approval state, inactive users, missing permissions, wrong-session approvals, validation failures, and approval execution failure audit correlation.
+
+Remaining M4 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; provider logic is deterministic rather than a real LLM; generated OpenAPI clients, prompt safety evaluation, model latency/cost handling, and provider outage behavior remain deferred.
 
 For documentation-only changes:
 

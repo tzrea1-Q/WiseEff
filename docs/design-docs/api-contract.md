@@ -326,6 +326,91 @@ Agent 会话上下文：
 - `requiresApproval=true` 的工具只能生成 approval。
 - 批准时必须重新校验权限和业务状态。
 
+M4 Agent endpoints return a shared turn envelope:
+
+```json
+{
+  "turn": {
+    "session": {
+      "id": "agent-session-1",
+      "context": { "path": "/parameters", "pageKey": "parameters", "projectId": "aurora", "roleId": "admin" },
+      "messages": []
+    },
+    "messages": [
+      {
+        "id": "agent-msg-1",
+        "role": "assistant",
+        "content": "I will call governed tools for this context.",
+        "citations": [{ "type": "parameter", "id": "change-1", "label": "Fast charge current" }],
+        "confidence": 0.78,
+        "createdAt": "2026-05-28T00:00:00.000Z"
+      }
+    ],
+    "toolCalls": [
+      {
+        "id": "tool-call-1",
+        "name": "parameter.submitChangeDraft",
+        "label": "Create parameter draft",
+        "payload": { "projectId": "aurora", "reason": "Prepare a draft" },
+        "requiresApproval": true,
+        "status": "pending_approval",
+        "approvalId": "approval-1"
+      }
+    ],
+    "approvals": [
+      {
+        "id": "approval-1",
+        "toolCallId": "tool-call-1",
+        "title": "Create parameter draft",
+        "message": "Approve before WiseAgent creates a human-review draft.",
+        "status": "pending"
+      }
+    ]
+  }
+}
+```
+
+Request and response envelopes:
+
+```text
+POST /api/v1/agent/sessions
+Request:  { "context": { "path": "/parameters", "pageKey": "parameters", "projectId": "aurora", "roleId": "admin" } }
+Response: 201 { "turn": AgentTurn }
+
+POST /api/v1/agent/sessions/:sessionId/messages
+Request:  { "message": "Summarize the review queue and prepare a draft." }
+Response: 200 { "turn": AgentTurn }
+
+POST /api/v1/agent/sessions/:sessionId/tool-calls/:toolCallId/run
+Request:  {}
+Response: 200 { "turn": AgentTurn }
+
+POST /api/v1/agent/sessions/:sessionId/approvals/:approvalId/approve
+Request:  { "expectedToolCallStatus": "pending_approval" }
+Response: 200 { "turn": AgentTurn }
+
+POST /api/v1/agent/sessions/:sessionId/approvals/:approvalId/reject
+Request:  { "reason": "Need clearer evidence." }
+Response: 200 { "turn": AgentTurn }
+```
+
+The reject endpoint transitions the approval from `pending` to `rejected`, marks the linked tool call `rejected`, appends an assistant message, and does not execute the tool.
+
+Tool governance:
+
+- `requiresApproval=false` read/preparation tools still run permission, project access, and payload validation.
+- `requiresApproval=true` tools create `agent_approvals` and remain `pending_approval` until an approval endpoint is called.
+- Approval-time execution re-checks authz and current business state before running the tool.
+- `parameter.submitChangeDraft` creates a human-review draft only; it does not merge or apply production values.
+- API-mode quick prompts/actions enter through `sendMessage`; the persisted run endpoint is for existing backend-created toolCall ids.
+
+Agent-specific errors:
+
+- `APPROVAL_REQUIRED`: returned when a caller tries to run an approval-required tool through the run endpoint.
+- `INVALID_APPROVAL_STATE`: returned when an approval is no longer pending.
+- `FORBIDDEN`: returned when the actor lacks the required permission, project access, or active user state.
+- `VALIDATION_FAILED`: returned for invalid request bodies, unknown tools, or missing required tool payload fields.
+
 ## 10. Audit
 
 | 方法 | 路径 | 说明 |

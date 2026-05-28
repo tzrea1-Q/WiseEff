@@ -176,6 +176,23 @@ M3 implementation notes:
 | `AgentApproval` | 人工审批记录 |
 | `AgentRunTrace` | 模型调用和工具执行 trace |
 
+M4 implementation notes:
+
+- `AgentSession` stores organization, optional project, actor user, page key, role, serialized context, title, status, and timestamps.
+- `AgentMessage` stores user/assistant/system content with citations and optional confidence for UnifiedAgent rendering.
+- `AgentToolCall` stores the governed tool name, label, payload, approval requirement, status, result/error, and audit event link.
+- `AgentApproval` stores one approval per approval-required tool call, including requested/decided users, status, reason, and decision timestamps.
+- `AgentRunTrace` stores deterministic provider metadata (`provider`, `model`, `promptVersion`), input/output summaries, tool call ids, and request trace id.
+
+Agent approval state machine:
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending
+  pending --> approved
+  pending --> rejected
+```
+
 规则：
 
 - Agent 上下文必须包含 pageKey、projectId、roleId 和用户身份。

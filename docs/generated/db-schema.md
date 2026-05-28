@@ -536,6 +536,89 @@ Indexes:
 
 - `debugging_events_session_idx` on `session_id, created_at desc`
 
+### `agent_sessions`
+
+Stores persisted WiseAgent sessions scoped to organization, actor, page context, optional project, and role.
+
+Key columns:
+
+- `id` primary key
+- `organization_id` references `organizations(id)`
+- `project_id`, `actor_user_id`, `page_key`, `role_id`
+- `context`, `status`, `title`, `created_at`, `updated_at`
+
+Indexes:
+
+- `agent_sessions_context_scope_idx` on `page_key, project_id, role_id, created_at desc`
+- `agent_sessions_actor_idx` on `actor_user_id, created_at desc`
+
+### `agent_messages`
+
+Stores user, assistant, and system messages for Agent sessions.
+
+Key columns:
+
+- `id` primary key
+- `session_id` references `agent_sessions(id)`
+- `organization_id` references `organizations(id)`
+- `role`, `content`, `citations`, `confidence`, `created_at`
+
+Indexes:
+
+- `agent_messages_session_idx` on `session_id, created_at asc`
+
+### `agent_tool_calls`
+
+Stores governed Agent tool requests and execution results.
+
+Key columns:
+
+- `id` primary key
+- `session_id` references `agent_sessions(id)`
+- `organization_id` references `organizations(id)`
+- `project_id`, `name`, `label`, `payload`, `requires_approval`, `status`
+- `result`, `error_message`, `audit_event_id`, `created_at`, `updated_at`
+
+Indexes:
+
+- `agent_tool_calls_session_idx` on `session_id, created_at asc`
+- `agent_tool_calls_name_idx` on `name, requires_approval, status`
+
+### `agent_approvals`
+
+Stores one durable approval record for each approval-required Agent tool call.
+
+Key columns:
+
+- `id` primary key
+- `session_id` references `agent_sessions(id)`
+- `tool_call_id` references `agent_tool_calls(id)`
+- `organization_id` references `organizations(id)`
+- `project_id`, `status`, `title`, `message`
+- `requested_by_user_id`, `decided_by_user_id`, `decision_reason`, `requested_at`, `decided_at`
+
+Indexes:
+
+- `agent_approvals_tool_call_unique_idx` unique on `tool_call_id`
+- `agent_approvals_session_status_idx` on `session_id, status, requested_at desc`
+
+### `agent_run_traces`
+
+Stores provider/model/prompt trace metadata for Agent planning and tool execution correlation.
+
+Key columns:
+
+- `id` primary key
+- `session_id` references `agent_sessions(id)`
+- `message_id` references `agent_messages(id)`
+- `organization_id` references `organizations(id)`
+- `provider`, `model`, `prompt_version`, `input_summary`, `output_summary`
+- `tool_call_ids`, `trace_id`, `created_at`
+
+Indexes:
+
+- `agent_run_traces_session_idx` on `session_id, created_at desc`
+
 ## Current Boundaries
 
 - Auth context reads users, roles, organizations, and role bindings.
@@ -543,4 +626,4 @@ Indexes:
 - M1 parameter management persists projects, modules, definitions, project values, history, drafts, review workflow records, and import batches.
 - M2 log analysis persists file objects, records, runs, stages, reports, evidence, feedback, and lightweight jobs.
 - M3 debugging persists devices, detected targets, debugging parameters, sessions, snapshots, node operations, and debugging events for the simulator-backed workflow.
-- Agent approval records remain planned in design docs. M3.5 adds database-backed job and device lease tables; production object storage and real HDC rollout remain adapter work.
+- M4 Agent persists sessions, messages, tool calls, approvals, and run traces. Production object storage, real HDC rollout, and live LLM provider integration remain adapter work.
