@@ -11,11 +11,10 @@ Execution plans are first-class repository artifacts. Use them for work that has
 ## Current Active Plan
 
 - `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence.
-- `exec-plans/active/2026-05-27-wiseeff-m4-agent-collaboration-mvp.md`: detailed M4 governed Agent collaboration MVP implementation plan.
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including M0-M3 productization work, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
+Completed historical plans are preserved under `exec-plans/completed/`, including M0-M4 productization work, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
 
 ## Plan Rules
 

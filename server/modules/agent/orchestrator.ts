@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Database } from "../../shared/database/client";
+import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
@@ -23,7 +23,7 @@ import {
 } from "./repository";
 import { createDeterministicAgentProvider } from "./provider";
 import type { AgentToolRequest } from "./provider";
-import type { AgentContext, AgentToolCallDto, AgentTurnDto } from "./types";
+import type { AgentContext, AgentToolCallDto, AgentToolResult, AgentTurnDto } from "./types";
 
 type AgentRequestContext = {
   auth: AuthContext;
@@ -70,9 +70,10 @@ export function createAgentOrchestrator(options: {
   createAuditEvent?: typeof defaultCreateAuditEvent;
 }) {
   const db = options.db;
-  const toolRegistry = options.toolRegistry ?? createAgentToolRegistry({ db });
   const provider = options.provider ?? createDeterministicAgentProvider();
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
+  const toolRegistry = registryFor(db);
 
   async function audit(input: {
     context: AgentRequestContext;
@@ -83,8 +84,8 @@ export function createAgentOrchestrator(options: {
     targetId: string;
     metadata?: Record<string, unknown>;
     severity?: "High" | "Medium" | "Low";
-  }) {
-    await createAuditEvent(db, {
+  }, auditDb: Queryable = db) {
+    await createAuditEvent(auditDb, {
       id: newId("audit"),
       organizationId: input.context.auth.organization.id,
       projectId: input.projectId ?? null,
@@ -362,27 +363,60 @@ export function createAgentOrchestrator(options: {
     };
     toolRegistry.authorize(toolCall.name, executionContext, toolCall.payload);
 
-    const approved = await markAgentApprovalApproved(db, input.auth.organization.id, approval.id, input.auth.user.id);
-    if (!approved) {
-      throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
-    }
-
-    let result;
-    try {
-      result = await toolRegistry.run(toolCall.name, executionContext, toolCall.payload);
-    } catch (error) {
-      const failed = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
-        status: "failed",
-        errorMessage: errorMessage(error)
-      });
-      if (!failed) {
-        throw staleTransition("Agent tool call could not be marked failed.", { toolCallId: toolCall.id });
+    const executionError = await db.transaction(async (tx) => {
+      const approved = await markAgentApprovalApproved(tx, input.auth.organization.id, approval.id, input.auth.user.id);
+      if (!approved) {
+        throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
       }
+
+      const txToolRegistry = registryFor(tx);
+      let result: AgentToolResult;
+      try {
+        result = await txToolRegistry.run(toolCall.name, executionContext, toolCall.payload);
+      } catch (error) {
+        const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
+          status: "failed",
+          errorMessage: errorMessage(error)
+        });
+        if (!failed) {
+          throw staleTransition("Agent tool call could not be marked failed.", { toolCallId: toolCall.id });
+        }
+        await audit({
+          context: input,
+          projectId: toolCall.projectId ?? approval.projectId,
+          kind: "agent-tool",
+          action: "approval-execution-failed",
+          targetType: "agent_tool_call",
+          targetId: toolCall.id,
+          metadata: {
+            sessionId: approval.sessionId,
+            toolCallId: toolCall.id,
+            approvalId: approval.id,
+            toolName: toolCall.name,
+            error: errorMessage(error)
+          },
+          severity: "Medium"
+        }, tx);
+        return error;
+      }
+
+      const succeeded = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, { status: "succeeded", result });
+      if (!succeeded) {
+        throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
+      }
+      await appendAgentMessage(tx, {
+        id: newId("agent-msg"),
+        sessionId: approval.sessionId,
+        organizationId: input.auth.organization.id,
+        role: "assistant",
+        content: result.summary,
+        citations: result.citations
+      });
       await audit({
         context: input,
         projectId: toolCall.projectId ?? approval.projectId,
         kind: "agent-tool",
-        action: "approval-execution-failed",
+        action: "approval-executed",
         targetType: "agent_tool_call",
         targetId: toolCall.id,
         metadata: {
@@ -390,40 +424,14 @@ export function createAgentOrchestrator(options: {
           toolCallId: toolCall.id,
           approvalId: approval.id,
           toolName: toolCall.name,
-          error: errorMessage(error)
-        },
-        severity: "Medium"
-      });
-      throw error;
-    }
-
-    const succeeded = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "succeeded", result });
-    if (!succeeded) {
-      throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
-    }
-    await appendAgentMessage(db, {
-      id: newId("agent-msg"),
-      sessionId: approval.sessionId,
-      organizationId: input.auth.organization.id,
-      role: "assistant",
-      content: result.summary,
-      citations: result.citations
+          summary: result.summary
+        }
+      }, tx);
+      return null;
     });
-    await audit({
-      context: input,
-      projectId: toolCall.projectId ?? approval.projectId,
-      kind: "agent-tool",
-      action: "approval-executed",
-      targetType: "agent_tool_call",
-      targetId: toolCall.id,
-      metadata: {
-        sessionId: approval.sessionId,
-        toolCallId: toolCall.id,
-        approvalId: approval.id,
-        toolName: toolCall.name,
-        summary: result.summary
-      }
-    });
+    if (executionError) {
+      throw executionError;
+    }
 
     return assembleTurn(input, approval.sessionId);
   }
