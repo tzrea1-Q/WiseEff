@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { developmentAuthContext } from "../auth/routes";
 import { ApiError } from "../../shared/http/errors";
 import { createAgentToolRegistry } from "./toolRegistry";
 
@@ -15,5 +16,39 @@ describe("agent tool registry", () => {
     const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
 
     expect(() => registry.require("missing.tool")).toThrow(ApiError);
+  });
+
+  it("rejects payload project access when it differs from the allowed context project", async () => {
+    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const auth = {
+      ...developmentAuthContext,
+      roles: [{ roleId: "hardware-user" as const, projectId: "aurora" }],
+      permissions: ["parameter:review" as const]
+    };
+
+    await expect(
+      registry.run(
+        "parameter.summarizeReviewQueue",
+        { auth, requestId: "req-1", sessionId: "agent-session-1", projectId: "aurora" },
+        { projectId: "zephyr" }
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN", details: { projectId: "zephyr" } });
+  });
+
+  it("rejects payload project access when context project is absent", async () => {
+    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const auth = {
+      ...developmentAuthContext,
+      roles: [{ roleId: "hardware-user" as const, projectId: "aurora" }],
+      permissions: ["parameter:review" as const]
+    };
+
+    await expect(
+      registry.run(
+        "parameter.summarizeReviewQueue",
+        { auth, requestId: "req-1", sessionId: "agent-session-1" },
+        { projectId: "zephyr" }
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN", details: { projectId: "zephyr" } });
   });
 });

@@ -50,11 +50,11 @@ select
   target_value,
   case when target_value is distinct from current_value then 'pending' else 'ready' end as status,
   risk,
-  (access_mode in ('rw', 'write', 'read-write')) as is_writable
+  (access_mode in ('WO', 'RW')) as is_writable
 from debugging_parameters
 where organization_id = $1
   and ($2::text is null or project_id = $2)
-  and access_mode in ('rw', 'write', 'read-write')
+  and access_mode in ('WO', 'RW')
   and (target_value is distinct from current_value or lower(risk) in ('high', 'critical'))
 order by updated_at desc
 limit 20

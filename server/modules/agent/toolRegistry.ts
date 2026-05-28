@@ -24,6 +24,10 @@ export type AgentToolDefinition = {
   run(context: AgentToolExecutionContext, payload: Record<string, unknown>): Promise<AgentToolResult>;
 };
 
+function readEffectiveProjectId(context: AgentToolExecutionContext, payload: Record<string, unknown>) {
+  return typeof payload.projectId === "string" ? payload.projectId : context.projectId;
+}
+
 export function createAgentToolRegistry(options: { db: Database | { query: Database["query"] } }) {
   const tools = [
     ...createParameterTools(options),
@@ -46,7 +50,7 @@ export function createAgentToolRegistry(options: { db: Database | { query: Datab
     async run(name: AgentToolName, context: AgentToolExecutionContext, payload: Record<string, unknown>) {
       const tool = this.require(name);
       requireAgentPermission(context.auth, tool.permission);
-      requireAgentProjectAccess(context.auth, context.projectId);
+      requireAgentProjectAccess(context.auth, readEffectiveProjectId(context, payload));
       return tool.run(context, payload);
     }
   };
