@@ -130,12 +130,22 @@ function dateTimeToIso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+function parseJsonString(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function jsonObject(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const parsed = typeof value === "string" ? parseJsonString(value) : value;
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
 }
 
 function jsonArray<T>(value: unknown): T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
+  const parsed = typeof value === "string" ? parseJsonString(value) : value;
+  return Array.isArray(parsed) ? (parsed as T[]) : [];
 }
 
 function toAgentContext(value: unknown): AgentContext {
@@ -311,8 +321,8 @@ export async function updateAgentToolCall(
   organizationId: string,
   toolCallId: string,
   input: UpdateAgentToolCallInput
-): Promise<void> {
-  await db.query(
+): Promise<boolean> {
+  const result = await db.query(
     `
     update agent_tool_calls
     set status = coalesce($3, status),
@@ -332,6 +342,8 @@ export async function updateAgentToolCall(
       input.auditEventId ?? null
     ]
   );
+
+  return result.rowCount === 1;
 }
 
 export async function listAgentToolCalls(
@@ -380,8 +392,8 @@ export async function markAgentApprovalApproved(
   organizationId: string,
   approvalId: string,
   decidedByUserId: string
-): Promise<void> {
-  await db.query(
+): Promise<boolean> {
+  const result = await db.query(
     `
     update agent_approvals
     set status = 'approved',
@@ -394,6 +406,8 @@ export async function markAgentApprovalApproved(
     `,
     [organizationId, approvalId, decidedByUserId]
   );
+
+  return result.rowCount === 1;
 }
 
 export async function markAgentApprovalRejected(
@@ -402,8 +416,8 @@ export async function markAgentApprovalRejected(
   approvalId: string,
   decidedByUserId: string,
   reason: string
-): Promise<void> {
-  await db.query(
+): Promise<boolean> {
+  const result = await db.query(
     `
     update agent_approvals
     set status = 'rejected',
@@ -416,6 +430,8 @@ export async function markAgentApprovalRejected(
     `,
     [organizationId, approvalId, decidedByUserId, reason]
   );
+
+  return result.rowCount === 1;
 }
 
 export async function listAgentApprovals(
