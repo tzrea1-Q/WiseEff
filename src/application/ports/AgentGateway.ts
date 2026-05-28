@@ -5,4 +5,5 @@ export interface AgentGateway {
   sendMessage(sessionId: string, message: string): Promise<AgentTurn>;
   runAction(sessionId: string, actionId: string, payload: Record<string, unknown>): Promise<AgentTurn>;
   approveToolCall(sessionId: string, approvalId: string): Promise<AgentTurn>;
+  rejectToolCall(sessionId: string, approvalId: string, reason?: string): Promise<AgentTurn>;
 }
