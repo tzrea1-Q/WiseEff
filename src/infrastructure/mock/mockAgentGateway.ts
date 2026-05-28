@@ -53,17 +53,20 @@ function toolNameForAction(actionId: string): AgentToolCall["name"] {
 }
 
 function toolCallsForPath(path: string): AgentToolCall[] {
+  const createdAt = nowIso();
   return createAgentPlan(path).actions.map((action) => ({
     id: `tool-${action.id}`,
     name: toolNameForAction(action.id),
     label: action.label,
     payload: { actionId: action.id, path },
     requiresApproval: action.requiresConfirm,
-    status: action.requiresConfirm ? "pending_approval" : "succeeded"
+    status: action.requiresConfirm ? "pending_approval" : "succeeded",
+    createdAt
   }));
 }
 
 function approvalsForToolCalls(toolCalls: AgentToolCall[]): AgentApproval[] {
+  const createdAt = nowIso();
   return toolCalls
     .filter((toolCall) => toolCall.requiresApproval)
     .map((toolCall) => ({
@@ -71,7 +74,8 @@ function approvalsForToolCalls(toolCalls: AgentToolCall[]): AgentApproval[] {
       toolCallId: toolCall.id,
       title: "确认执行 Agent 动作",
       message: `${toolCall.label} 会改变当前业务状态，需要人工确认。`,
-      status: "pending"
+      status: "pending",
+      createdAt
     }));
 }
 

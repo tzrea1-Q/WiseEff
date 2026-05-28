@@ -18,6 +18,8 @@ describe("mock agent gateway", () => {
     expect(turn.toolCalls.find((toolCall) => toolCall.id === "tool-scan-orphans")?.status).toBe("succeeded");
     expect(turn.toolCalls.find((toolCall) => toolCall.id === "tool-draft-cleanup")?.status).toBe("pending_approval");
     expect(turn.approvals.find((approval) => approval.toolCallId === "tool-draft-cleanup")?.status).toBe("pending");
+    expect(turn.toolCalls.find((toolCall) => toolCall.id === "tool-scan-orphans")?.createdAt).toEqual(expect.any(String));
+    expect(turn.approvals.find((approval) => approval.toolCallId === "tool-draft-cleanup")?.createdAt).toEqual(expect.any(String));
   });
 
   it("persists session messages across actions and approvals", async () => {
