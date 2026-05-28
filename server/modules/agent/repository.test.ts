@@ -366,8 +366,9 @@ describe("agent repository", () => {
 
     const messages = await listAgentMessages(db, "org-chargelab", "agent-session-1");
 
-    expect(calls[0].text).toContain("where agent_tool_calls.organization_id = $1");
-    expect(calls[0].text).toContain("and agent_tool_calls.session_id = $2");
+    expect(calls[0].text).toContain("where organization_id = $1");
+    expect(calls[0].text).toContain("and session_id = $2");
+    expect(calls[0].text).not.toContain("agent_tool_calls.");
     expect(calls[0].values).toEqual(["org-chargelab", "agent-session-1"]);
     expect(messages[0]).toMatchObject({
       id: "agent-msg-1",

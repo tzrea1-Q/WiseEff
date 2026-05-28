@@ -338,8 +338,8 @@ export async function listAgentMessages(
     `
     select id, role, content, citations, confidence, created_at
     from agent_messages
-    where agent_tool_calls.organization_id = $1
-      and agent_tool_calls.session_id = $2
+    where organization_id = $1
+      and session_id = $2
     order by created_at asc, id asc
     `,
     [organizationId, sessionId]
