@@ -404,7 +404,7 @@ export async function updateAgentToolCall(
   const result = await db.query(
     `
     update agent_tool_calls
-    set status = coalesce($3, status),
+    set status = coalesce($3::text, status),
       result = coalesce($4::jsonb, result),
       error_message = coalesce($5, error_message),
       audit_event_id = coalesce($6, audit_event_id),
@@ -412,8 +412,8 @@ export async function updateAgentToolCall(
     where organization_id = $1
       and id = $2
       and (
-        $3 is null
-        or status = $3
+        $3::text is null
+        or status = $3::text
         or status not in ('succeeded', 'failed', 'rejected')
       )
     `,

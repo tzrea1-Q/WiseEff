@@ -323,8 +323,22 @@ describe("agent repository", () => {
 
     expect(updated).toBe(true);
     expect(calls[0].text).toContain("status not in ('succeeded', 'failed', 'rejected')");
-    expect(calls[0].text).toContain("status = $3");
-    expect(calls[0].text).toContain("$3 is null");
+    expect(calls[0].text).toContain("status = coalesce($3::text, status)");
+    expect(calls[0].text).toContain("$3::text is null");
+    expect(calls[0].text).toContain("status = $3::text");
+  });
+
+  it("casts the status update parameter for PostgreSQL", async () => {
+    const { db, calls } = createRecordingDb([], 1);
+
+    await updateAgentToolCall(db, "org-chargelab", "tool-1", {
+      status: "failed",
+      errorMessage: "Draft service unavailable"
+    });
+
+    expect(calls[0].text).toContain("status = coalesce($3::text, status)");
+    expect(calls[0].text).toContain("$3::text is null");
+    expect(calls[0].text).toContain("status = $3::text");
   });
 
   it("returns approval decision success from rowCount and keeps pending guard", async () => {
