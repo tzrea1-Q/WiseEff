@@ -31,13 +31,14 @@ function isoNow() {
   return "2026-05-28T00:00:00.000Z";
 }
 
-function createMemoryDb() {
+function createMemoryDb(options: { failApprovalUpdates?: boolean; failToolUpdateStatuses?: string[] } = {}) {
   const tables = {
     sessions: [] as MemoryRow[],
     messages: [] as MemoryRow[],
     toolCalls: [] as MemoryRow[],
     approvals: [] as MemoryRow[],
-    traces: [] as MemoryRow[]
+    traces: [] as MemoryRow[],
+    audits: [] as MemoryRow[]
   };
 
   const queryable: Queryable = {
@@ -105,6 +106,9 @@ function createMemoryDb() {
         return { rows: [] as Row[], rowCount: 1 };
       }
       if (sql.includes("update agent_tool_calls")) {
+        if (options.failToolUpdateStatuses?.includes(String(values[2]))) {
+          return { rows: [] as Row[], rowCount: 0 };
+        }
         const row = tables.toolCalls.find((item) => item.organization_id === values[0] && item.id === values[1]);
         if (!row) {
           return { rows: [] as Row[], rowCount: 0 };
@@ -124,7 +128,7 @@ function createMemoryDb() {
       if (sql.includes("from agent_tool_calls")) {
         const rows = tables.toolCalls
           .filter((row) =>
-            sql.includes("and session_id = $2")
+            sql.includes("session_id = $2")
               ? row.organization_id === values[0] && row.session_id === values[1]
               : row.organization_id === values[0] && row.id === values[1]
           )
@@ -153,6 +157,9 @@ function createMemoryDb() {
         return { rows: [] as Row[], rowCount: 1 };
       }
       if (sql.includes("update agent_approvals")) {
+        if (options.failApprovalUpdates) {
+          return { rows: [] as Row[], rowCount: 0 };
+        }
         const row = tables.approvals.find(
           (item) => item.organization_id === values[0] && item.id === values[1] && item.status === "pending"
         );
@@ -168,7 +175,7 @@ function createMemoryDb() {
       if (sql.includes("from agent_approvals")) {
         return {
           rows: tables.approvals.filter((row) =>
-            sql.includes("and session_id = $2")
+            sql.includes("session_id = $2")
               ? row.organization_id === values[0] && row.session_id === values[1]
               : row.organization_id === values[0] && row.id === values[1]
           ) as Row[],
@@ -193,6 +200,21 @@ function createMemoryDb() {
         return { rows: [] as Row[], rowCount: 1 };
       }
       if (sql.includes("insert into audit_events")) {
+        tables.audits.push({
+          id: values[0],
+          organization_id: values[1],
+          project_id: values[2],
+          actor_user_id: values[3],
+          actor_type: values[4],
+          app: values[5],
+          kind: values[6],
+          action: values[7],
+          severity: values[8],
+          target_type: values[9],
+          target_id: values[10],
+          metadata: values[11],
+          trace_id: values[12]
+        });
         return { rows: [] as Row[], rowCount: 1 };
       }
 
@@ -448,6 +470,80 @@ describe("agent orchestrator", () => {
     });
   });
 
+  it("approveToolCall does not execute when the pending approval claim is stale", async () => {
+    const { db } = createMemoryDb({ failApprovalUpdates: true });
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-tool",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "Stage draft" }
+      }
+    });
+
+    await expect(
+      orchestrator.approveToolCall({
+        auth: developmentAuthContext,
+        requestId: "req-approve",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "Looks safe"
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(registry.run).not.toHaveBeenCalled();
+  });
+
+  it("approveToolCall records a failed tool call and failure audit when execution fails after approval claim", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => {
+        throw new Error("Draft service unavailable");
+      }
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-tool",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "Stage draft" }
+      }
+    });
+
+    await expect(
+      orchestrator.approveToolCall({
+        auth: developmentAuthContext,
+        requestId: "req-approve",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "Looks safe"
+      })
+    ).rejects.toThrow("Draft service unavailable");
+
+    expect(tables.approvals[0].status).toBe("approved");
+    expect(tables.toolCalls[0]).toMatchObject({ status: "failed", error_message: "Draft service unavailable" });
+    expect(tables.audits.at(-1)).toMatchObject({ action: "approval-execution-failed", trace_id: "req-approve" });
+  });
+
   it("rejectToolCall marks approval and tool rejected, then appends an assistant message", async () => {
     const { db } = createMemoryDb();
     const registry = createRegistry(
@@ -485,5 +581,73 @@ describe("agent orchestrator", () => {
       role: "assistant",
       content: expect.stringContaining("rejected")
     });
+  });
+
+  it("rejectToolCall does not append assistant message or audit when the reject claim is stale", async () => {
+    const { db, tables } = createMemoryDb({ failApprovalUpdates: true });
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-tool",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "Stage draft" }
+      }
+    });
+    const messageCount = tables.messages.length;
+    const auditCount = tables.audits.length;
+
+    await expect(
+      orchestrator.rejectToolCall({
+        auth: developmentAuthContext,
+        requestId: "req-reject",
+        approvalId: toolCall.approvalId ?? "",
+        reason: "Need clearer evidence"
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(tables.messages).toHaveLength(messageCount);
+    expect(tables.audits).toHaveLength(auditCount);
+    expect(tables.toolCalls[0].status).toBe("pending_approval");
+  });
+
+  it("raises a conflict when an important tool call transition is stale", async () => {
+    const { db } = createMemoryDb({ failToolUpdateStatuses: ["pending_approval"] });
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await expect(
+      orchestrator.recordToolRequestForTest({
+        auth: developmentAuthContext,
+        requestId: "req-tool",
+        sessionId: start.session.id,
+        request: {
+          name: "parameter.submitChangeDraft",
+          label: "Create parameter draft",
+          payload: { projectId: "aurora", reason: "Stage draft" }
+        }
+      })
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(registry.run).not.toHaveBeenCalled();
   });
 });

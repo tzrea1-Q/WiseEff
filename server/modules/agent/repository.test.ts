@@ -402,8 +402,10 @@ describe("agent repository", () => {
 
     const toolCalls = await listAgentToolCalls(db, "org-chargelab", "agent-session-1");
 
-    expect(calls[0].text).toContain("where organization_id = $1");
-    expect(calls[0].text).toContain("and session_id = $2");
+    expect(calls[0].text).toContain("where agent_tool_calls.organization_id = $1");
+    expect(calls[0].text).toContain("and agent_tool_calls.session_id = $2");
+    expect(calls[0].text).not.toContain("where organization_id = $1");
+    expect(calls[0].text).not.toContain("and session_id = $2");
     expect(calls[0].values).toEqual(["org-chargelab", "agent-session-1"]);
     expect(toolCalls[0].payload).toEqual({ projectId: "aurora" });
     expect(toolCalls[0].result).toEqual({ summary: "2 pending", data: { pending: 2 }, citations: [] });

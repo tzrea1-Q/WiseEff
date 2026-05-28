@@ -444,8 +444,8 @@ export async function listAgentToolCalls(
       agent_tool_calls.created_at, agent_tool_calls.updated_at
     from agent_tool_calls
     left join agent_approvals approvals on approvals.tool_call_id = agent_tool_calls.id
-    where organization_id = $1
-      and session_id = $2
+    where agent_tool_calls.organization_id = $1
+      and agent_tool_calls.session_id = $2
     order by agent_tool_calls.created_at asc, agent_tool_calls.id asc
     `,
     [organizationId, sessionId]

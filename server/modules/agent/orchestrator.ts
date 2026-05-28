@@ -59,6 +59,10 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Agent tool failed.";
 }
 
+function staleTransition(message: string, details: Record<string, unknown>) {
+  return new ApiError("CONFLICT", message, 409, details);
+}
+
 export function createAgentOrchestrator(options: {
   db: Database;
   toolRegistry?: ToolRegistry;
@@ -168,7 +172,10 @@ export function createAgentOrchestrator(options: {
       message: `Approval is required before running ${toolCall.label}.`,
       requestedByUserId: input.auth.user.id
     });
-    await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "pending_approval" });
+    const updated = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "pending_approval" });
+    if (!updated) {
+      throw staleTransition("Agent tool call could not be moved to pending approval.", { toolCallId: toolCall.id });
+    }
     await audit({
       context: input,
       projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined,
@@ -188,13 +195,19 @@ export function createAgentOrchestrator(options: {
       projectId: typeof toolCall.payload.projectId === "string" ? toolCall.payload.projectId : undefined
     };
 
-    await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "running" });
+    const running = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "running" });
+    if (!running) {
+      throw staleTransition("Agent tool call could not be started.", { toolCallId: toolCall.id });
+    }
     try {
       const result = await toolRegistry.run(toolCall.name, executionContext, toolCall.payload);
-      await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
+      const succeeded = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
         status: "succeeded",
         result
       });
+      if (!succeeded) {
+        throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
+      }
       await audit({
         context: input,
         projectId: executionContext.projectId,
@@ -206,10 +219,16 @@ export function createAgentOrchestrator(options: {
       });
       return result;
     } catch (error) {
-      await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
+      if (error instanceof ApiError && error.code === "CONFLICT") {
+        throw error;
+      }
+      const failed = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
         status: "failed",
         errorMessage: errorMessage(error)
       });
+      if (!failed) {
+        throw staleTransition("Agent tool call could not be marked failed.", { toolCallId: toolCall.id });
+      }
       await audit({
         context: input,
         projectId: executionContext.projectId,
@@ -332,18 +351,48 @@ export function createAgentOrchestrator(options: {
       throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
     }
 
-    const result = await toolRegistry.run(
-      toolCall.name,
-      {
-        auth: input.auth,
-        requestId: input.requestId,
-        sessionId: approval.sessionId,
-        projectId: toolCall.projectId ?? approval.projectId
-      },
-      toolCall.payload
-    );
-    await markAgentApprovalApproved(db, input.auth.organization.id, approval.id, input.auth.user.id);
-    await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "succeeded", result });
+    const approved = await markAgentApprovalApproved(db, input.auth.organization.id, approval.id, input.auth.user.id);
+    if (!approved) {
+      throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
+    }
+
+    let result;
+    try {
+      result = await toolRegistry.run(
+        toolCall.name,
+        {
+          auth: input.auth,
+          requestId: input.requestId,
+          sessionId: approval.sessionId,
+          projectId: toolCall.projectId ?? approval.projectId
+        },
+        toolCall.payload
+      );
+    } catch (error) {
+      const failed = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
+        status: "failed",
+        errorMessage: errorMessage(error)
+      });
+      if (!failed) {
+        throw staleTransition("Agent tool call could not be marked failed.", { toolCallId: toolCall.id });
+      }
+      await audit({
+        context: input,
+        projectId: toolCall.projectId ?? approval.projectId,
+        kind: "agent-tool",
+        action: "approval-execution-failed",
+        targetType: "agent_tool_call",
+        targetId: toolCall.id,
+        metadata: { approvalId: approval.id, toolName: toolCall.name, error: errorMessage(error) },
+        severity: "Medium"
+      });
+      throw error;
+    }
+
+    const succeeded = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, { status: "succeeded", result });
+    if (!succeeded) {
+      throw staleTransition("Agent tool call could not be marked succeeded.", { toolCallId: toolCall.id });
+    }
     await appendAgentMessage(db, {
       id: newId("agent-msg"),
       sessionId: approval.sessionId,
@@ -371,11 +420,23 @@ export function createAgentOrchestrator(options: {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
     }
 
-    await markAgentApprovalRejected(db, input.auth.organization.id, approval.id, input.auth.user.id, input.reason);
-    await updateAgentToolCall(db, input.auth.organization.id, approval.toolCallId, {
+    const rejected = await markAgentApprovalRejected(
+      db,
+      input.auth.organization.id,
+      approval.id,
+      input.auth.user.id,
+      input.reason
+    );
+    if (!rejected) {
+      throw staleTransition("Agent approval was already decided.", { approvalId: approval.id });
+    }
+    const toolRejected = await updateAgentToolCall(db, input.auth.organization.id, approval.toolCallId, {
       status: "rejected",
       errorMessage: input.reason
     });
+    if (!toolRejected) {
+      throw staleTransition("Agent tool call could not be marked rejected.", { toolCallId: approval.toolCallId });
+    }
     await appendAgentMessage(db, {
       id: newId("agent-msg"),
       sessionId: approval.sessionId,
