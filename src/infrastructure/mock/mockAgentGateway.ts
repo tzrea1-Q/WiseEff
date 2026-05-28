@@ -153,9 +153,26 @@ export function createMockAgentGateway(): AgentGateway {
 
     async approveToolCall(sessionId: string, approvalId: string) {
       const turn = createTurn(getSession(sessionId), `已确认 ${approvalId}`);
-      sessions.set(sessionId, turn.session);
+      const decidedAt = nowIso();
+      const approvedToolCallId = approvalId.replace(/^approval-/, "");
+      const matchingToolCall = turn.toolCalls.find((toolCall) => toolCall.id === approvedToolCallId);
+      const matchingApproval = turn.approvals.find((approval) => approval.id === approvalId);
+      const nextTurn: AgentTurn = {
+        ...turn,
+        toolCalls: matchingToolCall ? [{ ...matchingToolCall, status: "succeeded" }] : [],
+        approvals: matchingApproval
+          ? [
+              {
+                ...matchingApproval,
+                status: "approved",
+                decidedAt
+              }
+            ]
+          : []
+      };
+      sessions.set(sessionId, nextTurn.session);
 
-      return turn;
+      return nextTurn;
     },
 
     async rejectToolCall(sessionId: string, approvalId: string, reason?: string) {

@@ -46,6 +46,14 @@ describe("mock agent gateway", () => {
     const approvalTurn = await gateway.approveToolCall(session.id, "approval-tool-draft-cleanup");
 
     expect(approvalTurn.session.messages.length).toBeGreaterThan(actionTurn.session.messages.length);
+    expect(approvalTurn.toolCalls.map((toolCall) => toolCall.id)).toEqual(["tool-draft-cleanup"]);
+    expect(approvalTurn.toolCalls[0].status).toBe("succeeded");
+    expect(approvalTurn.approvals).toHaveLength(1);
+    expect(approvalTurn.approvals[0]).toMatchObject({
+      id: "approval-tool-draft-cleanup",
+      status: "approved"
+    });
+    expect(approvalTurn.approvals[0].decidedAt).toEqual(expect.any(String));
   });
 
   it("returns a rejected approval turn when rejecting a tool call", async () => {
