@@ -588,7 +588,7 @@ git commit -m "feat: harden production auth boundary"
 - Modify: `server/modules/operations/health.test.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write failing retry policy tests**
+- [x] **Step 1: Write failing retry policy tests**
 
 Create `server/modules/jobs/retryPolicy.test.ts`:
 
@@ -622,7 +622,7 @@ npm run test:server -- server/modules/jobs/retryPolicy.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement retry policy**
+- [x] **Step 2: Implement retry policy**
 
 Create `server/modules/jobs/retryPolicy.ts`:
 
@@ -654,7 +654,7 @@ npm run test:server -- server/modules/jobs/retryPolicy.test.ts
 
 Expected: PASS.
 
-- [ ] **Step 3: Add dead-letter migration and repository tests**
+- [x] **Step 3: Add dead-letter migration and repository tests**
 
 Create `server/migrations/0009_m5_job_dead_letters.sql` adding:
 
@@ -679,7 +679,7 @@ npm run test:server -- server/modules/jobs/repository.test.ts server/shared/data
 
 Expected: PASS.
 
-- [ ] **Step 4: Apply retry/dead-letter in log worker**
+- [x] **Step 4: Apply retry/dead-letter in log worker**
 
 Update `server/modules/logs/worker.ts` so catch blocks use `decideRetry()`:
 
@@ -701,7 +701,7 @@ npm run test:server -- server/modules/logs/worker.test.ts server/modules/jobs/re
 
 Expected: PASS.
 
-- [ ] **Step 5: Add worker health and routes**
+- [x] **Step 5: Add worker health and routes**
 
 Create `server/modules/jobs/workerHealth.ts` with:
 
@@ -728,7 +728,7 @@ npm run contract:check
 
 Expected: PASS.
 
-- [ ] **Step 6: Add dedicated worker runner and npm script**
+- [x] **Step 6: Add dedicated worker runner and npm script**
 
 Create `server/modules/logs/workerRunner.ts` that starts `startLogWorkerLoop()` from env-configured database/object-store settings. Add package script:
 
@@ -747,7 +747,7 @@ npm run test:server -- server/modules/jobs/retryPolicy.test.ts server/modules/jo
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit worker hardening**
+- [x] **Step 7: Commit worker hardening**
 
 Run:
 

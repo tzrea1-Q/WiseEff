@@ -109,6 +109,7 @@ export async function claimNextJob(
             and lease_expires_at <= now()
           )
         )
+        and (next_run_at is null or next_run_at <= now())
       order by created_at asc, id asc
       for update skip locked
       limit 1
@@ -120,6 +121,68 @@ export async function claimNextJob(
   );
 
   return result.rows[0] ? toClaimedLogAnalysisJobDto(result.rows[0]) : null;
+}
+
+export async function markJobRetryScheduled(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    jobId: string;
+    error: string;
+    currentStage?: LogStage;
+    nextRunAt: string;
+    reason: string;
+    leaseOwner: string;
+  }
+) {
+  const result = await db.query(
+    `
+    update jobs
+    set status = 'queued',
+      error_message = $3,
+      current_stage = $4,
+      next_run_at = $5,
+      dead_letter_reason = $6,
+      dead_lettered_at = null,
+      lease_owner = null,
+      lease_expires_at = null,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+      and lease_owner = $7
+      and lease_expires_at > now()
+    `,
+    [input.organizationId, input.jobId, input.error, input.currentStage ?? "parse", input.nextRunAt, input.reason, input.leaseOwner]
+  );
+
+  return result.rowCount === 1;
+}
+
+export async function markJobDeadLettered(
+  db: Queryable,
+  input: { organizationId: string; jobId: string; error: string; reason: string; currentStage?: LogStage; leaseOwner: string }
+) {
+  const result = await db.query(
+    `
+    update jobs
+    set status = 'failed',
+      error_message = $3,
+      current_stage = $4,
+      dead_letter_reason = $5,
+      dead_lettered_at = now(),
+      next_run_at = null,
+      lease_owner = null,
+      lease_expires_at = null,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+      and lease_owner = $6
+      and lease_expires_at > now()
+    `,
+    [input.organizationId, input.jobId, input.error, input.currentStage ?? "parse", input.reason, input.leaseOwner]
+  );
+
+  return result.rowCount === 1;
 }
 
 export async function getJobSnapshot(db: Queryable, jobId: string) {
@@ -208,6 +271,8 @@ export async function failJob(
     set status = 'failed',
       error_message = $3,
       current_stage = $4,
+      lease_owner = null,
+      lease_expires_at = null,
       updated_at = now()
     where organization_id = $1
       and id = $2

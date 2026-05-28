@@ -1,5 +1,6 @@
-import { claimNextJob, failJob, getJobSnapshot, updateJobProgress } from "../jobs/repository";
+import { claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
 import type { Database } from "../../shared/database/client";
+import { decideRetry } from "../jobs/retryPolicy";
 import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
@@ -17,6 +18,9 @@ export type ProcessLogWorkerOptions = {
   analyzer?: LogAnalysisAdapter;
   workerId?: string;
   leaseTtlMs?: number;
+  maxAttempts?: number;
+  retryBaseDelayMs?: number;
+  now?: () => Date;
 };
 
 type StageStatus = "processing" | "complete" | "failed";
@@ -75,7 +79,10 @@ export async function processNextLogAnalysisJob({
   objectStore,
   analyzer = createRuleBasedLogAnalyzer(),
   workerId = "wiseeff-log-worker",
-  leaseTtlMs = 60_000
+  leaseTtlMs = 60_000,
+  maxAttempts = 4,
+  retryBaseDelayMs = 1000,
+  now = () => new Date()
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
@@ -246,14 +253,30 @@ export async function processNextLogAnalysisJob({
       return "idle";
     }
     const message = readableError(error);
-    const failedJob = await failJob(db, {
+    const decision = decideRetry({ attemptCount: job.attemptCount, maxAttempts, baseDelayMs: retryBaseDelayMs, now: now() });
+    if (decision.action === "retry") {
+      const scheduled = await markJobRetryScheduled(db, {
+        organizationId: snapshot.organizationId,
+        jobId: snapshot.jobId,
+        currentStage,
+        error: message,
+        nextRunAt: decision.nextRunAt,
+        reason: decision.reason,
+        leaseOwner
+      });
+      if (!scheduled) return "idle";
+      return "processed";
+    }
+
+    const deadLettered = await markJobDeadLettered(db, {
       organizationId: snapshot.organizationId,
       jobId: snapshot.jobId,
       currentStage,
       error: message,
+      reason: decision.reason,
       leaseOwner
     });
-    if (!failedJob) return "idle";
+    if (!deadLettered) return "idle";
 
     await updateRunStageProgress(options.db, {
       organizationId: snapshot.organizationId,
@@ -269,7 +292,7 @@ export async function processNextLogAnalysisJob({
       logId: snapshot.logId,
       runId: snapshot.runId,
       currentStage,
-      error: message
+      error: decision.reason
     });
     return "processed";
   }

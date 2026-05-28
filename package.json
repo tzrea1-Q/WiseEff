@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "dev:api": "tsx watch server/index.ts",
+    "worker:logs": "tsx server/modules/logs/workerRunner.ts",
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:server": "vitest run --config vitest.server.config.ts",

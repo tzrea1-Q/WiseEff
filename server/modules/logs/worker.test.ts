@@ -285,6 +285,18 @@ function createFakeWorkerDb(fixture = createFixture()) {
         fixture.job.current_stage = values[2] as string;
         return { rows: [], rowCount: 1 };
       }
+      if (normalized.startsWith("update jobs set status = 'failed'") && normalized.includes("dead_lettered_at = now()")) {
+        if (rejectNextFailForLease) {
+          rejectNextFailForLease = false;
+          return { rows: [], rowCount: 0 };
+        }
+        fixture.job.status = "failed";
+        fixture.job.error_message = values[2] as string;
+        fixture.job.current_stage = values[3] as string;
+        fixture.job.lease_owner = null;
+        fixture.job.lease_expires_at = null;
+        return { rows: [], rowCount: 1 };
+      }
       if (normalized.startsWith("update jobs set status = 'failed'")) {
         if (rejectNextFailForLease) {
           rejectNextFailForLease = false;
@@ -293,6 +305,16 @@ function createFakeWorkerDb(fixture = createFixture()) {
         fixture.job.status = "failed";
         fixture.job.error_message = values[2] as string;
         fixture.job.current_stage = values[3] as string;
+        fixture.job.lease_owner = null;
+        fixture.job.lease_expires_at = null;
+        return { rows: [], rowCount: 1 };
+      }
+      if (normalized.startsWith("update jobs set status = 'queued'")) {
+        fixture.job.status = "queued";
+        fixture.job.error_message = values[2] as string;
+        fixture.job.current_stage = values[3] as string;
+        fixture.job.lease_owner = null;
+        fixture.job.lease_expires_at = null;
         return { rows: [], rowCount: 1 };
       }
       if (normalized.startsWith("update log_records set status = 'failed'")) {
@@ -509,7 +531,13 @@ describe("log worker", () => {
   });
 
   it("marks run, job, and record failed with a readable parser error", async () => {
-    const { db, fixture } = createFakeWorkerDb();
+    const fixture = createFixture({
+      job: {
+        ...createFixture().job,
+        attempt_count: 3
+      }
+    });
+    const { db } = createFakeWorkerDb(fixture);
 
     await processNextLogAnalysisJob({ db, objectStore: createObjectStore(Buffer.from([0, 0, 0, 0, 1])) });
 
@@ -520,13 +548,73 @@ describe("log worker", () => {
     expect(fixture.run).toMatchObject({ status: "failed", current_stage: "parse" });
     expect(fixture.log).toMatchObject({
       status: "failed",
-      failure_reason: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log."
+      failure_reason: "Job exhausted 4 attempts."
     });
     expect(fixture.stages.at(-1)).toMatchObject({
       stage: "parse",
       status: "failed",
       progress: 10,
       message: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log."
+    });
+  });
+
+  it("schedules a retry on a transient failure before attempts are exhausted", async () => {
+    const { db, fixture } = createFakeWorkerDb();
+
+    const result = await processNextLogAnalysisJob({
+      db,
+      objectStore: {
+        async put() {
+          throw new Error("put is not used by the worker");
+        },
+        async get() {
+          throw new Error("object store timeout");
+        }
+      },
+      workerId: "worker-a"
+    });
+
+    expect(result).toBe("processed");
+    expect(fixture.job).toMatchObject({
+      status: "queued",
+      error_message: "object store timeout",
+      current_stage: "parse",
+      lease_owner: null,
+      lease_expires_at: null,
+      attempt_count: 1
+    });
+    expect(fixture.run).toMatchObject({ status: "processing", progress: 10, current_stage: "parse", error_message: null });
+    expect(fixture.log).toMatchObject({ status: "processing", failure_reason: null });
+  });
+
+  it("dead-letters and fails the run when attempts are exhausted", async () => {
+    const fixture = createFixture({
+      job: {
+        ...createFixture().job,
+        attempt_count: 3
+      }
+    });
+    const { db } = createFakeWorkerDb(fixture);
+
+    const result = await processNextLogAnalysisJob({
+      db,
+      objectStore: createObjectStore(Buffer.from([0, 0, 0, 0, 1])),
+      workerId: "worker-a"
+    });
+
+    expect(result).toBe("processed");
+    expect(fixture.job).toMatchObject({
+      status: "failed",
+      error_message: "Input appears to be binary or null-byte-heavy content, not a UTF-8 text log.",
+      current_stage: "parse",
+      lease_owner: null,
+      lease_expires_at: null,
+      attempt_count: 4
+    });
+    expect(fixture.run).toMatchObject({ status: "failed", current_stage: "parse" });
+    expect(fixture.log).toMatchObject({
+      status: "failed",
+      failure_reason: "Job exhausted 4 attempts."
     });
   });
 
@@ -564,6 +652,8 @@ describe("log worker", () => {
     expect(fixture.run.status).toBe("failed");
     expect(fixture.job.status).toBe("failed");
     expect(fixture.job.error_message).toBe("Log analysis job is stale because its run is no longer current.");
+    expect(fixture.job.lease_owner).toBeNull();
+    expect(fixture.job.lease_expires_at).toBeNull();
     expect(fixture.log.current_run_id).toBe("run-2");
     expect(fixture.stages).toEqual([
       {

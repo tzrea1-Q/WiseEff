@@ -27,3 +27,14 @@ describe("M4 agent migration invariants", () => {
     expect(migration).toContain("agent_sessions_context_scope_idx");
   });
 });
+
+describe("M5 job dead-letter migration invariants", () => {
+  it("adds retry visibility and dead-letter metadata to jobs", () => {
+    const migration = readFileSync(path.join(root, "server", "migrations", "0009_m5_job_dead_letters.sql"), "utf8");
+
+    expect(migration).toContain("add column if not exists next_run_at timestamptz");
+    expect(migration).toContain("add column if not exists dead_lettered_at timestamptz");
+    expect(migration).toContain("add column if not exists dead_letter_reason text");
+    expect(migration).toContain("jobs_retry_claimable_idx");
+  });
+});

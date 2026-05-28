@@ -9,7 +9,7 @@ export function registerOperationsRoutes(router: WiseEffRouter, options: { db?: 
     body: buildLiveHealth()
   }));
 
-  router.get("/health/ready", async () => buildReadyHealth({ db: options.db, objectStore: options.objectStore }));
+  router.get("/health/ready", async () => buildReadyHealth({ db: options.db, objectStore: options.objectStore, includeWorkerQueue: true }));
 
   router.get("/api/v1/health", async () => ({
     status: 200,

@@ -104,4 +104,46 @@ describe("operations health", () => {
       }
     });
   });
+
+  it("includes worker queue health in readiness when requested", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>(text: string) => {
+        if (text.includes("from jobs")) {
+          return {
+            rows: [
+              {
+                queued: "1",
+                processing: "0",
+                dead_lettered: "0",
+                oldest_queued_at: null
+              } as Row
+            ],
+            rowCount: 1
+          };
+        }
+
+        return { rows: [{ ok: 1 } as Row], rowCount: 1 };
+      }
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(buildReadyHealth({ db, objectStore, includeWorkerQueue: true })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        dependencies: {
+          workerQueue: {
+            ok: true,
+            status: "ready",
+            queued: 1,
+            processing: 0,
+            deadLettered: 0,
+            oldestQueuedAgeMs: null
+          }
+        }
+      }
+    });
+  });
 });

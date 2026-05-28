@@ -1,4 +1,5 @@
 import type { Database } from "../../shared/database/client";
+import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 
 export type DependencyHealth = {
@@ -14,6 +15,7 @@ export type OperationsHealthBody = {
   dependencies?: {
     database: DependencyHealth;
     objectStore: DependencyHealth;
+    workerQueue?: WorkerQueueHealth;
   };
 };
 
@@ -66,10 +68,15 @@ async function checkObjectStore(objectStore?: ObjectStoreHealthCheck): Promise<D
   }
 }
 
-export async function buildReadyHealth(options: { db?: Pick<Database, "query">; objectStore?: ObjectStoreHealthCheck }) {
+export async function buildReadyHealth(options: {
+  db?: Pick<Database, "query">;
+  objectStore?: ObjectStoreHealthCheck;
+  includeWorkerQueue?: boolean;
+}) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
-  const ok = database.ok && objectStore.ok;
+  const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
+  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true);
 
   return {
     status: ok ? 200 : 503,
@@ -77,7 +84,7 @@ export async function buildReadyHealth(options: { db?: Pick<Database, "query">; 
       ok,
       service: "wiseeff-api",
       status: ok ? "ready" : "not_ready",
-      dependencies: { database, objectStore }
+      dependencies: workerQueue ? { database, objectStore, workerQueue } : { database, objectStore }
     } satisfies OperationsHealthBody
   };
 }
