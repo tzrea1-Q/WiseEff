@@ -89,6 +89,8 @@ Agent tools should be classified as:
 
 Approval-time execution must re-check permissions and business state.
 
+M4 Agent tools run only through the backend registry. Read tools still require server-side permission checks. Approval-required tools persist `agent_approvals` first, then execute only after approval-time authz and state checks. `parameter.submitChangeDraft` may create a human-review draft after approval, but it does not merge or apply production parameter values.
+
 Agent-generated parameter changes may prepare drafts or recommendations, but production parameter writes still require a human-submitted draft/review path. Future Agent or device write tools must create an explicit approval record and then execute through the same server-side authz and audit boundary.
 
 ## Device Safety

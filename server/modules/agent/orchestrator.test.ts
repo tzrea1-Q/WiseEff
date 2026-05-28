@@ -307,6 +307,87 @@ describe("agent orchestrator", () => {
     );
   });
 
+  it("records Agent audit events with human initiator correlation", async () => {
+    const { db, tables } = createMemoryDb();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({
+        summary: "Created one parameter draft for human review.",
+        data: { draftId: "draft-1", projectId: "aurora" },
+        citations: []
+      })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-agent-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-agent-tool",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "Stage draft" }
+      }
+    });
+    await orchestrator.approveToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-agent-approve",
+      approvalId: toolCall.approvalId ?? "",
+      reason: "Looks safe"
+    });
+    const auditRows = tables.audits.map((audit) => ({
+      ...audit,
+      metadata: typeof audit.metadata === "string" ? JSON.parse(audit.metadata) : audit.metadata
+    }));
+
+    expect(auditRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "started",
+          actor_type: "agent",
+          actor_user_id: developmentAuthContext.user.id,
+          trace_id: "req-agent-start",
+          metadata: expect.objectContaining({
+            initiatedByUserId: developmentAuthContext.user.id,
+            sessionId: start.session.id,
+            pageKey: "parameters"
+          })
+        }),
+        expect.objectContaining({
+          action: "approval-requested",
+          actor_type: "agent",
+          actor_user_id: developmentAuthContext.user.id,
+          trace_id: "req-agent-tool",
+          metadata: expect.objectContaining({
+            initiatedByUserId: developmentAuthContext.user.id,
+            sessionId: start.session.id,
+            toolCallId: toolCall.id,
+            approvalId: toolCall.approvalId,
+            toolName: "parameter.submitChangeDraft"
+          })
+        }),
+        expect.objectContaining({
+          action: "approval-executed",
+          actor_type: "agent",
+          actor_user_id: developmentAuthContext.user.id,
+          trace_id: "req-agent-approve",
+          metadata: expect.objectContaining({
+            initiatedByUserId: developmentAuthContext.user.id,
+            sessionId: start.session.id,
+            toolCallId: toolCall.id,
+            approvalId: toolCall.approvalId,
+            toolName: "parameter.submitChangeDraft"
+          })
+        })
+      ])
+    );
+  });
+
   it("approval-required tool requests create pending approvals without running the tool", async () => {
     const { db } = createMemoryDb();
     const registry = createRegistry(
@@ -344,8 +425,8 @@ describe("agent orchestrator", () => {
     expect(turn.approvals[0]).toMatchObject({ toolCallId: turn.toolCalls[0].id, status: "pending" });
   });
 
-  it("read-only tool requests execute immediately and record success or failure", async () => {
-    const { db } = createMemoryDb();
+  it("read-only tool requests record failure audit and rethrow execution failures", async () => {
+    const { db, tables } = createMemoryDb();
     const registry = createRegistry(
       [
         createToolDefinition({ name: "parameter.summarizeReviewQueue", requiresApproval: false }),
@@ -382,17 +463,19 @@ describe("agent orchestrator", () => {
       context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
     });
 
-    const turn = await orchestrator.sendMessage({
-      auth: developmentAuthContext,
-      requestId: "req-turn",
-      sessionId: start.session.id,
-      message: "总结审阅队列和审计"
-    });
+    await expect(
+      orchestrator.sendMessage({
+        auth: developmentAuthContext,
+        requestId: "req-turn",
+        sessionId: start.session.id,
+        message: "总结审阅队列和审计"
+      })
+    ).rejects.toThrow("Audit warehouse unavailable");
 
     expect(registry.run).toHaveBeenCalledTimes(2);
-    expect(turn.toolCalls.map((tool) => tool.status)).toEqual(["succeeded", "failed"]);
-    expect(turn.toolCalls[0].result?.summary).toBe("1 pending review item.");
-    expect(turn.toolCalls[1].error).toBe("Audit warehouse unavailable");
+    expect(tables.toolCalls.map((tool) => tool.status)).toEqual(["succeeded", "failed"]);
+    expect(tables.toolCalls[1].error_message).toBe("Audit warehouse unavailable");
+    expect(tables.audits.at(-1)).toMatchObject({ action: "failed", trace_id: "req-turn" });
   });
 
   it("runToolCall rejects pending approval calls with an approval-required ApiError", async () => {

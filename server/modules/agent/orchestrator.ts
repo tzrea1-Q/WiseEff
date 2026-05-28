@@ -89,14 +89,14 @@ export function createAgentOrchestrator(options: {
       organizationId: input.context.auth.organization.id,
       projectId: input.projectId ?? null,
       actorUserId: input.context.auth.user.id,
-      actorType: "user",
+      actorType: "agent",
       app: "wiseeff",
       kind: input.kind,
       action: input.action,
       severity: input.severity ?? "Low",
       targetType: input.targetType,
       targetId: input.targetId,
-      metadata: input.metadata ?? {},
+      metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) },
       traceId: input.context.requestId
     });
   }
@@ -153,7 +153,7 @@ export function createAgentOrchestrator(options: {
       action: "started",
       targetType: "agent_session",
       targetId: sessionId,
-      metadata: { pageKey: input.context.pageKey }
+      metadata: { sessionId, pageKey: input.context.pageKey }
     });
 
     return assembleTurn(input, sessionId);
@@ -183,7 +183,7 @@ export function createAgentOrchestrator(options: {
       action: "approval-requested",
       targetType: "agent_tool_call",
       targetId: toolCall.id,
-      metadata: { approvalId, toolName: toolCall.name }
+      metadata: { sessionId, toolCallId: toolCall.id, approvalId, toolName: toolCall.name }
     });
   }
 
@@ -215,7 +215,7 @@ export function createAgentOrchestrator(options: {
         action: "succeeded",
         targetType: "agent_tool_call",
         targetId: toolCall.id,
-        metadata: { toolName: toolCall.name, summary: result.summary }
+        metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
       });
       return result;
     } catch (error) {
@@ -236,10 +236,10 @@ export function createAgentOrchestrator(options: {
         action: "failed",
         targetType: "agent_tool_call",
         targetId: toolCall.id,
-        metadata: { toolName: toolCall.name, error: errorMessage(error) },
+        metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, error: errorMessage(error) },
         severity: "Medium"
       });
-      return null;
+      throw error;
     }
   }
 
@@ -343,8 +343,11 @@ export function createAgentOrchestrator(options: {
 
   async function approveToolCall(input: ApprovalInput): Promise<AgentTurnDto> {
     const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
-    if (!approval || approval.status !== "pending") {
-      throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
+    if (!approval) {
+      throw new ApiError("NOT_FOUND", "Agent approval was not found.", 404, { approvalId: input.approvalId });
+    }
+    if (approval.status !== "pending") {
+      throw new ApiError("INVALID_APPROVAL_STATE", "Approval is not pending.", 409, { approvalId: input.approvalId });
     }
     const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
     if (!toolCall) {
@@ -383,7 +386,13 @@ export function createAgentOrchestrator(options: {
         action: "approval-execution-failed",
         targetType: "agent_tool_call",
         targetId: toolCall.id,
-        metadata: { approvalId: approval.id, toolName: toolCall.name, error: errorMessage(error) },
+        metadata: {
+          sessionId: approval.sessionId,
+          toolCallId: toolCall.id,
+          approvalId: approval.id,
+          toolName: toolCall.name,
+          error: errorMessage(error)
+        },
         severity: "Medium"
       });
       throw error;
@@ -408,7 +417,13 @@ export function createAgentOrchestrator(options: {
       action: "approval-executed",
       targetType: "agent_tool_call",
       targetId: toolCall.id,
-      metadata: { approvalId: approval.id, toolName: toolCall.name, summary: result.summary }
+      metadata: {
+        sessionId: approval.sessionId,
+        toolCallId: toolCall.id,
+        approvalId: approval.id,
+        toolName: toolCall.name,
+        summary: result.summary
+      }
     });
 
     return assembleTurn(input, approval.sessionId);
@@ -452,7 +467,12 @@ export function createAgentOrchestrator(options: {
       action: "approval-rejected",
       targetType: "agent_tool_call",
       targetId: approval.toolCallId,
-      metadata: { approvalId: approval.id, reason: input.reason }
+      metadata: {
+        sessionId: approval.sessionId,
+        toolCallId: approval.toolCallId,
+        approvalId: approval.id,
+        reason: input.reason
+      }
     });
 
     return assembleTurn(input, approval.sessionId);

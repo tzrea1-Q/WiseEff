@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Database, Queryable } from "../../shared/database/client";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
+import type { BackendRoleId } from "../auth/types";
 
 type MemoryRow = Record<string, unknown>;
 
@@ -10,6 +11,20 @@ function isoNow() {
 }
 
 function createMemoryDb() {
+  const authRowsByUserId: Record<
+    string,
+    {
+      isActive: boolean;
+      roleId: BackendRoleId;
+      projectId: string | null;
+    }
+  > = {
+    "u-xu-yun": { isActive: true, roleId: "admin", projectId: null },
+    "dev-user": { isActive: true, roleId: "admin", projectId: null },
+    "inactive-user": { isActive: false, roleId: "admin", projectId: null },
+    "guest-user": { isActive: true, roleId: "guest", projectId: "aurora" },
+    "hardware-user": { isActive: true, roleId: "hardware-user", projectId: "aurora" }
+  };
   const tables = {
     sessions: [] as MemoryRow[],
     messages: [] as MemoryRow[],
@@ -25,18 +40,23 @@ function createMemoryDb() {
       const sql = text.replace(/\s+/g, " ").trim();
 
       if (sql.includes("from users") && sql.includes("join organizations")) {
+        const userId = String(values[0]);
+        const authRow = authRowsByUserId[userId];
+        if (!authRow) {
+          return { rows: [] as Row[], rowCount: 0 };
+        }
         return {
           rows: [
             {
-              user_id: "dev-user",
+              user_id: userId,
               organization_id: "org-dev",
               organization_name: "Development Org",
-              name: "Development User",
-              email: "dev@example.com",
-              title: "Developer",
-              is_active: true,
-              project_id: "aurora",
-              role_id: "hardware-user"
+              name: "Test User",
+              email: `${userId}@example.com`,
+              title: "Tester",
+              is_active: authRow.isActive,
+              project_id: authRow.projectId,
+              role_id: authRow.roleId
             }
           ] as Row[],
           rowCount: 1
@@ -456,6 +476,105 @@ describe("agent routes", () => {
         })
       ])
     );
+    expect(tables.parameterDrafts).toHaveLength(1);
+  });
+
+  it("rejects approvals from inactive users", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`,
+      {
+        method: "POST",
+        headers: { "x-wiseeff-user": "inactive-user" },
+        body: JSON.stringify({})
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(tables.approvals.find((approval) => approval.id === approvalId)?.status).toBe("pending");
+    expect(tables.parameterDrafts).toHaveLength(0);
+  });
+
+  it("rejects approval of parameter.submitChangeDraft without parameter edit permission", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`,
+      {
+        method: "POST",
+        headers: { "x-wiseeff-user": "guest-user" },
+        body: JSON.stringify({})
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(tables.approvals.find((approval) => approval.id === approvalId)?.status).toBe("approved");
+    const approval = tables.approvals.find((item) => item.id === approvalId);
+    expect(tables.toolCalls.find((toolCall) => toolCall.id === approval?.tool_call_id)?.status).toBe("failed");
+    expect(tables.parameterDrafts).toHaveLength(0);
+  });
+
+  it("rejects audit.summarizeRecentEvents without admin access", async () => {
+    const { db } = createMemoryDb();
+    const sessionResponse = await requestJson<{ turn: { session: { id: string } } }>(
+      createWiseEffServer({ db }),
+      "/api/v1/agent/sessions",
+      {
+        method: "POST",
+        headers: { "x-wiseeff-user": "hardware-user" },
+        body: JSON.stringify({
+          context: { path: "/audit", pageKey: "audit", projectId: "aurora", roleId: "hardware-user" }
+        })
+      }
+    );
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${sessionResponse.body.turn.session.id}/messages`,
+      {
+        method: "POST",
+        headers: { "x-wiseeff-user": "hardware-user" },
+        body: JSON.stringify({ message: "Summarize recent audit events." })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("rejects approval that has already been approved", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+    const server = createWiseEffServer({ db });
+
+    const firstResponse = await requestJson<{ turn: { approvals: { id: string; status: string }[] } }>(
+      server,
+      `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({})
+      }
+    );
+    const secondResponse = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`,
+      {
+        method: "POST",
+        body: JSON.stringify({})
+      }
+    );
+
+    expect(firstResponse.status).toBe(200);
+    expect(firstResponse.body.turn.approvals[0]).toMatchObject({ id: approvalId, status: "approved" });
+    expect(secondResponse.status).toBe(409);
+    expect(secondResponse.body.error.code).toBe("INVALID_APPROVAL_STATE");
     expect(tables.parameterDrafts).toHaveLength(1);
   });
 
