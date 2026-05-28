@@ -51,4 +51,35 @@ describe("agent tool registry", () => {
       )
     ).rejects.toMatchObject({ code: "FORBIDDEN", details: { projectId: "zephyr" } });
   });
+
+  it("rejects project-scoped users when no effective project is provided", async () => {
+    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+    const auth = {
+      ...developmentAuthContext,
+      roles: [{ roleId: "hardware-user" as const, projectId: "aurora" }],
+      permissions: ["parameter:review" as const]
+    };
+
+    await expect(
+      registry.run(
+        "parameter.summarizeReviewQueue",
+        { auth, requestId: "req-1", sessionId: "agent-session-1" },
+        {}
+      )
+    ).rejects.toMatchObject({ code: "FORBIDDEN", details: { projectId: undefined } });
+  });
+
+  it("allows global admin users to run without a project", async () => {
+    const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
+
+    await expect(
+      registry.run(
+        "parameter.summarizeReviewQueue",
+        { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1" },
+        {}
+      )
+    ).resolves.toMatchObject({
+      summary: "0 parameter change requests are waiting in the review queue."
+    });
+  });
 });

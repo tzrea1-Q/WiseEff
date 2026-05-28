@@ -28,6 +28,13 @@ function readEffectiveProjectId(context: AgentToolExecutionContext, payload: Rec
   return typeof payload.projectId === "string" ? payload.projectId : context.projectId;
 }
 
+function requireScopedProjectOrGlobalAdmin(context: AgentToolExecutionContext, projectId?: string) {
+  const hasGlobalAdmin = context.auth.roles.some((role) => role.roleId === "admin" && role.projectId === null);
+  if (!projectId && !hasGlobalAdmin) {
+    throw new ApiError("FORBIDDEN", "Agent project access is required.", 403, { projectId });
+  }
+}
+
 export function createAgentToolRegistry(options: { db: Database | { query: Database["query"] } }) {
   const tools = [
     ...createParameterTools(options),
@@ -49,8 +56,10 @@ export function createAgentToolRegistry(options: { db: Database | { query: Datab
     },
     async run(name: AgentToolName, context: AgentToolExecutionContext, payload: Record<string, unknown>) {
       const tool = this.require(name);
+      const projectId = readEffectiveProjectId(context, payload);
       requireAgentPermission(context.auth, tool.permission);
-      requireAgentProjectAccess(context.auth, readEffectiveProjectId(context, payload));
+      requireScopedProjectOrGlobalAdmin(context, projectId);
+      requireAgentProjectAccess(context.auth, projectId);
       return tool.run(context, payload);
     }
   };

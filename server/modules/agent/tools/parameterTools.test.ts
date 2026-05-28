@@ -98,4 +98,31 @@ describe("agent parameter tools", () => {
     expect(tool?.requiresApproval).toBe(true);
     expect(tool?.permission).toBe("parameter:edit");
   });
+
+  it("prepares submit change draft with summary and citation without writing to the database", async () => {
+    let queryCount = 0;
+    const db = {
+      query: async () => {
+        queryCount += 1;
+        return { rows: [], rowCount: 0 };
+      }
+    };
+    const tool = createParameterTools({ db }).find((item) => item.name === "parameter.submitChangeDraft");
+    const result = await tool?.run(
+      { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1", projectId: "aurora" },
+      {
+        projectId: "aurora",
+        parameterId: "p-fast-charge",
+        proposedValue: "18A",
+        reason: "Stage for reviewer approval"
+      }
+    );
+
+    expect(tool?.permission).toBe("parameter:edit");
+    expect(tool?.requiresApproval).toBe(true);
+    expect(result?.summary).toContain("Prepared");
+    expect(result?.summary).toContain("No draft row was created");
+    expect(result?.citations[0]).toEqual(expect.objectContaining({ type: "parameter", id: "p-fast-charge" }));
+    expect(queryCount).toBe(0);
+  });
 });
