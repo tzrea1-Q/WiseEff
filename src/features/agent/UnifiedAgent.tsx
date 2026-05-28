@@ -249,6 +249,10 @@ export function UnifiedAgent({
     });
     setApiToolCalls(turn.toolCalls);
     setApiApprovals(turn.approvals);
+    const pendingApproval = turn.approvals.find((approval) => approval.status === "pending");
+    if (pendingApproval) {
+      setConfirmApproval(pendingApproval);
+    }
   };
 
   const startApiSession = () => {
@@ -289,6 +293,19 @@ export function UnifiedAgent({
     return promise;
   };
 
+  const buildApiActionRequest = (id: string) => {
+    const action = plan.actions.find((item) => item.id === id);
+    return [
+      "WiseAgent action request",
+      `actionId: ${id}`,
+      `label: ${action?.label ?? id}`,
+      `path: ${path}`,
+      projectId ? `projectId: ${projectId}` : undefined
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
   const runApiAction = async (id: string) => {
     const request = beginApiTurnRequest();
     if (!request) {
@@ -300,15 +317,11 @@ export function UnifiedAgent({
       if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
         return;
       }
-      const turn = await gateway.runAction(activeSession.id, id, { actionId: id, path, projectId });
+      const turn = await gateway.sendMessage(activeSession.id, buildApiActionRequest(id));
       if (!isCurrentApiTurnRequest(request)) {
         return;
       }
       applyAgentTurn(turn);
-      const pendingApproval = turn.approvals.find((approval) => approval.status === "pending");
-      if (pendingApproval) {
-        setConfirmApproval(pendingApproval);
-      }
     } catch {
       if (isCurrentApiTurnRequest(request)) {
         addAgentUnavailableMessage();
@@ -326,6 +339,7 @@ export function UnifiedAgent({
       return;
     }
 
+    let completed = false;
     try {
       const activeSession = sessionRef.current;
       if (!gateway || !activeSession || !isCurrentApiTurnRequest(request)) {
@@ -339,13 +353,16 @@ export function UnifiedAgent({
         return;
       }
       applyAgentTurn(turn);
+      completed = true;
     } catch {
       if (isCurrentApiTurnRequest(request)) {
         addAgentUnavailableMessage();
       }
     } finally {
       if (isCurrentApiTurnRequest(request)) {
-        setConfirmApproval(null);
+        if (completed) {
+          setConfirmApproval(null);
+        }
         finishApiTurnRequest(request);
       }
     }
@@ -670,6 +687,12 @@ function ConfirmDialog({
   onConfirm: () => void;
 }) {
   const decisionHandledRef = useRef(false);
+  useEffect(() => {
+    if (!disabled) {
+      decisionHandledRef.current = false;
+    }
+  }, [disabled]);
+
   const cancelOnce = () => {
     if (disabled || decisionHandledRef.current) {
       return;
