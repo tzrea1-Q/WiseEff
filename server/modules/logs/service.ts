@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 
 import { createAuditEvent } from "../audit/repository";
+import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -69,6 +70,8 @@ export type SubmitLogFeedbackInput = {
   note?: string;
 };
 
+type ServiceContext = AuditCorrelationContext;
+
 const supportedExtensions = new Set<string>(supportedLogExtensions);
 
 function unsupportedReason() {
@@ -100,7 +103,8 @@ async function createLogAudit(
     logId: string;
     severity?: "High" | "Medium" | "Low";
     metadata?: Record<string, unknown>;
-  }
+  },
+  context: ServiceContext = {}
 ) {
   await createAuditEvent(db, {
     id: randomUUID(),
@@ -115,7 +119,7 @@ async function createLogAudit(
     targetType: "log-record",
     targetId: input.logId,
     metadata: input.metadata ?? {},
-    traceId: randomUUID()
+    traceId: context.requestId ?? randomUUID()
   });
 }
 
@@ -141,7 +145,8 @@ export async function uploadLogFile(
   db: Database,
   objectStore: ObjectStore,
   auth: AuthContext,
-  input: UploadLogFileInput
+  input: UploadLogFileInput,
+  context: ServiceContext = {}
 ): Promise<{ fileObject: LogFileObjectDto; log: LogRecordDto; job: LogAnalysisJobDto | null }> {
   requireLogUpload(auth);
   requireLogProjectAccess(auth, input.projectId);
@@ -173,14 +178,19 @@ export async function uploadLogFile(
       if (!log) {
         throw new ApiError("NOT_FOUND", "Log record was not created.", 404);
       }
-      await createLogAudit(tx, auth, {
-        kind: "log-upload-failed",
-        action: "upload-failed",
-        projectId: input.projectId,
-        logId: log.id,
-        severity: "Low",
-        metadata: { fileName: input.fileName, failureReason: log.failureReason }
-      });
+      await createLogAudit(
+        tx,
+        auth,
+        {
+          kind: "log-upload-failed",
+          action: "upload-failed",
+          projectId: input.projectId,
+          logId: log.id,
+          severity: "Low",
+          metadata: { fileName: input.fileName, failureReason: log.failureReason }
+        },
+        context
+      );
 
       return { fileObject, log, job: null };
     });
@@ -207,19 +217,24 @@ export async function uploadLogFile(
         relatedParameterId: input.relatedParameterId
       }
     );
-    await createLogAudit(tx, auth, {
-      kind: "log-upload",
-      action: "upload",
-      projectId: input.projectId,
-      logId: log.id,
-      metadata: { fileName: input.fileName, runId: job.runId, jobId: job.id }
-    });
+    await createLogAudit(
+      tx,
+      auth,
+      {
+        kind: "log-upload",
+        action: "upload",
+        projectId: input.projectId,
+        logId: log.id,
+        metadata: { fileName: input.fileName, runId: job.runId, jobId: job.id }
+      },
+      context
+    );
 
     return { fileObject, log, job };
   });
 }
 
-export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput) {
+export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput, context: ServiceContext = {}) {
   requireLogUpload(auth);
   requireLogProjectAccess(auth, input.projectId);
 
@@ -263,14 +278,19 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         relatedParameterId: input.relatedParameterId
       });
       if (!log) throw new ApiError("NOT_FOUND", "Log record was not created.", 404);
-      await createLogAudit(tx, auth, {
-        kind: "log-upload-failed",
-        action: "upload-failed",
-        projectId: input.projectId,
-        logId: log.id,
-        severity: "Low",
-        metadata: { fileName: fileObject.fileName, failureReason: log.failureReason }
-      });
+      await createLogAudit(
+        tx,
+        auth,
+        {
+          kind: "log-upload-failed",
+          action: "upload-failed",
+          projectId: input.projectId,
+          logId: log.id,
+          severity: "Low",
+          metadata: { fileName: fileObject.fileName, failureReason: log.failureReason }
+        },
+        context
+      );
       return { log, job: null };
     });
   }
@@ -295,13 +315,18 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
         relatedParameterId: input.relatedParameterId
       }
     );
-    await createLogAudit(tx, auth, {
-      kind: "log-upload",
-      action: "upload",
-      projectId: input.projectId,
-      logId: result.log.id,
-      metadata: { fileName: fileObject.fileName, runId: result.job.runId, jobId: result.job.id }
-    });
+    await createLogAudit(
+      tx,
+      auth,
+      {
+        kind: "log-upload",
+        action: "upload",
+        projectId: input.projectId,
+        logId: result.log.id,
+        metadata: { fileName: fileObject.fileName, runId: result.job.runId, jobId: result.job.id }
+      },
+      context
+    );
     return result;
   });
 }
@@ -330,7 +355,7 @@ export async function listLogRuns(db: Queryable, auth: AuthContext, logId: strin
   return listRuns(db, auth, logId);
 }
 
-export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: RerunLogAnalysisInput) {
+export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: RerunLogAnalysisInput, context: ServiceContext = {}) {
   requireLogAnalyze(auth);
 
   return db.transaction(async (tx) => {
@@ -352,20 +377,25 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
     }
     requireLogProjectAccess(auth, log.projectId);
-    await createLogAudit(tx, auth, {
-      kind: "log-rerun",
-      action: "rerun",
-      projectId: log.projectId,
-      logId: input.logId,
-      metadata: { runId: job.runId, jobId: job.id, analysisQuestion: input.analysisQuestion }
-    });
+    await createLogAudit(
+      tx,
+      auth,
+      {
+        kind: "log-rerun",
+        action: "rerun",
+        projectId: log.projectId,
+        logId: input.logId,
+        metadata: { runId: job.runId, jobId: job.id, analysisQuestion: input.analysisQuestion }
+      },
+      context
+    );
     const runs = await listRuns(tx, auth, input.logId);
 
     return { log, job, runs };
   });
 }
 
-export async function archiveLogRecord(db: Database, auth: AuthContext, logId: string) {
+export async function archiveLogRecord(db: Database, auth: AuthContext, logId: string, context: ServiceContext = {}) {
   requireLogArchive(auth);
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
@@ -377,18 +407,23 @@ export async function archiveLogRecord(db: Database, auth: AuthContext, logId: s
     if (!log) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
     }
-    await createLogAudit(tx, auth, {
-      kind: "log-archive",
-      action: "archive",
-      projectId: log.projectId,
-      logId,
-      metadata: { archiveState: "archived" }
-    });
+    await createLogAudit(
+      tx,
+      auth,
+      {
+        kind: "log-archive",
+        action: "archive",
+        projectId: log.projectId,
+        logId,
+        metadata: { archiveState: "archived" }
+      },
+      context
+    );
     return log;
   });
 }
 
-export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId: string) {
+export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId: string, context: ServiceContext = {}) {
   requireLogArchive(auth);
   return db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, logId);
@@ -400,18 +435,23 @@ export async function unarchiveLogRecord(db: Database, auth: AuthContext, logId:
     if (!log) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId });
     }
-    await createLogAudit(tx, auth, {
-      kind: "log-unarchive",
-      action: "unarchive",
-      projectId: log.projectId,
-      logId,
-      metadata: { archiveState: "active" }
-    });
+    await createLogAudit(
+      tx,
+      auth,
+      {
+        kind: "log-unarchive",
+        action: "unarchive",
+        projectId: log.projectId,
+        logId,
+        metadata: { archiveState: "active" }
+      },
+      context
+    );
     return log;
   });
 }
 
-export async function submitLogFeedback(db: Database, auth: AuthContext, input: SubmitLogFeedbackInput) {
+export async function submitLogFeedback(db: Database, auth: AuthContext, input: SubmitLogFeedbackInput, context: ServiceContext = {}) {
   requireLogFeedback(auth);
   return db.transaction(async (tx) => {
     const log = await getLogDetail(tx, auth, input.logId);
@@ -425,13 +465,18 @@ export async function submitLogFeedback(db: Database, auth: AuthContext, input: 
       rating: input.rating,
       note: input.note
     });
-    await createLogAudit(tx, auth, {
-      kind: "log-feedback",
-      action: "feedback",
-      projectId: log.projectId,
-      logId: input.logId,
-      severity: "Low",
-      metadata: { rating: input.rating, note: input.note }
-    });
+    await createLogAudit(
+      tx,
+      auth,
+      {
+        kind: "log-feedback",
+        action: "feedback",
+        projectId: log.projectId,
+        logId: input.logId,
+        severity: "Low",
+        metadata: { rating: input.rating, note: input.note }
+      },
+      context
+    );
   });
 }

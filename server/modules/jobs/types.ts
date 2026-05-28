@@ -17,9 +17,13 @@ export type LogAnalysisJobDto = {
 
 export type ClaimedLogAnalysisJobDto = LogAnalysisJobDto & {
   organizationId: string;
+  leaseOwner: string | null;
+  leaseExpiresAt: string | null;
+  attemptCount: number;
 };
 
-export type LogAnalysisJobSnapshotDto = ClaimedLogAnalysisJobDto & {
+export type LogAnalysisJobSnapshotDto = LogAnalysisJobDto & {
+  organizationId: string;
   projectId: string;
   logId: string;
 };

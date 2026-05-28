@@ -160,6 +160,25 @@ describe("createRouter", () => {
 });
 
 describe("createHttpServer", () => {
+  it("reflects request ids on CORS preflight responses", async () => {
+    const server = createHttpServer({
+      handle: async () => ({ status: 200, body: { ok: true } })
+    });
+
+    const { response, text } = await requestText(server, "/api/v1/logs", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://127.0.0.1:5173",
+        "Access-Control-Request-Method": "POST",
+        "X-Request-Id": "client-preflight-request"
+      }
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("x-request-id")).toBe("client-preflight-request");
+    expect(text).toBe("");
+  });
+
   it("passes text and csv uploads as raw bodies", async () => {
     const server = createHttpServer({
       handle: async (request) => {

@@ -5,7 +5,7 @@ WiseEff reliability work should protect user trust in parameter changes, log ana
 ## Current Baseline
 
 - Frontend build and tests are available through npm scripts.
-- Backend M0 exposes `/api/v1/health`.
+- Backend exposes `/health/live`, `/health/ready`, and compatibility `/api/v1/health`.
 - SQL migrations live in `server/migrations/`.
 - Deployment and operations design lives in `design-docs/deployment-operations.md`.
 - Testing strategy lives in `design-docs/testing-strategy.md`.
@@ -34,13 +34,22 @@ Planned endpoints:
 - `/health/live`: process is alive.
 - `/health/ready`: database, Redis, object storage, and required dependencies are ready.
 
-Current endpoint:
+Current endpoints:
 
-- `/api/v1/health`: M0 API smoke endpoint.
+- `/health/live`: process is alive and can serve HTTP without checking dependencies.
+- `/health/ready`: commercial readiness check for configured dependencies. It currently checks database connectivity and object-store readiness, returning 503 with per-dependency reasons when either dependency is missing or failed.
+- `/api/v1/health`: compatibility smoke endpoint for existing clients.
+
+## Production Configuration Gate
+
+- `NODE_ENV=production` requires `DATABASE_URL`.
+- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
+- Missing or unsafe production settings should stop the API process before it accepts traffic.
 
 ## M2 Log Analysis Operations
 
-- Local object storage is configured with `OBJECT_STORE_ROOT` and defaults to `.wiseeff-object-store`. Uploaded log bytes are stored under an organization-scoped key derived from the checksum and sanitized file name.
+- Local object storage is configured with `OBJECT_STORE_ROOT` and defaults to `.wiseeff-object-store`. Uploaded log bytes are stored under an organization-scoped key derived from the checksum and sanitized file name. Readiness uses a small write/read/delete probe under the configured root.
 - The M2 worker is an in-process loop started by `npm run dev:api` when both `DATABASE_URL` and the local object store are configured. This is sufficient for local/staging smoke tests but is not a distributed worker model.
 - Jobs move through queued/running/complete/failed states with parse, pattern, rootcause, and report stages. The frontend currently uses job polling through `LogAnalysisRepository`; SSE endpoints exist in the API shape but polling remains the reliable local path.
 - Unsupported file formats do not enter the worker. They create a terminal failed log record immediately with an unsupported-format reason.

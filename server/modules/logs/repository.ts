@@ -1,5 +1,5 @@
 import type { AuthContext } from "../auth/types";
-import { createLogAnalysisJob } from "../jobs/repository";
+import { completeJob, createLogAnalysisJob, updateJobProgress } from "../jobs/repository";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import type { AnalyzeLogEvidence, LogAnalysisSeverity } from "./analyzer";
@@ -142,6 +142,17 @@ export type PersistLogAnalysisReportInput = {
   };
   evidence: AnalyzeLogEvidence[];
 };
+
+type CompleteLogAnalysisJobWithReportInput = PersistLogAnalysisReportInput & {
+  jobId: string;
+  leaseOwner: string;
+};
+
+class LogJobLeaseLostError extends Error {
+  constructor() {
+    super("Log analysis job lease was lost before final report persistence completed.");
+  }
+}
 
 function dateTimeToIso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
@@ -730,6 +741,136 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
       );
     }
   });
+}
+
+export async function completeLogAnalysisJobWithReport(db: Database, input: CompleteLogAnalysisJobWithReportInput) {
+  try {
+    await db.transaction(async (tx) => {
+      const progressUpdated = await updateJobProgress(tx, {
+        organizationId: input.organizationId,
+        jobId: input.jobId,
+        progress: 100,
+        currentStage: "report",
+        leaseOwner: input.leaseOwner
+      });
+      if (!progressUpdated) {
+        throw new LogJobLeaseLostError();
+      }
+
+      await tx.query(
+        `
+        insert into log_analysis_reports (
+          id, organization_id, log_record_id, run_id, confidence, conclusion, impact,
+          severity, suggested_actions, raw_lines
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        on conflict (id) do update
+        set confidence = excluded.confidence,
+          conclusion = excluded.conclusion,
+          impact = excluded.impact,
+          severity = excluded.severity,
+          suggested_actions = excluded.suggested_actions,
+          raw_lines = excluded.raw_lines
+        `,
+        [
+          `report-${input.runId}`,
+          input.organizationId,
+          input.logId,
+          input.runId,
+          input.report.confidence,
+          input.report.conclusion,
+          input.report.impact,
+          input.report.severity,
+          input.report.suggestedActions,
+          input.report.rawLines
+        ]
+      );
+      await tx.query(
+        `
+        delete from log_evidence
+        where organization_id = $1
+          and run_id = $2
+        `,
+        [input.organizationId, input.runId]
+      );
+
+      for (const [index, evidence] of input.evidence.entries()) {
+        await tx.query(
+          `
+          insert into log_evidence (
+            id, organization_id, log_record_id, run_id, stage, line_numbers,
+            inference, suggested_action, rule_hit
+          )
+          values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          `,
+          [
+            `evidence-${input.runId}-${index}`,
+            input.organizationId,
+            input.logId,
+            input.runId,
+            evidence.stageId,
+            evidence.lineNumbers,
+            evidence.inference,
+            evidence.suggestedAction,
+            evidence.ruleHit
+          ]
+        );
+      }
+
+      await updateRunStageProgress(tx, {
+        organizationId: input.organizationId,
+        runId: input.runId,
+        status: "complete",
+        stageStatus: "complete",
+        stage: "report",
+        progress: 100,
+        message: "Report generation complete."
+      });
+
+      const completedJob = await completeJob(tx, {
+        organizationId: input.organizationId,
+        jobId: input.jobId,
+        currentStage: "report",
+        leaseOwner: input.leaseOwner
+      });
+      if (!completedJob) {
+        throw new LogJobLeaseLostError();
+      }
+
+      await tx.query(
+        `
+        update log_analysis_runs
+        set status = 'complete',
+          current_stage = $4,
+          progress = 100,
+          completed_at = now(),
+          updated_at = now()
+        where organization_id = $1
+          and id = $2
+          and log_record_id = $3
+        `,
+        [input.organizationId, input.runId, input.logId, "report"]
+      );
+      await tx.query(
+        `
+        update log_records
+        set status = 'complete',
+          updated_at = now()
+        where organization_id = $1
+          and id = $2
+          and current_run_id = $3
+        `,
+        [input.organizationId, input.logId, input.runId]
+      );
+    });
+
+    return true;
+  } catch (error) {
+    if (error instanceof LogJobLeaseLostError) {
+      return false;
+    }
+    throw error;
+  }
 }
 
 export async function completeRun(

@@ -77,7 +77,7 @@ export function registerLogRoutes(
       bytes,
       analysisQuestion: body.analysisQuestion,
       relatedParameterId: body.relatedParameterId
-    });
+    }, { requestId: request.requestId });
 
     return { status: 201, body: { fileObject: result.fileObject, log: result.log, job: result.job } };
   });
@@ -86,7 +86,7 @@ export function registerLogRoutes(
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(createLogBodySchema, request.body);
-    const result = await createLogFromFile(db, auth, body);
+    const result = await createLogFromFile(db, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: result };
   });
@@ -129,7 +129,7 @@ export function registerLogRoutes(
     const result = await rerunLogAnalysis(db, auth, {
       logId: params.logId,
       analysisQuestion: body.analysisQuestion
-    });
+    }, { requestId: request.requestId });
 
     return { status: 200, body: result };
   });
@@ -138,7 +138,7 @@ export function registerLogRoutes(
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
-    const item = await archiveLogRecord(db, auth, params.logId);
+    const item = await archiveLogRecord(db, auth, params.logId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -147,7 +147,7 @@ export function registerLogRoutes(
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
-    const item = await unarchiveLogRecord(db, auth, params.logId);
+    const item = await unarchiveLogRecord(db, auth, params.logId, { requestId: request.requestId });
 
     return { status: 200, body: { item } };
   });
@@ -162,7 +162,7 @@ export function registerLogRoutes(
       logId: params.logId,
       rating: body.rating,
       note: body.note
-    });
+    }, { requestId: request.requestId });
 
     return { status: 200, body: { ok: true } };
   });

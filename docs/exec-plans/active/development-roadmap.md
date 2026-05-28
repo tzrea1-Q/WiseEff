@@ -118,7 +118,28 @@ docs/
 - 写入失败有错误原因和审计。
 - 回滚只能基于有效快照。
 
-## 8. M4 实施顺序
+## 8. M3.5 Commercial Readiness 实施顺序
+
+M3.5 插在 M3 和 M4 之间。原因是 Agent 会放大现有系统能力，也会放大数据、权限、审计、设备写入和运维边界的风险；因此先把 M1-M3 从 API-mode MVP 硬化成可控商用试点基线，再进入 M4。
+
+1. 生产健康检查与 readiness：`/health/live`、`/health/ready`、依赖状态和部署 smoke 命令。
+2. 环境契约硬化：生产模式必须显式配置数据库、对象存储、runtime mode 和设备网关设置。
+3. API contract 防漂移：为 M1-M3 手写 HTTP client/DTO 增加契约覆盖。
+4. M2 worker 生产化切片：任务租约、重试/退避元数据、幂等和重复 worker 防护。
+5. 对象存储生产 seam：本地 object store 保留，补 readiness 和未来 S3/OSS adapter 边界。
+6. M3 设备安全硬化：真实 gateway adapter 边界、设备租约、超时/离线/stderr 归一化、模拟器一致性测试。
+7. 可观测性：结构化日志、request/trace id、审计关联和运维文档。
+8. M3.5 验收后再启动 M4 Agent。
+
+验收：
+- API readiness 能报告数据库、对象存储、worker、gateway 等依赖状态，并给出可行动失败原因。
+- 生产配置不能在 mock runtime 或缺少关键依赖时启动。
+- M1-M3 API client 有契约漂移检测。
+- M2 job 不会被两个 worker 重复处理。
+- M3 真实设备写入前具备租约、超时和审计保护。
+- `npm run test:all`、`npm run build` 和 M3.5 targeted smoke 通过。
+
+## 9. M4 实施顺序
 
 1. Agent 会话和消息持久化。
 2. Tool registry。
@@ -134,7 +155,7 @@ docs/
 - Agent 写工具必须审批。
 - 审批后执行结果可追溯。
 
-## 9. 工程工作流
+## 10. 工程工作流
 
 每个功能分支要求：
 
@@ -143,4 +164,3 @@ docs/
 - 后端变更包含迁移和集成测试。
 - API 合同变更同步更新前端 DTO。
 - 涉及权限、审计、Agent、设备的变更必须有负向测试。
-

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
 import {
+  acquireDebugDeviceLease,
   claimSnapshotForRollback,
   createDebugSession,
   createDebugSnapshot,
@@ -12,6 +13,7 @@ import {
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
+  releaseDebugDeviceLease,
   restoreSnapshotValid,
   updateDebugParameterValues,
   upsertDetectedTargets
@@ -269,6 +271,100 @@ describe("debugging repository", () => {
     expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "user-1", "active"]);
     expect(session).toMatchObject({ organizationId: "org-1", projectId: "aurora", actorUserId: "user-1", status: "active" });
     expect(session.id).toEqual(expect.any(String));
+  });
+
+  it("acquireDebugDeviceLease returns the lease when the device is claimable", async () => {
+    const { db, calls } = createFakeDb([
+      (call) => [
+        {
+          organization_id: call.values[0],
+          project_id: call.values[1],
+          device_id: call.values[2],
+          session_id: call.values[3],
+          lease_owner_user_id: call.values[4],
+          expires_at: "2026-05-27T10:05:00.000Z",
+          acquired_at: timestamp,
+          updated_at: timestamp
+        }
+      ]
+    ]);
+
+    const lease = await acquireDebugDeviceLease(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      deviceId: "device-1",
+      sessionId: "session-1",
+      actorUserId: "user-1",
+      leaseTtlMs: 300_000
+    });
+
+    expect(calls[0].text).toContain("insert into debug_device_leases");
+    expect(calls[0].text).toContain("on conflict (organization_id, project_id, device_id) do update");
+    expect(calls[0].text).toContain("debug_device_leases.session_id = excluded.session_id");
+    expect(calls[0].text).toContain("debug_device_leases.expires_at <= now()");
+    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "session-1", "user-1", 300000]);
+    expect(lease).toMatchObject({ deviceId: "device-1", sessionId: "session-1", leaseOwnerUserId: "user-1" });
+  });
+
+  it("acquireDebugDeviceLease resets acquired_at when a different session takes over", async () => {
+    const { db, calls } = createFakeDb([
+      (call) => [
+        {
+          organization_id: call.values[0],
+          project_id: call.values[1],
+          device_id: call.values[2],
+          session_id: call.values[3],
+          lease_owner_user_id: call.values[4],
+          expires_at: "2026-05-27T10:05:00.000Z",
+          acquired_at: "2026-05-27T10:01:00.000Z",
+          updated_at: "2026-05-27T10:01:00.000Z"
+        }
+      ]
+    ]);
+
+    await acquireDebugDeviceLease(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      deviceId: "device-1",
+      sessionId: "session-2",
+      actorUserId: "user-2",
+      leaseTtlMs: 300_000
+    });
+
+    expect(calls[0].text).toContain("acquired_at = case");
+    expect(calls[0].text).toContain("when debug_device_leases.session_id = excluded.session_id");
+    expect(calls[0].text).toContain("then debug_device_leases.acquired_at");
+    expect(calls[0].text).toContain("else now()");
+  });
+
+  it("releaseDebugDeviceLease expires only the owning session lease", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          organization_id: "org-1",
+          project_id: "aurora",
+          device_id: "device-1",
+          session_id: "session-1",
+          lease_owner_user_id: "user-1",
+          expires_at: timestamp,
+          acquired_at: timestamp,
+          updated_at: timestamp
+        }
+      ]
+    ]);
+
+    const lease = await releaseDebugDeviceLease(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      deviceId: "device-1",
+      sessionId: "session-1"
+    });
+
+    expect(calls[0].text).toContain("update debug_device_leases");
+    expect(calls[0].text).toContain("expires_at = now()");
+    expect(calls[0].text).toContain("session_id = $4");
+    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "session-1"]);
+    expect(lease).toMatchObject({ deviceId: "device-1", sessionId: "session-1" });
   });
 
   it("insertNodeOperation stores read/write status, values, failure reason, duration", async () => {

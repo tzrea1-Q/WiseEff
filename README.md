@@ -104,6 +104,12 @@ npm run test:m3
 Run the M3 verification gate: frontend tests, backend tests, production build, then `e2e/debugging.api.spec.ts`. The smoke requires `DATABASE_URL`, seeds `db:seed:m3`, starts the API in simulator mode, reads `Aurora Simulator 1`, writes fast charge current with readback, verifies the read-only and readback-mismatch paths, rolls back the snapshot, and checks debugging audit events.
 
 ```bash
+npm run test:m3-5
+```
+
+Run the M3.5 commercial-readiness gate: frontend tests, backend tests, production build, then the simulator debugging API smoke. Use this before starting M4 Agent work in an environment with `DATABASE_URL`, `OBJECT_STORE_ROOT=.wiseeff-object-store`, and `DEBUG_DEVICE_GATEWAY_MODE=simulator`.
+
+```bash
 npm run preview
 ```
 
@@ -135,6 +141,14 @@ VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 np
 
 `OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
 
+Commercial production mode fails fast when required runtime dependencies are unsafe or missing:
+
+- `NODE_ENV=production` requires `DATABASE_URL`.
+- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
+
+M3.5 commercial-readiness checks now include `/health/live`, `/health/ready`, production environment gates, a static M1-M3 route manifest, leased log-analysis jobs, object-store readiness probes, debugging device leases, and request-id-to-audit trace correlation.
+
 M2 log-analysis verification in API mode:
 
 1. Start PostgreSQL and export `DATABASE_URL`.
@@ -151,6 +165,12 @@ M3 debugging verification in API mode:
 4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
 5. Open `/node-debugging?project=aurora` and verify `Aurora Simulator 1`, `Fast charge current` reads `3000`, a write to `3100` succeeds with readback, `Cycle count` remains read-only, and `Readback mismatch probe` reports a mismatch.
 6. Run `npm run test:m3` for the full local M3 gate.
+
+M3.5 commercial-readiness verification:
+
+1. Run `npm run test:all` and `npm run build` on every M3.5 change.
+2. When PostgreSQL is available, export `DATABASE_URL`, then run `npm run test:m3-5`.
+3. Confirm `/health/ready` reports database and object-store readiness before treating a local/staging API process as pilot-ready.
 
 生产构建不允许使用 `mock` 作为业务数据源。
 

@@ -66,6 +66,12 @@ The runtime coordinator hydrates devices and debugging parameters after auth, de
 
 The M3 API smoke lives in `e2e/debugging.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m3`. Playwright starts the backend with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and the frontend with `VITE_WISEEFF_RUNTIME_MODE=api`.
 
+## Commercial Readiness Notes
+
+M3.5 keeps the frontend architecture unchanged: pages still call `application/ports`, mock mode remains available for demos/tests, and API mode remains the production-oriented path. The backend now reflects `X-Request-Id` and propagates it into M1 parameter, M2 log, and M3 debugging audit traces, so HTTP client calls can be correlated with backend audit evidence.
+
+Before treating API mode as a commercial pilot baseline, run `npm run test:m3-5` in an environment with `DATABASE_URL`. That command includes frontend tests, backend tests, production build, and the simulator debugging API smoke.
+
 ## Frontend Rules
 
 - Keep business rules out of page components when they can live in `domain/` or a focused view-model file.
@@ -87,6 +93,12 @@ Use broader checks before finishing frontend-impacting changes:
 ```bash
 npm test
 npm run build
+```
+
+Commercial-readiness gate:
+
+```bash
+npm run test:m3-5
 ```
 
 Testing priorities:

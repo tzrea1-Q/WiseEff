@@ -557,10 +557,15 @@ describe("parameter service", () => {
       []
     ]);
 
-    const applied = await applyImportBatch(db, makeAdminAuth(), {
-      batchId: "batch-1",
-      selectedItemIds: ["item-added", "item-updated"]
-    });
+    const applied = await applyImportBatch(
+      db,
+      makeAdminAuth(),
+      {
+        batchId: "batch-1",
+        selectedItemIds: ["item-added", "item-updated"]
+      },
+      { requestId: "request-import-apply-1" }
+    );
 
     expect(applied.status).toBe("applied");
     expect(txCalls.find((call) => call.text.includes("insert into parameter_definitions"))?.values).toEqual([
@@ -604,6 +609,7 @@ describe("parameter service", () => {
     expect(auditCall?.values).toContain("batch-import");
     expect(auditCall?.values).toContain("parameter-import-batch");
     expect(auditCall?.values).toContain("batch-1");
+    expect(auditCall?.values[12]).toBe("request-import-apply-1");
     expect(JSON.parse(auditCall?.values[11] as string)).toMatchObject({
       batchId: "batch-1",
       summary: { added: 1, updated: 1, skipped: 0 }
@@ -1237,14 +1243,19 @@ describe("parameter service", () => {
       []
     ]);
 
-    const round = await submitParameterChanges(db, makeAuth(), {
-      projectId: "project-1",
-      reason: "Tune charging parameters",
-      items: [
-        { parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." },
-        { parameterId: "param-2", targetValue: "68", reason: "Match new cell pack." }
-      ]
-    });
+    const round = await submitParameterChanges(
+      db,
+      makeAuth(),
+      {
+        projectId: "project-1",
+        reason: "Tune charging parameters",
+        items: [
+          { parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." },
+          { parameterId: "param-2", targetValue: "68", reason: "Match new cell pack." }
+        ]
+      },
+      { requestId: "request-parameter-submit-1" }
+    );
 
     expect(round).toMatchObject({
       id: "round-1",
@@ -1258,7 +1269,9 @@ describe("parameter service", () => {
     });
     expect(txCalls.filter((call) => call.text.includes("insert into parameter_change_requests"))).toHaveLength(2);
     expect(txCalls.filter((call) => call.text.includes("insert into parameter_submission_items"))).toHaveLength(2);
-    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall).toBeDefined();
+    expect(auditCall?.values[12]).toBe("request-parameter-submit-1");
   });
 
   it("submitting with assignees persists the initial reviewer and workflow assignee ids", async () => {
@@ -1555,15 +1568,16 @@ describe("parameter service", () => {
         requestId: "request-1",
         decision: "advance",
         note: "Hardware reviewed."
-      }
+      },
+      { requestId: "request-parameter-review-1" }
     );
 
     expect(request.status).toBe("software_review");
     expect(txCalls.some((call) => call.text.includes("insert into parameter_review_decisions"))).toBe(true);
     expect(txCalls.some((call) => call.text.includes("update parameter_submission_rounds"))).toBe(true);
-    expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain(
-      "parameter-review-advance"
-    );
+    const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditCall?.values).toContain("parameter-review-advance");
+    expect(auditCall?.values[12]).toBe("request-parameter-review-1");
   });
 
   it("committer advances software review to software merge", async () => {

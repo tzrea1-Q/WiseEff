@@ -11,7 +11,14 @@ type QueryCall = {
   values: unknown[];
 };
 
-type QueuedResult = unknown[] | ((call: QueryCall) => unknown[]);
+type QueuedResultFn = ((call: QueryCall) => unknown[]) & { debugDeviceLease?: boolean };
+type QueuedResult = unknown[] | QueuedResultFn;
+
+function debugDeviceLeaseResult(rows: unknown[]): QueuedResultFn {
+  const result = (() => rows) as QueuedResultFn;
+  result.debugDeviceLease = true;
+  return result;
+}
 
 function createFakeDb(results: QueuedResult[] = []) {
   const calls: QueryCall[] = [];
@@ -22,7 +29,33 @@ function createFakeDb(results: QueuedResult[] = []) {
   const runQuery = async <Row,>(target: QueryCall[], text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
     const call = { text, values };
     target.push(call);
-    const next = results.shift() ?? [];
+    if (text.includes("debug_device_leases")) {
+      const leaseResultIndex = results.findIndex((result) => typeof result === "function" && result.debugDeviceLease);
+      if (leaseResultIndex >= 0) {
+        const [next] = results.splice(leaseResultIndex, 1);
+        const rows = (next as QueuedResultFn)(call);
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+      return {
+        rows: [
+          {
+            organization_id: values[0],
+            project_id: values[1],
+            device_id: values[2],
+            session_id: values[3],
+            lease_owner_user_id: values[4],
+            expires_at: "2026-05-27T10:05:00.000Z",
+            acquired_at: timestamp,
+            updated_at: timestamp
+          }
+        ] as Row[],
+        rowCount: 1
+      };
+    }
+    let next = results.shift() ?? [];
+    while (typeof next === "function" && next.debugDeviceLease) {
+      next = results.shift() ?? [];
+    }
     const rows = typeof next === "function" ? next(call) : next;
     return { rows: rows as Row[], rowCount: rows.length };
   };
@@ -633,7 +666,11 @@ describe("debugging service", () => {
     ]);
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
-    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+    const operation = await service.writeNode(
+      writeAuth,
+      { sessionId: "session-1", parameterId: "param-1", value: "3200" },
+      { requestId: "request-debug-write-1" }
+    );
 
     expect(callOrder).toEqual(["gateway-read", "snapshot", "gateway-write"]);
     const snapshotCall = txCalls.find((call) => call.text.includes("insert into debugging_snapshots"));
@@ -641,6 +678,29 @@ describe("debugging service", () => {
       { parameterId: "param-1", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" }
     ]);
     expect(operation).toMatchObject({ status: "succeeded", previousValue: "3000", snapshotId: "snapshot-1" });
+  });
+
+  it("writeNode rejects a device lease held by another active session before gateway calls", async () => {
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [parameterRow()],
+      [targetRow()],
+      debugDeviceLeaseResult([]),
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      [],
+      []
+    ]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("CONFLICT", "Debug device is leased by another active session.", 409)
+    );
+
+    expect(txCalls.some((call) => call.text.includes("debug_device_leases"))).toBe(true);
+    expect(gateway.readNode).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
   it("writeNode stores readback_mismatch when gateway verified=false", async () => {
@@ -666,7 +726,11 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+    const operation = await service.writeNode(
+      writeAuth,
+      { sessionId: "session-1", parameterId: "param-1", value: "3200" },
+      { requestId: "request-debug-write-1" }
+    );
 
     expect(operation).toMatchObject({
       operationType: "write",
@@ -740,7 +804,11 @@ describe("debugging service", () => {
     const audit = createAuditSpy();
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
 
-    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+    const operation = await service.writeNode(
+      writeAuth,
+      { sessionId: "session-1", parameterId: "param-1", value: "3200" },
+      { requestId: "request-debug-write-1" }
+    );
 
     expect(audit.events[0]).toMatchObject({
       kind: "debug-node-write",
@@ -759,6 +827,7 @@ describe("debugging service", () => {
         snapshotId: expect.any(String)
       })
     });
+    expect(audit.events[0].traceId).toBe("request-debug-write-1");
   });
 
   it("writeNode treats audit write failure as operation failure and transaction failure", async () => {
@@ -890,6 +959,31 @@ describe("debugging service", () => {
     ).rejects.toMatchObject(new ApiError("CONFLICT", "Snapshot is already being rolled back or has been consumed.", 409));
 
     expect(callOrder).toEqual(["claim"]);
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("rollbackSnapshot rejects a device lease held by another active session before gateway writes", async () => {
+    const { db, txCalls } = createFakeDb([
+      [snapshotRow()],
+      [sessionRow()],
+      [snapshotRow({ status: "rollback_pending" })],
+      [targetRow()],
+      debugDeviceLeaseResult([]),
+      (call) => [operationRow(call)],
+      [snapshotRow({ status: "consumed" })],
+      []
+    ]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      service.rollbackSnapshot(rollbackAuth, {
+        snapshotId: "snapshot-1",
+        confirmationToken: "confirm-rollback"
+      })
+    ).rejects.toMatchObject(new ApiError("CONFLICT", "Debug device is leased by another active session.", 409));
+
+    expect(txCalls.some((call) => call.text.includes("debug_device_leases"))).toBe(true);
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 

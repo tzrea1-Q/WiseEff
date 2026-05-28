@@ -179,13 +179,19 @@ describe("log routes", () => {
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ fileObject: file, log, job });
     expect(db.query).not.toHaveBeenCalled();
-    expect(service.uploadLogFile).toHaveBeenCalledWith(db, objectStore, makeAuth(), {
-      projectId: "aurora",
-      fileName: "charging-foldback.log",
-      contentType: "text/plain",
-      bytes: Buffer.from("WARN foldback"),
-      analysisQuestion: "Why did fast charging fold back?"
-    });
+    expect(service.uploadLogFile).toHaveBeenCalledWith(
+      db,
+      objectStore,
+      makeAuth(),
+      {
+        projectId: "aurora",
+        fileName: "charging-foldback.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("WARN foldback"),
+        analysisQuestion: "Why did fast charging fold back?"
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("POST /api/v1/log-files returns the created file object without looking up older matching rows", async () => {
@@ -294,13 +300,18 @@ describe("log routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body).toEqual({ log, job });
-    expect(service.createLogFromFile).toHaveBeenCalledWith(db, makeAuth(), {
-      projectId: "aurora",
-      fileObjectId: "file-1",
-      fileName: "charging-foldback.log",
-      analysisQuestion: "Why did fast charging fold back?",
-      relatedParameterId: "param-1"
-    });
+    expect(service.createLogFromFile).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      {
+        projectId: "aurora",
+        fileObjectId: "file-1",
+        fileName: "charging-foldback.log",
+        analysisQuestion: "Why did fast charging fold back?",
+        relatedParameterId: "param-1"
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("POST /api/v1/logs rejects invalid create body before service", async () => {
@@ -357,10 +368,15 @@ describe("log routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ log, job, runs });
-    expect(service.rerunLogAnalysis).toHaveBeenCalledWith(db, makeAuth(), {
-      logId: "log-route",
-      analysisQuestion: "Try again with charger context."
-    });
+    expect(service.rerunLogAnalysis).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      {
+        logId: "log-route",
+        analysisQuestion: "Try again with charger context."
+      },
+      { requestId: "test-request" }
+    );
   });
 
   it("validation failure returns VALIDATION_FAILED", async () => {
@@ -398,6 +414,7 @@ describe("log routes", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(service.archiveLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-1", { requestId: "test-request" });
   });
 
   it("POST /api/v1/logs/:logId/unarchive uses route params", async () => {
@@ -413,7 +430,7 @@ describe("log routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ item: log });
-    expect(service.unarchiveLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-route");
+    expect(service.unarchiveLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-route", { requestId: "test-request" });
   });
 
   it("feedback route writes through service", async () => {
@@ -427,10 +444,15 @@ describe("log routes", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true });
-    expect(service.submitLogFeedback).toHaveBeenCalledWith(db, makeAuth(), {
-      logId: "log-1",
-      rating: "helpful",
-      note: "Matched the incident."
-    });
+    expect(service.submitLogFeedback).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      {
+        logId: "log-1",
+        rating: "helpful",
+        note: "Matched the incident."
+      },
+      { requestId: "test-request" }
+    );
   });
 });

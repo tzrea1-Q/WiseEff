@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
+import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -37,6 +38,8 @@ import {
 import { applyImportBatchBodySchema, createImportBatchBodySchema } from "./schemas";
 import { getNextParameterStatus, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
 import type { ParameterImportSourceItemDto, ParameterImportSummaryDto } from "./types";
+
+type ServiceContext = AuditCorrelationContext;
 
 export type SaveDraftInput = {
   projectId: string;
@@ -387,7 +390,8 @@ async function createParameterReviewAudit(
     toStatus: ParameterChangeRequestStatus;
     note?: string;
     expectedVersion?: number;
-  }
+  },
+  context: ServiceContext = {}
 ) {
   await createAuditEvent(db, {
     id: randomUUID(),
@@ -407,7 +411,7 @@ async function createParameterReviewAudit(
       note: input.note,
       expectedVersion: input.expectedVersion
     },
-    traceId: randomUUID()
+    traceId: context.requestId ?? randomUUID()
   });
 }
 
@@ -418,7 +422,8 @@ async function createImportAudit(
     projectId: string;
     batchId: string;
     summary: { added: number; updated: number; skipped: number };
-  }
+  },
+  context: ServiceContext = {}
 ) {
   await createAuditEvent(db, {
     id: randomUUID(),
@@ -436,7 +441,7 @@ async function createImportAudit(
       batchId: input.batchId,
       summary: input.summary
     },
-    traceId: randomUUID()
+    traceId: context.requestId ?? randomUUID()
   });
 }
 
@@ -509,7 +514,7 @@ export async function createImportPreview(db: Queryable, auth: AuthContext, inpu
   });
 }
 
-export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput) {
+export async function applyImportBatch(db: Database, auth: AuthContext, input: ApplyImportBatchInput, context: ServiceContext = {}) {
   requireCanAdminImport(auth);
   const parsed = assertValidApplyImportInput(input);
 
@@ -645,7 +650,7 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
         updated,
         skipped: batch.items.length - selectedItems.length
       }
-    });
+    }, context);
 
     return applied;
   });
@@ -676,7 +681,7 @@ export async function deleteDraft(db: Queryable, auth: AuthContext, draftId: str
   });
 }
 
-export async function submitParameterChanges(db: Database, auth: AuthContext, input: SubmitParameterChangesInput) {
+export async function submitParameterChanges(db: Database, auth: AuthContext, input: SubmitParameterChangesInput, context: ServiceContext = {}) {
   requireCanEdit(auth);
 
   if (input.items.length === 0) {
@@ -772,7 +777,7 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
         itemCount: items.length,
         status
       },
-      traceId: randomUUID()
+      traceId: context.requestId ?? randomUUID()
     });
 
     return workflowAssignees ? { ...round, workflowAssignees, items } : { ...round, items };
@@ -810,7 +815,7 @@ export async function listChangeRequests(db: Queryable, auth: AuthContext, query
   });
 }
 
-export async function reviewChange(db: Database, auth: AuthContext, input: ReviewParameterChangeInput) {
+export async function reviewChange(db: Database, auth: AuthContext, input: ReviewParameterChangeInput, context: ServiceContext = {}) {
   return db.transaction(async (tx) => {
     const request = await loadChangeRequestForReview(tx, auth, input.requestId);
     const fromStatus = request.status;
@@ -855,7 +860,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         fromStatus,
         toStatus,
         note: input.note
-      });
+      }, context);
 
       return updated;
     }
@@ -902,7 +907,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         fromStatus,
         toStatus,
         note: input.note
-      });
+      }, context);
 
       return updated;
     }
@@ -968,7 +973,7 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       toStatus: "merged",
       note: input.note,
       expectedVersion: input.expectedVersion
-    });
+    }, context);
 
     return updated;
   });

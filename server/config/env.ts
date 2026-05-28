@@ -20,6 +20,12 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   if (env.NODE_ENV === "production" && env.MOCK_RUNTIME_ENABLED) {
     throw new Error("MOCK_RUNTIME_ENABLED cannot be true in production");
   }
+  if (env.NODE_ENV === "production" && !env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required in production");
+  }
+  if (env.NODE_ENV === "production" && !env.OBJECT_STORE_ROOT.trim()) {
+    throw new Error("OBJECT_STORE_ROOT is required in production");
+  }
 
   return env;
 }

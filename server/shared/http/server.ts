@@ -213,6 +213,7 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
     setCorsHeaders(request, response);
 
     if (request.method === "OPTIONS") {
+      response.setHeader("X-Request-Id", requestId);
       response.statusCode = 204;
       response.end();
       return;
