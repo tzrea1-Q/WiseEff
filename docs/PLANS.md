@@ -11,6 +11,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 ## Current Active Plan
 
 - `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence.
+- `exec-plans/active/2026-05-28-wiseeff-m5-commercial-pilot-readiness.md`: M5 commercial pilot readiness hardening plan.
 
 ## Completed Plans
 
