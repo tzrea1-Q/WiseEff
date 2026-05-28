@@ -58,7 +58,8 @@ function toolCallsForPath(path: string): AgentToolCall[] {
     name: toolNameForAction(action.id),
     label: action.label,
     payload: { actionId: action.id, path },
-    requiresApproval: action.requiresConfirm
+    requiresApproval: action.requiresConfirm,
+    status: action.requiresConfirm ? "pending_approval" : "succeeded"
   }));
 }
 
@@ -69,7 +70,8 @@ function approvalsForToolCalls(toolCalls: AgentToolCall[]): AgentApproval[] {
       id: `approval-${toolCall.id}`,
       toolCallId: toolCall.id,
       title: "确认执行 Agent 动作",
-      message: `${toolCall.label} 会改变当前业务状态，需要人工确认。`
+      message: `${toolCall.label} 会改变当前业务状态，需要人工确认。`,
+      status: "pending"
     }));
 }
 
@@ -154,6 +156,30 @@ export function createMockAgentGateway(): AgentGateway {
       sessions.set(sessionId, turn.session);
 
       return turn;
+    },
+
+    async rejectToolCall(sessionId: string, approvalId: string, reason?: string) {
+      const rejectedToolCallId = approvalId.replace(/^approval-/, "");
+      const turn = createTurn(getSession(sessionId), `Rejected ${approvalId}`);
+      const nextTurn: AgentTurn = {
+        ...turn,
+        toolCalls: turn.toolCalls.map((toolCall) =>
+          toolCall.id === rejectedToolCallId ? { ...toolCall, status: "rejected" } : toolCall
+        ),
+        approvals: turn.approvals.map((approval) =>
+          approval.id === approvalId
+            ? {
+                ...approval,
+                status: "rejected",
+                decidedAt: nowIso(),
+                reason
+              }
+            : approval
+        )
+      };
+      sessions.set(sessionId, nextTurn.session);
+
+      return nextTurn;
     }
   };
 }
