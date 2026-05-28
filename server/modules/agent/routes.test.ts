@@ -1,0 +1,384 @@
+import { describe, expect, it } from "vitest";
+import type { Database, Queryable } from "../../shared/database/client";
+import { createWiseEffServer } from "../../app";
+import { requestJson } from "../../test/testClient";
+
+type MemoryRow = Record<string, unknown>;
+
+function isoNow() {
+  return "2026-05-28T00:00:00.000Z";
+}
+
+function createMemoryDb() {
+  const tables = {
+    sessions: [] as MemoryRow[],
+    messages: [] as MemoryRow[],
+    toolCalls: [] as MemoryRow[],
+    approvals: [] as MemoryRow[],
+    traces: [] as MemoryRow[],
+    audits: [] as MemoryRow[],
+    parameterDrafts: [] as MemoryRow[]
+  };
+
+  const queryable: Queryable = {
+    query: async <Row,>(text: string, values: unknown[] = []) => {
+      const sql = text.replace(/\s+/g, " ").trim();
+
+      if (sql.includes("from users") && sql.includes("join organizations")) {
+        return {
+          rows: [
+            {
+              user_id: "dev-user",
+              organization_id: "org-dev",
+              organization_name: "Development Org",
+              name: "Development User",
+              email: "dev@example.com",
+              title: "Developer",
+              is_active: true,
+              project_id: "aurora",
+              role_id: "hardware-user"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+      if (sql.includes("insert into agent_sessions")) {
+        tables.sessions.push({
+          id: values[0],
+          organization_id: values[1],
+          project_id: values[2],
+          actor_user_id: values[3],
+          page_key: values[4],
+          role_id: values[5],
+          context: values[6],
+          title: values[7],
+          status: "active",
+          created_at: isoNow(),
+          updated_at: isoNow()
+        });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("from agent_sessions")) {
+        const rows = tables.sessions.filter((row) => row.organization_id === values[0] && row.id === values[1]);
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+      if (sql.includes("insert into agent_messages")) {
+        tables.messages.push({
+          id: values[0],
+          session_id: values[1],
+          organization_id: values[2],
+          role: values[3],
+          content: values[4],
+          citations: values[5],
+          confidence: values[6],
+          created_at: isoNow()
+        });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("from agent_messages")) {
+        const rows = tables.messages.filter((row) => row.organization_id === values[0] && row.session_id === values[1]);
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+      if (sql.includes("insert into agent_tool_calls")) {
+        tables.toolCalls.push({
+          id: values[0],
+          session_id: values[1],
+          organization_id: values[2],
+          project_id: values[3],
+          name: values[4],
+          label: values[5],
+          payload: values[6],
+          requires_approval: values[7],
+          status: values[8],
+          result: null,
+          error_message: null,
+          audit_event_id: null,
+          created_at: isoNow(),
+          updated_at: isoNow()
+        });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("update agent_tool_calls")) {
+        const row = tables.toolCalls.find((item) => item.organization_id === values[0] && item.id === values[1]);
+        if (!row) {
+          return { rows: [] as Row[], rowCount: 0 };
+        }
+        row.status = values[2] ?? row.status;
+        row.result = values[3] ?? row.result;
+        row.error_message = values[4] ?? row.error_message;
+        row.audit_event_id = values[5] ?? row.audit_event_id;
+        row.updated_at = isoNow();
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("from agent_tool_calls")) {
+        const rows = tables.toolCalls
+          .filter((row) =>
+            sql.includes("session_id = $2")
+              ? row.organization_id === values[0] && row.session_id === values[1]
+              : row.organization_id === values[0] && row.id === values[1]
+          )
+          .map((row) => ({
+            ...row,
+            approval_id: tables.approvals.find((approval) => approval.tool_call_id === row.id)?.id ?? null
+          }));
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+      if (sql.includes("insert into agent_approvals")) {
+        tables.approvals.push({
+          id: values[0],
+          session_id: values[1],
+          tool_call_id: values[2],
+          organization_id: values[3],
+          project_id: values[4],
+          status: values[5],
+          title: values[6],
+          message: values[7],
+          requested_by_user_id: values[8],
+          requested_at: isoNow(),
+          decided_at: null,
+          decided_by_user_id: null,
+          decision_reason: null
+        });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("update agent_approvals")) {
+        const row = tables.approvals.find(
+          (item) => item.organization_id === values[0] && item.id === values[1] && item.status === "pending"
+        );
+        if (!row) {
+          return { rows: [] as Row[], rowCount: 0 };
+        }
+        row.status = sql.includes("status = 'approved'") ? "approved" : "rejected";
+        row.decided_by_user_id = values[2];
+        row.decision_reason = values[3] ?? null;
+        row.decided_at = isoNow();
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("from agent_approvals")) {
+        const rows = tables.approvals.filter((row) =>
+          sql.includes("session_id = $2")
+            ? row.organization_id === values[0] && row.session_id === values[1]
+            : row.organization_id === values[0] && row.id === values[1]
+        );
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+      if (sql.includes("insert into agent_run_traces")) {
+        tables.traces.push({
+          id: values[0],
+          session_id: values[1],
+          message_id: values[2],
+          organization_id: values[3],
+          provider: values[4],
+          model: values[5],
+          prompt_version: values[6],
+          input_summary: values[7],
+          output_summary: values[8],
+          tool_call_ids: values[9],
+          trace_id: values[10],
+          created_at: isoNow()
+        });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("insert into audit_events")) {
+        tables.audits.push({
+          id: values[0],
+          organization_id: values[1],
+          project_id: values[2],
+          actor_user_id: values[3],
+          actor_type: values[4],
+          app: values[5],
+          kind: values[6],
+          action: values[7],
+          severity: values[8],
+          target_type: values[9],
+          target_id: values[10],
+          metadata: values[11],
+          trace_id: values[12]
+        });
+        return { rows: [] as Row[], rowCount: 1 };
+      }
+      if (sql.includes("from parameter_change_requests cr")) {
+        return { rows: [] as Row[], rowCount: 0 };
+      }
+      if (sql.includes("from project_parameter_values ppv") && sql.includes("limit 1")) {
+        return {
+          rows: [
+            {
+              id: "project-parameter-1",
+              project_id: values[1],
+              parameter_definition_id: "parameter-definition-1",
+              current_value: "3100"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+      if (sql.includes("insert into parameter_drafts")) {
+        tables.parameterDrafts.push({
+          id: values[0],
+          organization_id: values[1],
+          project_id: values[2],
+          project_parameter_value_id: values[3],
+          user_id: values[4],
+          target_value: values[5],
+          reason: values[6]
+        });
+        return { rows: [{ id: values[0] }] as Row[], rowCount: 1 };
+      }
+
+      throw new Error(`Unhandled SQL in test DB: ${sql}`);
+    }
+  };
+
+  const db: Database = {
+    ...queryable,
+    transaction: async (fn) => fn(queryable)
+  };
+
+  return { db, tables };
+}
+
+async function createRouteSession(db: Database) {
+  return requestJson<{ turn: { session: { id: string }; toolCalls: { id: string; approvalId?: string }[] } }>(
+    createWiseEffServer({ db }),
+    "/api/v1/agent/sessions",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+      })
+    }
+  );
+}
+
+async function createApprovalRequiredToolCall(db: Database) {
+  const sessionResponse = await createRouteSession(db);
+  const sessionId = sessionResponse.body.turn.session.id;
+  const messageResponse = await requestJson<{
+    turn: { toolCalls: { id: string; status: string; approvalId?: string }[]; approvals: { id: string }[] };
+  }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ message: "Prepare a parameter draft because the value needs review." })
+  });
+  const toolCall = messageResponse.body.turn.toolCalls.find((item) => item.status === "pending_approval");
+
+  if (!toolCall?.approvalId) {
+    throw new Error("Test setup did not create an approval-required tool call.");
+  }
+
+  return { sessionId, toolCallId: toolCall.id, approvalId: toolCall.approvalId };
+}
+
+describe("agent routes", () => {
+  it("rejects session creation without a database adapter", async () => {
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer(),
+      "/api/v1/agent/sessions",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+        })
+      }
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.code).toBe("INTERNAL_ERROR");
+  });
+
+  it("validates blank messages", async () => {
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer(),
+      "/api/v1/agent/sessions/agent-session-1/messages",
+      {
+        method: "POST",
+        body: JSON.stringify({ message: "   " })
+      }
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("creates sessions through the app route", async () => {
+    const { db } = createMemoryDb();
+
+    const response = await createRouteSession(db);
+
+    expect(response.status).toBe(201);
+    expect(response.body.turn.session.id).toEqual(expect.stringMatching(/^agent-session-/));
+  });
+
+  it("returns not found for unknown sessions", async () => {
+    const { db } = createMemoryDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db }),
+      "/api/v1/agent/sessions/missing-session/messages",
+      {
+        method: "POST",
+        body: JSON.stringify({ message: "Summarize the current page." })
+      }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  it("returns approval required when running a pending approval tool", async () => {
+    const { db } = createMemoryDb();
+    const { sessionId, toolCallId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{ error: { code: string } }>(
+      createWiseEffServer({ db }),
+      `/api/v1/agent/sessions/${sessionId}/tool-calls/${toolCallId}/run`,
+      {
+        method: "POST",
+        body: JSON.stringify({ payload: {} })
+      }
+    );
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("APPROVAL_REQUIRED");
+  });
+
+  it("rejects approvals without inserting parameter drafts", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{
+      turn: { approvals: { id: string; status: string; reason?: string }[]; toolCalls: { status: string }[] };
+    }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: "Needs clearer evidence." })
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.turn.approvals[0]).toMatchObject({ id: approvalId, status: "rejected" });
+    expect(response.body.turn.toolCalls).toEqual(expect.arrayContaining([expect.objectContaining({ status: "rejected" })]));
+    expect(tables.parameterDrafts).toHaveLength(0);
+  });
+
+  it("approves approvals and returns a succeeded tool call", async () => {
+    const { db, tables } = createMemoryDb();
+    const { sessionId, approvalId } = await createApprovalRequiredToolCall(db);
+
+    const response = await requestJson<{
+      turn: { toolCalls: { status: string; result?: { summary: string } }[] };
+    }>(createWiseEffServer({ db }), `/api/v1/agent/sessions/${sessionId}/approvals/${approvalId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.turn.toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "succeeded",
+          result: expect.objectContaining({ summary: "Created one parameter draft for human review." })
+        })
+      ])
+    );
+    expect(tables.parameterDrafts).toHaveLength(1);
+  });
+});
