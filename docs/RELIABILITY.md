@@ -43,13 +43,18 @@ Current endpoints:
 ## Production Configuration Gate
 
 - `NODE_ENV=production` requires `DATABASE_URL`.
-- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` requires `OBJECT_STORE_MODE=s3`.
+- `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
 - `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 - Missing or unsafe production settings should stop the API process before it accepts traffic.
 
 ## M2 Log Analysis Operations
 
 - Local object storage is configured with `OBJECT_STORE_ROOT` and defaults to `.wiseeff-object-store`. Uploaded log bytes are stored under an organization-scoped key derived from the checksum and sanitized file name. Readiness uses a small write/read/delete probe under the configured root.
+- Production-like object storage uses `OBJECT_STORE_MODE=s3` with an S3/OSS-compatible endpoint and bucket. The adapter keeps the same organization-scoped key shape and records checksum, file size, content type, retention class, and encryption-mode metadata on writes.
+- `/health/ready` routes S3/OSS readiness through the object-store health seam by checking the configured bucket and returning the provider error text when the bucket or credentials are not usable.
+- The built-in HTTP transport provides the M5 runtime seam and WiseEff signing headers for HEAD/GET/PUT. It is not a full AWS SigV4 or cloud-vendor SDK implementation.
+- Retention and encryption are represented as object metadata in the M5 seam. Cloud SDK integration, SigV4/provider-specific signing, bucket lifecycle rules, KMS policy, replication, and credential provisioning remain deployment responsibilities for the target cloud account.
 - The M2 worker is an in-process loop started by `npm run dev:api` when both `DATABASE_URL` and the local object store are configured. This is sufficient for local/staging smoke tests but is not a distributed worker model.
 - Jobs move through queued/running/complete/failed states with parse, pattern, rootcause, and report stages. The frontend currently uses job polling through `LogAnalysisRepository`; SSE endpoints exist in the API shape but polling remains the reliable local path.
 - Unsupported file formats do not enter the worker. They create a terminal failed log record immediately with an unsupported-format reason.

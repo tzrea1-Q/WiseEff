@@ -156,3 +156,14 @@ Device Gateway 健康检查：
 - The API verifies `Authorization: Bearer <payload>.<signature>` server-side before creating `AuthContext`. Signed claims must include issuer, subject, and organization, and may include roles and permissions.
 - `/api/v1/me` and business routes use the same auth resolver. Production requests without a valid bearer token fail with `UNAUTHENTICATED` instead of falling back to development auth.
 - High-risk writes still re-check permissions at execution time, including parameter review, log archive/rerun, debugging writes or rollback, and Agent approval-required tools.
+
+## M5 Object Storage Boundary
+
+- Local and test environments may use `OBJECT_STORE_MODE=local` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+- Production must set `NODE_ENV=production` and `OBJECT_STORE_MODE=s3`.
+- S3/OSS mode requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`; `OBJECT_STORAGE_REGION` is optional.
+- Uploaded log objects use organization-scoped keys with SHA-256 checksum prefixes. The adapter writes checksum, byte size, content type, retention class, and encryption-mode metadata.
+- `/health/ready` checks the configured bucket through the object-store health seam and returns a 503 with the provider error when the bucket, endpoint, or credentials are not usable.
+- The built-in HTTP transport issues HEAD/GET/PUT with WiseEff signing headers. It is an M5 runtime seam, not a full AWS SigV4 implementation or cloud-vendor SDK.
+- Pilot smoke should upload a supported log, confirm analysis can read it back, and verify `/health/ready` reports `dependencies.objectStore.status=ready`.
+- Cloud-provider SDK wiring, SigV4/provider-specific signing, bucket provisioning, lifecycle policy, KMS policy, replication, and credential rotation remain post-M5 deployment work unless the target environment has already provided them.

@@ -11,7 +11,13 @@ describe("loadServerEnv", () => {
     expect(env.AUTH_TOKEN_ISSUER).toBeUndefined();
     expect(env.AUTH_TOKEN_HMAC_SECRET).toBeUndefined();
     expect(env.MOCK_RUNTIME_ENABLED).toBe(false);
+    expect(env.OBJECT_STORE_MODE).toBe("local");
     expect(env.OBJECT_STORE_ROOT).toBe(".wiseeff-object-store");
+    expect(env.OBJECT_STORAGE_ENDPOINT).toBeUndefined();
+    expect(env.OBJECT_STORAGE_BUCKET).toBeUndefined();
+    expect(env.OBJECT_STORAGE_ACCESS_KEY_ID).toBeUndefined();
+    expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBeUndefined();
+    expect(env.OBJECT_STORAGE_REGION).toBeUndefined();
     expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
   });
 
@@ -25,7 +31,13 @@ describe("loadServerEnv", () => {
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
       DEBUG_DEVICE_GATEWAY_MODE: "simulator",
       MOCK_RUNTIME_ENABLED: "true",
-      OBJECT_STORE_ROOT: "tmp/object-store"
+      OBJECT_STORE_MODE: "s3",
+      OBJECT_STORE_ROOT: "tmp/object-store",
+      OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+      OBJECT_STORAGE_BUCKET: "wiseeff-test",
+      OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      OBJECT_STORAGE_REGION: "ap-southeast-1"
     });
 
     expect(env.NODE_ENV).toBe("test");
@@ -36,7 +48,13 @@ describe("loadServerEnv", () => {
     expect(env.DATABASE_URL).toBe("postgres://wiseeff:wiseeff@localhost:5432/wiseeff");
     expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
     expect(env.MOCK_RUNTIME_ENABLED).toBe(true);
+    expect(env.OBJECT_STORE_MODE).toBe("s3");
     expect(env.OBJECT_STORE_ROOT).toBe("tmp/object-store");
+    expect(env.OBJECT_STORAGE_ENDPOINT).toBe("https://storage.example.com");
+    expect(env.OBJECT_STORAGE_BUCKET).toBe("wiseeff-test");
+    expect(env.OBJECT_STORAGE_ACCESS_KEY_ID).toBe("key");
+    expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBe("secret");
+    expect(env.OBJECT_STORAGE_REGION).toBe("ap-southeast-1");
   });
 
   it("rejects production mock runtime", () => {
@@ -57,15 +75,28 @@ describe("loadServerEnv", () => {
     ).toThrow("DATABASE_URL is required in production");
   });
 
-  it("requires OBJECT_STORE_ROOT in production", () => {
+  it("requires s3 object storage mode in production", () => {
     expect(() =>
       loadServerEnv({
         NODE_ENV: "production",
         DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
-        MOCK_RUNTIME_ENABLED: "false",
-        OBJECT_STORE_ROOT: " "
+        MOCK_RUNTIME_ENABLED: "false"
       })
-    ).toThrow("OBJECT_STORE_ROOT is required in production");
+    ).toThrow("OBJECT_STORE_MODE=s3 is required when NODE_ENV=production");
+  });
+
+  it("requires S3 object storage settings in s3 mode", () => {
+    expect(() =>
+      loadServerEnv({
+        NODE_ENV: "test",
+        OBJECT_STORE_MODE: "s3",
+        OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+        OBJECT_STORAGE_BUCKET: "wiseeff-test",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "key"
+      })
+    ).toThrow(
+      "OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_ACCESS_KEY_ID, and OBJECT_STORAGE_SECRET_ACCESS_KEY are required when OBJECT_STORE_MODE=s3"
+    );
   });
 
   it("requires production auth mode when NODE_ENV is production", () => {
@@ -73,7 +104,11 @@ describe("loadServerEnv", () => {
       loadServerEnv({
         NODE_ENV: "production",
         DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
-        OBJECT_STORE_ROOT: "tmp/object-store"
+        OBJECT_STORE_MODE: "s3",
+        OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+        OBJECT_STORAGE_BUCKET: "wiseeff-test",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
       })
     ).toThrow("AUTH_MODE=production is required when NODE_ENV=production");
   });

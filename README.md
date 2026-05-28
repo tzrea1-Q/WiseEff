@@ -134,6 +134,7 @@ For M2/M3 API mode, use:
 
 ```bash
 DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+OBJECT_STORE_MODE=local
 OBJECT_STORE_ROOT=.wiseeff-object-store
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 npm run db:migrate
@@ -145,12 +146,26 @@ npm run dev:api
 VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 npm run dev
 ```
 
-`OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
+`OBJECT_STORE_MODE` defaults to `local`, and `OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
+
+For staging or production-like object storage, set `OBJECT_STORE_MODE=s3` with an S3/OSS-compatible endpoint:
+
+```bash
+OBJECT_STORE_MODE=s3
+OBJECT_STORAGE_ENDPOINT=https://storage.example.com
+OBJECT_STORAGE_BUCKET=wiseeff-pilot
+OBJECT_STORAGE_ACCESS_KEY_ID=...
+OBJECT_STORAGE_SECRET_ACCESS_KEY=...
+OBJECT_STORAGE_REGION=ap-southeast-1
+```
+
+The S3/OSS adapter stores organization-scoped keys with checksum, size, content type, retention class, and encryption-mode metadata. Readiness checks the configured bucket through the adapter seam. The built-in HTTP transport is an M5 runtime seam with WiseEff signing headers, not a full AWS SigV4 or cloud-vendor SDK implementation.
 
 Commercial production mode fails fast when required runtime dependencies are unsafe or missing:
 
 - `NODE_ENV=production` requires `DATABASE_URL`.
-- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` requires `OBJECT_STORE_MODE=s3`.
+- `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
 - `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 
 M3.5 commercial-readiness checks now include `/health/live`, `/health/ready`, production environment gates, a static M1-M3 route manifest, leased log-analysis jobs, object-store readiness probes, debugging device leases, and request-id-to-audit trace correlation.
@@ -159,7 +174,7 @@ M2 log-analysis verification in API mode:
 
 1. Start PostgreSQL and export `DATABASE_URL`.
 2. Run `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, and `npm run db:seed:m2`.
-3. Start `npm run dev:api` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+3. Start `npm run dev:api` with `OBJECT_STORE_MODE=local` and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
 4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
 5. Open `/logs?project=aurora`, upload `test-fixtures/logs/charging-foldback.log`, ask `Why did fast charging fold back?`, and verify the report reaches `Complete` with thermal/foldback evidence. Upload `test-fixtures/logs/unsupported.bin` to verify a `Failed` record with a readable unsupported-format reason.
 
@@ -167,7 +182,7 @@ M3 debugging verification in API mode:
 
 1. Start PostgreSQL and export `DATABASE_URL`.
 2. Run `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, and `npm run db:seed:m3`.
-3. Start `npm run dev:api` with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+3. Start `npm run dev:api` with `DEBUG_DEVICE_GATEWAY_MODE=simulator`, `OBJECT_STORE_MODE=local`, and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
 4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
 5. Open `/node-debugging?project=aurora` and verify `Aurora Simulator 1`, `Fast charge current` reads `3000`, a write to `3100` succeeds with readback, `Cycle count` remains read-only, and `Readback mismatch probe` reports a mismatch.
 6. Run `npm run test:m3` for the full local M3 gate.

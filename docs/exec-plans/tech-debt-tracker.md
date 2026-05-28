@@ -11,7 +11,6 @@ This tracker captures known work that should not live only in chat or TODO comme
 | TD-003 | Contracts | API contract is documented and guarded by a static route manifest, but not yet generated from schema/client tooling. | Frontend DTOs and backend responses can drift as endpoints grow beyond the manifest. | Introduce OpenAPI or schema generation before the next broad API surface. |
 | TD-004 | Generated Docs | `docs/generated/db-schema.md` is manually derived from migration. | Schema summary can become stale if migrations change. | Add a script or CI check when migrations expand. |
 | TD-005 | Doc Hygiene | Some historical feature plans are now in completed plans but may not state implementation status clearly. | Future agents may over-trust old implementation details. | Review completed plans during related feature work and mark superseded sections. |
-| TD-006 | Log Storage | M2 uses local filesystem object storage through `OBJECT_STORE_ROOT`. | Local/staging behavior does not prove object retention, encryption, lifecycle, or multi-node access. | Replace with production object storage adapter and retention policy. |
 | TD-007 | Log Worker | M2 worker is an in-process polling loop with database leases but without a separate durable queue service. | Multiple API processes are protected by job leases, but crashed workers still rely on lease expiry and later process logic. | Add retry/backoff policy, dead-letter handling, and a dedicated worker/queue deployment. |
 | TD-008 | Contracts | Log-analysis client and DTOs are handwritten. | API/frontend drift can break M2 E2E late. | Generate or validate an OpenAPI client for M1/M2 endpoints. |
 | TD-009 | AI Adapter | M2 analysis is deterministic fixture/rule-driven logic. | Product behavior does not yet exercise real model latency, cost, hallucination controls, or prompt/version traceability. | Add an AI adapter boundary with golden tests and model trace metadata. |
@@ -28,5 +27,6 @@ This tracker captures known work that should not live only in chat or TODO comme
 | ID | Area | Resolution |
 | --- | --- | --- |
 | TD-000 | Knowledge Base | Reorganized product, design, execution, generated, and reference docs into harness-style structure on 2026-05-25. |
+| TD-006 | Log Storage | M5 added `OBJECT_STORE_MODE=s3`, an S3/OSS-compatible adapter seam, a minimal HTTP HEAD/GET/PUT transport with WiseEff signing headers, checksum/retention/encryption metadata, and readiness checks. Cloud SDK/SigV4 wiring, provider bucket provisioning, lifecycle/KMS policy, replication, and credential rotation remain deployment work. |
 | TD-011 | Debugging Safety | M3.5 added `debug_device_leases`, acquisition/release helpers, and service-level conflict handling before node writes and rollback. |
 | TD-016 | Commercial Readiness | M3.5 added health/readiness endpoints, production config gates, route manifest tests, object-store readiness, job/device leases, and request/audit correlation. |

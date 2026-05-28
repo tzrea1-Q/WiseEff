@@ -53,7 +53,7 @@ async function checkObjectStore(objectStore?: ObjectStoreHealthCheck): Promise<D
     return {
       ok: false,
       status: "missing",
-      message: "OBJECT_STORE_ROOT is not configured for this API process."
+      message: "Object storage is not configured for this API process."
     };
   }
 

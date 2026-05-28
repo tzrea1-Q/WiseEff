@@ -782,7 +782,7 @@ git commit -m "feat: harden log worker retries and dead letters"
 - Modify: `docs/design-docs/deployment-operations.md`
 - Modify: `docs/exec-plans/tech-debt-tracker.md`
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
 Create `server/modules/logs/s3ObjectStore.test.ts` using a fake transport:
 
@@ -847,7 +847,7 @@ npm run test:server -- server/modules/logs/s3ObjectStore.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement S3/OSS-compatible object store seam**
+- [x] **Step 2: Implement S3/OSS-compatible object store seam**
 
 Create `server/modules/logs/s3ObjectStore.ts` with:
 
@@ -867,7 +867,7 @@ npm run test:server -- server/modules/logs/s3ObjectStore.test.ts server/modules/
 
 Expected: PASS.
 
-- [ ] **Step 3: Add environment mode and readiness gates**
+- [x] **Step 3: Add environment mode and readiness gates**
 
 Update `server/config/env.ts`:
 
@@ -895,7 +895,7 @@ npm run test:server -- server/config/env.test.ts server/modules/operations/healt
 
 Expected: PASS.
 
-- [ ] **Step 4: Document storage operations and close/update debt**
+- [x] **Step 4: Document storage operations and close/update debt**
 
 Update docs:
 

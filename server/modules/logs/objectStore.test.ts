@@ -79,6 +79,32 @@ describe("createLocalObjectStore", () => {
     });
   });
 
+  it.each(["org-a/../org-b/file.log", "org-a/./file.log", "org-a//file.log", "org-a\\file.log", "/org-a/file.log", "C:\\org-a\\file.log"])(
+    "rejects unsafe storage key segment %s",
+    async (storageKey) => {
+      await withTempStore(async (rootDir) => {
+        const store = createLocalObjectStore(rootDir);
+
+        await expect(store.get(storageKey)).rejects.toThrow("Unsafe storage key");
+      });
+    }
+  );
+
+  it("allows normal organization-scoped storage keys", async () => {
+    await withTempStore(async (rootDir) => {
+      const store = createLocalObjectStore(rootDir);
+
+      const stored = await store.put({
+        organizationId: "org-a",
+        fileName: "file.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("ok", "utf8")
+      });
+
+      await expect(store.get(stored.storageKey)).resolves.toEqual(Buffer.from("ok", "utf8"));
+    });
+  });
+
   it("reports ready after a write/read/delete probe", async () => {
     await withTempStore(async (rootDir) => {
       const store = createLocalObjectStore(rootDir);

@@ -7,7 +7,13 @@ const rawEnvSchema = z.object({
   AUTH_TOKEN_ISSUER: z.string().optional(),
   AUTH_TOKEN_HMAC_SECRET: z.string().optional(),
   DATABASE_URL: z.string().optional(),
+  OBJECT_STORE_MODE: z.enum(["local", "s3"]).default("local"),
   OBJECT_STORE_ROOT: z.string().default(".wiseeff-object-store"),
+  OBJECT_STORAGE_ENDPOINT: z.string().optional(),
+  OBJECT_STORAGE_BUCKET: z.string().optional(),
+  OBJECT_STORAGE_ACCESS_KEY_ID: z.string().optional(),
+  OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
+  OBJECT_STORAGE_REGION: z.string().optional(),
   DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator"]).default("simulator"),
   MOCK_RUNTIME_ENABLED: z
     .enum(["true", "false"])
@@ -26,8 +32,19 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   if (env.NODE_ENV === "production" && !env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required in production");
   }
-  if (env.NODE_ENV === "production" && !env.OBJECT_STORE_ROOT.trim()) {
-    throw new Error("OBJECT_STORE_ROOT is required in production");
+  if (env.NODE_ENV === "production" && env.OBJECT_STORE_MODE !== "s3") {
+    throw new Error("OBJECT_STORE_MODE=s3 is required when NODE_ENV=production");
+  }
+  if (
+    env.OBJECT_STORE_MODE === "s3" &&
+    (!env.OBJECT_STORAGE_ENDPOINT?.trim() ||
+      !env.OBJECT_STORAGE_BUCKET?.trim() ||
+      !env.OBJECT_STORAGE_ACCESS_KEY_ID?.trim() ||
+      !env.OBJECT_STORAGE_SECRET_ACCESS_KEY?.trim())
+  ) {
+    throw new Error(
+      "OBJECT_STORAGE_ENDPOINT, OBJECT_STORAGE_BUCKET, OBJECT_STORAGE_ACCESS_KEY_ID, and OBJECT_STORAGE_SECRET_ACCESS_KEY are required when OBJECT_STORE_MODE=s3"
+    );
   }
   if (env.NODE_ENV === "production" && env.AUTH_MODE !== "production") {
     throw new Error("AUTH_MODE=production is required when NODE_ENV=production");

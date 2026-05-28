@@ -50,7 +50,7 @@ describe("operations health", () => {
           objectStore: {
             ok: false,
             status: "missing",
-            message: "OBJECT_STORE_ROOT is not configured for this API process."
+            message: "Object storage is not configured for this API process."
           }
         }
       }
