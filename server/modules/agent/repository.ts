@@ -36,6 +36,9 @@ type AgentMessageRow = {
 
 type AgentToolCallRow = {
   id: string;
+  session_id?: string;
+  organization_id?: string;
+  project_id?: string | null;
   name: AgentToolName;
   label: string;
   payload: unknown;
@@ -44,12 +47,16 @@ type AgentToolCallRow = {
   result: unknown | null;
   error_message: string | null;
   audit_event_id: string | null;
+  approval_id?: string | null;
   created_at: string | Date;
   updated_at: string | Date;
 };
 
 type AgentApprovalRow = {
   id: string;
+  session_id?: string;
+  organization_id?: string;
+  project_id?: string | null;
   tool_call_id: string;
   title: string;
   message: string;
@@ -58,6 +65,34 @@ type AgentApprovalRow = {
   decided_at: string | Date | null;
   decided_by_user_id: string | null;
   decision_reason: string | null;
+};
+
+type AgentRunTraceProvider = "deterministic";
+
+export type CreateAgentRunTraceInput = {
+  id: string;
+  sessionId: string;
+  messageId: string;
+  organizationId: string;
+  provider: AgentRunTraceProvider;
+  model: string;
+  promptVersion: string;
+  inputSummary: string;
+  outputSummary: string;
+  toolCallIds: string[];
+  traceId: string;
+};
+
+export type AgentToolCallRecord = AgentToolCallDto & {
+  sessionId: string;
+  organizationId: string;
+  projectId?: string;
+};
+
+export type AgentApprovalRecord = AgentApprovalDto & {
+  sessionId: string;
+  organizationId: string;
+  projectId?: string;
 };
 
 export type AgentSessionRecord = {
@@ -195,9 +230,19 @@ function toAgentToolCallDto(row: AgentToolCallRow): AgentToolCallDto {
     status: row.status,
     result: row.result === null ? undefined : (jsonObject(row.result) as AgentToolResult),
     error: row.error_message ?? undefined,
+    approvalId: row.approval_id ?? undefined,
     auditEventId: row.audit_event_id ?? undefined,
     createdAt: dateTimeToIso(row.created_at),
     completedAt: ["succeeded", "failed", "rejected"].includes(row.status) ? dateTimeToIso(row.updated_at) : undefined
+  };
+}
+
+function toAgentToolCallRecord(row: AgentToolCallRow): AgentToolCallRecord {
+  return {
+    ...toAgentToolCallDto(row),
+    sessionId: String(row.session_id ?? ""),
+    organizationId: String(row.organization_id ?? ""),
+    projectId: row.project_id ?? undefined
   };
 }
 
@@ -212,6 +257,15 @@ function toAgentApprovalDto(row: AgentApprovalRow): AgentApprovalDto {
     decidedAt: row.decided_at ? dateTimeToIso(row.decided_at) : undefined,
     decidedByUserId: row.decided_by_user_id ?? undefined,
     reason: row.decision_reason ?? undefined
+  };
+}
+
+function toAgentApprovalRecord(row: AgentApprovalRow): AgentApprovalRecord {
+  return {
+    ...toAgentApprovalDto(row),
+    sessionId: String(row.session_id ?? ""),
+    organizationId: String(row.organization_id ?? ""),
+    projectId: row.project_id ?? undefined
   };
 }
 
@@ -284,14 +338,39 @@ export async function listAgentMessages(
     `
     select id, role, content, citations, confidence, created_at
     from agent_messages
-    where organization_id = $1
-      and session_id = $2
+    where agent_tool_calls.organization_id = $1
+      and agent_tool_calls.session_id = $2
     order by created_at asc, id asc
     `,
     [organizationId, sessionId]
   );
 
   return result.rows.map(toAgentMessageDto);
+}
+
+export async function createAgentRunTrace(db: Queryable, input: CreateAgentRunTraceInput): Promise<void> {
+  await db.query(
+    `
+    insert into agent_run_traces (
+      id, session_id, message_id, organization_id, provider, model, prompt_version,
+      input_summary, output_summary, tool_call_ids, trace_id
+    )
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `,
+    [
+      input.id,
+      input.sessionId,
+      input.messageId,
+      input.organizationId,
+      input.provider,
+      input.model,
+      input.promptVersion,
+      input.inputSummary,
+      input.outputSummary,
+      input.toolCallIds,
+      input.traceId
+    ]
+  );
 }
 
 export async function createAgentToolCall(db: Queryable, input: CreateAgentToolCallInput): Promise<void> {
@@ -358,16 +437,44 @@ export async function listAgentToolCalls(
 ): Promise<AgentToolCallDto[]> {
   const result = await db.query<AgentToolCallRow>(
     `
-    select id, name, label, payload, requires_approval, status, result, error_message, audit_event_id, created_at, updated_at
+    select
+      agent_tool_calls.id, agent_tool_calls.name, agent_tool_calls.label, agent_tool_calls.payload,
+      agent_tool_calls.requires_approval, agent_tool_calls.status, agent_tool_calls.result,
+      agent_tool_calls.error_message, agent_tool_calls.audit_event_id, approvals.id as approval_id,
+      agent_tool_calls.created_at, agent_tool_calls.updated_at
     from agent_tool_calls
+    left join agent_approvals approvals on approvals.tool_call_id = agent_tool_calls.id
     where organization_id = $1
       and session_id = $2
-    order by created_at asc, id asc
+    order by agent_tool_calls.created_at asc, agent_tool_calls.id asc
     `,
     [organizationId, sessionId]
   );
 
   return result.rows.map(toAgentToolCallDto);
+}
+
+export async function getAgentToolCall(
+  db: Queryable,
+  organizationId: string,
+  toolCallId: string
+): Promise<AgentToolCallRecord | null> {
+  const result = await db.query<AgentToolCallRow>(
+    `
+    select
+      tc.id, tc.session_id, tc.organization_id, tc.project_id, tc.name, tc.label, tc.payload,
+      tc.requires_approval, tc.status, tc.result, tc.error_message, tc.audit_event_id,
+      approvals.id as approval_id, tc.created_at, tc.updated_at
+    from agent_tool_calls tc
+    left join agent_approvals approvals on approvals.tool_call_id = tc.id
+    where tc.organization_id = $1
+      and tc.id = $2
+    limit 1
+    `,
+    [organizationId, toolCallId]
+  );
+
+  return result.rows[0] ? toAgentToolCallRecord(result.rows[0]) : null;
 }
 
 export async function createAgentApproval(db: Queryable, input: CreateAgentApprovalInput): Promise<void> {
@@ -456,4 +563,25 @@ export async function listAgentApprovals(
   );
 
   return result.rows.map(toAgentApprovalDto);
+}
+
+export async function getAgentApproval(
+  db: Queryable,
+  organizationId: string,
+  approvalId: string
+): Promise<AgentApprovalRecord | null> {
+  const result = await db.query<AgentApprovalRow>(
+    `
+    select
+      id, session_id, tool_call_id, organization_id, project_id, title, message, status,
+      requested_at, decided_at, decided_by_user_id, decision_reason
+    from agent_approvals
+    where organization_id = $1
+      and id = $2
+    limit 1
+    `,
+    [organizationId, approvalId]
+  );
+
+  return result.rows[0] ? toAgentApprovalRecord(result.rows[0]) : null;
 }

@@ -1,3 +1,4 @@
+import { ApiError } from "../../../shared/http/errors";
 import type { AgentToolDefinition } from "../toolRegistry";
 
 type ToolOptions = {
@@ -22,6 +23,17 @@ type OrphanParameterRow = {
   risk?: string | null;
   last_value_at?: string | null;
   usage_count?: number | string | null;
+};
+
+type EditableParameterRow = {
+  id: string;
+  project_id: string;
+  parameter_definition_id: string;
+  current_value: string;
+};
+
+type ParameterDraftRow = {
+  id: string;
 };
 
 function readProjectId(contextProjectId: string | undefined, payload: Record<string, unknown>) {
@@ -182,29 +194,61 @@ limit 20
       kind: "preparation",
       permission: "parameter:edit",
       requiresApproval: true,
-      run: async (_context, payload) => {
-        const parameterId = typeof payload.parameterId === "string" ? payload.parameterId : "unknown";
+      run: async (context, payload) => {
+        const projectId = readProjectId(context.projectId, payload);
+        const parameterId = typeof payload.parameterId === "string" ? payload.parameterId : undefined;
+        const requestedTargetValue = typeof payload.targetValue === "string" ? payload.targetValue : undefined;
+        const reason = typeof payload.reason === "string" && payload.reason.trim() ? payload.reason : undefined;
+
+        if (!projectId || !reason) {
+          throw new ApiError("VALIDATION_FAILED", "Project id and reason are required for parameter draft creation.", 400, {
+            projectId
+          });
+        }
+
+        const editableParameter = await options.db.query<EditableParameterRow>(
+          `
+select
+  ppv.id,
+  ppv.project_id,
+  ppv.parameter_definition_id,
+  ppv.current_value
+from project_parameter_values ppv
+where ppv.organization_id = $1
+  and ppv.project_id = $2
+  and ($3::text is null or ppv.id = $3)
+order by ppv.updated_at desc, ppv.id asc
+limit 1
+          `,
+          [context.auth.organization.id, projectId, parameterId ?? null]
+        );
+        const selected = editableParameter.rows[0];
+        if (!selected) {
+          throw new ApiError("NOT_FOUND", "No editable parameter was found for the project.", 404, { projectId, parameterId });
+        }
+        const targetValue = requestedTargetValue ?? selected.current_value;
+        const draftId = `parameter-draft-${context.requestId}`;
+        const draft = await options.db.query<ParameterDraftRow>(
+          `
+insert into parameter_drafts (
+  id, organization_id, project_id, project_parameter_value_id, user_id, target_value, reason
+)
+values ($1, $2, $3, $4, $5, $6, $7)
+on conflict (project_id, project_parameter_value_id, user_id)
+do update set
+  target_value = excluded.target_value,
+  reason = excluded.reason,
+  updated_at = now()
+returning id
+          `,
+          [draftId, context.auth.organization.id, projectId, selected.id, context.auth.user.id, targetValue, reason]
+        );
+        const createdDraftId = draft.rows[0]?.id ?? draftId;
+
         return {
-          summary: "Prepared a parameter change draft for approval. No draft row was created.",
-          data: {
-            draft: {
-              parameterId,
-              proposedValue: payload.proposedValue ?? null,
-              reason: payload.reason ?? null,
-              approvalRequired: true
-            }
-          },
-          citations: parameterId === "unknown"
-            ? []
-            : [
-                {
-                  type: "parameter" as const,
-                  id: parameterId,
-                  label: parameterId,
-                  href: `/parameters?parameterId=${encodeURIComponent(parameterId)}`,
-                  snippet: "Draft creation is deferred to approved execution."
-                }
-              ]
+          summary: "Created one parameter draft for human review.",
+          data: { draftId: createdDraftId, projectId },
+          citations: [{ type: "parameter" as const, id: createdDraftId, label: `Parameter draft ${createdDraftId}` }]
         };
       }
     }

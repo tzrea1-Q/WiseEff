@@ -3,9 +3,12 @@ import type { Queryable } from "../../shared/database/client";
 import {
   appendAgentMessage,
   createAgentApproval,
+  createAgentRunTrace,
   createAgentSession,
   createAgentToolCall,
+  getAgentApproval,
   getAgentSession,
+  getAgentToolCall,
   listAgentApprovals,
   listAgentMessages,
   listAgentToolCalls,
@@ -202,6 +205,94 @@ describe("agent repository", () => {
     expect(rejected).toBe(false);
   });
 
+  it("creates run traces with provider metadata and tool call ids", async () => {
+    const { db, calls } = createRecordingDb();
+
+    await createAgentRunTrace(db, {
+      id: "trace-1",
+      sessionId: "agent-session-1",
+      messageId: "agent-msg-user-1",
+      organizationId: "org-chargelab",
+      provider: "deterministic",
+      model: "wiseeff-rules-m4",
+      promptVersion: "m4-agent-v1",
+      inputSummary: "Summarize review queue",
+      outputSummary: "I will call controlled tools.",
+      toolCallIds: ["tool-1", "tool-2"],
+      traceId: "req-1"
+    });
+
+    expect(calls[0].text).toContain("insert into agent_run_traces");
+    expect(calls[0].values).toContain("wiseeff-rules-m4");
+    expect(calls[0].values).toContain("req-1");
+    expect(calls[0].values).toContainEqual(["tool-1", "tool-2"]);
+  });
+
+  it("loads a scoped tool call with session and project metadata", async () => {
+    const { db, calls } = createRecordingDb([
+      {
+        id: "tool-1",
+        session_id: "agent-session-1",
+        organization_id: "org-chargelab",
+        project_id: "aurora",
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: JSON.stringify({ projectId: "aurora", reason: "Stage draft" }),
+        requires_approval: true,
+        status: "pending_approval",
+        result: null,
+        error_message: null,
+        audit_event_id: null,
+        approval_id: "approval-1",
+        created_at: "2026-05-27T00:00:00.000Z",
+        updated_at: "2026-05-27T00:00:00.000Z"
+      }
+    ]);
+
+    const toolCall = await getAgentToolCall(db, "org-chargelab", "tool-1");
+
+    expect(calls[0].text).toContain("from agent_tool_calls");
+    expect(calls[0].text).toContain("left join agent_approvals");
+    expect(toolCall).toMatchObject({
+      id: "tool-1",
+      sessionId: "agent-session-1",
+      projectId: "aurora",
+      approvalId: "approval-1",
+      status: "pending_approval"
+    });
+  });
+
+  it("loads a pending approval with tool call payload for approved execution", async () => {
+    const { db, calls } = createRecordingDb([
+      {
+        id: "approval-1",
+        session_id: "agent-session-1",
+        tool_call_id: "tool-1",
+        organization_id: "org-chargelab",
+        project_id: "aurora",
+        title: "Create parameter draft",
+        message: "This will create a draft.",
+        status: "pending",
+        requested_at: "2026-05-27T00:00:00.000Z",
+        decided_at: null,
+        decided_by_user_id: null,
+        decision_reason: null
+      }
+    ]);
+
+    const approval = await getAgentApproval(db, "org-chargelab", "approval-1");
+
+    expect(calls[0].text).toContain("from agent_approvals");
+    expect(calls[0].text).toContain("where organization_id = $1");
+    expect(approval).toMatchObject({
+      id: "approval-1",
+      sessionId: "agent-session-1",
+      toolCallId: "tool-1",
+      projectId: "aurora",
+      status: "pending"
+    });
+  });
+
   it("returns update success from tool call rowCount and keeps scoped updated SQL", async () => {
     const { db: matchedDb, calls: matchedCalls } = createRecordingDb([], 1);
     const { db: missedDb } = createRecordingDb([], 0);
@@ -275,8 +366,8 @@ describe("agent repository", () => {
 
     const messages = await listAgentMessages(db, "org-chargelab", "agent-session-1");
 
-    expect(calls[0].text).toContain("where organization_id = $1");
-    expect(calls[0].text).toContain("and session_id = $2");
+    expect(calls[0].text).toContain("where agent_tool_calls.organization_id = $1");
+    expect(calls[0].text).toContain("and agent_tool_calls.session_id = $2");
     expect(calls[0].values).toEqual(["org-chargelab", "agent-session-1"]);
     expect(messages[0]).toMatchObject({
       id: "agent-msg-1",

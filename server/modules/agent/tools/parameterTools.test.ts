@@ -149,12 +149,28 @@ describe("agent parameter tools", () => {
     expect(tool?.permission).toBe("parameter:edit");
   });
 
-  it("prepares submit change draft with summary and citation without writing to the database", async () => {
-    let queryCount = 0;
+  it("creates submit change drafts after approval without changing production values", async () => {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
     const db = {
-      query: async () => {
-        queryCount += 1;
-        return { rows: [], rowCount: 0 };
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        calls.push({ text, values });
+        if (text.includes("from project_parameter_values")) {
+          return {
+            rows: [
+              {
+                id: "ppv-fast-charge",
+                project_id: "aurora",
+                parameter_definition_id: "p-fast-charge",
+                current_value: "16A"
+              } as Row
+            ],
+            rowCount: 1
+          };
+        }
+        return {
+          rows: [{ id: "parameter-draft-req-1" } as Row],
+          rowCount: 1
+        };
       }
     };
     const tool = createParameterTools({ db }).find((item) => item.name === "parameter.submitChangeDraft");
@@ -162,17 +178,53 @@ describe("agent parameter tools", () => {
       { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1", projectId: "aurora" },
       {
         projectId: "aurora",
-        parameterId: "p-fast-charge",
-        proposedValue: "18A",
+        parameterId: "ppv-fast-charge",
+        targetValue: "18A",
         reason: "Stage for reviewer approval"
       }
     );
 
     expect(tool?.permission).toBe("parameter:edit");
     expect(tool?.requiresApproval).toBe(true);
-    expect(result?.summary).toContain("Prepared");
-    expect(result?.summary).toContain("No draft row was created");
-    expect(result?.citations[0]).toEqual(expect.objectContaining({ type: "parameter", id: "p-fast-charge" }));
-    expect(queryCount).toBe(0);
+    expect(result).toEqual({
+      summary: "Created one parameter draft for human review.",
+      data: { draftId: "parameter-draft-req-1", projectId: "aurora" },
+      citations: [{ type: "parameter", id: "parameter-draft-req-1", label: "Parameter draft parameter-draft-req-1" }]
+    });
+    expect(calls.some((call) => call.text.includes("insert into parameter_drafts"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("update project_parameter_values"))).toBe(false);
+  });
+
+  it("uses the first editable project parameter and current value when draft payload is incomplete", async () => {
+    const calls: Array<{ text: string; values: unknown[] }> = [];
+    const db = {
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        calls.push({ text, values });
+        if (text.includes("from project_parameter_values")) {
+          return {
+            rows: [
+              {
+                id: "ppv-safe-default",
+                project_id: "aurora",
+                parameter_definition_id: "p-safe-default",
+                current_value: "42"
+              } as Row
+            ],
+            rowCount: 1
+          };
+        }
+        return { rows: [{ id: "parameter-draft-req-2" } as Row], rowCount: 1 };
+      }
+    };
+    const tool = createParameterTools({ db }).find((item) => item.name === "parameter.submitChangeDraft");
+
+    await tool?.run(
+      { auth: developmentAuthContext, requestId: "req-2", sessionId: "agent-session-1", projectId: "aurora" },
+      { projectId: "aurora", reason: "Stage safe default" }
+    );
+
+    const insertCall = calls.find((call) => call.text.includes("insert into parameter_drafts"));
+    expect(insertCall?.values).toContain("ppv-safe-default");
+    expect(insertCall?.values).toContain("42");
   });
 });

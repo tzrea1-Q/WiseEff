@@ -6,6 +6,7 @@ export type ApiErrorCode =
   | "CONFLICT"
   | "PROCESSING"
   | "RATE_LIMITED"
+  | "APPROVAL_REQUIRED"
   | "AGENT_TOOL_FAILED"
   | "DEVICE_UNAVAILABLE"
   | "INTERNAL_ERROR";
