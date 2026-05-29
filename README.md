@@ -116,6 +116,18 @@ npm run test:m4
 Run the M4 Agent acceptance gate: frontend tests, backend tests, production build, then `e2e/agent.api.spec.ts`. The smoke requires `DATABASE_URL`, seeds M0/M1 data, starts API mode, opens WiseAgent on `/parameters`, sends a prompt through `AgentGateway`, and verifies a persisted approval-required parameter draft tool call.
 
 ```bash
+npm run smoke:m5
+```
+
+Run the M5 operations smoke: `npm run contract:check`, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. Set `WISEEFF_API_BASE_URL` or `VITE_WISEEFF_API_BASE_URL` to point at a live API; set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access` for staging/prod pilot checks; otherwise the route will 403. The script fails unless `M5_SMOKE_ALLOW_NO_API=true` is set for a local skip, and the full gate uses `tsx scripts/run-m5-smoke.ts --require-api` so it always probes the live API.
+
+```bash
+npm run test:m5
+```
+
+Run the full M5 pilot gate: contract check, frontend tests, backend tests, production build, full Playwright E2E, and the M5 operations smoke. It is the intended commercial-pilot baseline, but it still depends on external PostgreSQL and environment-specific evidence for backup, device-lab, and staging checks.
+
+```bash
 npm run preview
 ```
 
@@ -134,6 +146,7 @@ For M2/M3 API mode, use:
 
 ```bash
 DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+OBJECT_STORE_MODE=local
 OBJECT_STORE_ROOT=.wiseeff-object-store
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 npm run db:migrate
@@ -145,12 +158,26 @@ npm run dev:api
 VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 npm run dev
 ```
 
-`OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
+`OBJECT_STORE_MODE` defaults to `local`, and `OBJECT_STORE_ROOT` defaults to `.wiseeff-object-store`. In local API mode, uploaded log bytes are written under that directory by organization and ignored by Git; seed data uses synthetic storage keys and does not require files to exist in the object store.
+
+For staging or production-like object storage, set `OBJECT_STORE_MODE=s3` with an S3/OSS-compatible endpoint:
+
+```bash
+OBJECT_STORE_MODE=s3
+OBJECT_STORAGE_ENDPOINT=https://storage.example.com
+OBJECT_STORAGE_BUCKET=wiseeff-pilot
+OBJECT_STORAGE_ACCESS_KEY_ID=...
+OBJECT_STORAGE_SECRET_ACCESS_KEY=...
+OBJECT_STORAGE_REGION=ap-southeast-1
+```
+
+The S3/OSS adapter stores organization-scoped keys with checksum, size, content type, retention class, and encryption-mode metadata. Readiness checks the configured bucket through the adapter seam. The built-in HTTP transport is an M5 runtime seam with WiseEff signing headers, not a full AWS SigV4 or cloud-vendor SDK implementation.
 
 Commercial production mode fails fast when required runtime dependencies are unsafe or missing:
 
 - `NODE_ENV=production` requires `DATABASE_URL`.
-- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` requires `OBJECT_STORE_MODE=s3`.
+- `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
 - `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 
 M3.5 commercial-readiness checks now include `/health/live`, `/health/ready`, production environment gates, a static M1-M3 route manifest, leased log-analysis jobs, object-store readiness probes, debugging device leases, and request-id-to-audit trace correlation.
@@ -159,7 +186,7 @@ M2 log-analysis verification in API mode:
 
 1. Start PostgreSQL and export `DATABASE_URL`.
 2. Run `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, and `npm run db:seed:m2`.
-3. Start `npm run dev:api` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+3. Start `npm run dev:api` with `OBJECT_STORE_MODE=local` and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
 4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
 5. Open `/logs?project=aurora`, upload `test-fixtures/logs/charging-foldback.log`, ask `Why did fast charging fold back?`, and verify the report reaches `Complete` with thermal/foldback evidence. Upload `test-fixtures/logs/unsupported.bin` to verify a `Failed` record with a readable unsupported-format reason.
 
@@ -167,7 +194,7 @@ M3 debugging verification in API mode:
 
 1. Start PostgreSQL and export `DATABASE_URL`.
 2. Run `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, and `npm run db:seed:m3`.
-3. Start `npm run dev:api` with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+3. Start `npm run dev:api` with `DEBUG_DEVICE_GATEWAY_MODE=simulator`, `OBJECT_STORE_MODE=local`, and `OBJECT_STORE_ROOT=.wiseeff-object-store`.
 4. Start the frontend with `VITE_WISEEFF_RUNTIME_MODE=api` and `VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787`.
 5. Open `/node-debugging?project=aurora` and verify `Aurora Simulator 1`, `Fast charge current` reads `3000`, a write to `3100` succeeds with readback, `Cycle count` remains read-only, and `Readback mismatch probe` reports a mismatch.
 6. Run `npm run test:m3` for the full local M3 gate.
@@ -177,6 +204,12 @@ M3.5 commercial-readiness verification:
 1. Run `npm run test:all` and `npm run build` on every M3.5 change.
 2. When PostgreSQL is available, export `DATABASE_URL`, then run `npm run test:m3-5`.
 3. Confirm `/health/ready` reports database and object-store readiness before treating a local/staging API process as pilot-ready.
+
+M5 pilot verification:
+
+1. Run `npm run smoke:m5` against a live API after `npm run contract:check`, or use `M5_SMOKE_ALLOW_NO_API=true` only for local documentation runs.
+2. Run `npm run test:m5` in an environment with PostgreSQL and the other pilot dependencies available. The pilot-ready route also needs recorded contract evidence via `M5_CONTRACT_CHECK_PASSED=true` or `M5_CONTRACT_ARTIFACT_CHECKED_AT=<timestamp>`.
+3. Record any skipped external checks in `docs/generated/m5-pilot-acceptance.md` before calling the environment pilot-ready.
 
 M4 Agent verification:
 

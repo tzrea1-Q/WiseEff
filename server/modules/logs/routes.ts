@@ -43,6 +43,12 @@ function requireObjectStore(objectStore: ObjectStore | undefined) {
   return objectStore;
 }
 
+function requireLocalOrganization(auth: AuthContext) {
+  if (auth.user.organizationId !== auth.organization.id) {
+    throw new ApiError("FORBIDDEN", "Log organization access is required.", 403, { organizationId: auth.organization.id });
+  }
+}
+
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid log route input.") {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
@@ -106,6 +112,7 @@ export function registerLogRoutes(
   router.get("/api/v1/logs/:logId", async (request) => {
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
+    requireLocalOrganization(auth);
     const params = parseWithSchema(paramsWithLogIdSchema, request.params);
     const item = await getLogRecord(db, auth, params.logId);
 

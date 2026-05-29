@@ -13,6 +13,8 @@ export type StoredObject = {
   contentType: string;
   fileSizeBytes: number;
   checksumSha256: string;
+  retentionClass?: string;
+  encryptionMode?: string;
 };
 
 export type ObjectStoreHealth = {
@@ -50,7 +52,7 @@ const defaultHealthProbeIo: HealthProbeIo = {
   randomUUID
 };
 
-function rejectPathLikeName(fileName: string, label: string) {
+export function rejectPathLikeName(fileName: string, label: string) {
   if (
     fileName.includes("/") ||
     fileName.includes("\\") ||
@@ -62,7 +64,7 @@ function rejectPathLikeName(fileName: string, label: string) {
   }
 }
 
-function sanitizeFileName(fileName: string) {
+export function sanitizeFileName(fileName: string) {
   rejectPathLikeName(fileName, "file name");
   const sanitized = fileName.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -73,7 +75,7 @@ function sanitizeFileName(fileName: string) {
   return sanitized;
 }
 
-function sanitizePathSegment(value: string, label: string) {
+export function sanitizePathSegment(value: string, label: string) {
   rejectPathLikeName(value, label);
   const sanitized = value.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
 
@@ -84,10 +86,26 @@ function sanitizePathSegment(value: string, label: string) {
   return sanitized;
 }
 
-function resolveInsideRoot(rootDir: string, storageKey: string) {
-  if (path.isAbsolute(storageKey) || path.win32.isAbsolute(storageKey)) {
+export function rejectUnsafeStorageKey(storageKey: string) {
+  if (
+    path.isAbsolute(storageKey) ||
+    path.win32.isAbsolute(storageKey) ||
+    storageKey.includes("\\") ||
+    storageKey.startsWith("/") ||
+    storageKey.startsWith("\\")
+  ) {
     throw new Error("Unsafe storage key.");
   }
+
+  const segments = storageKey.split("/");
+
+  if (segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new Error("Unsafe storage key.");
+  }
+}
+
+function resolveInsideRoot(rootDir: string, storageKey: string) {
+  rejectUnsafeStorageKey(storageKey);
 
   const rootPath = path.resolve(rootDir);
   const objectPath = path.resolve(rootPath, storageKey);

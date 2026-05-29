@@ -267,7 +267,7 @@ describe("parameter routes", () => {
     vi.mocked(service.reviewChange).mockResolvedValue(mergedRequest);
 
     const response = await requestJson<{ item: typeof mergedRequest }>(
-      makeServer({ db }),
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "parameter:edit", "parameter:review"] }) }),
       "/api/v1/parameter-change-requests/request-1/review",
       {
         method: "POST",
@@ -279,7 +279,7 @@ describe("parameter routes", () => {
     expect(response.body).toEqual({ item: mergedRequest });
     expect(service.reviewChange).toHaveBeenCalledWith(
       db,
-      makeAuth(),
+      makeAuth({ permissions: ["parameter:view", "parameter:edit", "parameter:review"] }),
       {
         requestId: "request-1",
         decision: "advance",
@@ -340,6 +340,26 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_FAILED");
+    expect(service.reviewChange).not.toHaveBeenCalled();
+  });
+
+  it("review route rejects auth without parameter review permission before service work", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "parameter:edit"] }) }),
+      "/api/v1/parameter-change-requests/request-1/review",
+      {
+        method: "POST",
+        body: JSON.stringify({ decision: "advance", expectedVersion: 7 })
+      }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Parameter review permission is required."
+    });
     expect(service.reviewChange).not.toHaveBeenCalled();
   });
 });

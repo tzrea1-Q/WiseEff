@@ -15,6 +15,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - Frontend role model lives in `src/domain/users/types.ts`.
 - Page/action permission helpers live in `src/app/permissions.ts`.
 - M0 backend auth context lives in `server/modules/auth/`.
+- M5 production auth uses `AUTH_MODE=production` and verifies server-side bearer tokens before mapping signed user, organization, role, and permission claims into `AuthContext`.
 - M0 audit boundary lives in `server/modules/audit/`.
 - M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, and imports.
 - Security governance design lives in `design-docs/security-governance.md`.
@@ -32,6 +33,8 @@ Current frontend permissions include:
 - `users:manage`
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
+
+Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. The pilot verifier checks `Authorization: Bearer <payload>.<signature>` using HMAC-SHA256 over the base64url payload, validates issuer, subject, and organization claims, and maps only signed claims into the backend auth context. Production routes must not fall back to the development user.
 
 For M1 parameter management:
 
@@ -93,6 +96,10 @@ M4 Agent tools run only through the backend registry. Read tools still require s
 
 Agent-generated parameter changes may prepare drafts or recommendations, but production parameter writes still require a human-submitted draft/review path. Future Agent or device write tools must create an explicit approval record and then execute through the same server-side authz and audit boundary.
 
+The live Agent provider adds a registry seam so the backend can reject unknown tool names, block ungrounded mutating requests, and fall back cleanly when the provider is unavailable. Provider traces now capture latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so security review can distinguish grounded planning from degraded output.
+
+Provider outages must not silently execute tools. A degraded assistant response is allowed only when the provider health check fails or the transport is unavailable, and the fallback path must skip tool execution entirely.
+
 ## Device Safety
 
 Device access must go through a gateway boundary. Write requests need:
@@ -107,7 +114,7 @@ Device access must go through a gateway boundary. Write requests need:
 - pre-write snapshot,
 - readback result or failure reason.
 
-The M3 simulator-backed path implements this boundary for local verification. M3.5 adds `debug_device_leases` so node writes and snapshot rollback cannot proceed when another active session owns the device lease; the same session can renew the lease, and repository helpers can expire/release it. A production HDC gateway must preserve the same safety contract: no direct frontend device writes, no write without a lease and snapshot, no rollback without an explicit confirmation token, and no audit bypass.
+The M3 simulator-backed path implements this boundary for local verification. M3.5 adds `debug_device_leases` so node writes and snapshot rollback cannot proceed when another active session owns the device lease; the same session can renew the lease, and repository helpers can expire/release it. M5 adds an HDC adapter behind the same `DebugDeviceGateway` boundary with argv-based process execution, command timeouts, stderr/nonzero normalization, and read-back mismatch reporting. Production deployments must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`; `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is only acceptable for non-customer staging. Real hardware evidence still belongs in pilot/device-lab acceptance: no direct frontend device writes, no write without a lease and snapshot, no rollback without an explicit confirmation token, and no audit bypass.
 
 ## References
 

@@ -80,8 +80,22 @@ describe("createApiClient", () => {
 
     await expect(client.get("/api/v1/audit-events")).rejects.toMatchObject({
       code: "FORBIDDEN",
+      details: {},
       message: "Admin access required.",
-      name: WiseEffApiError.name
+      name: WiseEffApiError.name,
+      requestId: "req-1"
+    });
+  });
+
+  it("falls back to the documented internal error envelope shape", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({}), { status: 500 }));
+    const client = createApiClient({ baseUrl: "", fetchImpl: fetchMock });
+
+    await expect(client.get("/health/ready")).rejects.toMatchObject({
+      code: "INTERNAL_ERROR",
+      details: {},
+      message: "Request failed.",
+      requestId: ""
     });
   });
 });

@@ -1,4 +1,6 @@
 import type { Database } from "../../shared/database/client";
+import type { AgentProvider } from "../agent/provider";
+import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 
 export type DependencyHealth = {
@@ -14,6 +16,8 @@ export type OperationsHealthBody = {
   dependencies?: {
     database: DependencyHealth;
     objectStore: DependencyHealth;
+    workerQueue?: WorkerQueueHealth;
+    agentProvider?: DependencyHealth;
   };
 };
 
@@ -51,7 +55,7 @@ async function checkObjectStore(objectStore?: ObjectStoreHealthCheck): Promise<D
     return {
       ok: false,
       status: "missing",
-      message: "OBJECT_STORE_ROOT is not configured for this API process."
+      message: "Object storage is not configured for this API process."
     };
   }
 
@@ -66,10 +70,38 @@ async function checkObjectStore(objectStore?: ObjectStoreHealthCheck): Promise<D
   }
 }
 
-export async function buildReadyHealth(options: { db?: Pick<Database, "query">; objectStore?: ObjectStoreHealthCheck }) {
+async function checkAgentProvider(agentProvider?: AgentProvider): Promise<DependencyHealth | undefined> {
+  if (!agentProvider?.checkHealth) {
+    return undefined;
+  }
+
+  try {
+    const result = await agentProvider.checkHealth();
+    return {
+      ok: result.ok,
+      status: result.status,
+      message: result.message
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message: error instanceof Error ? error.message : "Agent provider readiness check failed."
+    };
+  }
+}
+
+export async function buildReadyHealth(options: {
+  db?: Pick<Database, "query">;
+  objectStore?: ObjectStoreHealthCheck;
+  includeWorkerQueue?: boolean;
+  agentProvider?: AgentProvider;
+}) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
-  const ok = database.ok && objectStore.ok;
+  const agentProvider = await checkAgentProvider(options.agentProvider);
+  const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
+  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (agentProvider?.ok ?? true);
 
   return {
     status: ok ? 200 : 503,
@@ -77,7 +109,12 @@ export async function buildReadyHealth(options: { db?: Pick<Database, "query">; 
       ok,
       service: "wiseeff-api",
       status: ok ? "ready" : "not_ready",
-      dependencies: { database, objectStore }
+      dependencies: {
+        database,
+        objectStore,
+        ...(workerQueue ? { workerQueue } : {}),
+        ...(agentProvider ? { agentProvider } : {})
+      }
     } satisfies OperationsHealthBody
   };
 }

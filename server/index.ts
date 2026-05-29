@@ -1,17 +1,30 @@
 import "dotenv/config";
-import { createWiseEffServer } from "./app";
+import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
+import { createAgentProviderFromEnv } from "./modules/agent/providerRegistry";
+import { createHdcDebugDeviceGateway } from "./modules/debugging/hdcGateway";
 import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator";
-import { createLocalObjectStore } from "./modules/logs/objectStore";
 import { startLogWorkerLoop } from "./modules/logs/worker";
+import { createObjectStoreFromEnv } from "./objectStoreFactory";
 import { createPostgresDatabase } from "./shared/database/client";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL) : undefined;
-const objectStore = db ? createLocalObjectStore(env.OBJECT_STORE_ROOT) : undefined;
-const debugGateway = createSimulatorDebugDeviceGateway();
+const objectStore = db ? createObjectStoreFromEnv(env) : undefined;
+const agentProvider = createAgentProviderFromEnv(env);
+const debugGateway =
+  env.DEBUG_DEVICE_GATEWAY_MODE === "hdc"
+    ? createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS })
+    : createSimulatorDebugDeviceGateway();
 const stopLogWorker = db && objectStore ? startLogWorkerLoop({ db, objectStore }) : undefined;
-const server = createWiseEffServer({ db, objectStore, objectStoreHealth: objectStore, debugGateway });
+const server = createWiseEffServerFromEnv({
+  db,
+  objectStore,
+  objectStoreHealth: objectStore,
+  debugGateway,
+  agentProvider,
+  env
+});
 
 function shutdown() {
   stopLogWorker?.();

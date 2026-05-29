@@ -29,7 +29,7 @@ import {
   saveDraftBodySchema,
   submitRoundBodySchema
 } from "./schemas";
-import { canViewParameters } from "./policy";
+import { canReviewParameters, canViewParameters } from "./policy";
 import { parameterChangeRequestStatuses, parameterSubmissionRoundStatuses } from "./status";
 
 const paramsWithProjectIdSchema = z.object({
@@ -87,6 +87,12 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Inv
 function requireCanView(auth: AuthContext) {
   if (!canViewParameters(auth)) {
     throw new ApiError("FORBIDDEN", "Parameter view permission is required.", 403);
+  }
+}
+
+function requireCanReview(auth: AuthContext) {
+  if (!canReviewParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
   }
 }
 
@@ -249,6 +255,7 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
+    requireCanReview(auth);
     const item = await reviewChange(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };

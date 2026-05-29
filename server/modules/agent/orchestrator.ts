@@ -21,8 +21,8 @@ import {
   markAgentApprovalRejected,
   updateAgentToolCall
 } from "./repository";
-import { createDeterministicAgentProvider } from "./provider";
-import type { AgentToolRequest } from "./provider";
+import { createDeterministicAgentProvider, type AgentProvider, type AgentToolRequest } from "./provider";
+import { LiveAgentProviderOutageError } from "./liveProvider";
 import type { AgentContext, AgentToolCallDto, AgentToolResult, AgentTurnDto } from "./types";
 
 type AgentRequestContext = {
@@ -66,7 +66,7 @@ function staleTransition(message: string, details: Record<string, unknown>) {
 export function createAgentOrchestrator(options: {
   db: Database;
   toolRegistry?: ToolRegistry;
-  provider?: ReturnType<typeof createDeterministicAgentProvider>;
+  provider?: AgentProvider;
   createAuditEvent?: typeof defaultCreateAuditEvent;
 }) {
   const db = options.db;
@@ -295,7 +295,77 @@ export function createAgentOrchestrator(options: {
       citations: []
     });
 
-    const plan = provider.planTurn({ context: session.context, message: input.message });
+    const providerMetadata = provider.metadata();
+    const providerHealth = provider.checkHealth ? await provider.checkHealth() : undefined;
+    if (providerHealth && !providerHealth.ok) {
+      const fallbackReason = providerHealth.message ?? "Live Agent provider is unavailable.";
+      const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
+      await createAgentRunTrace(db, {
+        id: newId("agent-trace"),
+        sessionId: input.sessionId,
+        messageId: userMessageId,
+        organizationId: input.auth.organization.id,
+        provider: providerMetadata.provider,
+        model: providerMetadata.model,
+        promptVersion: providerMetadata.promptVersion,
+        inputSummary: input.message,
+        outputSummary: fallbackContent,
+        toolCallIds: [],
+        traceId: input.requestId,
+        safetyStatus: "failed",
+        safetyReasons: [fallbackReason],
+        fallbackReason
+      });
+      await appendAgentMessage(db, {
+        id: newId("agent-msg"),
+        sessionId: input.sessionId,
+        organizationId: input.auth.organization.id,
+        role: "assistant",
+        content: fallbackContent,
+        citations: [],
+        confidence: 0.2
+      });
+      return assembleTurn(input, input.sessionId);
+    }
+
+    let plan;
+    try {
+      plan = await provider.planTurn({ context: session.context, message: input.message });
+    } catch (error) {
+      if (!(error instanceof LiveAgentProviderOutageError)) {
+        throw error;
+      }
+
+      const fallbackReason = error.message;
+      const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
+      await createAgentRunTrace(db, {
+        id: newId("agent-trace"),
+        sessionId: input.sessionId,
+        messageId: userMessageId,
+        organizationId: input.auth.organization.id,
+        provider: providerMetadata.provider,
+        model: providerMetadata.model,
+        promptVersion: providerMetadata.promptVersion,
+        inputSummary: input.message,
+        outputSummary: fallbackContent,
+        toolCallIds: [],
+        traceId: input.requestId,
+        safetyStatus: "failed",
+        safetyReasons: [fallbackReason],
+        fallbackReason
+      });
+      await appendAgentMessage(db, {
+        id: newId("agent-msg"),
+        sessionId: input.sessionId,
+        organizationId: input.auth.organization.id,
+        role: "assistant",
+        content: fallbackContent,
+        citations: [],
+        confidence: 0.2
+      });
+      return assembleTurn(input, input.sessionId);
+    }
+
     const toolCallIds: string[] = [];
     for (const request of plan.toolRequests) {
       const toolCall = await recordToolRequest(input, input.sessionId, request);
@@ -313,7 +383,13 @@ export function createAgentOrchestrator(options: {
       inputSummary: input.message,
       outputSummary: plan.assistantDraft.content,
       toolCallIds,
-      traceId: input.requestId
+      traceId: input.requestId,
+      latencyMs: plan.latencyMs,
+      inputTokens: plan.usage?.inputTokens,
+      outputTokens: plan.usage?.outputTokens,
+      estimatedCostUsd: plan.usage?.estimatedCostUsd,
+      safetyStatus: plan.safety?.status,
+      safetyReasons: plan.safety?.reasons
     });
     await appendAgentMessage(db, {
       id: newId("agent-msg"),

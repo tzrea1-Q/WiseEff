@@ -149,4 +149,37 @@ Device Gateway 健康检查：
 - 日志任务大量失败。
 - 设备写入异常。
 - 权限校验异常。
+## M5 Production Auth Boundary
 
+- Local and test environments may use `AUTH_MODE=development`, the seeded development user, and `x-wiseeff-user` for deterministic tests.
+- Production must set `NODE_ENV=production`, `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`; short HMAC secrets are rejected outside tests.
+- The API verifies `Authorization: Bearer <payload>.<signature>` server-side before creating `AuthContext`. Signed claims must include issuer, subject, and organization, and may include roles and permissions.
+- `/api/v1/me` and business routes use the same auth resolver. Production requests without a valid bearer token fail with `UNAUTHENTICATED` instead of falling back to development auth.
+- High-risk writes still re-check permissions at execution time, including parameter review, log archive/rerun, debugging writes or rollback, and Agent approval-required tools.
+
+## M5 Object Storage Boundary
+
+- Local and test environments may use `OBJECT_STORE_MODE=local` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
+- Production must set `NODE_ENV=production` and `OBJECT_STORE_MODE=s3`.
+- S3/OSS mode requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`; `OBJECT_STORAGE_REGION` is optional.
+- Uploaded log objects use organization-scoped keys with SHA-256 checksum prefixes. The adapter writes checksum, byte size, content type, retention class, and encryption-mode metadata.
+- `/health/ready` checks the configured bucket through the object-store health seam and returns a 503 with the provider error when the bucket, endpoint, or credentials are not usable.
+- The built-in HTTP transport issues HEAD/GET/PUT with WiseEff signing headers. It is an M5 runtime seam, not a full AWS SigV4 implementation or cloud-vendor SDK.
+- Pilot smoke should upload a supported log, confirm analysis can read it back, and verify `/health/ready` reports `dependencies.objectStore.status=ready`.
+- Cloud-provider SDK wiring, SigV4/provider-specific signing, bucket provisioning, lifecycle policy, KMS policy, replication, and credential rotation remain post-M5 deployment work unless the target environment has already provided them.
+
+## Device Gateway
+
+- Local and CI debugging smoke defaults to `DEBUG_DEVICE_GATEWAY_MODE=simulator`, which uses the seeded Aurora simulator target.
+- Customer production must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`. Set `HDC_TIMEOUT_MS` to the pilot lab's command timeout budget; the default is `5000`.
+- `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` bypasses the production HDC requirement only for explicitly marked non-customer staging environments.
+- The HDC adapter executes `hdc` with command plus argv arrays and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
+- Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it also requires `DATABASE_URL`, `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, and `HDC_SMOKE_WRITE_VALUE`. Optional settings are `HDC_SMOKE_EXPECT_READ_PATTERN` and `HDC_SMOKE_USER_ID`.
+- The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.
+
+## M5 Release Operations
+
+- The pilot-ready release smoke is `npm run smoke:m5`. It checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API URL by default, and staging/prod pilot checks also need `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` or the readiness route will return 403. It only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs.
+- `GET /api/v1/operations/pilot-readiness` is admin-gated and should only return `status: "pilot_ready"` when contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence are all ready.
+- `npm run test:m5` is the intended full pilot gate. It still depends on PostgreSQL plus any external device-lab, backup/restore, and staging evidence that is not fully simulated in this repository.
+- Record the backup drill timestamp in `M5_BACKUP_RESTORE_DRILL_AT` and keep the rollback sequence documented in `docs/runbooks/m5-commercial-pilot-readiness.md`.

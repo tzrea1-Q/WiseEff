@@ -135,3 +135,13 @@ Agent test coverage must include route envelopes, schema validation, determinist
 - API 压测覆盖列表、搜索和审计查询。
 - worker 压测覆盖日志任务并发。
 - 设备网关模拟超时、断连、stderr 和回读不一致。
+## 8. M5 Release Operations
+
+M5 adds the release smoke and pilot gate on top of the existing API-mode checks:
+
+```bash
+npm run smoke:m5
+npm run test:m5
+```
+
+`npm run smoke:m5` checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API base URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs. `npm run test:m5` is the intended end-to-end pilot baseline, but it still depends on PostgreSQL and any external backup, device-lab, or staging evidence that is not fully simulated in-repo.

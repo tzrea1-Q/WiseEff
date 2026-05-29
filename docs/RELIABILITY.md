@@ -43,13 +43,21 @@ Current endpoints:
 ## Production Configuration Gate
 
 - `NODE_ENV=production` requires `DATABASE_URL`.
-- `NODE_ENV=production` requires a non-blank `OBJECT_STORE_ROOT`.
+- `NODE_ENV=production` requires `OBJECT_STORE_MODE=s3`.
+- `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
+- `NODE_ENV=production` requires `AGENT_PROVIDER=live`.
+- `AGENT_PROVIDER=live` requires `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_BASE_URL`.
+- `AGENT_API_TIMEOUT_MS` controls the live provider HTTP request timeout and defaults to 5000ms.
 - `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 - Missing or unsafe production settings should stop the API process before it accepts traffic.
 
 ## M2 Log Analysis Operations
 
 - Local object storage is configured with `OBJECT_STORE_ROOT` and defaults to `.wiseeff-object-store`. Uploaded log bytes are stored under an organization-scoped key derived from the checksum and sanitized file name. Readiness uses a small write/read/delete probe under the configured root.
+- Production-like object storage uses `OBJECT_STORE_MODE=s3` with an S3/OSS-compatible endpoint and bucket. The adapter keeps the same organization-scoped key shape and records checksum, file size, content type, retention class, and encryption-mode metadata on writes.
+- `/health/ready` routes S3/OSS readiness through the object-store health seam by checking the configured bucket and returning the provider error text when the bucket or credentials are not usable.
+- The built-in HTTP transport provides the M5 runtime seam and WiseEff signing headers for HEAD/GET/PUT. It is not a full AWS SigV4 or cloud-vendor SDK implementation.
+- Retention and encryption are represented as object metadata in the M5 seam. Cloud SDK integration, SigV4/provider-specific signing, bucket lifecycle rules, KMS policy, replication, and credential provisioning remain deployment responsibilities for the target cloud account.
 - The M2 worker is an in-process loop started by `npm run dev:api` when both `DATABASE_URL` and the local object store are configured. This is sufficient for local/staging smoke tests but is not a distributed worker model.
 - Jobs move through queued/running/complete/failed states with parse, pattern, rootcause, and report stages. The frontend currently uses job polling through `LogAnalysisRepository`; SSE endpoints exist in the API shape but polling remains the reliable local path.
 - Unsupported file formats do not enter the worker. They create a terminal failed log record immediately with an unsupported-format reason.
@@ -58,10 +66,10 @@ Current endpoints:
 ## M3 Debugging Operations
 
 - Local debugging acceptance is simulator-first. `DEBUG_DEVICE_GATEWAY_MODE=simulator` uses the seeded Aurora target and deterministic node values, so read/write/readback/rollback can be verified without a physical device.
-- Gateway failures must surface as operation failures with readable timeout, offline, stderr, or readback mismatch text. The simulator currently covers read-only rejection and readback mismatch; production HDC must add timeout/offline fixtures before device rollout.
+- Gateway failures must surface as operation failures with readable timeout, offline, stderr, or readback mismatch text. The simulator covers read-only rejection and readback mismatch. The M5 HDC adapter adds fake-runner tests for target detection, nonzero/stderr failures, argv construction, command timeout text, and read-back mismatch.
 - A successful write creates a pre-write snapshot. Rollback is expected to write each snapshot entry back with readback, mark the snapshot consumed only if all writes succeed, and leave failed snapshots valid for retry.
 - Current residual UI gap: API write snapshots created on `/node-debugging` are not yet automatically surfaced in the `/debugging` rollback card. The backend rollback API and audit path are verified by M3 E2E; UI state promotion remains tracked as technical debt.
-- Production HDC gateway work remains open: real target discovery, connection leasing, command timeout policy, stderr normalization, and safe device-lab rollout.
+- Production HDC mode is selected with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_TIMEOUT_MS`; production rejects simulator mode unless `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is explicitly set for non-customer staging. Real target discovery/write/readback/snapshot-rollback evidence is covered by the HDC device-lab smoke only when `HDC_DEVICE_LAB_AVAILABLE=true` and the `HDC_SMOKE_*` target/session/parameter/node/value env vars are set; otherwise it remains an external pilot acceptance item, not proven by the local simulator or fake-runner tests.
 
 ## M4 Agent Operations
 
@@ -70,13 +78,16 @@ Current endpoints:
 - Approval execution is idempotent by approval state: only `pending` approvals can transition to `approved` or `rejected`; repeated approval attempts return `INVALID_APPROVAL_STATE`.
 - Approval-time execution must re-check authz and current business state before running the tool. If that check fails, the pending approval and tool call remain retryable.
 - `parameter.submitChangeDraft` creates human-review drafts only; it does not merge or apply production parameter values.
+- Live provider startup is HTTP-backed through `AGENT_API_BASE_URL` and should become ready once the configured provider health endpoint is healthy.
+- Live Agent provider readiness is checked through the same health seam used by `/health/ready`; if the provider is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
+- Trace metadata now includes latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so pilot operators can distinguish normal planning from provider outages.
 
 ## Rollback Expectations
 
 - Frontend static assets should be quickly reversible.
 - Database migrations should be forward-compatible or include a recovery note.
 - Worker releases should avoid interrupting high-risk tasks.
-- Device gateway changes should be verified against a simulator before real devices.
+- Device gateway changes should be verified against the simulator and HDC fake-runner tests before real devices. Real-device rollout must then record target detection, read, write, timeout/offline, stderr, readback mismatch, and rollback evidence from the device lab.
 
 ## References
 

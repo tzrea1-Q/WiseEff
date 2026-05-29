@@ -78,6 +78,14 @@ The manifest currently locks the commercial pilot critical paths:
 - `operations.live`: `GET /health/live`
 - `operations.ready`: `GET /health/ready`
 
+## M5 Committed OpenAPI Contract
+
+`docs/generated/openapi.json` is the committed M5 API contract artifact. It is generated from `server/modules/contracts/routeManifest.ts` and `server/modules/contracts/schemaRegistry.ts` by running `npm run contract:openapi`.
+
+Any PR that changes a route handler, route manifest entry, schema registry entry, frontend HTTP DTO/client behavior, or this API documentation must update the matching files in the same PR. The contract freshness gate is `npm run contract:check`; CI should run it before commercial-pilot builds are accepted. Semantic contract expectations such as path parameters, critical paths, success status codes, and error responses are covered by `server/modules/contracts/openapi.test.ts`.
+
+The generated contract uses the documented WiseEff error envelope for every operation through `#/components/responses/ErrorResponse`, and the frontend API client must preserve `code`, `message`, `details`, and `requestId` when parsing error responses.
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

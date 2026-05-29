@@ -9,11 +9,12 @@ import { createDeterministicAgentProvider } from "./provider";
 import type { AgentProviderPlan } from "./provider";
 import type { AgentToolDefinition } from "./toolRegistry";
 import type { AgentToolName, AgentToolResult } from "./types";
+import { createHttpLiveAgentTransport, createLiveAgentProvider } from "./liveProvider";
 
 describe("deterministic agent provider", () => {
-  it("selects parameter review and draft tools from parameter context", () => {
+  it("selects parameter review and draft tools from parameter context", async () => {
     const provider = createDeterministicAgentProvider();
-    const plan = provider.planTurn({
+    const plan = await provider.planTurn({
       context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" },
       message: "帮我总结审阅队列，并准备一个参数草稿"
     });
@@ -218,6 +219,13 @@ function createMemoryDb(
           output_summary: values[8],
           tool_call_ids: values[9],
           trace_id: values[10],
+          latency_ms: values[11],
+          input_tokens: values[12],
+          output_tokens: values[13],
+          estimated_cost_usd: values[14],
+          safety_status: values[15],
+          safety_reasons: values[16],
+          fallback_reason: values[17],
           created_at: isoNow()
         });
         return { rows: [] as Row[], rowCount: 1 };
@@ -298,7 +306,28 @@ function createMemoryDb(
 
 function createProvider(plan: AgentProviderPlan) {
   return {
+    metadata: vi.fn(() => ({
+      provider: plan.provider,
+      model: plan.model,
+      promptVersion: plan.promptVersion
+    })),
     planTurn: vi.fn(() => plan)
+  };
+}
+
+function createOutageProvider(message = "Live Agent provider is temporarily unavailable.") {
+  return {
+    metadata: vi.fn(() => ({
+      provider: "live" as const,
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1"
+    })),
+    checkHealth: vi.fn(async () => ({
+      ok: false as const,
+      status: "failed" as const,
+      message
+    })),
+    planTurn: vi.fn()
   };
 }
 
@@ -543,6 +572,189 @@ describe("agent orchestrator", () => {
     expect(tables.toolCalls.map((tool) => tool.status)).toEqual(["succeeded", "failed"]);
     expect(tables.toolCalls[1].error_message).toBe("Audit warehouse unavailable");
     expect(tables.audits.at(-1)).toMatchObject({ action: "failed", trace_id: "req-turn" });
+  });
+
+  it("sendMessage records degraded output and fallback reason when the live provider is unavailable", async () => {
+    const { db, tables } = createMemoryDb();
+    const provider = createOutageProvider("model health check failed");
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({ summary: "should not run", data: {}, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({ db, provider, toolRegistry: registry });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    const turn = await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Create a draft"
+    });
+
+    expect(provider.checkHealth).toHaveBeenCalledTimes(1);
+    expect(provider.planTurn).not.toHaveBeenCalled();
+    expect(registry.run).not.toHaveBeenCalled();
+    expect(turn.messages.at(-1)).toMatchObject({
+      role: "assistant",
+      content: expect.stringContaining("temporarily unavailable")
+    });
+    expect(tables.traces[0]).toMatchObject({
+      provider: "live",
+      model: "pilot-model",
+      prompt_version: "m5-agent-v1",
+      fallback_reason: "model health check failed",
+      tool_call_ids: []
+    });
+  });
+
+  it("does not fall back when the live provider response is malformed", async () => {
+    const { db, tables } = createMemoryDb();
+    const provider = createLiveAgentProvider({
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      apiKey: "secret",
+      transport: {
+        planTurn: vi.fn(async () => ({
+          content: "I can do that.",
+          toolRequests: { name: "parameter.summarizeReviewQueue" } as unknown as never[],
+          citations: [],
+          confidence: 0.9,
+          usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0.001 },
+          latencyMs: 10,
+          safety: { status: "safe", reasons: [] }
+        } as any)),
+        checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const }))
+      }
+    });
+    const orchestrator = createAgentOrchestrator({ db, provider });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await expect(
+      orchestrator.sendMessage({
+        auth: developmentAuthContext,
+        requestId: "req-message",
+        sessionId: start.session.id,
+        message: "Summarize"
+      })
+    ).rejects.toThrow("malformed toolRequests");
+
+    expect(tables.messages.at(-1)?.content).not.toContain("temporarily unavailable");
+    expect(tables.traces).toHaveLength(0);
+  });
+
+  it("does not fall back when the live provider returns a contract error response", async () => {
+    const { db, tables } = createMemoryDb();
+    const transport = createHttpLiveAgentTransport({
+      baseUrl: "https://agent.example.com",
+      apiKey: "secret",
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      fetchImpl: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.endsWith("/agent/health") && init?.method === "GET") {
+          return new Response(JSON.stringify({ ok: true, status: "ready" }), {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          });
+        }
+
+        return new Response(JSON.stringify({ error: "unprocessable" }), {
+          status: 422,
+          headers: { "content-type": "application/json" }
+        });
+      })
+    });
+    const provider = createLiveAgentProvider({
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      apiKey: "secret",
+      transport
+    });
+    const orchestrator = createAgentOrchestrator({ db, provider });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await expect(
+      orchestrator.sendMessage({
+        auth: developmentAuthContext,
+        requestId: "req-message",
+        sessionId: start.session.id,
+        message: "Summarize"
+      })
+    ).rejects.toMatchObject({ name: "LiveAgentProviderContractError" });
+
+    expect(tables.messages.at(-1)?.content).not.toContain("temporarily unavailable");
+    expect(tables.traces).toHaveLength(0);
+  });
+
+  it("does not fall back when live provider health is a contract error", async () => {
+    const { db, tables } = createMemoryDb();
+    const transport = createHttpLiveAgentTransport({
+      baseUrl: "https://agent.example.com",
+      apiKey: "secret",
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      fetchImpl: vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.endsWith("/agent/health") && init?.method === "GET") {
+          return new Response("{not-json", {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          });
+        }
+
+        return new Response(
+          JSON.stringify({
+            content: "I can do that.",
+            toolRequests: [],
+            citations: [],
+            confidence: 0.9,
+            usage: { inputTokens: 1, outputTokens: 1, estimatedCostUsd: 0.001 },
+            latencyMs: 10,
+            safety: { status: "safe", reasons: [] }
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          }
+        );
+      })
+    });
+    const provider = createLiveAgentProvider({
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      apiKey: "secret",
+      transport
+    });
+    const orchestrator = createAgentOrchestrator({ db, provider });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await expect(
+      orchestrator.sendMessage({
+        auth: developmentAuthContext,
+        requestId: "req-message",
+        sessionId: start.session.id,
+        message: "Summarize"
+      })
+    ).rejects.toMatchObject({ name: "LiveAgentProviderContractError" });
+
+    expect(tables.messages.at(-1)?.content).not.toContain("temporarily unavailable");
+    expect(tables.traces).toHaveLength(0);
   });
 
   it("runToolCall rejects pending approval calls with an approval-required ApiError", async () => {

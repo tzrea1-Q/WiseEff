@@ -50,7 +50,7 @@ describe("operations health", () => {
           objectStore: {
             ok: false,
             status: "missing",
-            message: "OBJECT_STORE_ROOT is not configured for this API process."
+            message: "Object storage is not configured for this API process."
           }
         }
       }
@@ -100,6 +100,78 @@ describe("operations health", () => {
         dependencies: {
           database: { ok: true, status: "ready" },
           objectStore: { ok: false, status: "failed", message: "object store permission denied" }
+        }
+      }
+    });
+  });
+
+  it("includes worker queue health in readiness when requested", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>(text: string) => {
+        if (text.includes("from jobs")) {
+          return {
+            rows: [
+              {
+                queued: "1",
+                processing: "0",
+                dead_lettered: "0",
+                oldest_queued_at: null
+              } as Row
+            ],
+            rowCount: 1
+          };
+        }
+
+        return { rows: [{ ok: 1 } as Row], rowCount: 1 };
+      }
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(buildReadyHealth({ db, objectStore, includeWorkerQueue: true })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        dependencies: {
+          workerQueue: {
+            ok: true,
+            status: "ready",
+            queued: 1,
+            processing: 0,
+            deadLettered: 0,
+            oldestQueuedAgeMs: null
+          }
+        }
+      }
+    });
+  });
+
+  it("includes agent provider readiness when requested", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+    const agentProvider = {
+      metadata: () => ({ provider: "live" as const, model: "pilot-model", promptVersion: "m5-agent-v1" }),
+      planTurn: async () => ({
+        assistantDraft: { content: "Ready.", citations: [], confidence: 0.8 },
+        toolRequests: [],
+        provider: "live" as const,
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1"
+      }),
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(buildReadyHealth({ db, objectStore, agentProvider })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        dependencies: {
+          agentProvider: { ok: true, status: "ready" }
         }
       }
     });

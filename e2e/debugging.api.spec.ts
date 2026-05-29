@@ -10,6 +10,44 @@ const fastChargeParameterId = "dbg-fast-charge-current";
 const cycleCountParameterId = "dbg-cycle-count";
 const mismatchParameterId = "dbg-readback-mismatch";
 
+type DebugTargetDto = {
+  id: string;
+  deviceId: string;
+  targetRef: string;
+  status: string;
+};
+
+type DebugSessionDto = {
+  id: string;
+};
+
+type NodeOperationDto = {
+  status: string;
+  nodePath: string;
+  readValue: string | null;
+  readbackValue: string | null;
+  requestedValue: string | null;
+  verified: boolean;
+  failureReason: string | null;
+  snapshotId: string | null;
+};
+
+type DebugSnapshotDto = {
+  id: string;
+  status: string;
+};
+
+type HdcSmokeConfig = {
+  projectId: string;
+  deviceId: string;
+  targetRef: string;
+  parameterId: string;
+  nodePath: string;
+  readValuePattern?: RegExp;
+  writeValue: string;
+  userId: string;
+};
+
 function runNpmScript(script: string) {
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
   const result = spawnSync(npmCommand, ["run", script], {
@@ -120,9 +158,9 @@ async function rollbackSnapshotViaApi(page: Page, snapshotId: string) {
   expect(response.ok()).toBe(true);
 }
 
-test.beforeAll(async () => {
+async function prepareDebuggingApiSmokeState() {
   if (!databaseUrl) {
-    throw new Error("DATABASE_URL is required to run the M3 debugging API E2E smoke.");
+    throw new Error("DATABASE_URL is required to run the debugging API E2E smoke.");
   }
 
   runNpmScript("db:migrate");
@@ -138,9 +176,68 @@ test.beforeAll(async () => {
   } finally {
     await client.end();
   }
+}
+
+function requireHdcSmokeConfig(): HdcSmokeConfig {
+  const required = [
+    "HDC_SMOKE_PROJECT_ID",
+    "HDC_SMOKE_DEVICE_ID",
+    "HDC_SMOKE_TARGET_REF",
+    "HDC_SMOKE_PARAMETER_ID",
+    "HDC_SMOKE_NODE_PATH",
+    "HDC_SMOKE_WRITE_VALUE"
+  ] as const;
+  const missing = required.filter((name) => !process.env[name]?.trim());
+
+  if (missing.length > 0) {
+    throw new Error(
+      [
+        `HDC device-lab smoke requires ${missing.join(", ")} when DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true.`,
+        "Set HDC_SMOKE_PROJECT_ID, HDC_SMOKE_DEVICE_ID, HDC_SMOKE_TARGET_REF, HDC_SMOKE_PARAMETER_ID, HDC_SMOKE_NODE_PATH, and HDC_SMOKE_WRITE_VALUE to a real lab target/parameter before running this smoke. The smoke restores the node through the snapshot rollback API created by the write."
+      ].join(" ")
+    );
+  }
+
+  return {
+    projectId: process.env.HDC_SMOKE_PROJECT_ID!.trim(),
+    deviceId: process.env.HDC_SMOKE_DEVICE_ID!.trim(),
+    targetRef: process.env.HDC_SMOKE_TARGET_REF!.trim(),
+    parameterId: process.env.HDC_SMOKE_PARAMETER_ID!.trim(),
+    nodePath: process.env.HDC_SMOKE_NODE_PATH!.trim(),
+    readValuePattern: process.env.HDC_SMOKE_EXPECT_READ_PATTERN?.trim()
+      ? new RegExp(process.env.HDC_SMOKE_EXPECT_READ_PATTERN.trim())
+      : undefined,
+    writeValue: process.env.HDC_SMOKE_WRITE_VALUE!.trim(),
+    userId: process.env.HDC_SMOKE_USER_ID?.trim() || "u-xu-yun"
+  };
+}
+
+async function postJson<T>(page: Page, path: string, data: Record<string, unknown>, userId: string) {
+  const response = await page.request.post(`${apiBaseUrl}${path}`, {
+    data,
+    headers: { "x-wiseeff-user": userId }
+  });
+  const body = (await response.json().catch(() => null)) as T | { error?: { message?: string; code?: string } } | null;
+
+  expect(response.ok(), `${path} failed with status ${response.status()}: ${JSON.stringify(body)}`).toBe(true);
+  return body as T;
+}
+
+test.describe("simulator debugging API smoke", () => {
+test.beforeAll(async () => {
+  if (process.env.DEBUG_DEVICE_GATEWAY_MODE === "hdc") {
+    return;
+  }
+
+  await prepareDebuggingApiSmokeState();
 });
 
 test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", async ({ page }) => {
+  test.skip(
+    process.env.DEBUG_DEVICE_GATEWAY_MODE === "hdc",
+    "The full UI smoke is simulator-backed by default. Run HDC device-lab acceptance separately with real hardware."
+  );
+
   await page.goto(`/node-debugging?project=${projectId}`);
 
   await expect(page.getByText("Aurora Simulator 1")).toBeVisible({ timeout: 30_000 });
@@ -201,4 +298,99 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
       expect.objectContaining({ kind: "debug-node-write", targetId: cycleCountParameterId })
     ])
   );
+});
+});
+
+test("HDC device-lab smoke detects target, reads, writes, verifies read-back, and restores via snapshot rollback API", async ({ page }) => {
+  test.skip(
+    process.env.DEBUG_DEVICE_GATEWAY_MODE !== "hdc",
+    "HDC mode requires an external device lab; simulator remains the local default smoke."
+  );
+  test.skip(
+    process.env.HDC_DEVICE_LAB_AVAILABLE !== "true",
+    "HDC device-lab acceptance must be executed against real connected hardware outside this local simulator smoke."
+  );
+  const config = requireHdcSmokeConfig();
+  await prepareDebuggingApiSmokeState();
+
+  const detected = await postJson<{ items: DebugTargetDto[] }>(
+    page,
+    "/api/v1/debugging/targets/detect",
+    { projectId: config.projectId, deviceId: config.deviceId },
+    config.userId
+  );
+  const target = detected.items.find((item) => item.targetRef === config.targetRef);
+  expect(
+    target,
+    `HDC target ${config.targetRef} was not detected. Detected targets: ${detected.items.map((item) => item.targetRef).join(", ") || "(none)"}`
+  ).toBeTruthy();
+
+  const sessionResponse = await postJson<{ item: DebugSessionDto }>(
+    page,
+    "/api/v1/debugging/sessions",
+    { projectId: config.projectId, deviceId: config.deviceId, targetId: target!.id },
+    config.userId
+  );
+
+  const readResponse = await postJson<{ operation: NodeOperationDto }>(
+    page,
+    "/api/v1/debugging/nodes/read",
+    {
+      sessionId: sessionResponse.item.id,
+      parameterId: config.parameterId,
+      nodePath: config.nodePath
+    },
+    config.userId
+  );
+  expect(readResponse.operation.status, `HDC read failed: ${readResponse.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
+  expect(readResponse.operation.readValue, "HDC read did not return a value.").toEqual(expect.any(String));
+  if (config.readValuePattern) {
+    expect(readResponse.operation.readValue ?? "").toMatch(config.readValuePattern);
+  }
+
+  let snapshotId: string | null = null;
+  let rollbackResponse: { operations: NodeOperationDto[]; snapshot: DebugSnapshotDto } | null = null;
+
+  try {
+    const writeResponse = await postJson<{ operation: NodeOperationDto }>(
+      page,
+      "/api/v1/debugging/nodes/write",
+      {
+        sessionId: sessionResponse.item.id,
+        parameterId: config.parameterId,
+        nodePath: config.nodePath,
+        value: config.writeValue,
+        readBack: true,
+        confirmationToken: "confirm-high-risk-write"
+      },
+      config.userId
+    );
+    snapshotId = writeResponse.operation.snapshotId;
+
+    expect(writeResponse.operation.status, `HDC write failed: ${writeResponse.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
+    expect(
+      snapshotId,
+      "HDC smoke write succeeded but did not return operation.snapshotId, so the test cannot safely restore hardware through snapshot rollback."
+    ).toEqual(expect.any(String));
+    expect(writeResponse.operation.verified).toBe(true);
+    expect(writeResponse.operation.readbackValue).toBe(config.writeValue);
+  } finally {
+    if (snapshotId) {
+      rollbackResponse = await postJson<{ operations: NodeOperationDto[]; snapshot: DebugSnapshotDto }>(
+        page,
+        `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`,
+        { confirmationToken: "confirm-rollback" },
+        config.userId
+      );
+    }
+  }
+
+  expect(rollbackResponse, "Snapshot rollback cleanup did not run.").not.toBeNull();
+  expect(rollbackResponse!.operations, "Snapshot rollback did not return rollback operations.").toHaveLength(1);
+  expect(
+    rollbackResponse!.operations[0].status,
+    `HDC snapshot rollback failed: ${rollbackResponse!.operations[0].failureReason ?? "no failure reason"}`
+  ).toBe("succeeded");
+  expect(rollbackResponse!.operations[0].verified).toBe(true);
+  expect(rollbackResponse!.snapshot.status).toBe("consumed");
 });

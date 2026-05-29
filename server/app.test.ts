@@ -117,4 +117,57 @@ describe("WiseEff API", () => {
     expect(calls[0].text).toContain("from users");
     expect(calls[0].values).toEqual(["user-no-parameter-view"]);
   });
+
+  it("uses production bearer auth for /me without development fallback", async () => {
+    const response = await requestJson<{ user: { id: string }; organization: { id: string } }>(
+      createWiseEffServer({
+        auth: {
+          mode: "production",
+          verifier: {
+            verify: async () => ({
+              user: {
+                id: "u-prod",
+                organizationId: "org-prod",
+                name: "Prod User",
+                email: "prod@example.com",
+                title: "Pilot Admin",
+                isActive: true
+              },
+              organization: { id: "org-prod", name: "Pilot Org" },
+              roles: [{ projectId: null, roleId: "admin" }],
+              permissions: ["admin:access", "parameter:view"]
+            })
+          }
+        }
+      }),
+      "/api/v1/me",
+      { headers: { Authorization: "Bearer signed-token" } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.id).toBe("u-prod");
+    expect(response.body.organization.id).toBe("org-prod");
+  });
+
+  it("rejects production routes without bearer auth instead of falling back to development auth", async () => {
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      createWiseEffServer({
+        auth: {
+          mode: "production",
+          verifier: {
+            verify: async () => {
+              throw new Error("Authorization bearer token is required.");
+            }
+          }
+        }
+      }),
+      "/api/v1/me"
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.body.error).toMatchObject({
+      code: "UNAUTHENTICATED",
+      message: "Authorization bearer token is required."
+    });
+  });
 });

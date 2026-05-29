@@ -9,11 +9,11 @@ This is a living quality dashboard for WiseEff. Update it when major features la
 | Area | Score | Evidence | Main Gap |
 | --- | ---: | --- | --- |
 | Frontend prototype | 8/10 | Broad Vitest and Testing Library coverage across pages, components, permissions, admin flows, logs, debugging, and Agent UI. | Some workflows remain mock-backed. |
-| Backend M0/M1/M2/M3 foundation | 7.5/10 | TypeScript server skeleton, auth context, audit routes, M1 parameter services, M2 log services/worker, M3 simulator debugging services, CORS preflight support, commercial readiness health checks, route manifest tests, leased jobs/devices, backend tests, and API-mode Playwright smokes. | E2E currently requires external PostgreSQL setup, the worker is in-process, debugging still uses a simulator gateway, and API contracts are still handwritten. |
+| Backend M0/M1/M2/M3 foundation | 7.5/10 | TypeScript server skeleton, auth context, audit routes, M1 parameter services, M2 log services/worker, M3 simulator debugging services, CORS preflight support, commercial readiness health checks, route manifest tests, leased jobs/devices, backend tests, API-mode Playwright smokes, and the M5 pilot readiness route plus smoke command. | E2E still requires external PostgreSQL setup, the worker is in-process, debugging still uses a simulator gateway, and staging/pilot evidence is not yet captured in-repo. |
 | Product specs | 8/10 | Product spec, prototype spec, MVP scope, onboarding spec. | Future user research and acceptance examples should be added as productization continues. |
-| Architecture docs | 8/10 | Full-stack architecture, domain model, API contract, deployment, security, testing docs, and M3.5 commercial-readiness plan. | API contract is route-manifest guarded but not yet generated from OpenAPI/schema source. |
+| Architecture docs | 8/10 | Full-stack architecture, domain model, API contract, deployment, security, testing docs, M3.5 commercial-readiness plan, and M5 release operations docs. | API contract is now generated/checked from route metadata, but staging/pilot evidence still needs to be recorded. |
 | Security model | 7/10 | RBAC, audit, Agent approval, and device safety are documented and partly represented in code. | Production auth, server-side business permissions, and negative tests need expansion. |
-| Reliability | 7/10 | Deployment and reliability docs exist; `/health/live` and `/health/ready` cover database/object-store readiness; M2 has local object storage, job polling, leased jobs, failed records, and rerun support. | Distributed workers, durable object storage, retry/backoff policy, SSE hardening, real gateway observability, and production monitoring remain future work. |
+| Reliability | 7/10 | Deployment and reliability docs exist; `/health/live`, `/health/ready`, and the M5 pilot readiness gate cover the release baseline; M2 has local object storage, job polling, leased jobs, failed records, and rerun support. | Distributed workers, durable object storage, retry/backoff policy, SSE hardening, real gateway observability, production monitoring, and external pilot evidence remain future work. |
 | Harness knowledge base | 8/10 | Docs are indexed and organized into product, design, execution, generated, and reference sections. | Add mechanical link/schema checks later. |
 
 ## Required Verification Gates
@@ -29,6 +29,7 @@ For code changes:
 - Run `npm run test:m3` before landing M3 debugging MVP changes in a local or staging environment with PostgreSQL.
 - Run `npm run test:m3-5` before treating the M1-M3 API-mode baseline as commercial-readiness complete in a local or staging environment with PostgreSQL.
 - Run `npm run test:m4` before landing M4 Agent changes in a local or staging environment with PostgreSQL.
+- Run `npm run smoke:m5` and `npm run test:m5` before treating the M5 pilot baseline as complete.
 
 ## M2 Coverage
 
@@ -53,6 +54,12 @@ Remaining M3.5 risks: readiness checks still use local object storage rather tha
 M4 is covered by Agent route, schema, orchestrator, tool registry, parameter/log/debugging/audit tool tests, frontend `AgentGateway` DTO/runtime tests, UnifiedAgent API-mode tests, and `e2e/agent.api.spec.ts`. Negative tests cover approval-required tool runs, stale approval state, inactive users, missing permissions, wrong-session approvals, validation failures, and approval execution failure audit correlation.
 
 Remaining M4 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; provider logic is deterministic rather than a real LLM; generated OpenAPI clients, prompt safety evaluation, model latency/cost handling, and provider outage behavior remain deferred.
+
+## M5 Coverage
+
+M5 is covered by the generated OpenAPI contract artifact, the route manifest/schema registry tests, the admin-gated pilot readiness route, the `npm run smoke:m5` script with explicit local skip control, the M5 acceptance docs, and the full `npm run test:m5` gate when PostgreSQL and the other external dependencies are available.
+
+Remaining M5 risks: local smoke can prove the release gate structure, but real staging backup/restore, device-lab, and pilot signoff evidence still has to be captured before the environment is called pilot-ready.
 
 For documentation-only changes:
 

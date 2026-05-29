@@ -277,6 +277,22 @@ describe("log routes", () => {
     expect(service.getLogRecord).toHaveBeenCalledWith(db, makeAuth(), "log-route");
   });
 
+  it("GET /api/v1/logs/:logId rejects cross-organization auth before service work", async () => {
+    const db = makeDb();
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      makeServer({ db, objectStore: makeObjectStore(), auth: makeAuth({ organization: { id: "org-other", name: "Other Org" } }) }),
+      "/api/v1/logs/log-route"
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Log organization access is required."
+    });
+    expect(service.getLogRecord).not.toHaveBeenCalled();
+  });
+
   it("POST /api/v1/logs validates body and delegates to createLogFromFile", async () => {
     const db = makeDb();
     const log = logRecord({ id: "log-from-file" });

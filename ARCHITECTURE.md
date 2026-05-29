@@ -41,6 +41,7 @@ Rules:
 - `server/shared/database/`: database client and migration runner.
 - `server/modules/auth/`: current user context, roles, and permissions.
 - `server/modules/audit/`: audit write/query boundary.
+- `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
 - `server/migrations/`: SQL schema baseline.
 
 M0 intentionally keeps the backend small. M1+ should add modules without dissolving auth, audit, and database boundaries.
@@ -59,6 +60,8 @@ All production write paths should follow this pattern:
 6. Return a structured response or structured error.
 
 Agent and device workflows are higher-risk variants of the same pattern. Agent write tools create approval records before execution. Device writes require device state checks, range checks, snapshots, and audit.
+
+Release operations add a pilot gate on top of the basic health checks. `GET /api/v1/operations/pilot-readiness` is admin-gated and aggregates the route contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence into a single `pilot_ready` or `blocked` result. The companion `npm run smoke:m5` check requires a live API URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs.
 
 ## Deeper Docs
 

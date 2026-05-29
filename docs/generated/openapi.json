@@ -1,0 +1,1922 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "WiseEff API",
+    "version": "m5"
+  },
+  "paths": {
+    "/api/v1/me": {
+      "get": {
+        "operationId": "auth.me",
+        "summary": "Get current user context",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/audit-events": {
+      "post": {
+        "operationId": "audit.createEvent",
+        "summary": "Create audit event",
+        "tags": [
+          "audit"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAuditEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "audit.listEvents",
+        "summary": "List audit events",
+        "tags": [
+          "audit"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "operationId": "parameters.listProjects",
+        "summary": "List projects",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/modules": {
+      "get": {
+        "operationId": "parameters.listProjectModules",
+        "summary": "List project modules",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectModuleListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters": {
+      "get": {
+        "operationId": "parameters.list",
+        "summary": "List parameters",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/{parameterId}": {
+      "get": {
+        "operationId": "parameters.get",
+        "summary": "Get parameter",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/{parameterId}/history": {
+      "get": {
+        "operationId": "parameters.history",
+        "summary": "Get parameter history",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterHistoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-drafts": {
+      "post": {
+        "operationId": "parameters.saveDraft",
+        "summary": "Save parameter draft",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveParameterDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterDraftResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-drafts/mine": {
+      "get": {
+        "operationId": "parameters.listMyDrafts",
+        "summary": "List my parameter drafts",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterDraftListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-drafts/{draftId}": {
+      "delete": {
+        "operationId": "parameters.deleteDraft",
+        "summary": "Delete parameter draft",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "draftId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-submission-rounds": {
+      "post": {
+        "operationId": "parameters.submitRound",
+        "summary": "Submit parameter review round",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitParameterRoundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSubmissionRoundResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "parameters.listSubmissionRounds",
+        "summary": "List parameter submission rounds",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSubmissionRoundListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-change-requests": {
+      "get": {
+        "operationId": "parameters.listChangeRequests",
+        "summary": "List parameter change requests",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterChangeRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-change-requests/{requestId}/review": {
+      "post": {
+        "operationId": "parameters.reviewChangeRequest",
+        "summary": "Review parameter change request",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewParameterChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterChangeRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-import-batches": {
+      "post": {
+        "operationId": "parameters.createImportBatch",
+        "summary": "Create parameter import batch",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParameterImportBatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterImportBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameter-import-batches/{batchId}/apply": {
+      "post": {
+        "operationId": "parameters.applyImportBatch",
+        "summary": "Apply parameter import batch",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyParameterImportBatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterImportBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/log-files": {
+      "post": {
+        "operationId": "logs.uploadFile",
+        "summary": "Upload log file",
+        "tags": [
+          "logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogFileUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFileUploadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs": {
+      "post": {
+        "operationId": "logs.upload",
+        "summary": "Create log analysis record",
+        "tags": [
+          "logs"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLogRecordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRecordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "get": {
+        "operationId": "logs.list",
+        "summary": "List log records",
+        "tags": [
+          "logs"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRecordListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}": {
+      "get": {
+        "operationId": "logs.get",
+        "summary": "Get log record",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRecordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/runs": {
+      "get": {
+        "operationId": "logs.listRuns",
+        "summary": "List log analysis runs",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRunListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/rerun": {
+      "post": {
+        "operationId": "logs.rerun",
+        "summary": "Rerun log analysis",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/archive": {
+      "post": {
+        "operationId": "logs.archive",
+        "summary": "Archive log record",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRecordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/unarchive": {
+      "post": {
+        "operationId": "logs.unarchive",
+        "summary": "Unarchive log record",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogRecordResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/logs/{logId}/feedback": {
+      "post": {
+        "operationId": "logs.feedback",
+        "summary": "Submit log feedback",
+        "tags": [
+          "logs"
+        ],
+        "parameters": [
+          {
+            "name": "logId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogFeedbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}": {
+      "get": {
+        "operationId": "jobs.get",
+        "summary": "Get job status",
+        "tags": [
+          "jobs"
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/jobs/{jobId}/events": {
+      "get": {
+        "operationId": "jobs.events",
+        "summary": "List job events",
+        "tags": [
+          "jobs"
+        ],
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobEventListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/devices": {
+      "get": {
+        "operationId": "debugging.listDevices",
+        "summary": "List debug devices",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugDeviceListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/targets/detect": {
+      "post": {
+        "operationId": "debugging.detectTarget",
+        "summary": "Detect debug target",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DetectDebugTargetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugTargetListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/parameters": {
+      "get": {
+        "operationId": "debugging.listParameters",
+        "summary": "List debug parameters",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugParameterListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/sessions": {
+      "post": {
+        "operationId": "debugging.createSession",
+        "summary": "Create debug session",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDebugSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/sessions/{sessionId}": {
+      "get": {
+        "operationId": "debugging.getSession",
+        "summary": "Get debug session",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/sessions/{sessionId}/events": {
+      "get": {
+        "operationId": "debugging.sessionEvents",
+        "summary": "List debug session events",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugSessionEventListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/nodes/read": {
+      "post": {
+        "operationId": "debugging.readNode",
+        "summary": "Read debug node",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadDebugNodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/nodes/write": {
+      "post": {
+        "operationId": "debugging.writeNode",
+        "summary": "Write debug node",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteDebugNodeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/snapshots/{snapshotId}/rollback": {
+      "post": {
+        "operationId": "debugging.rollbackSnapshot",
+        "summary": "Rollback debug snapshot",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackDebugSnapshotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugRollbackResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/sessions": {
+      "post": {
+        "operationId": "agent.createSession",
+        "summary": "Create Agent session",
+        "tags": [
+          "agent"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/sessions/{sessionId}/messages": {
+      "post": {
+        "operationId": "agent.sendMessage",
+        "summary": "Send Agent message",
+        "tags": [
+          "agent"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendAgentMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/sessions/{sessionId}/tool-calls/{toolCallId}/run": {
+      "post": {
+        "operationId": "agent.runToolCall",
+        "summary": "Run Agent tool call",
+        "tags": [
+          "agent"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "toolCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/sessions/{sessionId}/approvals/{approvalId}/approve": {
+      "post": {
+        "operationId": "agent.approveToolCall",
+        "summary": "Approve Agent tool call",
+        "tags": [
+          "agent"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "approvalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/agent/sessions/{sessionId}/approvals/{approvalId}/reject": {
+      "post": {
+        "operationId": "agent.rejectToolCall",
+        "summary": "Reject Agent tool call",
+        "tags": [
+          "agent"
+        ],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "approvalId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentApprovalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTurnResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "operations.live",
+        "summary": "Liveness check",
+        "tags": [
+          "operations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LiveHealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "operations.ready",
+        "summary": "Readiness check",
+        "tags": [
+          "operations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyHealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/operations/pilot-readiness": {
+      "get": {
+        "operationId": "operations.pilotReadiness",
+        "summary": "Pilot readiness gate",
+        "tags": [
+          "operations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PilotReadinessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "operations.compatHealth",
+        "summary": "Compatibility health check",
+        "tags": [
+          "operations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompatHealthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message",
+              "details",
+              "requestId"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "requestId": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "MeResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "MeResponse"
+      },
+      "CreateAuditEventRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateAuditEventRequest"
+      },
+      "AuditEventResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "AuditEventResponse"
+      },
+      "AuditEventListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "AuditEventListResponse"
+      },
+      "ProjectListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectListResponse"
+      },
+      "ProjectModuleListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectModuleListResponse"
+      },
+      "ParameterListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterListResponse"
+      },
+      "ParameterResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterResponse"
+      },
+      "ParameterHistoryResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterHistoryResponse"
+      },
+      "SaveParameterDraftRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "SaveParameterDraftRequest"
+      },
+      "ParameterDraftResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterDraftResponse"
+      },
+      "ParameterDraftListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterDraftListResponse"
+      },
+      "DeleteResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DeleteResponse"
+      },
+      "SubmitParameterRoundRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "SubmitParameterRoundRequest"
+      },
+      "ParameterSubmissionRoundResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSubmissionRoundResponse"
+      },
+      "ParameterSubmissionRoundListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterSubmissionRoundListResponse"
+      },
+      "ParameterChangeRequestListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterChangeRequestListResponse"
+      },
+      "ReviewParameterChangeRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReviewParameterChangeRequest"
+      },
+      "ParameterChangeRequestResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterChangeRequestResponse"
+      },
+      "CreateParameterImportBatchRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateParameterImportBatchRequest"
+      },
+      "ParameterImportBatchResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterImportBatchResponse"
+      },
+      "ApplyParameterImportBatchRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ApplyParameterImportBatchRequest"
+      },
+      "LogFileUploadRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "LogFileUploadRequest"
+      },
+      "LogFileUploadResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogFileUploadResponse"
+      },
+      "CreateLogRecordRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateLogRecordRequest"
+      },
+      "LogRecordResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogRecordResponse"
+      },
+      "LogRecordListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogRecordListResponse"
+      },
+      "LogRunListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogRunListResponse"
+      },
+      "LogRunResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogRunResponse"
+      },
+      "LogFeedbackRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "LogFeedbackRequest"
+      },
+      "LogFeedbackResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogFeedbackResponse"
+      },
+      "JobResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "JobResponse"
+      },
+      "JobEventListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "JobEventListResponse"
+      },
+      "DebugDeviceListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugDeviceListResponse"
+      },
+      "DetectDebugTargetRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DetectDebugTargetRequest"
+      },
+      "DebugTargetListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugTargetListResponse"
+      },
+      "DebugParameterListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugParameterListResponse"
+      },
+      "CreateDebugSessionRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateDebugSessionRequest"
+      },
+      "DebugSessionResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugSessionResponse"
+      },
+      "DebugSessionEventListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugSessionEventListResponse"
+      },
+      "ReadDebugNodeRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReadDebugNodeRequest"
+      },
+      "DebugNodeOperationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeOperationResponse"
+      },
+      "WriteDebugNodeRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "WriteDebugNodeRequest"
+      },
+      "RollbackDebugSnapshotRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RollbackDebugSnapshotRequest"
+      },
+      "DebugRollbackResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugRollbackResponse"
+      },
+      "CreateAgentSessionRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateAgentSessionRequest"
+      },
+      "AgentTurnResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "AgentTurnResponse"
+      },
+      "SendAgentMessageRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "SendAgentMessageRequest"
+      },
+      "AgentApprovalRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "AgentApprovalRequest"
+      },
+      "LiveHealthResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LiveHealthResponse"
+      },
+      "ReadyHealthResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ReadyHealthResponse"
+      },
+      "PilotReadinessResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PilotReadinessResponse"
+      },
+      "CompatHealthResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "CompatHealthResponse"
+      }
+    },
+    "responses": {
+      "ErrorResponse": {
+        "description": "WiseEff error envelope.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorEnvelope"
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AuthContext } from "../auth/types";
 import type { Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
-import type { WiseEffRouter } from "../../shared/http/router";
+import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createAuditEvent, listAuditEvents } from "./repository";
 
 const auditBodySchema = z.object({
@@ -19,14 +19,14 @@ const auditBodySchema = z.object({
 
 export function registerAuditRoutes(
   router: WiseEffRouter,
-  options: { db?: Queryable; getCurrentAuthContext: () => Promise<AuthContext> | AuthContext }
+  options: { db?: Queryable; getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext }
 ) {
   router.post("/api/v1/audit-events", async (request) => {
     if (!options.db) {
       throw new ApiError("INTERNAL_ERROR", "Database adapter is required for audit writes.", 500);
     }
 
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     if (!auth.permissions.includes("admin:access")) {
       throw new ApiError("FORBIDDEN", "Admin access required.", 403);
     }
@@ -53,12 +53,12 @@ export function registerAuditRoutes(
     return { status: 201, body: { id } };
   });
 
-  router.get("/api/v1/audit-events", async () => {
+  router.get("/api/v1/audit-events", async (request) => {
     if (!options.db) {
       throw new ApiError("INTERNAL_ERROR", "Database adapter is required for audit reads.", 500);
     }
 
-    const auth = await options.getCurrentAuthContext();
+    const auth = await options.getCurrentAuthContext(request);
     if (!auth.permissions.includes("admin:access")) {
       throw new ApiError("FORBIDDEN", "Admin access required.", 403);
     }
