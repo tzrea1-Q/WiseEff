@@ -22,6 +22,7 @@ This runbook describes the release gate for a controlled commercial pilot. It as
 - `WISEEFF_API_BASE_URL` or `VITE_WISEEFF_API_BASE_URL` for the smoke client
 - `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` for staging/prod pilot-readiness smoke
 - `M5_SMOKE_ALLOW_NO_API=true` only for local documentation runs that intentionally skip the API probe
+- `M5_CONTRACT_CHECK_PASSED=true` or `M5_CONTRACT_ARTIFACT_CHECKED_AT=<timestamp>` for the pilot-readiness contract gate
 
 ## Deploy Order
 
@@ -40,7 +41,7 @@ npm run smoke:m5
 npm run test:m5
 ```
 
-`npm run smoke:m5` requires a live API URL by default. For staging/prod pilot checks, set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access`; otherwise `/api/v1/operations/pilot-readiness` will return 403. Use `M5_SMOKE_ALLOW_NO_API=true` only when documenting the runbook locally without a reachable API.
+`npm run smoke:m5` requires a live API URL by default. For staging/prod pilot checks, set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access`; otherwise `/api/v1/operations/pilot-readiness` will return 403. Use `M5_SMOKE_ALLOW_NO_API=true` only when documenting the runbook locally without a reachable API. `npm run test:m5` always probes the live API because it passes `--require-api` to the smoke runner.
 
 ## Monitoring
 

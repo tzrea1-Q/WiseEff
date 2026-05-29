@@ -87,7 +87,12 @@ function createNonAdminAuth() {
   };
 }
 
-function createPilotReadinessEnv(overrides: Partial<PilotReadinessEnv> = {}) {
+function createPilotReadinessEnv(
+  overrides: Partial<PilotReadinessEnv> & {
+    M5_CONTRACT_CHECK_PASSED?: boolean;
+    M5_CONTRACT_ARTIFACT_CHECKED_AT?: string;
+  } = {}
+) {
   return {
     NODE_ENV: "production" as const,
     DEBUG_DEVICE_GATEWAY_MODE: "hdc" as const,
@@ -95,6 +100,15 @@ function createPilotReadinessEnv(overrides: Partial<PilotReadinessEnv> = {}) {
     AGENT_PROVIDER: "live" as const,
     ...overrides
   };
+}
+
+function restoreProcessEnv(key: "M5_BACKUP_RESTORE_DRILL_AT", originalValue: string | undefined) {
+  if (originalValue === undefined) {
+    delete process.env[key];
+    return;
+  }
+
+  process.env[key] = originalValue;
 }
 
 describe("operations routes", () => {
@@ -173,7 +187,8 @@ describe("operations routes", () => {
           HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
           HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
           HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
-          HDC_SMOKE_WRITE_VALUE: "3100"
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
         }),
         getCurrentAuthContext: async () => createAdminAuth()
       });
@@ -196,86 +211,11 @@ describe("operations routes", () => {
         }
       });
     } finally {
-      process.env.M5_BACKUP_RESTORE_DRILL_AT = originalBackupDrillAt;
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
     }
   });
 
-  it("serves /api/v1/operations/pilot-readiness with blocked dependencies", async () => {
-    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
-    delete process.env.M5_BACKUP_RESTORE_DRILL_AT;
-
-    try {
-      const router = createRouter();
-      const db = createReadyDb();
-      registerOperationsRoutes(router, {
-        db,
-        objectStore: createFailedObjectStore(),
-        debugGateway: createDebugGateway(),
-        agentProvider: createFailedAgentProvider(),
-        env: createPilotReadinessEnv(),
-        getCurrentAuthContext: async () => createAdminAuth()
-      });
-
-      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        ok: false,
-        status: "blocked",
-        blockedBy: ["objectStore", "deviceGateway", "agentProvider", "backups"],
-        gates: {
-          contract: { ok: true, status: "ready" },
-          auth: { ok: true, status: "ready" },
-          database: { ok: true, status: "ready" },
-          objectStore: { ok: false, status: "failed" },
-          worker: { ok: true, status: "ready" },
-          deviceGateway: { ok: false, status: "missing" },
-          agentProvider: { ok: false, status: "failed" },
-          backups: { ok: false, status: "missing" }
-        }
-      });
-    } finally {
-      if (originalBackupDrillAt === undefined) {
-        delete process.env.M5_BACKUP_RESTORE_DRILL_AT;
-      } else {
-        process.env.M5_BACKUP_RESTORE_DRILL_AT = originalBackupDrillAt;
-      }
-    }
-  });
-
-  it("blocks HDC device gateway mode without device-lab evidence", async () => {
-    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
-    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
-
-    try {
-      const router = createRouter();
-      const db = createReadyDb();
-      registerOperationsRoutes(router, {
-        db,
-        objectStore: createReadyObjectStore(),
-        debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
-        env: createPilotReadinessEnv({ DEBUG_DEVICE_GATEWAY_MODE: "hdc" }),
-        getCurrentAuthContext: async () => createAdminAuth()
-      });
-
-      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
-
-      expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({
-        ok: false,
-        status: "blocked",
-        blockedBy: ["deviceGateway"],
-        gates: {
-          deviceGateway: { ok: false, status: "missing" }
-        }
-      });
-    } finally {
-      process.env.M5_BACKUP_RESTORE_DRILL_AT = originalBackupDrillAt;
-    }
-  });
-
-  it("allows HDC device gateway mode with explicit device-lab evidence", async () => {
+  it("blocks /api/v1/operations/pilot-readiness when contract evidence is missing", async () => {
     const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
     process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
 
@@ -304,6 +244,166 @@ describe("operations routes", () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["contract"],
+        gates: {
+          contract: { ok: false, status: "missing" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("treats recorded contract evidence as ready", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGateway: createDebugGateway(),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          HDC_DEVICE_LAB_AVAILABLE: true,
+          HDC_SMOKE_PROJECT_ID: "aurora",
+          HDC_SMOKE_DEVICE_ID: "lab-device-1",
+          HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
+          HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
+          HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: true,
+        status: "pilot_ready",
+        blockedBy: [],
+        gates: {
+          contract: { ok: true, status: "ready" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("serves /api/v1/operations/pilot-readiness with blocked dependencies", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    delete process.env.M5_BACKUP_RESTORE_DRILL_AT;
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createFailedObjectStore(),
+        debugGateway: createDebugGateway(),
+        agentProvider: createFailedAgentProvider(),
+        env: createPilotReadinessEnv({
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["objectStore", "deviceGateway", "agentProvider", "backups"],
+        gates: {
+          contract: { ok: true, status: "ready" },
+          auth: { ok: true, status: "ready" },
+          database: { ok: true, status: "ready" },
+          objectStore: { ok: false, status: "failed" },
+          worker: { ok: true, status: "ready" },
+          deviceGateway: { ok: false, status: "missing" },
+          agentProvider: { ok: false, status: "failed" },
+          backups: { ok: false, status: "missing" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("blocks HDC device gateway mode without device-lab evidence", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGateway: createDebugGateway(),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway"],
+        gates: {
+          deviceGateway: { ok: false, status: "missing" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("allows HDC device gateway mode with explicit device-lab evidence", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGateway: createDebugGateway(),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          HDC_DEVICE_LAB_AVAILABLE: true,
+          HDC_SMOKE_PROJECT_ID: "aurora",
+          HDC_SMOKE_DEVICE_ID: "lab-device-1",
+          HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
+          HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
+          HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
         ok: true,
         status: "pilot_ready",
         blockedBy: [],
@@ -312,7 +412,7 @@ describe("operations routes", () => {
         }
       });
     } finally {
-      process.env.M5_BACKUP_RESTORE_DRILL_AT = originalBackupDrillAt;
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
     }
   });
 
@@ -351,7 +451,11 @@ describe("operations routes", () => {
         objectStore: createReadyObjectStore(),
         debugGateway: {} as never,
         agentProvider: createReadyAgentProvider(),
-        env: createPilotReadinessEnv({ DEBUG_DEVICE_GATEWAY_MODE: "simulator", AGENT_PROVIDER: "deterministic" }),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+          AGENT_PROVIDER: "deterministic",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
         getCurrentAuthContext: async () => createAdminAuth()
       });
 
@@ -368,7 +472,7 @@ describe("operations routes", () => {
         }
       });
     } finally {
-      process.env.M5_BACKUP_RESTORE_DRILL_AT = originalBackupDrillAt;
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
     }
   });
 });

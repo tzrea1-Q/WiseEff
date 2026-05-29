@@ -48,7 +48,7 @@ async function main() {
 
   const baseUrl = resolveApiBaseUrl(process.env as M5SmokeEnv);
   if (!baseUrl) {
-    if (canSkipWithoutApi(process.env as M5SmokeEnv)) {
+    if (canSkipWithoutApi(process.env as M5SmokeEnv, process.argv.slice(2))) {
       console.log("Skipping M5 smoke: set WISEEFF_API_BASE_URL or VITE_WISEEFF_API_BASE_URL to probe a live API.");
       return;
     }

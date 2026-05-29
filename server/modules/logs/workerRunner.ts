@@ -1,12 +1,19 @@
 import { loadServerEnv } from "../../config/env";
 import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
-import { createLocalObjectStore, type ObjectStore } from "./objectStore";
+import { createObjectStoreFromEnv } from "../../objectStoreFactory";
+import type { ObjectStore } from "./objectStore";
 import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
   DATABASE_URL?: string;
+  OBJECT_STORE_MODE?: "local" | "s3";
   OBJECT_STORE_ROOT?: string;
+  OBJECT_STORAGE_ENDPOINT?: string;
+  OBJECT_STORAGE_BUCKET?: string;
+  OBJECT_STORAGE_ACCESS_KEY_ID?: string;
+  OBJECT_STORAGE_SECRET_ACCESS_KEY?: string;
+  OBJECT_STORAGE_REGION?: string;
 };
 
 type LogWorkerRuntimeOptions = {
@@ -22,6 +29,19 @@ export function validateLogWorkerConfig(raw: RawWorkerEnv) {
   if (!raw.DATABASE_URL?.trim()) {
     throw new Error("DATABASE_URL is required to start the log worker.");
   }
+
+  if ((raw.OBJECT_STORE_MODE ?? "local") === "s3") {
+    if (
+      !raw.OBJECT_STORAGE_ENDPOINT?.trim() ||
+      !raw.OBJECT_STORAGE_BUCKET?.trim() ||
+      !raw.OBJECT_STORAGE_ACCESS_KEY_ID?.trim() ||
+      !raw.OBJECT_STORAGE_SECRET_ACCESS_KEY?.trim()
+    ) {
+      throw new Error("S3 object storage settings are required to start the log worker.");
+    }
+    return;
+  }
+
   if (!raw.OBJECT_STORE_ROOT?.trim()) {
     throw new Error("OBJECT_STORE_ROOT is required to start the log worker.");
   }
@@ -49,7 +69,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
 
   return createLogWorkerRuntime({
     db: createPostgresDatabase(env.DATABASE_URL!),
-    objectStore: createLocalObjectStore(env.OBJECT_STORE_ROOT)
+    objectStore: createObjectStoreFromEnv(env)
   });
 }
 

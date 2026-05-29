@@ -10,6 +10,10 @@ describe("M5 smoke helpers", () => {
     expect(canSkipWithoutApi({ M5_SMOKE_ALLOW_NO_API: "true" })).toBe(true);
   });
 
+  it("ignores the local skip flag when the require-api override is present", () => {
+    expect(canSkipWithoutApi({ M5_SMOKE_ALLOW_NO_API: "true" }, ["--require-api"])).toBe(false);
+  });
+
   it("resolves the API base URL from the shared env vars", () => {
     expect(
       resolveApiBaseUrl({

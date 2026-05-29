@@ -119,7 +119,7 @@ Run the M4 Agent acceptance gate: frontend tests, backend tests, production buil
 npm run smoke:m5
 ```
 
-Run the M5 operations smoke: `npm run contract:check`, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. Set `WISEEFF_API_BASE_URL` or `VITE_WISEEFF_API_BASE_URL` to point at a live API; set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access` for staging/prod pilot checks; otherwise the route will 403. The script fails unless `M5_SMOKE_ALLOW_NO_API=true` is set for a local skip.
+Run the M5 operations smoke: `npm run contract:check`, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. Set `WISEEFF_API_BASE_URL` or `VITE_WISEEFF_API_BASE_URL` to point at a live API; set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access` for staging/prod pilot checks; otherwise the route will 403. The script fails unless `M5_SMOKE_ALLOW_NO_API=true` is set for a local skip, and the full gate uses `tsx scripts/run-m5-smoke.ts --require-api` so it always probes the live API.
 
 ```bash
 npm run test:m5
@@ -208,7 +208,7 @@ M3.5 commercial-readiness verification:
 M5 pilot verification:
 
 1. Run `npm run smoke:m5` against a live API after `npm run contract:check`, or use `M5_SMOKE_ALLOW_NO_API=true` only for local documentation runs.
-2. Run `npm run test:m5` in an environment with PostgreSQL and the other pilot dependencies available.
+2. Run `npm run test:m5` in an environment with PostgreSQL and the other pilot dependencies available. The pilot-ready route also needs recorded contract evidence via `M5_CONTRACT_CHECK_PASSED=true` or `M5_CONTRACT_ARTIFACT_CHECKED_AT=<timestamp>`.
 3. Record any skipped external checks in `docs/generated/m5-pilot-acceptance.md` before calling the environment pilot-ready.
 
 M4 Agent verification:

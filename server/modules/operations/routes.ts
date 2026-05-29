@@ -20,6 +20,8 @@ export type PilotReadinessEnv = {
   HDC_SMOKE_NODE_PATH?: string;
   HDC_SMOKE_WRITE_VALUE?: string;
   M5_DEVICE_GATEWAY_EVIDENCE?: string;
+  M5_CONTRACT_CHECK_PASSED?: boolean;
+  M5_CONTRACT_ARTIFACT_CHECKED_AT?: string;
   AGENT_PROVIDER?: "deterministic" | "live";
 };
 
@@ -44,6 +46,31 @@ function backupDrillGate(): PilotReadinessGateStatus {
     ok: false,
     status: "missing",
     message: "Restore drill not recorded."
+  };
+}
+
+function contractEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateStatus {
+  if (env.M5_CONTRACT_CHECK_PASSED === true) {
+    return {
+      ok: true,
+      status: "ready",
+      message: "Contract check passed."
+    };
+  }
+
+  const artifactCheckedAt = env.M5_CONTRACT_ARTIFACT_CHECKED_AT?.trim();
+  if (artifactCheckedAt) {
+    return {
+      ok: true,
+      status: "ready",
+      message: `Contract artifact checked at ${artifactCheckedAt}.`
+    };
+  }
+
+  return {
+    ok: false,
+    status: "missing",
+    message: "Contract freshness evidence is not recorded. Set M5_CONTRACT_CHECK_PASSED=true or M5_CONTRACT_ARTIFACT_CHECKED_AT."
   };
 }
 
@@ -160,6 +187,8 @@ function defaultPilotReadinessEnv(): PilotReadinessEnv {
     HDC_SMOKE_NODE_PATH: process.env.HDC_SMOKE_NODE_PATH?.trim() || undefined,
     HDC_SMOKE_WRITE_VALUE: process.env.HDC_SMOKE_WRITE_VALUE?.trim() || undefined,
     M5_DEVICE_GATEWAY_EVIDENCE: process.env.M5_DEVICE_GATEWAY_EVIDENCE?.trim() || undefined,
+    M5_CONTRACT_CHECK_PASSED: process.env.M5_CONTRACT_CHECK_PASSED === "true",
+    M5_CONTRACT_ARTIFACT_CHECKED_AT: process.env.M5_CONTRACT_ARTIFACT_CHECKED_AT?.trim() || undefined,
     AGENT_PROVIDER: process.env.AGENT_PROVIDER === "live" ? "live" : "deterministic"
   };
 }
@@ -213,11 +242,7 @@ export function registerOperationsRoutes(
     const dependencies = readyHealth.body.dependencies;
 
     const readiness = buildPilotReadiness({
-      contract: {
-        ok: true,
-        status: "ready",
-        message: "Route manifest and schema registry are loaded."
-      },
+      contract: contractEvidenceGate(env),
       auth: {
         ok: true,
         status: "ready",

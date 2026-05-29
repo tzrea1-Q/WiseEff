@@ -12,7 +12,11 @@ export function resolveApiBaseUrl(env: M5SmokeEnv) {
   return env.WISEEFF_API_BASE_URL?.trim() ?? env.VITE_WISEEFF_API_BASE_URL?.trim() ?? "";
 }
 
-export function canSkipWithoutApi(env: M5SmokeEnv) {
+export function canSkipWithoutApi(env: M5SmokeEnv, argv: readonly string[] = process.argv.slice(2)) {
+  if (argv.includes("--require-api")) {
+    return false;
+  }
+
   return env.M5_SMOKE_ALLOW_NO_API?.trim() === "true";
 }
 

@@ -12,6 +12,7 @@ This checklist records the M5 commercial-pilot release gate. Local verification 
 - [x] Worker/dead-letter readiness is represented in the pilot readiness gate.
 - [x] Object-store readiness is represented in the pilot readiness gate.
 - [x] Agent provider readiness is represented in the pilot readiness gate.
+- [x] Contract freshness evidence is represented in the pilot readiness gate.
 - [ ] Device-lab HDC smoke was run in this environment.
 - [ ] Backup/restore drill was run in this environment.
 - [ ] Staging pilot smoke evidence is attached.
@@ -23,7 +24,8 @@ This checklist records the M5 commercial-pilot release gate. Local verification 
 - `npm run build` passed.
 - `git diff --check` passed.
 - `npm run smoke:m5` failed by default when no API base URL was configured in this shell, then skipped cleanly when `M5_SMOKE_ALLOW_NO_API=true` was set for a local documentation-only run.
-- `npm run test:m5` passed `contract:check`, `test:all`, and `build`, then stopped in Playwright because `DATABASE_URL` was not set for the API-mode E2E suite.
+- `npm run test:m5` now invokes the smoke with `--require-api`, so the final pilot gate always probes the live API after `contract:check`, `test:all`, `build`, and Playwright.
+- The pilot-readiness route requires recorded contract evidence via `M5_CONTRACT_CHECK_PASSED=true` or `M5_CONTRACT_ARTIFACT_CHECKED_AT=<timestamp>`.
 
 ## External Checks Not Run Locally
 
