@@ -560,6 +560,7 @@ describe("parameter repository", () => {
       }
     ]);
     expect(calls[0].text).toContain("pcr.id = $2");
+    expect(calls[0].text).toContain("for update of pcr");
     expect(calls[0].values).toEqual(["org-chargelab", "request-1"]);
     expect(calls[1].text).toContain("from parameter_review_decisions");
     expect(calls[1].values).toEqual(["org-chargelab", "request-1"]);

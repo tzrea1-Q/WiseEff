@@ -3819,6 +3819,33 @@ function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; 
 }
 
 
+function createEmptyLogRecord(projectId: string): LogRecord {
+  const nowIso = new Date(0).toISOString();
+
+  return {
+    id: "empty-log-selection",
+    reportId: "RPT-EMPTY",
+    fileName: "暂无日志",
+    projectId,
+    source: "Empty State",
+    fileSizeMB: 0,
+    status: "Failed",
+    stage: "parse",
+    confidence: 0,
+    conclusion: "暂无日志记录",
+    impact: "上传日志后将生成分析结果。",
+    evidence: [],
+    suggestedActions: [],
+    severity: "Info",
+    rawLines: [],
+    capturedAt: "等待上传",
+    updatedAt: "等待上传",
+    updatedAtIso: nowIso,
+    submittedBy: "WiseEff",
+    archiveState: "active"
+  };
+}
+
 function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
@@ -3834,7 +3861,10 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [liveMessage, setLiveMessage] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const prevLogCount = useRef(state.logs.length);
-  const activeLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+  const emptyLogRecord = useMemo(() => createEmptyLogRecord(state.activeProjectId), [state.activeProjectId]);
+  const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+  const hasActiveLog = Boolean(selectedLog);
+  const activeLog = selectedLog ?? emptyLogRecord;
   const evidenceByLine = useMemo(() => {
     const map = new Map<number, LogEvidence[]>();
 
@@ -3935,6 +3965,10 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   };
 
   const onPrimary = () => {
+    if (!hasActiveLog) {
+      return;
+    }
+
     const params = new URLSearchParams();
 
     if (activeLog.relatedParameterId) {
@@ -3949,6 +3983,10 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   };
 
   const onExport = () => {
+    if (!hasActiveLog) {
+      return;
+    }
+
     const markdown = [
       `# ${activeLog.fileName}`,
       "",
@@ -3987,6 +4025,10 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   };
 
   const onCopyLink = async () => {
+    if (!hasActiveLog) {
+      return;
+    }
+
     const link = new URL("/logs", window.location.origin);
 
     link.searchParams.set("logId", activeLog.id);

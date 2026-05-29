@@ -87,6 +87,8 @@ Target guidance:
 
 ## Go / No-Go Checklist
 
+Latest M5.2 execution note: on 2026-05-29, local repository gates and local PostgreSQL-backed API-mode E2E passed, but target-environment execution did not start because staging secrets, live API URL, admin smoke token, HDC device-lab target values, backup/restore target, rollback window, S3/OSS credentials, and live Agent provider configuration were not available. The external checklist remains unchecked until those checks run in the target environment.
+
 - [ ] Documentation governance check passed with `npm run docs:check`.
 - [ ] Key documentation audit is current in `docs/generated/documentation-governance-audit.md`.
 - [ ] Completed execution plans have been moved to `docs/exec-plans/completed/`.

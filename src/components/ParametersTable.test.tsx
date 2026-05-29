@@ -403,6 +403,14 @@ describe("ParametersTable", () => {
     expect(headCellRule).not.toMatch(/justify-content:\s*space-between/);
   });
 
+  it("right-aligns the importance filter menu away from row actions", () => {
+    setup();
+
+    const headers = screen.getAllByRole("columnheader");
+    expect(headers[2].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--left");
+    expect(headers[5].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--right");
+  });
+
   it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
     const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
 

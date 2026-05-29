@@ -148,6 +148,10 @@ type CompleteLogAnalysisJobWithReportInput = PersistLogAnalysisReportInput & {
   leaseOwner: string;
 };
 
+function jsonb(value: unknown) {
+  return JSON.stringify(value);
+}
+
 class LogJobLeaseLostError extends Error {
   constructor() {
     super("Log analysis job lease was lost before final report persistence completed.");
@@ -705,8 +709,8 @@ export async function persistLogAnalysisReport(db: Database, input: PersistLogAn
         input.report.conclusion,
         input.report.impact,
         input.report.severity,
-        input.report.suggestedActions,
-        input.report.rawLines
+        jsonb(input.report.suggestedActions),
+        jsonb(input.report.rawLines)
       ]
     );
     await tx.query(
@@ -781,8 +785,8 @@ export async function completeLogAnalysisJobWithReport(db: Database, input: Comp
           input.report.conclusion,
           input.report.impact,
           input.report.severity,
-          input.report.suggestedActions,
-          input.report.rawLines
+          jsonb(input.report.suggestedActions),
+          jsonb(input.report.rawLines)
         ]
       );
       await tx.query(

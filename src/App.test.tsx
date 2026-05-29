@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
+import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 
 const userState = { ...initialState, activeRoleId: "user" };
@@ -85,6 +86,20 @@ function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): D
     detectTargets: vi.fn().mockResolvedValue([]),
     readNode: vi.fn().mockResolvedValue({ ok: true }),
     writeNode: vi.fn().mockResolvedValue({ ok: true }),
+    ...overrides
+  };
+}
+
+function createAppLogAnalysisRepository(overrides: Partial<LogAnalysisRepository> = {}): LogAnalysisRepository {
+  return {
+    listLogs: vi.fn().mockResolvedValue([]),
+    getLog: vi.fn().mockResolvedValue(null),
+    uploadLog: vi.fn(),
+    getJob: vi.fn(),
+    rerunLog: vi.fn(),
+    archiveLog: vi.fn(),
+    unarchiveLog: vi.fn(),
+    submitFeedback: vi.fn(),
     ...overrides
   };
 }
@@ -1608,6 +1623,25 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
 
     expect(screen.getByRole("dialog", { name: "上传日志" })).toBeInTheDocument();
+  });
+
+  it("keeps the log upload action available while API log hydration is empty", async () => {
+    window.history.replaceState(null, "", "/logs?project=aurora");
+
+    render(
+      <App
+        initialAppState={{ ...userState, activeProjectId: "aurora", logs: [], archivedLogIds: [] }}
+        runtimeMode="api"
+        authClient={createResolvedAuthClient()}
+        parameterRepository={createAppParameterRepository()}
+        logAnalysisRepository={createAppLogAnalysisRepository()}
+        debuggingGateway={createAppDebuggingGateway()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(".topbar-page-actions .button.primary")).toBeInTheDocument();
+    });
   });
 
   it("switches log analysis content from clickable history records", () => {

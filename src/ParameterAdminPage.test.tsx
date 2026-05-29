@@ -32,6 +32,7 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
 
 function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
   return {
+    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
     reviewChange: vi.fn().mockResolvedValue(undefined),

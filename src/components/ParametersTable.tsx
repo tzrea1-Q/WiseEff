@@ -18,6 +18,7 @@ export type ParametersColumnFilter = {
   renderLabel?: (value: string) => string;
   onToggle: (value: string) => void;
   onClear: () => void;
+  align?: "left" | "right";
 };
 
 export type ParametersTableProps = {
@@ -54,6 +55,10 @@ const filterableColumnKeys = new Set<SortKey>(["module", "risk"]);
 
 function isFilterableColumnKey(key: SortKey): key is FilterableColumnKey {
   return filterableColumnKeys.has(key);
+}
+
+function getColumnFilterAlign(key: FilterableColumnKey) {
+  return key === "risk" ? "right" : "left";
 }
 
 function getSortableHeaders(valueColumnLabel: string): Array<{ key: SortKey; label: string }> {
@@ -300,7 +305,7 @@ export function ParametersTable({
 
     const providedFilter = columnFilterByKey.get(header.key);
     if (providedFilter) {
-      return <ColumnFilter {...providedFilter} />;
+      return <ColumnFilter {...providedFilter} align={providedFilter.align ?? getColumnFilterAlign(header.key)} />;
     }
 
     return (
@@ -311,6 +316,7 @@ export function ParametersTable({
         selectedValues={internalColumnFilters[header.key] ?? []}
         onToggle={(value) => toggleInternalColumnFilter(header.key, value)}
         onClear={() => clearInternalColumnFilter(header.key)}
+        align={getColumnFilterAlign(header.key)}
       />
     );
   };
