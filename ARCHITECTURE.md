@@ -76,8 +76,12 @@ Release operations add a pilot gate on top of the basic health checks. `GET /api
 - Domain model: `docs/design-docs/domain-model.md`
 - API contract: `docs/design-docs/api-contract.md`
 - Frontend guidance: `docs/FRONTEND.md`
+- Developer setup: `docs/developer/README.md`
+- API usage: `docs/api/README.md`
 - Security and governance: `docs/SECURITY.md`
+- Security audit docs: `docs/security/README.md`
 - Reliability and operations: `docs/RELIABILITY.md`
+- Runbooks: `docs/runbooks/README.md`
 - Product specs: `docs/product-specs/index.md`
 - Execution plans: `docs/PLANS.md`
 - Chinese developer architecture guide: `docs/zh-CN/architecture.md`

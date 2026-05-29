@@ -9,11 +9,14 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 1. [Product Specs](product-specs/index.md): product goals, prototype behavior, MVP scope, and onboarding flows.
 2. [Architecture](../ARCHITECTURE.md): top-level runtime and codebase map.
 3. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
-4. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
-5. [Plans](PLANS.md): how active and completed execution plans are managed.
-6. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
-7. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
-8. [Security](SECURITY.md): identity, RBAC, audit, Agent tools, device safety, and data protection.
+4. [Developer Docs](developer/README.md): local setup, environment variables, and verification matrix.
+5. [API Docs](api/README.md): authentication, errors, examples, and OpenAPI contract usage.
+6. [Runbooks](runbooks/README.md): staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
+7. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
+8. [Plans](PLANS.md): how active and completed execution plans are managed.
+9. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
+10. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
+11. [Security](SECURITY.md): identity, RBAC, audit, Agent tools, device safety, and data protection.
 
 ## Chinese Developer Docs
 
@@ -34,6 +37,31 @@ docs/
     active/
     completed/
     tech-debt-tracker.md
+  developer/
+    README.md
+    local-development.md
+    environment-variables.md
+    verification-matrix.md
+  api/
+    README.md
+    authentication.md
+    errors.md
+    examples.md
+  security/
+    README.md
+    threat-model.md
+    data-classification.md
+    secrets-management.md
+    audit-retention.md
+  runbooks/
+    README.md
+    m5-commercial-pilot-readiness.md
+    staging-deployment.md
+    backup-restore.md
+    rollback.md
+    monitoring-alerting.md
+    hdc-device-lab.md
+    agent-provider.md
   generated/
     db-schema.md
   product-specs/
@@ -77,3 +105,4 @@ Current baseline:
 - Runtime seams: local/S3-compatible object storage, dedicated log worker runner, simulator/HDC device gateway, deterministic/live Agent provider.
 - Release state: M5 pilot-readiness gate is implemented; external staging, HDC device-lab, backup/restore, rollback, and live provider evidence must still be recorded before calling an environment pilot-ready.
 - Developer docs: `docs/zh-CN/` provides the Chinese developer onboarding and daily reference layer for the key architecture, runtime, quality, security, reliability, and planning topics.
+- Documentation checks: `npm run docs:check` validates active plan governance, key doc entry points, local markdown links, and `.env.example` coverage.

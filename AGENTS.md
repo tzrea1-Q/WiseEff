@@ -15,8 +15,13 @@ This file is the short map for agents working in this repository. Keep it small.
 ## Repository Map
 
 - `README.md`: human setup, local commands, runtime mode, and quick project overview.
+- `CONTRIBUTING.md`: contributor setup, planning, documentation, and verification workflow.
 - `ARCHITECTURE.md`: top-level system map and the first architecture file to read.
 - `docs/README.md`: knowledge-base index and recommended reading order.
+- `docs/developer/`: local setup, environment variables, and verification matrix.
+- `docs/api/`: API authentication, errors, examples, and contract usage.
+- `docs/security/`: threat model, data classification, secrets, and audit retention.
+- `docs/runbooks/`: staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
 - `docs/product-specs/`: product truth, user workflows, MVP scope, and prototype behavior.
 - `docs/design-docs/`: architecture, domain model, API contract, design history, testing, security, deployment.
 - `docs/exec-plans/`: active plans, completed plans, and the technical debt tracker.
@@ -29,6 +34,11 @@ This file is the short map for agents working in this repository. Keep it small.
 ## Documentation Routing
 
 - Chinese developer onboarding: start with `docs/zh-CN/README.md`, then follow its reading order for architecture, frontend, backend/runtime, security/reliability, quality, and planning.
+- Local development: start with `CONTRIBUTING.md`, then `docs/developer/local-development.md` and `docs/developer/environment-variables.md`.
+- Verification: read `docs/developer/verification-matrix.md` before choosing test or smoke gates.
+- API integration: read `docs/api/README.md`, then `docs/api/authentication.md`, `docs/api/errors.md`, and `docs/api/examples.md`.
+- Operations: read `docs/runbooks/README.md`, then the runbook for the target procedure.
+- Security review: read `docs/SECURITY.md`, then `docs/security/README.md`.
 - Product intent: start with `docs/product-specs/index.md`, then read `docs/product-specs/product-spec.md`.
 - Prototype behavior: read `docs/product-specs/prototype-functional-spec.md`.
 - Architecture: start with `ARCHITECTURE.md`, then `docs/design-docs/full-stack-architecture.md`.
@@ -48,7 +58,7 @@ WiseEff is an AI-assisted enterprise efficiency platform prototype. It centers o
 - Log analysis: log upload, staged analysis progress, evidence, history, and admin governance.
 - Debugging: device or node connection, safe parameter reads/writes, rollback preparation, and operation history.
 
-The current codebase has both a React/Vite frontend prototype and an M0 backend skeleton. Mock mode remains useful for demos and component tests. Production-oriented work should move through the port/API seams documented in `docs/FRONTEND.md` and `ARCHITECTURE.md`.
+The current codebase has a React/Vite frontend prototype plus a modular M0-M5 backend baseline. Mock mode remains useful for demos and component tests. Production-oriented work should move through the port/API seams documented in `docs/FRONTEND.md` and `ARCHITECTURE.md`.
 
 ## Commands
 

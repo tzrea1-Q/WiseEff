@@ -11,6 +11,8 @@
 3. [后端与运行环境](backend-runtime.md)：API、PostgreSQL、worker、对象存储、设备网关、Agent provider。
 4. [安全与可靠性](security-reliability.md)：auth、RBAC、审计、设备写入、Agent 工具、backup/restore、pilot gate。
 5. [质量门禁与计划治理](quality-and-plans.md)：测试命令、验收口径、计划文件和文档更新规则。
+6. [本地开发与验证](developer-setup.md)：`.env.example`、数据库 seed、服务启动、验证命令。
+7. [运维与安全阅读路径](operations-security.md)：runbook、安全审计、HDC、backup/restore、rollback、Agent provider。
 
 ## 与英文文档的关系
 
@@ -19,6 +21,10 @@
 - 当前质量分数和风险看 [docs/QUALITY_SCORE.md](../QUALITY_SCORE.md)。
 - 当前 release/pilot 证据看 [docs/generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md)。
 - 当前 active/completed 计划看 [docs/PLANS.md](../PLANS.md) 和 [docs/exec-plans/](../exec-plans/)。
+- 开发者本地启动和验证看 [docs/developer/README.md](../developer/README.md)。
+- 运维 runbook 看 [docs/runbooks/README.md](../runbooks/README.md)。
+- API 使用看 [docs/api/README.md](../api/README.md)。
+- 安全审计看 [docs/security/README.md](../security/README.md)。
 
 ## 维护规则
 

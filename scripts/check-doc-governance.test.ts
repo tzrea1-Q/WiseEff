@@ -1,5 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { validatePlanDocument } from "./check-doc-governance";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  requiredEnvExampleKeys,
+  requiredRepositoryDocs,
+  validateEnvExample,
+  validateMarkdownLinks,
+  validatePlanDocument,
+  validateRequiredRepositoryDocs
+} from "./check-doc-governance";
+
+const tempRoots: string[] = [];
+
+async function createTempRoot(): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "wiseeff-docs-check-"));
+  tempRoots.push(root);
+  return root;
+}
+
+async function write(root: string, relativePath: string, content: string): Promise<void> {
+  const filePath = path.join(root, relativePath);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, content, "utf8");
+}
+
+afterEach(async () => {
+  await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 describe("validatePlanDocument", () => {
   it("accepts active implementation plans with both required sections", () => {
@@ -46,5 +74,61 @@ describe("validatePlanDocument", () => {
 
   it("exempts the active development roadmap", () => {
     expect(validatePlanDocument("docs/exec-plans/active/development-roadmap.md", "# Roadmap")).toEqual([]);
+  });
+});
+
+describe("validateRequiredRepositoryDocs", () => {
+  it("reports missing key documentation entry points", async () => {
+    const root = await createTempRoot();
+    await write(root, "README.md", "# Readme");
+
+    const errors = await validateRequiredRepositoryDocs(root);
+
+    expect(errors).toContain("Missing required documentation file: CONTRIBUTING.md.");
+    expect(errors).toContain("Missing required documentation file: docs/developer/README.md.");
+    expect(errors).toHaveLength(requiredRepositoryDocs.length - 1);
+  });
+});
+
+describe("validateEnvExample", () => {
+  it("requires .env.example to contain every documented local setup key", async () => {
+    const root = await createTempRoot();
+    await write(root, ".env.example", "DATABASE_URL=postgres://example\nAGENT_API_BASE_URL=\n");
+
+    const errors = await validateEnvExample(root);
+
+    expect(errors).toContain("Missing required .env.example key: AGENT_MODEL.");
+    expect(errors).toContain("Missing required .env.example key: AGENT_API_KEY.");
+    expect(errors.length).toBeGreaterThan(2);
+  });
+
+  it("accepts an .env.example containing all required keys", async () => {
+    const root = await createTempRoot();
+    await write(
+      root,
+      ".env.example",
+      requiredEnvExampleKeys.map((key) => `${key}=${key.startsWith("AGENT_") ? "" : "value"}`).join("\n")
+    );
+
+    await expect(validateEnvExample(root)).resolves.toEqual([]);
+  });
+});
+
+describe("validateMarkdownLinks", () => {
+  it("reports broken local markdown links", async () => {
+    const root = await createTempRoot();
+    await write(root, "docs/README.md", "[Missing](missing.md)\n[External](https://example.com)\n");
+
+    await expect(validateMarkdownLinks(root)).resolves.toEqual([
+      "Broken local markdown link in docs/README.md: missing.md"
+    ]);
+  });
+
+  it("accepts existing local markdown links and anchors", async () => {
+    const root = await createTempRoot();
+    await write(root, "README.md", "[Docs](docs/README.md)\n[Anchor](#local-heading)\n");
+    await write(root, "docs/README.md", "# Docs");
+
+    await expect(validateMarkdownLinks(root)).resolves.toEqual([]);
   });
 });
