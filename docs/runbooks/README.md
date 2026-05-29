@@ -5,6 +5,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 ## Runbook Index
 
 - [M5 Commercial Pilot Readiness](m5-commercial-pilot-readiness.md): current go/no-go checklist and pilot gate.
+- [Manual Acceptance](manual-acceptance.md): human acceptance checklist for product workflows, runtime gates, evidence capture, and Go/No-Go judgment.
 - [Staging Deployment](staging-deployment.md): deploy order and smoke sequence for staging.
 - [Backup And Restore](backup-restore.md): backup and restore drill procedure.
 - [Rollback](rollback.md): rollback rehearsal and emergency rollback sequence.

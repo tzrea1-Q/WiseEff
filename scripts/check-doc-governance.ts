@@ -24,6 +24,7 @@ export const requiredRepositoryDocs = [
   "docs/security/secrets-management.md",
   "docs/security/audit-retention.md",
   "docs/runbooks/README.md",
+  "docs/runbooks/manual-acceptance.md",
   "docs/runbooks/m5-commercial-pilot-readiness.md",
   "docs/runbooks/staging-deployment.md",
   "docs/runbooks/backup-restore.md",
@@ -31,6 +32,7 @@ export const requiredRepositoryDocs = [
   "docs/runbooks/monitoring-alerting.md",
   "docs/runbooks/hdc-device-lab.md",
   "docs/runbooks/agent-provider.md",
+  "docs/zh-CN/manual-acceptance.md",
   "docs/exec-plans/completed/README.md"
 ];
 export const requiredEnvExampleKeys = [
