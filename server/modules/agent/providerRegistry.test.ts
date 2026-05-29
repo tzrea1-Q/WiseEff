@@ -109,4 +109,57 @@ describe("agent provider registry", () => {
     });
     expect(fetchImpl).toHaveBeenCalled();
   });
+
+  it("creates an OpenAI-compatible live provider when requested", async () => {
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith("/models") && init?.method === "GET") {
+        return new Response(JSON.stringify({ data: [{ id: "pilot-model" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
+
+      if (url.endsWith("/chat/completions") && init?.method === "POST") {
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Ready from OpenAI-compatible provider." } }],
+            usage: { prompt_tokens: 12, completion_tokens: 7 }
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" }
+          }
+        );
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+    const provider = createAgentProviderFromEnv(
+      {
+        NODE_ENV: "development",
+        AGENT_PROVIDER: "live",
+        AGENT_API_FORMAT: "openai",
+        AGENT_MODEL: "pilot-model",
+        AGENT_API_KEY: "secret",
+        AGENT_API_BASE_URL: "https://api.openai.com/v1",
+        AGENT_PROMPT_VERSION: "m5-agent-v1"
+      } as any,
+      { fetchImpl } as any
+    );
+
+    await expect(provider.checkHealth?.()).resolves.toEqual({ ok: true, status: "ready" });
+    await expect(
+      provider.planTurn({
+        context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "admin" },
+        message: "Summarize"
+      })
+    ).resolves.toMatchObject({
+      provider: "live",
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      assistantDraft: { content: "Ready from OpenAI-compatible provider." }
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(new URL("https://api.openai.com/v1/chat/completions"), expect.any(Object));
+  });
 });

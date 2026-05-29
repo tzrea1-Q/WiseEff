@@ -52,10 +52,32 @@ Runtime env: `DATABASE_URL` set to the local PostgreSQL URL, `OBJECT_STORE_ROOT=
 - Focused frontend regressions passed: `npm test -- src/components/ParametersTable.test.tsx src/ParametersPage.test.tsx src/application/parameters/parameterRuntime.test.ts src/App.test.tsx src/NodeDebuggingPage.test.tsx` reported 5 files and 215 tests passing.
 - Focused server regressions passed: `npm run test:server -- server/modules/parameters/repository.test.ts server/modules/logs/repository.test.ts` reported 2 files and 37 tests passing.
 
+### Local Non-HDC Real Environment Revalidation
+
+Date: 2026-05-29T18:53:47+08:00
+Environment: local `.env` with PostgreSQL, production-mode HMAC auth, local object store, simulator device gateway, and OpenAI-compatible live Agent provider; this is non-HDC local target evidence, not external staging or hardware-lab evidence.
+Branch: `codex/m5-2-non-hdc-evidence-closure`
+Commit: `5018764`
+
+- `.env` inventory: database/API/auth/smoke token/local object store/live Agent/simulator gateway/local backup directories were present; S3/OSS cloud credentials, HDC smoke variables, and persisted `M5_BACKUP_RESTORE_DRILL_AT` were not present.
+- `npm run test:all` passed with `VITE_WISEEFF_RUNTIME_MODE=mock` override: frontend Vitest reported 176 files and 1644 tests passing; server Vitest reported 61 files and 529 tests passing.
+- `npm run docs:check`, `npm run contract:check`, `npm run build`, and `git diff --check` passed. The build retained the existing Vite chunk-size warning.
+- `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, `npm run db:seed:m2`, and `npm run db:seed:m3` passed against the local PostgreSQL database.
+- `npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts e2e/debugging.api.spec.ts e2e/agent.api.spec.ts` passed with `AUTH_MODE=development`, `AGENT_PROVIDER=deterministic`, and the local `.env` database/object-store settings: 6 passed and 1 HDC device-lab test skipped.
+- The same E2E command failed under the production-auth `.env` because the frontend HTTP client does not inject `Authorization: Bearer ...` into API-mode business requests. Direct `/api/v1/me` with the smoke token passed; without a token it correctly returned 401.
+- `/health/ready` passed with database, local object store, worker queue, and live Agent provider ready.
+- Direct live Agent provider validation passed only after raising `AGENT_API_TIMEOUT_MS` from `5000` to `30000` for the local API process. The resulting trace recorded `provider=live`, `safety_status=safe`, token usage, and no fallback. With the default 5000 ms timeout, the chat completion path fell back after timeout even though provider health was ready.
+- Local backup/restore drill passed using the Docker PostgreSQL tools in `wiseeff-postgres`: a custom dump was written to `.wiseeff-backups/wiseeff-db-2026-05-29T10-52-34-444Z.dump`, restored into a fresh temporary database, validated with 10 migrations, 4 users, 3 projects, 36 parameter values, 2 log records, 5 debugging parameters, and 14 agent sessions, then the temporary restore database was dropped. The local object-store directory was copied through `.wiseeff-backups/` and `.wiseeff-restore/` with 1 restored object file.
+- With `M5_BACKUP_RESTORE_DRILL_AT=2026-05-29T18:52:34+08:00` set on the local API process, `/api/v1/operations/pilot-readiness` was blocked only by `deviceGateway`.
+- `npm run smoke:m5` still failed, as designed, because strict pilot readiness requires HDC device-gateway evidence and the local process runs `DEBUG_DEVICE_GATEWAY_MODE=simulator`.
+
 ### M5.2 Blockers
 
-- Staging environment secrets and URLs are required before migrations, live API smoke, worker/object-store readiness, Agent provider checks, HDC device-lab smoke, backup/restore, rollback rehearsal, or `npm run test:m5` can be executed honestly.
-- No M5.2 external evidence checklist item is complete as of this entry.
+- External staging deployment evidence is still required before this environment can be called pilot-ready: deployed staging API/web/worker, target-environment PostgreSQL E2E, HDC device-lab smoke, cloud S3/OSS or explicitly approved local object-store policy, and rollback rehearsal.
+- Frontend production-auth API mode is not closed: the backend correctly requires bearer auth, but the frontend HTTP client does not yet attach a production token to business requests.
+- The initial local `.env` used for this validation had a smoke-token subject that is not seeded as a database user; direct Agent session creation with that token can hit database foreign-key failures. A seeded admin subject such as `u-xu-yun` works when signed with the same local issuer/secret. The local `.env` and `.env.example` were corrected to use that seeded subject after this finding.
+- HDC device-lab evidence remains missing because `HDC_DEVICE_LAB_AVAILABLE` and the required `HDC_SMOKE_*` values were not configured.
+- Target-environment rollback rehearsal remains unrun; the local backup/restore drill above does not replace deployment rollback evidence.
 
 ## Checklist
 

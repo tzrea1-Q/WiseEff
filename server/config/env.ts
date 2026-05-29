@@ -21,6 +21,7 @@ const rawEnvSchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   AGENT_PROVIDER: z.enum(["deterministic", "live"]).default("deterministic"),
+  AGENT_API_FORMAT: z.enum(["wiseeff", "openai"]).default("wiseeff"),
   AGENT_MODEL: z.string().optional(),
   AGENT_API_KEY: z.string().optional(),
   AGENT_API_BASE_URL: z.string().optional(),

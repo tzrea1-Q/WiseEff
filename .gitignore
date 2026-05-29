@@ -9,6 +9,8 @@ coverage/
 playwright-report/
 test-results/
 .wiseeff-object-store/
+.wiseeff-backups/
+.wiseeff-restore/
 
 # Local logs
 *.log

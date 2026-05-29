@@ -87,7 +87,7 @@ Target guidance:
 
 ## Go / No-Go Checklist
 
-Latest M5.2 execution note: on 2026-05-29, local repository gates and local PostgreSQL-backed API-mode E2E passed, but target-environment execution did not start because staging secrets, live API URL, admin smoke token, HDC device-lab target values, backup/restore target, rollback window, S3/OSS credentials, and live Agent provider configuration were not available. The external checklist remains unchecked until those checks run in the target environment.
+Latest M5.2 execution note: on 2026-05-29, the completed local `.env` supported local PostgreSQL, production-mode HMAC auth, local object storage, simulator gateway, and an OpenAI-compatible live Agent provider. Repository gates passed, standard API-mode M1-M4 E2E passed under development-auth validation mode, `/health/ready` was green, live Agent chat passed after increasing `AGENT_API_TIMEOUT_MS` to 30000, and a local PostgreSQL plus local object-store backup/restore drill passed. Strict `npm run smoke:m5` remained blocked by `deviceGateway`, as expected without HDC evidence. Full target-environment Go remains blocked by HDC device-lab evidence, deployment rollback rehearsal, cloud/staging evidence, and frontend production-auth token injection.
 
 - [ ] Documentation governance check passed with `npm run docs:check`.
 - [ ] Key documentation audit is current in `docs/generated/documentation-governance-audit.md`.

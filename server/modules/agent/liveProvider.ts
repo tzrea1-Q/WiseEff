@@ -270,6 +270,67 @@ function createRequestTimeoutController(timeoutMs: number) {
   };
 }
 
+type OpenAiCompatibleChatResponse = {
+  choices?: unknown;
+  usage?: unknown;
+};
+
+function buildOpenAiCompatibleMessages(input: {
+  promptVersion: string;
+  context: AgentContext;
+  message: string;
+}) {
+  return [
+    {
+      role: "system",
+      content:
+        "You are WiseEff's enterprise efficiency assistant. Reply with concise, safe operator guidance. Do not claim to have executed tool actions."
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        promptVersion: input.promptVersion,
+        context: input.context,
+        message: input.message
+      })
+    }
+  ];
+}
+
+function normalizeOpenAiCompatibleUsage(value: unknown): AgentProviderUsage | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isPlainObject(value)) {
+    throw contractError("OpenAI-compatible Agent provider returned invalid usage.");
+  }
+
+  return {
+    inputTokens: readOptionalFiniteNumber(value.prompt_tokens, "usage.prompt_tokens", { integer: true, minimum: 0 }),
+    outputTokens: readOptionalFiniteNumber(value.completion_tokens, "usage.completion_tokens", { integer: true, minimum: 0 }),
+    estimatedCostUsd: readOptionalFiniteNumber(value.estimated_cost_usd, "usage.estimated_cost_usd", { minimum: 0 })
+  };
+}
+
+function normalizeOpenAiCompatibleChatResponse(value: OpenAiCompatibleChatResponse): LiveAgentTransportPlanResult {
+  if (!Array.isArray(value.choices) || value.choices.length === 0) {
+    throw contractError("OpenAI-compatible Agent provider returned invalid choices.");
+  }
+
+  const firstChoice = value.choices[0];
+  if (!isPlainObject(firstChoice) || !isPlainObject(firstChoice.message)) {
+    throw contractError("OpenAI-compatible Agent provider returned invalid choices[0].message.");
+  }
+
+  return {
+    content: readString(firstChoice.message.content, "choices[0].message.content"),
+    toolRequests: [],
+    citations: [],
+    safety: { status: "safe", reasons: [] },
+    usage: normalizeOpenAiCompatibleUsage(value.usage)
+  };
+}
+
 async function readJsonResponse<T>(response: Response, errorPrefix: string): Promise<T> {
   const text = await response.text().catch(() => "");
   const message = `${errorPrefix} ${response.status} ${response.statusText}`.trim();
@@ -290,6 +351,80 @@ async function readJsonResponse<T>(response: Response, errorPrefix: string): Pro
   } catch {
     throw contractError(`${errorPrefix} returned malformed JSON.`);
   }
+}
+
+export function createOpenAiCompatibleAgentTransport(options: {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  promptVersion: string;
+  timeoutMs?: number;
+  fetchImpl?: LiveAgentFetch;
+}): LiveAgentTransport {
+  const baseUrl = new URL(options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`);
+  const timeoutMs = options.timeoutMs ?? 5000;
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const authorization = `Bearer ${options.apiKey}`;
+
+  async function requestJson<T>(
+    path: string,
+    init: RequestInit & { body?: string } = {}
+  ): Promise<T> {
+    const { controller, clear } = createRequestTimeoutController(timeoutMs);
+    try {
+      const response = await fetchImpl(new URL(path.replace(/^\/+/, ""), baseUrl), {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          accept: "application/json",
+          authorization,
+          "content-type": "application/json",
+          ...(init.headers ?? {})
+        }
+      });
+      return await readJsonResponse<T>(response, `OpenAI-compatible Agent provider request failed for ${path}`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error(`OpenAI-compatible Agent provider request timed out after ${timeoutMs}ms.`);
+      }
+      throw error instanceof Error ? error : new Error("OpenAI-compatible Agent provider request failed.");
+    } finally {
+      clear();
+    }
+  }
+
+  return {
+    async planTurn(input) {
+      const response = await requestJson<OpenAiCompatibleChatResponse>("chat/completions", {
+        method: "POST",
+        body: JSON.stringify({
+          model: options.model,
+          messages: buildOpenAiCompatibleMessages({
+            promptVersion: input.promptVersion,
+            context: input.context,
+            message: input.message
+          }),
+          temperature: 0.2
+        })
+      });
+      return normalizeOpenAiCompatibleChatResponse(response);
+    },
+    async checkHealth() {
+      try {
+        await requestJson<unknown>("models", { method: "GET" });
+        return { ok: true, status: "ready" };
+      } catch (error) {
+        if (error instanceof LiveAgentProviderContractError) {
+          throw error;
+        }
+        return {
+          ok: false,
+          status: "failed",
+          message: error instanceof Error ? error.message : "OpenAI-compatible Agent provider health check failed."
+        };
+      }
+    }
+  };
 }
 
 export function createHttpLiveAgentTransport(options: {

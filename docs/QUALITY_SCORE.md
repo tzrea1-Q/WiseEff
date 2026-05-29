@@ -15,7 +15,7 @@ This is a living quality dashboard for WiseEff. Update it when major features la
 | Security model | 7/10 | RBAC, audit, Agent approval, and device safety are documented and partly represented in code. | Production auth, server-side business permissions, and negative tests need expansion. |
 | Reliability | 7/10 | Deployment and reliability docs exist; `/health/live`, `/health/ready`, and the M5 pilot readiness gate cover the release baseline; M2 has local object storage, job polling, leased jobs, failed records, and rerun support. | Distributed workers, durable object storage, retry/backoff policy, SSE hardening, real gateway observability, production monitoring, and external pilot evidence remain future work. |
 | Harness knowledge base | 8/10 | Docs are indexed and organized into product, design, execution, generated, and reference sections. | Add mechanical link/schema checks later. |
-| Production/pilot evidence | 5/10 | M5 gates exist, PR #39 merged, GitHub CI passed, `docs:check` guards active plan metadata, and M5.2 local repository plus local PostgreSQL-backed API-mode E2E gates passed. | Staging live API, staging PostgreSQL-backed E2E, HDC device-lab, backup/restore, rollback, and live provider evidence are still blocked on target-environment inputs. |
+| Production/pilot evidence | 6/10 | M5 gates exist, PR #39 merged, GitHub CI passed, `docs:check` guards active plan metadata, M5.2 local PostgreSQL-backed API-mode E2E passed, local `/health/ready` is green for database/object store/worker/live Agent health, live Agent chat passed with a longer timeout, and a local PostgreSQL plus local object-store backup/restore drill passed. | Full target-environment staging, HDC device-lab, deployment rollback rehearsal, frontend production-auth token injection, seeded smoke-token identity, cloud S3/OSS evidence, and strict `npm run smoke:m5` remain open. |
 
 ## Required Verification Gates
 
@@ -55,13 +55,13 @@ Remaining M3.5 risks: readiness checks still use local object storage rather tha
 
 M4 is covered by Agent route, schema, orchestrator, tool registry, parameter/log/debugging/audit tool tests, frontend `AgentGateway` DTO/runtime tests, UnifiedAgent API-mode tests, and `e2e/agent.api.spec.ts`. Negative tests cover approval-required tool runs, stale approval state, inactive users, missing permissions, wrong-session approvals, validation failures, and approval execution failure audit correlation.
 
-Remaining M4 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; provider logic is deterministic rather than a real LLM; generated OpenAPI clients, prompt safety evaluation, model latency/cost handling, and provider outage behavior remain deferred.
+Remaining M4 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; the standard UI E2E still uses deterministic provider mode; live OpenAI-compatible provider chat was validated locally only after increasing `AGENT_API_TIMEOUT_MS` beyond 5000 ms; generated OpenAPI clients, prompt safety evaluation, model latency/cost handling, and provider outage behavior remain deferred.
 
 ## M5 Coverage
 
 M5 is covered by the generated OpenAPI contract artifact, the route manifest/schema registry tests, the admin-gated pilot readiness route, the `npm run smoke:m5` script with explicit local skip control, the M5 acceptance docs, local PostgreSQL-backed API-mode Playwright evidence, and the full `npm run test:m5` gate when the remaining external dependencies are available.
 
-Remaining M5 risks: local smoke can prove the release gate structure, but real staging backup/restore, device-lab, and pilot signoff evidence still has to be captured before the environment is called pilot-ready.
+Remaining M5 risks: local smoke can prove the release gate structure, but full target-environment staging, HDC device-lab, cloud object-store evidence, deployment rollback, and pilot signoff evidence still has to be captured before the environment is called pilot-ready. The 2026-05-29 local production-auth E2E attempt also showed that frontend API-mode clients need a bearer-token injection path before production-auth UI workflows can close.
 
 For documentation-only changes:
 

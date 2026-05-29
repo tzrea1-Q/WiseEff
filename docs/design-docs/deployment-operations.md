@@ -187,3 +187,10 @@ Device Gateway 健康检查：
 - Record the backup drill timestamp in `M5_BACKUP_RESTORE_DRILL_AT` and keep the rollback sequence documented in `docs/runbooks/m5-commercial-pilot-readiness.md`.
 - PR #39 merged M5 on 2026-05-29 and GitHub CI passed for the merged branch. This repository evidence does not replace staging live API, HDC device-lab, backup/restore, rollback, or live provider evidence.
 - Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
+
+## M5 Live Agent Provider Boundary
+
+- `AGENT_PROVIDER=live` requires `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_BASE_URL`.
+- `AGENT_API_FORMAT` defaults to `wiseeff`, which expects `/agent/health` and `/agent/plan-turn` under `AGENT_API_BASE_URL`.
+- Set `AGENT_API_FORMAT=openai` for OpenAI-compatible providers. That mode probes `/models` for health and sends planning requests to `/chat/completions`.
+- `.env.example` uses `AGENT_API_FORMAT=openai` for the local non-HDC staging profile and intentionally leaves only `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` blank.
