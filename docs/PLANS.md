@@ -16,7 +16,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
+Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
 
 ## Plan Rules
 
@@ -36,5 +36,7 @@ Every active implementation plan except `development-roadmap.md` must include:
 The impact matrix must review repository maps, planning docs, product specs, architecture docs, quality/testing docs, reliability/runbooks, security/governance docs, frontend/design docs, generated artifacts, and references. Each row must be marked `Update`, `Review`, or `No change` with exact file paths.
 
 The update gate is blocking: a plan cannot be moved to `completed/` until every `Update` or `Review` row has either been updated or explicitly recorded as unchanged with evidence. Any deferred work must be added to `exec-plans/tech-debt-tracker.md`.
+
+Future developer-facing changes to architecture, runtime modes, environment variables, API contracts, security, reliability, quality gates, or plan governance must update the relevant `docs/zh-CN/` page or explicitly record why no Chinese developer-doc update is needed.
 
 Run `npm run docs:check` before finishing a non-trivial plan.
