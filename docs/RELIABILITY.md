@@ -17,6 +17,7 @@ WiseEff reliability work should protect user trust in parameter changes, log ana
 - State transitions should be validated against the current version.
 - Audit failures are product failures, not background noise.
 - Device write failures must be visible and traceable.
+- Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
 - Production mock runtime must alert or fail fast.
 
 ## Operational Targets
@@ -69,7 +70,7 @@ Current endpoints:
 - Gateway failures must surface as operation failures with readable timeout, offline, stderr, or readback mismatch text. The simulator covers read-only rejection and readback mismatch. The M5 HDC adapter adds fake-runner tests for target detection, nonzero/stderr failures, argv construction, command timeout text, and read-back mismatch.
 - A successful write creates a pre-write snapshot. Rollback is expected to write each snapshot entry back with readback, mark the snapshot consumed only if all writes succeed, and leave failed snapshots valid for retry.
 - Current residual UI gap: API write snapshots created on `/node-debugging` are not yet automatically surfaced in the `/debugging` rollback card. The backend rollback API and audit path are verified by M3 E2E; UI state promotion remains tracked as technical debt.
-- Production HDC mode is selected with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_TIMEOUT_MS`; production rejects simulator mode unless `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is explicitly set for non-customer staging. Real target discovery/write/readback/snapshot-rollback evidence is covered by the HDC device-lab smoke only when `HDC_DEVICE_LAB_AVAILABLE=true` and the `HDC_SMOKE_*` target/session/parameter/node/value env vars are set; otherwise it remains an external pilot acceptance item, not proven by the local simulator or fake-runner tests.
+- Production HDC mode is selected with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_TIMEOUT_MS`; production rejects simulator mode unless `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is explicitly set for non-customer staging. HDC and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence. Real target discovery/write/readback/snapshot-rollback evidence is covered by the HDC device-lab smoke only when `HDC_DEVICE_LAB_AVAILABLE=true` and the `HDC_SMOKE_*` target/session/parameter/node/value env vars are set; otherwise it remains an external pilot acceptance item, not proven by the local simulator or fake-runner tests.
 
 ## M4 Agent Operations
 
@@ -81,6 +82,7 @@ Current endpoints:
 - Live provider startup is HTTP-backed through `AGENT_API_BASE_URL` and should become ready once the configured provider health endpoint is healthy.
 - Live Agent provider readiness is checked through the same health seam used by `/health/ready`; if the provider is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
 - Trace metadata now includes latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so pilot operators can distinguish normal planning from provider outages.
+- Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.
 
 ## Rollback Expectations
 

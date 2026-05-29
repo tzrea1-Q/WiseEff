@@ -141,3 +141,4 @@ WiseEff 的正式开发应避免“一次性全栈大爆炸”。当前原型已
 - 有回滚方案和生产健康检查。
 - 关键审计与安全要求通过验收。
 
+Implementation note: the merged M5 scope is a controlled commercial pilot readiness baseline, not full enterprise production rollout. It implements pilot gates and production seams, while real staging smoke, HDC device-lab, backup/restore, rollback, live provider evidence, SSO/OIDC, durable queue, cloud SDK/IaC, monitoring, and capacity testing remain follow-up planning items.

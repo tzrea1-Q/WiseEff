@@ -152,6 +152,7 @@ Device Gateway 健康检查：
 ## M5 Production Auth Boundary
 
 - Local and test environments may use `AUTH_MODE=development`, the seeded development user, and `x-wiseeff-user` for deterministic tests.
+- Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.
 - Production must set `NODE_ENV=production`, `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`; short HMAC secrets are rejected outside tests.
 - The API verifies `Authorization: Bearer <payload>.<signature>` server-side before creating `AuthContext`. Signed claims must include issuer, subject, and organization, and may include roles and permissions.
 - `/api/v1/me` and business routes use the same auth resolver. Production requests without a valid bearer token fail with `UNAUTHENTICATED` instead of falling back to development auth.
@@ -174,6 +175,7 @@ Device Gateway 健康检查：
 - Customer production must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`. Set `HDC_TIMEOUT_MS` to the pilot lab's command timeout budget; the default is `5000`.
 - `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` bypasses the production HDC requirement only for explicitly marked non-customer staging environments.
 - The HDC adapter executes `hdc` with command plus argv arrays and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
+- HDC and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence.
 - Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it also requires `DATABASE_URL`, `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, and `HDC_SMOKE_WRITE_VALUE`. Optional settings are `HDC_SMOKE_EXPECT_READ_PATTERN` and `HDC_SMOKE_USER_ID`.
 - The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.
 
@@ -183,3 +185,5 @@ Device Gateway 健康检查：
 - `GET /api/v1/operations/pilot-readiness` is admin-gated and should only return `status: "pilot_ready"` when contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence are all ready.
 - `npm run test:m5` is the intended full pilot gate. It still depends on PostgreSQL plus any external device-lab, backup/restore, and staging evidence that is not fully simulated in this repository.
 - Record the backup drill timestamp in `M5_BACKUP_RESTORE_DRILL_AT` and keep the rollback sequence documented in `docs/runbooks/m5-commercial-pilot-readiness.md`.
+- PR #39 merged M5 on 2026-05-29 and GitHub CI passed for the merged branch. This repository evidence does not replace staging live API, HDC device-lab, backup/restore, rollback, or live provider evidence.
+- Provider outages and device failures must leave audit/readiness evidence rather than silently passing.

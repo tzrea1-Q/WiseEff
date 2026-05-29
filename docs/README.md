@@ -56,10 +56,12 @@ docs/
 
 ## Status
 
-This harness structure reorganizes existing WiseEff docs without changing product code. The existing productization docs were moved into `product-specs/`, `design-docs/`, and `exec-plans/` so future agents can find the right source of truth without relying on chat history.
+This harness structure is the source of truth for WiseEff product, architecture, quality, security, reliability, and execution knowledge. The docs must move with implementation changes so future agents do not rely on chat history.
 
 Current baseline:
 
-- Frontend prototype: React, Vite, TypeScript, mock runtime, HTTP runtime seam.
-- Backend M0: TypeScript Node server, auth context endpoint, audit boundary, migration skeleton.
-- Main product priority: make parameter management the first real closed-loop workflow, then move logs, debugging, and Agent orchestration from mock/demo paths to governed backend paths.
+- Frontend: React, Vite, TypeScript, mock runtime for demos/tests, and API runtime for productized flows.
+- Backend: TypeScript modular-monolith API with auth, audit, parameters, logs, jobs, debugging, Agent, contracts, and operations modules.
+- Data and contracts: PostgreSQL migrations, generated schema summary, committed OpenAPI artifact, and contract freshness check.
+- Runtime seams: local/S3-compatible object storage, dedicated log worker runner, simulator/HDC device gateway, deterministic/live Agent provider.
+- Release state: M5 pilot-readiness gate is implemented; external staging, HDC device-lab, backup/restore, rollback, and live provider evidence must still be recorded before calling an environment pilot-ready.

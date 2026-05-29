@@ -150,3 +150,8 @@ Agent 只能通过工具调用访问系统。
 - 审计查询可按时间、用户、项目、对象过滤。
 - 备份和恢复流程经过演练。
 
+## M5 Security Baseline Note
+
+- Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.
+- HDC and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence.
+- Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
