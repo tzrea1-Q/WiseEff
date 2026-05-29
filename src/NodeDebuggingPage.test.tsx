@@ -136,6 +136,109 @@ describe("/node-debugging", () => {
     expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
   });
 
+  it("syncs visible node rows when API hydration replaces debug parameters", () => {
+    const apiParameter = {
+      ...userState.debugParameters[0],
+      id: "dbg-api-fast-charge-current",
+      name: "Fast charge current",
+      key: "fast_charge_current",
+      currentValue: "3000",
+      targetValue: "3100"
+    };
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+    const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
+
+    rerender(
+      <NodeDebuggingPage
+        state={{ ...userState, debugParameters: [apiParameter] }}
+        debuggingActions={debuggingActions}
+      />
+    );
+
+    expect(findRowByText("fast_charge_current")).toBeInTheDocument();
+    expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
+  });
+
+  it("reads hydrated API rows when auto-detect resolves after parameter hydration", async () => {
+    const apiParameter = {
+      ...userState.debugParameters[0],
+      id: "dbg-api-fast-charge-current",
+      name: "Fast charge current",
+      key: "fast_charge_current",
+      nodePath: "/sys/class/power_supply/battery/constant_charge_current",
+      currentValue: "3000",
+      targetValue: "3100"
+    };
+    const detect = createDeferred<{ session: typeof apiSession; target: typeof apiTarget }>();
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => detect.promise)
+    });
+    const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    rerender(
+      <NodeDebuggingPage
+        state={{ ...userState, debugParameters: [apiParameter] }}
+        debuggingActions={debuggingActions}
+      />
+    );
+    detect.resolve({ session: apiSession, target: apiTarget });
+
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      parameterId: "dbg-api-fast-charge-current",
+      nodePath: "/sys/class/power_supply/battery/constant_charge_current"
+    })));
+    expect(debuggingActions.readNode).not.toHaveBeenCalledWith(expect.objectContaining({
+      parameterId: "dbg-charge-input-current"
+    }));
+  });
+
+  it("keeps the detected API target while replacing stale pre-hydration reads", async () => {
+    const apiParameter = {
+      ...userState.debugParameters[0],
+      id: "dbg-api-fast-charge-current",
+      name: "Fast charge current",
+      key: "fast_charge_current",
+      nodePath: "/sys/class/power_supply/battery/constant_charge_current",
+      currentValue: "3000",
+      targetValue: "3100"
+    };
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn(async (input) => {
+        if (input.parameterId === "dbg-api-fast-charge-current") {
+          return {
+            ok: true,
+            value: "3000",
+            stdout: "3000\n"
+          };
+        }
+
+        throw new Error("Debug parameter was not found.");
+      })
+    });
+    const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      parameterId: "dbg-charge-input-current"
+    })));
+    rerender(
+      <NodeDebuggingPage
+        state={{ ...userState, debugParameters: [apiParameter] }}
+        debuggingActions={debuggingActions}
+      />
+    );
+
+    expect(await screen.findByText(/API Gateway Target/)).toBeInTheDocument();
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
+      parameterId: "dbg-api-fast-charge-current",
+      nodePath: "/sys/class/power_supply/battery/constant_charge_current"
+    })));
+    expect(await within(findRowByText("fast_charge_current")).findByText("3000")).toBeInTheDocument();
+  });
+
   it("writes edited writable rows through API gateway actions with session and readback context", async () => {
     const debuggingActions = createDebuggingActions();
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);

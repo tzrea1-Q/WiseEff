@@ -65,6 +65,7 @@ type ParameterRuntimeDispatchAction =
   | { type: "ADD_NOTIFICATION"; message: string };
 
 export type ParameterRuntimeActions = {
+  getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
@@ -139,6 +140,18 @@ export function createParameterRuntimeActions({
   };
 
   return {
+    async getParameter(parameterId) {
+      if (runtimeMode !== "api") {
+        throw new Error("Parameter detail loading is only available in api runtime mode.");
+      }
+
+      try {
+        return await requireRepository(repository).getParameter(parameterId);
+      } catch {
+        notifyFailure(dispatch);
+        throw new Error(parameterRuntimeFailureNotification);
+      }
+    },
     async submitChanges(input) {
       if (runtimeMode !== "api") {
         dispatch({ type: "ADD_PARAMETER_SUBMISSION_ROUND", items: input.items, reason: input.reason, assignees: input.assignees });

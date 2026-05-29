@@ -42,6 +42,17 @@ function initialStatus(row: DebugParameter): NodeRuntimeStatus {
   return row.accessMode === "WO" ? "待写入" : "未检测";
 }
 
+function runtimeRowFromParameter(parameter: DebugParameter, existing?: RuntimeRow): RuntimeRow {
+  return {
+    ...parameter,
+    runtimeCurrentValue: existing?.runtimeCurrentValue ?? (canRead(parameter) ? "" : parameter.currentValue),
+    draftValue: existing?.draftValue ?? parameter.targetValue,
+    runtimeStatus: existing?.runtimeStatus ?? initialStatus(parameter),
+    error: existing?.error,
+    lastReadValue: existing?.lastReadValue
+  };
+}
+
 function statusClass(status: NodeRuntimeStatus) {
   const classMap: Record<NodeRuntimeStatus, string> = {
     "未检测": "node-status-untested",
@@ -251,12 +262,7 @@ export function NodeDebuggingPage({
   debuggingActions?: DebuggingRuntimeActions;
 }) {
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
-    state.debugParameters.map((parameter) => ({
-      ...parameter,
-      runtimeCurrentValue: canRead(parameter) ? "" : parameter.currentValue,
-      draftValue: parameter.targetValue,
-      runtimeStatus: initialStatus(parameter)
-    }))
+    state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter))
   );
   const [target, setTarget] = useState<string | undefined>();
   const [detecting, setDetecting] = useState(false);
@@ -272,6 +278,8 @@ export function NodeDebuggingPage({
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
   const didAutoDetectRef = useRef(false);
+  const autoReadSignatureRef = useRef("");
+  const rowsRef = useRef(rows);
   const rowOperationSeqRef = useRef<Record<string, number>>({});
   const selectAllRef = useRef<HTMLInputElement>(null);
 
@@ -299,6 +307,17 @@ export function NodeDebuggingPage({
     const id = window.setInterval(() => setNowTick(new Date()), 30_000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  useEffect(() => {
+    setRows((current) => {
+      const existingById = new Map(current.map((row) => [row.id, row]));
+      return state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, existingById.get(parameter.id)));
+    });
+  }, [state.debugParameters]);
 
   const visibleRows = useMemo(() => {
     return rows.filter((row) => {
@@ -405,7 +424,7 @@ export function NodeDebuggingPage({
       });
     }
     if (result.operation) {
-      appendEvent(eventFromOperation(result.operation, rows));
+      appendEvent(eventFromOperation(result.operation, rowsRef.current));
     } else {
       appendEvent({
         parameterName: row.name,
@@ -429,6 +448,21 @@ export function NodeDebuggingPage({
     }
   };
 
+  useEffect(() => {
+    if (!debuggingActions || !activeSessionId || !activeTargetId) {
+      return;
+    }
+
+    const readableRows = rows.filter(canRead);
+    const signature = `${activeSessionId}:${readableRows.map((row) => row.id).join("|")}`;
+    if (autoReadSignatureRef.current === signature) {
+      return;
+    }
+
+    autoReadSignatureRef.current = signature;
+    void readReadableRows(activeTargetId, readableRows, activeSessionId).catch(() => undefined);
+  }, [activeSessionId, activeTargetId, debuggingActions, rows]);
+
   const detect = async () => {
     setDetecting(true);
     setDetectDiagnosticError("");
@@ -442,9 +476,8 @@ export function NodeDebuggingPage({
         setConnectionError("");
         setSessionStartedAt((current) => current ?? session.startedAt);
         if (result.operation) {
-          appendEvent(eventFromOperation(result.operation, rows));
+          appendEvent(eventFromOperation(result.operation, rowsRef.current));
         }
-        await readReadableRows(detectedTarget.id, rows, session.id);
         return;
       }
 
@@ -464,7 +497,7 @@ export function NodeDebuggingPage({
       });
       if (result.ok && result.activeTarget) {
         setSessionStartedAt((current) => current ?? new Date().toISOString());
-        await readReadableRows(result.activeTarget, rows);
+        await readReadableRows(result.activeTarget, rowsRef.current);
       }
     } catch (error) {
       setTarget(undefined);
@@ -538,7 +571,7 @@ export function NodeDebuggingPage({
     }
 
     if (result.operation) {
-      appendEvent(eventFromOperation(result.operation, rows));
+      appendEvent(eventFromOperation(result.operation, rowsRef.current));
     } else {
       appendEvent({
         parameterName: row.name,

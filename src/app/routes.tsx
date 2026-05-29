@@ -31,12 +31,13 @@ import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
 import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
-import type { ParameterDraftItem } from "@/domain/parameters/types";
+import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
 const DebuggingPageWithRuntimeProps = DebuggingPage as (props: Pick<PageProps, "state" | "dispatch" | "debuggingActions" | "debuggingGateway">) => ReactNode;
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (props: Pick<PageProps, "state" | "debuggingActions">) => ReactNode;
 
 export type ParameterPageActions = {
+  getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;

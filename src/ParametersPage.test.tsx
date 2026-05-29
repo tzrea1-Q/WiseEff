@@ -165,6 +165,7 @@ function TopBarActionsHarness({ children }: { children: ReactNode }) {
 
 function createParameterActions(overrides: Partial<ParameterPageActions> = {}): ParameterPageActions {
   return {
+    getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
     reviewChange: vi.fn().mockResolvedValue(undefined),
@@ -218,6 +219,34 @@ describe("ParametersPage parameter detail modal", () => {
 
     expect(window.location.pathname).toBe("/parameters");
     expect(screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" })).toBeInTheDocument();
+  });
+
+  it("loads API detail history when opening a parameter detail modal", async () => {
+    const detailedParameter = {
+      ...initialState.parameters[0],
+      history: [
+        {
+          version: "api-v2",
+          value: "3333",
+          changedAt: "2026-05-29T00:00:00.000Z",
+          changedBy: "API Detail Loader"
+        }
+      ]
+    };
+    const getParameter = vi.fn().mockResolvedValue(detailedParameter);
+    const parameterActions = createParameterActions() as ParameterPageActions & {
+      getParameter: typeof getParameter;
+    };
+    parameterActions.getParameter = getParameter;
+    const { container } = renderPage(vi.fn(), vi.fn(), parameterActions);
+    const viewButton = container.querySelector<HTMLButtonElement>(".view-row-button");
+
+    expect(viewButton).not.toBeNull();
+    fireEvent.click(viewButton!);
+
+    await waitFor(() => expect(getParameter).toHaveBeenCalledWith(initialState.parameters[0].id));
+    const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
+    await waitFor(() => expect(within(dialog).getByText(/API Detail Loader/)).toBeInTheDocument());
   });
 
   it("shows the parameter definition and every runtime project", () => {

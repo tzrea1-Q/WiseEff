@@ -49,19 +49,29 @@ type HdcSmokeConfig = {
 };
 
 function runNpmScript(script: string) {
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(npmCommand, ["run", script], {
+  const invocation =
+    process.platform === "win32"
+      ? { command: "cmd.exe", args: ["/d", "/s", "/c", `npm run ${script}`] }
+      : { command: "npm", args: ["run", script] };
+  const result = spawnSync(invocation.command, invocation.args, {
     cwd: process.cwd(),
     encoding: "utf8",
     env: process.env
   });
 
   if (result.status !== 0) {
+    const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+    const stderr = typeof result.stderr === "string" ? result.stderr.trim() : "";
+    const errorDetails = result.error
+      ? `child_process error: ${result.error.code ?? "unknown"} ${result.error.message ?? ""}`.trimEnd()
+      : "";
+
     throw new Error(
       [
         `npm run ${script} failed with exit code ${result.status}.`,
-        result.stdout.trim(),
-        result.stderr.trim()
+        stdout,
+        stderr,
+        errorDetails
       ].filter(Boolean).join("\n")
     );
   }
@@ -102,6 +112,7 @@ async function cleanupM3E2EState(client: Client) {
   await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
   await client.query("delete from node_operations where project_id = $1", [projectId]);
   await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
+  await client.query("delete from debug_device_leases where project_id = $1", [projectId]);
   await client.query("delete from debugging_sessions where project_id = $1", [projectId]);
 }
 
@@ -240,7 +251,7 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
 
   await page.goto(`/node-debugging?project=${projectId}`);
 
-  await expect(page.getByText("Aurora Simulator 1")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("在线 · Aurora Simulator 1", { exact: true })).toBeVisible({ timeout: 30_000 });
 
   const fastChargeRow = parameterRow(page, "Fast charge current");
   await expect(fastChargeRow).toContainText("3000", { timeout: 30_000 });
@@ -276,11 +287,11 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
   }
 
   await page.goto(`/node-debugging?project=${projectId}`);
-  await expect(page.getByText("Aurora Simulator 1")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("在线 · Aurora Simulator 1", { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(parameterRow(page, "Fast charge current")).toContainText("3000", { timeout: 30_000 });
 
   await page.goto("/parameter-admin?audit=open");
-  await expect(page.getByRole("complementary")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
   const auditResponse = await page.request.get(`${apiBaseUrl}/api/v1/audit-events`);
   expect(auditResponse.ok()).toBe(true);
   const auditBody = (await auditResponse.json()) as {

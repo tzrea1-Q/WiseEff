@@ -4,6 +4,7 @@ import type { Database, QueryResult, Queryable } from "../../shared/database/cli
 import {
   appendFeedback,
   archiveLog,
+  completeLogAnalysisJobWithReport,
   completeRun,
   createFileObject,
   createLogRecordWithRunAndJob,
@@ -430,6 +431,8 @@ describe("log repository", () => {
     expect(txCalls[0].text).toContain("insert into log_analysis_reports");
     expect(txCalls[0].text).toContain("on conflict (id) do update");
     expect(txCalls[0].values[0]).toBe("report-run-1");
+    expect(txCalls[0].values[8]).toBe(JSON.stringify(["Inspect pack temperature."]));
+    expect(txCalls[0].values[9]).toBe(JSON.stringify(["WARN thermal foldback"]));
     expect(txCalls[1].text).toContain("delete from log_evidence");
     expect(txCalls[1].values).toEqual(["org-1", "run-1"]);
     expect(txCalls[2].text).toContain("insert into log_evidence");
@@ -444,5 +447,38 @@ describe("log repository", () => {
       "Inspect pack temperature.",
       "thermal-foldback"
     ]);
+  });
+
+  it("serializes completed worker report arrays for PostgreSQL jsonb columns", async () => {
+    const { db, txCalls } = createFakeDb([[{}], [], [], [], [], [{}], [], []]);
+
+    await completeLogAnalysisJobWithReport(db, {
+      organizationId: "org-1",
+      logId: "log-1",
+      runId: "run-1",
+      jobId: "job-1",
+      leaseOwner: "worker-1",
+      report: {
+        confidence: 0.91,
+        conclusion: "Charge current derated after thermal warning.",
+        impact: "Fast charge throughput reduced.",
+        severity: "Warning",
+        suggestedActions: ["Inspect coolant loop"],
+        rawLines: ["12 WARN temp=74", "21 INFO derate=1"]
+      },
+      evidence: [
+        {
+          stageId: "rootcause",
+          lineNumbers: [12, 21],
+          inference: "Thermal warnings cluster before derating.",
+          suggestedAction: "Check pack coolant loop.",
+          ruleHit: "thermal-foldback"
+        }
+      ]
+    });
+
+    expect(txCalls[1].text).toContain("insert into log_analysis_reports");
+    expect(txCalls[1].values[8]).toBe(JSON.stringify(["Inspect coolant loop"]));
+    expect(txCalls[1].values[9]).toBe(JSON.stringify(["12 WARN temp=74", "21 INFO derate=1"]));
   });
 });

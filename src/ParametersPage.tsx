@@ -111,6 +111,7 @@ export function ParametersPage({
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [viewingParameterId, setViewingParameterId] = useState<string | null>(null);
+  const [viewingParameterDetail, setViewingParameterDetail] = useState<ParameterRecord | null>(null);
   const [comparisonTargetProjectId, setComparisonTargetProjectId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [submittingRound, setSubmittingRound] = useState(false);
@@ -196,7 +197,9 @@ export function ParametersPage({
         }
       : runtimeProjects[0]);
   const viewingParameter = viewingParameterId
-    ? projectParameters.find((parameter) => parameter.id === viewingParameterId) ?? null
+    ? viewingParameterDetail?.id === viewingParameterId
+      ? viewingParameterDetail
+      : projectParameters.find((parameter) => parameter.id === viewingParameterId) ?? null
     : null;
   const draftActionDisabledReason = initializationLocked
     ? "初始化通过前暂不可提交普通参数变更。"
@@ -397,6 +400,7 @@ export function ParametersPage({
       Object.fromEntries(Object.entries(items).filter(([parameterId]) => activeParameterIds.has(parameterId)))
     );
     setViewingParameterId((id) => (id && !activeParameterIds.has(id) ? null : id));
+    setViewingParameterDetail((parameter) => (parameter && !activeParameterIds.has(parameter.id) ? null : parameter));
   }, [activeParameterIds]);
 
   useEffect(() => {
@@ -450,7 +454,15 @@ export function ParametersPage({
     setSelectedId(parameter.id);
     setFocusedId(parameter.id);
     setViewingParameterId(parameter.id);
+    setViewingParameterDetail(parameter);
     setComparisonTargetProjectId(defaultTargetProject?.id ?? parameter.projectId);
+    void parameterActions?.getParameter(parameter.id)
+      .then((detail) => {
+        setViewingParameterDetail((current) => (current?.id === parameter.id ? detail : current));
+      })
+      .catch(() => {
+        setViewingParameterDetail((current) => (current?.id === parameter.id ? parameter : current));
+      });
   };
 
   const addViewingParameterToDraft = (draft?: { targetValue: string; reason: string }) => {
@@ -862,7 +874,10 @@ export function ParametersPage({
           alreadyInDraft={Boolean(drafts[viewingParameter.id])}
           onTargetProjectChange={setComparisonTargetProjectId}
           onAddToDraft={addViewingParameterToDraft}
-          onClose={() => setViewingParameterId(null)}
+          onClose={() => {
+            setViewingParameterId(null);
+            setViewingParameterDetail(null);
+          }}
         />
       ) : null}
     </WorkbenchLayout>

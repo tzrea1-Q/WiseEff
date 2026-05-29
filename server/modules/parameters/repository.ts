@@ -1162,7 +1162,7 @@ export async function getChangeRequestById(
     left join users assignee on assignee.id = pcr.assigned_to_user_id
     where pcr.organization_id = $1
       and pcr.id = $2
-    for update
+    for update of pcr
     `,
     [query.organizationId, query.requestId]
   );

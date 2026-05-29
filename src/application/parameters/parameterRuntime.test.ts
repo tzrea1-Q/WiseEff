@@ -147,6 +147,17 @@ describe("createParameterRuntimeActions", () => {
     });
   });
 
+  it("loads a single parameter detail from the repository in api mode", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository();
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+
+    await expect(actions.getParameter(apiParameter.id)).resolves.toEqual(apiParameter);
+
+    expect(repository.getParameter).toHaveBeenCalledWith(apiParameter.id);
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
+  });
+
   it("can return a refresh failure without dispatching a duplicate notification", async () => {
     const dispatch = vi.fn();
     const repository = createRepository({
