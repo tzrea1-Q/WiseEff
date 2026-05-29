@@ -20,6 +20,12 @@ const rawEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  AGENT_PROVIDER: z.enum(["deterministic", "live"]).default("deterministic"),
+  AGENT_MODEL: z.string().optional(),
+  AGENT_API_KEY: z.string().optional(),
+  AGENT_API_BASE_URL: z.string().optional(),
+  AGENT_API_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  AGENT_PROMPT_VERSION: z.string().default("m5-agent-v1"),
   MOCK_RUNTIME_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -68,6 +74,18 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   }
   if (env.AUTH_MODE === "production" && env.NODE_ENV !== "test" && (env.AUTH_TOKEN_HMAC_SECRET?.length ?? 0) < 32) {
     throw new Error("AUTH_TOKEN_HMAC_SECRET must be at least 32 characters outside tests");
+  }
+  if (env.NODE_ENV === "production" && env.AGENT_PROVIDER !== "live") {
+    throw new Error("AGENT_PROVIDER=live is required when NODE_ENV=production");
+  }
+  if (env.AGENT_PROVIDER === "live" && !env.AGENT_MODEL?.trim()) {
+    throw new Error("AGENT_MODEL is required when AGENT_PROVIDER=live");
+  }
+  if (env.AGENT_PROVIDER === "live" && !env.AGENT_API_KEY?.trim()) {
+    throw new Error("AGENT_API_KEY is required when AGENT_PROVIDER=live");
+  }
+  if (env.AGENT_PROVIDER === "live" && !env.AGENT_API_BASE_URL?.trim()) {
+    throw new Error("AGENT_API_BASE_URL is required when AGENT_PROVIDER=live");
   }
 
   return env;

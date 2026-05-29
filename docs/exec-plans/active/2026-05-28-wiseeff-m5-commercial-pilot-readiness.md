@@ -1090,7 +1090,7 @@ git commit -m "feat: add production HDC gateway boundary"
 - Modify: `docs/RELIABILITY.md`
 - Modify: `docs/exec-plans/tech-debt-tracker.md`
 
-- [ ] **Step 1: Write failing provider registry tests**
+- [x] **Step 1: Write failing provider registry tests**
 
 Create `server/modules/agent/providerRegistry.test.ts`:
 
@@ -1141,7 +1141,7 @@ npm run test:server -- server/modules/agent/providerRegistry.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement provider interface and registry**
+- [x] **Step 2: Implement provider interface and registry**
 
 Update `server/modules/agent/provider.ts` to expose a common provider interface:
 
@@ -1163,7 +1163,7 @@ npm run test:server -- server/modules/agent/providerRegistry.test.ts server/modu
 
 Expected: PASS.
 
-- [ ] **Step 3: Write failing live provider tests**
+- [x] **Step 3: Write failing live provider tests**
 
 Create `server/modules/agent/liveProvider.test.ts`:
 
@@ -1229,7 +1229,7 @@ npm run test:server -- server/modules/agent/liveProvider.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 4: Implement live provider seam**
+- [x] **Step 4: Implement live provider seam**
 
 Create `server/modules/agent/liveProvider.ts`:
 
@@ -1249,7 +1249,7 @@ npm run test:server -- server/modules/agent/liveProvider.test.ts server/modules/
 
 Expected: PASS.
 
-- [ ] **Step 5: Persist provider trace metadata**
+- [x] **Step 5: Persist provider trace metadata**
 
 Create migration `server/migrations/0010_m5_agent_provider_traces.sql` adding columns to Agent run traces:
 
@@ -1275,7 +1275,7 @@ npm run test:server -- server/modules/agent/repository.test.ts server/modules/ag
 
 Expected: PASS.
 
-- [ ] **Step 6: Add readiness and docs**
+- [x] **Step 6: Add readiness and docs**
 
 Update operations readiness to include Agent provider health when `AGENT_PROVIDER=live`.
 

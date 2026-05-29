@@ -96,6 +96,10 @@ M4 Agent tools run only through the backend registry. Read tools still require s
 
 Agent-generated parameter changes may prepare drafts or recommendations, but production parameter writes still require a human-submitted draft/review path. Future Agent or device write tools must create an explicit approval record and then execute through the same server-side authz and audit boundary.
 
+The live Agent provider adds a registry seam so the backend can reject unknown tool names, block ungrounded mutating requests, and fall back cleanly when the provider is unavailable. Provider traces now capture latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so security review can distinguish grounded planning from degraded output.
+
+Provider outages must not silently execute tools. A degraded assistant response is allowed only when the provider health check fails or the transport is unavailable, and the fallback path must skip tool execution entirely.
+
 ## Device Safety
 
 Device access must go through a gateway boundary. Write requests need:

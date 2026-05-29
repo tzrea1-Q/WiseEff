@@ -1,5 +1,6 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerAgentRoutes } from "./modules/agent/routes";
+import type { AgentProvider } from "./modules/agent/provider";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
@@ -26,6 +27,7 @@ export function createWiseEffServer(
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     debugGateway?: DebugDeviceGateway;
+    agentProvider?: AgentProvider;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
   } = {}
 ) {
@@ -37,7 +39,11 @@ export function createWiseEffServer(
     getDevelopmentAuthContext: (request) => getCurrentAuthContext(options, request as RouteRequest)
   });
 
-  registerOperationsRoutes(router, { db: options.db, objectStore: options.objectStoreHealth });
+  registerOperationsRoutes(router, {
+    db: options.db,
+    objectStore: options.objectStoreHealth,
+    agentProvider: options.agentProvider
+  });
 
   registerAuthRoutes(router, { getCurrentAuthContext: authResolver });
   registerAuditRoutes(router, {
@@ -64,7 +70,8 @@ export function createWiseEffServer(
   });
   registerAgentRoutes(router, {
     db: options.db,
-    getCurrentAuthContext: authResolver
+    getCurrentAuthContext: authResolver,
+    provider: options.agentProvider
   });
 
   return createHttpServer(router);
@@ -76,6 +83,7 @@ export function createWiseEffServerFromEnv(
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
     debugGateway?: DebugDeviceGateway;
+    agentProvider?: AgentProvider;
     env: {
       AUTH_MODE: "development" | "production";
       AUTH_TOKEN_ISSUER?: string;
@@ -87,5 +95,8 @@ export function createWiseEffServerFromEnv(
     options.env.AUTH_MODE === "production"
       ? createTokenVerifier({ issuer: options.env.AUTH_TOKEN_ISSUER!, secret: options.env.AUTH_TOKEN_HMAC_SECRET! })
       : undefined;
-  return createWiseEffServer({ ...options, auth: { mode: options.env.AUTH_MODE, verifier } });
+  return createWiseEffServer({
+    ...options,
+    auth: { mode: options.env.AUTH_MODE, verifier }
+  });
 }

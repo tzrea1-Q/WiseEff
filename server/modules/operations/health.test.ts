@@ -146,4 +146,34 @@ describe("operations health", () => {
       }
     });
   });
+
+  it("includes agent provider readiness when requested", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+    const agentProvider = {
+      metadata: () => ({ provider: "live" as const, model: "pilot-model", promptVersion: "m5-agent-v1" }),
+      planTurn: async () => ({
+        assistantDraft: { content: "Ready.", citations: [], confidence: 0.8 },
+        toolRequests: [],
+        provider: "live" as const,
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1"
+      }),
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+    };
+
+    await expect(buildReadyHealth({ db, objectStore, agentProvider })).resolves.toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        dependencies: {
+          agentProvider: { ok: true, status: "ready" }
+        }
+      }
+    });
+  });
 });

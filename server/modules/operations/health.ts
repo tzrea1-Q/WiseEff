@@ -1,4 +1,5 @@
 import type { Database } from "../../shared/database/client";
+import type { AgentProvider } from "../agent/provider";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 
@@ -16,6 +17,7 @@ export type OperationsHealthBody = {
     database: DependencyHealth;
     objectStore: DependencyHealth;
     workerQueue?: WorkerQueueHealth;
+    agentProvider?: DependencyHealth;
   };
 };
 
@@ -68,15 +70,38 @@ async function checkObjectStore(objectStore?: ObjectStoreHealthCheck): Promise<D
   }
 }
 
+async function checkAgentProvider(agentProvider?: AgentProvider): Promise<DependencyHealth | undefined> {
+  if (!agentProvider?.checkHealth) {
+    return undefined;
+  }
+
+  try {
+    const result = await agentProvider.checkHealth();
+    return {
+      ok: result.ok,
+      status: result.status,
+      message: result.message
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: "failed",
+      message: error instanceof Error ? error.message : "Agent provider readiness check failed."
+    };
+  }
+}
+
 export async function buildReadyHealth(options: {
   db?: Pick<Database, "query">;
   objectStore?: ObjectStoreHealthCheck;
   includeWorkerQueue?: boolean;
+  agentProvider?: AgentProvider;
 }) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
+  const agentProvider = await checkAgentProvider(options.agentProvider);
   const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
-  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true);
+  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (agentProvider?.ok ?? true);
 
   return {
     status: ok ? 200 : 503,
@@ -84,7 +109,12 @@ export async function buildReadyHealth(options: {
       ok,
       service: "wiseeff-api",
       status: ok ? "ready" : "not_ready",
-      dependencies: workerQueue ? { database, objectStore, workerQueue } : { database, objectStore }
+      dependencies: {
+        database,
+        objectStore,
+        ...(workerQueue ? { workerQueue } : {}),
+        ...(agentProvider ? { agentProvider } : {})
+      }
     } satisfies OperationsHealthBody
   };
 }

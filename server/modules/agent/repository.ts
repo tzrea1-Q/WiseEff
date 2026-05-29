@@ -67,7 +67,7 @@ type AgentApprovalRow = {
   decision_reason: string | null;
 };
 
-type AgentRunTraceProvider = "deterministic";
+type AgentRunTraceProvider = "deterministic" | "live";
 
 export type CreateAgentRunTraceInput = {
   id: string;
@@ -81,6 +81,13 @@ export type CreateAgentRunTraceInput = {
   outputSummary: string;
   toolCallIds: string[];
   traceId: string;
+  latencyMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCostUsd?: number;
+  safetyStatus?: string;
+  safetyReasons?: string[];
+  fallbackReason?: string;
 };
 
 export type AgentToolCallRecord = AgentToolCallDto & {
@@ -353,9 +360,10 @@ export async function createAgentRunTrace(db: Queryable, input: CreateAgentRunTr
     `
     insert into agent_run_traces (
       id, session_id, message_id, organization_id, provider, model, prompt_version,
-      input_summary, output_summary, tool_call_ids, trace_id
+      input_summary, output_summary, tool_call_ids, trace_id,
+      latency_ms, input_tokens, output_tokens, estimated_cost_usd, safety_status, safety_reasons, fallback_reason
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     `,
     [
       input.id,
@@ -368,7 +376,14 @@ export async function createAgentRunTrace(db: Queryable, input: CreateAgentRunTr
       input.inputSummary,
       input.outputSummary,
       input.toolCallIds,
-      input.traceId
+      input.traceId,
+      input.latencyMs ?? null,
+      input.inputTokens ?? null,
+      input.outputTokens ?? null,
+      input.estimatedCostUsd ?? null,
+      input.safetyStatus ?? null,
+      input.safetyReasons ? JSON.stringify(input.safetyReasons) : null,
+      input.fallbackReason ?? null
     ]
   );
 }

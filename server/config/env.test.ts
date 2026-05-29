@@ -21,6 +21,12 @@ describe("loadServerEnv", () => {
     expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
     expect(env.HDC_TIMEOUT_MS).toBe(5000);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
+    expect(env.AGENT_PROVIDER).toBe("deterministic");
+    expect(env.AGENT_MODEL).toBeUndefined();
+    expect(env.AGENT_API_KEY).toBeUndefined();
+    expect(env.AGENT_API_BASE_URL).toBeUndefined();
+    expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
+    expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
   });
 
   it("parses explicit API settings", () => {
@@ -41,7 +47,13 @@ describe("loadServerEnv", () => {
       OBJECT_STORAGE_REGION: "ap-southeast-1",
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
       HDC_TIMEOUT_MS: "2500",
-      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
+      AGENT_PROVIDER: "live",
+      AGENT_MODEL: "pilot-model",
+      AGENT_API_KEY: "secret",
+      AGENT_API_BASE_URL: "https://agent.example.com",
+      AGENT_API_TIMEOUT_MS: "1500",
+      AGENT_PROMPT_VERSION: "m5-agent-v1"
     });
 
     expect(env.NODE_ENV).toBe("test");
@@ -61,6 +73,12 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_ACCESS_KEY_ID).toBe("key");
     expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBe("secret");
     expect(env.OBJECT_STORAGE_REGION).toBe("ap-southeast-1");
+    expect(env.AGENT_PROVIDER).toBe("live");
+    expect(env.AGENT_MODEL).toBe("pilot-model");
+    expect(env.AGENT_API_KEY).toBe("secret");
+    expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");
+    expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
+    expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
   });
 
   it("rejects production mock runtime", () => {
@@ -140,6 +158,68 @@ describe("loadServerEnv", () => {
     ).toThrow("AUTH_TOKEN_HMAC_SECRET must be at least 32 characters outside tests");
   });
 
+  it("requires live agent provider settings in production", () => {
+    expect(() =>
+      loadServerEnv({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        OBJECT_STORE_MODE: "s3",
+        OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+        OBJECT_STORAGE_BUCKET: "wiseeff-prod",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+        AUTH_MODE: "production",
+        AUTH_TOKEN_ISSUER: "wiseeff-prod",
+        AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length",
+        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+        AGENT_PROVIDER: "deterministic",
+        AGENT_MODEL: "pilot-model",
+        AGENT_API_KEY: "secret",
+        AGENT_API_BASE_URL: "https://agent.example.com"
+      })
+    ).toThrow("AGENT_PROVIDER=live is required when NODE_ENV=production");
+
+    expect(() =>
+      loadServerEnv({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        OBJECT_STORE_MODE: "s3",
+        OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+        OBJECT_STORAGE_BUCKET: "wiseeff-prod",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+        AUTH_MODE: "production",
+        AUTH_TOKEN_ISSUER: "wiseeff-prod",
+        AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length",
+        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+        AGENT_PROVIDER: "live",
+        AGENT_MODEL: "pilot-model",
+        AGENT_API_BASE_URL: "https://agent.example.com"
+      })
+    ).toThrow("AGENT_API_KEY is required when AGENT_PROVIDER=live");
+  });
+
+  it("requires AGENT_API_BASE_URL when AGENT_PROVIDER is live", () => {
+    expect(() =>
+      loadServerEnv({
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        OBJECT_STORE_MODE: "s3",
+        OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+        OBJECT_STORAGE_BUCKET: "wiseeff-prod",
+        OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+        OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+        AUTH_MODE: "production",
+        AUTH_TOKEN_ISSUER: "wiseeff-prod",
+        AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length",
+        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+        AGENT_PROVIDER: "live",
+        AGENT_MODEL: "pilot-model",
+        AGENT_API_KEY: "secret"
+      })
+    ).toThrow("AGENT_API_BASE_URL is required when AGENT_PROVIDER=live");
+  });
+
   it("requires the HDC gateway in production unless simulator staging is explicitly allowed", () => {
     const productionEnv = {
       NODE_ENV: "production",
@@ -151,10 +231,19 @@ describe("loadServerEnv", () => {
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
       AUTH_MODE: "production",
       AUTH_TOKEN_ISSUER: "wiseeff-prod",
-      AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length"
+      AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length",
+      AGENT_PROVIDER: "live",
+      AGENT_MODEL: "pilot-model",
+      AGENT_API_KEY: "secret",
+      AGENT_API_BASE_URL: "https://agent.example.com"
     };
 
-    expect(() => loadServerEnv(productionEnv)).toThrow(
+    expect(() =>
+      loadServerEnv({
+        ...productionEnv,
+        DEBUG_DEVICE_GATEWAY_MODE: "simulator"
+      })
+    ).toThrow(
       "DEBUG_DEVICE_GATEWAY_MODE=hdc is required when NODE_ENV=production. Set DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true only for non-customer staging environments that intentionally run the simulator."
     );
 

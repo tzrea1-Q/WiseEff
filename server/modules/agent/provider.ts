@@ -11,12 +11,45 @@ export type AgentProviderInput = {
   message: string;
 };
 
+export type AgentProviderMetadata = {
+  provider: "deterministic" | "live";
+  model: string;
+  promptVersion: string;
+};
+
+export type AgentProviderUsage = {
+  inputTokens?: number;
+  outputTokens?: number;
+  estimatedCostUsd?: number;
+};
+
+export type AgentProviderSafety = {
+  status: "safe" | "unsafe" | "failed";
+  reasons: string[];
+};
+
+export type AgentProviderHealth = {
+  ok: boolean;
+  status: "ready" | "failed";
+  message?: string;
+};
+
 export type AgentProviderPlan = {
   assistantDraft: Pick<AgentMessageDto, "content" | "citations" | "confidence">;
   toolRequests: AgentToolRequest[];
-  provider: "deterministic";
-  model: "wiseeff-rules-m4";
-  promptVersion: "m4-agent-v1";
+  provider: "deterministic" | "live";
+  model: string;
+  promptVersion: string;
+  latencyMs?: number;
+  usage?: AgentProviderUsage;
+  safety?: AgentProviderSafety;
+  fallbackReason?: string;
+};
+
+export type AgentProvider = {
+  metadata(): AgentProviderMetadata;
+  planTurn(input: AgentProviderInput): Promise<AgentProviderPlan> | AgentProviderPlan;
+  checkHealth?(): Promise<AgentProviderHealth> | AgentProviderHealth;
 };
 
 function includesAny(text: string, words: string[]) {
@@ -24,8 +57,15 @@ function includesAny(text: string, words: string[]) {
   return words.some((word) => normalized.includes(word.toLowerCase()));
 }
 
-export function createDeterministicAgentProvider() {
+export function createDeterministicAgentProvider(): AgentProvider {
+  const metadata = {
+    provider: "deterministic",
+    model: "wiseeff-rules-m4",
+    promptVersion: "m4-agent-v1"
+  } as const;
+
   return {
+    metadata: () => metadata,
     planTurn(input: AgentProviderInput): AgentProviderPlan {
       const toolRequests: AgentToolRequest[] = [];
       const projectId = input.context.projectId;
@@ -81,9 +121,7 @@ export function createDeterministicAgentProvider() {
           confidence: 0.78
         },
         toolRequests,
-        provider: "deterministic",
-        model: "wiseeff-rules-m4",
-        promptVersion: "m4-agent-v1"
+        ...metadata
       };
     }
   };

@@ -195,6 +195,13 @@ function createMemoryDb() {
           output_summary: values[8],
           tool_call_ids: values[9],
           trace_id: values[10],
+          latency_ms: values[11],
+          input_tokens: values[12],
+          output_tokens: values[13],
+          estimated_cost_usd: values[14],
+          safety_status: values[15],
+          safety_reasons: values[16],
+          fallback_reason: values[17],
           created_at: isoNow()
         });
         return { rows: [] as Row[], rowCount: 1 };
