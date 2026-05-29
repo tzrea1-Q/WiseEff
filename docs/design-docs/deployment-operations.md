@@ -176,3 +176,10 @@ Device Gateway 健康检查：
 - The HDC adapter executes `hdc` with command plus argv arrays and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
 - Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it also requires `DATABASE_URL`, `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, and `HDC_SMOKE_WRITE_VALUE`. Optional settings are `HDC_SMOKE_EXPECT_READ_PATTERN` and `HDC_SMOKE_USER_ID`.
 - The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.
+
+## M5 Release Operations
+
+- The pilot-ready release smoke is `npm run smoke:m5`. It checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API URL by default, and staging/prod pilot checks also need `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` or the readiness route will return 403. It only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs.
+- `GET /api/v1/operations/pilot-readiness` is admin-gated and should only return `status: "pilot_ready"` when contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence are all ready.
+- `npm run test:m5` is the intended full pilot gate. It still depends on PostgreSQL plus any external device-lab, backup/restore, and staging evidence that is not fully simulated in this repository.
+- Record the backup drill timestamp in `M5_BACKUP_RESTORE_DRILL_AT` and keep the rollback sequence documented in `docs/runbooks/m5-commercial-pilot-readiness.md`.

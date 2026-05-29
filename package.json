@@ -17,6 +17,8 @@
     "test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "test:m3-5": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "test:m4": "npm run test:all && npm run build && npm run test:e2e -- e2e/agent.api.spec.ts",
+    "smoke:m5": "tsx scripts/run-m5-smoke.ts",
+    "test:m5": "npm run contract:check && npm run test:all && npm run build && npm run test:e2e && npm run smoke:m5",
     "contract:openapi": "tsx scripts/generate-openapi-contract.ts",
     "contract:check": "tsx scripts/check-openapi-contract.ts",
     "db:migrate": "tsx scripts/migrate.ts",

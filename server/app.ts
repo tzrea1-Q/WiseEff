@@ -9,12 +9,13 @@ import { registerJobRoutes } from "./modules/jobs/routes";
 import type { DebugDeviceGateway } from "./modules/debugging/gateway";
 import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
-import { registerOperationsRoutes } from "./modules/operations/routes";
+import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { createHttpServer } from "./shared/http/server";
 import { createRouter, type RouteRequest } from "./shared/http/router";
 import type { Database } from "./shared/database/client";
+import type { ServerEnv } from "./config/env";
 
 async function getCurrentAuthContext(options: { db?: Database }, request: RouteRequest) {
   const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
@@ -28,6 +29,7 @@ export function createWiseEffServer(
     objectStoreHealth?: ObjectStoreHealthCheck;
     debugGateway?: DebugDeviceGateway;
     agentProvider?: AgentProvider;
+    env?: PilotReadinessEnv;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
   } = {}
 ) {
@@ -42,7 +44,10 @@ export function createWiseEffServer(
   registerOperationsRoutes(router, {
     db: options.db,
     objectStore: options.objectStoreHealth,
-    agentProvider: options.agentProvider
+    agentProvider: options.agentProvider,
+    debugGateway: options.debugGateway,
+    env: options.env,
+    getCurrentAuthContext: authResolver
   });
 
   registerAuthRoutes(router, { getCurrentAuthContext: authResolver });
@@ -84,11 +89,7 @@ export function createWiseEffServerFromEnv(
     objectStoreHealth?: ObjectStoreHealthCheck;
     debugGateway?: DebugDeviceGateway;
     agentProvider?: AgentProvider;
-    env: {
-      AUTH_MODE: "development" | "production";
-      AUTH_TOKEN_ISSUER?: string;
-      AUTH_TOKEN_HMAC_SECRET?: string;
-    };
+    env: ServerEnv;
   }
 ) {
   const verifier =

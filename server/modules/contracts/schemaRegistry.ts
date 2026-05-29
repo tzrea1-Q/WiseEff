@@ -6,6 +6,7 @@ export type ContractSchemaRef = {
   requestBody?: string;
   responseBody: string;
   successStatus?: 200 | 201;
+  additionalResponses?: Record<string, string>;
 };
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
@@ -194,6 +195,12 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
 
   "operations.live": { summary: "Liveness check", tags: ["operations"], responseBody: "LiveHealthResponse" },
   "operations.ready": { summary: "Readiness check", tags: ["operations"], responseBody: "ReadyHealthResponse" },
+  "operations.pilotReadiness": {
+    summary: "Pilot readiness gate",
+    tags: ["operations"],
+    responseBody: "PilotReadinessResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
   "operations.compatHealth": {
     summary: "Compatibility health check",
     tags: ["operations"],

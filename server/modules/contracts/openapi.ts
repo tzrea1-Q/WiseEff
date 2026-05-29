@@ -127,6 +127,14 @@ export function buildOpenApiDocument(): OpenApiDocument {
           description: "Successful response.",
           content: jsonContent(schema.responseBody)
         },
+        ...(schema.additionalResponses
+          ? Object.fromEntries(
+              Object.entries(schema.additionalResponses).map(([status, schemaName]) => [
+                status,
+                { $ref: `#/components/responses/${schemaName}` }
+              ])
+            )
+          : {}),
         "400": { $ref: "#/components/responses/ErrorResponse" },
         "500": { $ref: "#/components/responses/ErrorResponse" }
       }

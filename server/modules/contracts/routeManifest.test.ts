@@ -14,7 +14,7 @@ describe("routeManifest", () => {
     expect(groups).toEqual(expect.arrayContaining(["parameters", "logs", "jobs", "debugging", "agent", "operations"]));
   });
 
-  it("locks high-risk M1-M4 route paths", () => {
+  it("locks high-risk M1-M5 route paths", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -36,6 +36,11 @@ describe("routeManifest", () => {
           id: "parameters.reviewChangeRequest",
           method: "POST",
           path: "/api/v1/parameter-change-requests/:requestId/review"
+        }),
+        expect.objectContaining({
+          id: "operations.pilotReadiness",
+          method: "GET",
+          path: "/api/v1/operations/pilot-readiness"
         })
       ])
     );

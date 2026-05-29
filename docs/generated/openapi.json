@@ -1601,6 +1601,36 @@
         }
       }
     },
+    "/api/v1/operations/pilot-readiness": {
+      "get": {
+        "operationId": "operations.pilotReadiness",
+        "summary": "Pilot readiness gate",
+        "tags": [
+          "operations"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PilotReadinessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "operations.compatHealth",
@@ -1866,6 +1896,10 @@
       "ReadyHealthResponse": {
         "type": "object",
         "x-wiseeff-schema": "ReadyHealthResponse"
+      },
+      "PilotReadinessResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PilotReadinessResponse"
       },
       "CompatHealthResponse": {
         "type": "object",

@@ -1324,7 +1324,7 @@ git commit -m "feat: harden live agent provider boundary"
 - Modify: `docs/exec-plans/active/development-roadmap.md`
 - Modify: `docs/exec-plans/tech-debt-tracker.md`
 
-- [ ] **Step 1: Write failing pilot readiness tests**
+- [x] **Step 1: Write failing pilot readiness tests**
 
 Create `server/modules/operations/pilotReadiness.test.ts`:
 
@@ -1377,7 +1377,7 @@ npm run test:server -- server/modules/operations/pilotReadiness.test.ts
 
 Expected: FAIL.
 
-- [ ] **Step 2: Implement pilot readiness model and route**
+- [x] **Step 2: Implement pilot readiness model and route**
 
 Create `server/modules/operations/pilotReadiness.ts` and add a route such as:
 
@@ -1407,7 +1407,7 @@ npm run contract:check
 
 Expected: PASS.
 
-- [ ] **Step 3: Add M5 smoke script and npm quality gate**
+- [x] **Step 3: Add M5 smoke script and npm quality gate**
 
 Create `scripts/run-m5-smoke.ts` to run checks in this order:
 
@@ -1433,7 +1433,7 @@ npm run contract:check
 
 Expected: PASS.
 
-- [ ] **Step 4: Write runbook and acceptance report**
+- [x] **Step 4: Write runbook and acceptance report**
 
 Create `docs/runbooks/m5-commercial-pilot-readiness.md` with:
 
@@ -1465,7 +1465,7 @@ git diff --check
 
 Expected: PASS.
 
-- [ ] **Step 5: Final M5 verification**
+- [x] **Step 5: Final M5 verification**
 
 Run:
 
@@ -1480,7 +1480,7 @@ Expected: PASS.
 
 If PostgreSQL, device HDC, live Agent provider, or object storage credentials are not available locally, record the exact skipped external checks in `docs/generated/m5-pilot-acceptance.md` and run the simulator/fake-transport tests instead. Do not claim commercial pilot readiness until staging evidence is attached.
 
-- [ ] **Step 6: Commit release operations gate**
+- [x] **Step 6: Commit release operations gate**
 
 Commit:
 

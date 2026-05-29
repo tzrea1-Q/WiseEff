@@ -129,5 +129,12 @@ export const routeManifest = [
 
   { id: "operations.live", method: "GET", path: "/health/live", module: "operations", stability: "commercial-readiness" },
   { id: "operations.ready", method: "GET", path: "/health/ready", module: "operations", stability: "commercial-readiness" },
+  {
+    id: "operations.pilotReadiness",
+    method: "GET",
+    path: "/api/v1/operations/pilot-readiness",
+    module: "operations",
+    stability: "commercial-readiness"
+  },
   { id: "operations.compatHealth", method: "GET", path: "/api/v1/health", module: "operations", stability: "commercial-readiness" }
 ] as const satisfies readonly RouteManifestEntry[];

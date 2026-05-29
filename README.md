@@ -116,6 +116,18 @@ npm run test:m4
 Run the M4 Agent acceptance gate: frontend tests, backend tests, production build, then `e2e/agent.api.spec.ts`. The smoke requires `DATABASE_URL`, seeds M0/M1 data, starts API mode, opens WiseAgent on `/parameters`, sends a prompt through `AgentGateway`, and verifies a persisted approval-required parameter draft tool call.
 
 ```bash
+npm run smoke:m5
+```
+
+Run the M5 operations smoke: `npm run contract:check`, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. Set `WISEEFF_API_BASE_URL` or `VITE_WISEEFF_API_BASE_URL` to point at a live API; set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access` for staging/prod pilot checks; otherwise the route will 403. The script fails unless `M5_SMOKE_ALLOW_NO_API=true` is set for a local skip.
+
+```bash
+npm run test:m5
+```
+
+Run the full M5 pilot gate: contract check, frontend tests, backend tests, production build, full Playwright E2E, and the M5 operations smoke. It is the intended commercial-pilot baseline, but it still depends on external PostgreSQL and environment-specific evidence for backup, device-lab, and staging checks.
+
+```bash
 npm run preview
 ```
 
@@ -192,6 +204,12 @@ M3.5 commercial-readiness verification:
 1. Run `npm run test:all` and `npm run build` on every M3.5 change.
 2. When PostgreSQL is available, export `DATABASE_URL`, then run `npm run test:m3-5`.
 3. Confirm `/health/ready` reports database and object-store readiness before treating a local/staging API process as pilot-ready.
+
+M5 pilot verification:
+
+1. Run `npm run smoke:m5` against a live API after `npm run contract:check`, or use `M5_SMOKE_ALLOW_NO_API=true` only for local documentation runs.
+2. Run `npm run test:m5` in an environment with PostgreSQL and the other pilot dependencies available.
+3. Record any skipped external checks in `docs/generated/m5-pilot-acceptance.md` before calling the environment pilot-ready.
 
 M4 Agent verification:
 

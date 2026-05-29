@@ -12,7 +12,8 @@ const criticalRouteIds = [
   "jobs.get",
   "debugging.writeNode",
   "agent.approveToolCall",
-  "operations.ready"
+  "operations.ready",
+  "operations.pilotReadiness"
 ] as const;
 
 const criticalPathsByRouteId: Record<(typeof criticalRouteIds)[number], string> = {
@@ -22,7 +23,8 @@ const criticalPathsByRouteId: Record<(typeof criticalRouteIds)[number], string> 
   "jobs.get": "/api/v1/jobs/{jobId}",
   "debugging.writeNode": "/api/v1/debugging/nodes/write",
   "agent.approveToolCall": "/api/v1/agent/sessions/{sessionId}/approvals/{approvalId}/approve",
-  "operations.ready": "/health/ready"
+  "operations.ready": "/health/ready",
+  "operations.pilotReadiness": "/api/v1/operations/pilot-readiness"
 };
 
 function toOpenApiMethod(method: string): OpenApiMethod {
@@ -88,6 +90,13 @@ describe("M5 OpenAPI contract", () => {
       expect(responses?.["200"], route.path).toBeDefined();
       expect(responses?.["201"], route.path).toBeUndefined();
     }
+  });
+
+  it("documents pilot readiness auth failures with a 403 response", () => {
+    const document = buildOpenApiDocument();
+    const responses = document.paths["/api/v1/operations/pilot-readiness"]?.get?.responses;
+
+    expect(responses?.["403"]).toEqual({ $ref: "#/components/responses/ErrorResponse" });
   });
 
   it("uses the documented error envelope on every operation", () => {
