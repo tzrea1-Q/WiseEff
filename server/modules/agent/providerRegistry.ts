@@ -1,11 +1,12 @@
 import type { LiveAgentFetch, LiveAgentTransport } from "./liveProvider";
 import { createDeterministicAgentProvider } from "./provider";
-import { createHttpLiveAgentTransport, createLiveAgentProvider } from "./liveProvider";
+import { createHttpLiveAgentTransport, createLiveAgentProvider, createOpenAiCompatibleAgentTransport } from "./liveProvider";
 import type { AgentProvider } from "./provider";
 
 export type AgentProviderEnv = {
   NODE_ENV?: "development" | "test" | "production";
   AGENT_PROVIDER?: "deterministic" | "live";
+  AGENT_API_FORMAT?: "wiseeff" | "openai";
   AGENT_MODEL?: string;
   AGENT_API_KEY?: string;
   AGENT_API_BASE_URL?: string;
@@ -43,7 +44,7 @@ export function createAgentProviderFromEnv(
     promptVersion: env.AGENT_PROMPT_VERSION ?? "m5-agent-v1",
     transport:
       options.transport ??
-      createHttpLiveAgentTransport({
+      (env.AGENT_API_FORMAT === "openai" ? createOpenAiCompatibleAgentTransport : createHttpLiveAgentTransport)({
         baseUrl: env.AGENT_API_BASE_URL,
         apiKey: env.AGENT_API_KEY,
         model: env.AGENT_MODEL,

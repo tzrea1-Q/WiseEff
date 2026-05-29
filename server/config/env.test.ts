@@ -22,6 +22,7 @@ describe("loadServerEnv", () => {
     expect(env.HDC_TIMEOUT_MS).toBe(5000);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
     expect(env.AGENT_PROVIDER).toBe("deterministic");
+    expect(env.AGENT_API_FORMAT).toBe("wiseeff");
     expect(env.AGENT_MODEL).toBeUndefined();
     expect(env.AGENT_API_KEY).toBeUndefined();
     expect(env.AGENT_API_BASE_URL).toBeUndefined();
@@ -49,6 +50,7 @@ describe("loadServerEnv", () => {
       HDC_TIMEOUT_MS: "2500",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
       AGENT_PROVIDER: "live",
+      AGENT_API_FORMAT: "openai",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com",
@@ -74,6 +76,7 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBe("secret");
     expect(env.OBJECT_STORAGE_REGION).toBe("ap-southeast-1");
     expect(env.AGENT_PROVIDER).toBe("live");
+    expect(env.AGENT_API_FORMAT).toBe("openai");
     expect(env.AGENT_MODEL).toBe("pilot-model");
     expect(env.AGENT_API_KEY).toBe("secret");
     expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");

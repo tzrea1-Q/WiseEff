@@ -48,6 +48,7 @@ Current endpoints:
 - `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
 - `NODE_ENV=production` requires `AGENT_PROVIDER=live`.
 - `AGENT_PROVIDER=live` requires `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_BASE_URL`.
+- `AGENT_API_FORMAT` defaults to `wiseeff`; set `AGENT_API_FORMAT=openai` for OpenAI-compatible `/chat/completions` and `/models` providers.
 - `AGENT_API_TIMEOUT_MS` controls the live provider HTTP request timeout and defaults to 5000ms.
 - `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 - Missing or unsafe production settings should stop the API process before it accepts traffic.
@@ -79,7 +80,7 @@ Current endpoints:
 - Approval execution is idempotent by approval state: only `pending` approvals can transition to `approved` or `rejected`; repeated approval attempts return `INVALID_APPROVAL_STATE`.
 - Approval-time execution must re-check authz and current business state before running the tool. If that check fails, the pending approval and tool call remain retryable.
 - `parameter.submitChangeDraft` creates human-review drafts only; it does not merge or apply production parameter values.
-- Live provider startup is HTTP-backed through `AGENT_API_BASE_URL` and should become ready once the configured provider health endpoint is healthy.
+- Live provider startup is HTTP-backed through `AGENT_API_BASE_URL` and should become ready once the configured provider health endpoint is healthy. The default `wiseeff` format expects `/agent/health` and `/agent/plan-turn`; `AGENT_API_FORMAT=openai` expects OpenAI-compatible `/models` and `/chat/completions`.
 - Live Agent provider readiness is checked through the same health seam used by `/health/ready`; if the provider is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
 - Trace metadata now includes latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so pilot operators can distinguish normal planning from provider outages.
 - Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.

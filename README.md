@@ -136,6 +136,12 @@ npm run test:m5
 Run the full M5 pilot gate: contract check, frontend tests, backend tests, production build, full Playwright E2E, and the M5 operations smoke. It is the intended commercial-pilot baseline, but it still depends on external PostgreSQL and environment-specific evidence for backup, device-lab, and staging checks.
 
 ```bash
+copy .env.example .env
+```
+
+Use `.env.example` as the local non-HDC staging profile. It preconfigures local PostgreSQL, production-mode local auth, a local admin smoke token, API-mode frontend settings, the file-backed object store, local backup/restore working directories, the simulator device gateway, and `AGENT_API_FORMAT=openai`. Fill only `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` before starting the API with `AGENT_PROVIDER=live`; do not set `M5_BACKUP_RESTORE_DRILL_AT` until an actual restore drill has passed.
+
+```bash
 npm run preview
 ```
 

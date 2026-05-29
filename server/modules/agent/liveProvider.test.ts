@@ -1,8 +1,92 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LiveAgentTransportPlanResult } from "./liveProvider";
-import { createHttpLiveAgentTransport, createLiveAgentProvider, LiveAgentProviderOutageError } from "./liveProvider";
+import {
+  createHttpLiveAgentTransport,
+  createLiveAgentProvider,
+  createOpenAiCompatibleAgentTransport,
+  LiveAgentProviderOutageError
+} from "./liveProvider";
+
+function latestRequestInit(fetchImpl: ReturnType<typeof vi.fn>) {
+  return fetchImpl.mock.calls.at(-1)?.[1] as RequestInit;
+}
 
 describe("live agent provider", () => {
+  it("calls OpenAI-compatible chat completions and maps plain assistant content", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "Ready from OpenAI-compatible provider." } }],
+          usage: { prompt_tokens: 12, completion_tokens: 7 }
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        }
+      )
+    );
+    const transport = createOpenAiCompatibleAgentTransport({
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "secret",
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      fetchImpl
+    });
+
+    await expect(
+      transport.planTurn({
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1",
+        apiKey: "secret",
+        context: { pageKey: "parameters", path: "/parameters", projectId: "aurora", roleId: "admin" },
+        message: "Summarize"
+      })
+    ).resolves.toMatchObject({
+      content: "Ready from OpenAI-compatible provider.",
+      toolRequests: [],
+      citations: [],
+      safety: { status: "safe", reasons: [] },
+      usage: { inputTokens: 12, outputTokens: 7 }
+    });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL("https://api.openai.com/v1/chat/completions"),
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ authorization: "Bearer secret" })
+      })
+    );
+    const body = JSON.parse(latestRequestInit(fetchImpl).body as string);
+    expect(body).toMatchObject({ model: "pilot-model" });
+    expect(body.messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ role: "system" }),
+        expect.objectContaining({ role: "user" })
+      ])
+    );
+  });
+
+  it("checks OpenAI-compatible model-list health", async () => {
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ data: [{ id: "pilot-model" }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      })
+    );
+    const transport = createOpenAiCompatibleAgentTransport({
+      baseUrl: "https://api.openai.com/v1",
+      apiKey: "secret",
+      model: "pilot-model",
+      promptVersion: "m5-agent-v1",
+      fetchImpl
+    });
+
+    await expect(transport.checkHealth?.()).resolves.toEqual({ ok: true, status: "ready" });
+    expect(fetchImpl).toHaveBeenCalledWith(
+      new URL("https://api.openai.com/v1/models"),
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("returns grounded plans with trace metadata", async () => {
     const transport = {
       planTurn: vi.fn(async () => ({

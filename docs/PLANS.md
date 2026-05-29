@@ -12,6 +12,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 - `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence and post-M5 planning horizon.
 - `exec-plans/active/2026-05-29-wiseeff-m5-2-staging-pilot-evidence-execution.md`: M5.2 staging pilot evidence execution plan.
+- `exec-plans/active/2026-05-29-wiseeff-m5-2-non-hdc-target-evidence-closure.md`: M5.2 target-environment evidence closure for all non-HDC gates.
 
 ## Completed Plans
 
