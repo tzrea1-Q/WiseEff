@@ -80,3 +80,4 @@ Release operations add a pilot gate on top of the basic health checks. `GET /api
 - Reliability and operations: `docs/RELIABILITY.md`
 - Product specs: `docs/product-specs/index.md`
 - Execution plans: `docs/PLANS.md`
+- Chinese developer architecture guide: `docs/zh-CN/architecture.md`

@@ -15,6 +15,10 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 7. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
 8. [Security](SECURITY.md): identity, RBAC, audit, Agent tools, device safety, and data protection.
 
+## Chinese Developer Docs
+
+Chinese-speaking developers can start from [zh-CN/README.md](zh-CN/README.md) for a curated developer reading path. The Chinese layer covers architecture, frontend, backend/runtime, security/reliability, quality gates, and plan governance while linking back to the canonical detailed English documents.
+
 ## Directory Layout
 
 ```text
@@ -38,6 +42,13 @@ docs/
     prototype-functional-spec.md
     mvp-scope.md
     new-user-onboarding.md
+  zh-CN/
+    README.md
+    architecture.md
+    frontend.md
+    backend-runtime.md
+    security-reliability.md
+    quality-and-plans.md
   references/
     design-system-reference-llms.txt
     nixpacks-llms.txt
@@ -65,3 +76,4 @@ Current baseline:
 - Data and contracts: PostgreSQL migrations, generated schema summary, committed OpenAPI artifact, and contract freshness check.
 - Runtime seams: local/S3-compatible object storage, dedicated log worker runner, simulator/HDC device gateway, deterministic/live Agent provider.
 - Release state: M5 pilot-readiness gate is implemented; external staging, HDC device-lab, backup/restore, rollback, and live provider evidence must still be recorded before calling an environment pilot-ready.
+- Developer docs: `docs/zh-CN/` provides the Chinese developer onboarding and daily reference layer for the key architecture, runtime, quality, security, reliability, and planning topics.

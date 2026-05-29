@@ -22,11 +22,13 @@ This file is the short map for agents working in this repository. Keep it small.
 - `docs/exec-plans/`: active plans, completed plans, and the technical debt tracker.
 - `docs/generated/`: generated or mechanically derived artifacts such as database schema summaries.
 - `docs/references/`: compact reference notes intended for LLM/agent use.
+- `docs/zh-CN/`: Chinese developer onboarding and daily reference for architecture, runtime, quality, security, reliability, and planning.
 - `server/`: M0 backend API, database migration, auth, audit, and shared HTTP/database foundations.
 - `src/`: Vite React frontend, domain types, ports, mock runtime, HTTP client, components, pages, and tests.
 
 ## Documentation Routing
 
+- Chinese developer onboarding: start with `docs/zh-CN/README.md`, then follow its reading order for architecture, frontend, backend/runtime, security/reliability, quality, and planning.
 - Product intent: start with `docs/product-specs/index.md`, then read `docs/product-specs/product-spec.md`.
 - Prototype behavior: read `docs/product-specs/prototype-functional-spec.md`.
 - Architecture: start with `ARCHITECTURE.md`, then `docs/design-docs/full-stack-architecture.md`.
