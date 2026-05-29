@@ -122,3 +122,4 @@ The M3 simulator-backed path implements this boundary for local verification. M3
 - `design-docs/security-governance.md`
 - `design-docs/domain-model.md`
 - `design-docs/api-contract.md`
+- `security/README.md`

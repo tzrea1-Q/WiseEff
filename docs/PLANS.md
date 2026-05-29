@@ -15,7 +15,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
+Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M5.3 documentation system completion, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location. Use `exec-plans/completed/README.md` to interpret completed plans as historical evidence rather than current implementation contracts.
 
 ## Plan Rules
 
@@ -38,4 +38,4 @@ The update gate is blocking: a plan cannot be moved to `completed/` until every 
 
 Future developer-facing changes to architecture, runtime modes, environment variables, API contracts, security, reliability, quality gates, or plan governance must update the relevant `docs/zh-CN/` page or explicitly record why no Chinese developer-doc update is needed.
 
-Run `npm run docs:check` before finishing a non-trivial plan.
+Run `npm run docs:check` before finishing a non-trivial plan. The check also guards key documentation entry points, local markdown links, and required `.env.example` coverage.
