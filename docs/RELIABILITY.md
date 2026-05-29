@@ -96,4 +96,5 @@ Current endpoints:
 
 - `design-docs/deployment-operations.md`
 - `design-docs/testing-strategy.md`
+- `runbooks/README.md`
 - `exec-plans/active/development-roadmap.md`

@@ -10,26 +10,32 @@ Current baseline: M0-M5 productization work is merged. These docs should describ
 
 ## Current Architecture
 
-- [Full-Stack Architecture](full-stack-architecture.md): recommended runtime architecture and module boundaries.
-- [Domain Model](domain-model.md): entities, state machines, and consistency rules.
-- [API Contract](api-contract.md): REST conventions, endpoint shape, error model, Agent/device contracts.
-- [Testing Strategy](testing-strategy.md): test layers, E2E scenarios, contract tests, reliability checks.
-- [Deployment Operations](deployment-operations.md): environments, CI/CD, health checks, monitoring, backup, rollback.
-- [Security Governance](security-governance.md): identity, authorization, audit, Agent safety, device safety, data protection.
+| Status | Document | Purpose |
+| --- | --- | --- |
+| Current | [Full-Stack Architecture](full-stack-architecture.md) | Recommended runtime architecture and module boundaries. |
+| Current | [Domain Model](domain-model.md) | Entities, state machines, and consistency rules. |
+| Current | [API Contract](api-contract.md) | REST conventions, endpoint shape, error model, Agent/device contracts. |
+| Current | [Testing Strategy](testing-strategy.md) | Test layers, E2E scenarios, contract tests, reliability checks. |
+| Current | [Deployment Operations](deployment-operations.md) | Environments, CI/CD, health checks, monitoring, backup, rollback. |
+| Current | [Security Governance](security-governance.md) | Identity, authorization, audit, Agent safety, device safety, data protection. |
 
 ## Historical Feature Designs
 
-- `2026-05-07-light-homepage-color-refresh-design.md`
-- `2026-05-07-parameter-management-homepage-design.md`
-- `2026-05-07-wiseeff-icon-design.md`
-- `2026-05-10-parameter-admin-redesign-design.md`
-- `2026-05-10-parameter-comparison-redesign-design.md`
-- `2026-05-15-node-debugging-design.md`
-- `2026-05-17-user-permissions-design.md`
-- `2026-05-20-project-parameter-initialization-design.md`
-- `2026-05-21-parameter-comparison-modal-design.md`
-- `2026-05-23-parameter-draft-dialog-redesign-design.md`
-- `2026-05-24-parameter-personal-workbench-design.md`
+These are implementation and design history. They are useful context, but current behavior is governed by the current architecture docs, product specs, source code, tests, and generated artifacts.
+
+| Status | Document |
+| --- | --- |
+| Historical | `2026-05-07-light-homepage-color-refresh-design.md` |
+| Historical | `2026-05-07-parameter-management-homepage-design.md` |
+| Historical | `2026-05-07-wiseeff-icon-design.md` |
+| Historical | `2026-05-10-parameter-admin-redesign-design.md` |
+| Historical | `2026-05-10-parameter-comparison-redesign-design.md` |
+| Historical | `2026-05-15-node-debugging-design.md` |
+| Historical | `2026-05-17-user-permissions-design.md` |
+| Historical | `2026-05-20-project-parameter-initialization-design.md` |
+| Historical | `2026-05-21-parameter-comparison-modal-design.md` |
+| Historical | `2026-05-23-parameter-draft-dialog-redesign-design.md` |
+| Historical | `2026-05-24-parameter-personal-workbench-design.md` |
 
 ## Maintenance Rules
 

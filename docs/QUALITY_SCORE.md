@@ -14,7 +14,7 @@ This is a living quality dashboard for WiseEff. Update it when major features la
 | Architecture docs | 8/10 | Full-stack architecture, domain model, API contract, deployment, security, testing docs, M3.5 commercial-readiness plan, and M5 release operations docs. | API contract is now generated/checked from route metadata, but staging/pilot evidence still needs to be recorded. |
 | Security model | 7/10 | RBAC, audit, Agent approval, and device safety are documented and partly represented in code. | Production auth, server-side business permissions, and negative tests need expansion. |
 | Reliability | 7/10 | Deployment and reliability docs exist; `/health/live`, `/health/ready`, and the M5 pilot readiness gate cover the release baseline; M2 has local object storage, job polling, leased jobs, failed records, and rerun support. | Distributed workers, durable object storage, retry/backoff policy, SSE hardening, real gateway observability, production monitoring, and external pilot evidence remain future work. |
-| Harness knowledge base | 8/10 | Docs are indexed and organized into product, design, execution, generated, and reference sections. | Add mechanical link/schema checks later. |
+| Harness knowledge base | 8.5/10 | Docs are indexed and organized into product, design, execution, developer, API, security, runbook, generated, reference, and Chinese developer sections. `docs:check` now guards active plan governance, key docs, local markdown links, and `.env.example` coverage. | Generated schema freshness and deeper doc freshness checks remain future improvements. |
 | Production/pilot evidence | 6/10 | M5 gates exist, PR #39 merged, GitHub CI passed, `docs:check` guards active plan metadata, M5.2 local PostgreSQL-backed API-mode E2E passed, local `/health/ready` is green for database/object store/worker/live Agent health, live Agent chat passed with a longer timeout, and a local PostgreSQL plus local object-store backup/restore drill passed. | Full target-environment staging, HDC device-lab, deployment rollback rehearsal, frontend production-auth token injection, seeded smoke-token identity, cloud S3/OSS evidence, and strict `npm run smoke:m5` remain open. |
 
 ## Required Verification Gates
@@ -32,6 +32,7 @@ For code changes:
 - Run `npm run test:m4` before landing M4 Agent changes in a local or staging environment with PostgreSQL.
 - Run `npm run smoke:m5` and `npm run test:m5` before treating the M5 pilot baseline as complete.
 - Run `npm run docs:check` before completing non-trivial active plans.
+- Run `npm run test:server -- scripts/check-doc-governance.test.ts` when changing documentation governance automation.
 
 ## M2 Coverage
 
@@ -67,6 +68,7 @@ For documentation-only changes:
 
 - Verify file paths and cross-links.
 - Run `npm run docs:check` and `git diff --check`.
+- If the change affects developer setup, verify `.env.example` and `docs/developer/environment-variables.md` stay aligned.
 
 ## Quality Rules
 
