@@ -37,7 +37,7 @@ New WiseEff users should understand where to start, what their role permits, and
 
 ## Prototype Status
 
-The current frontend supports role switching, permission-denied fallbacks, contextual Agent suggestions, and mock workflow actions. M0 backend supports a development auth context endpoint. Full onboarding persistence, invitations, SSO, and production role assignment are future productization work.
+The current frontend supports role switching, permission-denied fallbacks, contextual Agent suggestions, and mock workflow actions. M0-M5 API mode adds governed backend seams for auth context, parameters, logs, debugging, Agent approvals, audit, and pilot readiness. Full onboarding persistence, invitations, SSO/OIDC, and production role assignment remain future productization work.
 
 ## Acceptance Checks
 

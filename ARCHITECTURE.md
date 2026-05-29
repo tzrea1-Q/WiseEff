@@ -2,6 +2,8 @@
 
 WiseEff is organized as a React frontend plus a TypeScript backend foundation. The product direction is a modular monolith API, PostgreSQL persistence, async workers, an isolated device gateway, and a governed Agent layer. The detailed architecture lives in `docs/design-docs/`; this file is the high-level map.
 
+Current baseline: M0-M5 productization work is merged. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, production auth boundary, worker/object-store seams, HDC gateway seam, live Agent provider seam, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
+
 ## Runtime Shape
 
 ```mermaid
@@ -13,9 +15,10 @@ flowchart LR
   Api --> Db["PostgreSQL"]
   Api --> Audit["Audit module"]
   Api --> Auth["Auth/RBAC module"]
-  Api --> Worker["Future worker"]
-  Api --> Agent["Future Agent orchestrator"]
-  Api --> Gateway["Future device gateway"]
+  Api --> Worker["Log worker seam"]
+  Worker --> ObjectStore["Local or S3/OSS object store seam"]
+  Api --> Agent["Agent orchestrator/provider seam"]
+  Api --> Gateway["Simulator or HDC device gateway seam"]
 ```
 
 ## Frontend Boundaries
@@ -41,14 +44,18 @@ Rules:
 - `server/shared/database/`: database client and migration runner.
 - `server/modules/auth/`: current user context, roles, and permissions.
 - `server/modules/audit/`: audit write/query boundary.
+- `server/modules/parameters/`: M1 parameter workflow routes and services.
+- `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
+- `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
+- `server/modules/agent/`: M4 Agent sessions, tools, approvals, and provider boundary.
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
 - `server/migrations/`: SQL schema baseline.
 
-M0 intentionally keeps the backend small. M1+ should add modules without dissolving auth, audit, and database boundaries.
+The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
 
 ## Data And Governance
 
-PostgreSQL is the planned source of truth. The current generated schema summary is `docs/generated/db-schema.md`; the executable migration is `server/migrations/0001_m0_foundation.sql`.
+PostgreSQL is the source of truth. The current generated schema summary is `docs/generated/db-schema.md`; executable migrations live in `server/migrations/`.
 
 All production write paths should follow this pattern:
 

@@ -83,3 +83,4 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 - When a decision becomes durable, add it to the closest doc instead of leaving it only in chat.
 - When a doc becomes stale, update it in the same change that makes it stale.
 - Plans are first-class artifacts: active work belongs in `docs/exec-plans/active/`; completed plans belong in `docs/exec-plans/completed/`.
+- Future active implementation plans must include a Documentation Impact Matrix and Documentation Update Gate as defined in `docs/PLANS.md`; run `npm run docs:check` before marking a plan complete.

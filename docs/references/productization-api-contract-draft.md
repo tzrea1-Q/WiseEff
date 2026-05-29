@@ -4,7 +4,7 @@ Date: 2026-05-16
 
 ## Scope
 
-Backend readiness for frontend productization; current runtime remains mock-backed.
+Backend readiness for frontend productization. This draft is historical; the current M0-M5 baseline has both mock and HTTP API runtimes, with production-oriented paths moving through the API seam.
 
 ## Parameters
 
@@ -99,9 +99,10 @@ Tool Governance: agent tool calls must be scoped by page context, user role, and
 
 - Domain type boundaries exist.
 - Application ports exist.
-- Mock runtime state exists.
+- Mock runtime state exists for demos and tests.
+- HTTP API runtime exists for production-oriented integration.
 - Parameter comparison derivation is available as a domain selector.
 - Parameter comparison has a feature view model.
 - HDC access is wrapped behind `DebuggingGateway`.
-- WiseAgent has a mock `AgentGateway` boundary.
+- WiseAgent has mock and backend Agent gateway boundaries; the backend now owns the live provider seam.
 - DTO mapper skeleton exists for parameter and log records.

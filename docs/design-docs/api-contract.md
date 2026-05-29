@@ -86,6 +86,8 @@ Any PR that changes a route handler, route manifest entry, schema registry entry
 
 The generated contract uses the documented WiseEff error envelope for every operation through `#/components/responses/ErrorResponse`, and the frontend API client must preserve `code`, `message`, `details`, and `requestId` when parsing error responses.
 
+M5.1 documentation governance adds `npm run docs:check` for active plan metadata, but API compatibility still depends on `npm run contract:check` and the OpenAPI tests. Do not treat documentation governance as a substitute for contract freshness.
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

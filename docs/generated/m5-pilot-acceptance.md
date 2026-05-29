@@ -4,6 +4,12 @@ Date: 2026-05-29
 
 This checklist records the M5 commercial-pilot release gate. Local verification can prove the gate structure, but it does not replace staging, device-lab, or backup/restore evidence.
 
+## Merge And CI Evidence
+
+- PR #39, `M5 commercial pilot readiness`, merged on 2026-05-29.
+- GitHub CI `Build and test` completed successfully for the merged M5 branch.
+- This evidence proves repository gates passed; it does not replace staging live API, device-lab, backup/restore, rollback, or live provider evidence.
+
 ## Checklist
 
 - [x] OpenAPI contract artifact is current.

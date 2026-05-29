@@ -15,11 +15,12 @@ WiseEff is an AI-assisted enterprise efficiency platform. The product unifies pa
 
 ## Current Priorities
 
+M0-M5 have moved the prototype workflows behind governed API/runtime seams. Product behavior remains the same unless explicitly changed by a later product plan.
+
 1. Preserve the existing interactive prototype and demo value.
-2. Productize parameter management first: real database, review flow, merge history, and audit.
-3. Add real log analysis tasks after parameter management has a stable backend foundation.
-4. Add governed device debugging through a device gateway and simulator.
-5. Upgrade Agent from frontend rules to backend orchestration with tool approval and audit.
+2. Collect real staging/pilot evidence for the merged M5 baseline.
+3. Keep parameter management, log analysis, debugging, and Agent workflows governed by backend authz, audit, and approval boundaries.
+4. Plan new production-hardening work separately for SSO/OIDC, durable queues, cloud object-store SDK/IaC, generated clients, monitoring, and capacity testing.
 
 ## Maintenance Rules
 

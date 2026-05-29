@@ -1,6 +1,6 @@
 # Quality Score
 
-Date: 2026-05-26
+Date: 2026-05-29
 
 This is a living quality dashboard for WiseEff. Update it when major features land, tests change materially, or a quality gap is closed.
 
@@ -9,12 +9,13 @@ This is a living quality dashboard for WiseEff. Update it when major features la
 | Area | Score | Evidence | Main Gap |
 | --- | ---: | --- | --- |
 | Frontend prototype | 8/10 | Broad Vitest and Testing Library coverage across pages, components, permissions, admin flows, logs, debugging, and Agent UI. | Some workflows remain mock-backed. |
-| Backend M0/M1/M2/M3 foundation | 7.5/10 | TypeScript server skeleton, auth context, audit routes, M1 parameter services, M2 log services/worker, M3 simulator debugging services, CORS preflight support, commercial readiness health checks, route manifest tests, leased jobs/devices, backend tests, API-mode Playwright smokes, and the M5 pilot readiness route plus smoke command. | E2E still requires external PostgreSQL setup, the worker is in-process, debugging still uses a simulator gateway, and staging/pilot evidence is not yet captured in-repo. |
+| Backend M0-M5 foundation | 8/10 | Modular TypeScript API, auth/audit, M1 parameter services, M2 log services/worker, M3 simulator/HDC debugging boundary, M4 Agent orchestration/provider boundary, generated OpenAPI artifact, readiness checks, backend tests, API-mode Playwright smokes, and the M5 pilot readiness route plus smoke command. | E2E still requires external PostgreSQL setup, durable queue/cloud provider wiring remains post-M5 work, and staging/pilot evidence is not yet captured in-repo. |
 | Product specs | 8/10 | Product spec, prototype spec, MVP scope, onboarding spec. | Future user research and acceptance examples should be added as productization continues. |
 | Architecture docs | 8/10 | Full-stack architecture, domain model, API contract, deployment, security, testing docs, M3.5 commercial-readiness plan, and M5 release operations docs. | API contract is now generated/checked from route metadata, but staging/pilot evidence still needs to be recorded. |
 | Security model | 7/10 | RBAC, audit, Agent approval, and device safety are documented and partly represented in code. | Production auth, server-side business permissions, and negative tests need expansion. |
 | Reliability | 7/10 | Deployment and reliability docs exist; `/health/live`, `/health/ready`, and the M5 pilot readiness gate cover the release baseline; M2 has local object storage, job polling, leased jobs, failed records, and rerun support. | Distributed workers, durable object storage, retry/backoff policy, SSE hardening, real gateway observability, production monitoring, and external pilot evidence remain future work. |
 | Harness knowledge base | 8/10 | Docs are indexed and organized into product, design, execution, generated, and reference sections. | Add mechanical link/schema checks later. |
+| Production/pilot evidence | 5/10 | M5 gates exist, PR #39 merged, GitHub CI passed, and `docs:check` now guards active plan documentation metadata. | Staging live API, PostgreSQL-backed E2E, HDC device-lab, backup/restore, rollback, and live provider evidence are not yet recorded. |
 
 ## Required Verification Gates
 
@@ -30,6 +31,7 @@ For code changes:
 - Run `npm run test:m3-5` before treating the M1-M3 API-mode baseline as commercial-readiness complete in a local or staging environment with PostgreSQL.
 - Run `npm run test:m4` before landing M4 Agent changes in a local or staging environment with PostgreSQL.
 - Run `npm run smoke:m5` and `npm run test:m5` before treating the M5 pilot baseline as complete.
+- Run `npm run docs:check` before completing non-trivial active plans.
 
 ## M2 Coverage
 
@@ -64,7 +66,7 @@ Remaining M5 risks: local smoke can prove the release gate structure, but real s
 For documentation-only changes:
 
 - Verify file paths and cross-links.
-- Run `git diff --check`.
+- Run `npm run docs:check` and `git diff --check`.
 
 ## Quality Rules
 

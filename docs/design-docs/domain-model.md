@@ -134,6 +134,7 @@ M2 implementation notes:
 - An unsupported upload creates `LogFileObject` and a terminal failed `LogRecord` without a run or job. The failure reason is preserved on the record.
 - Archive/unarchive updates only `LogRecord.archive_state`; default list queries include only `active` records, and admin queries can request archived records with `includeArchived=true`.
 - Feedback is append-only in `log_feedback` and linked to the log record plus audit event.
+- M5 adds retry/backoff/dead-letter handling and a dedicated worker runner around log-analysis jobs. Object storage can run locally or through the S3/OSS-compatible seam; cloud lifecycle/KMS/provider SDK wiring remains deployment work.
 
 ### 2.5 调试平台
 
@@ -165,6 +166,7 @@ M3 implementation notes:
 - `debugging_node_operations` records detect/read/write/rollback operation status, requested value, previous value, readback value, verification, failure reason, approval id, and snapshot linkage.
 - `debugging_events` records session-level events such as session creation and rollback success/failure.
 - `audit_events` is the cross-domain audit stream for debugging target detection, session creation, node reads, node writes, and snapshot rollback.
+- M5 adds an HDC gateway seam behind the same debugging contract. Simulator/fake-runner tests cover command normalization and failure behavior, while real device-lab evidence remains an acceptance artifact.
 
 ### 2.6 Agent
 
@@ -183,6 +185,7 @@ M4 implementation notes:
 - `AgentToolCall` stores the governed tool name, label, payload, approval requirement, status, result/error, and audit event link.
 - `AgentApproval` stores one approval per approval-required tool call, including requested/decided users, status, reason, and decision timestamps.
 - `AgentRunTrace` stores deterministic provider metadata (`provider`, `model`, `promptVersion`), input/output summaries, tool call ids, and request trace id.
+- M5 extends provider traces with live provider metadata, latency, token usage, estimated cost, safety status/reasons, and fallback reason. The live provider seam is implemented, but pilot evidence still depends on target-environment provider health and safety checks.
 
 Agent approval state machine:
 

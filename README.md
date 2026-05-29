@@ -1,6 +1,8 @@
 # WiseEff
 
-WiseEff（智效）是一个本地运行的前端原型项目，用于演示 AI 辅助的企业业务效率平台。当前项目基于 Vite、React、TypeScript 构建，采用单页应用形态，通过 mock 数据和交互状态展示参数管理、日志分析、参数调试等业务场景。
+WiseEff（智效）是一个 AI 辅助的企业业务效率平台原型，已经从纯前端演示推进到 M0-M5 productization baseline。当前项目包含 Vite/React/TypeScript 前端、mock 与 API 两种 runtime、TypeScript 模块化后端、PostgreSQL 迁移、OpenAPI 合同门禁、生产 auth 边界、worker/object-store seam、HDC gateway seam、live Agent provider seam，以及 admin-gated M5 pilot-readiness 端点。
+
+当前状态适合受控 staging/pilot evidence collection；不能仅凭本地检查宣称 broad enterprise production rollout。真实 pilot-ready 还需要 live API、PostgreSQL-backed E2E、HDC device-lab、backup/restore、rollback 和 live provider evidence。
 
 ## 环境要求
 
@@ -62,10 +64,16 @@ npm run build
 执行 TypeScript 项目检查，并将生产构建产物输出到 `dist/`。
 
 ```bash
+npm run docs:check
+```
+
+Validate that active implementation plans include a documentation impact matrix and update gate.
+
+```bash
 npm run dev:api
 ```
 
-启动 M0 后端 API，默认监听 `http://127.0.0.1:8787`。
+启动 WiseEff 后端 API，默认监听 `http://127.0.0.1:8787`。
 
 ```bash
 npm run db:seed:m2
@@ -231,9 +239,14 @@ src/
   config/power-management.json    可编辑的原型配置数据
   test/setup.ts                   Vitest DOM 测试初始化
 server/
-  app.ts                          M0 后端 API 入口
-  modules/auth                    当前用户、角色和权限上下文
+  app.ts                          后端 API composition
+  modules/auth                    开发/生产身份、角色和权限上下文
   modules/audit                   审计事件写入与查询边界
+  modules/parameters              M1 参数管理 API
+  modules/logs                    M2 日志、对象存储和 worker seam
+  modules/debugging               M3 调试服务、模拟器和 HDC gateway seam
+  modules/agent                   M4 Agent orchestrator/provider/tool boundary
+  modules/operations              health/readiness/pilot-readiness
   migrations                      PostgreSQL SQL 迁移
 
 AGENTS.md                         Agent 工作指南和知识库路由
@@ -267,7 +280,7 @@ docs/                             harness 风格项目知识库
 4. 执行 `npm test` 和 `npm run build` 验证环境。
 5. 执行 `npm run dev`，打开终端输出的本地访问地址。
 
-当前原型默认不依赖外部 API key。连接 M0 API 时需要本地启动后端；后续数据库、设备网关和真实 Agent 接入规划见 `docs/README.md`。
+当前本地 mock runtime 默认不依赖外部 API key。连接 API runtime 时需要本地启动后端并配置 PostgreSQL；真实 HDC、S3/OSS 和 live Agent provider 的 staging/pilot evidence 见 `docs/generated/m5-pilot-acceptance.md` 和 `docs/runbooks/m5-commercial-pilot-readiness.md`。
 
 产品化边界草案见 `docs/references/productization-api-contract-draft.md`。完整产品规格、架构和执行计划分别见 `docs/product-specs/`、`docs/design-docs/` 和 `docs/exec-plans/`。
 

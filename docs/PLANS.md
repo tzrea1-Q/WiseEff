@@ -10,12 +10,11 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Current Active Plan
 
-- `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence.
-- `exec-plans/active/2026-05-28-wiseeff-m5-commercial-pilot-readiness.md`: M5 commercial pilot readiness hardening plan.
+- `exec-plans/active/development-roadmap.md`: M0-M5 productization sequence and post-M5 planning horizon.
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including M0-M4 productization work, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
+Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location.
 
 ## Plan Rules
 
@@ -24,3 +23,16 @@ Completed historical plans are preserved under `exec-plans/completed/`, includin
 - Move finished plans to `completed/` after implementation and verification.
 - If a plan leaves known follow-up work, add it to `tech-debt-tracker.md`.
 - Do not rely on chat history for durable execution details.
+
+## Documentation Governance Rule
+
+Every active implementation plan except `development-roadmap.md` must include:
+
+- `## Documentation Impact Matrix`
+- `## Documentation Update Gate`
+
+The impact matrix must review repository maps, planning docs, product specs, architecture docs, quality/testing docs, reliability/runbooks, security/governance docs, frontend/design docs, generated artifacts, and references. Each row must be marked `Update`, `Review`, or `No change` with exact file paths.
+
+The update gate is blocking: a plan cannot be moved to `completed/` until every `Update` or `Review` row has either been updated or explicitly recorded as unchanged with evidence. Any deferred work must be added to `exec-plans/tech-debt-tracker.md`.
+
+Run `npm run docs:check` before finishing a non-trivial plan.

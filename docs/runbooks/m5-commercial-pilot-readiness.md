@@ -87,6 +87,9 @@ Target guidance:
 
 ## Go / No-Go Checklist
 
+- [ ] Documentation governance check passed with `npm run docs:check`.
+- [ ] Key documentation audit is current in `docs/generated/documentation-governance-audit.md`.
+- [ ] Completed execution plans have been moved to `docs/exec-plans/completed/`.
 - [ ] `npm run contract:check` is current.
 - [ ] `/api/v1/operations/pilot-readiness` returns `status: "pilot_ready"`.
 - [ ] `/health/ready` is green.
