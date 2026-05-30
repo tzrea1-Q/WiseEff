@@ -11,7 +11,7 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 3. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
 4. [Developer Docs](developer/README.md): local setup, environment variables, and verification matrix.
 5. [API Docs](api/README.md): authentication, errors, examples, and OpenAPI contract usage.
-6. [Runbooks](runbooks/README.md): staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
+6. [Runbooks](runbooks/README.md): manual acceptance, staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
 7. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
 8. [Plans](PLANS.md): how active and completed execution plans are managed.
 9. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
@@ -55,6 +55,7 @@ docs/
     audit-retention.md
   runbooks/
     README.md
+    manual-acceptance.md
     m5-commercial-pilot-readiness.md
     staging-deployment.md
     backup-restore.md
@@ -77,6 +78,7 @@ docs/
     backend-runtime.md
     security-reliability.md
     quality-and-plans.md
+    manual-acceptance.md
   references/
     design-system-reference-llms.txt
     nixpacks-llms.txt
@@ -105,4 +107,5 @@ Current baseline:
 - Runtime seams: local/S3-compatible object storage, dedicated log worker runner, simulator/HDC device gateway, deterministic/live Agent provider.
 - Release state: M5 pilot-readiness gate is implemented; external staging, HDC device-lab, backup/restore, rollback, and live provider evidence must still be recorded before calling an environment pilot-ready.
 - Developer docs: `docs/zh-CN/` provides the Chinese developer onboarding and daily reference layer for the key architecture, runtime, quality, security, reliability, and planning topics.
+- Manual acceptance: `docs/runbooks/manual-acceptance.md` provides the human checklist for product workflow acceptance, runtime gates, evidence capture, and Go/No-Go judgment.
 - Documentation checks: `npm run docs:check` validates active plan governance, key doc entry points, local markdown links, and `.env.example` coverage.
