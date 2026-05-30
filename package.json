@@ -8,7 +8,7 @@
     "dev:api": "tsx watch server/index.ts",
     "worker:logs": "tsx server/modules/logs/workerRunner.ts",
     "build": "tsc -b && vite build",
-    "test": "vitest run",
+    "test": "tsx scripts/run-vitest.ts",
     "test:server": "vitest run --config vitest.server.config.ts",
     "test:all": "npm test && npm run test:server",
     "test:e2e": "playwright test",

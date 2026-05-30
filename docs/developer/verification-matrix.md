@@ -15,6 +15,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
 
+`npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
+
 ## Milestone Gates
 
 | Gate | Command | Requires | Use when |
