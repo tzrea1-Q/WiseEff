@@ -192,13 +192,24 @@ Expected:
 
 ## Runtime Health Checks
 
-Run:
+Run on PowerShell:
 
-```bash
-curl -fsS "$WISEEFF_API_BASE_URL/health/live"
-curl -fsS "$WISEEFF_API_BASE_URL/health/ready"
-curl -fsS -H "Authorization: $M5_SMOKE_AUTHORIZATION" "$WISEEFF_API_BASE_URL/api/v1/me"
-curl -fsS -H "Authorization: $M5_SMOKE_AUTHORIZATION" "$WISEEFF_API_BASE_URL/api/v1/operations/pilot-readiness"
+```powershell
+$headers = @{ Authorization = $env:M5_SMOKE_AUTHORIZATION }
+
+Invoke-RestMethod -Uri "$env:WISEEFF_API_BASE_URL/health/live"
+Invoke-RestMethod -Uri "$env:WISEEFF_API_BASE_URL/health/ready"
+Invoke-RestMethod -Headers $headers -Uri "$env:WISEEFF_API_BASE_URL/api/v1/me"
+Invoke-RestMethod -Headers $headers -Uri "$env:WISEEFF_API_BASE_URL/api/v1/operations/pilot-readiness"
+```
+
+Alternatively, call the real Windows curl binary explicitly. In PowerShell, `curl` by itself is an alias for `Invoke-WebRequest`, so Unix flags such as `-fsS` and `-H "Header: value"` will not work unless you use `curl.exe`:
+
+```powershell
+curl.exe -fsS "$env:WISEEFF_API_BASE_URL/health/live"
+curl.exe -fsS "$env:WISEEFF_API_BASE_URL/health/ready"
+curl.exe -fsS -H "Authorization: $env:M5_SMOKE_AUTHORIZATION" "$env:WISEEFF_API_BASE_URL/api/v1/me"
+curl.exe -fsS -H "Authorization: $env:M5_SMOKE_AUTHORIZATION" "$env:WISEEFF_API_BASE_URL/api/v1/operations/pilot-readiness"
 ```
 
 Expected:
