@@ -2,8 +2,8 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { Client } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
-const apiBaseUrl = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
 const analysisQuestion = "Why did fast charging fold back?";
@@ -122,7 +122,10 @@ async function seedM2AdminUser(client: Client) {
 }
 
 async function latestLogByFile(page: Page, fileName: string) {
-  const response = await page.request.get(`${apiBaseUrl}/api/v1/logs?projectId=${projectId}&includeArchived=true`);
+  const response = await page.request.get(
+    apiRoute(`/api/v1/logs?projectId=${projectId}&includeArchived=true`),
+    { headers: smokeHeaders() }
+  );
   expect(response.ok()).toBe(true);
   const body = (await response.json()) as {
     items: Array<{ id: string; fileName: string; status: string; archiveState?: string; failureReason?: string | null }>;
@@ -198,7 +201,7 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
   await page.locator('button:has(svg[class*="lucide-thumbs-up"])').click();
   await expect
     .poll(async () => {
-      const response = await page.request.get(`${apiBaseUrl}/api/v1/audit-events`);
+      const response = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
       const body = (await response.json()) as { items: Array<{ kind: string; targetId: string | null }> };
       return body.items.some((item) => item.kind === "log-feedback" && item.targetId === completedLog.id);
     })
@@ -212,7 +215,9 @@ test("M2 log analysis upload, evidence, feedback, archive, and unsupported failu
   await page.goto(`/logs?project=${projectId}`);
   await page.reload();
   await expect(historyItem(page, supportedFileName)).toHaveCount(0);
-  const activeLogs = await page.request.get(`${apiBaseUrl}/api/v1/logs?projectId=${projectId}`);
+  const activeLogs = await page.request.get(apiRoute(`/api/v1/logs?projectId=${projectId}`), {
+    headers: smokeHeaders()
+  });
   const activeBody = (await activeLogs.json()) as { items: Array<{ fileName: string }> };
   expect(activeBody.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ fileName: supportedFileName })]));
 

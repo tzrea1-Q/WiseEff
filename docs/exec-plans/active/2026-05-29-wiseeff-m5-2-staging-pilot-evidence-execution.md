@@ -43,16 +43,19 @@ Completed locally:
 - Ran local PostgreSQL-backed API-mode E2E for parameter management, log analysis, debugging simulator, and Agent flows: 6 passed, 1 HDC device-lab test skipped.
 - Ran focused frontend and server regressions for the DB-gated fixes.
 - Recorded local gate evidence and external-environment blockers in `docs/generated/m5-pilot-acceptance.md`.
+- On 2026-05-30, after `.env` was completed for local validation, reran local DB setup, local non-HDC live smoke, local live API preflight, local browser acceptance, and local production-auth API-mode E2E. The evidence is recorded in `docs/generated/m5-pilot-acceptance.md`. These checks strengthen local readiness evidence but do not satisfy this plan's staging/HDC/cloud/rollback success criteria.
 
 Blocked pending target-environment inputs:
 
-- Staging `DATABASE_URL`.
-- Staging live API URL.
-- Production-mode HMAC auth issuer/secret and signed admin smoke token.
+- Staging or target `DATABASE_URL`.
+- Staging or target live API URL.
+- Production-mode staging auth issuer/secret and signed admin smoke token.
 - S3/OSS-compatible object storage endpoint, bucket, and credentials.
 - HDC device-lab runtime plus `HDC_SMOKE_*` safe target values.
-- Live Agent provider model, API key, base URL, and safe outage-simulation window.
+- Staging live Agent provider model, API key, base URL, and safe outage-simulation window.
 - Backup target, restore target, and rollback rehearsal window.
+
+Completion decision, 2026-05-30: keep this plan in `docs/exec-plans/active/`. Full staging pilot evidence has not been captured; TD-019 must remain open.
 
 ## Success Criteria
 

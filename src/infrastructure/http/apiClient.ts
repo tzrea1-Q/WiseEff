@@ -12,6 +12,7 @@ export class WiseEffApiError extends Error {
 
 type ApiClientOptions = {
   baseUrl: string;
+  authorization?: string;
   fetchImpl?: typeof fetch;
 };
 
@@ -20,7 +21,11 @@ async function parseJson(response: Response) {
   return text ? JSON.parse(text) : null;
 }
 
-export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions) {
+export function createApiClient({ baseUrl, authorization, fetchImpl = fetch }: ApiClientOptions) {
+  function headers(input: Record<string, string>) {
+    return authorization?.trim() ? { ...input, Authorization: authorization } : input;
+  }
+
   async function request<T>(path: string, init: RequestInit): Promise<T> {
     const response = await fetchImpl(`${baseUrl}${path}`, init);
     const body = await parseJson(response);
@@ -37,24 +42,24 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
     get: <T>(path: string) =>
       request<T>(path, {
         method: "GET",
-        headers: { Accept: "application/json" }
+        headers: headers({ Accept: "application/json" })
       }),
     post: <T>(path: string, body: unknown) =>
       request<T>(path, {
         method: "POST",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        headers: headers({ Accept: "application/json", "Content-Type": "application/json" }),
         body: JSON.stringify(body)
       }),
     put: <T>(path: string, body: unknown) =>
       request<T>(path, {
         method: "PUT",
-        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        headers: headers({ Accept: "application/json", "Content-Type": "application/json" }),
         body: JSON.stringify(body)
       }),
     delete: <T>(path: string) =>
       request<T>(path, {
         method: "DELETE",
-        headers: { Accept: "application/json" }
+        headers: headers({ Accept: "application/json" })
       }),
     upload: <T>(path: string, file: File, fields: Record<string, string> = {}) => {
       const formData = new FormData();
@@ -65,7 +70,7 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
 
       return request<T>(path, {
         method: "POST",
-        headers: { Accept: "application/json" },
+        headers: headers({ Accept: "application/json" }),
         body: formData
       });
     }

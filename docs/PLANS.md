@@ -40,3 +40,9 @@ The update gate is blocking: a plan cannot be moved to `completed/` until every 
 Future developer-facing changes to architecture, runtime modes, environment variables, API contracts, security, reliability, quality gates, or plan governance must update the relevant `docs/zh-CN/` page or explicitly record why no Chinese developer-doc update is needed.
 
 Run `npm run docs:check` before finishing a non-trivial plan. The check also guards key documentation entry points, local markdown links, and required `.env.example` coverage.
+
+## UI Interaction Automation Rule
+
+After M5.4 lands, any implementation plan that changes user-facing interaction behavior must review browser acceptance coverage. This applies to route changes, forms, tables, filters, uploads, modals, drawers, approvals, navigation, frontend API clients, backend API responses that drive visible UI state, permissions, Agent actions, and device actions initiated from the UI.
+
+The plan must name the affected `e2e/acceptance/` spec and either add/update automated coverage or record why the existing browser acceptance automation already covers the change. A plan cannot be moved to `completed/` when UI-interaction behavior changed but browser acceptance coverage was not reviewed.

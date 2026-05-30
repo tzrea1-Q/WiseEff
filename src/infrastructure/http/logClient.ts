@@ -14,7 +14,7 @@ import {
   type LogJobDto,
   type LogRecordDto
 } from "./logDtos";
-import { wiseEffApiBaseUrl } from "./runtimeMode";
+import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "./runtimeMode";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
@@ -97,7 +97,7 @@ export function createHttpLogAnalysisRepository(
   options: HttpLogAnalysisRepositoryOptions = {}
 ): LogAnalysisRepository {
   const baseUrl = options.baseUrl ?? wiseEffApiBaseUrl;
-  const apiClient = options.apiClient ?? createApiClient({ baseUrl });
+  const apiClient = options.apiClient ?? createApiClient({ baseUrl, authorization: wiseEffApiAuthorization });
 
   const repository: LogAnalysisRepository = {
     async listLogs(query?: LogListQuery) {

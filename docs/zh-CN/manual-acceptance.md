@@ -67,6 +67,24 @@
 
 ## 4. 验收前准备
 
+前 6 步可以通过本地非 HDC preflight 自动化：
+
+```bash
+npm run acceptance:preflight
+```
+
+该命令会加载 `.env`，记录 branch/commit/worktree 状态，为 localhost URL 自动启动缺失的本地 API/frontend runtime，并保留这些服务供后续浏览器验收使用；随后运行仓库门禁，检查 API health、`/api/v1/me` 和 pilot-readiness。本地非 HDC 验收允许 `deviceGateway` 是唯一 blocker；如果脚本自动启动本地 deterministic Agent provider，也允许 `deviceGateway` 加 `agentProvider` 同时 blocked。目标环境和完整 pilot 模式仍保持严格。门禁已经通过后，如需快速重跑 API 检查，可以使用 `npm run acceptance:preflight -- --skip-gates`。
+
+`--` 之后可追加参数：
+
+- `--skip-gates`：跳过 docs、contract、unit、build 和 whitespace gates。
+- `--skip-frontend`：跳过前端 URL 检查。
+- `--no-start-runtime`：只探测已经运行的服务，适用于 staging 或外部托管 runtime。
+- `--require-pilot-ready`：要求 pilot-readiness 必须返回 `pilot_ready`。
+- `--evidence-out <path>`：将 preflight 证据 markdown 写入指定文件。
+
+脚本同时兼容 Windows/npm 的 `npm_config_*` 参数映射；即使 npm 将 `--skip-gates` 转成 `npm_config_skip_gates=true`，上述命令仍会生效。
+
 ### 4.1 仓库状态
 
 运行：
@@ -230,11 +248,33 @@ curl.exe -fsS -H "Authorization: $env:M5_SMOKE_AUTHORIZATION" "$env:WISEEFF_API_
 - production-auth 下 `/api/v1/me` 返回预期 admin 身份。
 - `/api/v1/operations/pilot-readiness` 返回 `pilot_ready` 或诚实的 `blocked` 原因。
 
-本地非 HDC 验收中，`deviceGateway` 可以是唯一 blocker；这不能算完整 pilot-ready。
+本地非 HDC 验收中，`deviceGateway` 可以是唯一 blocker；如果 preflight 自动启动本地 deterministic Agent provider，`agentProvider` 也可以同时 blocked。这两种情况都不能算完整 pilot-ready。
+
+如果要验证严格的目标环境 pilot-ready，运行：
+
+```bash
+npm run acceptance:preflight -- --require-pilot-ready
+```
+
+只要 `/api/v1/operations/pilot-readiness` 不是 `pilot_ready`，该命令就会失败。
+
+## 6.5 自动化浏览器验收
+
+下面的浏览器工作流可以先通过确定性的 Playwright 验收套件自动执行：
+
+```bash
+npm run acceptance:browser
+npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
+npm run acceptance:browser -- --mode full-pilot --no-start-runtime
+```
+
+`npm run acceptance:browser` 会运行 preflight、执行 `npm run acceptance:e2e`，并把证据写入 `docs/generated/acceptance-browser-evidence.md`。证据表会按 A-H 对应人工验收流程，并引用 `playwright-report/acceptance/index.html`、`test-results/acceptance/results.json` 和 `test-results/acceptance/`。非 HDC 模式要求 A-E、G、H 通过；只有 HDC 明确不在范围内时，F 才可以 skipped。
+
+仍然需要人工复核的内容包括：存在主观判断的视觉问题、真实 HDC 安全审批、backup/restore、rollback rehearsal、外部证据附件，以及尚未被自动化证据覆盖的流程。
 
 ## 7. 浏览器人工验收
 
-建议使用 Codex in-app browser 或 Chromium。每个失败项都要记录截图、URL、操作步骤和期望/实际结果。
+建议先运行自动化浏览器验收，再使用 Codex in-app browser 或 Chromium 处理剩余的人工判断。每个失败项都要记录截图、URL、操作步骤和期望/实际结果。
 
 ### 7.1 应用外壳与导航
 
@@ -391,7 +431,7 @@ HDC_SMOKE_EXPECT_READ_PATTERN=
 运行：
 
 ```bash
-npm run test:e2e -- e2e/debugging.api.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/hdc-device-lab.acceptance.spec.ts
 ```
 
 检查：
@@ -464,6 +504,7 @@ npm run test:e2e -- e2e/parameter-management.api.spec.ts
 npm run test:e2e -- e2e/log-analysis.api.spec.ts
 npm run test:e2e -- e2e/debugging.api.spec.ts
 npm run test:e2e -- e2e/agent.api.spec.ts
+npm run acceptance:browser
 npm run smoke:m5
 ```
 
@@ -472,7 +513,7 @@ npm run smoke:m5
 - API-mode E2E 通过。
 - HDC 项只有在明确不在范围内时才允许 skip。
 - 严格 `npm run smoke:m5` 只有在 live API 和所有 pilot gate 就绪时才应通过。
-- 非 HDC 目标环境验收如使用允许 `deviceGateway` 为唯一 blocker 的 smoke 模式，必须明确记录“不能宣称完整 pilot-ready”。
+- 非 HDC 目标环境验收必须明确 HDC skipped 或 absent，并记录“不能宣称完整 pilot-ready”。
 
 ## 9. 备份恢复验收
 

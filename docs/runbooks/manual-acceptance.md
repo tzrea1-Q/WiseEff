@@ -68,6 +68,24 @@ This review does not replace:
 
 ## Pre-Flight Checklist
 
+Steps through runtime health checks can be automated for local non-HDC acceptance:
+
+```bash
+npm run acceptance:preflight
+```
+
+This command loads `.env`, records branch/commit/worktree state, starts missing local API/frontend runtime services for localhost URLs and leaves them running for browser acceptance, runs the repository gates, checks the API health endpoints, verifies `/api/v1/me`, and accepts local non-HDC readiness when `deviceGateway` is the only blocker. When the script starts the local deterministic Agent provider, it may also accept `deviceGateway` plus `agentProvider`; target and full-pilot modes remain strict. Use `npm run acceptance:preflight -- --skip-gates` for a faster API-only rerun after the gates already passed.
+
+Optional flags after `--`:
+
+- `--skip-gates`: skip docs, contract, unit, build, and whitespace gates.
+- `--skip-frontend`: skip the frontend URL check.
+- `--no-start-runtime`: only probe already-running services; useful for staging or externally managed runtimes.
+- `--require-pilot-ready`: fail unless pilot-readiness returns `pilot_ready`.
+- `--evidence-out <path>`: write the generated preflight evidence markdown to a file.
+
+The script also honors npm's `npm_config_*` flag mapping on Windows, so the same examples work when npm converts `--skip-gates` into `npm_config_skip_gates=true`.
+
 ### Repository State
 
 Run:
@@ -232,11 +250,33 @@ Expected:
 - `/api/v1/me` returns the expected admin identity in production-auth mode.
 - `/api/v1/operations/pilot-readiness` returns either `pilot_ready` or an honest `blocked` response with actionable reasons.
 
-For local non-HDC review, `deviceGateway` may remain the only blocked gate. Record that this is not full pilot-ready evidence.
+For local non-HDC review, `deviceGateway` may remain the only blocked gate. If preflight auto-starts the local deterministic Agent provider, `agentProvider` may also remain blocked. Record that either case is local non-HDC evidence, not full pilot-ready evidence.
+
+For strict target-environment pilot evidence, run:
+
+```bash
+npm run acceptance:preflight -- --require-pilot-ready
+```
+
+This fails if `/api/v1/operations/pilot-readiness` is not `pilot_ready`.
+
+## Automated Browser Acceptance
+
+The browser workflow section below can be exercised by the deterministic Playwright acceptance suite:
+
+```bash
+npm run acceptance:browser
+npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
+npm run acceptance:browser -- --mode full-pilot --no-start-runtime
+```
+
+`npm run acceptance:browser` runs preflight, runs `npm run acceptance:e2e`, and writes generated evidence to `docs/generated/acceptance-browser-evidence.md`. The evidence table maps directly to manual flows A-H and links to `playwright-report/acceptance/index.html`, `test-results/acceptance/results.json`, and `test-results/acceptance/`. Non-HDC modes require workflows A-E, G, and H to pass; HDC flow F may be skipped only when HDC is explicitly out of scope.
+
+Manual review is still required for ambiguous visual judgment, real HDC safety approval, backup/restore, rollback rehearsal, external evidence attachments, and any acceptance flow that is not yet represented in the generated browser evidence.
 
 ## Browser Workflow Acceptance
 
-Use the in-app browser or another Chromium browser. Capture screenshots or notes for each failed item.
+Prefer the automated browser acceptance command first, then use the in-app browser or another Chromium browser for any remaining manual judgment. Capture screenshots or notes for each failed item.
 
 ### A. Shell, Navigation, And Access
 
@@ -394,7 +434,7 @@ HDC_SMOKE_EXPECT_READ_PATTERN=
 Run:
 
 ```bash
-npm run test:e2e -- e2e/debugging.api.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/hdc-device-lab.acceptance.spec.ts
 ```
 
 Checklist:
@@ -472,6 +512,7 @@ npm run test:e2e -- e2e/agent.api.spec.ts
 Then run:
 
 ```bash
+npm run acceptance:browser
 npm run smoke:m5
 ```
 
@@ -479,7 +520,7 @@ Expected:
 
 - E2E tests pass, except HDC-specific checks may be skipped only when HDC is explicitly out of scope.
 - Strict `npm run smoke:m5` passes only when the live API and all required pilot gates are ready.
-- For non-HDC target acceptance, a dedicated non-HDC smoke mode may be used only if it clearly accepts `deviceGateway` as the sole blocked gate and documents that full pilot readiness is not claimed.
+- For non-HDC target acceptance, a dedicated non-HDC smoke mode may be used only if HDC is explicitly skipped or absent and the evidence documents that full pilot readiness is not claimed.
 
 ## Backup And Restore Acceptance
 

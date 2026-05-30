@@ -24,7 +24,7 @@ import {
   type ParameterSubmissionRoundDto,
   type ProjectDto
 } from "./parameterDtos";
-import { wiseEffApiBaseUrl } from "./runtimeMode";
+import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "./runtimeMode";
 
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
@@ -97,7 +97,7 @@ function applyImportBody(input: ApplyParameterImportBatchInput) {
   };
 }
 
-export function createHttpParameterRepository(apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl })): ParameterRepository {
+export function createHttpParameterRepository(apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl, authorization: wiseEffApiAuthorization })): ParameterRepository {
   return {
     async listProjects() {
       const response = await apiClient.get<ItemsEnvelope<ProjectDto>>("/api/v1/projects");

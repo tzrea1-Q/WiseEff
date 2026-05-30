@@ -28,7 +28,10 @@ This plan excludes:
 
 ## Execution Status
 
-Current local execution attempt: 2026-05-29 on branch `codex/m5-2-non-hdc-evidence-closure`, commit `5018764`.
+Current execution attempts:
+
+- 2026-05-29 on branch `codex/m5-2-non-hdc-evidence-closure`, commit `5018764`.
+- 2026-05-30 on branch `codex/manual-acceptance-guide`, commit `bd583cf3a80f98b1487f88f91f2bafdb5b2bf574`, after `.env` was completed for local non-HDC validation.
 
 Completed locally after `.env` was populated:
 
@@ -36,20 +39,27 @@ Completed locally after `.env` was populated:
 - Ran repository gates: `npm run test:all` with `VITE_WISEEFF_RUNTIME_MODE=mock`, `npm run docs:check`, `npm run contract:check`, `npm run build`, and `git diff --check`.
 - Ran database setup: `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, `npm run db:seed:m2`, and `npm run db:seed:m3`.
 - Ran standard local API-mode M1-M4 E2E with the populated database/object-store settings and development-auth validation mode: 6 passed, 1 HDC device-lab test skipped.
-- Verified production auth behavior: `/api/v1/me` accepts the signed smoke token and rejects missing bearer auth; full frontend API-mode E2E fails under production auth because frontend API clients do not inject bearer authorization.
+- Verified production auth behavior: `/api/v1/me` accepts the signed smoke token and rejects missing bearer auth; the 2026-05-30 local production-auth API-mode E2E passed after the frontend HTTP clients and direct E2E API assertions used the configured smoke bearer authorization.
 - Verified local `/health/ready` with database, local object store, worker queue, and live Agent provider health all ready.
 - Verified live Agent chat through the OpenAI-compatible provider after increasing `AGENT_API_TIMEOUT_MS` to 30000 for the local API process; the trace recorded live provider, token usage, safe status, and no fallback.
 - Ran a local PostgreSQL custom dump and restore drill through the `wiseeff-postgres` Docker container into a temporary restore database, validated restored table counts, then dropped the temporary database.
 - Copied the local object-store directory through `.wiseeff-backups/` and `.wiseeff-restore/`.
 - With `M5_BACKUP_RESTORE_DRILL_AT` set on the local API process, `/api/v1/operations/pilot-readiness` was blocked only by `deviceGateway`.
+- On 2026-05-30, reran local DB setup with the completed `.env`: `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, `npm run db:seed:m2`, and `npm run db:seed:m3` all passed.
+- On 2026-05-30, `npm run smoke:m5 -- --allow-only-blocked=deviceGateway` passed against the local live API runtime; database, local object store, worker queue, live Agent provider, auth, contract, and backup gates were ready, and only `deviceGateway` remained blocked.
+- On 2026-05-30, focused live API preflight passed with `npx tsx -- scripts/run-acceptance-preflight.ts --no-start-runtime --skip-gates --skip-frontend --evidence-out test-results/acceptance/live-api-preflight-evidence.md`.
+- On 2026-05-30, `npm run acceptance:browser` passed in local non-HDC mode: 16 passed and 1 HDC device-lab test skipped. This deterministic-Agent browser suite records stable UI workflow evidence, while live Agent readiness remains covered by smoke/preflight.
+- On 2026-05-30, production-auth API-mode E2E passed locally with `VITE_WISEEFF_API_AUTHORIZATION` and `AGENT_PROVIDER=deterministic`: 6 passed and 1 HDC device-lab test skipped.
 
 Still open:
 
 - HDC device-lab evidence is not available because `HDC_DEVICE_LAB_AVAILABLE` and `HDC_SMOKE_*` are not configured.
 - Strict `npm run smoke:m5` still fails because pilot readiness requires HDC device-gateway evidence.
 - Deployment rollback rehearsal is not complete; local backup/restore does not replace platform rollback evidence.
-- Frontend production-auth API mode needs bearer-token injection before production-auth UI E2E can pass.
-- The local smoke token subject must map to a seeded/provisioned database user before FK-backed write routes can be used with that token. The local `.env` and `.env.example` have been corrected to use `u-xu-yun`; existing local `.env` files copied before that fix may need the same replacement.
+- Target-environment evidence is still missing: deployed staging API/web/worker, target PostgreSQL, cloud or approved target object storage, target backup/restore, target rollback, and target identity/user provisioning.
+- Dynamic production identity is not complete; local production-auth E2E now uses a static smoke bearer token, while target environments still need provisioned users or an OIDC/SSO-backed token lifecycle.
+
+Completion decision, 2026-05-30: keep this plan in `docs/exec-plans/active/`. The local non-HDC evidence is stronger now, but the plan goal is target-environment closure; target deployment, target backup/restore, and deployment rollback evidence have not been captured.
 
 ## Required External Inputs From The User
 
