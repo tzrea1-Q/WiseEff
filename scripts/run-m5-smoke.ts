@@ -1,7 +1,18 @@
 import { spawnSync } from "node:child_process";
-import { canSkipWithoutApi, resolveApiBaseUrl, resolveHeaders, type M5SmokeEnv } from "./run-m5-smoke.shared";
+import { existsSync, readFileSync } from "node:fs";
+import {
+  canAcceptPilotReadiness,
+  canSkipWithoutApi,
+  loadEnvContent,
+  parseAllowedBlockedGates,
+  resolveApiBaseUrl,
+  resolveHeaders,
+  type M5SmokeEnv
+} from "./run-m5-smoke.shared";
 
 type JsonValue = Record<string, unknown> | string | number | boolean | null;
+
+const runtimeEnv = existsSync(".env") ? loadEnvContent(readFileSync(".env", "utf8"), process.env) : process.env;
 
 function runCommand(command: string, args: string[]) {
   const result = spawnSync(command, args, {
@@ -15,7 +26,7 @@ function runCommand(command: string, args: string[]) {
 }
 
 async function requestJson(baseUrl: string, path: string): Promise<{ status: number; body: JsonValue }> {
-  const response = await fetch(`${baseUrl}${path}`, { headers: resolveHeaders(process.env as M5SmokeEnv) });
+  const response = await fetch(`${baseUrl}${path}`, { headers: resolveHeaders(runtimeEnv as M5SmokeEnv) });
   const text = await response.text();
   let body: JsonValue = null;
 
@@ -45,10 +56,11 @@ async function ensureOk(baseUrl: string, path: string, label: string) {
 
 async function main() {
   runCommand("npm", ["run", "contract:check"]);
+  const allowedBlockedGates = parseAllowedBlockedGates(process.argv.slice(2), runtimeEnv);
 
-  const baseUrl = resolveApiBaseUrl(process.env as M5SmokeEnv);
+  const baseUrl = resolveApiBaseUrl(runtimeEnv as M5SmokeEnv);
   if (!baseUrl) {
-    if (canSkipWithoutApi(process.env as M5SmokeEnv, process.argv.slice(2))) {
+    if (canSkipWithoutApi(runtimeEnv as M5SmokeEnv, process.argv.slice(2))) {
       console.log("Skipping M5 smoke: set WISEEFF_API_BASE_URL or VITE_WISEEFF_API_BASE_URL to probe a live API.");
       return;
     }
@@ -66,11 +78,15 @@ async function main() {
   }
 
   const pilotBody = pilot as Record<string, unknown>;
-  if (pilotBody.ok !== true || pilotBody.status !== "pilot_ready") {
+  if (!canAcceptPilotReadiness(pilotBody, allowedBlockedGates)) {
     throw new Error(`/api/v1/operations/pilot-readiness is blocked:\n${describeBody(pilot)}`);
   }
 
-  console.log("M5 smoke passed.");
+  if (pilotBody.status === "blocked") {
+    console.log(`M5 smoke passed with allowed blocked gates: ${allowedBlockedGates.join(", ")}.`);
+  } else {
+    console.log("M5 smoke passed.");
+  }
   console.log(JSON.stringify({ live, ready, pilot }, null, 2));
 }
 

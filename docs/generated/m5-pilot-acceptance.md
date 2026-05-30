@@ -71,11 +71,25 @@ Commit: `5018764`
 - With `M5_BACKUP_RESTORE_DRILL_AT=2026-05-29T18:52:34+08:00` set on the local API process, `/api/v1/operations/pilot-readiness` was blocked only by `deviceGateway`.
 - `npm run smoke:m5` still failed, as designed, because strict pilot readiness requires HDC device-gateway evidence and the local process runs `DEBUG_DEVICE_GATEWAY_MODE=simulator`.
 
+### Local Non-HDC Revalidation After `.env` Completion
+
+Date: 2026-05-30T21:42:15+08:00
+Environment: local `.env` with PostgreSQL, production-mode HMAC auth, local object store, simulator device gateway, OpenAI-compatible live Agent provider, and local backup/restore timestamp. This remains local non-HDC evidence, not external staging, cloud object-store, hardware-lab, or deployment rollback evidence.
+Branch: `codex/manual-acceptance-guide`
+Commit: `bd583cf3a80f98b1487f88f91f2bafdb5b2bf574`
+
+- `.env` inventory was rechecked without printing secrets. Database/API/auth/smoke token/local object store/live Agent/simulator gateway/local backup timestamp were present. Cloud S3/OSS credentials and HDC smoke variables were still absent.
+- `npm run db:migrate`, `npm run db:seed:m0`, `npm run db:seed:m1`, `npm run db:seed:m2`, and `npm run db:seed:m3` passed against the local PostgreSQL database.
+- `npm run smoke:m5 -- --allow-only-blocked=deviceGateway` passed against the local live API runtime. `/health/live` and `/health/ready` returned ready; database, local object store, worker queue, live Agent provider, auth, contract, and backup gates were ready; `/api/v1/operations/pilot-readiness` remained blocked only by `deviceGateway`.
+- `npx tsx -- scripts/run-acceptance-preflight.ts --no-start-runtime --skip-gates --skip-frontend --evidence-out test-results/acceptance/live-api-preflight-evidence.md` passed against the local live API runtime. Health, readiness, current user, and non-HDC pilot readiness passed; gates and frontend were intentionally skipped for this focused live API probe.
+- `npm run acceptance:browser` passed in local non-HDC browser automation mode: 16 passed and 1 HDC device-lab test skipped. Evidence was regenerated at `docs/generated/acceptance-browser-evidence.md`. This browser suite uses the deterministic Agent provider for stable UI approval-flow assertions; live Agent readiness is covered by the live smoke/preflight evidence above.
+- `npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts e2e/debugging.api.spec.ts e2e/agent.api.spec.ts` passed with production-mode HMAC auth, `VITE_WISEEFF_API_AUTHORIZATION` set from the smoke token, and `AGENT_PROVIDER=deterministic`: 6 passed and 1 HDC device-lab test skipped. The legacy E2E direct API assertions were updated to send the same smoke authorization headers as the UI runtime, closing the previous local static-bearer production-auth E2E gap.
+- Strict `npm run smoke:m5` is still expected to fail for this local environment unless `--allow-only-blocked=deviceGateway` is provided, because simulator device gateway mode is not accepted as full pilot readiness.
+
 ### M5.2 Blockers
 
 - External staging deployment evidence is still required before this environment can be called pilot-ready: deployed staging API/web/worker, target-environment PostgreSQL E2E, HDC device-lab smoke, cloud S3/OSS or explicitly approved local object-store policy, and rollback rehearsal.
-- Frontend production-auth API mode is not closed: the backend correctly requires bearer auth, but the frontend HTTP client does not yet attach a production token to business requests.
-- The initial local `.env` used for this validation had a smoke-token subject that is not seeded as a database user; direct Agent session creation with that token can hit database foreign-key failures. A seeded admin subject such as `u-xu-yun` works when signed with the same local issuer/secret. The local `.env` and `.env.example` were corrected to use that seeded subject after this finding.
+- Target production-auth identity remains a deployment responsibility: the local static bearer-token path is now verified, but staging/prod still need provisioned users or an identity provider-backed token lifecycle.
 - HDC device-lab evidence remains missing because `HDC_DEVICE_LAB_AVAILABLE` and the required `HDC_SMOKE_*` values were not configured.
 - Target-environment rollback rehearsal remains unrun; the local backup/restore drill above does not replace deployment rollback evidence.
 
@@ -105,9 +119,10 @@ Commit: `5018764`
 ## External Checks Not Run Locally
 
 - External staging PostgreSQL-backed API-mode Playwright E2E.
-- Live API smoke against a running API URL.
+- Live API smoke against a deployed target/staging API URL.
+- Cloud S3/OSS object-store readiness and backup evidence.
 - Device-lab HDC smoke.
-- Backup/restore drill.
+- Target-environment backup/restore drill.
 - Staging deployment smoke and rollback rehearsal.
 - Live Agent provider staging evidence.
 

@@ -17,6 +17,21 @@ describe("createApiClient", () => {
     });
   });
 
+  it("adds an authorization header when configured", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8787",
+      authorization: "Bearer test-token",
+      fetchImpl: fetchMock
+    });
+
+    await expect(client.get("/api/v1/me")).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/me", {
+      headers: { Accept: "application/json", Authorization: "Bearer test-token" },
+      method: "GET"
+    });
+  });
+
   it("sends DELETE requests with JSON accept headers", async () => {
     const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });

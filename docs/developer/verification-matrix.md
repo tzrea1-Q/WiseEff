@@ -14,6 +14,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
+| `npm run acceptance:e2e` | Deterministic browser acceptance A-H flows | UI-interaction frontend/backend logic changes in API mode. |
+| `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 
 `npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
 
@@ -27,7 +29,23 @@ Use the narrowest command that proves the change while developing. Before finish
 | M3.5 commercial readiness | `npm run test:m3-5` | PostgreSQL, object-store root, simulator gateway | Readiness, production config, leases, request/audit correlation. |
 | M4 Agent | `npm run test:m4` | PostgreSQL, M0/M1 seeds | Agent API, tool, approval, provider, or frontend Agent changes. |
 | M5 smoke | `npm run smoke:m5` | Live API URL by default; admin smoke token for pilot-readiness | Operations smoke against a running API. |
+| Manual acceptance preflight | `npm run acceptance:preflight` | `.env`, running API, worker, frontend, PostgreSQL/object store dependencies | Automates manual acceptance steps through runtime health checks. |
+| Browser acceptance | `npm run acceptance:browser` | `.env`, API-mode frontend/backend, PostgreSQL, object store, worker dependencies | Automates manual browser workflows A-H and writes generated evidence. |
 | M5 full pilot gate | `npm run test:m5` | PostgreSQL, live API, and target evidence inputs | Before claiming commercial pilot baseline in an environment. |
+
+## UI Interaction Acceptance Rule
+
+Any change that alters user-facing interaction behavior must review the browser acceptance suite under `e2e/acceptance/`. The implementation plan or PR notes must name the affected acceptance spec and either update it or record why existing coverage still applies.
+
+Use these modes:
+
+```bash
+npm run acceptance:browser
+npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
+npm run acceptance:browser -- --mode full-pilot --no-start-runtime
+```
+
+The generated evidence is written to `docs/generated/acceptance-browser-evidence.md` and is derived from the Playwright JSON report at `test-results/acceptance/results.json`. Non-HDC modes require workflows A-E, G, and H to pass; HDC workflow F may be skipped only when explicitly out of scope. Full pilot mode is valid only when HDC device-lab evidence is enabled and ready.
 
 ## Documentation-Only Changes
 

@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { Client } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
-const apiBaseUrl = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
 
@@ -144,7 +144,7 @@ async function setTargetAndWrite(page: Page, name: string, value: string) {
 }
 
 async function latestSnapshotId(page: Page, parameterId: string) {
-  const response = await page.request.get(`${apiBaseUrl}/api/v1/audit-events`);
+  const response = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
   expect(response.ok()).toBe(true);
   const body = (await response.json()) as {
     items: Array<{
@@ -163,7 +163,8 @@ async function latestSnapshotId(page: Page, parameterId: string) {
 }
 
 async function rollbackSnapshotViaApi(page: Page, snapshotId: string) {
-  const response = await page.request.post(`${apiBaseUrl}/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`, {
+  const response = await page.request.post(apiRoute(`/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`), {
+    headers: smokeHeaders(),
     data: { confirmationToken: "confirm-rollback" }
   });
   expect(response.ok()).toBe(true);
@@ -224,9 +225,9 @@ function requireHdcSmokeConfig(): HdcSmokeConfig {
 }
 
 async function postJson<T>(page: Page, path: string, data: Record<string, unknown>, userId: string) {
-  const response = await page.request.post(`${apiBaseUrl}${path}`, {
+  const response = await page.request.post(apiRoute(path), {
     data,
-    headers: { "x-wiseeff-user": userId }
+    headers: { ...smokeHeaders(), "x-wiseeff-user": userId }
   });
   const body = (await response.json().catch(() => null)) as T | { error?: { message?: string; code?: string } } | null;
 
@@ -292,7 +293,7 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
 
   await page.goto("/parameter-admin?audit=open");
   await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
-  const auditResponse = await page.request.get(`${apiBaseUrl}/api/v1/audit-events`);
+  const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
   expect(auditResponse.ok()).toBe(true);
   const auditBody = (await auditResponse.json()) as {
     items: Array<{ kind: string; targetId: string | null; metadata?: Record<string, unknown> }>;

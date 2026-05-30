@@ -1,8 +1,8 @@
 import { spawnSync } from "node:child_process";
 import { Client } from "pg";
 import { expect, test } from "playwright/test";
+import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
-const apiBaseUrl = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const databaseUrl = process.env.DATABASE_URL;
 const projectId = "aurora";
 const parameterName = "fast_charge_current_limit_ma";
@@ -194,7 +194,7 @@ test("M1 parameter management loop persists a merged parameter change and audit 
 
   await page.goto("/parameter-admin?audit=open");
   await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
-  const auditResponse = await page.request.get(`${apiBaseUrl}/api/v1/audit-events`);
+  const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
   expect(auditResponse.ok()).toBe(true);
   const auditBody = (await auditResponse.json()) as {
     items: Array<{ kind: string; action: string; projectId: string | null; targetId: string | null }>;
