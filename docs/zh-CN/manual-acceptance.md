@@ -190,6 +190,19 @@ http://127.0.0.1:5173/
 
 ## 6. 运行时健康检查
 
+手工 PowerShell 会话不会自动加载 `.env`。直接探测 API 前，先把 `.env` 加载到当前进程：
+
+```powershell
+Get-Content .env | Where-Object { $_ -and $_ -notmatch '^\s*#' -and $_ -match '=' } | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), 'Process')
+}
+
+$env:WISEEFF_API_BASE_URL
+```
+
+最后一行必须输出类似 `http://127.0.0.1:8787` 的 URL。如果为空，健康检查 URL 会无效。
+
 PowerShell 中运行：
 
 ```powershell

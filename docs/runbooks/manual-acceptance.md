@@ -192,6 +192,19 @@ Expected:
 
 ## Runtime Health Checks
 
+Manual PowerShell sessions do not automatically load `.env`. Load it into the current process before running direct API probes:
+
+```powershell
+Get-Content .env | Where-Object { $_ -and $_ -notmatch '^\s*#' -and $_ -match '=' } | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), 'Process')
+}
+
+$env:WISEEFF_API_BASE_URL
+```
+
+The last command must print a URL such as `http://127.0.0.1:8787`. If it is blank, the health-check URLs will be invalid.
+
 Run on PowerShell:
 
 ```powershell

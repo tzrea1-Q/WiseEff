@@ -14,6 +14,19 @@ AUTHORIZATION="Bearer ..."
 
 PowerShell uses `$env:WISEEFF_API_BASE_URL` and `$env:AUTHORIZATION` for environment variables. `curl` without `.exe` is an alias for `Invoke-WebRequest`, so use `Invoke-RestMethod` or call `curl.exe` explicitly when running curl examples on Windows.
 
+Manual PowerShell sessions do not automatically load `.env`. To load local values before running the examples:
+
+```powershell
+Get-Content .env | Where-Object { $_ -and $_ -notmatch '^\s*#' -and $_ -match '=' } | ForEach-Object {
+  $name, $value = $_ -split '=', 2
+  [Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), 'Process')
+}
+
+$env:WISEEFF_API_BASE_URL
+```
+
+The last command must print a URL. If it is blank, the API probe URL will be missing its host.
+
 ## Health
 
 ```bash
