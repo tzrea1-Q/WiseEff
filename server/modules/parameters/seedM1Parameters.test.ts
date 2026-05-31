@@ -112,6 +112,21 @@ describe("parsePowerManagementConfig", () => {
 });
 
 describe("seedM1Parameters", () => {
+  it("binds the local workflow assignees to each seeded project", async () => {
+    const { db, queries } = createSeedDatabase();
+
+    await seedM1Parameters(db, config);
+
+    const roleBindings = queries.filter((call) => call.text.includes("insert into user_role_bindings"));
+    expect(roleBindings.map((call) => call.values)).toEqual(
+      expect.arrayContaining([
+        expect.arrayContaining(["urb-u-wang-jie-aurora-hardware-committer", "u-wang-jie", "org-chargelab", "aurora", "hardware-committer"]),
+        expect.arrayContaining(["urb-u-sun-mei-aurora-software-committer", "u-sun-mei", "org-chargelab", "aurora", "software-committer"]),
+        expect.arrayContaining(["urb-u-liu-min-aurora-software-user", "u-liu-min", "org-chargelab", "aurora", "software-user"])
+      ])
+    );
+  });
+
   it("uses the returned project parameter value id when inserting history", async () => {
     const { db, historyEntries } = createSeedDatabase({
       id: "legacy-value-id",

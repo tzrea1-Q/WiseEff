@@ -118,7 +118,7 @@ describe("ParameterDraftDialog", () => {
   });
 
   it("updates, removes, clears, and submits drafts through button-like controls", () => {
-    const props = renderDialog();
+    const props = renderDialog({ drafts: [{ ...draft, reason: "Reduce thermal risk." }] });
     const dialog = screen.getByRole("dialog", { name: "修改草稿" });
 
     fireEvent.change(within(dialog).getByLabelText("目标值"), { target: { value: "99999" } });
@@ -132,6 +132,17 @@ describe("ParameterDraftDialog", () => {
 
     fireEvent.click(within(dialog).getByRole("button", { name: "提交参数" }));
     expect(props.onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires a non-empty reason before submitting parameters", () => {
+    const props = renderDialog({ drafts: [{ ...draft, reason: "   " }] });
+    const dialog = screen.getByRole("dialog", { name: "修改草稿" });
+    const submitButton = within(dialog).getByRole("button", { name: "提交参数" });
+
+    expect(submitButton).toBeDisabled();
+    fireEvent.click(submitButton);
+
+    expect(props.onSubmit).not.toHaveBeenCalled();
   });
 
   it("connects out-of-range warnings to the target editor", () => {

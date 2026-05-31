@@ -9,7 +9,8 @@ Security documentation describes how WiseEff protects identity, authorization, a
 3. [Data Classification](data-classification.md): data classes and handling rules.
 4. [Secrets Management](secrets-management.md): secret ownership, rotation, and local examples.
 5. [Audit Retention](audit-retention.md): audit coverage and retention guidance.
-6. [Security Governance Design](../design-docs/security-governance.md): deeper design context.
+6. [User Permission Design](user-permission-design.md): role inclusion, workflow slot eligibility, and dropdown filtering rules.
+7. [Security Governance Design](../design-docs/security-governance.md): deeper design context.
 
 ## Rule
 

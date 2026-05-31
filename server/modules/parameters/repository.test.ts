@@ -694,8 +694,8 @@ describe("parameter repository", () => {
     expect(calls[0].text).toContain("urb.organization_id = $1");
     expect(calls[0].text).toContain("users.is_active = true");
     expect(calls[0].text).toContain("urb.project_id = $3");
-    expect(calls[0].text).toContain("urb.role_id = $4");
-    expect(calls[0].values).toEqual(["org-chargelab", "u-hardware", "project-1", "hardware-committer"]);
+    expect(calls[0].text).toContain("urb.role_id = any($4::text[])");
+    expect(calls[0].values).toEqual(["org-chargelab", "u-hardware", "project-1", ["hardware-committer"]]);
   });
 
   it("merges change request with expected version and inserts history", async () => {

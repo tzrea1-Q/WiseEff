@@ -72,6 +72,13 @@ const powerManagementConfigSchema = z.object({
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const organizationId = "org-chargelab";
 const seedUserId = "u-xu-yun";
+const workflowRoleBindings = [
+  { userId: "u-wang-jie", roleId: "hardware-committer" },
+  { userId: "u-sun-mei", roleId: "software-committer" },
+  { userId: "u-liu-min", roleId: "software-user" },
+  { userId: "u-li-peng", roleId: "hardware-committer" },
+  { userId: "u-chen-na", roleId: "software-user" }
+] as const;
 
 export function parsePowerManagementConfig(configPath: string, source: string): PowerManagementConfig {
   try {
@@ -103,6 +110,27 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
         `,
         [project.id, organizationId, project.name, project.code]
       );
+
+      for (const binding of workflowRoleBindings) {
+        await tx.query(
+          `
+          insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+          values ($1, $2, $3, $4, $5)
+          on conflict (id) do update set
+            user_id = excluded.user_id,
+            organization_id = excluded.organization_id,
+            project_id = excluded.project_id,
+            role_id = excluded.role_id
+          `,
+          [
+            `urb-${binding.userId}-${project.id}-${binding.roleId}`,
+            binding.userId,
+            organizationId,
+            project.id,
+            binding.roleId
+          ]
+        );
+      }
     }
 
     const modules = [...new Set(config.parameterLibrary.map((parameter) => parameter.module))];

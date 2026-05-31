@@ -904,9 +904,10 @@ export async function hasEligibleWorkflowAssignee(
     organizationId: string;
     projectId: string;
     userId: string;
-    roleId: BackendRoleId;
+    roleId: BackendRoleId | readonly BackendRoleId[];
   }
 ) {
+  const roleIds = Array.isArray(input.roleId) ? input.roleId : [input.roleId];
   const result = await db.query<{ id: string }>(
     `
     select users.id
@@ -917,10 +918,10 @@ export async function hasEligibleWorkflowAssignee(
       and users.is_active = true
       and urb.organization_id = $1
       and urb.project_id = $3
-      and urb.role_id = $4
+      and urb.role_id = any($4::text[])
     limit 1
     `,
-    [input.organizationId, input.userId, input.projectId, input.roleId]
+    [input.organizationId, input.userId, input.projectId, roleIds]
   );
 
   return result.rows.length > 0;

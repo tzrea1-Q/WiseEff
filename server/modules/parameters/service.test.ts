@@ -1342,6 +1342,76 @@ describe("parameter service", () => {
     });
   });
 
+  it("accepts a software committer as the software developer workflow assignee", async () => {
+    const workflowAssignees = {
+      hardwareCommitterId: "u-hardware",
+      softwareCommitterId: "u-software-committer",
+      softwareUserId: "u-software-committer"
+    };
+    const { db, txCalls } = createFakeDb([
+      [parameterRow()],
+      [],
+      [{ id: "u-hardware" }],
+      [{ id: "u-software-committer" }],
+      [{ id: "u-software-committer" }],
+      [
+        {
+          id: "round-1",
+          project_id: "project-1",
+          project_name: "Aurora",
+          submitter: "Riley Chen",
+          status: "hardware_review",
+          summary: "Parameter changes submitted.",
+          created_at: "2026-05-25T05:00:00.000Z"
+        }
+      ],
+      [
+        changeRequestRow({
+          status: "hardware_review",
+          assigned_to_user_id: "u-hardware",
+          workflow_hardware_committer_user_id: "u-hardware",
+          workflow_software_committer_user_id: "u-software-committer",
+          workflow_software_user_id: "u-software-committer"
+        })
+      ],
+      [
+        {
+          id: "item-1",
+          change_request_id: "request-1",
+          project_parameter_value_id: "param-1",
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          current_value: "3200",
+          target_value: "3100",
+          unit: "mA",
+          risk: "High",
+          reason: "Reduce thermal risk."
+        }
+      ],
+      [],
+      []
+    ]);
+
+    const round = await submitParameterChanges(db, makeAuth(), {
+      projectId: "project-1",
+      items: [{ parameterId: "param-1", targetValue: "3100", reason: "Reduce thermal risk." }],
+      assignees: workflowAssignees
+    });
+
+    const assigneeChecks = txCalls.filter((call) => call.text.includes("from users"));
+    expect(assigneeChecks).toHaveLength(3);
+    expect(assigneeChecks[2].values).toEqual([
+      "org-1",
+      "u-software-committer",
+      "project-1",
+      ["software-user", "software-committer"]
+    ]);
+    expect(round).toMatchObject({
+      status: "hardware_review",
+      workflowAssignees
+    });
+  });
+
   it("submitting with an assignee lacking the project workflow role rejects before writes", async () => {
     const { db, txCalls } = createFakeDb([
       [parameterRow()],

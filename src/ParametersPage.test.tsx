@@ -210,6 +210,14 @@ function renderPage(dispatch = vi.fn(), onNavigate = vi.fn(), parameterActions?:
   return { ...result, dispatch, onNavigate };
 }
 
+function fillVisibleDraftReasons(baseReason = "参数调整原因") {
+  screen.getAllByLabelText(/修改原因/).forEach((input, index) => {
+    fireEvent.change(input, {
+      target: { value: `${baseReason} ${index + 1}` }
+    });
+  });
+}
+
 describe("ParametersPage parameter detail modal", () => {
   it("opens the detail modal from a row view action without changing the pathname", () => {
     window.history.pushState({}, "", "/parameters");
@@ -483,6 +491,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(within(searchTable).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
 
+    fillVisibleDraftReasons("移动到本轮已修改");
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
 
     const modifiedTable = screen.getByRole("region", { name: "本轮已修改参数表" });
@@ -609,6 +618,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(container.querySelector(".parameter-draft-dialog__body")).toHaveClass("parameter-draft-dialog__body");
 
     const submitParameter = within(footer!).getByRole("button", { name: "提交参数" });
+    fillVisibleDraftReasons("保留在本轮已修改");
     expect(submitParameter).toBeEnabled();
     fireEvent.click(submitParameter);
 
@@ -645,6 +655,19 @@ describe("ParametersPage draft edge cases", () => {
     expect(container.querySelector(".submission-dialog")).not.toBeInTheDocument();
   });
 
+  it("keeps drafts out of the modified table when the reason is blank", () => {
+    const { container } = renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "3200" } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "   " } });
+
+    expect(screen.getByRole("button", { name: "提交参数" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+
+    expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
+  });
+
   it("clears every draft from the sheet header", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
@@ -670,6 +693,7 @@ describe("ParametersPage draft edge cases", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
 
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "99999" } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "验证越界风险" } });
 
     expect(screen.getByText(/超出 2500 - 4500 mA/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
@@ -783,6 +807,9 @@ describe("ParametersPage · 提交契约", () => {
     const { container } = renderPage(vi.fn(), vi.fn(), parameterActions);
 
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "pending submit reason" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getByRole("button", { name: "提交本轮 (1 项)" }));
     const confirmButton = container.querySelector<HTMLButtonElement>(".dialog-actions .button.primary");
@@ -841,7 +868,7 @@ describe("ParametersPage · 提交契约", () => {
 
   it("builds preview and submit items from selected draft entries only", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
-    const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsHaveTargets[\s\S]*?;/)?.[0] ?? "";
+    const previewSource = source.match(/const pendingSubmissionItems[\s\S]*?const allSelectedDraftsAreSubmittable[\s\S]*?;/)?.[0] ?? "";
     const submitSource = source.match(/const submitRound[\s\S]*?\r?\n  };\r?\n  const previewItems/)?.[0] ?? "";
 
     expect(previewSource).toContain("const pendingSubmissionItems");
@@ -874,6 +901,9 @@ describe("ParametersPage · 提交契约", () => {
   it("本轮已修改参数下方显示操作按钮，文案变为『提交本轮 (1 项)』并可点", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "显示本轮操作按钮" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     const modifiedSection = screen.getByRole("region", { name: "本轮已修改参数区" });
     expect(within(modifiedSection).getByRole("region", { name: "本轮已修改参数表" })).toBeInTheDocument();
@@ -893,6 +923,7 @@ describe("ParametersPage · 提交契约", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
+    fillVisibleDraftReasons("提交预览数量");
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
@@ -902,6 +933,9 @@ describe("ParametersPage · 提交契约", () => {
   it("提交预览保留对话框名称但不显示标题 h2", () => {
     const { container } = renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "保留对话框名称" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
@@ -928,6 +962,9 @@ describe("ParametersPage · 提交契约", () => {
   "1", "9000", "3000", "43", "balanced",
   "2", "12000", "4300", "48", "boost";`
       }
+    });
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "验证复杂 DTS diff" }
     });
     const submitDraftButton = container.querySelector<HTMLButtonElement>(
       ".parameter-draft-dialog .parameter-detail-dialog__footer .button.primary"
@@ -990,6 +1027,9 @@ describe("ParametersPage · 提交契约", () => {
     const dispatch = vi.fn();
     renderPage(dispatch);
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "验证处理人选择" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
 
@@ -1009,6 +1049,41 @@ describe("ParametersPage · 提交契约", () => {
     }));
   });
 
+  it("提交预览默认选择项目流程角色绑定用户，而不是全局管理员", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "验证默认流程处理人" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+
+    expect(within(dialog).getByLabelText("硬件 MDE")).toHaveValue("u-wang-jie");
+    expect(within(dialog).getByLabelText("软件 MDE")).toHaveValue("u-sun-mei");
+    expect(within(dialog).getByLabelText("软件开发")).toHaveValue("u-liu-min");
+  });
+
+  it("提交预览下拉栏隐藏不符合槽位权限的用户", () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "验证下拉权限裁剪" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (1 项)" })[0]);
+
+    const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
+    const hardwareOptions = within(within(dialog).getByLabelText("硬件 MDE")).getAllByRole("option");
+    const softwareCommitterOptions = within(within(dialog).getByLabelText("软件 MDE")).getAllByRole("option");
+    const softwareUserOptions = within(within(dialog).getByLabelText("软件开发")).getAllByRole("option");
+
+    expect(hardwareOptions.map((option) => option.textContent)).toEqual(["Wang Jie", "Li Peng"]);
+    expect(softwareCommitterOptions.map((option) => option.textContent)).toEqual(["Sun Mei"]);
+    expect(softwareUserOptions.map((option) => option.textContent)).toEqual(["Liu Min", "Chen Na", "Sun Mei"]);
+  });
+
   it("聚焦未勾选行后再勾选，不会继承上一行的修改原因", () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
@@ -1023,12 +1098,16 @@ describe("ParametersPage · 提交契约", () => {
     const reasonInputs = screen.getAllByLabelText(/修改原因/);
     const secondReason = reasonInputs.find((el) => (el as HTMLTextAreaElement).value === "");
     expect(secondReason).toBeDefined();
+    fireEvent.change(secondReason!, {
+      target: { value: "第二行的专属原因" }
+    });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: "提交本轮 (2 项)" })[0]);
     const dialog = screen.getByRole("dialog", { name: /提交本轮参数/ });
 
     expect(within(dialog).getByText("第一行的专属原因")).toBeInTheDocument();
     expect(within(dialog).getAllByText("第一行的专属原因")).toHaveLength(1);
+    expect(within(dialog).getByText("第二行的专属原因")).toBeInTheDocument();
   });
 });
 

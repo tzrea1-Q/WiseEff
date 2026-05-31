@@ -13,6 +13,9 @@ describe("auth policy", () => {
     expect(canPerform("guest", "parameter:edit")).toBe(false);
     expect(canPerform("hardware-user", "parameter:edit")).toBe(true);
     expect(canPerform("software-user", "debugging:use")).toBe(true);
+    expect(permissionsForRoles(["software-user"])).toEqual(expect.arrayContaining(permissionsForRoles(["hardware-user"])));
+    expect(permissionsForRoles(["hardware-committer"])).toEqual(expect.arrayContaining(permissionsForRoles(["hardware-user"])));
+    expect(permissionsForRoles(["software-committer"])).toEqual(expect.arrayContaining(permissionsForRoles(["hardware-user"])));
     expect(canPerform("software-user", "parameter:review")).toBe(false);
     expect(canPerform("hardware-committer", "parameter:review")).toBe(true);
     expect(canPerform("admin", "users:manage")).toBe(true);

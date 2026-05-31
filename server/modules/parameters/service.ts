@@ -198,7 +198,7 @@ async function assertWorkflowAssigneesAreEligible(
   const checks = [
     { userId: assignees.hardwareCommitterId, roleId: "hardware-committer" as const },
     { userId: assignees.softwareCommitterId, roleId: "software-committer" as const },
-    { userId: assignees.softwareUserId, roleId: "software-user" as const }
+    { userId: assignees.softwareUserId, roleId: ["software-user", "software-committer"] as const }
   ];
 
   for (const check of checks) {

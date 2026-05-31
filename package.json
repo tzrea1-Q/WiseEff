@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:all": "tsx scripts/run-dev-all.ts",
     "dev:api": "tsx watch server/index.ts",
     "worker:logs": "tsx server/modules/logs/workerRunner.ts",
     "build": "tsc -b && vite build",

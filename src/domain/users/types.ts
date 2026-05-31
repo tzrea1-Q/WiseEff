@@ -58,7 +58,7 @@ export const platformRoles = [
   {
     id: "software-user",
     name: "Software User",
-    description: "Software-side user who can submit parameter changes and close merged parameter rounds.",
+    description: "Software-side user who can perform Hardware User actions and close merged parameter rounds.",
     discipline: "software",
     level: "user",
     permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload"]
@@ -74,7 +74,7 @@ export const platformRoles = [
   {
     id: "software-committer",
     name: "Software Committer",
-    description: "Can perform Software User actions and review software-side parameter submissions.",
+    description: "Can perform Hardware User actions and review software-side parameter submissions.",
     discipline: "software",
     level: "committer",
     permissions: ["parameter:view", "parameter:edit", "debugging:use", "logs:upload", "parameter:review"]
@@ -148,6 +148,21 @@ export function getRolesByDiscipline(discipline: RoleDiscipline): PlatformRole[]
   return platformRoles.filter((role) => "discipline" in role && role.discipline === discipline);
 }
 
+export function roleIncludesRole(roleId: string, includedRoleId: string): boolean {
+  const role = migrateLegacyRoleId(roleId);
+  const includedRole = migrateLegacyRoleId(includedRoleId);
+
+  if (role === includedRole || role === "admin") {
+    return true;
+  }
+
+  if (includedRole === "hardware-user") {
+    return role === "software-user" || role === "hardware-committer" || role === "software-committer";
+  }
+
+  return false;
+}
+
 export type WorkflowRoleSlot = "hardwareCommitter" | "softwareCommitter" | "softwareUser";
 
 export function roleSupportsWorkflowSlot(roleId: string, slot: WorkflowRoleSlot): boolean {
@@ -166,4 +181,14 @@ export function roleSupportsWorkflowSlot(roleId: string, slot: WorkflowRoleSlot)
   }
 
   return role.discipline === "software" && (role.level === "user" || role.level === "committer");
+}
+
+export function roleCanBeAssignedToWorkflowSlot(roleId: string, slot: WorkflowRoleSlot): boolean {
+  const role = getPlatformRole(roleId);
+
+  if (role.id === "admin") {
+    return false;
+  }
+
+  return roleSupportsWorkflowSlot(role.id, slot);
 }

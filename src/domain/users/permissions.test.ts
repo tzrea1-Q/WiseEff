@@ -5,7 +5,9 @@ import {
   getRolesByDiscipline,
   migrateLegacyRoleId,
   platformRoles,
-  roleHasPermission
+  roleCanBeAssignedToWorkflowSlot,
+  roleHasPermission,
+  roleIncludesRole
 } from "./types";
 import type { RoleCapability } from "./types";
 
@@ -49,6 +51,14 @@ describe("platform user roles", () => {
     expect(roleHasPermission("admin", "admin:access")).toBe(true);
   });
 
+  it("declares the requested role inclusion relationships explicitly", () => {
+    expect(roleIncludesRole("hardware-committer", "hardware-user")).toBe(true);
+    expect(roleIncludesRole("software-committer", "hardware-user")).toBe(true);
+    expect(roleIncludesRole("software-user", "hardware-user")).toBe(true);
+    expect(roleIncludesRole("hardware-user", "software-user")).toBe(false);
+    expect(roleIncludesRole("guest", "hardware-user")).toBe(false);
+  });
+
   it("orders roles by increasing privilege", () => {
     expect(comparePlatformRoles("guest", "hardware-user")).toBeLessThan(0);
     expect(comparePlatformRoles("software-user", "hardware-user")).toBe(0);
@@ -66,6 +76,16 @@ describe("platform user roles", () => {
       "software-user",
       "software-committer"
     ]);
+  });
+
+  it("keeps global admins out of concrete workflow assignee slots", () => {
+    expect(roleCanBeAssignedToWorkflowSlot("hardware-committer", "hardwareCommitter")).toBe(true);
+    expect(roleCanBeAssignedToWorkflowSlot("software-committer", "softwareCommitter")).toBe(true);
+    expect(roleCanBeAssignedToWorkflowSlot("software-user", "softwareUser")).toBe(true);
+    expect(roleCanBeAssignedToWorkflowSlot("software-committer", "softwareUser")).toBe(true);
+    expect(roleCanBeAssignedToWorkflowSlot("admin", "hardwareCommitter")).toBe(false);
+    expect(roleCanBeAssignedToWorkflowSlot("admin", "softwareCommitter")).toBe(false);
+    expect(roleCanBeAssignedToWorkflowSlot("admin", "softwareUser")).toBe(false);
   });
 
   it("returns Guest for unknown role lookups", () => {

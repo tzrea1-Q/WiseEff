@@ -27,7 +27,7 @@ const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   "hardware-user": "硬件侧可查看并提交参数修改，使用参数调试和日志分析。",
   "software-user": "软件侧可查看并提交参数修改，使用参数调试和日志分析。",
   "hardware-committer": "包含硬件 User 权限，并可执行硬件侧参数检视。",
-  "software-committer": "包含软件 User 权限，并可执行软件侧参数检视。",
+  "software-committer": "包含硬件 User 权限，并可执行软件侧参数检视。",
   admin: "包含全部 Committer 权限，并可访问各应用后台和用户管理。"
 };
 

@@ -160,7 +160,7 @@ export function ParameterDraftDialog({
   }
 
   const draftCount = drafts.length;
-  const allDraftsHaveTargets = drafts.length > 0 && drafts.every((item) => item.targetValue.trim());
+  const allDraftsAreSubmittable = drafts.length > 0 && drafts.every((item) => item.targetValue.trim() && item.reason.trim());
   const hasComplexDraft = drafts.some(
     (item) =>
       isComplexDraftValue(item.parameter.currentValue) ||
@@ -334,7 +334,7 @@ export function ParameterDraftDialog({
             <button className="button subtle" type="button" onClick={onClose}>
               关闭
             </button>
-            <button className="button primary" type="button" disabled={!canEdit || !allDraftsHaveTargets} onClick={onSubmit}>
+            <button className="button primary" type="button" disabled={!canEdit || !allDraftsAreSubmittable} onClick={onSubmit}>
               提交参数
             </button>
           </div>

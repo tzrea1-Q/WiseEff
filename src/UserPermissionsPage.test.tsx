@@ -53,7 +53,7 @@ describe("UserPermissionsPage", () => {
     expect(within(capabilities).getByText("硬件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
     expect(within(capabilities).getByText("软件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
     expect(within(capabilities).getByText("包含硬件 User 权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("包含软件 User 权限，并可执行软件侧参数检视。")).toBeInTheDocument();
+    expect(within(capabilities).getByText("包含硬件 User 权限，并可执行软件侧参数检视。")).toBeInTheDocument();
     expect(within(capabilities).getByText("包含全部 Committer 权限，并可访问各应用后台和用户管理。")).toBeInTheDocument();
     expect(within(capabilities).getAllByText("查看参数").length).toBeGreaterThan(0);
     expect(within(capabilities).getByText("管理用户权限")).toBeInTheDocument();

@@ -10,7 +10,7 @@ import {
 } from "./workbenchUi";
 import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
-import { roleSupportsWorkflowSlot } from "@/domain/users/types";
+import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { ParameterInsightBar } from "./components/ParameterInsightBar";
 import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
@@ -177,9 +177,9 @@ export function ParametersPage({
   const activeUsers = useMemo(() => state.users.filter((user) => user.isActive), [state.users]);
   const workflowCandidates = useMemo(
     () => ({
-      hardwareCommitters: activeUsers.filter((user) => roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter")),
-      softwareCommitters: activeUsers.filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareCommitter")),
-      softwareUsers: activeUsers.filter((user) => roleSupportsWorkflowSlot(user.roleId, "softwareUser"))
+      hardwareCommitters: activeUsers.filter((user) => roleCanBeAssignedToWorkflowSlot(user.roleId, "hardwareCommitter")),
+      softwareCommitters: activeUsers.filter((user) => roleCanBeAssignedToWorkflowSlot(user.roleId, "softwareCommitter")),
+      softwareUsers: activeUsers.filter((user) => roleCanBeAssignedToWorkflowSlot(user.roleId, "softwareUser"))
     }),
     [activeUsers]
   );
@@ -279,18 +279,18 @@ export function ParametersPage({
     [state.parameterSubmissionRounds, resolvedProjectId]
   );
   const validPendingSubmissionItems = useMemo(
-    () => pendingSubmissionItems.filter((item) => item.targetValue.trim()),
+    () => pendingSubmissionItems.filter((item) => item.targetValue.trim() && item.reason.trim()),
     [pendingSubmissionItems]
   );
   const validDraftItems = useMemo(
-    () => draftItems.filter((item) => item.targetValue.trim()),
+    () => draftItems.filter((item) => item.targetValue.trim() && item.reason.trim()),
     [draftItems]
   );
-  const allSelectedDraftsHaveTargets =
+  const allSelectedDraftsAreSubmittable =
     selectedIds.size > 0 &&
     pendingSubmissionItems.length === selectedIds.size &&
     validPendingSubmissionItems.length === pendingSubmissionItems.length;
-  const allDraftsHaveTargets = draftItems.length > 0 && validDraftItems.length === draftItems.length;
+  const allDraftsAreSubmittable = draftItems.length > 0 && validDraftItems.length === draftItems.length;
 
   useEffect(() => {
     if (contextQuery.module) {
@@ -536,7 +536,7 @@ export function ParametersPage({
     if (!effectiveCanEdit) {
       return;
     }
-    if (!allSelectedDraftsHaveTargets) {
+    if (!allSelectedDraftsAreSubmittable) {
       return;
     }
     setConfirmOpen(true);
@@ -546,7 +546,7 @@ export function ParametersPage({
     if (!effectiveCanEdit) {
       return;
     }
-    if (!allDraftsHaveTargets) {
+    if (!allDraftsAreSubmittable) {
       return;
     }
     setSelectedIds((ids) => new Set([...Array.from(ids), ...Object.keys(drafts)]));
@@ -570,7 +570,7 @@ export function ParametersPage({
     if (submittingRound) {
       return;
     }
-    if (!allSelectedDraftsHaveTargets) {
+    if (!allSelectedDraftsAreSubmittable) {
       return;
     }
     const itemsToSubmit = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
@@ -652,7 +652,7 @@ export function ParametersPage({
         <button className="button subtle" type="button" disabled={!effectiveCanEdit || pendingSubmissionItems.length === 0 || stashingRound} onClick={stashRound}>
           暂存本轮{pendingSubmissionItems.length > 0 ? ` (${pendingSubmissionItems.length} 项)` : ""}
         </button>
-        <button className="button primary" type="button" disabled={!effectiveCanEdit || !allSelectedDraftsHaveTargets} onClick={openSubmitPreview}>
+        <button className="button primary" type="button" disabled={!effectiveCanEdit || !allSelectedDraftsAreSubmittable} onClick={openSubmitPreview}>
           {submitButtonText}
         </button>
       </div>

@@ -6,7 +6,8 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 
 - Node.js 22 LTS or a Vite 7-compatible Node version.
 - npm 11 or a compatible npm version.
-- PostgreSQL reachable from `DATABASE_URL`.
+- Docker Desktop or Docker Engine for the one-command local PostgreSQL path.
+- PostgreSQL reachable from `DATABASE_URL` if you run the services manually.
 - Optional: a live OpenAI-compatible Agent provider if you are testing `AGENT_PROVIDER=live`.
 
 ## First Setup
@@ -29,6 +30,29 @@ If you are not testing live Agent provider behavior, set:
 ```text
 AGENT_PROVIDER=deterministic
 ```
+
+`npm run dev:all` also falls back to the deterministic Agent provider when `.env` keeps `AGENT_PROVIDER=live` but the live provider URL, model, or key is blank.
+
+## One-Command Local Stack
+
+Start the full local stack:
+
+```bash
+npm run dev:all
+```
+
+This command starts Docker PostgreSQL through `compose.yaml`, waits for it to accept connections, runs migrations and M0-M3 seeds, then starts the API and an API-mode Vite frontend. The API process starts the log-analysis worker when `DATABASE_URL` and local object storage are configured.
+
+Before starting, the launcher checks the required local ports. If port `5432` is already used by a WiseEff PostgreSQL Docker container, it restarts that container and waits for readiness. If ports `8787` or `5173` are already used by WiseEff API/web services, it stops those existing processes so the current checkout can restart them. Unknown services on those ports are left untouched and reported as blockers.
+
+The default local URLs are:
+
+```text
+API: http://127.0.0.1:8787
+Web: http://127.0.0.1:5173
+```
+
+If Vite chooses another port, use the terminal output.
 
 ## Database
 
@@ -55,7 +79,9 @@ Seeds are ordered by milestone:
 - `db:seed:m2`: log-analysis sample data.
 - `db:seed:m3`: simulator debugging device and catalog.
 
-## Run The API, Worker, And Frontend
+## Manual Service Startup
+
+Use the manual commands when you want separate terminals or an existing PostgreSQL instance instead of Docker Compose.
 
 Start the API:
 
@@ -74,15 +100,6 @@ Start the frontend:
 ```bash
 npm run dev
 ```
-
-The default local URLs are:
-
-```text
-API: http://127.0.0.1:8787
-Web: http://127.0.0.1:5173
-```
-
-If Vite chooses another port, use the terminal output.
 
 ## Runtime Modes
 

@@ -611,6 +611,22 @@ describe("WiseEff app shell", () => {
     expect(next.lastDebugSnapshot).toBeNull();
   });
 
+  it("defaults mock parameter workflow assignees to concrete eligible users instead of global admin", () => {
+    const next = appReducer({ ...initialState, activeRoleId: "admin" }, {
+      type: "ADD_CHANGE_REQUEST",
+      parameterId: initialState.parameters[0].id,
+      targetValue: "3200",
+      reason: "Validate workflow assignee defaults"
+    });
+
+    expect(next.changeRequests[0].workflowAssignees).toEqual({
+      hardwareCommitterId: "u-wang-jie",
+      softwareCommitterId: "u-sun-mei",
+      softwareUserId: "u-liu-min"
+    });
+    expect(next.changeRequests[0].assignedTo).toBe("u-wang-jie");
+  });
+
   it("keeps the platform homepage inside the app scroll container", () => {
     window.history.replaceState(null, "", "/");
 
@@ -997,6 +1013,8 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "验证多参数提交" } });
+    fireEvent.change(screen.getByLabelText("修改原因 fast_charge_current_limit_ma"), { target: { value: "验证首个参数提交" } });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
 
     fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
@@ -1026,6 +1044,8 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
     fireEvent.click(screen.getByRole("button", { name: /编辑 charge_voltage_limit_mv/ }));
     fireEvent.change(screen.getByLabelText("目标值"), { target: { value: "4310" } });
+    fireEvent.change(screen.getByLabelText("修改原因"), { target: { value: "验证提交轮次详情" } });
+    fireEvent.change(screen.getByLabelText("修改原因 fast_charge_current_limit_ma"), { target: { value: "验证提交轮次首项" } });
     fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
     fireEvent.click(screen.getAllByRole("button", { name: /提交本轮/ })[0]);
 

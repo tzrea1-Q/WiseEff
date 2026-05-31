@@ -70,7 +70,12 @@ import type {
   ProjectParameterInitializationReview,
   RiskLevel
 } from "@/domain/parameters/types";
-import { migrateLegacyRoleId, roleSupportsWorkflowSlot, type PlatformRoleId } from "@/domain/users/types";
+import {
+  migrateLegacyRoleId,
+  roleCanBeAssignedToWorkflowSlot,
+  roleSupportsWorkflowSlot,
+  type PlatformRoleId
+} from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
@@ -721,9 +726,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const summary = action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。";
       const workflowAssignees = {
-        hardwareCommitterId: state.users.find((user) => user.isActive && roleSupportsWorkflowSlot(user.roleId, "hardwareCommitter"))?.id ?? "",
-        softwareCommitterId: state.users.find((user) => user.isActive && roleSupportsWorkflowSlot(user.roleId, "softwareCommitter"))?.id ?? "",
-        softwareUserId: state.users.find((user) => user.isActive && roleSupportsWorkflowSlot(user.roleId, "softwareUser"))?.id ?? ""
+        hardwareCommitterId: state.users.find((user) => user.isActive && roleCanBeAssignedToWorkflowSlot(user.roleId, "hardwareCommitter"))?.id ?? "",
+        softwareCommitterId: state.users.find((user) => user.isActive && roleCanBeAssignedToWorkflowSlot(user.roleId, "softwareCommitter"))?.id ?? "",
+        softwareUserId: state.users.find((user) => user.isActive && roleCanBeAssignedToWorkflowSlot(user.roleId, "softwareUser"))?.id ?? ""
       };
 
       const request: ChangeRequest = {

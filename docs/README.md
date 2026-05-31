@@ -16,7 +16,7 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 8. [Plans](PLANS.md): how active and completed execution plans are managed.
 9. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
 10. [Reliability](RELIABILITY.md): operational, task, deploy, and rollback expectations.
-11. [Security](SECURITY.md): identity, RBAC, audit, Agent tools, device safety, and data protection.
+11. [Security](SECURITY.md): identity, RBAC, user permission design, audit, Agent tools, device safety, and data protection.
 
 ## Chinese Developer Docs
 
@@ -49,6 +49,7 @@ docs/
     examples.md
   security/
     README.md
+    user-permission-design.md
     threat-model.md
     data-classification.md
     secrets-management.md
