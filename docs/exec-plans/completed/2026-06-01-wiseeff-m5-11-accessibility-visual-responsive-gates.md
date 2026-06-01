@@ -94,7 +94,7 @@ M5.11 does not introduce AI exploratory QA, staging synthetic jobs, CI artifact 
 - [x] Update roadmap M5.11 completion gate.
 - [x] Run final verification.
 - [x] Move this plan to `docs/exec-plans/completed/` and update completed plan index.
-- [ ] Commit, push, and open a PR stacked on the current M5.9 PR branch.
+- [x] Commit, push, and open a PR stacked on the current M5.9 PR branch.
 
 ## Documentation Impact Matrix
 
