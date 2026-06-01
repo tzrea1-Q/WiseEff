@@ -265,12 +265,15 @@ This fails if `/api/v1/operations/pilot-readiness` is not `pilot_ready`.
 The browser workflow section below can be exercised by the deterministic Playwright acceptance suite:
 
 ```bash
+npm run acceptance:coverage
 npm run acceptance:browser
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
 
-`npm run acceptance:browser` runs preflight, runs `npm run acceptance:e2e`, and writes generated evidence to `docs/generated/acceptance-browser-evidence.md`. The evidence table maps directly to manual flows A-H and links to `playwright-report/acceptance/index.html`, `test-results/acceptance/results.json`, and `test-results/acceptance/`. Non-HDC modes require workflows A-E, G, and H to pass; HDC flow F may be skipped only when HDC is explicitly out of scope.
+`npm run acceptance:browser` runs preflight, runs `npm run acceptance:e2e`, checks requirement-level coverage, and writes generated evidence to `docs/generated/acceptance-browser-evidence.md`. The evidence table maps directly to manual flows A-H and links to `playwright-report/acceptance/index.html`, `test-results/acceptance/results.json`, and `test-results/acceptance/`. Non-HDC modes require workflows A-E, G, and H to pass; HDC flow F may be skipped only when HDC is explicitly out of scope.
+
+Requirement-level coverage is defined in `docs/developer/browser-acceptance-coverage-map.md`. Missing required IDs or unknown `@acceptance` markers are blockers. The browser suite also fails on unexpected page errors, console errors, request failures, and critical WiseEff API `4xx/5xx` responses, so a page that visually renders but logs an unauthorized API failure is not considered accepted.
 
 Manual review is still required for ambiguous visual judgment, real HDC safety approval, backup/restore, rollback rehearsal, external evidence attachments, and any acceptance flow that is not yet represented in the generated browser evidence.
 

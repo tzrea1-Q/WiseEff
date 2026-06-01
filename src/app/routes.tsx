@@ -34,7 +34,9 @@ import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
 const DebuggingPageWithRuntimeProps = DebuggingPage as (props: Pick<PageProps, "state" | "dispatch" | "debuggingActions" | "debuggingGateway">) => ReactNode;
-const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (props: Pick<PageProps, "state" | "debuggingActions">) => ReactNode;
+const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (
+  props: Pick<PageProps, "state" | "debuggingActions"> & { runtimeReady?: boolean }
+) => ReactNode;
 
 export type ParameterPageActions = {
   getParameter(parameterId: string): Promise<ParameterRecord>;
@@ -53,6 +55,7 @@ export type PageProps = {
   search: string;
   debuggingActions?: DebuggingRuntimeActions;
   debuggingGateway?: DebuggingGateway;
+  debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
@@ -79,6 +82,7 @@ export function PageRouter({
   search,
   debuggingActions,
   debuggingGateway,
+  debuggingRuntimeReady = true,
   logActions,
   parameterActions,
   parameterHomeTimeWindow,
@@ -175,6 +179,7 @@ export function PageRouter({
         <NodeDebuggingPageWithRuntimeProps
           state={state}
           debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}
+          runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
         />
       );
     case "debugging-admin":

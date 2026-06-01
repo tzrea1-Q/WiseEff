@@ -8,9 +8,12 @@ import {
   type BrowserAcceptanceMode,
   type BrowserAcceptanceOverallStatus,
   type BrowserAcceptancePilotOutcome,
+  type BrowserAcceptanceRequirementCoverage,
   type BrowserAcceptanceStatus,
   type BrowserAcceptanceWorkflowEvidence
 } from "../e2e/acceptance/helpers/evidence";
+import { acceptanceRequirements } from "../e2e/acceptance/requirements";
+import { evaluateAcceptanceCoverage, readAcceptanceSpecFiles } from "./check-acceptance-coverage";
 
 export { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/evidence";
 
@@ -48,6 +51,7 @@ export type BrowserAcceptanceRunInput = {
     hdc?: BrowserAcceptanceHdcStatus;
   };
   workflows?: BrowserAcceptanceWorkflowEvidence[];
+  requirementCoverage?: BrowserAcceptanceRequirementCoverage;
 };
 
 export type DefaultWorkflowInput = {
@@ -270,6 +274,19 @@ export function evaluateBrowserAcceptanceRun(input: BrowserAcceptanceRunInput): 
     }
   }
 
+  if (input.requirementCoverage?.status === "failed") {
+    if (input.requirementCoverage.missingRequiredIds.length > 0) {
+      blockers.push(
+        `Acceptance requirement coverage is missing required IDs: ${input.requirementCoverage.missingRequiredIds.join(", ")}.`
+      );
+    }
+    if (input.requirementCoverage.unknownIds.length > 0) {
+      blockers.push(
+        `Acceptance requirement coverage references unknown IDs: ${input.requirementCoverage.unknownIds.join(", ")}.`
+      );
+    }
+  }
+
   if (input.preflight.status !== "passed") {
     blockers.push("Acceptance preflight did not pass.");
   }
@@ -362,11 +379,16 @@ async function main() {
     hdcStatus: playwright.hdc,
     artifactPath: playwright.artifactPath
   });
+  const requirementCoverage = evaluateAcceptanceCoverage({
+    requirements: acceptanceRequirements,
+    specFiles: readAcceptanceSpecFiles()
+  });
   const evaluation = evaluateBrowserAcceptanceRun({
     mode: options.mode,
     preflight,
     playwright,
-    workflows
+    workflows,
+    requirementCoverage
   });
   const evidence = buildEvidence({
     date: new Date().toISOString(),
@@ -376,6 +398,7 @@ async function main() {
     preflight,
     playwright,
     workflows,
+    requirementCoverage,
     artifactPaths: [defaultPreflightEvidenceOut, defaultPlaywrightJsonReport, "test-results/acceptance", "playwright-report/acceptance"],
     blockers: evaluation.blockers
   });

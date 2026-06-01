@@ -308,6 +308,28 @@ describe("browser acceptance runner", () => {
     ).toBe("failed");
   });
 
+  it("adds requirement coverage gaps to blockers", () => {
+    expect(
+      evaluateBrowserAcceptanceRun({
+        mode: "local-non-hdc",
+        preflight: { status: "passed", outcome: "non_hdc_local", hdc: "skipped" },
+        playwright: { status: "passed" },
+        requirementCoverage: {
+          status: "failed",
+          coveredIds: ["UNKNOWN-REQ-001"],
+          missingRequiredIds: ["PARAM-HAPPY-001"],
+          unknownIds: ["UNKNOWN-REQ-001"]
+        }
+      })
+    ).toEqual({
+      status: "failed",
+      blockers: [
+        "Acceptance requirement coverage is missing required IDs: PARAM-HAPPY-001.",
+        "Acceptance requirement coverage references unknown IDs: UNKNOWN-REQ-001."
+      ]
+    });
+  });
+
   it("passes target non-HDC when Playwright passes and HDC is explicitly excluded", () => {
     expect(
       evaluateBrowserAcceptanceRun({

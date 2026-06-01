@@ -341,6 +341,40 @@ describe("WiseEff app shell", () => {
     await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
   });
 
+  it("does not read mock node parameters before API debugging hydration on node debugging routes", async () => {
+    window.history.replaceState(null, "", "/node-debugging");
+    const debuggingGateway = createAppDebuggingGateway({
+      listParameters: vi.fn(() => new Promise<never>(() => undefined)),
+      detectTargets: vi.fn().mockResolvedValue([
+        { id: "api-target", deviceId: apiDebugDevice.id, label: "API Debug Target" }
+      ]),
+      createSession: vi.fn().mockResolvedValue({
+        id: "api-node-session",
+        projectId: initialState.activeProjectId,
+        deviceId: apiDebugDevice.id,
+        targetId: "api-target",
+        status: "active",
+        startedAt: "2026-06-01T00:00:00.000Z",
+        endedAt: null
+      }),
+      readNode: vi.fn().mockResolvedValue({ ok: true, value: "3000" })
+    });
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        debuggingGateway={debuggingGateway}
+        initialAppState={userState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
+    expect(debuggingGateway.detectTargets).not.toHaveBeenCalled();
+    expect(debuggingGateway.readNode).not.toHaveBeenCalled();
+  });
+
   it("keeps debugging runtime hydration independent when parameter refresh fails", async () => {
     window.history.replaceState(null, "", "/debugging-admin");
     const debuggingGateway = createAppDebuggingGateway();

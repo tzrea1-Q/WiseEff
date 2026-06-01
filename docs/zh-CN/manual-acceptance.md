@@ -263,12 +263,15 @@ npm run acceptance:preflight -- --require-pilot-ready
 下面的浏览器工作流可以先通过确定性的 Playwright 验收套件自动执行：
 
 ```bash
+npm run acceptance:coverage
 npm run acceptance:browser
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
 
-`npm run acceptance:browser` 会运行 preflight、执行 `npm run acceptance:e2e`，并把证据写入 `docs/generated/acceptance-browser-evidence.md`。证据表会按 A-H 对应人工验收流程，并引用 `playwright-report/acceptance/index.html`、`test-results/acceptance/results.json` 和 `test-results/acceptance/`。非 HDC 模式要求 A-E、G、H 通过；只有 HDC 明确不在范围内时，F 才可以 skipped。
+`npm run acceptance:browser` 会运行 preflight、执行 `npm run acceptance:e2e`、检查需求级覆盖，并把证据写入 `docs/generated/acceptance-browser-evidence.md`。证据表会按 A-H 对应人工验收流程，并引用 `playwright-report/acceptance/index.html`、`test-results/acceptance/results.json` 和 `test-results/acceptance/`。非 HDC 模式要求 A-E、G、H 通过；只有 HDC 明确不在范围内时，F 才可以 skipped。
+
+需求级覆盖定义在 `docs/developer/browser-acceptance-coverage-map.md`。缺少必需 ID 或出现未知 `@acceptance` marker 都是阻塞项。浏览器套件也会把非预期的 page error、console error、request failure 和关键 WiseEff API `4xx/5xx` 响应判为失败；因此页面视觉上能打开但后台出现未授权 API 失败时，不能算验收通过。
 
 仍然需要人工复核的内容包括：存在主观判断的视觉问题、真实 HDC 安全审批、backup/restore、rollback rehearsal、外部证据附件，以及尚未被自动化证据覆盖的流程。
 

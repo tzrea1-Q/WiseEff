@@ -4,6 +4,9 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+
+useBrowserDiagnostics(test);
 
 const databaseUrl = process.env.DATABASE_URL;
 const apiAuthorization =
@@ -196,6 +199,7 @@ test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
   });
 
   test("requires approval for draft actions and records API, audit, and trace evidence", async ({ page }) => {
+    // @acceptance AGENT-APPROVAL-001
     const panel = await openParameterAgent(page);
     const sessionId = await agentSessionId(panel);
 

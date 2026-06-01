@@ -12,6 +12,13 @@ export type BrowserAcceptanceWorkflowEvidence = {
   artifacts?: string[];
 };
 
+export type BrowserAcceptanceRequirementCoverage = {
+  status: BrowserAcceptanceOverallStatus;
+  coveredIds: string[];
+  missingRequiredIds: string[];
+  unknownIds: string[];
+};
+
 export type BrowserAcceptanceEvidenceInput = {
   date?: string;
   metadata: {
@@ -34,6 +41,7 @@ export type BrowserAcceptanceEvidenceInput = {
     detail?: string;
   };
   workflows: BrowserAcceptanceWorkflowEvidence[];
+  requirementCoverage?: BrowserAcceptanceRequirementCoverage;
   artifactPaths: string[];
   blockers: string[];
 };
@@ -41,6 +49,7 @@ export type BrowserAcceptanceEvidenceInput = {
 export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceInput) {
   const preflightOutcome = input.preflight.outcome ?? "unknown";
   const hdc = input.preflight.hdc ?? "unknown";
+  const requirementCoverage = input.requirementCoverage;
   const workflowRows =
     input.workflows.length > 0
       ? input.workflows.map(
@@ -81,6 +90,13 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
     "| --- | --- | --- | --- | --- |",
     ...workflowRows,
     "",
+    "### Requirement Coverage",
+    "",
+    `- Coverage status: \`${requirementCoverage?.status ?? "unknown"}\``,
+    `- Covered required IDs: \`${requirementCoverage?.coveredIds.length ?? 0}\``,
+    `- Missing required IDs: ${formatInlineList(requirementCoverage?.missingRequiredIds ?? [])}`,
+    `- Unknown IDs: ${formatInlineList(requirementCoverage?.unknownIds ?? [])}`,
+    "",
     "### Artifact Paths",
     "",
     ...(input.artifactPaths.length > 0 ? input.artifactPaths.map((artifactPath) => `- ${artifactPath}`) : ["- _none_"]),
@@ -94,4 +110,8 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
 
 function escapeMarkdownTableCell(value: string) {
   return value.replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
+}
+
+function formatInlineList(values: string[]) {
+  return values.length > 0 ? values.map((value) => `\`${value}\``).join(", ") : "_none_";
 }

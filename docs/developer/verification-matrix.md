@@ -14,6 +14,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run build` | TypeScript and Vite production build | TypeScript, routing, shared type, or package changes. |
 | `npm run docs:check` | Documentation governance | Any non-trivial plan or documentation structure change. |
 | `git diff --check` | Whitespace safety | Before committing or handing off. |
+| `npm run acceptance:coverage` | Requirement-level browser acceptance coverage markers | Adding or changing browser acceptance requirements or UI/API interaction behavior. |
 | `npm run acceptance:e2e` | Deterministic browser acceptance A-H flows | UI-interaction frontend/backend logic changes in API mode. |
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 
@@ -35,17 +36,18 @@ Use the narrowest command that proves the change while developing. Before finish
 
 ## UI Interaction Acceptance Rule
 
-Any change that alters user-facing interaction behavior must review the browser acceptance suite under `e2e/acceptance/`. The implementation plan or PR notes must name the affected acceptance spec and either update it or record why existing coverage still applies.
+Any change that alters user-facing interaction behavior must review the browser acceptance suite under `e2e/acceptance/`. The implementation plan or PR notes must name the affected acceptance spec and the affected acceptance IDs in [browser-acceptance-coverage-map.md](browser-acceptance-coverage-map.md). If no acceptance ID exists for the changed behavior, add one before implementation. Then update the automated coverage or record why existing coverage still applies.
 
 Use these modes:
 
 ```bash
 npm run acceptance:browser
+npm run acceptance:coverage
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
 
-The generated evidence is written to `docs/generated/acceptance-browser-evidence.md` and is derived from the Playwright JSON report at `test-results/acceptance/results.json`. Non-HDC modes require workflows A-E, G, and H to pass; HDC workflow F may be skipped only when explicitly out of scope. Full pilot mode is valid only when HDC device-lab evidence is enabled and ready.
+The generated evidence is written to `docs/generated/acceptance-browser-evidence.md` and is derived from the Playwright JSON report at `test-results/acceptance/results.json`. Non-HDC modes require workflows A-E, G, and H to pass; HDC workflow F may be skipped only when explicitly out of scope. The evidence also records requirement-level coverage from `npm run acceptance:coverage`; missing required IDs or unknown markers block the run. Browser diagnostics fail acceptance on unexpected page errors, console errors, request failures, and critical WiseEff API `4xx/5xx` responses. Full pilot mode is valid only when HDC device-lab evidence is enabled and ready.
 
 ## Documentation-Only Changes
 

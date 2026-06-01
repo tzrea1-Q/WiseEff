@@ -179,6 +179,7 @@ async function postJson<T>(
 
 test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
   test("detects, reads, writes with readback, and restores the hardware node via snapshot rollback", async ({ request }) => {
+    // @acceptance HDC-LAB-001
     test.skip(
       process.env.DEBUG_DEVICE_GATEWAY_MODE !== "hdc",
       "HDC device-lab acceptance only runs when DEBUG_DEVICE_GATEWAY_MODE=hdc."

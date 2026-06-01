@@ -4,6 +4,9 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import type { Client } from "pg";
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+
+useBrowserDiagnostics(test);
 
 const projectId = "aurora";
 const fastChargeParameterId = "dbg-fast-charge-current";
@@ -163,6 +166,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
   });
 
   test("reads, writes, detects mismatch, rolls back, and records audit evidence", async ({ page }) => {
+    // @acceptance DEBUG-SIM-001
     await page.goto(`/node-debugging?project=${projectId}`);
     await expectSimulatorOnline(page);
 

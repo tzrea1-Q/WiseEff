@@ -1,4 +1,8 @@
 import { expect, test, type Page, type TestInfo } from "playwright/test";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+
+// @acceptance SHELL-DIAG-001
+useBrowserDiagnostics(test);
 
 const routes = [
   "/",
