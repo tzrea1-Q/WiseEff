@@ -193,6 +193,38 @@ M5.5 corrects the coverage-model gap found after M5.4. M5.4 added deterministic 
 
 M5.5 keeps Playwright as the release-grade browser automation engine and adds a requirement-level user-operation inventory, `npm run acceptance:coverage`, browser diagnostics that fail on unexpected console/API failures, parameter negative-path coverage, permissions matrix coverage, and requirement-level evidence reporting. Future UI/API interaction plans must name affected acceptance requirement IDs, or add new IDs before implementation.
 
+## 10.4 M5.6 User Operation Coverage Matrix
+
+M5.6 deepens M5.5 by replacing broad workflow confidence with a role-aware user-operation matrix. It adds operation IDs, `npm run acceptance:operations`, generated operation coverage docs, and an honest status model for high-risk gaps such as draft edit/remove, review rejection, log reanalysis, debug write permissions, unapproved Agent write execution, and Admin user management. Current automated P0/P1 operations are release-gated; unstable or product-gap operations remain visible as `future` or `conditional` until their UI/API contracts are ready.
+
+M5.6 is a coverage-truth phase. It should answer which exact user operations are automated, manual, conditional, or deferred before the project claims broader browser acceptance confidence.
+
+## 10.5 M5.7 Evidence-Grade Browser Acceptance
+
+M5.7 builds on the M5.6 operation matrix and upgrades browser acceptance output into replayable evidence packages. Each automated operation now emits role, route, assertion types, screenshot artifact paths, and generated evidence indexes under `docs/generated/`; richer API, DB, audit, request-id, and trace summaries remain a future enhancement where an operation needs deeper forensic review.
+
+M5.7 is an auditability phase. It should make acceptance results reviewable by a human without reading raw test code, while keeping Playwright as the deterministic gate and leaving AI exploratory QA for a later optional phase.
+
+## 10.6 M5.8 Deterministic Acceptance Coverage Closure
+
+M5.8 stays fully non-AI. It closes the remaining browser-acceptance gaps that M5.6 and M5.7 kept visible as `future` or `conditional`, then keeps requirement IDs, operation IDs, and operation evidence aligned so reviewers can see exactly what is automated and why. Any gap that cannot be closed deterministically stays explicit instead of being hidden behind a broader workflow pass.
+
+## 10.7 M5.9 State Model & Contract-Driven Testing
+
+M5.9 hardens the state model behind the browser flows so UI state, API contracts, and seeded test data do not drift apart. The focus is deterministic contract checks, stronger fixture discipline, and tests that fail fast when workflow state changes unexpectedly.
+
+## 10.8 M5.10 Evidence-Grade Upgrade
+
+M5.10 deepens browser evidence beyond pass/fail and operation summaries by adding richer API, DB, audit, request-id, and trace metadata where a human reviewer needs better forensic context. It is still deterministic; it does not introduce AI decision-making into the release gate.
+
+## 10.9 M5.11 Accessibility / Visual / Responsive Gates
+
+M5.11 adds non-AI quality gates for keyboard access, accessibility, responsive layout, and visual regressions. It should catch the kinds of user-facing bugs that workflow automation alone can miss, while staying deterministic and replayable.
+
+## 10.10 M5.12 Staging Synthetic & CI Evidence Archiving
+
+M5.12 moves the browser gate further into staged and CI environments by archiving evidence from synthetic runs, preserving the proof trail for release candidates, and making the browser validation output easier to review after the fact.
+
 ## 11. 工程工作流
 
 每个功能分支要求：

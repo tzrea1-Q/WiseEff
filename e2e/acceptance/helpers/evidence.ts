@@ -19,6 +19,14 @@ export type BrowserAcceptanceRequirementCoverage = {
   unknownIds: string[];
 };
 
+export type BrowserAcceptanceOperationEvidence = {
+  status: BrowserAcceptanceOverallStatus;
+  coveredOperationIds: string[];
+  missingOperationIds: string[];
+  invalidEvidenceIds: string[];
+  records: Array<{ operationId: string; status: BrowserAcceptanceStatus }>;
+};
+
 export type BrowserAcceptanceEvidenceInput = {
   date?: string;
   metadata: {
@@ -42,6 +50,7 @@ export type BrowserAcceptanceEvidenceInput = {
   };
   workflows: BrowserAcceptanceWorkflowEvidence[];
   requirementCoverage?: BrowserAcceptanceRequirementCoverage;
+  operationEvidence?: BrowserAcceptanceOperationEvidence;
   artifactPaths: string[];
   blockers: string[];
 };
@@ -50,6 +59,7 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
   const preflightOutcome = input.preflight.outcome ?? "unknown";
   const hdc = input.preflight.hdc ?? "unknown";
   const requirementCoverage = input.requirementCoverage;
+  const operationEvidence = input.operationEvidence;
   const workflowRows =
     input.workflows.length > 0
       ? input.workflows.map(
@@ -96,6 +106,15 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
     `- Covered required IDs: \`${requirementCoverage?.coveredIds.length ?? 0}\``,
     `- Missing required IDs: ${formatInlineList(requirementCoverage?.missingRequiredIds ?? [])}`,
     `- Unknown IDs: ${formatInlineList(requirementCoverage?.unknownIds ?? [])}`,
+    "",
+    "### Operation Evidence",
+    "",
+    `- Evidence status: \`${operationEvidence?.status ?? "unknown"}\``,
+    `- Covered operation IDs: \`${operationEvidence?.coveredOperationIds.length ?? 0}\``,
+    `- Missing operation IDs: ${formatInlineList(operationEvidence?.missingOperationIds ?? [])}`,
+    `- Invalid evidence records: ${formatInlineList(operationEvidence?.invalidEvidenceIds ?? [])}`,
+    `- Evidence records: \`${operationEvidence?.records.length ?? 0}\``,
+    "- Evidence index: docs/generated/acceptance-operation-evidence.md",
     "",
     "### Artifact Paths",
     "",

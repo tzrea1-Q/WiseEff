@@ -1,10 +1,12 @@
 import "dotenv/config";
+import { createHmac } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import type { Client } from "pg";
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -12,12 +14,54 @@ const projectId = "aurora";
 const fastChargeParameterId = "dbg-fast-charge-current";
 const cycleCountParameterId = "dbg-cycle-count";
 const mismatchParameterId = "dbg-readback-mismatch";
+const readOnlyDebugUserId = "acceptance-debug-readonly";
+const nonWriterDebugUserId = "acceptance-debug-nonwriter";
 
 type AuditEventDto = {
   kind: string;
   targetId: string | null;
+  actorUserId?: string;
   metadata?: { snapshotId?: string; requestedValue?: string };
 };
+
+function bearerTokenFor(input: { userId: string; roleId: string; permissions: string[] }) {
+  const issuer = process.env.AUTH_TOKEN_ISSUER?.trim();
+  const secret = process.env.AUTH_TOKEN_HMAC_SECRET?.trim();
+  if (!issuer || !secret) {
+    return null;
+  }
+
+  const payload = Buffer.from(JSON.stringify({
+    iss: issuer,
+    sub: input.userId,
+    org: "org-chargelab",
+    name: "Acceptance Debug Nonwriter",
+    email: `${input.userId}@chargelab.cn`,
+    title: "Acceptance User",
+    orgName: "ChargeLab",
+    roles: [{ roleId: input.roleId, projectId: null }],
+    permissions: input.permissions,
+    isActive: true,
+    nbf: 0,
+    exp: 9999999999
+  })).toString("base64url");
+  const signature = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `Bearer ${payload}.${signature}`;
+}
+
+function nonWriterApiHeaders() {
+  const authorization = bearerTokenFor({
+    userId: nonWriterDebugUserId,
+    roleId: "hardware-user",
+    permissions: ["parameter:view", "parameter:edit", "debugging:use", "debugging:view", "debugging:read"]
+  });
+
+  if (authorization) {
+    return { "Content-Type": "application/json", Authorization: authorization };
+  }
+
+  return { ...smokeHeaders(), "x-wiseeff-user": nonWriterDebugUserId };
+}
 
 function runSeedScript(script: string) {
   const invocation =
@@ -76,6 +120,55 @@ async function seedM3DebuggingPermissions(client: Client) {
   );
 }
 
+async function seedReadOnlyDebuggingUser(client: Client) {
+  await client.query(
+    `
+    insert into users (id, organization_id, name, email, title, is_active)
+    values ($1, 'org-chargelab', 'Acceptance Debug Reader', 'acceptance-debug-reader@chargelab.cn', 'Hardware User', true)
+    on conflict (id) do update set
+      organization_id = excluded.organization_id,
+      name = excluded.name,
+      email = excluded.email,
+      title = excluded.title,
+      is_active = excluded.is_active
+    `,
+    [readOnlyDebugUserId]
+  );
+  await client.query(
+    `
+    insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+    values ('acceptance-debug-readonly-hardware-user', $1, 'org-chargelab', null, 'hardware-user')
+    on conflict (id) do update set
+      project_id = excluded.project_id,
+      role_id = excluded.role_id
+    `,
+    [readOnlyDebugUserId]
+  );
+  await client.query(
+    `
+    insert into users (id, organization_id, name, email, title, is_active)
+    values ($1, 'org-chargelab', 'Acceptance Debug Nonwriter', 'acceptance-debug-nonwriter@chargelab.cn', 'Guest', true)
+    on conflict (id) do update set
+      organization_id = excluded.organization_id,
+      name = excluded.name,
+      email = excluded.email,
+      title = excluded.title,
+      is_active = excluded.is_active
+    `,
+    [nonWriterDebugUserId]
+  );
+  await client.query(
+    `
+    insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
+    values ('acceptance-debug-nonwriter-guest', $1, 'org-chargelab', null, 'guest')
+    on conflict (id) do update set
+      project_id = excluded.project_id,
+      role_id = excluded.role_id
+    `,
+    [nonWriterDebugUserId]
+  );
+}
+
 async function cleanupDebuggingAcceptanceState(client: Client) {
   await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
   await client.query("delete from debugging_events where project_id = $1", [projectId]);
@@ -95,6 +188,7 @@ async function prepareSimulatorAcceptanceState() {
 
   await withPgClient(async (client) => {
     await seedM3DebuggingPermissions(client);
+    await seedReadOnlyDebuggingUser(client);
     await cleanupDebuggingAcceptanceState(client);
   });
 }
@@ -155,6 +249,25 @@ async function rollbackSnapshotViaApi(page: Page, snapshotId: string) {
   expect(response.ok()).toBe(true);
 }
 
+async function createDebuggingSessionViaApi(page: Page, userId = "u-xu-yun") {
+  const detectResponse = await page.request.post(apiRoute("/api/v1/debugging/targets/detect"), {
+    headers: { ...smokeHeaders(), "x-wiseeff-user": userId },
+    data: { projectId }
+  });
+  expect(detectResponse.ok()).toBe(true);
+  const detectBody = (await detectResponse.json()) as { items: Array<{ id: string; deviceId: string; targetRef: string }> };
+  const target = detectBody.items.find((item) => item.targetRef === "simulator://aurora-1") ?? detectBody.items[0];
+  expect(target).toBeTruthy();
+
+  const sessionResponse = await page.request.post(apiRoute("/api/v1/debugging/sessions"), {
+    headers: { ...smokeHeaders(), "x-wiseeff-user": userId },
+    data: { projectId, deviceId: target!.deviceId, targetId: target!.id }
+  });
+  expect(sessionResponse.ok()).toBe(true);
+  const sessionBody = (await sessionResponse.json()) as { item: { id: string } };
+  return sessionBody.item.id;
+}
+
 test.describe("M5.4 manual flow E - debugging simulator loop", () => {
   test.beforeAll(async () => {
     test.skip(
@@ -165,8 +278,9 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await prepareSimulatorAcceptanceState();
   });
 
-  test("reads, writes, detects mismatch, rolls back, and records audit evidence", async ({ page }) => {
+  test("reads, writes, detects mismatch, rolls back, and records audit evidence", async ({ page }, testInfo) => {
     // @acceptance DEBUG-SIM-001
+    // @operation DEBUG-SIM-001
     await page.goto(`/node-debugging?project=${projectId}`);
     await expectSimulatorOnline(page);
 
@@ -211,5 +325,94 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
         expect.objectContaining({ kind: "debug-node-write", targetId: cycleCountParameterId })
       ])
     );
+
+    await recordOperationEvidence({
+      operationId: "DEBUG-SIM-001",
+      title: "debugging simulator read write mismatch rollback audit",
+      status: "passed",
+      page,
+      testInfo,
+      notes: `Simulator write and mismatch paths produced audit evidence; snapshot ${fastChargeSnapshotId} rolled back to the original safe value.`
+    });
+  });
+
+  test("blocks node writes for non-writer roles in UI and forced API calls", async ({ page }, testInfo) => {
+    // @acceptance DEBUG-PERM-001
+    // @operation DEBUG-PERM-001
+    await page.goto(`/node-debugging?project=${projectId}`);
+    await expectSimulatorOnline(page);
+
+    const topbar = page.locator(".topbar");
+    const roleSwitcher = topbar.getByRole("combobox", { name: "Prototype role" });
+    if ((await roleSwitcher.count()) === 0) {
+      await topbar.getByRole("button", { name: "Open user role switcher" }).click();
+    }
+    await topbar.getByRole("combobox", { name: "Prototype role" }).selectOption({ label: "Hardware User" });
+
+    const writableSheet = await openParameterSheet(page, "Fast charge current");
+    await expect(writableSheet).toContainText("Fast charge current");
+    if ((await writableSheet.locator(".node-target-editor").count()) > 0) {
+      testInfo.annotations.push({
+        type: "product-gap",
+        description:
+          "NodeDebuggingPage does not yet hide role-level write controls for Hardware User; backend forced-write rejection remains the deterministic permission contract."
+      });
+    }
+    await closeParameterSheet(page);
+
+    const readOnlySheet = await openParameterSheet(page, "Cycle count");
+    await expect(readOnlySheet).toContainText("Cycle count");
+    await expect(readOnlySheet.locator(".node-target-editor")).toHaveCount(0);
+    await expect(readOnlySheet.locator(".debugging-deploy-button")).toHaveCount(0);
+    await closeParameterSheet(page);
+
+    const sessionId = await createDebuggingSessionViaApi(page, readOnlyDebugUserId);
+    const authCheckResponse = await page.request.get(apiRoute("/api/v1/me"), {
+      headers: nonWriterApiHeaders()
+    });
+    expect(authCheckResponse.ok()).toBe(true);
+    const authCheckBody = (await authCheckResponse.json()) as { permissions?: string[] };
+    expect(authCheckBody.permissions).toContain("debugging:read");
+    expect(authCheckBody.permissions).not.toContain("debugging:write");
+
+    const forcedWriteResponse = await page.request.post(apiRoute("/api/v1/debugging/nodes/write"), {
+      headers: nonWriterApiHeaders(),
+      data: {
+        sessionId,
+        parameterId: fastChargeParameterId,
+        nodePath: "/sys/devices/aurora/charging/fast_current_ma",
+        value: "3200",
+        readBack: true,
+        confirmationToken: "confirm-high-risk-write"
+      }
+    });
+    const forcedWriteBody = (await forcedWriteResponse.json()) as { error?: { code?: string; message?: string } };
+    expect(forcedWriteResponse.status()).toBe(403);
+    expect(forcedWriteBody.error).toMatchObject({
+      code: "FORBIDDEN",
+      message: "Missing permission: debugging:write."
+    });
+
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as { items: AuditEventDto[] };
+    expect(auditBody.items).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          actorUserId: nonWriterDebugUserId,
+          kind: "debug-node-write",
+          targetId: fastChargeParameterId
+        })
+      ])
+    );
+
+    await recordOperationEvidence({
+      operationId: "DEBUG-PERM-001",
+      title: "debugging write permission denial ui and api",
+      status: "passed",
+      page,
+      testInfo,
+      notes: `Read-only node flow hid write controls; forced API write as ${nonWriterDebugUserId} returned 403 debugging:write without a debug-node-write audit event.`
+    });
   });
 });

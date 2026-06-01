@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { expect, test } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
@@ -37,8 +38,9 @@ function roleValueByName(roleName: string) {
 
 test.describe("M5.5 permissions matrix browser acceptance", () => {
   for (const expectation of visibleRoleExpectations) {
-    test(`enforces visible route permissions for ${expectation.role}`, async ({ page }) => {
+    test(`enforces visible route permissions for ${expectation.role}`, async ({ page }, testInfo) => {
       // @acceptance PERM-MATRIX-001
+      // @operation PERM-MATRIX-001
       await setPrototypeRole(page, expectation.role);
 
       await navigateWithinApp(page, "/debugging");
@@ -58,11 +60,21 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
         await expect(page.getByText(`Current role: ${expectation.role}`)).toBeVisible();
       }
+
+      await recordOperationEvidence({
+        operationId: "PERM-MATRIX-001",
+        title: `visible route permissions for ${expectation.role}`,
+        status: "passed",
+        page,
+        testInfo,
+        notes: `${expectation.role} visibility was checked for debugging and parameter review route access.`
+      });
     });
   }
 
-  test("keeps API-backed workflow eligibility stricter than visible role inclusion", async ({ page }) => {
+  test("keeps API-backed workflow eligibility stricter than visible role inclusion", async ({ page }, testInfo) => {
     // @acceptance PERM-MATRIX-002
+    // @operation PERM-MATRIX-002
     const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
       headers: smokeHeaders(),
       data: {
@@ -89,6 +101,15 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
         code: "VALIDATION_FAILED",
         message: "Workflow assignee is not eligible for the requested role."
       }
+    });
+
+    await recordOperationEvidence({
+      operationId: "PERM-MATRIX-002",
+      title: "api workflow eligibility stricter than visible role inclusion",
+      status: "passed",
+      page,
+      testInfo,
+      notes: "API-backed parameter submission rejected project-scoped workflow assignees that visible role inclusion alone would not permit."
     });
   });
 });

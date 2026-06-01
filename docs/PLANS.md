@@ -16,7 +16,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 
 ## Completed Plans
 
-Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M5.3 documentation system completion, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location. Use `exec-plans/completed/README.md` to interpret completed plans as historical evidence rather than current implementation contracts.
+Completed historical plans are preserved under `exec-plans/completed/`, including M0-M5 productization work, M5.1 documentation governance, Chinese developer documentation, M5.3 documentation system completion, M5.4-M5.8 browser acceptance hardening, M3.5 commercial readiness hardening, and feature-specific plans from the former Superpowers plan location. Use `exec-plans/completed/README.md` to interpret completed plans as historical evidence rather than current implementation contracts.
 
 ## Plan Rules
 
@@ -45,4 +45,6 @@ Run `npm run docs:check` before finishing a non-trivial plan. The check also gua
 
 After M5.4 lands, any implementation plan that changes user-facing interaction behavior must review browser acceptance coverage. This applies to route changes, forms, tables, filters, uploads, modals, drawers, approvals, navigation, frontend API clients, backend API responses that drive visible UI state, permissions, Agent actions, and device actions initiated from the UI.
 
-The plan must name the affected `e2e/acceptance/` spec and acceptance requirement IDs from `docs/developer/browser-acceptance-coverage-map.md`. If no ID exists for the changed behavior, the plan must add one before implementation. The plan must either add/update automated coverage or record why the existing browser acceptance automation already covers the change. A plan cannot be moved to `completed/` when UI-interaction behavior changed but browser acceptance coverage was not reviewed.
+The plan must name the affected `e2e/acceptance/` spec, acceptance requirement IDs from `docs/developer/browser-acceptance-coverage-map.md`, and operation IDs from `docs/developer/user-operation-coverage-matrix.md`. If no requirement ID or operation ID exists for the changed behavior, the plan must add one before implementation.
+
+The plan must either add/update automated coverage or record why existing browser acceptance automation already covers the change. For automated operation IDs, the plan must also preserve operation evidence generation through `npm run acceptance:browser` or `npm run acceptance:evidence`. A plan cannot be moved to `completed/` when UI-interaction behavior changed but requirement coverage, operation coverage, and operation evidence impact were not reviewed.

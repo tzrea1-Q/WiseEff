@@ -330,6 +330,71 @@ describe("browser acceptance runner", () => {
     });
   });
 
+  it("adds operation evidence gaps to blockers", () => {
+    expect(
+      evaluateBrowserAcceptanceRun({
+        mode: "local-non-hdc",
+        preflight: { status: "passed", outcome: "non_hdc_local", hdc: "skipped" },
+        playwright: { status: "passed" },
+        operationEvidence: {
+          status: "failed",
+          coveredOperationIds: [],
+          missingOperationIds: ["PARAM-HAPPY-001"],
+          invalidEvidenceIds: [],
+          records: []
+        }
+      })
+    ).toEqual({
+      status: "failed",
+      blockers: ["Operation evidence is missing required IDs: PARAM-HAPPY-001."]
+    });
+  });
+
+  it("adds operation evidence metadata gaps to blockers", () => {
+    expect(
+      evaluateBrowserAcceptanceRun({
+        mode: "local-non-hdc",
+        preflight: { status: "passed", outcome: "non_hdc_local", hdc: "skipped" },
+        playwright: { status: "passed" },
+        operationEvidence: {
+          status: "failed",
+          coveredOperationIds: ["PARAM-HAPPY-001"],
+          missingOperationIds: [],
+          invalidEvidenceIds: ["PARAM-HAPPY-001"],
+          records: [{ operationId: "PARAM-HAPPY-001", status: "passed" }]
+        }
+      })
+    ).toEqual({
+      status: "failed",
+      blockers: ["Operation evidence records are missing review metadata: PARAM-HAPPY-001."]
+    });
+  });
+
+  it("adds operation matrix gaps to blockers", () => {
+    expect(
+      evaluateBrowserAcceptanceRun({
+        mode: "local-non-hdc",
+        preflight: { status: "passed", outcome: "non_hdc_local", hdc: "skipped" },
+        playwright: { status: "passed" },
+        operationMatrix: {
+          status: "failed",
+          coveredOperationIds: [],
+          missingAutomatedOperationIds: ["PARAM-HAPPY-001"],
+          deferredOperationIdsMissingReason: [],
+          operationsMissingAssertions: [],
+          unknownOperationIds: ["UNKNOWN-OP-001"],
+          unknownAcceptanceIds: []
+        }
+      })
+    ).toEqual({
+      status: "failed",
+      blockers: [
+        "Operation matrix is missing automated operation markers: PARAM-HAPPY-001.",
+        "Operation matrix references unknown operation IDs: UNKNOWN-OP-001."
+      ]
+    });
+  });
+
   it("passes target non-HDC when Playwright passes and HDC is explicitly excluded", () => {
     expect(
       evaluateBrowserAcceptanceRun({
@@ -458,6 +523,8 @@ describe("browser acceptance evidence", () => {
     expect(evidence).toContain("### Workflow Table");
     expect(evidence).toContain("| ID | Workflow | Status | Notes | Artifacts |");
     expect(evidence).toContain("| B | Parameters \\| governance | passed | review<br>approved | test-results/acceptance/parameters.md |");
+    expect(evidence).toContain("### Requirement Coverage");
+    expect(evidence).toContain("### Operation Evidence");
     expect(evidence).toContain("### Artifact Paths");
     expect(evidence).toContain("### Blockers");
   });

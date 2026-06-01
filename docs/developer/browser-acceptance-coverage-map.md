@@ -2,6 +2,8 @@
 
 This map is the source of truth for requirement-level browser acceptance coverage. Any plan or PR that changes user-facing UI/API interaction behavior must name the affected acceptance IDs below. If no ID exists for the changed behavior, add one before implementation.
 
+For operation-level coverage, also review [user-operation-coverage-matrix.md](user-operation-coverage-matrix.md). Requirement IDs explain the behavior that must be covered; operation IDs explain the concrete user action, role, route, assertion types, and automation status that prove it.
+
 | ID | Workflow | Blocking | Expected User Behavior | Spec Owner |
 | --- | --- | --- | --- | --- |
 | `AUTH-RUNTIME-001` | A | Yes | API-mode browser runtime loads the current user with the same auth contract used by local development. | `e2e/acceptance/auth-runtime.acceptance.spec.ts` |
@@ -26,3 +28,4 @@ This map is the source of truth for requirement-level browser acceptance coverag
 - `Blocking = No` means the ID is tracked, but may be skipped when the required external dependency is explicitly out of scope. Today this applies only to the HDC device lab.
 - Coverage markers use comments in acceptance specs: `// @acceptance PARAM-REASON-001`.
 - A workflow-level pass does not imply every row above is covered. The generated browser evidence must report requirement-level coverage before this map can be treated as satisfied.
+- Operation markers use comments in acceptance specs: `// @operation PARAM-REASON-001`. Automated P0/P1 operation IDs must produce operation evidence under `docs/generated/acceptance-operation-evidence.md`.

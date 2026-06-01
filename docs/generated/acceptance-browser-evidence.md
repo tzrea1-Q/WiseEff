@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-01T08:15:39.301Z
-- Branch: `codex/m5-5-browser-acceptance-hardening`
-- Commit: `44e0d0ead5a3c7a919397574203565ec0df72722`
+- Date: 2026-06-01T11:38:50.514Z
+- Branch: `codex/m5-6-m5-7-acceptance-depth`
+- Commit: `d10ca3697654e29473a916695e5aec3ad9b04cb8`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `passed`
@@ -37,9 +37,18 @@
 ### Requirement Coverage
 
 - Coverage status: `passed`
-- Covered required IDs: `15`
+- Covered required IDs: `21`
 - Missing required IDs: _none_
 - Unknown IDs: _none_
+
+### Operation Evidence
+
+- Evidence status: `passed`
+- Covered operation IDs: `20`
+- Missing operation IDs: _none_
+- Invalid evidence records: _none_
+- Evidence records: `34`
+- Evidence index: docs/generated/acceptance-operation-evidence.md
 
 ### Artifact Paths
 
@@ -47,6 +56,8 @@
 - test-results/acceptance/results.json
 - test-results/acceptance
 - playwright-report/acceptance
+- docs/generated/acceptance-operation-evidence.md
+- docs/generated/acceptance-operation-evidence/index.json
 
 ### Blockers
 

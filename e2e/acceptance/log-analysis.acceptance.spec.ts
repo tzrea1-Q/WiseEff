@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -142,6 +143,17 @@ async function latestLogByFile(page: Page, fileName: string) {
   return matches[0];
 }
 
+async function logRuns(page: Page, logId: string) {
+  const response = await page.request.get(apiRoute(`/api/v1/logs/${encodeURIComponent(logId)}/runs`), {
+    headers: smokeHeaders()
+  });
+  expect(response.ok()).toBe(true);
+  const body = (await response.json()) as {
+    items: Array<{ id: string; status: string; progress: number; jobId?: string | null }>;
+  };
+  return body.items;
+}
+
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string) {
   await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
@@ -167,8 +179,9 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     await seedLogAdminUser();
   });
 
-  test("uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure", async ({ page }) => {
+  test("uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure", async ({ page }, testInfo) => {
     // @acceptance LOG-HAPPY-001
+    // @operation LOG-HAPPY-001
     await page.goto(`/logs?project=${projectId}`);
 
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
@@ -235,5 +248,91 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .toMatch(/^failed:.*unsupported/i);
     const unsupportedHistoryItem = historyItem(page, unsupportedFileName);
     await expect(unsupportedHistoryItem).toBeVisible();
+
+    await recordOperationEvidence({
+      operationId: "LOG-HAPPY-001",
+      title: "log upload complete evidence feedback archive unsupported",
+      status: "passed",
+      page,
+      testInfo,
+      notes: `Log ${completedLog.id} completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.`
+    });
+  });
+
+  test("reruns a completed log and records run, job progress, audit, and operation evidence", async ({ page }, testInfo) => {
+    // @acceptance LOG-REANALYZE-001
+    // @operation LOG-REANALYZE-001
+    await cleanupAcceptanceLogs();
+
+    await page.goto(`/logs?project=${projectId}`);
+    await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
+    const completedLog = await latestLogByFile(page, supportedFileName);
+    await expect
+      .poll(async () => (await latestLogByFile(page, supportedFileName)).status, { timeout: 70_000 })
+      .toBe("complete");
+    const initialRuns = await logRuns(page, completedLog.id);
+    expect(initialRuns.length).toBeGreaterThanOrEqual(1);
+
+    await page.goto("/log-admin");
+    await page.locator('input[type="search"]').fill(supportedFileName);
+    await page.getByRole("row").filter({ hasText: supportedFileName }).first().click();
+    const rerunResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/api/v1/logs/${completedLog.id}/rerun`)
+    );
+    await page.getByRole("button", { name: /重新分析/ }).click();
+    const rerunResponse = await rerunResponsePromise;
+    expect(rerunResponse.ok()).toBe(true);
+
+    await expect
+      .poll(async () => {
+        const runs = await logRuns(page, completedLog.id);
+        return runs.length;
+      }, { timeout: 30_000 })
+      .toBeGreaterThan(initialRuns.length);
+
+    const rerunRuns = await logRuns(page, completedLog.id);
+    const latestRun = rerunRuns.find((run) => !initialRuns.some((initialRun) => initialRun.id === run.id));
+    expect(latestRun).toBeTruthy();
+    expect(latestRun).toEqual(expect.objectContaining({ status: expect.any(String), progress: expect.any(Number) }));
+    expect(latestRun!.progress).toBeGreaterThanOrEqual(0);
+    expect(latestRun!.progress).toBeLessThanOrEqual(100);
+    await expect
+      .poll(async () => {
+        const currentRun = (await logRuns(page, completedLog.id)).find((run) => run.id === latestRun!.id);
+        return currentRun?.status ?? "missing";
+      }, { timeout: 70_000 })
+      .toBe("complete");
+
+    await page.goto(`/logs?project=${projectId}`);
+    await expect(historyItem(page, supportedFileName)).toBeVisible();
+    await historyItem(page, supportedFileName).click();
+    await expect(page.locator("#log-conclusion-title")).toContainText(/AI 正在分析|thermal|foldback/i, { timeout: 30_000 });
+
+    await expect
+      .poll(async () => {
+        const response = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+        const body = (await response.json()) as {
+          items: Array<{ kind: string; targetId: string | null; metadata?: { runId?: string; jobId?: string } }>;
+        };
+        return body.items.some(
+          (item) =>
+            item.kind === "log-rerun" &&
+            item.targetId === completedLog.id &&
+            item.metadata?.runId === latestRun!.id &&
+            typeof item.metadata?.jobId === "string"
+        );
+      }, { timeout: 30_000 })
+      .toBe(true);
+
+    await recordOperationEvidence({
+      operationId: "LOG-REANALYZE-001",
+      title: "completed log reanalysis creates rerun job progress and audit",
+      status: "passed",
+      page,
+      testInfo,
+      notes: `Log ${completedLog.id} created rerun ${latestRun!.id}; UI refreshed the log workbench and audit recorded log-rerun with job metadata.`
+    });
   });
 });

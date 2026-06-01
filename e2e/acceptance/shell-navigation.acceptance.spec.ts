@@ -1,7 +1,9 @@
 import { expect, test, type Page, type TestInfo } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 
 // @acceptance SHELL-DIAG-001
+// @operation SHELL-DIAG-001
 useBrowserDiagnostics(test);
 
 const routes = [
@@ -37,6 +39,15 @@ test.describe("M5.4 manual flow A - shell navigation", () => {
     test(`loads ${route} without a runtime crash`, async ({ page }, testInfo) => {
       await page.goto(route);
       await expectUsableShell(page, testInfo, route);
+
+      await recordOperationEvidence({
+        operationId: "SHELL-DIAG-001",
+        title: `shell route ${route === "/" ? "home" : route.slice(1).replace(/\//g, "-")}`,
+        status: "passed",
+        page,
+        testInfo,
+        notes: `Route ${route} loaded without visible runtime crash or browser diagnostic failures.`
+      });
     });
   }
 });

@@ -5,6 +5,7 @@ import { expect, test, type Page } from "playwright/test";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -116,6 +117,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
   test("loads users, shows role/status, and gates user governance to Admin", async ({ page }, testInfo) => {
     // @acceptance PERM-GOV-001
+    // @operation PERM-GOV-001
     await page.goto("/user-permissions");
 
     await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();
@@ -152,6 +154,68 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
 
     await setPrototypeRole(page, "Admin");
     await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();
+
+    await recordOperationEvidence({
+      operationId: "PERM-GOV-001",
+      title: "user governance admin only and self protection",
+      status: "passed",
+      page,
+      testInfo,
+      notes: "Admin saw user governance, active Admin self-disable controls were disabled, and Hardware User received controlled permission denial."
+    });
+  });
+
+  test("lets Admin manage a non-self user in UI while denying non-Admin access", async ({ page }, testInfo) => {
+    // @acceptance PERM-USER-MGMT-001
+    // @operation PERM-USER-MGMT-001
+    await page.goto("/user-permissions");
+
+    await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();
+    const table = page.getByRole("table", { name: "Platform users" });
+    const wangRole = table.getByRole("row").filter({ hasText: "Wang Jie" }).getByRole("combobox", { name: "Role for Wang Jie" });
+
+    await wangRole.selectOption("software-committer");
+    await expect(wangRole).toHaveValue("software-committer");
+
+    await page.getByRole("button", { name: "Add user" }).click();
+    const addUserDialog = page.getByRole("dialog", { name: "Add user" });
+    await expect(addUserDialog).toBeVisible();
+    await addUserDialog.getByLabel("Name").fill("Chen Rui");
+    await addUserDialog.getByLabel("Email").fill("chen.rui.acceptance@chargelab.cn");
+    await addUserDialog.getByLabel("Title").fill("Acceptance Test Engineer");
+    await addUserDialog.getByLabel("Initial role").selectOption("software-user");
+    await addUserDialog.getByRole("button", { name: "Create user" }).click();
+    await expect(addUserDialog).not.toBeVisible();
+
+    const chenRow = table.getByRole("row").filter({ hasText: "Chen Rui" });
+    await expect(chenRow).toBeVisible();
+    await expect(chenRow).toContainText("chen.rui.acceptance@chargelab.cn");
+    await expect(chenRow.getByRole("combobox", { name: "Role for Chen Rui" })).toHaveValue("software-user");
+    await expect(chenRow.getByRole("button", { name: "Disable Chen Rui" })).toBeVisible();
+
+    if (!(await apiExposesPermissionAudit(page, "Chen Rui", "software-user"))) {
+      testInfo.annotations.push({
+        type: "product-gap",
+        description:
+          "PERM-USER-MGMT-001 proves local prototype UI mutation and route denial only; durable user-management mutation/audit API is not implemented or exposed."
+      });
+    }
+
+    await setPrototypeRole(page, "Software User");
+    await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
+    await expect(page.getByText("Current role: Software User")).toBeVisible();
+    await expect(page.getByText("Required role: Admin")).toBeVisible();
+    await expect(page.getByRole("table", { name: "Platform users" })).toHaveCount(0);
+
+    await recordOperationEvidence({
+      operationId: "PERM-USER-MGMT-001",
+      title: "admin user management ui and non admin denial",
+      status: "passed",
+      page,
+      testInfo,
+      notes:
+        "Admin changed a non-self user's role and created a local prototype user in the UI. Software User was denied access to /user-permissions. Durable backend user-management mutation/audit remains annotated as a product gap when no API audit evidence is visible."
+    });
   });
 
   test("protects API-mode user context with production bearer authentication", async ({ page }) => {

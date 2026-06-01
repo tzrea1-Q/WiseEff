@@ -57,15 +57,39 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-DRAFT-EDIT-001",
+    workflow: "B",
+    title: "Parameter draft edit and remove operations work before final submission.",
+    required: true
+  },
+  {
+    id: "PARAM-REJECT-001",
+    workflow: "B",
+    title: "Parameter rejection records status, reason, and audit evidence.",
+    required: true
+  },
+  {
     id: "LOG-HAPPY-001",
     workflow: "D",
     title: "Log upload, analysis progress, evidence, feedback, archive, and unsupported-file path work.",
     required: true
   },
   {
+    id: "LOG-REANALYZE-001",
+    workflow: "D",
+    title: "Log reanalysis creates a new run with progress and audit evidence.",
+    required: true
+  },
+  {
     id: "DEBUG-SIM-001",
     workflow: "E",
     title: "Simulator read, write, mismatch, rollback, and audit path work.",
+    required: true
+  },
+  {
+    id: "DEBUG-PERM-001",
+    workflow: "E",
+    title: "Debugging write controls are hidden or blocked for roles without write permission.",
     required: true
   },
   {
@@ -78,6 +102,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "AGENT-APPROVAL-001",
     workflow: "G",
     title: "Agent context, approval, rejection, execution, and evidence path work.",
+    required: true
+  },
+  {
+    id: "AGENT-UNAUTH-001",
+    workflow: "G",
+    title: "Direct execution of an unapproved Agent write tool is rejected.",
     required: true
   },
   {
@@ -96,6 +126,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "PERM-MATRIX-002",
     workflow: "H",
     title: "Role inclusion and project-scoped workflow eligibility are enforced by API-backed operations.",
+    required: true
+  },
+  {
+    id: "PERM-USER-MGMT-001",
+    workflow: "H",
+    title: "Admin user-management mutation is covered with non-Admin denial and audit evidence.",
     required: true
   }
 ];

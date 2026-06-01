@@ -1,0 +1,566 @@
+{
+  "status": "passed",
+  "coveredOperationIds": [
+    "AGENT-APPROVAL-001",
+    "AGENT-UNAUTH-001",
+    "AUTH-RUNTIME-001",
+    "DEBUG-PERM-001",
+    "DEBUG-SIM-001",
+    "LOG-HAPPY-001",
+    "LOG-REANALYZE-001",
+    "PARAM-ADMIN-001",
+    "PARAM-ASSIGNEE-001",
+    "PARAM-ASSIGNEE-002",
+    "PARAM-ASSIGNEE-003",
+    "PARAM-DRAFT-EDIT-001",
+    "PARAM-HAPPY-001",
+    "PARAM-REASON-001",
+    "PARAM-REJECT-001",
+    "PERM-GOV-001",
+    "PERM-MATRIX-001",
+    "PERM-MATRIX-002",
+    "PERM-USER-MGMT-001",
+    "SHELL-DIAG-001"
+  ],
+  "missingOperationIds": [],
+  "invalidEvidenceIds": [],
+  "records": [
+    {
+      "operationId": "AGENT-APPROVAL-001",
+      "title": "agent approval reject execute trace audit",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/agent",
+      "assertions": [
+        "ui",
+        "api",
+        "audit"
+      ],
+      "notes": "Agent session agent-session-84af77a0-eaa2-413e-ac89-5c35b842ab2e required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png"
+      ],
+      "recordedAt": "2026-06-01T11:34:57.324Z"
+    },
+    {
+      "operationId": "AGENT-UNAUTH-001",
+      "title": "agent direct run rejected before approval",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User",
+      "route": "/agent",
+      "assertions": [
+        "api",
+        "audit"
+      ],
+      "notes": "Agent session agent-session-5cd2c966-21f2-4c86-9fd4-43c8582b1ecf rejected direct run for pending tool call agent-tool-c23fcc4f-87bb-4558-97eb-478a7423b876 with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png"
+      ],
+      "recordedAt": "2026-06-01T11:34:54.591Z"
+    },
+    {
+      "operationId": "AUTH-RUNTIME-001",
+      "title": "API mode browser auth runtime parity",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/",
+      "assertions": [
+        "ui",
+        "api"
+      ],
+      "notes": "/api/v1/me accepted smoke auth and the API-mode page loaded without auth errors.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\AUTH-RUNTIME-001-api-mode-browser-auth-runtime-parity.png"
+      ],
+      "recordedAt": "2026-06-01T11:34:59.209Z"
+    },
+    {
+      "operationId": "DEBUG-PERM-001",
+      "title": "debugging write permission denial ui and api",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User",
+      "route": "/node-debugging",
+      "assertions": [
+        "ui",
+        "api"
+      ],
+      "notes": "Read-only node flow hid write controls; forced API write as acceptance-debug-nonwriter returned 403 debugging:write without a debug-node-write audit event.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\DEBUG-PERM-001-debugging-write-permission-denial-ui-and-api.png"
+      ],
+      "recordedAt": "2026-06-01T11:35:47.074Z"
+    },
+    {
+      "operationId": "DEBUG-SIM-001",
+      "title": "debugging simulator read write mismatch rollback audit",
+      "status": "passed",
+      "role": "Hardware Committer, Admin",
+      "route": "/node-debugging",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "Simulator write and mismatch paths produced audit evidence; snapshot 10a9c3af-8dd5-4a20-b7a1-e6896286d582 rolled back to the original safe value.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png"
+      ],
+      "recordedAt": "2026-06-01T11:35:45.225Z"
+    },
+    {
+      "operationId": "LOG-HAPPY-001",
+      "title": "log upload complete evidence feedback archive unsupported",
+      "status": "passed",
+      "role": "Software User, Software Committer, Admin",
+      "route": "/logs",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "Log c6874909-2b02-4e5a-90c9-2227278aac55 completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png"
+      ],
+      "recordedAt": "2026-06-01T11:36:35.832Z"
+    },
+    {
+      "operationId": "LOG-REANALYZE-001",
+      "title": "completed log reanalysis creates rerun job progress and audit",
+      "status": "passed",
+      "role": "Software User, Software Committer, Admin",
+      "route": "/logs",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "Log 62f26d1b-06e2-4e3e-8739-4d0d0c1772f2 created rerun 06dfe22b-20b2-4094-90f0-5c702159879b; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png"
+      ],
+      "recordedAt": "2026-06-01T11:36:41.106Z"
+    },
+    {
+      "operationId": "PARAM-ADMIN-001",
+      "title": "parameter admin import preview and audit drawer",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/parameter-admin",
+      "assertions": [
+        "ui",
+        "audit"
+      ],
+      "notes": "Admin audit drawer opened and parameter import preview rendered without committing preview-only data.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-ADMIN-001-parameter-admin-import-preview-and-audit-drawer.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:56.542Z"
+    },
+    {
+      "operationId": "PARAM-ASSIGNEE-001",
+      "title": "workflow assignee defaults are eligible",
+      "status": "passed",
+      "role": "Hardware User",
+      "route": "/parameters",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "All workflow assignee selectors defaulted to non-empty eligible active users.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-001-workflow-assignee-defaults-are-eligible.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:18.927Z"
+    },
+    {
+      "operationId": "PARAM-ASSIGNEE-002",
+      "title": "workflow assignee dropdowns hide ineligible users",
+      "status": "passed",
+      "role": "Hardware User",
+      "route": "/parameters",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Inactive, guest, admin-only, and role-ineligible users were absent from workflow assignee dropdowns.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-002-workflow-assignee-dropdowns-hide-ineligible-users.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:18.985Z"
+    },
+    {
+      "operationId": "PARAM-ASSIGNEE-003",
+      "title": "forced invalid workflow assignees rejected",
+      "status": "passed",
+      "role": "Hardware User",
+      "route": "/api/v1/parameter-submission-rounds",
+      "assertions": [
+        "api"
+      ],
+      "notes": "The parameter submission API rejected role-ineligible workflow assignees with VALIDATION_FAILED.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-003-forced-invalid-workflow-assignees-rejected.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:19.227Z"
+    },
+    {
+      "operationId": "PARAM-DRAFT-EDIT-001",
+      "title": "parameter draft edit and remove before submission",
+      "status": "passed",
+      "role": "Hardware User",
+      "route": "/parameters",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "Edited one draft target value, removed another draft item, and verified only the edited item reached final submission preview.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-DRAFT-EDIT-001-parameter-draft-edit-and-remove-before-submission.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:17.374Z"
+    },
+    {
+      "operationId": "PARAM-HAPPY-001",
+      "title": "parameter management submit review merge persistence audit",
+      "status": "passed",
+      "role": "Hardware User, Hardware Committer, Software Committer, Software User, Admin",
+      "route": "/parameters",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "Parameter request 09359156-3bb1-40f7-bba5-0a8ac0a71ee3 merged, persisted target value, and produced parameter-merge audit evidence.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:56.434Z"
+    },
+    {
+      "operationId": "PARAM-REASON-001",
+      "title": "blank parameter draft reason blocked",
+      "status": "passed",
+      "role": "Hardware User",
+      "route": "/parameters",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Blank draft reason left the submit action disabled before an API submission could be made.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-REASON-001-blank-parameter-draft-reason-blocked.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:15.174Z"
+    },
+    {
+      "operationId": "PARAM-REJECT-001",
+      "title": "parameter review rejection reason persistence audit",
+      "status": "passed",
+      "role": "Hardware Committer, Software Committer",
+      "route": "/parameter-review",
+      "assertions": [
+        "ui",
+        "api",
+        "db",
+        "audit"
+      ],
+      "notes": "Parameter request f99d36f5-b28f-45ef-a995-4d72f7024d87 was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png"
+      ],
+      "recordedAt": "2026-06-01T11:37:58.976Z"
+    },
+    {
+      "operationId": "PERM-GOV-001",
+      "title": "user governance admin only and self protection",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/user-permissions",
+      "assertions": [
+        "ui",
+        "api"
+      ],
+      "notes": "Admin saw user governance, active Admin self-disable controls were disabled, and Hardware User received controlled permission denial.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-GOV-001-user-governance-admin-only-and-self-protection.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:32.601Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-001",
+      "title": "visible route permissions for Admin",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Admin visibility was checked for debugging and parameter review route access.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-admin.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:09.344Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-001",
+      "title": "visible route permissions for Guest",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Guest visibility was checked for debugging and parameter review route access.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-guest.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:00.706Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-001",
+      "title": "visible route permissions for Hardware Committer",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Hardware Committer visibility was checked for debugging and parameter review route access.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-committer.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:05.863Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-001",
+      "title": "visible route permissions for Hardware User",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Hardware User visibility was checked for debugging and parameter review route access.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-user.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:02.490Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-001",
+      "title": "visible route permissions for Software Committer",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Software Committer visibility was checked for debugging and parameter review route access.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-committer.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:07.786Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-001",
+      "title": "visible route permissions for Software User",
+      "status": "passed",
+      "role": "Guest, Hardware User, Software User, Hardware Committer, Software Committer, Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Software User visibility was checked for debugging and parameter review route access.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-user.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:03.975Z"
+    },
+    {
+      "operationId": "PERM-MATRIX-002",
+      "title": "api workflow eligibility stricter than visible role inclusion",
+      "status": "passed",
+      "role": "Hardware User, Hardware Committer, Software Committer, Software User, Admin",
+      "route": "/api/v1/parameter-submission-rounds",
+      "assertions": [
+        "api"
+      ],
+      "notes": "API-backed parameter submission rejected project-scoped workflow assignees that visible role inclusion alone would not permit.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-MATRIX-002-api-workflow-eligibility-stricter-than-visible-role-inclusion.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:09.589Z"
+    },
+    {
+      "operationId": "PERM-USER-MGMT-001",
+      "title": "admin user management ui and non admin denial",
+      "status": "passed",
+      "role": "Admin",
+      "route": "/user-permissions",
+      "assertions": [
+        "ui",
+        "api",
+        "audit"
+      ],
+      "notes": "Admin changed a non-self user's role and created a local prototype user in the UI. Software User was denied access to /user-permissions. Durable backend user-management mutation/audit remains annotated as a product gap when no API audit evidence is visible.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\PERM-USER-MGMT-001-admin-user-management-ui-and-non-admin-denial.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:34.115Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route debugging-admin",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /debugging-admin loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging-admin.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:48.608Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route debugging",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /debugging loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:45.421Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route home",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route / loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-home.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:35.509Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route log-admin",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /log-admin loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-log-admin.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:43.858Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route logs",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /logs loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-logs.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:42.074Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route node-debugging",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /node-debugging loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-node-debugging.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:46.980Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route parameter-admin",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /parameter-admin loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-admin.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:40.305Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route parameter-review",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /parameter-review loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-review.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:38.768Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route parameters",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /parameters loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameters.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:37.187Z"
+    },
+    {
+      "operationId": "SHELL-DIAG-001",
+      "title": "shell route user-permissions",
+      "status": "passed",
+      "role": "Admin",
+      "route": "core routes",
+      "assertions": [
+        "ui"
+      ],
+      "notes": "Route /user-permissions loaded without visible runtime crash or browser diagnostic failures.",
+      "artifacts": [
+        "test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-user-permissions.png"
+      ],
+      "recordedAt": "2026-06-01T11:38:50.124Z"
+    }
+  ]
+}

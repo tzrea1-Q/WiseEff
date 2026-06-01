@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { acceptanceRequirements } from "../e2e/acceptance/requirements";
 import { evaluateAcceptanceCoverage, parseAcceptanceIdsFromSpec } from "./check-acceptance-coverage";
 
 describe("acceptance coverage checker", () => {
@@ -57,5 +58,40 @@ describe("acceptance coverage checker", () => {
       "PARAM-REASON-001",
       "PERM-MATRIX-001"
     ]);
+  });
+
+  it("does not treat operation markers as acceptance coverage", () => {
+    const result = evaluateAcceptanceCoverage({
+      requirements: [
+        { id: "PARAM-DRAFT-EDIT-001", workflow: "B", title: "Draft edit operation.", required: true }
+      ],
+      specFiles: [
+        {
+          file: "e2e/acceptance/parameters-negative.acceptance.spec.ts",
+          content: "// @operation PARAM-DRAFT-EDIT-001"
+        }
+      ]
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.coveredIds).toEqual([]);
+    expect(result.missingRequiredIds).toEqual(["PARAM-DRAFT-EDIT-001"]);
+  });
+
+  it("treats M5.8 deterministic browser gaps as required coverage", () => {
+    const m58RequiredIds = [
+      "PARAM-DRAFT-EDIT-001",
+      "PARAM-REJECT-001",
+      "LOG-REANALYZE-001",
+      "DEBUG-PERM-001",
+      "AGENT-UNAUTH-001",
+      "PERM-USER-MGMT-001"
+    ];
+
+    expect(
+      acceptanceRequirements
+        .filter((requirement) => m58RequiredIds.includes(requirement.id))
+        .map((requirement) => ({ id: requirement.id, required: requirement.required }))
+    ).toEqual(m58RequiredIds.map((id) => ({ id, required: true })));
   });
 });
