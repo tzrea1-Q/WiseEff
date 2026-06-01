@@ -213,6 +213,8 @@ M5.8 stays fully non-AI. It closes the remaining browser-acceptance gaps that M5
 
 M5.9 hardens the state model behind the browser flows so UI state, API contracts, and seeded test data do not drift apart. The focus is deterministic contract checks, stronger fixture discipline, and tests that fail fast when workflow state changes unexpectedly.
 
+Completion gate: `npm run acceptance:models` must pass with fixed seeds for parameter approval, log analysis task, debugging session, and permission visibility models. Failures must include a reproducible seed, path, and step list so regressions can be promoted into focused unit, API, or browser tests.
+
 ## 10.8 M5.10 Evidence-Grade Upgrade
 
 M5.10 deepens browser evidence beyond pass/fail and operation summaries by adding richer API, DB, audit, request-id, and trace metadata where a human reviewer needs better forensic context. It is still deterministic; it does not introduce AI decision-making into the release gate.

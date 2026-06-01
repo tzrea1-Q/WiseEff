@@ -267,11 +267,14 @@ The browser workflow section below can be exercised by the deterministic Playwri
 ```bash
 npm run acceptance:coverage
 npm run acceptance:operations
+npm run acceptance:models
 npm run acceptance:browser
 npm run acceptance:evidence
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
+
+`npm run acceptance:models` is a deterministic state-model gate for the API/domain rules behind browser workflows. It uses fixed `fast-check` seeds and fails with a reproducible seed/path/step list when parameter review, log analysis, debugging rollback, or permission visibility invariants drift.
 
 `npm run acceptance:browser` runs preflight, runs `npm run acceptance:e2e`, checks requirement-level coverage, checks operation-level evidence, and writes generated evidence to `docs/generated/acceptance-browser-evidence.md`. The evidence table maps directly to manual flows A-H and links to `playwright-report/acceptance/index.html`, `test-results/acceptance/results.json`, and `test-results/acceptance/`. Non-HDC modes require workflows A-E, G, and H to pass; HDC flow F may be skipped only when HDC is explicitly out of scope.
 

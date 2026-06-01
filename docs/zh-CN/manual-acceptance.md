@@ -265,11 +265,14 @@ npm run acceptance:preflight -- --require-pilot-ready
 ```bash
 npm run acceptance:coverage
 npm run acceptance:operations
+npm run acceptance:models
 npm run acceptance:browser
 npm run acceptance:evidence
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
+
+`npm run acceptance:models` 是浏览器工作流背后的确定性状态模型门禁。它用固定 `fast-check` seed 检查参数审批、日志分析、调试回滚和权限可见性等 API/domain 不变量；失败时会输出可复现的 seed、path 和步骤列表。
 
 `npm run acceptance:browser` 会运行 preflight、执行 `npm run acceptance:e2e`、检查需求级覆盖、检查操作级证据，并把证据写入 `docs/generated/acceptance-browser-evidence.md`。证据表会按 A-H 对应人工验收流程，并引用 `playwright-report/acceptance/index.html`、`test-results/acceptance/results.json` 和 `test-results/acceptance/`。非 HDC 模式要求 A-E、G、H 通过；只有 HDC 明确不在范围内时，F 才可以 skipped。
 

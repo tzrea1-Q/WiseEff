@@ -14,6 +14,7 @@ WiseEff 需要从“原型测试”升级为“产品质量门禁”。测试体
 | 组件测试 | 页面和组件交互、无障碍、边界状态 | Testing Library |
 | API 集成测试 | 后端路由、数据库、事务、错误模型 | 后端测试框架 + 测试数据库 |
 | 契约测试 | OpenAPI、DTO、前后端类型一致 | schema 校验 |
+| 状态模型测试 | 工作流状态转移、权限可见性、审计不变量 | fast-check + Vitest |
 | E2E 测试 | 登录、参数提交、审阅、日志上传、设备调试 | Playwright |
 | 任务测试 | worker、重试、失败、幂等 | 队列测试环境 |
 | Agent 测试 | 工具权限、审批、输出结构 | 模型 mock + golden cases |
@@ -80,6 +81,14 @@ MVP 必须覆盖：
 6. Agent 审批边界：Agent 可以生成写操作申请，但不能绕过批准。
 
 M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
+
+M5.9 在浏览器验收背后新增确定性的状态模型门禁：
+
+```bash
+npm run acceptance:models
+```
+
+该命令使用固定 seed 的 `fast-check` 模型测试覆盖参数审批、日志任务、调试会话和权限可见性。它不替代 Playwright；它先在 API/domain 层检查“乱点、乱提交、回头操作”仍满足不变量，例如未授权角色不能写入、终态请求不能再次合入或拒绝、回滚必须基于有效快照、生产写入必须有审计、UI 可见权限不能强于 API eligibility。模型失败时必须输出 seed、path 和最小复现步骤，便于把问题再转化成更具体的单元、API 或浏览器用例。
 
 Current M2 acceptance command:
 
