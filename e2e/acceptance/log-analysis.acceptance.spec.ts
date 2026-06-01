@@ -4,6 +4,9 @@ import path from "node:path";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+
+useBrowserDiagnostics(test);
 
 const projectId = "aurora";
 const analysisQuestion = "Why did fast charging fold back?";
@@ -165,6 +168,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
   });
 
   test("uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure", async ({ page }) => {
+    // @acceptance LOG-HAPPY-001
     await page.goto(`/logs?project=${projectId}`);
 
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
@@ -202,7 +206,15 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       })
       .toBe(true);
 
+    const archiveResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes(`/api/v1/logs/${completedLog.id}/archive`)
+    );
     await page.locator('button:has(svg[class*="lucide-archive"])').click();
+    const archiveResponse = await archiveResponsePromise;
+    expect(archiveResponse.ok()).toBe(true);
+    await expect(page.getByRole("status").filter({ hasText: supportedFileName })).toBeVisible();
     await expect
       .poll(async () => (await latestLogByFile(page, supportedFileName)).archiveState)
       .toBe("archived");

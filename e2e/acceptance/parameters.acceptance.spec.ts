@@ -3,6 +3,9 @@ import { spawnSync } from "node:child_process";
 import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+
+useBrowserDiagnostics(test);
 
 const projectId = "aurora";
 const targetProjectId = "atlas";
@@ -147,6 +150,8 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
   });
 
   test("searches, drafts, submits, reviews, persists, audits, and opens admin import preview", async ({ page }) => {
+    // @acceptance PARAM-HAPPY-001
+    // @acceptance PARAM-ADMIN-001
     await page.goto(`/parameters?project=${projectId}`);
 
     await expect(searchTable(page)).toContainText(parameterName);

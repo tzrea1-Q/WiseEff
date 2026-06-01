@@ -411,6 +411,12 @@ describe("ParametersTable", () => {
     expect(headers[5].querySelector(".parameters-column-filter")).toHaveClass("parameters-column-filter--right");
   });
 
+  it("keeps provided column filter identity separate from React props", () => {
+    const source = readFileSync(resolve(__dirname, "ParametersTable.tsx"), "utf8");
+
+    expect(source).not.toContain("<ColumnFilter {...providedFilter}");
+  });
+
   it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
     const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
 

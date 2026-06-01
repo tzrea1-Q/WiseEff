@@ -4,6 +4,9 @@ import { expect, test, type Page } from "playwright/test";
 
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
+import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+
+useBrowserDiagnostics(test);
 
 const databaseUrl = process.env.DATABASE_URL;
 const apiAuthorization =
@@ -112,6 +115,7 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
   });
 
   test("loads users, shows role/status, and gates user governance to Admin", async ({ page }, testInfo) => {
+    // @acceptance PERM-GOV-001
     await page.goto("/user-permissions");
 
     await expect(page.getByRole("heading", { name: "User permissions" })).toBeVisible();

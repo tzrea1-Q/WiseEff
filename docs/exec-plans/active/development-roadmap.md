@@ -187,6 +187,12 @@ M5.2 executes the real target-environment evidence that M5 and M5.1 intentionall
 
 M5.2 is not a production-hardening feature phase. Enterprise SSO/OIDC, Redis/BullMQ or equivalent durable queue, cloud SDK/IaC, monitoring/alerting, and capacity testing are tracked as M6 Production Hardening work after the controlled staging evidence package is complete.
 
+## 10.3 M5.5 Browser Acceptance Coverage Hardening
+
+M5.5 corrects the coverage-model gap found after M5.4. M5.4 added deterministic Playwright browser acceptance and generated evidence, but manual validation showed that workflow-level happy paths did not cover enough real user behavior: API-mode auth parity, blank required fields, workflow assignee eligibility, permission inheritance, negative API responses, and unexpected browser runtime failures.
+
+M5.5 keeps Playwright as the release-grade browser automation engine and adds a requirement-level user-operation inventory, `npm run acceptance:coverage`, browser diagnostics that fail on unexpected console/API failures, parameter negative-path coverage, permissions matrix coverage, and requirement-level evidence reporting. Future UI/API interaction plans must name affected acceptance requirement IDs, or add new IDs before implementation.
+
 ## 11. 工程工作流
 
 每个功能分支要求：

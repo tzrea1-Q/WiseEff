@@ -305,7 +305,8 @@ export function ParametersTable({
 
     const providedFilter = columnFilterByKey.get(header.key);
     if (providedFilter) {
-      return <ColumnFilter {...providedFilter} align={providedFilter.align ?? getColumnFilterAlign(header.key)} />;
+      const { key: _filterKey, align, ...filterProps } = providedFilter;
+      return <ColumnFilter {...filterProps} align={align ?? getColumnFilterAlign(header.key)} />;
     }
 
     return (

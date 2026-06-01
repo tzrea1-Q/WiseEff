@@ -256,10 +256,12 @@ function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
 
 export function NodeDebuggingPage({
   state,
-  debuggingActions
+  debuggingActions,
+  runtimeReady = true
 }: {
   state: PrototypeState;
   debuggingActions?: DebuggingRuntimeActions;
+  runtimeReady?: boolean;
 }) {
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter))
@@ -464,6 +466,10 @@ export function NodeDebuggingPage({
   }, [activeSessionId, activeTargetId, debuggingActions, rows]);
 
   const detect = async () => {
+    if (!runtimeReady) {
+      return;
+    }
+
     setDetecting(true);
     setDetectDiagnosticError("");
     try {
@@ -527,9 +533,10 @@ export function NodeDebuggingPage({
 
   useEffect(() => {
     if (didAutoDetectRef.current) return;
+    if (!runtimeReady) return;
     didAutoDetectRef.current = true;
     void detect();
-  }, []);
+  }, [runtimeReady]);
 
   const writeRow = async (row: RuntimeRow) => {
     if ((!target && !activeSessionId) || !canWrite(row)) return;
@@ -608,11 +615,11 @@ export function NodeDebuggingPage({
     <div className="device-pill">
       <span className={connected ? "live-dot" : "idle-dot"} />
       {connected ? `已连接：${target}` : detecting ? "检测中..." : "未连接 HDC 设备"}
-      <button className="link-button" type="button" onClick={() => void detect()}>
+      <button className="link-button" type="button" disabled={!runtimeReady} onClick={() => void detect()}>
         重新检测
       </button>
     </div>,
-    [connected, detecting, target]
+    [connected, detecting, runtimeReady, target]
   );
 
   return (

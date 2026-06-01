@@ -1809,6 +1809,7 @@ function AppShell({
   const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
+  const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
@@ -1934,6 +1935,7 @@ function AppShell({
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 日志 API" });
         }
         if (debuggingRefreshResult.status === "rejected") {
+          setDebuggingRuntimeReady(false);
           if (
             !(
               debuggingRefreshResult.reason instanceof Error &&
@@ -1942,9 +1944,12 @@ function AppShell({
           ) {
             dispatch({ type: "ADD_NOTIFICATION", message: "Cannot load WiseEff debugging API; local demo data is retained." });
           }
-        } else if (!debuggingRuntimeConnectedRef.current) {
-          debuggingRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "Connected to WiseEff debugging API" });
+        } else {
+          setDebuggingRuntimeReady(true);
+          if (!debuggingRuntimeConnectedRef.current) {
+            debuggingRuntimeConnectedRef.current = true;
+            dispatch({ type: "ADD_NOTIFICATION", message: "Connected to WiseEff debugging API" });
+          }
         }
       })
       .catch(() => {
@@ -2017,6 +2022,7 @@ function AppShell({
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
                 debuggingGateway={debuggingGatewayClient}
+                debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
@@ -2040,6 +2046,7 @@ function AppShell({
                 onNewProject={() => setProjectInitOpen(true)}
                 debuggingActions={debuggingActions}
                 debuggingGateway={debuggingGatewayClient}
+                debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
                 runtimeMode={runtimeMode}
