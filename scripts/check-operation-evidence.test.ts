@@ -9,7 +9,7 @@ import {
   writeOperationEvidenceIndex,
   type OperationEvidenceRecord
 } from "./check-operation-evidence";
-import { operationEvidenceFileName, recordOperationEvidence } from "../e2e/acceptance/helpers/operationEvidence";
+import { operationEvidenceFileName, recordOperationEvidence, summarizeApiResponse } from "../e2e/acceptance/helpers/operationEvidence";
 
 describe("operation evidence helper", () => {
   it("builds stable evidence file names from operation id and title", () => {
@@ -61,6 +61,30 @@ describe("operation evidence helper", () => {
       rmSync(filePath, { force: true });
     }
   });
+
+  it("summarizes API responses with request IDs and redacted response text", () => {
+    const summary = summarizeApiResponse(
+      {
+        status: () => 201,
+        headers: () => ({
+          "x-request-id": "req-123"
+        })
+      },
+      {
+        method: "POST",
+        path: "/api/v1/example",
+        responseSummary: "authorization Bearer abc.def token=secret"
+      }
+    );
+
+    expect(summary).toEqual({
+      method: "POST",
+      path: "/api/v1/example",
+      status: 201,
+      requestId: "req-123",
+      responseSummary: "authorization [redacted] token=[redacted]"
+    });
+  });
 });
 
 describe("operation evidence checker", () => {
@@ -89,7 +113,22 @@ describe("operation evidence checker", () => {
             role: "Admin",
             route: "core routes",
             assertions: ["ui"],
-            artifacts: [artifactPath]
+            artifacts: [artifactPath],
+            runtime: {
+              mode: "api",
+              apiBaseUrl: "http://127.0.0.1:8787"
+            },
+            report: {
+              path: "playwright-report/acceptance/index.html",
+              format: "html"
+            },
+            trace: {
+              mode: "retain-on-failure",
+              path: "test-results/acceptance"
+            },
+            reproduction: {
+              steps: ["Open core route", "Verify Admin route access"]
+            }
           }
         ]
       });
@@ -136,6 +175,186 @@ describe("operation evidence checker", () => {
     expect(result.invalidEvidenceIds).toEqual(["PARAM-HAPPY-001"]);
   });
 
+  it("fails when evidence for API, DB, or audit assertions lacks matching summaries", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
+
+    try {
+      const artifactPath = join(root, "artifact.png");
+      writeFileSync(artifactPath, "fake-png", "utf8");
+      const result = evaluateOperationEvidence({
+        operations: [
+          {
+            id: "PARAM-HAPPY-001",
+            priority: "P0",
+            coverage: "automated"
+          }
+        ],
+        records: [
+          {
+            operationId: "PARAM-HAPPY-001",
+            status: "passed",
+            role: "Hardware User",
+            route: "/parameters",
+            assertions: ["ui", "api", "db", "audit"],
+            artifacts: [artifactPath],
+            runtime: {
+              mode: "api",
+              apiBaseUrl: "http://127.0.0.1:8787"
+            },
+            report: {
+              path: "playwright-report/acceptance/index.html",
+              format: "html"
+            },
+            trace: {
+              mode: "retain-on-failure",
+              path: "test-results/acceptance"
+            },
+            reproduction: {
+              steps: ["Open /parameters", "Run parameter happy path"]
+            }
+          }
+        ]
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.invalidEvidenceIds).toEqual(["PARAM-HAPPY-001"]);
+      expect(result.validationErrors).toEqual(
+        expect.arrayContaining([
+          {
+            operationId: "PARAM-HAPPY-001",
+            field: "api",
+            message: "API assertions require at least one API request/response summary."
+          },
+          {
+            operationId: "PARAM-HAPPY-001",
+            field: "db",
+            message: "DB assertions require at least one database assertion summary."
+          },
+          {
+            operationId: "PARAM-HAPPY-001",
+            field: "audit",
+            message: "Audit assertions require at least one audit event summary."
+          }
+        ])
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("passes evidence with required forensic summaries and renders them in Markdown", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
+
+    try {
+      const artifactPath = join(root, "artifact.png");
+      writeFileSync(artifactPath, "fake-png", "utf8");
+      const record: OperationEvidenceRecord = {
+        operationId: "PARAM-HAPPY-001",
+        status: "passed",
+        role: "Hardware User",
+        route: "/parameters",
+        assertions: ["ui", "api", "db", "audit"],
+        artifacts: [artifactPath],
+        api: [
+          {
+            method: "POST",
+            path: "/api/v1/parameter-submission-rounds",
+            status: 201,
+            requestId: "req-submit",
+            responseSummary: "created request req-1"
+          }
+        ],
+        db: [
+          {
+            table: "parameter_change_requests",
+            predicate: "id=req-1",
+            observed: "status=merged",
+            rowCount: 1
+          }
+        ],
+        audit: [
+          {
+            id: "audit-1",
+            kind: "parameter-merge",
+            action: "merge",
+            targetId: "req-1",
+            requestId: "req-submit"
+          }
+        ],
+        runtime: {
+          mode: "api",
+          apiBaseUrl: "http://127.0.0.1:8787",
+          envSummary: {
+            DATABASE_URL: "set"
+          }
+        },
+        report: {
+          path: "playwright-report/acceptance/index.html",
+          format: "html"
+        },
+        trace: {
+          mode: "retain-on-failure",
+          path: "test-results/acceptance"
+        },
+        reproduction: {
+          seed: "seed-1",
+          steps: ["Open /parameters", "Submit and merge parameter request"]
+        }
+      };
+
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated" }],
+        records: [record]
+      });
+      const markdown = renderOperationEvidenceMarkdown({
+        status: "passed",
+        coveredOperationIds: ["PARAM-HAPPY-001"],
+        missingOperationIds: [],
+        invalidEvidenceIds: [],
+        validationErrors: [],
+        records: [record]
+      });
+
+      expect(result.status).toBe("passed");
+      expect(result.invalidEvidenceIds).toEqual([]);
+      expect(markdown).toContain("req-submit");
+      expect(markdown).toContain("parameter_change_requests");
+      expect(markdown).toContain("audit-1");
+      expect(markdown).toContain("playwright-report/acceptance/index.html");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails when passed evidence lacks runtime, replay, or reproduction metadata", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
+
+    try {
+      const artifactPath = join(root, "artifact.png");
+      writeFileSync(artifactPath, "fake-png", "utf8");
+      const result = evaluateOperationEvidence({
+        operations: [{ id: "AUTH-RUNTIME-001", priority: "P0", coverage: "automated" }],
+        records: [
+          {
+            operationId: "AUTH-RUNTIME-001",
+            status: "passed",
+            role: "Admin",
+            route: "/",
+            assertions: ["ui"],
+            artifacts: [artifactPath]
+          }
+        ]
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors.map((error) => error.field)).toEqual(
+        expect.arrayContaining(["runtime", "report", "trace", "reproduction"])
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("fails when required automated operation evidence points at a missing artifact", () => {
     const result = evaluateOperationEvidence({
       operations: [{ id: "PARAM-HAPPY-001", priority: "P0", coverage: "automated" }],
@@ -161,6 +380,7 @@ describe("operation evidence checker", () => {
       coveredOperationIds: ["PARAM-DRAFT-EDIT-001"],
       missingOperationIds: [],
       invalidEvidenceIds: [],
+      validationErrors: [],
       records: [
         {
           operationId: "PARAM-DRAFT-EDIT-001",
@@ -174,7 +394,7 @@ describe("operation evidence checker", () => {
     });
 
     expect(markdown).toContain("# Operation Evidence Index");
-    expect(markdown).toContain("| Operation ID | Status | Role | Route | Assertions | Artifacts |");
+    expect(markdown).toContain("| Operation ID | Status | Role | Route | Assertions | API | DB | Audit | Replay | Artifacts |");
     expect(markdown).toContain("`PARAM-DRAFT-EDIT-001`");
     expect(markdown).toContain("Hardware User");
   });
@@ -202,6 +422,7 @@ describe("operation evidence checker", () => {
           coveredOperationIds: ["PARAM-DRAFT-EDIT-001"],
           missingOperationIds: [],
           invalidEvidenceIds: [],
+          validationErrors: [],
           records
         }
       });

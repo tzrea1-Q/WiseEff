@@ -5,7 +5,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -154,6 +154,68 @@ async function logRuns(page: Page, logId: string) {
   return body.items;
 }
 
+async function logRecordDbSummary(logId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ status: string; archive_state: string; current_run_id: string | null }>(
+      `
+      select status, archive_state, current_run_id
+      from log_records
+      where id = $1
+      `,
+      [logId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "log_records",
+      predicate: `id=${logId}`,
+      observed: row
+        ? `status=${row.status}; archiveState=${row.archive_state}; currentRunId=${row.current_run_id ?? "none"}`
+        : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+async function logRunDbSummary(runId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ status: string; progress: number; job_id: string | null }>(
+      `
+      select lar.status, lar.progress, jobs.id as job_id
+      from log_analysis_runs lar
+      left join jobs on jobs.target_id = lar.id
+      where lar.id = $1
+      `,
+      [runId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "log_analysis_runs",
+      predicate: `id=${runId}`,
+      observed: row ? `status=${row.status}; progress=${row.progress}; jobId=${row.job_id ?? "none"}` : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+function auditSummaryFor(
+  items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>,
+  match: { kind: string; targetId: string }
+) {
+  const item = items.find((candidate) => candidate.kind === match.kind && candidate.targetId === match.targetId);
+  expect(item).toBeTruthy();
+
+  return {
+    id: item?.id,
+    kind: item!.kind,
+    action: item!.action,
+    targetId: item!.targetId,
+    requestId: item?.traceId,
+    metadataSummary: item?.metadata ? Object.keys(item.metadata).sort().join(",") : undefined
+  };
+}
+
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string) {
   await page.getByRole("toolbar", { name: /日志(?:分析工作台|智能分析)页面操作/ }).getByRole("button", { name: "上传新日志" }).click();
   const dialog = page.getByRole("dialog", { name: "上传日志" });
@@ -239,6 +301,12 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     const activeBody = (await activeLogs.json()) as { items: Array<{ fileName: string }> };
     expect(activeBody.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ fileName: supportedFileName })]));
 
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as {
+      items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
+    };
+
     await uploadLogThroughUi(page, unsupportedFixture);
     await expect
       .poll(async () => {
@@ -255,6 +323,28 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(archiveResponse, {
+          method: "POST",
+          path: `/api/v1/logs/${completedLog.id}/archive`,
+          responseSummary: `archiveState=${(await latestLogByFile(page, supportedFileName)).archiveState ?? "unknown"}`
+        }),
+        summarizeApiResponse(activeLogs, {
+          method: "GET",
+          path: `/api/v1/logs?projectId=${projectId}`,
+          responseSummary: `active logs=${activeBody.items.length}; archived log hidden`
+        }),
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `audit events=${auditBody.items.length}`
+        })
+      ],
+      db: [await logRecordDbSummary(completedLog.id)],
+      audit: [
+        auditSummaryFor(auditBody.items, { kind: "log-feedback", targetId: completedLog.id }),
+        auditSummaryFor(auditBody.items, { kind: "log-archive", targetId: completedLog.id })
+      ],
       notes: `Log ${completedLog.id} completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.`
     });
   });
@@ -326,12 +416,32 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       }, { timeout: 30_000 })
       .toBe(true);
 
+    const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
+    expect(auditResponse.ok()).toBe(true);
+    const auditBody = (await auditResponse.json()) as {
+      items: Array<{ id?: string; kind: string; action?: string; targetId: string | null; traceId?: string; metadata?: Record<string, unknown> }>;
+    };
+
     await recordOperationEvidence({
       operationId: "LOG-REANALYZE-001",
       title: "completed log reanalysis creates rerun job progress and audit",
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(rerunResponse, {
+          method: "POST",
+          path: `/api/v1/logs/${completedLog.id}/rerun`,
+          responseSummary: `created run=${latestRun!.id}`
+        }),
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `audit events=${auditBody.items.length}`
+        })
+      ],
+      db: [await logRecordDbSummary(completedLog.id), await logRunDbSummary(latestRun!.id)],
+      audit: [auditSummaryFor(auditBody.items, { kind: "log-rerun", targetId: completedLog.id })],
       notes: `Log ${completedLog.id} created rerun ${latestRun!.id}; UI refreshed the log workbench and audit recorded log-rerun with job metadata.`
     });
   });

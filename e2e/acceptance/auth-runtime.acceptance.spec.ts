@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { expect, test } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
@@ -25,6 +25,13 @@ test.describe("M5.5 auth runtime parity", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(meResponse, {
+          method: "GET",
+          path: "/api/v1/me",
+          responseSummary: "smoke auth accepted for current user"
+        })
+      ],
       notes: "/api/v1/me accepted smoke auth and the API-mode page loaded without auth errors."
     });
   });

@@ -361,12 +361,19 @@ describe("browser acceptance runner", () => {
           coveredOperationIds: ["PARAM-HAPPY-001"],
           missingOperationIds: [],
           invalidEvidenceIds: ["PARAM-HAPPY-001"],
+          validationErrors: [
+            {
+              operationId: "PARAM-HAPPY-001",
+              field: "api",
+              message: "API assertions require at least one API request/response summary."
+            }
+          ],
           records: [{ operationId: "PARAM-HAPPY-001", status: "passed" }]
         }
       })
     ).toEqual({
       status: "failed",
-      blockers: ["Operation evidence records are missing review metadata: PARAM-HAPPY-001."]
+      blockers: ["Operation evidence records are missing review or forensic metadata: PARAM-HAPPY-001."]
     });
   });
 
@@ -527,6 +534,64 @@ describe("browser acceptance evidence", () => {
     expect(evidence).toContain("### Operation Evidence");
     expect(evidence).toContain("### Artifact Paths");
     expect(evidence).toContain("### Blockers");
+  });
+
+  it("renders operation evidence validation errors", () => {
+    const evidence = buildBrowserAcceptanceEvidence({
+      date: "2026-06-01T00:00:00.000Z",
+      metadata: { branch: "codex/browser", commit: "abc123", dirty: false },
+      mode: "local-non-hdc",
+      status: "failed",
+      preflight: { status: "passed", outcome: "non_hdc_local", hdc: "skipped" },
+      playwright: { status: "passed" },
+      workflows: [],
+      operationEvidence: {
+        status: "failed",
+        coveredOperationIds: ["PARAM-HAPPY-001"],
+        missingOperationIds: [],
+        invalidEvidenceIds: ["PARAM-HAPPY-001"],
+        validationErrors: [
+          {
+            operationId: "PARAM-HAPPY-001",
+            field: "api",
+            message: "API assertions require at least one API request/response summary."
+          }
+        ],
+        records: [{ operationId: "PARAM-HAPPY-001", status: "passed" }]
+      },
+      artifactPaths: [],
+      blockers: []
+    });
+
+    expect(evidence).toContain("- Validation errors: `1`");
+    expect(evidence).toContain("PARAM-HAPPY-001 api: API assertions require at least one API request/response summary.");
+  });
+
+  it("trims trailing whitespace from multiline command details", () => {
+    const evidence = buildBrowserAcceptanceEvidence({
+      date: "2026-06-01T00:00:00.000Z",
+      metadata: { branch: "codex/browser", commit: "abc123", dirty: true },
+      mode: "local-non-hdc",
+      status: "failed",
+      preflight: {
+        status: "failed",
+        outcome: "non_hdc_local",
+        hdc: "skipped",
+        detail: "first line   \nsecond line\t\nthird line"
+      },
+      playwright: {
+        status: "passed",
+        detail: "playwright ok  "
+      },
+      workflows: [],
+      artifactPaths: [],
+      blockers: ["preflight failed  "]
+    });
+
+    expect(evidence).not.toMatch(/[ \t]+$/m);
+    expect(evidence).toContain("- Detail: first line\nsecond line\nthird line");
+    expect(evidence).toContain("- Detail: playwright ok");
+    expect(evidence).toContain("- preflight failed");
   });
 });
 

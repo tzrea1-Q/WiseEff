@@ -113,4 +113,15 @@ describe("acceptance operation matrix", () => {
         }))
     ).toEqual(m58OperationIds.map((id) => ({ id, coverage: "automated", hasDeferralReason: false })));
   });
+
+  it("does not overstate forensic assertions for local prototype-only permission UI operations", () => {
+    expect(
+      acceptanceOperations
+        .filter((operation) => ["PERM-GOV-001", "PERM-USER-MGMT-001"].includes(operation.id))
+        .map((operation) => ({ id: operation.id, assertions: operation.assertions }))
+    ).toEqual([
+      { id: "PERM-GOV-001", assertions: ["ui"] },
+      { id: "PERM-USER-MGMT-001", assertions: ["ui"] }
+    ]);
+  });
 });

@@ -24,6 +24,11 @@ export type BrowserAcceptanceOperationEvidence = {
   coveredOperationIds: string[];
   missingOperationIds: string[];
   invalidEvidenceIds: string[];
+  validationErrors?: Array<{
+    operationId: string;
+    field: string;
+    message: string;
+  }>;
   records: Array<{ operationId: string; status: BrowserAcceptanceStatus }>;
 };
 
@@ -70,7 +75,7 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
         )
       : ["| _none_ | _none_ | skipped | No workflow evidence was reported. |  |"];
 
-  return [
+  return trimTrailingLineWhitespace([
     "## Browser Acceptance Evidence",
     "",
     `- Date: ${input.date ?? new Date().toISOString()}`,
@@ -113,6 +118,8 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
     `- Covered operation IDs: \`${operationEvidence?.coveredOperationIds.length ?? 0}\``,
     `- Missing operation IDs: ${formatInlineList(operationEvidence?.missingOperationIds ?? [])}`,
     `- Invalid evidence records: ${formatInlineList(operationEvidence?.invalidEvidenceIds ?? [])}`,
+    `- Validation errors: \`${operationEvidence?.validationErrors?.length ?? 0}\``,
+    ...formatValidationErrors(operationEvidence?.validationErrors ?? []),
     `- Evidence records: \`${operationEvidence?.records.length ?? 0}\``,
     "- Evidence index: docs/generated/acceptance-operation-evidence.md",
     "",
@@ -124,13 +131,23 @@ export function buildBrowserAcceptanceEvidence(input: BrowserAcceptanceEvidenceI
     "",
     ...(input.blockers.length > 0 ? input.blockers.map((blocker) => `- ${blocker}`) : ["- _none_"]),
     ""
-  ].join("\n");
+  ].join("\n"));
 }
 
 function escapeMarkdownTableCell(value: string) {
   return value.replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
 }
 
+function trimTrailingLineWhitespace(value: string) {
+  return value.replace(/[ \t]+$/gm, "");
+}
+
 function formatInlineList(values: string[]) {
   return values.length > 0 ? values.map((value) => `\`${value}\``).join(", ") : "_none_";
+}
+
+function formatValidationErrors(errors: NonNullable<BrowserAcceptanceOperationEvidence["validationErrors"]>) {
+  return errors.length > 0
+    ? errors.map((error) => `- ${error.operationId} ${error.field}: ${error.message}`)
+    : ["- Validation error detail: _none_"];
 }

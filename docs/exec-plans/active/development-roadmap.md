@@ -217,6 +217,8 @@ M5.9 hardens the state model behind the browser flows so UI state, API contracts
 
 M5.10 deepens browser evidence beyond pass/fail and operation summaries by adding richer API, DB, audit, request-id, and trace metadata where a human reviewer needs better forensic context. It is still deterministic; it does not introduce AI decision-making into the release gate.
 
+Completion gate: `npm run acceptance:browser` must produce passed local or target browser evidence, `npm run acceptance:evidence` must pass with zero validation errors, and generated operation evidence must include runtime, trace/report, reproduction, and required API/DB/audit summaries for every declared assertion type.
+
 ## 10.9 M5.11 Accessibility / Visual / Responsive Gates
 
 M5.11 adds non-AI quality gates for keyboard access, accessibility, responsive layout, and visual regressions. It should catch the kinds of user-facing bugs that workflow automation alone can miss, while staying deterministic and replayable.

@@ -273,11 +273,11 @@ npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 
 `npm run acceptance:browser` 会运行 preflight、执行 `npm run acceptance:e2e`、检查需求级覆盖、检查操作级证据，并把证据写入 `docs/generated/acceptance-browser-evidence.md`。证据表会按 A-H 对应人工验收流程，并引用 `playwright-report/acceptance/index.html`、`test-results/acceptance/results.json` 和 `test-results/acceptance/`。非 HDC 模式要求 A-E、G、H 通过；只有 HDC 明确不在范围内时，F 才可以 skipped。
 
-需求级覆盖定义在 `docs/developer/browser-acceptance-coverage-map.md`。操作级覆盖定义在 `docs/developer/user-operation-coverage-matrix.md`。缺少必需 ID、出现未知 `@acceptance` 或 `@operation` marker、缺少必需的自动化 operation 证据，或 operation 证据缺少角色/路由/断言元数据，都是阻塞项。浏览器套件也会把非预期的 page error、console error、request failure 和关键 WiseEff API `4xx/5xx` 响应判为失败；因此页面视觉上能打开但后台出现未授权 API 失败时，不能算验收通过。
+需求级覆盖定义在 `docs/developer/browser-acceptance-coverage-map.md`。操作级覆盖定义在 `docs/developer/user-operation-coverage-matrix.md`。缺少必需 ID、出现未知 `@acceptance` 或 `@operation` marker、缺少必需的自动化 operation 证据，或 operation 证据缺少角色/路由/断言元数据，都是阻塞项。M5.10 之后，如果 operation matrix 声明了 `api`、`db` 或 `audit` 断言，对应的 API 请求/响应摘要、数据库断言摘要、审计事件摘要也都是阻塞项。浏览器套件也会把非预期的 page error、console error、request failure 和关键 WiseEff API `4xx/5xx` 响应判为失败；因此页面视觉上能打开但后台出现未授权 API 失败时，不能算验收通过。
 
 ### 6.6 操作级证据复核
 
-运行 `npm run acceptance:browser` 后，查看 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json`。每个自动化 operation 都应包含角色、路由、断言类型、状态和 artifact 路径。P0/P1 自动化 operation 缺少证据，或证据缺少复核元数据时，验收不得通过。
+运行 `npm run acceptance:browser` 后，查看 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json`。每个自动化 operation 都应包含角色、路由、断言类型、状态、artifact 路径、runtime、trace/report 路径和复现步骤。声明 `api` 断言的 operation 必须包含 method、path、status 和可用 requestId；声明 `db` 断言的 operation 必须包含 table、predicate、observed state 和可用 row count；声明 `audit` 断言的 operation 必须包含 event id、kind、action、targetId 和可用 request/trace 关联。P0/P1 自动化 operation 缺少证据、证据缺少复核元数据、缺少必需 API/DB/audit 摘要，或证据中出现未脱敏 secret/token/authorization 内容时，验收不得通过。
 
 仍然需要人工复核的内容包括：存在主观判断的视觉问题、真实 HDC 安全审批、backup/restore、rollback rehearsal、外部证据附件，以及尚未被自动化证据覆盖的流程。
 

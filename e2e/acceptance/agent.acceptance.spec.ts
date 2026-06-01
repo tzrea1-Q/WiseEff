@@ -5,7 +5,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -28,7 +28,7 @@ type AgentEvidence = {
     tool_call_ids: string[];
     safety_status: string | null;
   }>;
-  auditEvents: Array<{ action: string; kind: string; metadata: Record<string, unknown> }>;
+  auditEvents: Array<{ id?: string; action: string; kind: string; trace_id?: string; metadata: Record<string, unknown> }>;
 };
 
 test.skip(!databaseUrl, "DATABASE_URL is required for Agent API/audit/trace acceptance evidence.");
@@ -159,7 +159,7 @@ async function readAgentEvidence(sessionId: string): Promise<AgentEvidence> {
     );
     const auditEvents = await client.query<AgentEvidence["auditEvents"][number]>(
       `
-        select action, kind, metadata
+        select id, action, kind, trace_id, metadata
         from audit_events
         where metadata->>'sessionId' = $1
         order by created_at asc
@@ -192,6 +192,44 @@ async function apiAuditActionsForSession(page: Page, sessionId: string) {
   return body.items
     .filter((item) => item.metadata?.sessionId === sessionId)
     .map((item) => `${item.kind}:${item.action}`);
+}
+
+async function agentDbSummary(sessionId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ tool_calls: string; approvals: string; traces: string }>(
+      `
+      select
+        (select count(*)::text from agent_tool_calls where session_id = $1) as tool_calls,
+        (select count(*)::text from agent_approvals where session_id = $1) as approvals,
+        (select count(*)::text from agent_run_traces where session_id = $1) as traces
+      `,
+      [sessionId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "agent_tool_calls",
+      predicate: `sessionId=${sessionId}`,
+      observed: `toolCalls=${row?.tool_calls ?? 0}; approvals=${row?.approvals ?? 0}; traces=${row?.traces ?? 0}`,
+      rowCount: 1
+    };
+  });
+}
+
+function agentAuditSummaries(evidence: AgentEvidence, actions: string[]) {
+  return actions.map((action) => {
+    const item = evidence.auditEvents.find((candidate) => candidate.kind === "agent-tool" && candidate.action === action);
+    expect(item).toBeTruthy();
+
+    return {
+      id: item?.id,
+      kind: item!.kind,
+      action: item!.action,
+      targetId: typeof item?.metadata.toolCallId === "string" ? item.metadata.toolCallId : undefined,
+      requestId: item?.trace_id,
+      metadataSummary: Object.keys(item?.metadata ?? {}).sort().join(",")
+    };
+  });
 }
 
 test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
@@ -267,6 +305,14 @@ test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(directRunResponse, {
+          method: "POST",
+          path: `/api/v1/agent/sessions/${sessionId}/tool-calls/${pendingToolCall?.id}/run`,
+          responseSummary: directRunBody.error?.code ?? "APPROVAL_REQUIRED"
+        })
+      ],
+      audit: agentAuditSummaries(evidenceAfterRun, ["approval-requested"]),
       notes: `Agent session ${sessionId} rejected direct run for pending tool call ${pendingToolCall?.id} with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.`
     });
   });
@@ -344,6 +390,16 @@ test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          status: 200,
+          responseSummary: `session ${sessionId} includes approval-rejected and approval-executed audit actions`
+        }
+      ],
+      db: [await agentDbSummary(sessionId)],
+      audit: agentAuditSummaries(evidence, ["approval-requested", "approval-rejected", "approval-executed"]),
       notes: `Agent session ${sessionId} required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.`
     });
   });

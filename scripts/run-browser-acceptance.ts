@@ -330,7 +330,9 @@ export function evaluateBrowserAcceptanceRun(input: BrowserAcceptanceRunInput): 
     blockers.push(`Operation evidence is missing required IDs: ${input.operationEvidence.missingOperationIds.join(", ")}.`);
   }
   if (input.operationEvidence?.status === "failed" && input.operationEvidence.invalidEvidenceIds.length > 0) {
-    blockers.push(`Operation evidence records are missing review metadata: ${input.operationEvidence.invalidEvidenceIds.join(", ")}.`);
+    blockers.push(
+      `Operation evidence records are missing review or forensic metadata: ${input.operationEvidence.invalidEvidenceIds.join(", ")}.`
+    );
   }
 
   if (input.preflight.status !== "passed") {

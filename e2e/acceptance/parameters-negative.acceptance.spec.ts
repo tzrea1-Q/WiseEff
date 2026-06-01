@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { expect, test, type Page } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
@@ -54,8 +54,9 @@ async function cleanupM55ParameterState() {
       from parameter_change_requests cr
       join parameter_submission_items psi on psi.change_request_id = cr.id
       where psi.reason like $1
+        or psi.reason like $2
       `,
-      [`${reasonPrefix}%`]
+      [`${reasonPrefix}%`, `${draftEditReasonPrefix}%`]
     );
     const requestIds = requests.rows.map((row) => row.id);
     const roundIds = Array.from(
@@ -130,6 +131,39 @@ function optionTexts(select: ReturnType<Page["locator"]>) {
   return select.locator("option").evaluateAll((options) => options.map((option) => option.textContent?.trim() ?? ""));
 }
 
+async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ request_id: string; target_value: string; submitted_count: string; excluded_count: string }>(
+      `
+      select
+        cr.id as request_id,
+        psi.target_value,
+        count(*) over ()::text as submitted_count,
+        (
+          select count(*)::text
+          from parameter_submission_items excluded
+          where excluded.reason like $2
+            and excluded.target_value = $3
+        ) as excluded_count
+      from parameter_change_requests cr
+      join parameter_submission_items psi on psi.change_request_id = cr.id
+      where cr.id = $1
+      `,
+      [requestId, `${draftEditReasonPrefix}%`, excludedTargetValue]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "parameter_submission_items",
+      predicate: `requestId=${requestId}; excludedTargetValue=${excludedTargetValue}`,
+      observed: row
+        ? `targetValue=${row.target_value}; submittedCount=${row.submitted_count}; excludedCount=${row.excluded_count}`
+        : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
 test.describe("M5.5 parameter negative-path browser acceptance", () => {
   test.beforeAll(async () => {
     await prepareParameterNegativeAcceptanceState();
@@ -196,13 +230,47 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     await expect(submitDialog).toContainText("3122");
     await expect(submitDialog).not.toContainText("4331");
 
+    await submitDialog.getByLabel("硬件 MDE").selectOption({ label: "Wang Jie" });
+    await submitDialog.getByLabel("软件 MDE").selectOption({ label: "Sun Mei" });
+    await submitDialog.getByLabel("软件开发").selectOption({ label: "Liu Min" });
+    const submitResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/v1/parameter-submission-rounds")
+    );
+    await submitDialog.locator(".button.primary").last().click();
+    const submitResponse = await submitResponsePromise;
+    expect(submitResponse.ok()).toBe(true);
+    await expect(submitDialog).not.toBeVisible();
+    const submitBody = (await submitResponse.json()) as {
+      item: {
+        items: Array<{ requestId: string; targetValue: string }>;
+      };
+    };
+    expect(submitBody.item.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ targetValue: "3122" })])
+    );
+    expect(submitBody.item.items).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ targetValue: "4331" })])
+    );
+    const submittedRequestId = submitBody.item.items.find((item) => item.targetValue === "3122")?.requestId;
+    expect(submittedRequestId).toBeTruthy();
+
     await recordOperationEvidence({
       operationId: "PARAM-DRAFT-EDIT-001",
       title: "parameter draft edit and remove before submission",
       status: "passed",
       page,
       testInfo,
-      notes: "Edited one draft target value, removed another draft item, and verified only the edited item reached final submission preview."
+      api: [
+        summarizeApiResponse(submitResponse, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: `submitted request ${submittedRequestId}; removed target 4331 absent`
+        })
+      ],
+      db: [await submittedDraftEditDbSummary(submittedRequestId!, "4331")],
+      notes: "Edited one draft target value, removed another draft item, and verified only the edited item reached final submission payload."
     });
   });
 
@@ -258,7 +326,7 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
         projectId,
         items: [
           {
-            parameterId: parameterValueId,
+            parameterId: removableParameterValueId,
             targetValue: "3102",
             reason: `${reasonPrefix} invalid assignee guard`
           }
@@ -283,6 +351,13 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(response, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: "VALIDATION_FAILED for role-ineligible workflow assignees"
+        })
+      ],
       notes: "The parameter submission API rejected role-ineligible workflow assignees with VALIDATION_FAILED."
     });
   });

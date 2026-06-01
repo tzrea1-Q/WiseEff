@@ -4,7 +4,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { withPgClient } from "./helpers/database";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -18,6 +18,7 @@ const changeReason = `M5.4 browser acceptance ${Date.now()}`;
 const rejectParameterValueId = `${projectId}-charge-voltage-limit`;
 const rejectTargetValue = "4333";
 const rejectReasonPrefix = "M5.8 PARAM-REJECT-001 browser acceptance";
+const draftEditReasonPrefix = "M5.8 PARAM-DRAFT-EDIT-001 browser acceptance";
 const rejectionReason = `${rejectReasonPrefix} needs supplemental thermal evidence`;
 
 function runNpmScript(script: string) {
@@ -91,9 +92,13 @@ async function cleanupOpenAcceptanceRequests() {
       select cr.id, cr.submission_round_id
       from parameter_change_requests cr
       join parameter_submission_items psi on psi.change_request_id = cr.id
-      where psi.reason like 'M5.4 browser acceptance%'
+      where (
+          psi.reason like 'M5.4 browser acceptance%'
+          or psi.reason like $1
+        )
         and cr.status not in ('merged', 'rejected')
-      `
+      `,
+      [`${draftEditReasonPrefix}%`]
     );
     const requestIds = requests.rows.map((row) => row.id);
     const roundIds = Array.from(
@@ -181,6 +186,50 @@ async function expectSuccessfulApiResponse(page: Page, route: string) {
   const response = await page.request.get(apiRoute(route), { headers: smokeHeaders() });
   expect(response.ok()).toBe(true);
   return response;
+}
+
+async function parameterChangeDbSummary(requestId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ status: string; target_value: string }>(
+      `
+      select cr.status, psi.target_value
+      from parameter_change_requests cr
+      join parameter_submission_items psi on psi.change_request_id = cr.id
+      where cr.id = $1
+      `,
+      [requestId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "parameter_change_requests",
+      predicate: `id=${requestId}`,
+      observed: row ? `status=${row.status}; targetValue=${row.target_value}` : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+function auditSummaryFor(
+  items: Array<{ id?: string; kind: string; action: string; projectId: string | null; targetId: string | null; traceId?: string }>,
+  match: { kind: string; action: string; targetId: string }
+) {
+  const item = items.find(
+    (candidate) =>
+      candidate.kind === match.kind &&
+      candidate.action === match.action &&
+      candidate.targetId === match.targetId
+  );
+
+  expect(item).toBeTruthy();
+
+  return {
+    id: item?.id,
+    kind: item!.kind,
+    action: item!.action,
+    targetId: item!.targetId,
+    requestId: item?.traceId
+  };
 }
 
 async function createSubmittedRejectionRequest(page: Page) {
@@ -321,7 +370,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
 
     const auditResponse = await expectSuccessfulApiResponse(page, "/api/v1/audit-events");
     const auditBody = (await auditResponse.json()) as {
-      items: Array<{ kind: string; action: string; projectId: string | null; targetId: string | null }>;
+      items: Array<{ id?: string; kind: string; action: string; projectId: string | null; targetId: string | null; traceId?: string }>;
     };
     expect(auditBody.items).toEqual(
       expect.arrayContaining([
@@ -340,6 +389,27 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       status: "passed",
       page,
       testInfo,
+      api: [
+        {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          status: 201,
+          responseSummary: `created request ${requestId}`
+        },
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `found ${auditBody.items.length} audit events`
+        })
+      ],
+      db: [await parameterChangeDbSummary(requestId)],
+      audit: [
+        auditSummaryFor(auditBody.items, {
+          kind: "parameter-merge",
+          action: "merge",
+          targetId: requestId
+        })
+      ],
       notes: `Parameter request ${requestId} merged, persisted target value, and produced parameter-merge audit evidence.`
     });
     await recordOperationEvidence({
@@ -348,6 +418,13 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       status: "passed",
       page,
       testInfo,
+      audit: [
+        auditSummaryFor(auditBody.items, {
+          kind: "parameter-merge",
+          action: "merge",
+          targetId: requestId
+        })
+      ],
       notes: "Admin audit drawer opened and parameter import preview rendered without committing preview-only data."
     });
   });
@@ -399,7 +476,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
 
     const auditResponse = await expectSuccessfulApiResponse(page, "/api/v1/audit-events");
     const auditBody = (await auditResponse.json()) as {
-      items: Array<{ kind: string; action: string; projectId: string | null; targetId: string | null }>;
+      items: Array<{ id?: string; kind: string; action: string; projectId: string | null; targetId: string | null; traceId?: string }>;
     };
     expect(auditBody.items).toEqual(
       expect.arrayContaining([
@@ -418,6 +495,26 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(changesResponse, {
+          method: "GET",
+          path: `/api/v1/parameter-change-requests?projectId=${projectId}`,
+          responseSummary: `request ${requestId} status=rejected`
+        }),
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `found ${auditBody.items.length} audit events`
+        })
+      ],
+      db: [await parameterChangeDbSummary(requestId)],
+      audit: [
+        auditSummaryFor(auditBody.items, {
+          kind: "parameter-review-reject",
+          action: "reject",
+          targetId: requestId
+        })
+      ],
       notes: `Parameter request ${requestId} was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.`
     });
   });
