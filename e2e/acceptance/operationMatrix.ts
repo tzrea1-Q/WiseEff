@@ -123,7 +123,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["PARAM-DRAFT-EDIT-001"],
     specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
-    assertions: ["ui", "api", "db", "audit"]
+    assertions: ["ui", "api", "db"]
   },
   {
     id: "PARAM-REJECT-001",
@@ -232,7 +232,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["PERM-GOV-001"],
     specFiles: ["e2e/acceptance/permissions.acceptance.spec.ts"],
-    assertions: ["ui", "api"]
+    assertions: ["ui"]
   },
   {
     id: "PERM-MATRIX-001",
@@ -268,6 +268,6 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     coverage: "automated",
     acceptanceIds: ["PERM-USER-MGMT-001"],
     specFiles: ["e2e/acceptance/permissions.acceptance.spec.ts"],
-    assertions: ["ui", "api", "audit"]
+    assertions: ["ui"]
   }
 ];

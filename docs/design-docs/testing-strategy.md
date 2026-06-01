@@ -79,6 +79,8 @@ MVP 必须覆盖：
 5. 设备调试闭环：检测模拟设备、读取节点、写入、回读、查看调试历史。
 6. Agent 审批边界：Agent 可以生成写操作申请，但不能绕过批准。
 
+M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
+
 Current M2 acceptance command:
 
 ```bash

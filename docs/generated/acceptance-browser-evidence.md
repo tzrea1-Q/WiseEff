@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-01T11:38:50.514Z
-- Branch: `codex/m5-6-m5-7-acceptance-depth`
-- Commit: `d10ca3697654e29473a916695e5aec3ad9b04cb8`
+- Date: 2026-06-01T12:53:37.586Z
+- Branch: `codex/m5-10-evidence-grade-upgrade`
+- Commit: `0d6b607deed7b84ca234a5c32ca2b8dea3c836cd`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `passed`
@@ -47,6 +47,8 @@
 - Covered operation IDs: `20`
 - Missing operation IDs: _none_
 - Invalid evidence records: _none_
+- Validation errors: `0`
+- Validation error detail: _none_
 - Evidence records: `34`
 - Evidence index: docs/generated/acceptance-operation-evidence.md
 

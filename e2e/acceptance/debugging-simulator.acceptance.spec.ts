@@ -6,7 +6,7 @@ import type { Client } from "pg";
 import { withPgClient } from "./helpers/database";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -247,6 +247,7 @@ async function rollbackSnapshotViaApi(page: Page, snapshotId: string) {
     data: { confirmationToken: "confirm-rollback" }
   });
   expect(response.ok()).toBe(true);
+  return response;
 }
 
 async function createDebuggingSessionViaApi(page: Page, userId = "u-xu-yun") {
@@ -266,6 +267,51 @@ async function createDebuggingSessionViaApi(page: Page, userId = "u-xu-yun") {
   expect(sessionResponse.ok()).toBe(true);
   const sessionBody = (await sessionResponse.json()) as { item: { id: string } };
   return sessionBody.item.id;
+}
+
+async function debuggingDbSummary(snapshotId: string) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{
+      parameter_id: string;
+      current_value: string;
+      snapshot_status: string | null;
+    }>(
+      `
+      select dp.id as parameter_id, dp.current_value, ds.status as snapshot_status
+      from debugging_parameters dp
+      left join debugging_snapshots ds on ds.id = $2
+      where dp.project_id = $1
+        and dp.id = $3
+      `,
+      [projectId, snapshotId, fastChargeParameterId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "debugging_parameters",
+      predicate: `projectId=${projectId}; parameterId=${fastChargeParameterId}; snapshotId=${snapshotId}`,
+      observed: row
+        ? `currentValue=${row.current_value}; snapshotStatus=${row.snapshot_status ?? "missing"}`
+        : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
+function auditSummaryFor(
+  items: Array<{ id?: string; kind: string; targetId: string | null; traceId?: string; metadata?: { snapshotId?: string; requestedValue?: string } }>,
+  match: { kind: string; targetId: string }
+) {
+  const item = items.find((candidate) => candidate.kind === match.kind && candidate.targetId === match.targetId);
+  expect(item).toBeTruthy();
+
+  return {
+    id: item?.id,
+    kind: item!.kind,
+    targetId: item!.targetId,
+    requestId: item?.traceId,
+    metadataSummary: item?.metadata ? Object.entries(item.metadata).map(([key, value]) => `${key}=${value}`).join("; ") : undefined
+  };
 }
 
 test.describe("M5.4 manual flow E - debugging simulator loop", () => {
@@ -300,7 +346,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await expect(parameterRow(page, "Readback mismatch probe")).toContainText(/readback mismatch/i, { timeout: 30_000 });
 
     const fastChargeSnapshotId = await latestWriteSnapshotId(page, fastChargeParameterId);
-    await rollbackSnapshotViaApi(page, fastChargeSnapshotId);
+    const rollbackResponse = await rollbackSnapshotViaApi(page, fastChargeSnapshotId);
 
     await page.goto(`/node-debugging?project=${projectId}`);
     await expectSimulatorOnline(page);
@@ -311,7 +357,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
 
     const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
     expect(auditResponse.ok()).toBe(true);
-    const auditBody = (await auditResponse.json()) as { items: AuditEventDto[] };
+    const auditBody = (await auditResponse.json()) as { items: Array<AuditEventDto & { id?: string; traceId?: string }> };
 
     expect(auditBody.items).toEqual(
       expect.arrayContaining([
@@ -332,6 +378,24 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(rollbackResponse, {
+          method: "POST",
+          path: `/api/v1/debugging/snapshots/${fastChargeSnapshotId}/rollback`,
+          responseSummary: `rolled back snapshot ${fastChargeSnapshotId}`
+        }),
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `audit events=${auditBody.items.length}`
+        })
+      ],
+      db: [await debuggingDbSummary(fastChargeSnapshotId)],
+      audit: [
+        auditSummaryFor(auditBody.items, { kind: "debug-node-write", targetId: fastChargeParameterId }),
+        auditSummaryFor(auditBody.items, { kind: "debug-node-write", targetId: mismatchParameterId }),
+        auditSummaryFor(auditBody.items, { kind: "debug-snapshot-rollback", targetId: fastChargeSnapshotId })
+      ],
       notes: `Simulator write and mismatch paths produced audit evidence; snapshot ${fastChargeSnapshotId} rolled back to the original safe value.`
     });
   });
@@ -412,6 +476,23 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(authCheckResponse, {
+          method: "GET",
+          path: "/api/v1/me",
+          responseSummary: `user=${nonWriterDebugUserId}; missing debugging:write`
+        }),
+        summarizeApiResponse(forcedWriteResponse, {
+          method: "POST",
+          path: "/api/v1/debugging/nodes/write",
+          responseSummary: forcedWriteBody.error?.message ?? "forced write denied"
+        }),
+        summarizeApiResponse(auditResponse, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: `audit events=${auditBody.items.length}; no debug-node-write for ${nonWriterDebugUserId}`
+        })
+      ],
       notes: `Read-only node flow hid write controls; forced API write as ${nonWriterDebugUserId} returned 403 debugging:write without a debug-node-write audit event.`
     });
   });

@@ -1,10 +1,13 @@
 import "dotenv/config";
 import { expect, test } from "playwright/test";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { withPgClient } from "./helpers/database";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 import { apiRoute, smokeHeaders } from "./helpers/runtime";
 
 useBrowserDiagnostics(test);
+
+const permissionsEligibilityReason = "M5.5 permissions matrix eligibility guard";
 
 const visibleRoleExpectations = [
   { role: "Guest", canOpenDebugging: false, canOpenReview: false },
@@ -34,6 +37,44 @@ async function navigateWithinApp(page: import("playwright/test").Page, path: str
 
 function roleValueByName(roleName: string) {
   return roleName.toLowerCase().replace(/\s+/g, "-");
+}
+
+async function cleanupPermissionsEligibilityRequests() {
+  await withPgClient(async (client) => {
+    const requests = await client.query<{ id: string; submission_round_id: string | null }>(
+      `
+      select cr.id, cr.submission_round_id
+      from parameter_change_requests cr
+      join parameter_submission_items psi on psi.change_request_id = cr.id
+      where psi.reason = $1
+      `,
+      [permissionsEligibilityReason]
+    );
+    const requestIds = requests.rows.map((row) => row.id);
+    const roundIds = Array.from(
+      new Set(requests.rows.map((row) => row.submission_round_id).filter((id): id is string => Boolean(id)))
+    );
+
+    if (requestIds.length > 0) {
+      await client.query("delete from parameter_review_decisions where request_id = any($1::text[])", [requestIds]);
+      await client.query("delete from parameter_submission_items where change_request_id = any($1::text[])", [requestIds]);
+      await client.query("delete from parameter_change_requests where id = any($1::text[])", [requestIds]);
+    }
+
+    if (roundIds.length > 0) {
+      await client.query(
+        `
+        delete from parameter_submission_rounds
+        where id = any($1::text[])
+          and not exists (
+            select 1 from parameter_change_requests
+            where parameter_change_requests.submission_round_id = parameter_submission_rounds.id
+          )
+        `,
+        [roundIds]
+      );
+    }
+  });
 }
 
 test.describe("M5.5 permissions matrix browser acceptance", () => {
@@ -75,6 +116,8 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
   test("keeps API-backed workflow eligibility stricter than visible role inclusion", async ({ page }, testInfo) => {
     // @acceptance PERM-MATRIX-002
     // @operation PERM-MATRIX-002
+    await cleanupPermissionsEligibilityRequests();
+
     const response = await page.request.post(apiRoute("/api/v1/parameter-submission-rounds"), {
       headers: smokeHeaders(),
       data: {
@@ -83,10 +126,10 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
           {
             parameterId: "aurora-fast-charge-current",
             targetValue: "3103",
-            reason: "M5.5 permissions matrix eligibility guard"
+            reason: permissionsEligibilityReason
           }
         ],
-        reason: "M5.5 permissions matrix eligibility guard",
+        reason: permissionsEligibilityReason,
         assignees: {
           hardwareCommitterId: "u-xu-yun",
           softwareCommitterId: "u-xu-yun",
@@ -109,6 +152,13 @@ test.describe("M5.5 permissions matrix browser acceptance", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(response, {
+          method: "POST",
+          path: "/api/v1/parameter-submission-rounds",
+          responseSummary: "VALIDATION_FAILED for role-ineligible workflow assignees"
+        })
+      ],
       notes: "API-backed parameter submission rejected project-scoped workflow assignees that visible role inclusion alone would not permit."
     });
   });
