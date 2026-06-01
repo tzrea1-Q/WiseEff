@@ -1,19 +1,27 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   buildBrowserAcceptanceEvidence as buildEvidence,
   type BrowserAcceptanceHdcStatus,
   type BrowserAcceptanceMode,
+  type BrowserAcceptanceOperationEvidence,
   type BrowserAcceptanceOverallStatus,
   type BrowserAcceptancePilotOutcome,
   type BrowserAcceptanceRequirementCoverage,
   type BrowserAcceptanceStatus,
   type BrowserAcceptanceWorkflowEvidence
 } from "../e2e/acceptance/helpers/evidence";
+import { acceptanceOperations } from "../e2e/acceptance/operationMatrix";
 import { acceptanceRequirements } from "../e2e/acceptance/requirements";
 import { evaluateAcceptanceCoverage, readAcceptanceSpecFiles } from "./check-acceptance-coverage";
+import { evaluateOperationMatrix, type OperationMatrixResult } from "./check-acceptance-operation-matrix";
+import {
+  evaluateOperationEvidence,
+  readOperationEvidenceRecords,
+  writeOperationEvidenceIndex
+} from "./check-operation-evidence";
 
 export { buildBrowserAcceptanceEvidence } from "../e2e/acceptance/helpers/evidence";
 
@@ -52,6 +60,8 @@ export type BrowserAcceptanceRunInput = {
   };
   workflows?: BrowserAcceptanceWorkflowEvidence[];
   requirementCoverage?: BrowserAcceptanceRequirementCoverage;
+  operationMatrix?: OperationMatrixResult;
+  operationEvidence?: BrowserAcceptanceOperationEvidence;
 };
 
 export type DefaultWorkflowInput = {
@@ -63,6 +73,9 @@ export type DefaultWorkflowInput = {
 const defaultPreflightEvidenceOut = "test-results/acceptance/preflight-evidence.md";
 const defaultEvidenceOut = "docs/generated/acceptance-browser-evidence.md";
 const defaultPlaywrightJsonReport = "test-results/acceptance/results.json";
+const defaultOperationEvidenceRoot = "test-results/acceptance/operation-evidence";
+const defaultOperationEvidenceOut = "docs/generated/acceptance-operation-evidence.md";
+const defaultOperationEvidenceJsonOut = "docs/generated/acceptance-operation-evidence/index.json";
 const commandMaxBuffer = 64 * 1024 * 1024;
 const modes: BrowserAcceptanceMode[] = ["local-non-hdc", "target-non-hdc", "full-pilot"];
 const workflowDefinitions: BrowserAcceptanceWorkflowEvidence[] = [
@@ -287,6 +300,39 @@ export function evaluateBrowserAcceptanceRun(input: BrowserAcceptanceRunInput): 
     }
   }
 
+  if (input.operationMatrix?.status === "failed") {
+    if (input.operationMatrix.missingAutomatedOperationIds.length > 0) {
+      blockers.push(
+        `Operation matrix is missing automated operation markers: ${input.operationMatrix.missingAutomatedOperationIds.join(", ")}.`
+      );
+    }
+    if (input.operationMatrix.deferredOperationIdsMissingReason.length > 0) {
+      blockers.push(
+        `Operation matrix has deferred operation IDs without reasons: ${input.operationMatrix.deferredOperationIdsMissingReason.join(", ")}.`
+      );
+    }
+    if (input.operationMatrix.operationsMissingAssertions.length > 0) {
+      blockers.push(
+        `Operation matrix operations are missing assertions: ${input.operationMatrix.operationsMissingAssertions.join(", ")}.`
+      );
+    }
+    if (input.operationMatrix.unknownOperationIds.length > 0) {
+      blockers.push(`Operation matrix references unknown operation IDs: ${input.operationMatrix.unknownOperationIds.join(", ")}.`);
+    }
+    if (input.operationMatrix.unknownAcceptanceIds.length > 0) {
+      blockers.push(
+        `Operation matrix references unknown acceptance IDs: ${input.operationMatrix.unknownAcceptanceIds.join(", ")}.`
+      );
+    }
+  }
+
+  if (input.operationEvidence?.status === "failed" && input.operationEvidence.missingOperationIds.length > 0) {
+    blockers.push(`Operation evidence is missing required IDs: ${input.operationEvidence.missingOperationIds.join(", ")}.`);
+  }
+  if (input.operationEvidence?.status === "failed" && input.operationEvidence.invalidEvidenceIds.length > 0) {
+    blockers.push(`Operation evidence records are missing review metadata: ${input.operationEvidence.invalidEvidenceIds.join(", ")}.`);
+  }
+
   if (input.preflight.status !== "passed") {
     blockers.push("Acceptance preflight did not pass.");
   }
@@ -373,6 +419,7 @@ async function main() {
       };
 
   const playwrightCommand = buildBrowserAcceptanceCommand(options, loadedEnv);
+  clearOperationEvidenceRecords();
   const playwright = runPlaywright(playwrightCommand);
   const workflows = readBrowserAcceptanceWorkflows(defaultPlaywrightJsonReport, {
     playwrightStatus: playwright.status,
@@ -383,12 +430,28 @@ async function main() {
     requirements: acceptanceRequirements,
     specFiles: readAcceptanceSpecFiles()
   });
+  const operationMatrix = evaluateOperationMatrix({
+    operations: acceptanceOperations,
+    specFiles: readAcceptanceSpecFiles(),
+    knownAcceptanceIds: acceptanceRequirements.map((requirement) => requirement.id)
+  });
+  const operationEvidence = evaluateOperationEvidence({
+    operations: acceptanceOperations,
+    records: readOperationEvidenceRecords(defaultOperationEvidenceRoot)
+  });
+  writeOperationEvidenceIndex({
+    evaluation: operationEvidence,
+    markdownOut: defaultOperationEvidenceOut,
+    jsonOut: defaultOperationEvidenceJsonOut
+  });
   const evaluation = evaluateBrowserAcceptanceRun({
     mode: options.mode,
     preflight,
     playwright,
     workflows,
-    requirementCoverage
+    requirementCoverage,
+    operationMatrix,
+    operationEvidence
   });
   const evidence = buildEvidence({
     date: new Date().toISOString(),
@@ -399,7 +462,15 @@ async function main() {
     playwright,
     workflows,
     requirementCoverage,
-    artifactPaths: [defaultPreflightEvidenceOut, defaultPlaywrightJsonReport, "test-results/acceptance", "playwright-report/acceptance"],
+    operationEvidence,
+    artifactPaths: [
+      defaultPreflightEvidenceOut,
+      defaultPlaywrightJsonReport,
+      "test-results/acceptance",
+      "playwright-report/acceptance",
+      defaultOperationEvidenceOut,
+      defaultOperationEvidenceJsonOut
+    ],
     blockers: evaluation.blockers
   });
 
@@ -407,6 +478,10 @@ async function main() {
   writeFileSync(options.evidenceOut, evidence, "utf8");
   console.log(evidence);
   process.exit(evaluation.status === "passed" ? 0 : 1);
+}
+
+function clearOperationEvidenceRecords(root = defaultOperationEvidenceRoot) {
+  rmSync(root, { recursive: true, force: true });
 }
 
 function runPreflight(command: CommandInvocation) {

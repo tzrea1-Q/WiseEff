@@ -14,6 +14,10 @@ Completed plans are historical implementation evidence. They can explain why a s
 | M4 Agent collaboration | `2026-05-27-wiseeff-m4-agent-collaboration-mvp.md` |
 | M5 commercial pilot readiness | `2026-05-28-wiseeff-m5-commercial-pilot-readiness.md` |
 | M5.1 documentation governance | `2026-05-29-wiseeff-m5-1-documentation-governance.md` |
+| M5.5 browser acceptance coverage hardening | `2026-06-01-wiseeff-m5-5-browser-acceptance-coverage-hardening.md` |
+| M5.6 user operation coverage matrix | `2026-06-01-wiseeff-m5-6-user-operation-coverage-matrix.md` |
+| M5.7 evidence-grade browser acceptance | `2026-06-01-wiseeff-m5-7-evidence-grade-browser-acceptance.md` |
+| M5.8 deterministic acceptance coverage closure | `2026-06-01-wiseeff-m5-8-deterministic-acceptance-coverage-closure.md` |
 | Chinese developer docs | `2026-05-29-wiseeff-developer-docs-zh-cn.md` |
 
 ## Historical Feature Plans

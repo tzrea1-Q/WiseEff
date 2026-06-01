@@ -1,0 +1,273 @@
+export type AcceptanceOperationPriority = "P0" | "P1" | "P2";
+export type AcceptanceOperationCoverage = "automated" | "manual" | "conditional" | "future";
+export type AcceptanceOperationAssertion = "ui" | "api" | "db" | "audit" | "screenshot";
+
+export type AcceptanceOperation = {
+  id: string;
+  priority: AcceptanceOperationPriority;
+  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions";
+  route: string;
+  roles: string[];
+  action: string;
+  coverage: AcceptanceOperationCoverage;
+  acceptanceIds: string[];
+  specFiles: string[];
+  assertions: AcceptanceOperationAssertion[];
+  deferralReason?: string;
+};
+
+export const acceptanceOperations: AcceptanceOperation[] = [
+  {
+    id: "AUTH-RUNTIME-001",
+    priority: "P0",
+    area: "auth",
+    route: "/",
+    roles: ["Admin"],
+    action: "Load API-mode browser runtime with the local dev auth contract.",
+    coverage: "automated",
+    acceptanceIds: ["AUTH-RUNTIME-001"],
+    specFiles: ["e2e/acceptance/auth-runtime.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "SHELL-DIAG-001",
+    priority: "P0",
+    area: "shell",
+    route: "core routes",
+    roles: ["Admin"],
+    action: "Load every primary route and fail on unexpected browser/runtime/API diagnostics.",
+    coverage: "automated",
+    acceptanceIds: ["SHELL-DIAG-001"],
+    specFiles: ["e2e/acceptance/shell-navigation.acceptance.spec.ts"],
+    assertions: ["ui"]
+  },
+  {
+    id: "PARAM-REASON-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Hardware User"],
+    action: "Block blank draft reasons before API submission.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-REASON-001"],
+    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    assertions: ["ui"]
+  },
+  {
+    id: "PARAM-ASSIGNEE-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Hardware User"],
+    action: "Default every workflow assignee slot to an eligible active user.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ASSIGNEE-001"],
+    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    assertions: ["ui"]
+  },
+  {
+    id: "PARAM-ASSIGNEE-002",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Hardware User"],
+    action: "Hide inactive, guest, admin-only, and role-ineligible users from assignee dropdowns.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ASSIGNEE-002"],
+    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    assertions: ["ui"]
+  },
+  {
+    id: "PARAM-ASSIGNEE-003",
+    priority: "P0",
+    area: "parameters",
+    route: "/api/v1/parameter-submission-rounds",
+    roles: ["Hardware User"],
+    action: "Reject forced invalid workflow assignees at the API boundary.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ASSIGNEE-003"],
+    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "PARAM-HAPPY-001",
+    priority: "P0",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Hardware User", "Hardware Committer", "Software Committer", "Software User", "Admin"],
+    action: "Search, draft, submit, review, merge, persist, and audit a parameter change.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-HAPPY-001"],
+    specFiles: ["e2e/acceptance/parameters.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-ADMIN-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Open parameter admin import preview and audit drawer.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ADMIN-001"],
+    specFiles: ["e2e/acceptance/parameters.acceptance.spec.ts"],
+    assertions: ["ui", "audit"]
+  },
+  {
+    id: "PARAM-DRAFT-EDIT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameters",
+    roles: ["Hardware User"],
+    action: "Edit and remove draft items before final submission.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-DRAFT-EDIT-001"],
+    specFiles: ["e2e/acceptance/parameters-negative.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "PARAM-REJECT-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-review",
+    roles: ["Hardware Committer", "Software Committer"],
+    action: "Reject a parameter review and show status, reason, and audit evidence.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-REJECT-001"],
+    specFiles: ["e2e/acceptance/parameters.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "LOG-HAPPY-001",
+    priority: "P0",
+    area: "logs",
+    route: "/logs",
+    roles: ["Software User", "Software Committer", "Admin"],
+    action: "Upload, complete analysis, inspect evidence, send feedback, archive, and handle unsupported files.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-HAPPY-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "LOG-REANALYZE-001",
+    priority: "P1",
+    area: "logs",
+    route: "/logs",
+    roles: ["Software User", "Software Committer", "Admin"],
+    action: "Rerun log analysis and verify a new run, progress, and audit record.",
+    coverage: "automated",
+    acceptanceIds: ["LOG-REANALYZE-001"],
+    specFiles: ["e2e/acceptance/log-analysis.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "DEBUG-SIM-001",
+    priority: "P0",
+    area: "debugging",
+    route: "/node-debugging",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Read, write, detect mismatch, rollback, and audit simulator node changes.",
+    coverage: "automated",
+    acceptanceIds: ["DEBUG-SIM-001"],
+    specFiles: ["e2e/acceptance/debugging-simulator.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
+    id: "DEBUG-PERM-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/node-debugging",
+    roles: ["Guest", "Hardware User", "Software User"],
+    action: "Verify roles without write permission cannot perform node write operations.",
+    coverage: "automated",
+    acceptanceIds: ["DEBUG-PERM-001"],
+    specFiles: ["e2e/acceptance/debugging-simulator.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "HDC-LAB-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/node-debugging",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Run the real HDC device-lab read/write smoke when explicitly enabled.",
+    coverage: "conditional",
+    acceptanceIds: ["HDC-LAB-001"],
+    specFiles: ["e2e/acceptance/hdc-device-lab.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"],
+    deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached."
+  },
+  {
+    id: "AGENT-APPROVAL-001",
+    priority: "P0",
+    area: "agent",
+    route: "/agent",
+    roles: ["Admin"],
+    action: "Run Agent context, approval, rejection, execution, and evidence flow.",
+    coverage: "automated",
+    acceptanceIds: ["AGENT-APPROVAL-001"],
+    specFiles: ["e2e/acceptance/agent.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"]
+  },
+  {
+    id: "AGENT-UNAUTH-001",
+    priority: "P1",
+    area: "agent",
+    route: "/agent",
+    roles: ["Guest", "Hardware User", "Software User"],
+    action: "Reject direct execution of an unapproved Agent write tool.",
+    coverage: "automated",
+    acceptanceIds: ["AGENT-UNAUTH-001"],
+    specFiles: ["e2e/acceptance/agent.acceptance.spec.ts"],
+    assertions: ["api", "audit"]
+  },
+  {
+    id: "PERM-GOV-001",
+    priority: "P0",
+    area: "permissions",
+    route: "/user-permissions",
+    roles: ["Admin"],
+    action: "Load user governance, show role/status, and prevent active Admin self-disable.",
+    coverage: "automated",
+    acceptanceIds: ["PERM-GOV-001"],
+    specFiles: ["e2e/acceptance/permissions.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "PERM-MATRIX-001",
+    priority: "P0",
+    area: "permissions",
+    route: "core routes",
+    roles: ["Guest", "Hardware User", "Software User", "Hardware Committer", "Software Committer", "Admin"],
+    action: "Enforce role inclusion rules for visible UI operations.",
+    coverage: "automated",
+    acceptanceIds: ["PERM-MATRIX-001"],
+    specFiles: ["e2e/acceptance/permissions-matrix.acceptance.spec.ts"],
+    assertions: ["ui"]
+  },
+  {
+    id: "PERM-MATRIX-002",
+    priority: "P0",
+    area: "permissions",
+    route: "/api/v1/parameter-submission-rounds",
+    roles: ["Hardware User", "Hardware Committer", "Software Committer", "Software User", "Admin"],
+    action: "Enforce role inclusion and project-scoped workflow eligibility in API-backed operations.",
+    coverage: "automated",
+    acceptanceIds: ["PERM-MATRIX-002"],
+    specFiles: ["e2e/acceptance/permissions-matrix.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "PERM-USER-MGMT-001",
+    priority: "P1",
+    area: "permissions",
+    route: "/user-permissions",
+    roles: ["Admin"],
+    action: "Admin can create or update a non-self user's role while non-Admin cannot access the same operation.",
+    coverage: "automated",
+    acceptanceIds: ["PERM-USER-MGMT-001"],
+    specFiles: ["e2e/acceptance/permissions.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"]
+  }
+];

@@ -5,6 +5,7 @@ import { expect, test, type Locator, type Page } from "playwright/test";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
+import { recordOperationEvidence } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -18,8 +19,8 @@ const projectId = "aurora";
 const agentDraftReasonPrefix = "WiseAgent action request%";
 
 type AgentEvidence = {
-  toolCalls: Array<{ name: string; status: string; requires_approval: boolean }>;
-  approvals: Array<{ status: string; title: string }>;
+  toolCalls: Array<{ id: string; name: string; status: string; requires_approval: boolean }>;
+  approvals: Array<{ status: string; title: string; tool_call_id: string }>;
   traces: Array<{
     provider: string;
     model: string;
@@ -131,7 +132,7 @@ async function readAgentEvidence(sessionId: string): Promise<AgentEvidence> {
   return withPgClient(async (client) => {
     const toolCalls = await client.query<AgentEvidence["toolCalls"][number]>(
       `
-        select name, status, requires_approval
+        select id, name, status, requires_approval
         from agent_tool_calls
         where session_id = $1
         order by created_at asc
@@ -140,7 +141,7 @@ async function readAgentEvidence(sessionId: string): Promise<AgentEvidence> {
     );
     const approvals = await client.query<AgentEvidence["approvals"][number]>(
       `
-        select status, title
+        select status, title, tool_call_id
         from agent_approvals
         where session_id = $1
         order by requested_at asc
@@ -198,8 +199,81 @@ test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
     await prepareAgentAcceptanceState();
   });
 
-  test("requires approval for draft actions and records API, audit, and trace evidence", async ({ page }) => {
+  test("rejects direct execution of a pending approval-required tool before approval", async ({ page }, testInfo) => {
+    // @acceptance AGENT-UNAUTH-001
+    // @operation AGENT-UNAUTH-001
+    const panel = await openParameterAgent(page);
+    const sessionId = await agentSessionId(panel);
+    const draftsBeforeRun = await countAgentDrafts();
+
+    await panel.locator(".agent-actions button").first().click();
+    await expect.poll(() => agentToolCallStatuses(sessionId)).toContain("parameter.summarizeReviewQueue:succeeded");
+
+    await panel.locator(".agent-actions button.requires-confirm").click();
+    const approvalDialog = page.getByRole("alertdialog", { name: "Create parameter draft" });
+    await expect(approvalDialog).toBeVisible({ timeout: 30_000 });
+    await expect(panel.getByText("pending_approval")).toBeVisible();
+
+    const pendingEvidence = await readAgentEvidence(sessionId);
+    const pendingToolCall = pendingEvidence.toolCalls.find(
+      (toolCall) => toolCall.name === "parameter.submitChangeDraft" && toolCall.status === "pending_approval"
+    );
+    expect(pendingToolCall).toBeDefined();
+
+    const directRunResponse = await page.request.post(
+      apiRoute(`/api/v1/agent/sessions/${sessionId}/tool-calls/${pendingToolCall?.id}/run`),
+      {
+        headers: apiAuthorization ? { Authorization: apiAuthorization } : undefined,
+        data: { payload: {} }
+      }
+    );
+    const directRunBody = (await directRunResponse.json()) as {
+      error?: { code?: string; details?: { toolCallId?: string } };
+    };
+
+    expect(directRunResponse.status()).toBe(409);
+    expect(directRunBody.error).toMatchObject({
+      code: "APPROVAL_REQUIRED",
+      details: { toolCallId: pendingToolCall?.id }
+    });
+    await expect.poll(countAgentDrafts, { message: "Direct run before approval must not create a draft" }).toBe(draftsBeforeRun);
+
+    const evidenceAfterRun = await readAgentEvidence(sessionId);
+    expect(evidenceAfterRun.toolCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: pendingToolCall?.id, name: "parameter.submitChangeDraft", status: "pending_approval" })
+      ])
+    );
+    expect(evidenceAfterRun.approvals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ tool_call_id: pendingToolCall?.id, title: "Create parameter draft", status: "pending" })
+      ])
+    );
+    expect(evidenceAfterRun.auditEvents).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "agent-tool", action: "approval-requested" })])
+    );
+    expect(evidenceAfterRun.auditEvents).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "agent-tool", action: "approval-executed" }),
+        expect.objectContaining({ kind: "agent-tool", action: "approval-rejected" })
+      ])
+    );
+
+    await approvalDialog.locator("button").first().click();
+
+    await recordOperationEvidence({
+      operationId: "AGENT-UNAUTH-001",
+      title: "agent direct run rejected before approval",
+      status: "passed",
+      page,
+      testInfo,
+      notes: `Agent session ${sessionId} rejected direct run for pending tool call ${pendingToolCall?.id} with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.`
+    });
+  });
+
+  test("requires approval for draft actions and records API, audit, and trace evidence", async ({ page }, testInfo) => {
     // @acceptance AGENT-APPROVAL-001
+    // @operation AGENT-APPROVAL-001
     const panel = await openParameterAgent(page);
     const sessionId = await agentSessionId(panel);
 
@@ -263,5 +337,14 @@ test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
     await expect.poll(() => apiAuditActionsForSession(page, sessionId)).toEqual(
       expect.arrayContaining(["agent-tool:approval-rejected", "agent-tool:approval-executed"])
     );
+
+    await recordOperationEvidence({
+      operationId: "AGENT-APPROVAL-001",
+      title: "agent approval reject execute trace audit",
+      status: "passed",
+      page,
+      testInfo,
+      notes: `Agent session ${sessionId} required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.`
+    });
   });
 });
