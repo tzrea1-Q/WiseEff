@@ -18,6 +18,10 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:operations` | Operation-level browser coverage metadata | Adding or changing concrete user operations, roles, permissions, UI controls, or API-backed interaction behavior. |
 | `npm run acceptance:models` | M5.9 state-model and contract invariants for parameter review, log tasks, debugging, and permissions | Changing workflow state transitions, seeded fixtures, permission contracts, or API/domain rules behind browser acceptance. |
 | `npm run acceptance:evidence` | Operation evidence index and M5.10 evidence-grade metadata completeness | After a browser acceptance run, or when changing operation evidence helpers, matrix entries, or evidence gates. |
+| `npm run acceptance:quality` | M5.11 quality-gate metadata for accessibility, visual, and responsive specs/scripts | After changing package scripts, quality Playwright config, or quality spec locations. |
+| `npm run acceptance:a11y` | WCAG A/AA accessibility scans for core routes and key interaction states | Changing page structure, dialogs, forms, navigation, headings, labels, focus behavior, or Agent panel UI. |
+| `npm run acceptance:visual` | Stable-region visual regression snapshots | Changing CSS, layout, shell/page regions, visual hierarchy, or masked snapshot regions. |
+| `npm run acceptance:responsive` | Desktop/tablet/mobile responsive usability and overflow checks | Changing layout, dialogs, tables, toolbars, navigation, or viewport-dependent UI. |
 | `npm run acceptance:e2e` | Deterministic browser acceptance A-H flows | UI-interaction frontend/backend logic changes in API mode. |
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 
@@ -49,6 +53,10 @@ npm run acceptance:coverage
 npm run acceptance:operations
 npm run acceptance:models
 npm run acceptance:evidence
+npm run acceptance:quality
+npm run acceptance:a11y
+npm run acceptance:visual
+npm run acceptance:responsive
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
@@ -58,6 +66,8 @@ The generated browser evidence is written to `docs/generated/acceptance-browser-
 Non-HDC modes require workflows A-E, G, and H to pass; HDC workflow F may be skipped only when explicitly out of scope. The evidence also records requirement-level coverage from `npm run acceptance:coverage` and operation-level evidence from `npm run acceptance:evidence`; missing required IDs, unknown markers, missing required automated operation evidence, or evidence records without review metadata block the run. Browser diagnostics fail acceptance on unexpected page errors, console errors, request failures, and critical WiseEff API `4xx/5xx` responses. Full pilot mode is valid only when HDC device-lab evidence is enabled and ready.
 
 M5.10 evidence-grade rule: every passed operation evidence record must include runtime, trace/report, reproduction, role, route, assertion, status, and artifact metadata. If an operation matrix row declares `api`, `db`, or `audit` assertions, the evidence record must include the matching compact API request/response summary, DB predicate/observed-state summary, or audit event summary. API summaries should include method, path, status, and request ID when the response exposes one. DB summaries should name the table, predicate, observed state, and row count when available. Audit summaries should include event ID, kind, action, target ID, and request/trace correlation when available. Secrets, authorization values, tokens, keys, and bearer values must be redacted before evidence is written.
+
+M5.11 quality-gate rule: UI-facing changes should run the narrow quality gate that matches the risk, plus `npm run acceptance:quality` when scripts or spec wiring change. `npm run acceptance:a11y` covers automated WCAG A/AA scans, `npm run acceptance:visual` covers stable masked snapshots, and `npm run acceptance:responsive` covers desktop/tablet/mobile usability and horizontal-overflow checks. These gates supplement browser acceptance; they do not replace operation evidence or manual judgment for ambiguous visual issues.
 
 ## Documentation-Only Changes
 

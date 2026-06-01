@@ -67,7 +67,7 @@ function CodeValue({
           </button>
         ) : null}
       </div>
-      <code>{value || "-"}</code>
+      <code tabIndex={0}>{value || "-"}</code>
     </div>
   );
 }
@@ -544,7 +544,7 @@ export function ParameterDetailDialog({
             </div>
             <div className="parameter-detail-copy">
               <strong>配置格式</strong>
-              <code>{parameter.configFormat || "-"}</code>
+              <code tabIndex={0}>{parameter.configFormat || "-"}</code>
             </div>
             {parameter.history.length > 0 ? (
               <div className="parameter-detail-history">

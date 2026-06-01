@@ -346,7 +346,7 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await page.goto("/parameter-admin?audit=open");
     await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
     await page.getByRole("searchbox", { name: "搜索参数" }).fill(parameterName);
-    await expect(page.getByRole("listbox", { name: "项目共享参数库" })).toContainText(parameterName);
+    await expect(page.getByRole("region", { name: "项目共享参数库" })).toContainText(parameterName);
 
     await page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ }).getByRole("button", { name: "批量参数导入" }).click();
     const importDialog = page.getByRole("dialog", { name: "参数导入" });

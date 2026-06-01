@@ -30,13 +30,17 @@ function defaultProps(overrides: Partial<Parameters<typeof ParameterLibraryList>
 }
 
 function getLibraryRows() {
-  const list = screen.getByRole("listbox", { name: "项目共享参数库" });
-  return within(list).getAllByRole("option");
+  const list = screen.getByRole("region", { name: "项目共享参数库" });
+  return within(list).getAllByRole("button").filter((button) => button.className.includes("library-row-button"));
 }
 
 function queryLibraryRows() {
-  const list = screen.queryByRole("listbox", { name: "项目共享参数库" });
-  return list ? within(list).queryAllByRole("option") : [];
+  const list = screen.queryByRole("region", { name: "项目共享参数库" });
+  return list ? within(list).queryAllByRole("button").filter((button) => button.className.includes("library-row-button")) : [];
+}
+
+function groupHeader(name: RegExp) {
+  return screen.getAllByRole("button", { name }).find((button) => button.className.includes("param-group-header"))!;
 }
 
 describe("ParameterLibraryList search and risk filters", () => {
@@ -124,14 +128,14 @@ describe("ParameterLibraryList search and risk filters", () => {
   it("groups parameters by module with headers and counts", () => {
     render(<ParameterLibraryList {...defaultProps()} />);
 
-    expect(screen.getByRole("button", { name: /Charging Policy/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Battery Safety/ })).toBeInTheDocument();
+    expect(groupHeader(/Charging Policy/)).toBeInTheDocument();
+    expect(groupHeader(/Battery Safety/)).toBeInTheDocument();
   });
 
   it("collapses a module group when clicking its header", () => {
     render(<ParameterLibraryList {...defaultProps()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Charging Policy/ }));
+    fireEvent.click(groupHeader(/Charging Policy/));
 
     const chargingRows = queryLibraryRows().filter((row) => row.textContent?.includes("fast_charge"));
     expect(chargingRows).toHaveLength(0);

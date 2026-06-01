@@ -116,7 +116,8 @@ describe("ParameterAdminPage", () => {
   it("renders at least one parameter list item", () => {
     renderPage();
 
-    expect(screen.getAllByRole("option", { name: /fast_charge|charge_voltage|battery/ }).length).toBeGreaterThan(0);
+    const library = screen.getByRole("region", { name: "项目共享参数库" });
+    expect(within(library).getAllByRole("button", { name: /fast_charge|charge_voltage|battery/ }).length).toBeGreaterThan(0);
   });
 
   it("renders a single page heading", () => {

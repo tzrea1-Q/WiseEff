@@ -26,6 +26,10 @@
     "acceptance:operations": "tsx scripts/check-acceptance-operation-matrix.ts",
     "acceptance:models": "tsx scripts/check-acceptance-state-models.ts",
     "acceptance:evidence": "tsx scripts/check-operation-evidence.ts",
+    "acceptance:a11y": "playwright test --config playwright.quality.config.ts --project a11y",
+    "acceptance:visual": "playwright test --config playwright.quality.config.ts --project visual",
+    "acceptance:responsive": "playwright test --config playwright.quality.config.ts --project responsive",
+    "acceptance:quality": "tsx scripts/check-quality-gates.ts",
     "test:m5": "npm run contract:check && npm run test:all && npm run build && npm run test:e2e && tsx scripts/run-m5-smoke.ts --require-api",
     "contract:openapi": "tsx scripts/generate-openapi-contract.ts",
     "contract:check": "tsx scripts/check-openapi-contract.ts",
@@ -58,6 +62,7 @@
     "zod": "^3.25.42"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",

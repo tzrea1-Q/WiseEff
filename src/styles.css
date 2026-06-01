@@ -22,7 +22,7 @@
   --muted: oklch(0.97 0 0);
   --app-muted: #434654;
   --outline: #c3c6d6;
-  --outline-strong: #737685;
+  --outline-strong: #4d5668;
   --primary: oklch(0.205 0 0);
   --app-primary: #003d9b;
   --primary-container: #0052cc;
@@ -2499,12 +2499,12 @@ td small {
 }
 
 .parameter-value-diff.diff-down {
-  color: #a65f00;
+  color: #7a4100;
 }
 
 .parameter-value-diff.diff-up,
 .parameter-value-diff.diff-changed {
-  color: #b54708;
+  color: #8a3d00;
 }
 
 .parameter-value-diff.diff-same {
@@ -2539,8 +2539,9 @@ td small {
   font-weight: 700;
 }
 
-.parameters-table-grid tbody tr.row-value-same {
-  opacity: 0.72;
+.parameters-table-grid tbody tr.row-value-same td {
+  color: #334155;
+  background: #fbfcff;
 }
 
 .parameters-table-row-actions {
@@ -8134,8 +8135,8 @@ td small {
 }
 
 .parameter-detail-project-overview__meta small {
-  color: #64748b;
-  font-weight: 650;
+  color: #334155;
+  font-weight: 750;
 }
 
 .parameter-detail-disabled-reason {
@@ -11344,17 +11345,33 @@ td small {
 }
 
 .param-admin-shell .library-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 13px 16px;
   border-bottom: 1px solid #e7ecf7;
-  cursor: pointer;
 }
 
 .param-admin-shell .library-row.selected {
   background: #f4f7ff;
+}
+
+.param-admin-shell .library-row-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 48px;
+  padding: 13px 16px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.param-admin-shell .library-row-button:hover,
+.param-admin-shell .library-row-button:focus-visible {
+  background: rgba(0, 82, 204, 0.08);
+  outline: none;
 }
 
 .param-admin-shell .library-row-main {

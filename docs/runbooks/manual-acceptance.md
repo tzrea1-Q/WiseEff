@@ -270,6 +270,10 @@ npm run acceptance:operations
 npm run acceptance:models
 npm run acceptance:browser
 npm run acceptance:evidence
+npm run acceptance:quality
+npm run acceptance:a11y
+npm run acceptance:visual
+npm run acceptance:responsive
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
@@ -279,6 +283,8 @@ npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 `npm run acceptance:browser` runs preflight, runs `npm run acceptance:e2e`, checks requirement-level coverage, checks operation-level evidence, and writes generated evidence to `docs/generated/acceptance-browser-evidence.md`. The evidence table maps directly to manual flows A-H and links to `playwright-report/acceptance/index.html`, `test-results/acceptance/results.json`, and `test-results/acceptance/`. Non-HDC modes require workflows A-E, G, and H to pass; HDC flow F may be skipped only when HDC is explicitly out of scope.
 
 Requirement-level coverage is defined in `docs/developer/browser-acceptance-coverage-map.md`. Operation-level coverage is defined in `docs/developer/user-operation-coverage-matrix.md`. Missing required IDs, unknown `@acceptance` or `@operation` markers, missing required automated operation evidence, and operation evidence without role/route/assertion metadata are blockers. M5.10 also makes API, DB, and audit summaries blocking when the operation matrix declares those assertion types. The browser suite fails on unexpected page errors, console errors, request failures, and critical WiseEff API `4xx/5xx` responses, so a page that visually renders but logs an unauthorized API failure is not considered accepted.
+
+M5.11 adds deterministic quality gates beside the workflow gate. Use `npm run acceptance:quality` after changing the quality scripts, Playwright quality config, or quality spec locations. Use `npm run acceptance:a11y` for page structure, dialog, form, navigation, label, heading, focus, or Agent panel changes. Use `npm run acceptance:visual` for CSS, layout, stable shell/page region, snapshot-mask, or visual hierarchy changes. Use `npm run acceptance:responsive` for table, toolbar, navigation, dialog, or viewport-dependent changes. Visual snapshots should be updated intentionally with `npm run acceptance:visual -- --update-snapshots`, then rerun without `--update-snapshots` before accepting the result.
 
 ### Reviewing Operation Evidence
 
@@ -525,12 +531,16 @@ Then run:
 
 ```bash
 npm run acceptance:browser
+npm run acceptance:a11y
+npm run acceptance:visual
+npm run acceptance:responsive
 npm run smoke:m5
 ```
 
 Expected:
 
 - E2E tests pass, except HDC-specific checks may be skipped only when HDC is explicitly out of scope.
+- Accessibility, visual, and responsive quality gates pass for UI-facing acceptance candidates.
 - Strict `npm run smoke:m5` passes only when the live API and all required pilot gates are ready.
 - For non-HDC target acceptance, a dedicated non-HDC smoke mode may be used only if HDC is explicitly skipped or absent and the evidence documents that full pilot readiness is not claimed.
 
