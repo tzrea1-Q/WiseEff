@@ -24,7 +24,7 @@ describe("quality visual masks", () => {
 });
 
 function countMagentaPixels(path: string) {
-  const png = readFileSync(path);
+  const png = Buffer.from(readFileSync(path, "binary"), "binary");
   const { width, height, data } = decodeRgbPng(png);
   let count = 0;
 
