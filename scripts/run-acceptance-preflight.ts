@@ -231,6 +231,15 @@ export function evaluatePilotReadiness(
 }
 
 const testGateEnvDenylist = [
+  "npm_config_env_file",
+  "npm_config_evidence_out",
+  "npm_config_frontend_url",
+  "npm_config_mode",
+  "npm_config_no_start_runtime",
+  "npm_config_require_pilot_ready",
+  "npm_config_skip_frontend",
+  "npm_config_skip_gates",
+  "npm_config_start_runtime",
   "VITE_WISEEFF_RUNTIME_MODE",
   "M5_CONTRACT_CHECK_PASSED",
   "M5_CONTRACT_ARTIFACT_CHECKED_AT",

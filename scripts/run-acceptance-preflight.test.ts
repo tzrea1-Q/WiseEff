@@ -152,6 +152,8 @@ describe("acceptance preflight helpers", () => {
   it("isolates test gates from acceptance runtime and pilot evidence env", () => {
     const env = buildTestGateEnv({
       KEEP_ME: "kept",
+      npm_config_env_file: "E:/Prototypes/0525/WiseEff/.env",
+      npm_config_mode: "local-non-hdc",
       VITE_WISEEFF_RUNTIME_MODE: "api",
       M5_CONTRACT_CHECK_PASSED: "true",
       M5_CONTRACT_ARTIFACT_CHECKED_AT: "2026-06-02T00:00:00Z",
@@ -163,6 +165,8 @@ describe("acceptance preflight helpers", () => {
     });
 
     expect(env.KEEP_ME).toBe("kept");
+    expect(env).not.toHaveProperty("npm_config_env_file");
+    expect(env).not.toHaveProperty("npm_config_mode");
     expect(env.VITE_WISEEFF_RUNTIME_MODE).toBe("mock");
     expect(env).not.toHaveProperty("M5_CONTRACT_CHECK_PASSED");
     expect(env).not.toHaveProperty("M5_CONTRACT_ARTIFACT_CHECKED_AT");

@@ -37,7 +37,7 @@
         "api",
         "audit"
       ],
-      "notes": "Agent session agent-session-50a267db-39a9-480e-86c7-be61530623b7 required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.",
+      "notes": "Agent session agent-session-29eafc5d-f476-4db0-a0d2-e425f128c46b required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png"
       ],
@@ -46,40 +46,40 @@
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "responseSummary": "session agent-session-50a267db-39a9-480e-86c7-be61530623b7 includes approval-rejected and approval-executed audit actions"
+          "responseSummary": "session agent-session-29eafc5d-f476-4db0-a0d2-e425f128c46b includes approval-rejected and approval-executed audit actions"
         }
       ],
       "db": [
         {
           "table": "agent_tool_calls",
-          "predicate": "sessionId=agent-session-50a267db-39a9-480e-86c7-be61530623b7",
+          "predicate": "sessionId=agent-session-29eafc5d-f476-4db0-a0d2-e425f128c46b",
           "observed": "toolCalls=5; approvals=2; traces=3",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "audit-9fc6c893-006a-4723-990f-6ce73cb22cb9",
+          "id": "audit-49c0a1f9-113c-4cc0-8f2b-21b90c387d45",
           "kind": "agent-tool",
           "action": "approval-requested",
-          "targetId": "agent-tool-f4f77b9e-e4c3-470c-91be-6469303e0e28",
-          "requestId": "a05901df-f8be-4b72-a387-61320feac3f2",
+          "targetId": "agent-tool-220705c4-2ff8-454f-ae36-9a136bb997a9",
+          "requestId": "05df77f0-4719-4827-963f-d44f2afe0c77",
           "metadataSummary": "approvalId,initiatedByUserId,sessionId,toolCallId,toolName"
         },
         {
-          "id": "audit-09a88146-489e-490d-b3e3-b6d5934663a9",
+          "id": "audit-e3d3d6f3-face-4d5a-96b4-69365826291a",
           "kind": "agent-tool",
           "action": "approval-rejected",
-          "targetId": "agent-tool-f4f77b9e-e4c3-470c-91be-6469303e0e28",
-          "requestId": "506d832e-f5d7-4561-ae05-118a68b2fec5",
+          "targetId": "agent-tool-220705c4-2ff8-454f-ae36-9a136bb997a9",
+          "requestId": "e4e4f183-5769-4431-978b-885b4cedb49e",
           "metadataSummary": "approvalId,initiatedByUserId,reason,sessionId,toolCallId"
         },
         {
-          "id": "audit-45a09c31-2e45-48ed-aa10-e6dd692f055f",
+          "id": "audit-35df8c3b-9ea9-43f0-8042-7f500fc995ae",
           "kind": "agent-tool",
           "action": "approval-executed",
-          "targetId": "agent-tool-ccf88fb6-cb27-4bbd-9fb4-4da0a693ac46",
-          "requestId": "d0cdbe4d-f453-4df8-9ca5-62b658c39bf8",
+          "targetId": "agent-tool-a3bb1f49-4905-4036-9221-49df56ad9d8a",
+          "requestId": "566214a1-086a-4f85-a491-cb2413d4462b",
           "metadataSummary": "approvalId,initiatedByUserId,sessionId,summary,toolCallId,toolName"
         }
       ],
@@ -110,7 +110,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:40:39.654Z"
+      "recordedAt": "2026-06-02T19:12:39.237Z"
     },
     {
       "operationId": "AGENT-UNAUTH-001",
@@ -122,26 +122,26 @@
         "api",
         "audit"
       ],
-      "notes": "Agent session agent-session-0b7e6b14-d3e2-4b09-84a6-1ae7e7ac4e97 rejected direct run for pending tool call agent-tool-e15c708a-bb5d-4c69-a53e-512d4096d565 with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.",
+      "notes": "Agent session agent-session-9c056ddf-5e92-42ba-8700-6380035a7d65 rejected direct run for pending tool call agent-tool-73e9e6f1-0b53-4369-8155-540a7879505a with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/agent/sessions/agent-session-0b7e6b14-d3e2-4b09-84a6-1ae7e7ac4e97/tool-calls/agent-tool-e15c708a-bb5d-4c69-a53e-512d4096d565/run",
+          "path": "/api/v1/agent/sessions/agent-session-9c056ddf-5e92-42ba-8700-6380035a7d65/tool-calls/agent-tool-73e9e6f1-0b53-4369-8155-540a7879505a/run",
           "status": 409,
-          "requestId": "40198051-05de-4dd2-8084-3b78144ccc68",
+          "requestId": "9092a34f-439e-465d-b3be-e4be98f6a7cc",
           "responseSummary": "APPROVAL_REQUIRED"
         }
       ],
       "audit": [
         {
-          "id": "audit-4563bb84-daf1-4753-a6bc-95bae7e5620f",
+          "id": "audit-902152f2-cc2e-4e05-ac97-01a87dc4b92a",
           "kind": "agent-tool",
           "action": "approval-requested",
-          "targetId": "agent-tool-e15c708a-bb5d-4c69-a53e-512d4096d565",
-          "requestId": "c79b1d61-4ed8-4543-a413-98ae279222f4",
+          "targetId": "agent-tool-73e9e6f1-0b53-4369-8155-540a7879505a",
+          "requestId": "47454df7-d519-4e7b-9171-caa5e752d194",
           "metadataSummary": "approvalId,initiatedByUserId,sessionId,toolCallId,toolName"
         }
       ],
@@ -172,7 +172,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:40:36.991Z"
+      "recordedAt": "2026-06-02T19:12:37.159Z"
     },
     {
       "operationId": "AUTH-RUNTIME-001",
@@ -193,7 +193,7 @@
           "method": "GET",
           "path": "/api/v1/me",
           "status": 200,
-          "requestId": "e9c5ba15-f18a-4c90-bb6e-28a5666a2110",
+          "requestId": "ef92fdbf-9fe5-4d41-8b7f-5ce2bec0d0e2",
           "responseSummary": "smoke auth accepted for current user"
         }
       ],
@@ -224,7 +224,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AUTH-RUNTIME-001-api-mode-browser-auth-runtime-parity.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:40:41.354Z"
+      "recordedAt": "2026-06-02T19:12:40.733Z"
     },
     {
       "operationId": "DEBUG-PERM-001",
@@ -245,21 +245,21 @@
           "method": "GET",
           "path": "/api/v1/me",
           "status": 200,
-          "requestId": "c590d56e-478f-4bdc-9be2-3869822a46b0",
+          "requestId": "ff0673a1-239c-454b-ae82-06efdbfa0200",
           "responseSummary": "user=acceptance-debug-nonwriter; missing debugging:write"
         },
         {
           "method": "POST",
           "path": "/api/v1/debugging/nodes/write",
           "status": 403,
-          "requestId": "5a442a95-efc1-492b-a9e8-6c2c4ee8f32e",
+          "requestId": "8decdf04-2996-45c8-b9be-47eaaaf03794",
           "responseSummary": "Missing permission: debugging:write."
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "ff6dc3e0-a72d-4100-90b3-795582dc0101",
+          "requestId": "0ac8b053-fe53-4c34-bf0f-3d164ab547ec",
           "responseSummary": "audit events=100; no debug-node-write for acceptance-debug-nonwriter"
         }
       ],
@@ -290,7 +290,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\DEBUG-PERM-001-debugging-write-permission-denial-ui-and-api.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:41:28.430Z"
+      "recordedAt": "2026-06-02T19:13:28.407Z"
     },
     {
       "operationId": "DEBUG-SIM-001",
@@ -304,55 +304,55 @@
         "db",
         "audit"
       ],
-      "notes": "Simulator write and mismatch paths produced audit evidence; snapshot b3dba9b9-0ece-4243-b46f-08cdf0945087 rolled back to the original safe value.",
+      "notes": "Simulator write and mismatch paths produced audit evidence; snapshot cbd06cd8-41c0-433d-9c5f-afa212ea1c47 rolled back to the original safe value.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/debugging/snapshots/b3dba9b9-0ece-4243-b46f-08cdf0945087/rollback",
+          "path": "/api/v1/debugging/snapshots/cbd06cd8-41c0-433d-9c5f-afa212ea1c47/rollback",
           "status": 200,
-          "requestId": "1c8fd6d6-c117-491a-8486-ddd009768921",
-          "responseSummary": "rolled back snapshot b3dba9b9-0ece-4243-b46f-08cdf0945087"
+          "requestId": "aba00f64-64cc-4546-bd37-c5017d328ff9",
+          "responseSummary": "rolled back snapshot cbd06cd8-41c0-433d-9c5f-afa212ea1c47"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "71ee46b6-2c11-44d1-b7f0-ac4aa2609651",
+          "requestId": "f8d01830-6347-440a-8056-10c8f2cc6e06",
           "responseSummary": "audit events=100"
         }
       ],
       "db": [
         {
           "table": "debugging_parameters",
-          "predicate": "projectId=aurora; parameterId=dbg-fast-charge-current; snapshotId=b3dba9b9-0ece-4243-b46f-08cdf0945087",
+          "predicate": "projectId=aurora; parameterId=dbg-fast-charge-current; snapshotId=cbd06cd8-41c0-433d-9c5f-afa212ea1c47",
           "observed": "currentValue=3100; snapshotStatus=consumed",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "c54c658a-e575-4183-af9c-ede62c31a351",
+          "id": "f8747cc6-696f-435f-bb6a-335f824c864e",
           "kind": "debug-node-write",
           "targetId": "dbg-fast-charge-current",
-          "requestId": "7b5a7af0-4d0f-4ed6-858a-b38d44c6358b",
-          "metadataSummary": "nodePath=/sys/class/power_supply/battery/constant_charge_current; verified=true; sessionId=6838fb2a-be01-4c7e-9846-a3a67469e6f3; snapshotId=b3dba9b9-0ece-4243-b46f-08cdf0945087; operationId=6fee7735-bc6b-40bd-9fa6-c5819fed864f; failureReason=null; previousValue=3000; readbackValue=3100; requestedValue=3100"
+          "requestId": "b18d416d-c48d-4d0e-887b-366dd1d9936e",
+          "metadataSummary": "nodePath=/sys/class/power_supply/battery/constant_charge_current; verified=true; sessionId=cc231040-ed94-4d86-8de7-bebcefd2b708; snapshotId=cbd06cd8-41c0-433d-9c5f-afa212ea1c47; operationId=5bcf21bb-1b5b-44e9-b293-e2b3440a4429; failureReason=null; previousValue=3000; readbackValue=3100; requestedValue=3100"
         },
         {
-          "id": "3d49bbd8-0946-45de-a862-049c1a0d2e25",
+          "id": "7c198eda-0dd2-4802-beff-6799a46b0e30",
           "kind": "debug-node-write",
           "targetId": "dbg-readback-mismatch",
-          "requestId": "8101699e-fa56-46e7-8506-eb9bd03e13d3",
-          "metadataSummary": "nodePath=/sys/class/power_supply/battery/readback_mismatch; verified=false; sessionId=6838fb2a-be01-4c7e-9846-a3a67469e6f3; snapshotId=e8082e5a-8928-4ee1-b444-f08397d084e6; operationId=2e0b4123-9790-47aa-9be4-3391f170edd2; failureReason=Readback mismatch.; previousValue=1; readbackValue=1; requestedValue=2"
+          "requestId": "74dfa9a4-893e-4be1-9905-63780563c402",
+          "metadataSummary": "nodePath=/sys/class/power_supply/battery/readback_mismatch; verified=false; sessionId=cc231040-ed94-4d86-8de7-bebcefd2b708; snapshotId=42fbaece-b6ad-4308-8a64-8e96a523df47; operationId=ba26d001-c8f2-4a63-bfe9-00b355d7ca52; failureReason=Readback mismatch.; previousValue=1; readbackValue=1; requestedValue=2"
         },
         {
-          "id": "3751d0e5-03dd-45fd-9bbb-1e123ef7231f",
+          "id": "300b5980-b613-4dc9-8d02-b89dc36c2980",
           "kind": "debug-snapshot-rollback",
-          "targetId": "b3dba9b9-0ece-4243-b46f-08cdf0945087",
-          "requestId": "1c8fd6d6-c117-491a-8486-ddd009768921",
-          "metadataSummary": "failed=false; sessionId=6838fb2a-be01-4c7e-9846-a3a67469e6f3; operationIds=35a661ec-3dfc-49b4-b86d-b8a8708a0769"
+          "targetId": "cbd06cd8-41c0-433d-9c5f-afa212ea1c47",
+          "requestId": "aba00f64-64cc-4546-bd37-c5017d328ff9",
+          "metadataSummary": "failed=false; sessionId=cc231040-ed94-4d86-8de7-bebcefd2b708; operationIds=94ffd53c-995c-423e-b5dd-e3ffa67bd60c"
         }
       ],
       "trace": {
@@ -382,7 +382,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:41:26.895Z"
+      "recordedAt": "2026-06-02T19:13:26.999Z"
     },
     {
       "operationId": "LOG-HAPPY-001",
@@ -396,56 +396,56 @@
         "db",
         "audit"
       ],
-      "notes": "Log ec7816b3-8bbe-461c-bcc0-6a1eda24af01 completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
+      "notes": "Log 1a203118-1e94-4884-a4ba-7892d096180e completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/logs/ec7816b3-8bbe-461c-bcc0-6a1eda24af01/archive",
+          "path": "/api/v1/logs/1a203118-1e94-4884-a4ba-7892d096180e/archive",
           "status": 200,
-          "requestId": "0a6e75f6-b3ac-446c-8204-e3bfd8edfc8c",
+          "requestId": "82cc5ea7-4ef9-407e-a43c-fdf57938303f",
           "responseSummary": "archiveState=archived"
         },
         {
           "method": "GET",
           "path": "/api/v1/logs?projectId=aurora",
           "status": 200,
-          "requestId": "415c6c2e-31cf-4080-895d-fa8d38c0daa3",
+          "requestId": "9839b7b8-35c3-4c6a-a1a4-3870e0e95266",
           "responseSummary": "active logs=0; archived log hidden"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "ce4aafef-cd5b-454b-9ad6-1d5d61149df3",
+          "requestId": "5adcd992-7be4-4877-ada1-368163bdc169",
           "responseSummary": "audit events=100"
         }
       ],
       "db": [
         {
           "table": "log_records",
-          "predicate": "id=ec7816b3-8bbe-461c-bcc0-6a1eda24af01",
-          "observed": "status=complete; archiveState=archived; currentRunId=7c04d15d-7fb8-4f70-a7c4-06aabb487978",
+          "predicate": "id=1a203118-1e94-4884-a4ba-7892d096180e",
+          "observed": "status=complete; archiveState=archived; currentRunId=6daf8a4e-c85c-4704-9727-4020fa2cc582",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "78421e10-c0c6-4d2b-b80c-41b220b043c1",
+          "id": "b14b90c0-1c79-473c-8efd-d44423ed8105",
           "kind": "log-feedback",
           "action": "feedback",
-          "targetId": "ec7816b3-8bbe-461c-bcc0-6a1eda24af01",
-          "requestId": "bd016af6-8b04-49d4-b8e6-bdec34eaa86b",
+          "targetId": "1a203118-1e94-4884-a4ba-7892d096180e",
+          "requestId": "9af0c444-7205-48a5-aba7-adbc00f2db6b",
           "metadataSummary": "rating"
         },
         {
-          "id": "d536ed0b-bdbd-4045-98c7-145a66e04695",
+          "id": "c53f927a-8dec-46b2-9900-8bb333e19d5b",
           "kind": "log-archive",
           "action": "archive",
-          "targetId": "ec7816b3-8bbe-461c-bcc0-6a1eda24af01",
-          "requestId": "0a6e75f6-b3ac-446c-8204-e3bfd8edfc8c",
+          "targetId": "1a203118-1e94-4884-a4ba-7892d096180e",
+          "requestId": "82cc5ea7-4ef9-407e-a43c-fdf57938303f",
           "metadataSummary": "archiveState"
         }
       ],
@@ -476,7 +476,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:15.709Z"
+      "recordedAt": "2026-06-02T19:14:16.799Z"
     },
     {
       "operationId": "LOG-REANALYZE-001",
@@ -490,47 +490,47 @@
         "db",
         "audit"
       ],
-      "notes": "Log 2363881d-5b35-4a6c-9ca4-5599d55c485e created rerun 80132f53-cf0d-4b0d-a0b7-7e50e530a9a0; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
+      "notes": "Log ed1410e7-5611-4b95-bc44-51b051b60961 created rerun bc352fdc-b8d7-459a-beb7-4a823a0a9930; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/logs/2363881d-5b35-4a6c-9ca4-5599d55c485e/rerun",
+          "path": "/api/v1/logs/ed1410e7-5611-4b95-bc44-51b051b60961/rerun",
           "status": 200,
-          "requestId": "67fe4b8d-97a8-43f1-8955-f6758e833311",
-          "responseSummary": "created run=80132f53-cf0d-4b0d-a0b7-7e50e530a9a0"
+          "requestId": "f5128520-e6c9-4289-bbf6-37c0c139b024",
+          "responseSummary": "created run=bc352fdc-b8d7-459a-beb7-4a823a0a9930"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "eb087f6f-2669-494f-aaaf-21ee1270da50",
+          "requestId": "de6f6b6b-b8d9-4342-b9cc-1ecd023dea0a",
           "responseSummary": "audit events=100"
         }
       ],
       "db": [
         {
           "table": "log_records",
-          "predicate": "id=2363881d-5b35-4a6c-9ca4-5599d55c485e",
-          "observed": "status=complete; archiveState=active; currentRunId=80132f53-cf0d-4b0d-a0b7-7e50e530a9a0",
+          "predicate": "id=ed1410e7-5611-4b95-bc44-51b051b60961",
+          "observed": "status=complete; archiveState=active; currentRunId=bc352fdc-b8d7-459a-beb7-4a823a0a9930",
           "rowCount": 1
         },
         {
           "table": "log_analysis_runs",
-          "predicate": "id=80132f53-cf0d-4b0d-a0b7-7e50e530a9a0",
-          "observed": "status=complete; progress=100; jobId=bf8ccb77-e722-438a-9ca3-c8dee4626011",
+          "predicate": "id=bc352fdc-b8d7-459a-beb7-4a823a0a9930",
+          "observed": "status=complete; progress=100; jobId=01583665-e65e-4d40-bf90-3f8c9b6535f1",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "f8cf1371-a3fc-456d-a9c3-79a0c6964f2d",
+          "id": "bbb9dfc2-0d34-4cba-b373-4cc99b29fd87",
           "kind": "log-rerun",
           "action": "rerun",
-          "targetId": "2363881d-5b35-4a6c-9ca4-5599d55c485e",
-          "requestId": "67fe4b8d-97a8-43f1-8955-f6758e833311",
+          "targetId": "ed1410e7-5611-4b95-bc44-51b051b60961",
+          "requestId": "f5128520-e6c9-4289-bbf6-37c0c139b024",
           "metadataSummary": "jobId,runId"
         }
       ],
@@ -561,7 +561,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:20.594Z"
+      "recordedAt": "2026-06-02T19:14:20.715Z"
     },
     {
       "operationId": "PARAM-ADMIN-001",
@@ -579,11 +579,11 @@
       ],
       "audit": [
         {
-          "id": "cc6820f0-d38a-451c-b5f6-ef540fc2306d",
+          "id": "50231fcb-8aee-4632-af40-8b035d0b20d3",
           "kind": "parameter-merge",
           "action": "merge",
-          "targetId": "7379ef39-5010-40a4-a13e-f4b7ef31dbec",
-          "requestId": "92ebffcb-b104-4a0c-abd6-87881b698e60"
+          "targetId": "337f2b20-3bda-48eb-ba38-b36be1526700",
+          "requestId": "6cc3252a-331a-4a45-9e94-a57edfc656d3"
         }
       ],
       "trace": {
@@ -613,7 +613,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ADMIN-001-parameter-admin-import-preview-and-audit-drawer.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:34.409Z"
+      "recordedAt": "2026-06-02T19:15:35.611Z"
     },
     {
       "operationId": "PARAM-ASSIGNEE-001",
@@ -655,7 +655,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-001-workflow-assignee-defaults-are-eligible.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:58.468Z"
+      "recordedAt": "2026-06-02T19:14:59.052Z"
     },
     {
       "operationId": "PARAM-ASSIGNEE-002",
@@ -697,7 +697,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-002-workflow-assignee-dropdowns-hide-ineligible-users.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:58.528Z"
+      "recordedAt": "2026-06-02T19:14:59.100Z"
     },
     {
       "operationId": "PARAM-ASSIGNEE-003",
@@ -717,7 +717,7 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 400,
-          "requestId": "44eb3c54-b35e-4d5c-a693-6608708212c2",
+          "requestId": "b004f2e9-9fcf-491e-a0f4-49bbd95ceecf",
           "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
         }
       ],
@@ -748,7 +748,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-003-forced-invalid-workflow-assignees-rejected.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:58.719Z"
+      "recordedAt": "2026-06-02T19:14:59.342Z"
     },
     {
       "operationId": "PARAM-DRAFT-EDIT-001",
@@ -770,14 +770,14 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 201,
-          "requestId": "2324014e-e10a-46f3-9836-1f37cc6273af",
-          "responseSummary": "submitted request bcb87f43-c55c-47e7-9cad-8e738dda4696; removed target 4331 absent"
+          "requestId": "874ba489-8706-4f26-993e-cedcb78490d9",
+          "responseSummary": "submitted request 0a38b431-fb63-4828-9183-529d49d5bbbc; removed target 4331 absent"
         }
       ],
       "db": [
         {
           "table": "parameter_submission_items",
-          "predicate": "requestId=bcb87f43-c55c-47e7-9cad-8e738dda4696; excludedTargetValue=4331",
+          "predicate": "requestId=0a38b431-fb63-4828-9183-529d49d5bbbc; excludedTargetValue=4331",
           "observed": "targetValue=3122; submittedCount=1; excludedCount=0",
           "rowCount": 1
         }
@@ -809,7 +809,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-DRAFT-EDIT-001-parameter-draft-edit-and-remove-before-submission.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:56.515Z"
+      "recordedAt": "2026-06-02T19:14:57.105Z"
     },
     {
       "operationId": "PARAM-HAPPY-001",
@@ -823,7 +823,7 @@
         "db",
         "audit"
       ],
-      "notes": "Parameter request 7379ef39-5010-40a4-a13e-f4b7ef31dbec merged, persisted target value, and produced parameter-merge audit evidence.",
+      "notes": "Parameter request 337f2b20-3bda-48eb-ba38-b36be1526700 merged, persisted target value, and produced parameter-merge audit evidence.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png"
       ],
@@ -832,31 +832,31 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 201,
-          "responseSummary": "created request 7379ef39-5010-40a4-a13e-f4b7ef31dbec"
+          "responseSummary": "created request 337f2b20-3bda-48eb-ba38-b36be1526700"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "0e5a7fe8-b633-4c6a-b1d6-79f296955585",
+          "requestId": "980b0d60-24f2-4e24-9fd9-65001c374ed3",
           "responseSummary": "found 100 audit events"
         }
       ],
       "db": [
         {
           "table": "parameter_change_requests",
-          "predicate": "id=7379ef39-5010-40a4-a13e-f4b7ef31dbec",
-          "observed": "status=merged; targetValue=3397",
+          "predicate": "id=337f2b20-3bda-48eb-ba38-b36be1526700",
+          "observed": "status=merged; targetValue=3345",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "cc6820f0-d38a-451c-b5f6-ef540fc2306d",
+          "id": "50231fcb-8aee-4632-af40-8b035d0b20d3",
           "kind": "parameter-merge",
           "action": "merge",
-          "targetId": "7379ef39-5010-40a4-a13e-f4b7ef31dbec",
-          "requestId": "92ebffcb-b104-4a0c-abd6-87881b698e60"
+          "targetId": "337f2b20-3bda-48eb-ba38-b36be1526700",
+          "requestId": "6cc3252a-331a-4a45-9e94-a57edfc656d3"
         }
       ],
       "trace": {
@@ -886,7 +886,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:34.309Z"
+      "recordedAt": "2026-06-02T19:15:35.499Z"
     },
     {
       "operationId": "PARAM-REASON-001",
@@ -928,7 +928,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-REASON-001-blank-parameter-draft-reason-blocked.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:42:54.268Z"
+      "recordedAt": "2026-06-02T19:14:54.789Z"
     },
     {
       "operationId": "PARAM-REJECT-001",
@@ -942,7 +942,7 @@
         "db",
         "audit"
       ],
-      "notes": "Parameter request 98d137c2-e68a-4822-b7cf-83544006a2b7 was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.",
+      "notes": "Parameter request b40825ae-7614-417c-b6e2-e11ed0f4dc23 was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png"
       ],
@@ -951,32 +951,32 @@
           "method": "GET",
           "path": "/api/v1/parameter-change-requests?projectId=aurora",
           "status": 200,
-          "requestId": "2c447c0c-662d-43a0-bcd8-7d9921ebcd8d",
-          "responseSummary": "request 98d137c2-e68a-4822-b7cf-83544006a2b7 status=rejected"
+          "requestId": "d45f31f8-67f0-48b0-bb01-e1ed116709c5",
+          "responseSummary": "request b40825ae-7614-417c-b6e2-e11ed0f4dc23 status=rejected"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "156b5bb3-a0e8-4ff3-b2c7-70c6bba1880e",
+          "requestId": "548cca2e-3dc0-4e09-91ee-18b412701d10",
           "responseSummary": "found 100 audit events"
         }
       ],
       "db": [
         {
           "table": "parameter_change_requests",
-          "predicate": "id=98d137c2-e68a-4822-b7cf-83544006a2b7",
+          "predicate": "id=b40825ae-7614-417c-b6e2-e11ed0f4dc23",
           "observed": "status=rejected; targetValue=4333",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "e419e1a2-2324-4329-8e2a-fa23d363fc89",
+          "id": "1951329f-d3b4-4bca-ba27-194d1be35482",
           "kind": "parameter-review-reject",
           "action": "reject",
-          "targetId": "98d137c2-e68a-4822-b7cf-83544006a2b7",
-          "requestId": "7cf5d784-44e7-4f84-a4ca-4f1d794776a6"
+          "targetId": "b40825ae-7614-417c-b6e2-e11ed0f4dc23",
+          "requestId": "7b9a507e-0c3a-4ae1-91c5-878c9e3a3367"
         }
       ],
       "trace": {
@@ -1006,7 +1006,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:36.388Z"
+      "recordedAt": "2026-06-02T19:15:37.480Z"
     },
     {
       "operationId": "PERM-GOV-001",
@@ -1048,7 +1048,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-GOV-001-user-governance-admin-only-and-self-protection.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:08.632Z"
+      "recordedAt": "2026-06-02T19:16:10.961Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1090,7 +1090,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-admin.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:45.719Z"
+      "recordedAt": "2026-06-02T19:15:47.717Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1132,7 +1132,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-guest.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:37.986Z"
+      "recordedAt": "2026-06-02T19:15:39.145Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1174,7 +1174,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-committer.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:42.723Z"
+      "recordedAt": "2026-06-02T19:15:44.283Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1216,7 +1216,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-user.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:39.439Z"
+      "recordedAt": "2026-06-02T19:15:40.859Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1258,7 +1258,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-committer.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:44.238Z"
+      "recordedAt": "2026-06-02T19:15:46.002Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1300,7 +1300,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-user.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:40.965Z"
+      "recordedAt": "2026-06-02T19:15:42.591Z"
     },
     {
       "operationId": "PERM-MATRIX-002",
@@ -1320,7 +1320,7 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 400,
-          "requestId": "2b73cb1a-df59-4ef1-9b37-173dea278fb9",
+          "requestId": "866fcfc7-50a9-4293-93e4-1d162d971a78",
           "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
         }
       ],
@@ -1351,7 +1351,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-002-api-workflow-eligibility-stricter-than-visible-role-inclusion.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:43:45.934Z"
+      "recordedAt": "2026-06-02T19:15:47.974Z"
     },
     {
       "operationId": "PERM-USER-MGMT-001",
@@ -1374,40 +1374,40 @@
           "method": "GET",
           "path": "/api/v1/users",
           "status": 200,
-          "requestId": "59e2c40f-516c-4830-86c1-12ab06ee54d8",
-          "responseSummary": "created user u-4b81e9f0-131f-4b87-9cc1-0679781f3732 listed with software-user role"
+          "requestId": "38d0d067-40ef-4078-92d6-91d5eba9079f",
+          "responseSummary": "created user u-61f9ed9a-da40-47a3-a874-7c90a72ba084 listed with software-user role"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "4432b693-5973-4b85-b971-648c1170dfac",
+          "requestId": "95ffe786-69ba-418a-8563-503624dc88d8",
           "responseSummary": "user-create and user-role-replace audit events visible"
         }
       ],
       "db": [
         {
           "table": "users,user_role_bindings",
-          "predicate": "userId=u-4b81e9f0-131f-4b87-9cc1-0679781f3732; email=chen.rui.acceptance.1780400626027@chargelab.cn; roleId=software-user",
+          "predicate": "userId=u-61f9ed9a-da40-47a3-a874-7c90a72ba084; email=chen.rui.acceptance.1780427748083@chargelab.cn; roleId=software-user",
           "observed": "users=1; roles=1; active=true",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "ea020453-492c-40be-8282-d135f2a2a1bb",
+          "id": "3fc04cec-fbfc-471e-ad2e-e3c72a45ea6d",
           "kind": "user-create",
           "action": "create",
-          "targetId": "u-4b81e9f0-131f-4b87-9cc1-0679781f3732",
-          "requestId": "b76d9329-4375-45c4-afc9-ac12bca01603",
+          "targetId": "u-61f9ed9a-da40-47a3-a874-7c90a72ba084",
+          "requestId": "2496df8e-5ffc-4f85-b42a-0a6ce8709946",
           "metadataSummary": "email,roles"
         },
         {
-          "id": "524e3f9b-15a4-4c72-82f1-89a9f49d466c",
+          "id": "d0943c04-1103-4a0f-9e3c-fbefd600a920",
           "kind": "user-role-replace",
           "action": "replace-roles",
           "targetId": "u-wang-jie",
-          "requestId": "a6d69d5b-47b3-4e03-9f93-3dc957e11a28",
+          "requestId": "216583b4-5a96-4c3b-a316-6fc79633a617",
           "metadataSummary": "roles"
         }
       ],
@@ -1438,7 +1438,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-USER-MGMT-001-admin-user-management-ui-and-non-admin-denial.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:10.112Z"
+      "recordedAt": "2026-06-02T19:16:12.907Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1480,7 +1480,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging-admin.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:23.434Z"
+      "recordedAt": "2026-06-02T19:16:26.080Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1522,7 +1522,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:20.382Z"
+      "recordedAt": "2026-06-02T19:16:23.177Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1564,7 +1564,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-home.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:11.342Z"
+      "recordedAt": "2026-06-02T19:16:14.270Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1606,7 +1606,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-log-admin.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:18.834Z"
+      "recordedAt": "2026-06-02T19:16:21.667Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1648,7 +1648,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-logs.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:17.372Z"
+      "recordedAt": "2026-06-02T19:16:20.253Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1690,7 +1690,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-node-debugging.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:21.921Z"
+      "recordedAt": "2026-06-02T19:16:24.600Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1732,7 +1732,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-admin.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:15.928Z"
+      "recordedAt": "2026-06-02T19:16:18.703Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1774,7 +1774,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-review.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:14.417Z"
+      "recordedAt": "2026-06-02T19:16:17.268Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1816,7 +1816,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameters.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:12.857Z"
+      "recordedAt": "2026-06-02T19:16:15.783Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1858,7 +1858,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-user-permissions.png."
         ]
       },
-      "recordedAt": "2026-06-02T11:44:24.975Z"
+      "recordedAt": "2026-06-02T19:16:27.670Z"
     }
   ]
 }
