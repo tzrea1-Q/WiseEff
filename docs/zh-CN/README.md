@@ -26,6 +26,7 @@
 - ?? runbook ? [docs/runbooks/README.md](../runbooks/README.md)???????????? [docs/zh-CN/manual-acceptance.md](manual-acceptance.md)?
 - API ??? [docs/api/README.md](../api/README.md)?
 - ????? [docs/security/README.md](../security/README.md)?
+- M6.3 self-hosted storage/backup 中文说明: [m6-3-storage-backup.md](m6-3-storage-backup.md)
 
 ## ????
 

@@ -47,6 +47,15 @@ export const requiredEnvKeys = [
   "OBJECT_STORAGE_BUCKET",
   "OBJECT_STORAGE_ACCESS_KEY_ID",
   "OBJECT_STORAGE_SECRET_ACCESS_KEY",
+  "OBJECT_STORAGE_TLS_POLICY",
+  "OBJECT_STORAGE_PATH_STYLE",
+  "OBJECT_STORAGE_HEALTH_PREFIX",
+  "OBJECT_STORAGE_RETENTION_CLASS",
+  "BACKUP_DATABASE_TARGET",
+  "BACKUP_OBJECT_STORAGE_TARGET",
+  "RESTORE_DATABASE_URL",
+  "RESTORE_OBJECT_STORAGE_BUCKET",
+  "RESTORE_OBJECT_STORAGE_PREFIX",
   "DEBUG_DEVICE_GATEWAY_MODE",
   "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION",
   "AGENT_PROVIDER",
@@ -56,6 +65,12 @@ export const requiredEnvKeys = [
   "AGENT_API_KEY",
   "LOG_WORKER_ENABLED",
   "M5_BACKUP_RESTORE_DRILL_AT"
+] as const;
+
+export const requiredSelfHostedStorageFiles = [
+  "ops/self-hosted/storage/README.md",
+  "ops/self-hosted/storage/provider-decision.md",
+  "ops/self-hosted/storage/object-store.env.example"
 ] as const;
 
 export const requiredProxyTokens = [
@@ -76,6 +91,7 @@ export type SelfHostedConfigInput = {
   dockerignoreText: string;
   envExampleText: string;
   caddyfileText: string;
+  existingFiles?: Set<string>;
 };
 
 export type SelfHostedConfigResult = {
@@ -87,6 +103,7 @@ export type SelfHostedConfigResult = {
   missingDockerignoreTokens: string[];
   missingEnvKeys: string[];
   missingProxyTokens: string[];
+  missingFiles: string[];
 };
 
 export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHostedConfigResult {
@@ -96,6 +113,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const dockerignoreText = normalize(input.dockerignoreText);
   const caddyfileText = normalize(input.caddyfileText);
   const envKeys = parseEnvKeys(input.envExampleText);
+  const existingFiles = input.existingFiles ?? new Set(requiredSelfHostedStorageFiles.filter((filePath) => existsSync(filePath)));
 
   const missingScripts = requiredSelfHostedScripts.filter((script) => !scripts[script]);
   const missingServices = requiredSelfHostedServices.filter((service) => !hasComposeService(composeText, service));
@@ -104,6 +122,7 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const missingDockerignoreTokens = requiredDockerignoreTokens.filter((token) => !dockerignoreText.includes(normalize(token)));
   const missingEnvKeys = requiredEnvKeys.filter((key) => !envKeys.has(key));
   const missingProxyTokens = requiredProxyTokens.filter((token) => !caddyfileText.includes(normalize(token)));
+  const missingFiles = requiredSelfHostedStorageFiles.filter((filePath) => !existingFiles.has(filePath));
 
   return {
     status:
@@ -113,7 +132,8 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
       missingDockerfileTokens.length === 0 &&
       missingDockerignoreTokens.length === 0 &&
       missingEnvKeys.length === 0 &&
-      missingProxyTokens.length === 0
+      missingProxyTokens.length === 0 &&
+      missingFiles.length === 0
         ? "passed"
         : "failed",
     missingScripts,
@@ -122,7 +142,8 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
     missingDockerfileTokens,
     missingDockerignoreTokens,
     missingEnvKeys,
-    missingProxyTokens
+    missingProxyTokens,
+    missingFiles
   };
 }
 

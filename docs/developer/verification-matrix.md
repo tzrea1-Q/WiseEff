@@ -27,6 +27,9 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 | `npm run selfhost:check` | M6.1 self-hosted compose/env/proxy metadata | After changing `ops/self-hosted/`, package selfhost scripts, or self-hosted runtime docs. |
 | `npm run selfhost:smoke` | M6.1 live self-hosted API smoke and evidence | Against a running self-hosted target with `--base-url` and smoke authorization configured. |
+| `npm run restore:drill` | M6.3 restore target safety guard | Before running restore commands or changing restore env/script behavior. |
+| `npm run backup:drill` | M6.3 backup/restore evidence generation | After collecting PostgreSQL/object-store drill evidence in local or target environments. |
+| `npm run backup:check` | M6.3 backup/restore evidence shape, redaction, and failed-command gate | After `npm run backup:drill`, or when changing backup/restore evidence schema. |
 
 `npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
 
@@ -47,6 +50,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M5 full pilot gate | `npm run test:m5` | PostgreSQL, live API, and target evidence inputs | Before claiming commercial pilot baseline in an environment. |
 | M6.1 self-hosted baseline | `npm run selfhost:check` plus `npm run selfhost:smoke -- --base-url <target-url>` | Linux host, compose runtime, admin smoke token, object store, Agent provider | Before treating a self-hosted target as deployed. |
 | M6.2 identity and user governance | `npm run acceptance:browser` plus `npm run acceptance:evidence` and focused auth/user tests | PostgreSQL, API-mode runtime, local smoke token or target OIDC token | Before accepting OIDC/auth runtime or backend user-governance changes. |
+| M6.3 self-hosted storage and backup | `npm run restore:drill`, `npm run backup:drill`, `npm run backup:check` | S3-compatible object store, PostgreSQL backup target, isolated restore database, isolated restore bucket/prefix | Before claiming backup/restore evidence for a self-hosted target. |
 
 ## UI Interaction Acceptance Rule
 
@@ -102,3 +106,4 @@ npm run test:server -- scripts/check-doc-governance.test.ts
 - `M5_SMOKE_ALLOW_NO_API=true` is a documented local skip, not pilot evidence.
 - HDC device-lab, backup/restore, rollback, live provider, and staging smoke evidence must be recorded in [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md).
 - Do not mark TD-019 complete until target-environment evidence exists.
+- M6.3 local `docs/generated/m6-backup-restore-evidence.*` proves evidence shape, redaction, failed-command handling, and restore target safety. It proves target readiness only when produced from a real non-customer or pilot target restore drill.

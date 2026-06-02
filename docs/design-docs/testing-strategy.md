@@ -190,6 +190,20 @@ npm run acceptance:evidence
 
 Local non-HDC evidence can use the deterministic HMAC smoke token. Target self-hosted identity evidence must use real OIDC access tokens and must include discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and redacted user-governance mutation evidence before TD-020 closes.
 
+## 9.3 M6.3 Backup And Restore Gates
+
+M6.3 adds reliability evidence gates for self-hosted PostgreSQL and S3-compatible object storage:
+
+```bash
+npm run restore:drill
+npm run backup:drill
+npm run backup:check
+```
+
+`restore:drill` checks restore target safety before any restore command runs. `backup:drill` writes redacted JSON/Markdown evidence for provider, environment, database backup/restore, object-store backup/restore, checksum validation, sampled log references, command exit statuses, and queue status. `backup:check` validates the generated evidence shape, redaction status, failed command exit codes, unsafe restore targets, missing object references, and conditional Redis status.
+
+Local evidence proves the scripts and safety gates. Target readiness requires the same gates after a real isolated restore in a non-customer or pilot target environment.
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.
