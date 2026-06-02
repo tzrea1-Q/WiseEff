@@ -8,7 +8,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [Self-Hosted Runtime](self-hosted-runtime.md): M6.1 single-Linux-server runtime startup, smoke, and emergency stop.
 - [Manual Acceptance](manual-acceptance.md): human acceptance checklist for product workflows, runtime gates, evidence capture, and Go/No-Go judgment.
 - [Staging Deployment](staging-deployment.md): deploy order and smoke sequence for staging.
-- [Backup And Restore](backup-restore.md): backup and restore drill procedure.
+- [Backup And Restore](backup-restore.md): M6.3 PostgreSQL and S3-compatible object-store backup/restore drill procedure.
 - [Rollback](rollback.md): rollback rehearsal and emergency rollback sequence.
 - [Monitoring And Alerting](monitoring-alerting.md): signals, alerts, and first triage.
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.

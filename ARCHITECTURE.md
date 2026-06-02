@@ -74,7 +74,9 @@ Release operations add a pilot gate on top of the basic health checks. `GET /api
 
 M6.1 adds a single-Linux-server self-hosted baseline under `ops/self-hosted/`. It runs PostgreSQL, API, web, worker, and Caddy reverse proxy as separate services. The API defaults to `HOST=127.0.0.1` for local development; self-hosted containers set `HOST=0.0.0.0` so the proxy can reach the API over the compose network. The API container sets `LOG_WORKER_ENABLED=false`, while the dedicated worker container runs `npm run worker:logs`.
 
-The M6.1 baseline is deployment plumbing, not full production hardening. OIDC identity, self-hosted object-store provider selection, durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6.2-M6.6 work.
+M6.3 keeps object storage self-hosted by targeting an S3-compatible contract rather than a cloud account. The readiness seam now performs bucket and probe-object write/read/head/delete checks, and backup/restore drills generate redacted evidence for PostgreSQL, object storage, isolated restore targets, and conditional Redis status.
+
+The M6.1 baseline is deployment plumbing, not full production hardening. OIDC target evidence, durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6.2-M6.6 work.
 
 ## Deeper Docs
 

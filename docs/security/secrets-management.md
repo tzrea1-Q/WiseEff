@@ -7,6 +7,8 @@ Secrets should be supplied by local `.env` files or the target environment's sec
 - Real `DATABASE_URL` credentials.
 - Production `AUTH_TOKEN_HMAC_SECRET`.
 - Object-store access keys.
+- S3 signed URLs or raw provider error payloads that include signed headers.
+- Database URLs that include restore or backup passwords.
 - Agent provider API keys.
 - HDC lab credentials or customer device identifiers.
 - Admin smoke tokens for real environments.
@@ -39,3 +41,4 @@ Rotate secrets when:
 - New docs do not include real secrets.
 - Smoke tokens in committed docs are local examples only.
 - Target-environment evidence is redacted before commit.
+- `docs/generated/m6-backup-restore-evidence.*` contains summaries only; verify it has no object-store keys, signed URLs, bearer tokens, or database passwords before committing.

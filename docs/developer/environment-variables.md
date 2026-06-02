@@ -35,6 +35,10 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `OBJECT_STORAGE_ACCESS_KEY_ID` | blank/commented | S3/OSS mode | Secret. |
 | `OBJECT_STORAGE_SECRET_ACCESS_KEY` | blank/commented | S3/OSS mode | Secret. |
 | `OBJECT_STORAGE_REGION` | blank/commented | S3/OSS mode | Optional provider region. |
+| `OBJECT_STORAGE_TLS_POLICY` | `required` in self-hosted profile | M6.3 target evidence | Target evidence must use TLS unless an explicitly local lab exception is recorded. |
+| `OBJECT_STORAGE_PATH_STYLE` | `true` in self-hosted profile | S3-compatible self-hosting | Use path-style addressing for self-hosted providers that do not support virtual-host buckets. |
+| `OBJECT_STORAGE_HEALTH_PREFIX` | `.health/` | readiness probe | Prefix for write/read/head/delete health probe objects. |
+| `OBJECT_STORAGE_RETENTION_CLASS` | `pilot-default` | log metadata | Stored as object metadata for retention evidence. |
 
 ## Device Gateway
 
@@ -67,6 +71,20 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M5_BACKUP_RESTORE_DRILL_AT` | unset | pilot-ready backup gate | Set only after a real drill passes. |
 | `M5_SMOKE_ALLOW_NO_API` | `false` | smoke skip control | Use `true` only for local documentation runs that intentionally skip API probing. |
 
+## M6 Backup And Restore
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `OBJECT_STORAGE_PROVIDER` | `s3-compatible` | M6.3 evidence | Name the selected self-hosted provider, such as `rustfs`, `minio-compatible`, or `ceph-rgw`. |
+| `BACKUP_DRILL_ENVIRONMENT` | `local` | M6.3 evidence | Human-readable environment label. |
+| `BACKUP_DATABASE_COMMAND` | `pg_dump --format=custom` | M6.3 evidence | Operator-approved database backup command summary. |
+| `BACKUP_DATABASE_TARGET` | self-hosted example path | M6.3 evidence | Backup destination for PostgreSQL dump evidence. |
+| `BACKUP_OBJECT_STORAGE_TARGET` | self-hosted example path | M6.3 evidence | Backup/export destination for object storage. |
+| `RESTORE_DATABASE_URL` | isolated restore example | M6.3 restore drill | Must not equal `DATABASE_URL`. |
+| `RESTORE_OBJECT_STORAGE_BUCKET` | `wiseeff-restore` in examples | M6.3 restore drill | Must not equal the live `OBJECT_STORAGE_BUCKET`. |
+| `RESTORE_OBJECT_STORAGE_PREFIX` | `m6-drill/` in examples | M6.3 restore drill | Must be non-empty, end with `/`, and remain isolated from live data. |
+| `REDIS_URL` | unset | M6.4+ queue backup | Until M6.4, queue evidence remains conditional. |
+
 ## Self-Hosted Runtime
 
 M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, auth, S3-compatible object storage, Agent provider, and smoke authorization values.
@@ -78,3 +96,5 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. It keeps secrets
 | `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | admin bearer token | Preferred self-hosted smoke token; M5 smoke token names are also accepted. |
+
+M6.3 adds `ops/self-hosted/storage/object-store.env.example` for the S3-compatible storage profile. Run `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check` after filling isolated backup and restore targets.

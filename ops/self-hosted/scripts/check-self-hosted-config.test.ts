@@ -80,17 +80,26 @@ VITE_WISEEFF_API_BASE_URL=
 OBJECT_STORE_MODE=s3
 OBJECT_STORAGE_ENDPOINT=
 OBJECT_STORAGE_BUCKET=
-OBJECT_STORAGE_ACCESS_KEY_ID=
-OBJECT_STORAGE_SECRET_ACCESS_KEY=
-DEBUG_DEVICE_GATEWAY_MODE=simulator
+    OBJECT_STORAGE_ACCESS_KEY_ID=
+    OBJECT_STORAGE_SECRET_ACCESS_KEY=
+    DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
 AGENT_PROVIDER=live
 AGENT_API_FORMAT=openai
 AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
-LOG_WORKER_ENABLED=false
-M5_BACKUP_RESTORE_DRILL_AT=
+    LOG_WORKER_ENABLED=false
+    M5_BACKUP_RESTORE_DRILL_AT=
+    OBJECT_STORAGE_TLS_POLICY=required
+    OBJECT_STORAGE_PATH_STYLE=true
+    OBJECT_STORAGE_HEALTH_PREFIX=.health/
+    OBJECT_STORAGE_RETENTION_CLASS=pilot-default
+    BACKUP_DATABASE_TARGET=
+    BACKUP_OBJECT_STORAGE_TARGET=
+    RESTORE_DATABASE_URL=
+    RESTORE_OBJECT_STORAGE_BUCKET=
+    RESTORE_OBJECT_STORAGE_PREFIX=
 `;
 
 const validCaddyfile = `
@@ -120,6 +129,12 @@ describe("self-hosted config metadata", () => {
       dockerignoreText: validDockerignore,
       envExampleText: validEnvExample,
       caddyfileText: validCaddyfile
+      ,
+      existingFiles: new Set([
+        "ops/self-hosted/storage/README.md",
+        "ops/self-hosted/storage/provider-decision.md",
+        "ops/self-hosted/storage/object-store.env.example"
+      ])
     });
 
     expect(result).toEqual({
@@ -130,7 +145,8 @@ describe("self-hosted config metadata", () => {
       missingDockerfileTokens: [],
       missingDockerignoreTokens: [],
       missingEnvKeys: [],
-      missingProxyTokens: []
+      missingProxyTokens: [],
+      missingFiles: []
     });
   });
 
@@ -141,7 +157,8 @@ describe("self-hosted config metadata", () => {
       dockerfileText: "FROM node:22-alpine\nCOPY . .\nRUN npm run build\n",
       dockerignoreText: "node_modules/\n",
       envExampleText: "NODE_ENV=production\n",
-      caddyfileText: ""
+      caddyfileText: "",
+      existingFiles: new Set()
     });
 
     expect(result.status).toBe("failed");
@@ -157,7 +174,27 @@ describe("self-hosted config metadata", () => {
     );
     expect(result.missingDockerfileTokens).toEqual(expect.arrayContaining(["ARG VITE_WISEEFF_API_BASE_URL"]));
     expect(result.missingDockerignoreTokens).toEqual(expect.arrayContaining(["**/.env", "**/.env.*"]));
-    expect(result.missingEnvKeys).toEqual(expect.arrayContaining(["HOST", "DATABASE_URL", "LOG_WORKER_ENABLED", "M5_BACKUP_RESTORE_DRILL_AT"]));
+    expect(result.missingEnvKeys).toEqual(
+      expect.arrayContaining([
+        "HOST",
+        "DATABASE_URL",
+        "LOG_WORKER_ENABLED",
+        "M5_BACKUP_RESTORE_DRILL_AT",
+        "OBJECT_STORAGE_TLS_POLICY",
+        "OBJECT_STORAGE_PATH_STYLE",
+        "OBJECT_STORAGE_HEALTH_PREFIX",
+        "BACKUP_DATABASE_TARGET",
+        "BACKUP_OBJECT_STORAGE_TARGET",
+        "RESTORE_DATABASE_URL",
+        "RESTORE_OBJECT_STORAGE_BUCKET",
+        "RESTORE_OBJECT_STORAGE_PREFIX"
+      ])
+    );
     expect(result.missingProxyTokens).toEqual(expect.arrayContaining(["reverse_proxy api:8787", "tls"]));
+    expect(result.missingFiles).toEqual([
+      "ops/self-hosted/storage/README.md",
+      "ops/self-hosted/storage/provider-decision.md",
+      "ops/self-hosted/storage/object-store.env.example"
+    ]);
   });
 });
