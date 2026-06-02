@@ -4,6 +4,8 @@ Backup and restore evidence is required before calling a pilot or self-hosted ta
 
 M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. Redis queue backup remains conditional until M6.4 introduces the durable queue service.
 
+M6.6 also requires a pre-release backup before deploying a self-hosted release candidate. Link the backup artifact and restore rehearsal from [release-rollback.md](release-rollback.md) and the release record in `ops/self-hosted/releases/`.
+
 ## Backup Scope
 
 - PostgreSQL database.
@@ -81,6 +83,7 @@ npm run backup:check
 
 18. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
 19. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
+20. For M6.6 releases, link the same backup and restore evidence from [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or the approved external release evidence record.
 
 ## Local Evidence
 
@@ -137,3 +140,4 @@ If backup or restore fails:
 - Record the failed command, exit code, and redacted error summary.
 - Keep generated evidence honest; do not edit failed evidence into a pass.
 - Add or update a technical debt item if the fix is not immediate.
+- Do not mark the M6.6 release gate complete; rollback and capacity gates cannot compensate for missing restore evidence.

@@ -2,6 +2,8 @@
 
 Rollback protects pilot users when a deployment or migration behaves unsafely.
 
+For M6.6 self-hosted release candidates, use [Self-Hosted Release And Rollback](release-rollback.md) as the release-window procedure. This page remains the generic rollback checklist.
+
 ## Rollback Triggers
 
 - `/health/ready` returns repeated `503`.
@@ -11,6 +13,8 @@ Rollback protects pilot users when a deployment or migration behaves unsafely.
 - Object-store readiness fails.
 - Device gateway reports repeated timeout, stderr, offline, or readback mismatch failures.
 - Agent provider health becomes unsafe or unavailable without expected fallback behavior.
+- Capacity thresholds breach during a release window.
+- Target synthetic acceptance fails after deployment.
 
 ## Rehearsal Procedure
 
@@ -26,6 +30,7 @@ Rollback protects pilot users when a deployment or migration behaves unsafely.
 10. Redeploy the last known good build.
 11. Re-run smoke checks.
 12. Record evidence and update the pilot acceptance artifact.
+13. For M6.6 releases, also update [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or the approved external release evidence record.
 
 ## Emergency Sequence
 
@@ -45,3 +50,4 @@ npm run smoke:m5
 ## Notes
 
 Database migrations should be forward-compatible where possible. If a migration needs a special recovery path, document it in the migration plan or the deployment evidence before rollout.
+Irreversible migrations require a forward-fix plan before release; do not call them rollback-safe unless a restore rehearsal proves the path.
