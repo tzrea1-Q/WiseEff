@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { claimNextJob } from "../jobs/repository";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
-import { processNextLogAnalysisJob, startLogWorkerLoop } from "./worker";
+import { processLogAnalysisJobById, processNextLogAnalysisJob, startLogWorkerLoop } from "./worker";
 
 type JobRow = {
   id: string;
@@ -139,6 +139,9 @@ function createFakeWorkerDb(fixture = createFixture()) {
       calls.push(normalized);
 
       if (normalized.startsWith("update jobs set status = 'processing'")) {
+        if (normalized.includes("and id = $4") && values[3] !== fixture.job.id) {
+          return { rows: [], rowCount: 0 };
+        }
         if (fixture.job.status !== "queued") return { rows: [], rowCount: 0 };
         fixture.job.status = "processing";
         fixture.job.lease_owner = values[1] as string;
@@ -489,6 +492,50 @@ describe("log worker", () => {
       ["report", "processing", 90],
       ["report", "complete", 100]
     ]);
+  });
+
+  it("processes a queue-delivered job by id without polling for the next job", async () => {
+    const { db, fixture, calls } = createFakeWorkerDb();
+
+    const result = await processLogAnalysisJobById({
+      db,
+      objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")),
+      jobId: "job-1",
+      workerId: "worker-b"
+    });
+
+    expect(result).toEqual({ status: "processed" });
+    expect(fixture.job).toMatchObject({
+      status: "complete",
+      progress: 100,
+      lease_owner: "worker-b"
+    });
+    const claimCall = calls.find((call) => call.includes("update jobs set status = 'processing'"));
+    expect(claimCall).toContain("and id = $4");
+  });
+
+  it("ignores stale duplicate queue deliveries after the job has already completed", async () => {
+    const fixture = createFixture({
+      job: {
+        ...createFixture().job,
+        status: "complete",
+        progress: 100,
+        current_stage: "report"
+      }
+    });
+    const { db } = createFakeWorkerDb(fixture);
+
+    const result = await processLogAnalysisJobById({
+      db,
+      objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")),
+      jobId: "job-1",
+      workerId: "worker-b"
+    });
+
+    expect(result).toEqual({ status: "idle" });
+    expect(fixture.stages).toEqual([]);
+    expect(fixture.reports).toEqual([]);
+    expect(fixture.job.status).toBe("complete");
   });
 
   it("marks the job, run, and record complete at 100 progress", async () => {

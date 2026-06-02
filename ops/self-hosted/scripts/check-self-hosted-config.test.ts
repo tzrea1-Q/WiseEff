@@ -3,6 +3,7 @@ import { evaluateSelfHostedConfig } from "./check-self-hosted-config";
 
 const validPackageJson = {
   scripts: {
+    "queue:check": "tsx scripts/check-durable-queue.ts",
     "selfhost:check": "tsx ops/self-hosted/scripts/check-self-hosted-config.ts",
     "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts"
   }
@@ -21,6 +22,11 @@ services:
     env_file: .env
     volumes:
       - wiseeff-postgres-data:/var/lib/postgresql/data
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - wiseeff-redis-data:/data
   api:
     build: *wiseeff-build
     env_file: .env
@@ -31,6 +37,9 @@ services:
     build: *wiseeff-build
     env_file: .env
     command: ["sh", "-lc", "npm run worker:logs"]
+    depends_on:
+      redis:
+        condition: service_healthy
   web:
     build: *wiseeff-build
     env_file: .env
@@ -90,6 +99,12 @@ AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 LOG_WORKER_ENABLED=false
+LOG_ANALYSIS_QUEUE_MODE=durable
+REDIS_URL=redis://redis:6379
+LOG_ANALYSIS_QUEUE_PREFIX=wiseeff
+LOG_ANALYSIS_QUEUE_ATTEMPTS=4
+LOG_ANALYSIS_QUEUE_BACKOFF_MS=1000
+LOG_ANALYSIS_QUEUE_CONCURRENCY=1
 M5_BACKUP_RESTORE_DRILL_AT=
 `;
 
@@ -145,19 +160,23 @@ describe("self-hosted config metadata", () => {
     });
 
     expect(result.status).toBe("failed");
-    expect(result.missingScripts).toEqual(["selfhost:check", "selfhost:smoke"]);
-    expect(result.missingServices).toEqual(["postgres", "worker", "web", "proxy"]);
+    expect(result.missingScripts).toEqual(["selfhost:check", "selfhost:smoke", "queue:check"]);
+    expect(result.missingServices).toEqual(["postgres", "redis", "worker", "web", "proxy"]);
     expect(result.missingComposeTokens).toEqual(
       expect.arrayContaining([
         "wiseeff-postgres-data:/var/lib/postgresql/data",
+        "wiseeff-redis-data:/data",
         "env_file: .env",
+        "redis-server",
         "npm run worker:logs",
         "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}"
       ])
     );
     expect(result.missingDockerfileTokens).toEqual(expect.arrayContaining(["ARG VITE_WISEEFF_API_BASE_URL"]));
     expect(result.missingDockerignoreTokens).toEqual(expect.arrayContaining(["**/.env", "**/.env.*"]));
-    expect(result.missingEnvKeys).toEqual(expect.arrayContaining(["HOST", "DATABASE_URL", "LOG_WORKER_ENABLED", "M5_BACKUP_RESTORE_DRILL_AT"]));
+    expect(result.missingEnvKeys).toEqual(
+      expect.arrayContaining(["HOST", "DATABASE_URL", "LOG_WORKER_ENABLED", "REDIS_URL", "M5_BACKUP_RESTORE_DRILL_AT"])
+    );
     expect(result.missingProxyTokens).toEqual(expect.arrayContaining(["reverse_proxy api:8787", "tls"]));
   });
 });

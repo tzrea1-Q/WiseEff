@@ -1,13 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-export const requiredSelfHostedScripts = ["selfhost:check", "selfhost:smoke"] as const;
+export const requiredSelfHostedScripts = ["selfhost:check", "selfhost:smoke", "queue:check"] as const;
 
-export const requiredSelfHostedServices = ["postgres", "api", "worker", "web", "proxy"] as const;
+export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
 
 export const requiredComposeTokens = [
   "wiseeff-postgres-data:/var/lib/postgresql/data",
+  "wiseeff-redis-data:/data",
   "env_file: .env",
+  "redis-server",
   "VITE_WISEEFF_RUNTIME_MODE: api",
   "VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}",
   "curl -fsS http://127.0.0.1:8787/health/live",
@@ -55,6 +57,12 @@ export const requiredEnvKeys = [
   "AGENT_MODEL",
   "AGENT_API_KEY",
   "LOG_WORKER_ENABLED",
+  "LOG_ANALYSIS_QUEUE_MODE",
+  "REDIS_URL",
+  "LOG_ANALYSIS_QUEUE_PREFIX",
+  "LOG_ANALYSIS_QUEUE_ATTEMPTS",
+  "LOG_ANALYSIS_QUEUE_BACKOFF_MS",
+  "LOG_ANALYSIS_QUEUE_CONCURRENCY",
   "M5_BACKUP_RESTORE_DRILL_AT"
 ] as const;
 

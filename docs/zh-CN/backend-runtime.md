@@ -44,6 +44,9 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 - `AGENT_PROVIDER`：`deterministic` 或 `live`。
 - `AGENT_API_FORMAT`：`wiseeff` 或 `openai`。
 - `WISEEFF_API_BASE_URL` / `VITE_WISEEFF_API_BASE_URL`：smoke 和前端 API base URL。
+- `LOG_ANALYSIS_QUEUE_MODE`：`polling` 或 `durable`。
+- `REDIS_URL`：durable queue 模式下的 Redis 连接。
+- `LOG_ANALYSIS_QUEUE_PREFIX` / `LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS` / `LOG_ANALYSIS_QUEUE_CONCURRENCY`：BullMQ 命名空间、重试和并发配置。
 
 ## 数据库
 
@@ -68,6 +71,27 @@ seed 命令按阶段组织：
 
 ```bash
 npm run worker:logs
+```
+
+M6.4 增加 Redis/BullMQ durable queue 模式。PostgreSQL 仍然是 job state、retry、dead-letter、audit 和 evidence 的 source of truth；Redis/BullMQ 只负责投递和重试触发。API 会在 PostgreSQL job 创建成功后 enqueue `jobId`，worker 消费后必须先 claim PostgreSQL job，再写入进度或终态。
+
+本地默认仍使用 polling：
+
+```text
+LOG_ANALYSIS_QUEUE_MODE=polling
+```
+
+自托管 durable queue：
+
+```text
+LOG_ANALYSIS_QUEUE_MODE=durable
+REDIS_URL=redis://redis:6379
+```
+
+验收命令：
+
+```bash
+npm run queue:check -- --base-url https://<host>
 ```
 
 本地对象存储：
@@ -144,4 +168,4 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
 
-这只是 M6.1 baseline。OIDC、自托管对象存储备份、durable queue、observability、rollback 和 capacity gates 属于后续 M6 阶段。
+M6.4 已经补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 `queue:check` 和 `selfhost:smoke` 证据。OIDC、自托管对象存储备份、observability、rollback 和 capacity gates 属于后续 M6 阶段或目标环境验收。

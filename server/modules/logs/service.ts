@@ -7,6 +7,7 @@ import type { AuthContext } from "../auth/types";
 import type { LogAnalysisJobDto } from "../jobs/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import { enqueueLogAnalysisJob, type LogAnalysisQueue } from "./logAnalysisQueue";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
   appendFeedback,
@@ -70,7 +71,9 @@ export type SubmitLogFeedbackInput = {
   note?: string;
 };
 
-type ServiceContext = AuditCorrelationContext;
+type ServiceContext = AuditCorrelationContext & {
+  logAnalysisQueue?: LogAnalysisQueue;
+};
 
 const supportedExtensions = new Set<string>(supportedLogExtensions);
 
@@ -196,7 +199,7 @@ export async function uploadLogFile(
     });
   }
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const fileObject = await persistFileObject(tx, auth, { projectId: input.projectId, stored });
     const { log, job } = await createLogRecordWithRunAndJob(
       {
@@ -232,6 +235,16 @@ export async function uploadLogFile(
 
     return { fileObject, log, job };
   });
+
+  await enqueueLogAnalysisJob(context.logAnalysisQueue, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    logId: result.log.id,
+    runId: result.job.runId,
+    jobId: result.job.id
+  });
+
+  return result;
 }
 
 export async function createLogFromFile(db: Database, auth: AuthContext, input: CreateLogFromFileInput, context: ServiceContext = {}) {
@@ -295,7 +308,7 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     });
   }
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const result = await createLogRecordWithRunAndJob(
       {
         query: tx.query,
@@ -329,6 +342,16 @@ export async function createLogFromFile(db: Database, auth: AuthContext, input: 
     );
     return result;
   });
+
+  await enqueueLogAnalysisJob(context.logAnalysisQueue, {
+    organizationId: auth.organization.id,
+    projectId: input.projectId,
+    logId: result.log.id,
+    runId: result.job.runId,
+    jobId: result.job.id
+  });
+
+  return result;
 }
 
 export async function listLogRecords(db: Queryable, auth: AuthContext, query: ListLogRecordsQuery = {}) {
@@ -358,7 +381,7 @@ export async function listLogRuns(db: Queryable, auth: AuthContext, logId: strin
 export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: RerunLogAnalysisInput, context: ServiceContext = {}) {
   requireLogAnalyze(auth);
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const existing = await getLogDetail(tx, auth, input.logId);
     if (!existing) {
       throw new ApiError("NOT_FOUND", "Log record was not found.", 404, { logId: input.logId });
@@ -393,6 +416,16 @@ export async function rerunLogAnalysis(db: Database, auth: AuthContext, input: R
 
     return { log, job, runs };
   });
+
+  await enqueueLogAnalysisJob(context.logAnalysisQueue, {
+    organizationId: auth.organization.id,
+    projectId: result.log.projectId,
+    logId: result.log.id,
+    runId: result.job.runId,
+    jobId: result.job.id
+  });
+
+  return result;
 }
 
 export async function archiveLogRecord(db: Database, auth: AuthContext, logId: string, context: ServiceContext = {}) {

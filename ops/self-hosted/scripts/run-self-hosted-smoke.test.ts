@@ -14,7 +14,19 @@ describe("self-hosted smoke runner", () => {
     const fetchImpl: typeof fetch = async (url, init) => {
       calls.push(`${String(url)} ${String((init?.headers as Record<string, string>).Authorization)}`);
       if (String(url).endsWith("/health/live")) return response(200, { ok: true });
-      if (String(url).endsWith("/health/ready")) return response(200, { ok: true, dependencies: { database: "ready" } });
+      if (String(url).endsWith("/health/ready")) {
+        return response(200, {
+          ok: true,
+          dependencies: {
+            durableQueue: {
+              ok: true,
+              status: "ready",
+              transport: { ok: true, status: "ready" },
+              database: { ok: true, status: "ready" }
+            }
+          }
+        });
+      }
       if (String(url).endsWith("/api/v1/me")) return response(200, { user: { id: "u-xu-yun" } });
       if (String(url).endsWith("/api/v1/operations/pilot-readiness")) {
         return response(200, { ok: false, status: "blocked", blockedBy: ["deviceGateway"] });
@@ -61,8 +73,46 @@ describe("self-hosted smoke runner", () => {
     });
   });
 
+  it("fails when ready health omits durable queue dependencies", async () => {
+    const fetchImpl: typeof fetch = async (url) => {
+      if (String(url).endsWith("/health/ready")) {
+        return response(200, { ok: true, dependencies: { database: { ok: true, status: "ready" } } });
+      }
+      if (String(url).endsWith("/api/v1/operations/pilot-readiness")) {
+        return response(200, { ok: false, status: "blocked", blockedBy: ["deviceGateway"] });
+      }
+      return response(200, { ok: true });
+    };
+
+    const result = await runSelfHostedSmokeChecks({
+      baseUrl: "https://wiseeff.example.test",
+      authorization: "Bearer secret-token",
+      allowedBlockedGates: ["deviceGateway"],
+      fetchImpl
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.checks.find((check) => check.name === "health ready")).toMatchObject({
+      status: "failed",
+      detail: "Ready health does not include dependencies.durableQueue."
+    });
+  });
+
   it("accepts a fully pilot-ready target", async () => {
     const fetchImpl: typeof fetch = async (url) => {
+      if (String(url).endsWith("/health/ready")) {
+        return response(200, {
+          ok: true,
+          dependencies: {
+            durableQueue: {
+              ok: true,
+              status: "ready",
+              transport: { ok: true, status: "ready" },
+              database: { ok: true, status: "ready" }
+            }
+          }
+        });
+      }
       if (String(url).endsWith("/api/v1/operations/pilot-readiness")) {
         return response(200, { ok: true, status: "pilot_ready", blockedBy: [] });
       }

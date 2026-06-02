@@ -1,8 +1,10 @@
 # WiseEff
 
-WiseEff（智效）是一个 AI 辅助的企业业务效率平台原型，已经从纯前端演示推进到 M0-M5 productization baseline。当前项目包含 Vite/React/TypeScript 前端、mock 与 API 两种 runtime、TypeScript 模块化后端、PostgreSQL 迁移、OpenAPI 合同门禁、生产 auth 边界、worker/object-store seam、HDC gateway seam、live Agent provider seam，以及 admin-gated M5 pilot-readiness 端点。
+WiseEff（智效）是一个 AI 辅助的企业业务效率平台原型，已经从纯前端演示推进到 M0-M5 productization baseline。当前项目包含 Vite/React/TypeScript 前端、mock 与 API 两种 runtime、TypeScript 模块化后端、PostgreSQL 迁移、OpenAPI 合同门禁、生产 auth 边界、worker/object-store seam、Redis/BullMQ durable queue seam、HDC gateway seam、live Agent provider seam，以及 admin-gated M5 pilot-readiness 端点。
 
 当前状态适合受控 staging/pilot evidence collection；不能仅凭本地检查宣称 broad enterprise production rollout。真实 pilot-ready 还需要 live API、PostgreSQL-backed E2E、HDC device-lab、backup/restore、rollback 和 live provider evidence。
+
+M6.4 adds local and self-hosted Redis/BullMQ queue wiring for log-analysis dispatch. PostgreSQL remains the source of truth for job state and audit; target Redis readiness still requires `npm run queue:check -- --base-url <target-url>` against the deployed API.
 
 ## 环境要求
 
@@ -74,6 +76,12 @@ npm run docs:check
 ```
 
 Validate documentation governance, key documentation structure, local markdown links, and `.env.example` coverage.
+
+```bash
+npm run queue:check -- --base-url http://127.0.0.1:8787
+```
+
+Validate M6.4 durable queue readiness against a running API configured with `LOG_ANALYSIS_QUEUE_MODE=durable`.
 
 ```bash
 npm run dev:api
@@ -292,7 +300,7 @@ docs/                             harness 风格项目知识库
 4. 执行 `npm test` 和 `npm run build` 验证环境。
 5. 执行 `npm run dev`，打开终端输出的本地访问地址。
 
-当前本地 mock runtime 默认不依赖外部 API key。连接 API runtime 时需要本地启动后端并配置 PostgreSQL；真实 HDC、S3/OSS 和 live Agent provider 的 staging/pilot evidence 见 `docs/generated/m5-pilot-acceptance.md` 和 `docs/runbooks/m5-commercial-pilot-readiness.md`。
+当前本地 mock runtime 默认不依赖外部 API key。连接 API runtime 时需要本地启动后端并配置 PostgreSQL；真实 HDC、S3/OSS、Redis/BullMQ durable queue 和 live Agent provider 的 staging/pilot evidence 见 `docs/generated/m5-pilot-acceptance.md` 和 `docs/runbooks/m5-commercial-pilot-readiness.md`。
 
 开发者从 `CONTRIBUTING.md` 和 `docs/developer/README.md` 开始；API 使用见 `docs/api/README.md`；安全审计见 `docs/security/README.md`；运行手册见 `docs/runbooks/README.md`。产品化边界草案见 `docs/references/productization-api-contract-draft.md`。完整产品规格、架构和执行计划分别见 `docs/product-specs/`、`docs/design-docs/` 和 `docs/exec-plans/`。
 

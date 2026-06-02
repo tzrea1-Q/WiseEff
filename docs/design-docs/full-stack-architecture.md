@@ -16,9 +16,11 @@ WiseEff 正式系统采用“模块化单体后端 + 独立任务 worker + 独�
 
 后续开发应把这些边界升级为正式运行时，而不是把业务逻辑继续堆在页面组件中。
 
-M0-M5 implementation note: the repository now contains the modular API, PostgreSQL migrations, OpenAPI artifact/check, production auth boundary, log worker runner, local/S3-compatible object-store seam, simulator/HDC device-gateway seam, deterministic/live Agent provider seam, and M5 pilot-readiness route. Durable queue infrastructure, enterprise SSO/OIDC, cloud-provider SDK/IaC, and real staging/device-lab evidence remain post-M5 or target-environment work.
+M0-M5 implementation note: the repository now contains the modular API, PostgreSQL migrations, OpenAPI artifact/check, production auth boundary, log worker runner, local/S3-compatible object-store seam, simulator/HDC device-gateway seam, deterministic/live Agent provider seam, and M5 pilot-readiness route. Enterprise SSO/OIDC, cloud-provider SDK/IaC, and real staging/device-lab evidence remain post-M5 or target-environment work.
 
 M6.1 self-hosted note: `ops/self-hosted/` now provides a single-Linux-server baseline with separate PostgreSQL, API, web, worker, and Caddy proxy services. The API can bind through `HOST`, and self-hosted API containers disable the in-process worker with `LOG_WORKER_ENABLED=false` so the dedicated worker service owns log processing.
+
+M6.4 durable queue note: Redis/BullMQ is implemented as the self-hosted log-analysis dispatch transport. API processes enqueue queue messages only after PostgreSQL job creation succeeds. Worker processes consume `jobId` payloads, claim the PostgreSQL job, and write progress, retry, dead-letter, audit, and evidence state back to PostgreSQL. Target Redis readiness still needs live `queue:check` evidence before an environment is called queue-ready.
 
 ## 2. 推荐技术栈
 
@@ -42,10 +44,12 @@ M6.1 self-hosted note: `ops/self-hosted/` now provides a single-Linux-server bas
 flowchart LR
   Browser["React Frontend"] --> Api["WiseEff API"]
   Api --> Db["PostgreSQL"]
+  Api --> Queue["Redis / BullMQ Queue"]
   Api --> Worker["Log Worker Runner"]
   Api --> ObjectStore["Local or S3/OSS Object Store Seam"]
   Api --> Agent["Agent Orchestrator / Provider Seam"]
   Api --> DeviceGateway["Simulator or HDC Gateway Seam"]
+  Queue --> Worker
   Worker --> Db
   Worker --> ObjectStore
   Agent --> ToolRegistry["Tool Registry"]
@@ -126,7 +130,7 @@ PostgreSQL 是主存储。对象存储保存日志文件和导出文件。Redis/
 
 ## 7. 异步任务架构
 
-M5 status: log analysis has a dedicated worker runner, retry/backoff/dead-letter policy, and readiness representation. A Redis/BullMQ or equivalent durable queue is still a production hardening item rather than a completed repository dependency.
+M6.4 status: log analysis has a dedicated worker runner plus Redis/BullMQ durable queue mode. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and evidence; Redis/BullMQ carries dispatch and redelivery. Database polling mode remains available for local development and compensation.
 
 需要异步化的任务：
 

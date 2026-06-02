@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { QueryResult, Queryable } from "../../shared/database/client";
-import { claimNextJob, completeJob, failJob, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "./repository";
+import { claimJobById, claimNextJob, completeJob, failJob, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "./repository";
 
 type QueryCall = {
   text: string;
@@ -28,6 +28,23 @@ describe("jobs repository", () => {
     expect(claimed).toBeNull();
     expect(calls[0].text).toContain("(next_run_at is null or next_run_at <= now())");
     expect(calls[0].values).toEqual(["log-analysis", "worker-a", 30000]);
+  });
+
+  it("claims a specific queue-delivered job with the same lease guard as polling", async () => {
+    const { db, calls } = createFakeDb(0);
+
+    const claimed = await claimJobById(db, {
+      kind: "log-analysis",
+      jobId: "job-from-queue",
+      leaseOwner: "worker-a",
+      leaseTtlMs: 30000
+    });
+
+    expect(claimed).toBeNull();
+    expect(calls[0].text).toContain("and id = $4");
+    expect(calls[0].text).toContain("(next_run_at is null or next_run_at <= now())");
+    expect(calls[0].text).toContain("for update skip locked");
+    expect(calls[0].values).toEqual(["log-analysis", "worker-a", 30000, "job-from-queue"]);
   });
 
   it("fences progress writes by active lease owner", async () => {

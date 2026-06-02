@@ -123,6 +123,47 @@ export async function claimNextJob(
   return result.rows[0] ? toClaimedLogAnalysisJobDto(result.rows[0]) : null;
 }
 
+export async function claimJobById(
+  db: Queryable,
+  input: { kind: LogAnalysisJobKind; jobId: string; leaseOwner?: string; leaseTtlMs?: number }
+) {
+  const leaseOwner = input.leaseOwner ?? "wiseeff-log-worker";
+  const leaseTtlMs = input.leaseTtlMs ?? 60_000;
+  const result = await db.query<JobRow & { organization_id: string }>(
+    `
+    update jobs
+    set status = 'processing',
+      lease_owner = $2,
+      lease_expires_at = now() + ($3 * interval '1 millisecond'),
+      attempt_count = coalesce(attempt_count, 0) + 1,
+      error_message = null,
+      updated_at = now()
+    where id = (
+      select id
+      from jobs
+      where kind = $1
+        and id = $4
+        and (
+          status = 'queued'
+          or (
+            status = 'processing'
+            and lease_expires_at is not null
+            and lease_expires_at <= now()
+          )
+        )
+        and (next_run_at is null or next_run_at <= now())
+      for update skip locked
+      limit 1
+    )
+    returning id, organization_id, kind, target_id, status, progress, current_stage, error_message, updated_at,
+      lease_owner, lease_expires_at, attempt_count
+    `,
+    [input.kind, leaseOwner, leaseTtlMs, input.jobId]
+  );
+
+  return result.rows[0] ? toClaimedLogAnalysisJobDto(result.rows[0]) : null;
+}
+
 export async function markJobRetryScheduled(
   db: Queryable,
   input: {

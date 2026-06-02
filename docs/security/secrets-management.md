@@ -7,6 +7,7 @@ Secrets should be supplied by local `.env` files or the target environment's sec
 - Real `DATABASE_URL` credentials.
 - Production `AUTH_TOKEN_HMAC_SECRET`.
 - Object-store access keys.
+- Redis credentials or queue connection URLs for target environments.
 - Agent provider API keys.
 - HDC lab credentials or customer device identifiers.
 - Admin smoke tokens for real environments.

@@ -16,6 +16,9 @@ flowchart LR
   Api --> Audit["Audit module"]
   Api --> Auth["Auth/RBAC module"]
   Api --> Worker["Log worker seam"]
+  Api --> Queue["Redis/BullMQ durable queue"]
+  Queue --> Worker
+  Worker --> Db
   Worker --> ObjectStore["Local or S3/OSS object store seam"]
   Api --> Agent["Agent orchestrator/provider seam"]
   Api --> Gateway["Simulator or HDC device gateway seam"]
@@ -74,7 +77,9 @@ Release operations add a pilot gate on top of the basic health checks. `GET /api
 
 M6.1 adds a single-Linux-server self-hosted baseline under `ops/self-hosted/`. It runs PostgreSQL, API, web, worker, and Caddy reverse proxy as separate services. The API defaults to `HOST=127.0.0.1` for local development; self-hosted containers set `HOST=0.0.0.0` so the proxy can reach the API over the compose network. The API container sets `LOG_WORKER_ENABLED=false`, while the dedicated worker container runs `npm run worker:logs`.
 
-The M6.1 baseline is deployment plumbing, not full production hardening. OIDC identity, self-hosted object-store provider selection, durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6.2-M6.6 work.
+M6.4 adds Redis/BullMQ as the durable log-analysis dispatch transport. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and evidence. API processes enqueue `log-analysis` messages after the PostgreSQL job is committed; worker processes consume queue payloads by `jobId` and must claim the PostgreSQL job before writing progress or terminal state. Database polling mode remains available for local development and compensation.
+
+The M6.1-M6.4 baseline is deployment plumbing and queue hardening, not full production hardening. OIDC identity, completed self-hosted object-store evidence, observability, release rollback, and capacity gates remain M6.2-M6.6 work.
 
 ## Deeper Docs
 

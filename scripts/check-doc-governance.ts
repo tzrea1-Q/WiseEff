@@ -62,7 +62,14 @@ export const requiredEnvExampleKeys = [
   "AGENT_API_TIMEOUT_MS",
   "AGENT_PROMPT_VERSION",
   "M5_CONTRACT_CHECK_PASSED",
-  "M5_SMOKE_ALLOW_NO_API"
+  "M5_SMOKE_ALLOW_NO_API",
+  "LOG_WORKER_ENABLED",
+  "LOG_ANALYSIS_QUEUE_MODE",
+  "REDIS_URL",
+  "LOG_ANALYSIS_QUEUE_PREFIX",
+  "LOG_ANALYSIS_QUEUE_ATTEMPTS",
+  "LOG_ANALYSIS_QUEUE_BACKOFF_MS",
+  "LOG_ANALYSIS_QUEUE_CONCURRENCY"
 ];
 
 export function validatePlanDocument(planPath: string, content: string): string[] {

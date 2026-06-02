@@ -13,6 +13,6 @@ These docs are the daily development entry point for WiseEff. They are intention
 
 ## Current Baseline
 
-M0-M5 productization work is merged in the repository history. The current code has mock and API frontend runtimes, modular backend APIs, PostgreSQL migrations, object-store and worker seams, simulator/HDC device gateway seam, deterministic/live Agent provider seam, OpenAPI contract checks, and M5 pilot-readiness gates.
+M0-M5 productization work is merged in the repository history. The current code has mock and API frontend runtimes, modular backend APIs, PostgreSQL migrations, object-store and worker seams, Redis/BullMQ durable queue mode for log-analysis dispatch, simulator/HDC device gateway seam, deterministic/live Agent provider seam, OpenAPI contract checks, and M5 pilot-readiness gates.
 
-The repository is ready for local API-mode development and controlled evidence collection. It is not safe to call an environment pilot-ready until target-environment staging, HDC, backup/restore, rollback, and live provider evidence are recorded.
+The repository is ready for local API-mode development and controlled evidence collection. It is not safe to call an environment pilot-ready until target-environment staging, HDC, backup/restore, rollback, Redis/BullMQ queue readiness, and live provider evidence are recorded.
