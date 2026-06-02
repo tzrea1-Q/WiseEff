@@ -7,6 +7,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `NODE_ENV` | `development` | API startup | Production enables stricter config gates. |
+| `HOST` | `127.0.0.1` | API startup | Self-hosted containers set `0.0.0.0` so the reverse proxy can reach the API. |
 | `PORT` | `8787` | API startup | The frontend assumes `127.0.0.1:8787` in API mode by default. |
 | `DATABASE_URL` | local PostgreSQL URL | Migrations, seeds, API mode, E2E | PostgreSQL is the source of truth. |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | Used by M5 smoke scripts. |
@@ -65,3 +66,15 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M5_CONTRACT_ARTIFACT_CHECKED_AT` | unset | pilot gate | Timestamp alternative for contract evidence. |
 | `M5_BACKUP_RESTORE_DRILL_AT` | unset | pilot-ready backup gate | Set only after a real drill passes. |
 | `M5_SMOKE_ALLOW_NO_API` | `false` | smoke skip control | Use `true` only for local documentation runs that intentionally skip API probing. |
+
+## Self-Hosted Runtime
+
+M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, auth, S3-compatible object storage, Agent provider, and smoke authorization values.
+
+| Variable | Self-hosted value | Notes |
+| --- | --- | --- |
+| `HOST` | `0.0.0.0` | Required inside the API container so Caddy can proxy to it. |
+| `LOG_WORKER_ENABLED` | `false` in API, `true` in worker | Prevents the API container from running a duplicate in-process worker. |
+| `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
+| `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
+| `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | admin bearer token | Preferred self-hosted smoke token; M5 smoke token names are also accepted. |

@@ -16,7 +16,7 @@ const debugGateway =
   env.DEBUG_DEVICE_GATEWAY_MODE === "hdc"
     ? createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS })
     : createSimulatorDebugDeviceGateway();
-const stopLogWorker = db && objectStore ? startLogWorkerLoop({ db, objectStore }) : undefined;
+const stopLogWorker = env.LOG_WORKER_ENABLED && db && objectStore ? startLogWorkerLoop({ db, objectStore }) : undefined;
 const server = createWiseEffServerFromEnv({
   db,
   objectStore,
@@ -36,6 +36,6 @@ function shutdown() {
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
-server.listen(env.PORT, "127.0.0.1", () => {
-  console.log(`WiseEff API listening on http://127.0.0.1:${env.PORT}`);
+server.listen(env.PORT, env.HOST, () => {
+  console.log(`WiseEff API listening on http://${env.HOST}:${env.PORT}`);
 });

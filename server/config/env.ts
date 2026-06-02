@@ -2,6 +2,7 @@ import { z } from "zod";
 
 const rawEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  HOST: z.string().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().positive().default(8787),
   AUTH_MODE: z.enum(["development", "production"]).default("development"),
   AUTH_TOKEN_ISSUER: z.string().optional(),
@@ -27,6 +28,10 @@ const rawEnvSchema = z.object({
   AGENT_API_BASE_URL: z.string().optional(),
   AGENT_API_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   AGENT_PROMPT_VERSION: z.string().default("m5-agent-v1"),
+  LOG_WORKER_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
   MOCK_RUNTIME_ENABLED: z
     .enum(["true", "false"])
     .default("false")

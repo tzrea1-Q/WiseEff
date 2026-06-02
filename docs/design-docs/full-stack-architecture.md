@@ -18,6 +18,8 @@ WiseEff 正式系统采用“模块化单体后端 + 独立任务 worker + 独�
 
 M0-M5 implementation note: the repository now contains the modular API, PostgreSQL migrations, OpenAPI artifact/check, production auth boundary, log worker runner, local/S3-compatible object-store seam, simulator/HDC device-gateway seam, deterministic/live Agent provider seam, and M5 pilot-readiness route. Durable queue infrastructure, enterprise SSO/OIDC, cloud-provider SDK/IaC, and real staging/device-lab evidence remain post-M5 or target-environment work.
 
+M6.1 self-hosted note: `ops/self-hosted/` now provides a single-Linux-server baseline with separate PostgreSQL, API, web, worker, and Caddy proxy services. The API can bind through `HOST`, and self-hosted API containers disable the in-process worker with `LOG_WORKER_ENABLED=false` so the dedicated worker service owns log processing.
+
 ## 2. 推荐技术栈
 
 | 层级 | 推荐 |

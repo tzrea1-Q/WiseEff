@@ -233,6 +233,21 @@ M5.12 moves the browser gate further into staged and CI environments by archivin
 
 Completion gate: `npm run acceptance:ci` must pass, `.github/workflows/ci.yml` must retain `acceptance-local-non-hdc` and `target-synthetic-acceptance`, and CI artifacts must include Playwright acceptance reports, test results, generated browser evidence, generated operation evidence, and quality reports. PR artifacts prove local non-HDC readiness only. Full-pilot artifacts remain valid only with real target environment secrets plus HDC, backup/restore, rollback, object-store, worker, and live Agent evidence.
 
+## 10.11 M6 Self-Hosted Production Hardening
+
+M6 is scoped for operators who do not want cloud-provider managed services but can deploy and maintain services on their own Linux servers. The goal is a commercially usable self-hosted pilot baseline, not new product scope and not AI enhancement.
+
+M6 is split into active execution plans so each phase can be implemented, verified, and archived independently:
+
+1. M6.1 Self-Hosted Runtime Baseline: Linux deployment, PostgreSQL, API/web/worker services, reverse proxy, TLS, and basic smoke evidence.
+2. M6.2 Identity & User Governance: self-hosted OIDC, Keycloak-compatible setup, backend user/role APIs, audit, and permission acceptance.
+3. M6.3 Self-Hosted Storage & Backup: S3-compatible object storage, PostgreSQL/object-store backup and restore, and Redis backup procedure once M6.4 lands.
+4. M6.4 Durable Queue: Redis/BullMQ or equivalent durable queue while PostgreSQL remains the source of truth for job state and audit.
+5. M6.5 Observability & Operations: OpenTelemetry, Prometheus/Grafana, structured logs, alerts, and incident runbooks.
+6. M6.6 Release, Rollback & Capacity Gate: versioned release process, rollback rehearsal, capacity testing, and target synthetic acceptance.
+
+M6 completion should honestly report three levels: local self-hosted gates, target non-HDC self-hosted gates, and full-pilot gates with HDC hardware. Full-pilot readiness remains blocked unless real HDC, backup/restore, rollback, identity, queue, object storage, observability, and target acceptance evidence all exist.
+
 ## 11. 工程工作流
 
 每个功能分支要求：

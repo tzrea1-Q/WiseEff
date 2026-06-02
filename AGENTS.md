@@ -28,6 +28,7 @@ This file is the short map for agents working in this repository. Keep it small.
 - `docs/generated/`: generated or mechanically derived artifacts such as database schema summaries.
 - `docs/references/`: compact reference notes intended for LLM/agent use.
 - `docs/zh-CN/`: Chinese developer onboarding and daily reference for architecture, runtime, quality, security, reliability, and planning.
+- `ops/self-hosted/`: M6 self-hosted Linux runtime templates, checks, and smoke runner.
 - `server/`: M0 backend API, database migration, auth, audit, and shared HTTP/database foundations.
 - `src/`: Vite React frontend, domain types, ports, mock runtime, HTTP client, components, pages, and tests.
 
@@ -70,6 +71,7 @@ npm test
 npm run test:server
 npm run test:all
 npm run build
+npm run selfhost:check
 ```
 
 Use targeted tests while developing. Before claiming a code change is complete, run the narrow relevant tests plus `npm run build` when the change touches TypeScript, Vite config, routing, or shared types.

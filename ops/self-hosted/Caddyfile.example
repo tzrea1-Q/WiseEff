@@ -1,0 +1,19 @@
+{
+  email {$WISEEFF_TLS_EMAIL}
+}
+
+{$WISEEFF_SITE_HOST} {
+  tls {$WISEEFF_TLS_EMAIL}
+
+  handle /api/* {
+    reverse_proxy api:8787
+  }
+
+  handle /health/* {
+    reverse_proxy api:8787
+  }
+
+  handle {
+    reverse_proxy web:5173
+  }
+}

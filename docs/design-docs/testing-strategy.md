@@ -165,6 +165,18 @@ npm run test:m5
 
 `npm run smoke:m5` checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API base URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs. `npm run test:m5` is the intended end-to-end pilot baseline, but it still depends on PostgreSQL and any external backup, device-lab, or staging evidence that is not fully simulated in-repo.
 
+## 9.1 M6.1 Self-Hosted Runtime Gates
+
+M6.1 adds deployment-shape tests rather than product workflow tests:
+
+```bash
+npm test -- ops/self-hosted/scripts/check-self-hosted-config.test.ts ops/self-hosted/scripts/run-self-hosted-smoke.test.ts
+npm run selfhost:check
+npm run selfhost:smoke -- --base-url <target-url>
+```
+
+`selfhost:check` validates the compose services, self-hosted env template, Caddy routing, and package script wiring. `selfhost:smoke` probes a running self-hosted target and writes redacted evidence. It can accept `--allow-only-blocked=deviceGateway` only for non-HDC staging.
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

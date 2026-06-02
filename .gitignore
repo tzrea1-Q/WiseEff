@@ -25,6 +25,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!ops/self-hosted/.env.example
 
 # Editor and OS files
 .DS_Store

@@ -1,0 +1,97 @@
+x-wiseeff-build: &wiseeff-build
+  context: ../..
+  dockerfile: ops/self-hosted/Dockerfile
+  args:
+    VITE_WISEEFF_RUNTIME_MODE: api
+    VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL:?set VITE_WISEEFF_API_BASE_URL in ops/self-hosted/.env}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: wiseeff
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in ops/self-hosted/.env}
+      POSTGRES_DB: wiseeff
+    volumes:
+      - wiseeff-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wiseeff -d wiseeff"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build: *wiseeff-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      LOG_WORKER_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8787"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    command: ["sh", "-lc", "npm run db:migrate && npx tsx server/index.ts"]
+
+  worker:
+    build: *wiseeff-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LOG_WORKER_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    command: ["sh", "-lc", "npm run worker:logs"]
+
+  web:
+    build: *wiseeff-build
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      VITE_WISEEFF_RUNTIME_MODE: api
+      VITE_WISEEFF_API_BASE_URL: ${VITE_WISEEFF_API_BASE_URL}
+    expose:
+      - "5173"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5173/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    command: ["sh", "-lc", "npm run preview -- --host 0.0.0.0 --port 5173 --strictPort"]
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.example:/etc/caddy/Caddyfile:ro
+      - wiseeff-caddy-data:/data
+      - wiseeff-caddy-config:/config
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --header=\"Host: ${WISEEFF_SITE_HOST}\" http://127.0.0.1/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  wiseeff-postgres-data:
+  wiseeff-caddy-data:
+  wiseeff-caddy-config:
