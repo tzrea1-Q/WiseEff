@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-02T11:21:00.120Z
+- Date: 2026-06-02T11:44:25.346Z
 - Branch: `codex/m6-2-identity-user-governance`
-- Commit: `dae19e95a26041e1c18b9ecfa51e2c92e8a1641b`
+- Commit: `f7c3bc3997c5e5829b2f36e0e773f7eeddbf566a`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `passed`

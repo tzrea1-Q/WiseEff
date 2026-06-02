@@ -44,6 +44,7 @@ Completed locally:
 - Ran focused frontend and server regressions for the DB-gated fixes.
 - Recorded local gate evidence and external-environment blockers in `docs/generated/m5-pilot-acceptance.md`.
 - On 2026-05-30, after `.env` was completed for local validation, reran local DB setup, local non-HDC live smoke, local live API preflight, local browser acceptance, and local production-auth API-mode E2E. The evidence is recorded in `docs/generated/m5-pilot-acceptance.md`. These checks strengthen local readiness evidence but do not satisfy this plan's staging/HDC/cloud/rollback success criteria.
+- On 2026-06-02, after PR #52 merged, latest `main` was revalidated locally on branch `codex/m5-2-remaining-evidence-closure`: `npm run docs:check`, `npm run contract:check`, `npm run acceptance:ci`, `npm run acceptance:models`, `npm run acceptance:quality`, `npm run build`, `npm run acceptance:browser -- --mode=local-non-hdc`, `npm run acceptance:evidence`, and `git diff --check` passed. A temporary local API on `127.0.0.1:8877` used the completed `.env` live Agent provider configuration; `npm run smoke:m5` passed with `npm_config_allow_only_blocked=deviceGateway`, leaving only `deviceGateway` blocked. These checks remain local non-HDC evidence, not full staging/HDC/cloud/rollback evidence.
 
 Blocked pending target-environment inputs:
 
@@ -55,7 +56,7 @@ Blocked pending target-environment inputs:
 - Staging live Agent provider model, API key, base URL, and safe outage-simulation window.
 - Backup target, restore target, and rollback rehearsal window.
 
-Completion decision, 2026-05-30: keep this plan in `docs/exec-plans/active/`. Full staging pilot evidence has not been captured; TD-019 must remain open.
+Completion decision, 2026-06-02: keep this plan in `docs/exec-plans/active/`. Full staging pilot evidence has not been captured; TD-019 must remain open.
 
 ## Success Criteria
 
