@@ -5,6 +5,7 @@ import {
   ensureEvidenceParentDirectory,
   isLocalHttpUrl,
   evaluatePilotReadiness,
+  buildTestGateEnv,
   loadEnvContent,
   parsePreflightArgs,
   planRuntimeServices,
@@ -148,6 +149,30 @@ describe("acceptance preflight helpers", () => {
     expect(env.TOKEN).toBe("process");
   });
 
+  it("isolates test gates from acceptance runtime and pilot evidence env", () => {
+    const env = buildTestGateEnv({
+      KEEP_ME: "kept",
+      VITE_WISEEFF_RUNTIME_MODE: "api",
+      M5_CONTRACT_CHECK_PASSED: "true",
+      M5_CONTRACT_ARTIFACT_CHECKED_AT: "2026-06-02T00:00:00Z",
+      M5_BACKUP_RESTORE_DRILL_AT: "2026-06-02T00:00:00Z",
+      M5_DEVICE_GATEWAY_EVIDENCE: "ci",
+      DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+      HDC_DEVICE_LAB_AVAILABLE: "true",
+      AGENT_PROVIDER: "live"
+    });
+
+    expect(env.KEEP_ME).toBe("kept");
+    expect(env.VITE_WISEEFF_RUNTIME_MODE).toBe("mock");
+    expect(env).not.toHaveProperty("M5_CONTRACT_CHECK_PASSED");
+    expect(env).not.toHaveProperty("M5_CONTRACT_ARTIFACT_CHECKED_AT");
+    expect(env).not.toHaveProperty("M5_BACKUP_RESTORE_DRILL_AT");
+    expect(env).not.toHaveProperty("M5_DEVICE_GATEWAY_EVIDENCE");
+    expect(env).not.toHaveProperty("DEBUG_DEVICE_GATEWAY_MODE");
+    expect(env).not.toHaveProperty("HDC_DEVICE_LAB_AVAILABLE");
+    expect(env).not.toHaveProperty("AGENT_PROVIDER");
+  });
+
   it("accepts full pilot readiness", () => {
     expect(evaluatePilotReadiness({ ok: true, status: "pilot_ready", blockedBy: [] })).toEqual({
       accepted: true,
@@ -171,6 +196,16 @@ describe("acceptance preflight helpers", () => {
       accepted: true,
       outcome: "non_hdc_local",
       detail: "Accepted for local non-HDC preflight; deviceGateway and agentProvider remain blocked."
+    });
+  });
+
+  it("accepts local non-HDC readiness when backup evidence is also blocked", () => {
+    expect(
+      evaluatePilotReadiness({ ok: false, status: "blocked", blockedBy: ["deviceGateway", "agentProvider", "backups"] })
+    ).toEqual({
+      accepted: true,
+      outcome: "non_hdc_local",
+      detail: "Accepted for local non-HDC preflight; deviceGateway, agentProvider, and backups remain blocked."
     });
   });
 

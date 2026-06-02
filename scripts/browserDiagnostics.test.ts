@@ -34,6 +34,16 @@ describe("browser acceptance diagnostics", () => {
     ).toEqual({ action: "ignore" });
   });
 
+  it("ignores WiseEff requests aborted by normal page navigation", () => {
+    expect(
+      classifyBrowserIssue({
+        type: "requestfailed",
+        url: "http://127.0.0.1:8787/api/v1/parameters?projectId=aurora",
+        failureText: "net::ERR_ABORTED"
+      })
+    ).toEqual({ action: "ignore" });
+  });
+
   it("still fails when an expected browser API failure rule does not match", () => {
     expect(
       classifyBrowserIssue(

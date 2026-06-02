@@ -32,6 +32,10 @@ export function classifyBrowserIssue(
     return { action: "fail", reason: `Unexpected console error: ${issue.message}` };
   }
 
+  if (issue.type === "requestfailed" && isNavigationAbort(issue.failureText)) {
+    return { action: "ignore" };
+  }
+
   if (issue.type === "requestfailed" && isWiseEffUrl(issue.url)) {
     return {
       action: "fail",
@@ -104,6 +108,10 @@ function isWiseEffUrl(url: string) {
 
 function isCriticalApiUrl(url: string) {
   return isWiseEffUrl(url) && url.includes("/api/v1/") && !url.includes("/api/v1/audit-events");
+}
+
+function isNavigationAbort(failureText: string | undefined) {
+  return failureText === "net::ERR_ABORTED";
 }
 
 function isExpectedApiFailure(issue: Extract<BrowserIssue, { type: "response" }>, rules: ExpectedApiFailure[]) {
