@@ -47,3 +47,5 @@ Rotate secrets when:
 - Target OIDC access tokens, refresh tokens, client secrets, and JWKS override credentials are redacted.
 - Target-environment evidence is redacted before commit.
 - `docs/generated/m6-backup-restore-evidence.*` contains summaries only; verify it has no object-store keys, signed URLs, bearer tokens, or database passwords before committing.
+- `npm run observability:check` passes after changing Prometheus config, alert rules, or Grafana dashboards.
+- Metrics labels, dashboard links, and alert annotations do not contain bearer tokens, provider keys, object-store keys, raw uploaded logs, raw parameter values, or raw device payloads.

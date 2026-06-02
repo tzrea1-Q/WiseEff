@@ -170,4 +170,28 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
 
-M6.2 增加 OIDC 身份边界和后端用户治理 API。目标自托管环境应使用 `AUTH_PROVIDER=oidc`、`AUTH_OIDC_ISSUER` 和 `AUTH_OIDC_AUDIENCE`，并使用 OIDC access token 运行 smoke。HMAC token 只保留给本地 smoke/test；目标环境证据必须来自真实 OIDC/JWKS。M6.3 增加自托管 S3-compatible 对象存储备份/恢复证据门禁，M6.4 补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 restore drill、`queue:check` 和 `selfhost:smoke` 证据。observability、rollback 和 capacity gates 仍需要后续 M6 阶段或目标环境验收闭环。
+M6.2 增加 OIDC 身份边界和后端用户治理 API。目标自托管环境应使用 `AUTH_PROVIDER=oidc`、`AUTH_OIDC_ISSUER` 和 `AUTH_OIDC_AUDIENCE`，并使用 OIDC access token 运行 smoke。HMAC token 只保留给本地 smoke/test；目标环境证据必须来自真实 OIDC/JWKS。M6.3 增加自托管 S3-compatible 对象存储备份/恢复证据门禁，M6.4 补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 restore drill、`queue:check` 和 `selfhost:smoke` 证据。
+
+## Observability / 观测性
+
+M6.5 新增自托管观测性基线：
+
+```text
+GET /metrics
+```
+
+`/metrics` 返回 Prometheus text，并在返回前刷新 readiness、database、object store、Agent provider 和 worker queue 指标。Prometheus/Grafana/alert 配置位于：
+
+```text
+ops/self-hosted/observability/
+```
+
+本地配置校验：
+
+```bash
+npm run observability:check
+```
+
+`/metrics` 是内部运维数据，生产和 pilot 环境必须通过 private network、VPN、反向代理 allowlist、mTLS 或更强控制访问，不能直接公开到公网。
+
+rollback 和 capacity gates 仍需要后续 M6 阶段或目标环境验收闭环。

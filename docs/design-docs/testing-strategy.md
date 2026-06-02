@@ -204,6 +204,17 @@ npm run backup:check
 
 Local evidence proves the scripts and safety gates. Target readiness requires the same gates after a real isolated restore in a non-customer or pilot target environment.
 
+## 9.4 M6.5 Observability Gates
+
+M6.5 adds local observability configuration and runtime checks:
+
+```bash
+npm test -- scripts/check-observability-config.test.ts server/observability/*.test.ts server/app.test.ts server/shared/http/router.test.ts
+npm run observability:check
+```
+
+`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, structured log redaction, correlation metadata, and tracing export failure isolation. Target Prometheus scrape, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

@@ -30,6 +30,12 @@ npm run build
 npm run docs:check
 ```
 
+观测性配置：
+
+```bash
+npm run observability:check
+```
+
 OpenAPI 合同：
 
 ```bash

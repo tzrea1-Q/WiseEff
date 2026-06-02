@@ -50,6 +50,12 @@ Agent 工具只能通过后端 registry 执行。mutating tool 必须先创建 a
 
 Provider 不可用时允许降级 assistant response，但不能静默执行工具。provider outage、unsafe response、fallback reason 都应该留下 readiness 或 trace 证据。
 
+## Telemetry / 观测性安全
+
+M6.5 的 `/metrics`、结构化日志和 trace 边界属于运维证据，不是公开 API。`/metrics` 可能暴露路由名、依赖状态、队列数量、provider 状态和高风险操作计数，因此生产和 pilot 环境必须通过 private network、VPN、反向代理 allowlist、mTLS 或更强控制访问。
+
+telemetry 中不要记录 bearer token、provider key、原始上传日志内容、原始参数值、原始设备写入 payload 或凭据。`npm run observability:check` 会检查 Prometheus、alerts 和 Grafana dashboard 文件是否存在明显 secret 泄露，并要求每条 alert 带 `runbook_url`。
+
 ## 设备写入安全
 
 设备写入属于高风险路径。写入前需要：

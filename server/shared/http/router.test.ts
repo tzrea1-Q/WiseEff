@@ -7,6 +7,9 @@ function expectJsonResponse(response: RouteResponse) {
   if ("sse" in response) {
     throw new Error("Expected a JSON route response, but received an SSE response.");
   }
+  if ("text" in response) {
+    throw new Error("Expected a JSON route response, but received a text response.");
+  }
   return response;
 }
 
@@ -275,6 +278,22 @@ describe("createHttpServer", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     expect(text).toContain("event: job\n");
     expect(text).toContain('data: {"id":"job_1","status":"processing"}\n\n');
+  });
+
+  it("sends text route responses without JSON serialization", async () => {
+    const server = createHttpServer({
+      handle: async () => ({
+        status: 200,
+        text: "wiseeff_build_info 1\n",
+        contentType: "text/plain; version=0.0.4; charset=utf-8"
+      })
+    });
+
+    const { response, text } = await requestText(server, "/metrics");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(text).toBe("wiseeff_build_info 1\n");
   });
 
   it("sends SSE error events when iterators fail after streaming starts", async () => {

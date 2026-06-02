@@ -35,6 +35,7 @@
     "restore:drill": "tsx scripts/run-restore-drill.ts",
     "backup:check": "tsx scripts/check-backup-drill.ts",
     "queue:check": "tsx scripts/check-durable-queue.ts",
+    "observability:check": "tsx scripts/check-observability-config.ts",
     "selfhost:check": "tsx ops/self-hosted/scripts/check-self-hosted-config.ts",
     "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts",
     "test:m5": "npm run contract:check && npm run test:all && npm run build && npm run test:e2e && tsx scripts/run-m5-smoke.ts --require-api",

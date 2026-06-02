@@ -17,8 +17,9 @@ export async function requestJson<Body = unknown>(server: Server, path: string, 
       }
     });
     const text = await response.text();
-    const body = (text ? JSON.parse(text) : null) as Body;
-    return { status: response.status, body, headers: response.headers };
+    const contentType = response.headers.get("content-type") ?? "";
+    const body = (text && contentType.includes("application/json") ? JSON.parse(text) : null) as Body;
+    return { status: response.status, body, bodyText: text, headers: response.headers };
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
