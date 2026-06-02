@@ -223,7 +223,9 @@ Completion gate: `npm run acceptance:browser` must produce passed local or targe
 
 ## 10.9 M5.11 Accessibility / Visual / Responsive Gates
 
-M5.11 adds non-AI quality gates for keyboard access, accessibility, responsive layout, and visual regressions. It should catch the kinds of user-facing bugs that workflow automation alone can miss, while staying deterministic and replayable.
+M5.11 has landed non-AI quality gates for accessibility, responsive layout, and visual regressions. It catches the kinds of user-facing bugs that workflow automation alone can miss, while staying deterministic and replayable.
+
+Completion gate: `npm run acceptance:quality` must pass for quality-gate metadata, and UI-facing candidates should run the relevant focused gates: `npm run acceptance:a11y`, `npm run acceptance:visual`, and `npm run acceptance:responsive`. Visual snapshot updates must be intentional: update snapshots once with `npm run acceptance:visual -- --update-snapshots`, then rerun `npm run acceptance:visual` without update mode.
 
 ## 10.10 M5.12 Staging Synthetic & CI Evidence Archiving
 

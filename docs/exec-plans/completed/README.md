@@ -20,6 +20,7 @@ Completed plans are historical implementation evidence. They can explain why a s
 | M5.8 deterministic acceptance coverage closure | `2026-06-01-wiseeff-m5-8-deterministic-acceptance-coverage-closure.md` |
 | M5.9 state model and contract-driven testing | `2026-06-01-wiseeff-m5-9-state-model-contract-testing.md` |
 | M5.10 evidence-grade upgrade | `2026-06-01-wiseeff-m5-10-evidence-grade-upgrade.md` |
+| M5.11 accessibility / visual / responsive gates | `2026-06-01-wiseeff-m5-11-accessibility-visual-responsive-gates.md` |
 | Chinese developer docs | `2026-05-29-wiseeff-developer-docs-zh-cn.md` |
 
 ## Historical Feature Plans

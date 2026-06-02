@@ -82,6 +82,8 @@ MVP 必须覆盖：
 
 M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
 
+M5.11 之后，浏览器质量门禁还包括无障碍、视觉回归和响应式可用性检查。脚本入口包括 `npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:visual` 和 `npm run acceptance:responsive`，分别覆盖脚本/spec wiring、WCAG A/AA 扫描、稳定区域截图和 desktop/tablet/mobile overflow/usable state。这些门禁补充 A-H browser acceptance，不替代 operation evidence 或人工视觉判断。
+
 M5.9 在浏览器验收背后新增确定性的状态模型门禁：
 
 ```bash

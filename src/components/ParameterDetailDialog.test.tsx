@@ -351,6 +351,7 @@ describe("ParameterDetailDialog", () => {
     );
 
     const closeButton = screen.getByRole("button", { name: "关闭参数详情" });
+    const configFormatCode = screen.getByText("charging.fast_charge_current_limit_ma=3850");
     const targetSelect = screen.getByLabelText("对比目标项目");
     const recommendedConfigButton = screen.getByRole("button", { name: "使用推荐配置加入草稿" });
     const targetProjectConfigButton = screen.getByRole("button", { name: "使用该项目配置加入草稿" });
@@ -363,6 +364,9 @@ describe("ParameterDetailDialog", () => {
     expect(recommendedConfigButton).toHaveFocus();
 
     fireEvent.keyDown(recommendedConfigButton, { key: "Tab" });
+    expect(configFormatCode).toHaveFocus();
+
+    fireEvent.keyDown(configFormatCode, { key: "Tab" });
     expect(targetSelect).toHaveFocus();
 
     fireEvent.keyDown(targetSelect, { key: "Tab" });

@@ -200,7 +200,7 @@ export function ParameterLibraryList({
       </div>
 
       {filtered.length > 0 ? (
-        <div className="library-list" role="listbox" aria-label="项目共享参数库">
+        <div className="library-list" role="region" aria-label="项目共享参数库">
           {groupedEntries.map(([moduleName, items]) => {
             const collapsed = !forceExpandGroups && collapsedGroups.has(moduleName);
             return (
@@ -216,27 +216,21 @@ export function ParameterLibraryList({
                   <span className="param-group-count">({items.length})</span>
                 </button>
                 {collapsed ? null : (
-                  <ul className="param-group-list">
+                  <ul className="param-group-list" aria-label={moduleName}>
                     {items.map((parameter) => (
-                      <li
-                        aria-selected={selectedId === parameter.id}
-                        className={selectedId === parameter.id ? "library-row selected" : "library-row"}
-                        key={parameter.id}
-                        role="option"
-                        tabIndex={selectedId === parameter.id ? 0 : -1}
-                        onClick={() => onSelect(parameter.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            onSelect(parameter.id);
-                          }
-                        }}
-                      >
-                        <span className="library-row-main">
-                          <strong>{parameter.name}</strong>
-                          <small>{parameter.module}</small>
-                        </span>
-                        <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
+                      <li className={selectedId === parameter.id ? "library-row selected" : "library-row"} key={parameter.id}>
+                        <button
+                          aria-pressed={selectedId === parameter.id}
+                          className="library-row-button"
+                          type="button"
+                          onClick={() => onSelect(parameter.id)}
+                        >
+                          <span className="library-row-main">
+                            <strong>{parameter.name}</strong>
+                            <small>{parameter.module}</small>
+                          </span>
+                          <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
+                        </button>
                       </li>
                     ))}
                   </ul>

@@ -268,6 +268,10 @@ npm run acceptance:operations
 npm run acceptance:models
 npm run acceptance:browser
 npm run acceptance:evidence
+npm run acceptance:quality
+npm run acceptance:a11y
+npm run acceptance:visual
+npm run acceptance:responsive
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 ```
@@ -277,6 +281,8 @@ npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 `npm run acceptance:browser` 会运行 preflight、执行 `npm run acceptance:e2e`、检查需求级覆盖、检查操作级证据，并把证据写入 `docs/generated/acceptance-browser-evidence.md`。证据表会按 A-H 对应人工验收流程，并引用 `playwright-report/acceptance/index.html`、`test-results/acceptance/results.json` 和 `test-results/acceptance/`。非 HDC 模式要求 A-E、G、H 通过；只有 HDC 明确不在范围内时，F 才可以 skipped。
 
 需求级覆盖定义在 `docs/developer/browser-acceptance-coverage-map.md`。操作级覆盖定义在 `docs/developer/user-operation-coverage-matrix.md`。缺少必需 ID、出现未知 `@acceptance` 或 `@operation` marker、缺少必需的自动化 operation 证据，或 operation 证据缺少角色/路由/断言元数据，都是阻塞项。M5.10 之后，如果 operation matrix 声明了 `api`、`db` 或 `audit` 断言，对应的 API 请求/响应摘要、数据库断言摘要、审计事件摘要也都是阻塞项。浏览器套件也会把非预期的 page error、console error、request failure 和关键 WiseEff API `4xx/5xx` 响应判为失败；因此页面视觉上能打开但后台出现未授权 API 失败时，不能算验收通过。
+
+M5.11 之后，工作流门禁旁边还增加确定性的质量门禁。修改 quality scripts、Playwright quality config 或 quality spec 路径时运行 `npm run acceptance:quality`；修改页面结构、弹窗、表单、导航、label、heading、focus 或 Agent 面板时运行 `npm run acceptance:a11y`；修改 CSS、布局、稳定页面区域、截图 mask 或视觉层级时运行 `npm run acceptance:visual`；修改表格、工具栏、导航、弹窗或 viewport-dependent UI 时运行 `npm run acceptance:responsive`。视觉快照只能有意更新：先运行 `npm run acceptance:visual -- --update-snapshots`，再不带 `--update-snapshots` 复跑通过后再接受结果。
 
 ### 6.6 操作级证据复核
 
@@ -517,6 +523,9 @@ npm run test:e2e -- e2e/log-analysis.api.spec.ts
 npm run test:e2e -- e2e/debugging.api.spec.ts
 npm run test:e2e -- e2e/agent.api.spec.ts
 npm run acceptance:browser
+npm run acceptance:a11y
+npm run acceptance:visual
+npm run acceptance:responsive
 npm run smoke:m5
 ```
 
@@ -524,6 +533,7 @@ npm run smoke:m5
 
 - API-mode E2E 通过。
 - HDC 项只有在明确不在范围内时才允许 skip。
+- UI-facing 候选版本的 accessibility、visual 和 responsive 质量门禁通过。
 - 严格 `npm run smoke:m5` 只有在 live API 和所有 pilot gate 就绪时才应通过。
 - 非 HDC 目标环境验收必须明确 HDC skipped 或 absent，并记录“不能宣称完整 pilot-ready”。
 
