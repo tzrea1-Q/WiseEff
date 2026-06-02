@@ -36,6 +36,12 @@ const rawEnvSchema = z.object({
     .enum(["true", "false"])
     .default("true")
     .transform((value) => value === "true"),
+  LOG_ANALYSIS_QUEUE_MODE: z.enum(["polling", "durable"]).default("polling"),
+  REDIS_URL: z.string().optional(),
+  LOG_ANALYSIS_QUEUE_PREFIX: z.string().default("wiseeff"),
+  LOG_ANALYSIS_QUEUE_ATTEMPTS: z.coerce.number().int().positive().default(4),
+  LOG_ANALYSIS_QUEUE_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
+  LOG_ANALYSIS_QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(1),
   MOCK_RUNTIME_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -93,6 +99,9 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   }
   if (env.NODE_ENV === "production" && env.AGENT_PROVIDER !== "live") {
     throw new Error("AGENT_PROVIDER=live is required when NODE_ENV=production");
+  }
+  if (env.LOG_ANALYSIS_QUEUE_MODE === "durable" && !env.REDIS_URL?.trim()) {
+    throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable");
   }
   if (env.AGENT_PROVIDER === "live" && !env.AGENT_MODEL?.trim()) {
     throw new Error("AGENT_MODEL is required when AGENT_PROVIDER=live");

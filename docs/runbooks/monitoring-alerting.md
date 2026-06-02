@@ -9,7 +9,8 @@ This runbook defines the minimum signals needed for controlled staging and pilot
 | API | request count, latency, error rate, request id |
 | Readiness | `/health/live`, `/health/ready`, pilot-readiness status |
 | Database | connection errors, slow queries, migration failures |
-| Worker | queued/running/failed/dead-letter counts, lease churn |
+| Worker | queued/running/failed/dead-letter counts, lease churn, queue processing latency |
+| Redis/BullMQ | queue transport readiness, Redis connection failures, waiting/active/delayed/failed/dead-letter counts |
 | Object storage | readiness probe failures, write/read/delete failures |
 | Logs | analysis duration, failed unsupported formats, rerun counts |
 | Device gateway | timeout, stderr, offline, readback mismatch, rollback failure |
@@ -27,6 +28,7 @@ Page or immediately escalate:
 - rollback failure,
 - object-store health failure,
 - worker dead-letter growth,
+- Redis/BullMQ transport failure or sustained queue backlog growth,
 - provider unsafe response or unexpected fallback spike.
 
 ## First Triage

@@ -8,8 +8,8 @@ M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible o
 
 - PostgreSQL database.
 - S3-compatible object storage objects for uploaded logs and generated artifacts.
+- Redis persistence for BullMQ queue metadata when `LOG_ANALYSIS_QUEUE_MODE=durable`.
 - Deployment configuration needed to recreate the environment.
-- Redis persistence after M6.4.
 - Evidence artifacts such as smoke output, readiness JSON, and generated drill reports.
 
 ## Required Targets
@@ -47,31 +47,40 @@ Readiness failures should expose safe categories and remediation hints, not cred
 4. Stop or pause non-essential writes if the environment requires it.
 5. Take a database backup with the approved operator command.
 6. Capture object-storage state using the provider export, sync, or snapshot procedure.
-7. Validate restore targets before executing restore commands:
+7. Capture Redis persistence state or snapshot when durable queue mode is enabled.
+8. Validate restore targets before executing restore commands:
 
 ```bash
 npm run restore:drill
 ```
 
-8. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
-9. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
-10. Start API and worker against the restored state.
-11. Validate table counts and sampled log object references.
-12. Run smoke against the restored environment:
+9. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
+10. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
+11. Restore Redis or queue persistence into the target queue service when durable queue mode is enabled.
+12. Start API and worker against the restored state.
+13. Validate table counts and sampled log object references.
+14. Run smoke against the restored environment:
 
 ```bash
 npm run smoke:m5
 ```
 
-13. Generate and check redacted M6 backup/restore evidence:
+15. When durable queue mode is enabled, also run:
+
+```bash
+npm run queue:check -- --base-url https://<host>
+```
+
+16. Confirm `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness` behave as expected.
+17. Generate and check redacted M6 backup/restore evidence:
 
 ```bash
 npm run backup:drill
 npm run backup:check
 ```
 
-14. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
-15. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
+18. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
+19. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
 
 ## Local Evidence
 
@@ -102,22 +111,23 @@ Local evidence must not be used to claim target restore readiness. Target readin
 - Object storage is restored into an isolated bucket or prefix.
 - Restored database records reference existing restored log objects.
 - Object checksums are validated where available.
+- Restored Redis or queue persistence is either validated through `queue:check` or explicitly recorded as not applicable for polling mode.
 - API readiness gives actionable dependency status.
 - Smoke checks run against the restored environment.
 - Evidence contains no secrets, bearer tokens, signed URLs, raw customer data, database dumps, or object bytes.
 
 ## Redis Conditional Status
 
-Until M6.4 lands, queue evidence should be:
+If durable queue mode is not enabled, queue evidence should be:
 
 ```json
 {
   "status": "conditional",
-  "reason": "Redis durable queue is introduced in M6.4."
+  "reason": "Redis durable queue is not enabled for this drill."
 }
 ```
 
-After M6.4, update this runbook and the evidence checker to validate Redis persistence or BullMQ-equivalent durable queue state.
+When durable queue mode is enabled, Redis persistence or BullMQ-equivalent queue state must be validated through `queue:check` before the target drill is accepted.
 
 ## Failure Handling
 

@@ -10,6 +10,7 @@ Secrets should be supplied by local `.env` files or the target environment's sec
 - Object-store access keys.
 - S3 signed URLs or raw provider error payloads that include signed headers.
 - Database URLs that include restore or backup passwords.
+- Redis credentials or queue connection URLs for target environments.
 - Agent provider API keys.
 - HDC lab credentials or customer device identifiers.
 - Admin smoke tokens for real environments.

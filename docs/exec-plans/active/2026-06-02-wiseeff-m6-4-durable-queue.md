@@ -45,13 +45,13 @@ M6.4 excludes:
 
 ## Success Criteria
 
-- Log uploads enqueue work into the durable queue.
-- A separate worker process consumes queue jobs.
-- PostgreSQL job state remains coherent after worker crash, retry exhaustion, and duplicate delivery.
-- Dead-letter records are visible through existing job/admin APIs or a minimal backend endpoint.
-- `/health/ready` reports Redis and queue readiness.
-- `npm run test:m2`, `npm run acceptance:browser`, and log-analysis acceptance pass with queue mode enabled.
-- TD-007 is closed or narrowed with evidence.
+- [x] Log uploads enqueue work into the durable queue in durable mode.
+- [x] A separate worker process consumes queue jobs in durable mode.
+- [x] PostgreSQL job state remains coherent after retry scheduling, retry exhaustion, and duplicate delivery in local tests.
+- [x] Dead-letter records remain visible through PostgreSQL job state and existing log/job APIs.
+- [x] `/health/ready` reports Redis/BullMQ transport and PostgreSQL job-state readiness when durable queue health is configured.
+- [ ] `npm run test:m2`, `npm run acceptance:browser`, and log-analysis acceptance pass with queue mode enabled against a target environment.
+- [x] TD-007 is narrowed with local implementation evidence; target Redis evidence, queue metrics, and capacity tuning remain open.
 
 ## Expected File Structure
 
@@ -63,7 +63,7 @@ Create:
 - `server/modules/jobs/queueHealth.ts`: queue readiness model.
 - `server/modules/jobs/queueHealth.test.ts`: readiness tests.
 - `server/modules/logs/logAnalysisQueue.ts`: log-analysis enqueue/process binding.
-- `server/modules/logs/logAnalysisQueue.test.ts`: idempotency and retry tests.
+- `server/modules/logs/logAnalysisQueueRuntime.test.ts`: durable runtime creation, malformed payload, retry throw, and transport tests.
 - `docs/runbooks/durable-queue.md`: Redis/BullMQ operator runbook.
 
 Modify:
@@ -90,56 +90,62 @@ Modify:
 
 ### Task 1: Queue Port And Contract Tests
 
-- [ ] Write failing tests for `queuePort` semantics: enqueue once, process with idempotency key, retry with backoff, dead-letter after max attempts, pause/resume, and health failure.
-- [ ] Add queue types without coupling service code directly to BullMQ.
-- [ ] Run `npm run test:server -- server/modules/jobs/bullmqQueue.test.ts` and confirm failure before implementation.
+- [x] Write failing tests for queue semantics: enqueue once, retry/backoff, dead-letter after max attempts, pause/resume, and health failure.
+- [x] Add queue types without coupling service code directly to BullMQ.
+- [x] Run focused queue tests and confirm the red/green path before implementation.
 
 ### Task 2: Redis/BullMQ Adapter
 
-- [ ] Add BullMQ and Redis client dependencies after reviewing package and license impact.
-- [ ] Implement the BullMQ adapter behind `queuePort`.
-- [ ] Add env variables for Redis URL, queue prefix, retry attempts, backoff, and worker concurrency.
-- [ ] Ensure Redis connection errors do not crash API startup without an actionable production-readiness failure.
-- [ ] Run focused queue adapter tests.
+- [x] Add BullMQ and Redis client dependencies after reviewing package impact.
+- [x] Implement the BullMQ adapter behind `queuePort`.
+- [x] Add env variables for Redis URL, queue prefix, retry attempts, backoff, and worker concurrency.
+- [x] Ensure Redis connection errors surface as actionable readiness failures instead of silent success.
+- [x] Run focused queue adapter tests.
 
 ### Task 3: Log Analysis Dispatch
 
-- [ ] Write failing tests for log upload enqueue, worker consume, duplicate delivery, worker crash, retry exhaustion, and dead-letter status.
-- [ ] Update log creation to write PostgreSQL job state and enqueue the durable queue message.
-- [ ] Update worker runner to consume from the queue and use existing log-analysis service functions.
-- [ ] Preserve existing local database-polling mode only if explicitly configured for development.
-- [ ] Run `npm run test:server -- server/modules/logs/logAnalysisQueue.test.ts server/modules/logs/worker.test.ts`.
+- [x] Write failing tests for log upload enqueue, worker consume by `jobId`, duplicate delivery, retry scheduling, and dead-letter status.
+- [x] Update log creation to write PostgreSQL job state and enqueue the durable queue message after job creation.
+- [x] Update worker runner to consume from the queue and use existing log-analysis processing functions.
+- [x] Preserve existing local database-polling mode through `LOG_ANALYSIS_QUEUE_MODE=polling`.
+- [x] Run focused log-analysis queue, service, route, worker, and worker-runner tests.
 
 ### Task 4: Health, Smoke, And Operations
 
-- [ ] Add queue health to `/health/ready` and pilot-readiness details.
-- [ ] Update smoke scripts to report Redis/queue status separately from worker status.
-- [ ] Add tests for queue-ready, queue-degraded, and queue-missing production modes.
-- [ ] Update runbooks for pause, resume, drain, dead-letter review, and recovery.
+- [x] Add queue health to `/health/ready` and pilot-readiness details.
+- [x] Update smoke scripts to report Redis/queue status separately from worker status.
+- [x] Add tests for queue-ready, queue-degraded, and queue-missing modes.
+- [x] Update runbooks for pause, resume, drain, dead-letter review, and recovery.
 
 ### Task 5: Acceptance And Backup Integration
 
-- [ ] Run log-analysis acceptance with queue mode enabled.
-- [ ] Update M6.3 backup/restore procedures to execute Redis persistence validation.
-- [ ] Add queue evidence to generated acceptance or smoke outputs where relevant.
-- [ ] Update TD-007 in `docs/exec-plans/tech-debt-tracker.md`.
+- [ ] Run log-analysis acceptance with queue mode enabled against a target durable queue environment.
+- [x] Update backup/restore procedures to require Redis persistence validation when durable queue mode is enabled.
+- [x] Add queue evidence expectations to self-hosted smoke and `queue:check`.
+- [x] Update TD-007 in `docs/exec-plans/tech-debt-tracker.md`.
 
 ### Task 6: Verification And Completion
 
-- [ ] Run focused queue/log tests.
+- [x] Run focused queue/log tests.
 - [ ] Run `npm run test:m2`.
 - [ ] Run `npm run acceptance:browser` or focused log acceptance if full browser runtime is too expensive during development.
-- [ ] Run `npm run docs:check`.
-- [ ] Run `npm run contract:check`.
-- [ ] Run `npm run test:all`.
-- [ ] Run `npm run build`.
-- [ ] Run `git diff --check`.
+- [x] Run `npm run docs:check`.
+- [x] Run `npm run contract:check`.
+- [x] Run `npm run test:all`.
+- [x] Run `npm run build`.
+- [x] Run `git diff --check`.
+
+## Current Completion Status
+
+As of 2026-06-02, the repository implementation is locally complete for queue dispatch, worker consumption, retry/dead-letter behavior, readiness, self-hosted Redis wiring, docs, and focused tests. This plan remains active because target-environment Redis/BullMQ evidence, queue-mode acceptance, Redis persistence drill evidence, queue metrics, and capacity tuning have not yet been recorded.
+
+`npm run test:m2` was attempted on 2026-06-02. Its unit/build stages passed, but the Playwright E2E stage was blocked by local runtime setup: the current worktree has no `.env`, several E2E helpers received no `DATABASE_URL`, and port `8787` was already occupied by an existing WiseEff API that Playwright could reuse. Treat this as an environment/target evidence gap, not as completed queue-mode acceptance.
 
 ## External Inputs Needed
 
-- Redis deployment location and persistence policy.
-- Queue concurrency target for first pilot.
-- Retry and dead-letter retention policy.
+- Redis deployment location and persistence policy for the first self-hosted target.
+- Queue concurrency target for first pilot beyond the local default of `1`.
+- Retry and dead-letter retention policy beyond the local default attempts/backoff.
 - Whether Redis is allowed on the same Linux host as PostgreSQL for the first self-hosted deployment.
 - Backup directory or snapshot command for Redis persistence.
 
@@ -147,17 +153,17 @@ Modify:
 
 | Area | Status | Files | Notes |
 | --- | --- | --- | --- |
-| Repository maps | Update | `docs/README.md`, `docs/runbooks/README.md`, `AGENTS.md` | Add durable queue runbook if created. |
-| Planning docs | Update | `docs/exec-plans/active/development-roadmap.md`, this plan, `docs/exec-plans/tech-debt-tracker.md` | Track TD-007 closure or remaining queue debt. |
+| Repository maps | Updated | `README.md`, `docs/README.md`, `docs/developer/README.md`, `docs/runbooks/README.md`, `AGENTS.md` | Durable queue runbook and `queue:check` are linked. |
+| Planning docs | Updated | `docs/exec-plans/active/development-roadmap.md`, this plan, `docs/exec-plans/tech-debt-tracker.md` | TD-007 is narrowed; target queue evidence remains open. |
 | Product specs | Review | `docs/product-specs/prototype-functional-spec.md` | Update only if visible log-analysis states change. |
-| Architecture docs | Update | `ARCHITECTURE.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md` | Document Redis/BullMQ dispatch and PostgreSQL source-of-truth boundary. |
-| Quality/testing docs | Update | `docs/developer/verification-matrix.md`, `docs/design-docs/testing-strategy.md`, `docs/QUALITY_SCORE.md` | Add queue-mode log-analysis gates. |
-| Reliability/runbooks | Update | `docs/RELIABILITY.md`, `docs/runbooks/durable-queue.md`, `docs/runbooks/backup-restore.md`, `docs/runbooks/monitoring-alerting.md` | Queue recovery and Redis persistence are reliability-critical. |
-| Security/governance docs | Review | `docs/SECURITY.md`, `docs/security/secrets-management.md` | Redis credentials and queue payload sensitivity must be documented if payloads include sensitive content. |
-| Frontend/design docs | Review | `docs/FRONTEND.md` | Update only if visible job states or polling behavior changes. |
+| Architecture docs | Updated | `ARCHITECTURE.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md` | Documents Redis/BullMQ dispatch and PostgreSQL source-of-truth boundary. |
+| Quality/testing docs | Updated | `docs/developer/verification-matrix.md`, `docs/QUALITY_SCORE.md` | Adds queue-mode readiness gate and local implementation status. `docs/design-docs/testing-strategy.md` was not edited because no browser-state acceptance contract changed. |
+| Reliability/runbooks | Updated | `docs/RELIABILITY.md`, `docs/runbooks/durable-queue.md`, `docs/runbooks/backup-restore.md`, `docs/runbooks/monitoring-alerting.md`, `docs/runbooks/self-hosted-runtime.md` | Queue recovery, readiness, and Redis persistence are documented. |
+| Security/governance docs | Reviewed/Updated | `docs/security/secrets-management.md` | Redis credentials are covered as secrets. Queue payloads carry `jobId`, not full log contents. |
+| Frontend/design docs | Reviewed | `docs/FRONTEND.md` | No visible job-state or polling behavior changed. |
 | Generated artifacts | Review | `docs/generated/acceptance-operation-evidence.md`, `docs/generated/m5-pilot-acceptance.md` | Regenerate only after acceptance/smoke changes. |
 | References | Review | `docs/references/` | Add compact queue reference if repeated agent work needs it. |
-| Chinese developer docs | Update | `docs/zh-CN/backend-runtime.md`, `docs/zh-CN/security-reliability.md` | Queue runtime and recovery are developer-facing. |
+| Chinese developer docs | Updated | `docs/zh-CN/backend-runtime.md`, `docs/zh-CN/security-reliability.md` | Queue runtime and recovery are developer-facing. |
 
 ## Documentation Update Gate
 

@@ -16,6 +16,9 @@ flowchart LR
   Api --> Audit["Audit module"]
   Api --> Auth["Auth/RBAC module"]
   Api --> Worker["Log worker seam"]
+  Api --> Queue["Redis/BullMQ durable queue"]
+  Queue --> Worker
+  Worker --> Db
   Worker --> ObjectStore["Local or S3/OSS object store seam"]
   Api --> Agent["Agent orchestrator/provider seam"]
   Api --> Gateway["Simulator or HDC device gateway seam"]
@@ -79,7 +82,9 @@ M6.2 adds the OIDC-capable identity boundary and durable backend user-governance
 
 M6.3 keeps object storage self-hosted by targeting an S3-compatible contract rather than a cloud account. The readiness seam now performs bucket and probe-object write/read/head/delete checks, and backup/restore drills generate redacted evidence for PostgreSQL, object storage, isolated restore targets, and conditional Redis status.
 
-The M6.1 baseline is deployment plumbing, not full production hardening. Durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6.4-M6.6 work until their target evidence is recorded.
+M6.4 adds Redis/BullMQ as the durable log-analysis dispatch transport. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and evidence. API processes enqueue `log-analysis` messages after the PostgreSQL job is committed; worker processes consume queue payloads by `jobId` and must claim the PostgreSQL job before writing progress or terminal state. Database polling mode remains available for local development and compensation.
+
+The M6.1-M6.4 baseline is deployment plumbing plus identity, storage, and queue hardening, not full production hardening. Target OIDC evidence, completed self-hosted restore evidence, target Redis/BullMQ queue evidence, observability, release rollback, and capacity gates remain open until their target evidence is recorded.
 
 ## Deeper Docs
 
