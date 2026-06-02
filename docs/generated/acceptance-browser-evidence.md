@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-01T12:53:37.586Z
-- Branch: `codex/m5-10-evidence-grade-upgrade`
-- Commit: `0d6b607deed7b84ca234a5c32ca2b8dea3c836cd`
+- Date: 2026-06-02T03:53:25.759Z
+- Branch: `codex/m5-2-remaining-evidence-closure`
+- Commit: `75fcd15b6d222c6ce4fa945763774a18f756e585`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `passed`

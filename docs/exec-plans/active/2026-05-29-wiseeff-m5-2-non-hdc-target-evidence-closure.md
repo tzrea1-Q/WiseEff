@@ -50,6 +50,7 @@ Completed locally after `.env` was populated:
 - On 2026-05-30, focused live API preflight passed with `npx tsx -- scripts/run-acceptance-preflight.ts --no-start-runtime --skip-gates --skip-frontend --evidence-out test-results/acceptance/live-api-preflight-evidence.md`.
 - On 2026-05-30, `npm run acceptance:browser` passed in local non-HDC mode: 16 passed and 1 HDC device-lab test skipped. This deterministic-Agent browser suite records stable UI workflow evidence, while live Agent readiness remains covered by smoke/preflight.
 - On 2026-05-30, production-auth API-mode E2E passed locally with `VITE_WISEEFF_API_AUTHORIZATION` and `AGENT_PROVIDER=deterministic`: 6 passed and 1 HDC device-lab test skipped.
+- On 2026-06-02, after PR #52 merged, latest `main` was revalidated locally on branch `codex/m5-2-remaining-evidence-closure`: `npm run docs:check`, `npm run contract:check`, `npm run acceptance:ci`, `npm run acceptance:models`, `npm run acceptance:quality`, `npm run build`, `npm run acceptance:browser -- --mode=local-non-hdc`, `npm run acceptance:evidence`, and `git diff --check` passed. Browser acceptance reported 33 passed and 1 HDC device-lab test skipped. A temporary local API on `127.0.0.1:8877` used the completed `.env` live Agent provider configuration; `npm run smoke:m5` passed with `npm_config_allow_only_blocked=deviceGateway`, leaving only `deviceGateway` blocked.
 
 Still open:
 
@@ -59,7 +60,7 @@ Still open:
 - Target-environment evidence is still missing: deployed staging API/web/worker, target PostgreSQL, cloud or approved target object storage, target backup/restore, target rollback, and target identity/user provisioning.
 - Dynamic production identity is not complete; local production-auth E2E now uses a static smoke bearer token, while target environments still need provisioned users or an OIDC/SSO-backed token lifecycle.
 
-Completion decision, 2026-05-30: keep this plan in `docs/exec-plans/active/`. The local non-HDC evidence is stronger now, but the plan goal is target-environment closure; target deployment, target backup/restore, and deployment rollback evidence have not been captured.
+Completion decision, 2026-06-02: keep this plan in `docs/exec-plans/active/`. The local non-HDC evidence is current on latest `main`, but the plan goal is target-environment closure; target deployment, target backup/restore, and deployment rollback evidence have not been captured.
 
 ## Required External Inputs From The User
 
