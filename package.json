@@ -26,6 +26,7 @@
     "acceptance:operations": "tsx scripts/check-acceptance-operation-matrix.ts",
     "acceptance:models": "tsx scripts/check-acceptance-state-models.ts",
     "acceptance:evidence": "tsx scripts/check-operation-evidence.ts",
+    "acceptance:ci": "tsx scripts/check-acceptance-ci.ts",
     "acceptance:a11y": "playwright test --config playwright.quality.config.ts --project a11y",
     "acceptance:visual": "playwright test --config playwright.quality.config.ts --project visual",
     "acceptance:responsive": "playwright test --config playwright.quality.config.ts --project responsive",

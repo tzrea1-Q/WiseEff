@@ -4,6 +4,25 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      acceptance_mode:
+        description: Acceptance mode for manual synthetic runs.
+        required: true
+        default: local-non-hdc
+        type: choice
+        options:
+          - local-non-hdc
+          - target-non-hdc
+          - full-pilot
+      frontend_url:
+        description: Target frontend URL for target-non-HDC or full-pilot synthetic runs.
+        required: false
+        type: string
+      env_file:
+        description: Environment file to create for target synthetic runs.
+        required: false
+        default: .env.target.local
+        type: string
 
 permissions:
   contents: read
@@ -40,3 +59,229 @@ jobs:
 
       - name: M2 E2E gate
         run: echo "Run npm run test:m2 locally or in staging with DATABASE_URL, OBJECT_STORE_ROOT, db:migrate, db:seed:m0, db:seed:m1, and db:seed:m2. CI does not run Playwright by default because this workflow has no PostgreSQL service."
+
+  acceptance-local-non-hdc:
+    name: Acceptance local non-HDC
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.acceptance_mode == 'local-non-hdc'
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: wiseeff
+          POSTGRES_PASSWORD: wiseeff
+          POSTGRES_DB: wiseeff
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U wiseeff -d wiseeff"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff
+      WISEEFF_API_BASE_URL: http://127.0.0.1:8787
+      VITE_WISEEFF_RUNTIME_MODE: api
+      VITE_WISEEFF_API_BASE_URL: http://127.0.0.1:8787
+      WISEEFF_ACCEPTANCE_FRONTEND_URL: http://127.0.0.1:5173
+      OBJECT_STORE_MODE: local
+      OBJECT_STORE_ROOT: .wiseeff-object-store
+      DEBUG_DEVICE_GATEWAY_MODE: simulator
+      DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+      AGENT_PROVIDER: deterministic
+      AGENT_API_FORMAT: wiseeff
+      M5_CONTRACT_CHECK_PASSED: "true"
+      M5_SMOKE_ALLOW_NO_API: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare local acceptance env
+        shell: bash
+        run: |
+          cp .env.example .env
+          {
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "AGENT_PROVIDER=deterministic"
+            echo "AGENT_API_FORMAT=wiseeff"
+            echo "AGENT_API_BASE_URL=http://127.0.0.1:8787"
+            echo "AGENT_MODEL=wiseeff-rules-m4"
+            echo "AGENT_API_KEY=local-ci-deterministic"
+            echo "OBJECT_STORE_MODE=local"
+            echo "OBJECT_STORE_ROOT=.wiseeff-object-store"
+            echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
+            echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
+            echo "VITE_WISEEFF_RUNTIME_MODE=api"
+            echo "DEBUG_DEVICE_GATEWAY_MODE=simulator"
+            echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
+            echo "M5_CONTRACT_CHECK_PASSED=true"
+          } >> .env
+
+      - name: Acceptance CI metadata
+        run: npm run acceptance:ci
+
+      - name: Acceptance state models
+        run: npm run acceptance:models
+
+      - name: Acceptance quality metadata
+        run: npm run acceptance:quality
+
+      - name: Acceptance accessibility gate
+        run: npm run acceptance:a11y
+
+      - name: Acceptance visual gate
+        run: npm run acceptance:visual
+
+      - name: Acceptance responsive gate
+        run: npm run acceptance:responsive
+
+      - name: Browser acceptance local non-HDC
+        run: npm run acceptance:browser -- --mode local-non-hdc
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-acceptance-local-non-hdc
+          path: |
+            playwright-report/acceptance
+            test-results/acceptance
+            docs/generated/acceptance-browser-evidence.md
+            docs/generated/acceptance-operation-evidence.md
+            docs/generated/acceptance-operation-evidence/index.json
+            playwright-report/quality
+            test-results/quality
+
+  target-synthetic-acceptance:
+    name: Target synthetic acceptance
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.acceptance_mode != 'local-non-hdc'
+
+    env:
+      WISEEFF_API_BASE_URL: ${{ secrets.WISEEFF_API_BASE_URL }}
+      VITE_WISEEFF_API_BASE_URL: ${{ secrets.WISEEFF_API_BASE_URL }}
+      WISEEFF_ACCEPTANCE_FRONTEND_URL: ${{ inputs.frontend_url }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      AUTH_MODE: production
+      AUTH_TOKEN_ISSUER: ${{ secrets.AUTH_TOKEN_ISSUER }}
+      AUTH_TOKEN_HMAC_SECRET: ${{ secrets.AUTH_TOKEN_HMAC_SECRET }}
+      M5_SMOKE_AUTHORIZATION: ${{ secrets.M5_SMOKE_AUTHORIZATION }}
+      WISEEFF_SMOKE_AUTHORIZATION: ${{ secrets.WISEEFF_SMOKE_AUTHORIZATION }}
+      DEBUG_DEVICE_GATEWAY_MODE: ${{ vars.DEBUG_DEVICE_GATEWAY_MODE }}
+      HDC_DEVICE_LAB_AVAILABLE: ${{ vars.HDC_DEVICE_LAB_AVAILABLE }}
+      HDC_SMOKE_PROJECT_ID: ${{ vars.HDC_SMOKE_PROJECT_ID }}
+      HDC_SMOKE_DEVICE_ID: ${{ vars.HDC_SMOKE_DEVICE_ID }}
+      HDC_SMOKE_TARGET_REF: ${{ vars.HDC_SMOKE_TARGET_REF }}
+      HDC_SMOKE_PARAMETER_ID: ${{ vars.HDC_SMOKE_PARAMETER_ID }}
+      HDC_SMOKE_NODE_PATH: ${{ vars.HDC_SMOKE_NODE_PATH }}
+      HDC_SMOKE_WRITE_VALUE: ${{ vars.HDC_SMOKE_WRITE_VALUE }}
+      M5_DEVICE_GATEWAY_EVIDENCE: ${{ vars.M5_DEVICE_GATEWAY_EVIDENCE }}
+      M5_BACKUP_RESTORE_DRILL_AT: ${{ vars.M5_BACKUP_RESTORE_DRILL_AT }}
+      M5_CONTRACT_CHECK_PASSED: ${{ vars.M5_CONTRACT_CHECK_PASSED }}
+      WISEEFF_QUALITY_SKIP_SEED: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Prepare target acceptance env
+        shell: bash
+        run: |
+          target_env="${{ inputs.env_file }}"
+          frontend_url="${WISEEFF_ACCEPTANCE_FRONTEND_URL:-https://example.invalid}"
+          {
+            echo "WISEEFF_API_BASE_URL=${WISEEFF_API_BASE_URL}"
+            echo "VITE_WISEEFF_RUNTIME_MODE=api"
+            echo "VITE_WISEEFF_API_BASE_URL=${VITE_WISEEFF_API_BASE_URL}"
+            echo "DATABASE_URL=${DATABASE_URL}"
+            echo "AUTH_MODE=production"
+            echo "AUTH_TOKEN_ISSUER=${AUTH_TOKEN_ISSUER}"
+            echo "AUTH_TOKEN_HMAC_SECRET=${AUTH_TOKEN_HMAC_SECRET}"
+            echo "M5_SMOKE_AUTHORIZATION=${M5_SMOKE_AUTHORIZATION:-${WISEEFF_SMOKE_AUTHORIZATION}}"
+            echo "WISEEFF_SMOKE_AUTHORIZATION=${WISEEFF_SMOKE_AUTHORIZATION:-${M5_SMOKE_AUTHORIZATION}}"
+            echo "DEBUG_DEVICE_GATEWAY_MODE=${DEBUG_DEVICE_GATEWAY_MODE:-simulator}"
+            echo "HDC_DEVICE_LAB_AVAILABLE=${HDC_DEVICE_LAB_AVAILABLE:-false}"
+            echo "HDC_SMOKE_PROJECT_ID=${HDC_SMOKE_PROJECT_ID}"
+            echo "HDC_SMOKE_DEVICE_ID=${HDC_SMOKE_DEVICE_ID}"
+            echo "HDC_SMOKE_TARGET_REF=${HDC_SMOKE_TARGET_REF}"
+            echo "HDC_SMOKE_PARAMETER_ID=${HDC_SMOKE_PARAMETER_ID}"
+            echo "HDC_SMOKE_NODE_PATH=${HDC_SMOKE_NODE_PATH}"
+            echo "HDC_SMOKE_WRITE_VALUE=${HDC_SMOKE_WRITE_VALUE}"
+            echo "M5_DEVICE_GATEWAY_EVIDENCE=${M5_DEVICE_GATEWAY_EVIDENCE}"
+            echo "M5_BACKUP_RESTORE_DRILL_AT=${M5_BACKUP_RESTORE_DRILL_AT}"
+            echo "M5_CONTRACT_CHECK_PASSED=${M5_CONTRACT_CHECK_PASSED:-true}"
+          } > "${target_env}"
+          echo "WISEEFF_ACCEPTANCE_FRONTEND_URL=${frontend_url}" >> "$GITHUB_ENV"
+
+      - name: Acceptance CI metadata
+        run: npm run acceptance:ci
+
+      - name: Acceptance state models
+        run: npm run acceptance:models
+
+      - name: Acceptance quality metadata
+        run: npm run acceptance:quality
+
+      - name: Acceptance accessibility gate
+        run: npm run acceptance:a11y
+        env:
+          WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
+
+      - name: Acceptance visual gate
+        run: npm run acceptance:visual
+        env:
+          WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
+
+      - name: Acceptance responsive gate
+        run: npm run acceptance:responsive
+        env:
+          WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
+
+      - name: Browser acceptance target non-HDC
+        if: inputs.acceptance_mode == 'target-non-hdc'
+        run: npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime --env-file "${{ inputs.env_file }}" --frontend-url "${WISEEFF_ACCEPTANCE_FRONTEND_URL}"
+
+      - name: Browser acceptance full pilot
+        if: inputs.acceptance_mode == 'full-pilot'
+        run: npm run acceptance:browser -- --mode full-pilot --no-start-runtime --env-file "${{ inputs.env_file }}" --frontend-url "${WISEEFF_ACCEPTANCE_FRONTEND_URL}"
+
+      - name: Upload acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiseeff-acceptance-${{ inputs.acceptance_mode }}
+          path: |
+            playwright-report/acceptance
+            test-results/acceptance
+            docs/generated/acceptance-browser-evidence.md
+            docs/generated/acceptance-operation-evidence.md
+            docs/generated/acceptance-operation-evidence/index.json
+            playwright-report/quality
+            test-results/quality

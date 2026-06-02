@@ -286,6 +286,18 @@ Requirement-level coverage is defined in `docs/developer/browser-acceptance-cove
 
 M5.11 adds deterministic quality gates beside the workflow gate. Use `npm run acceptance:quality` after changing the quality scripts, Playwright quality config, or quality spec locations. Use `npm run acceptance:a11y` for page structure, dialog, form, navigation, label, heading, focus, or Agent panel changes. Use `npm run acceptance:visual` for CSS, layout, stable shell/page region, snapshot-mask, or visual hierarchy changes. Use `npm run acceptance:responsive` for table, toolbar, navigation, dialog, or viewport-dependent changes. Visual snapshots should be updated intentionally with `npm run acceptance:visual -- --update-snapshots`, then rerun without `--update-snapshots` before accepting the result.
 
+M5.12 adds CI and target synthetic archiving for these gates. Pull requests and pushes run the GitHub Actions `acceptance-local-non-hdc` job, which provisions PostgreSQL, runs the state-model gate, quality gates, and local non-HDC browser acceptance, then uploads `wiseeff-acceptance-local-non-hdc`. Manual `workflow_dispatch` runs can choose `target-non-hdc` or `full-pilot`; these use `--no-start-runtime`, the provided target frontend URL, GitHub Secrets for target API/auth inputs, and upload `wiseeff-acceptance-<mode>`. Treat these artifacts as acceptance evidence attachments:
+
+- `playwright-report/acceptance`
+- `test-results/acceptance`
+- `docs/generated/acceptance-browser-evidence.md`
+- `docs/generated/acceptance-operation-evidence.md`
+- `docs/generated/acceptance-operation-evidence/index.json`
+- `playwright-report/quality`
+- `test-results/quality`
+
+`npm run acceptance:ci` is the local metadata guard for this workflow. It must pass after changing `.github/workflows/ci.yml` or CI artifact paths. Target synthetic runs test an already deployed target frontend; that frontend must already have the correct API base URL and production-auth bearer-token injection path configured by the deployment. PR artifacts prove local non-HDC readiness only. Full-pilot artifacts count only when the manual run is backed by real target environment secrets plus HDC, backup/restore, rollback, object-store, worker, and live Agent evidence.
+
 ### Reviewing Operation Evidence
 
 After `npm run acceptance:browser`, open `docs/generated/acceptance-operation-evidence.md` and `docs/generated/acceptance-operation-evidence/index.json`. Each automated operation should show a role, route, assertion types, status, artifact path, runtime, trace/report location, and reproduction steps. For operations with `api` assertions, verify that the record includes compact request/response summaries with method, path, status, and request ID when available. For operations with `db` assertions, verify the table, predicate, observed state, and row count summary. For operations with `audit` assertions, verify event ID, kind, action, target ID, and request or trace correlation when available. Treat missing P0/P1 automated operation evidence, evidence records without review metadata, missing required API/DB/audit summaries, or unredacted secrets as blocking acceptance failures.

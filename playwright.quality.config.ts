@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: process.env.WISEEFF_ACCEPTANCE_ENV_FILE ?? ".env" });
 
-const baseURL = "http://127.0.0.1:5173";
+const baseURL = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL ?? "http://127.0.0.1:5173";
 const apiURL = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const apiAuthorization =
   process.env.VITE_WISEEFF_API_AUTHORIZATION ??

@@ -18,6 +18,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:operations` | Operation-level browser coverage metadata | Adding or changing concrete user operations, roles, permissions, UI controls, or API-backed interaction behavior. |
 | `npm run acceptance:models` | M5.9 state-model and contract invariants for parameter review, log tasks, debugging, and permissions | Changing workflow state transitions, seeded fixtures, permission contracts, or API/domain rules behind browser acceptance. |
 | `npm run acceptance:evidence` | Operation evidence index and M5.10 evidence-grade metadata completeness | After a browser acceptance run, or when changing operation evidence helpers, matrix entries, or evidence gates. |
+| `npm run acceptance:ci` | M5.12 GitHub Actions acceptance job, synthetic mode, and artifact-archive wiring | After changing `.github/workflows/ci.yml`, acceptance CI scripts, target synthetic modes, or CI artifact paths. |
 | `npm run acceptance:quality` | M5.11 quality-gate metadata for accessibility, visual, and responsive specs/scripts | After changing package scripts, quality Playwright config, or quality spec locations. |
 | `npm run acceptance:a11y` | WCAG A/AA accessibility scans for core routes and key interaction states | Changing page structure, dialogs, forms, navigation, headings, labels, focus behavior, or Agent panel UI. |
 | `npm run acceptance:visual` | Stable-region visual regression snapshots | Changing CSS, layout, shell/page regions, visual hierarchy, or masked snapshot regions. |
@@ -39,6 +40,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | M5 smoke | `npm run smoke:m5` | Live API URL by default; admin smoke token for pilot-readiness | Operations smoke against a running API. |
 | Manual acceptance preflight | `npm run acceptance:preflight` | `.env`, running API, worker, frontend, PostgreSQL/object store dependencies | Automates manual acceptance steps through runtime health checks. |
 | Browser acceptance | `npm run acceptance:browser` | `.env`, API-mode frontend/backend, PostgreSQL, object store, worker dependencies | Automates manual browser workflows A-H and writes generated evidence. |
+| M5.12 CI local non-HDC acceptance | GitHub Actions `acceptance-local-non-hdc` job | PostgreSQL service container, local object store, deterministic Agent provider, simulator gateway | Runs PR/push browser acceptance, state models, a11y, visual, responsive, and archives evidence artifacts. |
+| M5.12 target synthetic acceptance | GitHub Actions `target-synthetic-acceptance` workflow_dispatch | Target frontend/API URLs, auth secrets, optional target `DATABASE_URL`, external dependency evidence | Runs manual target non-HDC or full-pilot synthetic checks with `--no-start-runtime` and archives evidence artifacts. |
 | M5 full pilot gate | `npm run test:m5` | PostgreSQL, live API, and target evidence inputs | Before claiming commercial pilot baseline in an environment. |
 
 ## UI Interaction Acceptance Rule
@@ -53,6 +56,7 @@ npm run acceptance:coverage
 npm run acceptance:operations
 npm run acceptance:models
 npm run acceptance:evidence
+npm run acceptance:ci
 npm run acceptance:quality
 npm run acceptance:a11y
 npm run acceptance:visual
@@ -68,6 +72,8 @@ Non-HDC modes require workflows A-E, G, and H to pass; HDC workflow F may be ski
 M5.10 evidence-grade rule: every passed operation evidence record must include runtime, trace/report, reproduction, role, route, assertion, status, and artifact metadata. If an operation matrix row declares `api`, `db`, or `audit` assertions, the evidence record must include the matching compact API request/response summary, DB predicate/observed-state summary, or audit event summary. API summaries should include method, path, status, and request ID when the response exposes one. DB summaries should name the table, predicate, observed state, and row count when available. Audit summaries should include event ID, kind, action, target ID, and request/trace correlation when available. Secrets, authorization values, tokens, keys, and bearer values must be redacted before evidence is written.
 
 M5.11 quality-gate rule: UI-facing changes should run the narrow quality gate that matches the risk, plus `npm run acceptance:quality` when scripts or spec wiring change. `npm run acceptance:a11y` covers automated WCAG A/AA scans, `npm run acceptance:visual` covers stable masked snapshots, and `npm run acceptance:responsive` covers desktop/tablet/mobile usability and horizontal-overflow checks. These gates supplement browser acceptance; they do not replace operation evidence or manual judgment for ambiguous visual issues.
+
+M5.12 CI/synthetic rule: `.github/workflows/ci.yml` must keep a local non-HDC acceptance job for PR/push candidates, a manual target synthetic job for `target-non-hdc` and `full-pilot`, and artifact uploads for Playwright reports, traces, screenshots, browser evidence, and operation evidence. Run `npm run acceptance:ci` after changing the workflow. PR CI may prove local non-HDC readiness only; full-pilot remains valid only when the manual workflow uses target environment secrets plus real HDC, backup/restore, rollback, object-store, worker, and Agent provider evidence.
 
 ## Documentation-Only Changes
 
