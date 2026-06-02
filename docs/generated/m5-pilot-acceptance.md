@@ -86,6 +86,20 @@ Commit: `bd583cf3a80f98b1487f88f91f2bafdb5b2bf574`
 - `npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts e2e/debugging.api.spec.ts e2e/agent.api.spec.ts` passed with production-mode HMAC auth, `VITE_WISEEFF_API_AUTHORIZATION` set from the smoke token, and `AGENT_PROVIDER=deterministic`: 6 passed and 1 HDC device-lab test skipped. The legacy E2E direct API assertions were updated to send the same smoke authorization headers as the UI runtime, closing the previous local static-bearer production-auth E2E gap.
 - Strict `npm run smoke:m5` is still expected to fail for this local environment unless `--allow-only-blocked=deviceGateway` is provided, because simulator device gateway mode is not accepted as full pilot readiness.
 
+### Local Non-HDC Revalidation After M5.12 Merge
+
+Date: 2026-06-02T11:58:00+08:00
+Environment: local `.env` with PostgreSQL, production-mode HMAC auth, local object store, simulator device gateway, OpenAI-compatible live Agent provider, local backup/restore timestamp, and latest `main` after PR #52. This remains local non-HDC evidence, not external staging, cloud object-store, hardware-lab, or deployment rollback evidence.
+Branch: `codex/m5-2-remaining-evidence-closure`
+Commit: `75fcd15b6d222c6ce4fa945763774a18f756e585`
+
+- `npm run docs:check`, `npm run contract:check`, `npm run acceptance:ci`, `npm run acceptance:models`, `npm run acceptance:quality`, `npm run build`, and `npm run acceptance:evidence` passed. The build retained the existing Vite chunk-size warning.
+- `npm run acceptance:browser -- --mode=local-non-hdc` passed on latest `main`: 33 Playwright acceptance tests passed, 1 HDC device-lab test skipped, requirement coverage passed, operation evidence passed with 20 covered operation IDs and no missing operation IDs.
+- The browser preflight against the already-running local API on `127.0.0.1:8787` passed with `deviceGateway` and `agentProvider` blocked because that existing API process was running deterministic Agent provider mode.
+- A temporary local API was started on `127.0.0.1:8877` with the completed `.env` live Agent provider configuration. `npm run smoke:m5` passed with `npm_config_allow_only_blocked=deviceGateway`; `/health/live` and `/health/ready` were ready, and `/api/v1/operations/pilot-readiness` was blocked only by `deviceGateway`.
+- Focused live API preflight against `127.0.0.1:8877` passed with gates and frontend intentionally skipped: health live, health ready, current user, and non-HDC pilot readiness all passed; `agentProvider` was ready.
+- Full strict `npm run smoke:m5` remains expected to fail without allowed blockers in local simulator mode because HDC device-gateway evidence is not present.
+
 ### M5.2 Blockers
 
 - External staging deployment evidence is still required before this environment can be called pilot-ready: deployed staging API/web/worker, target-environment PostgreSQL E2E, HDC device-lab smoke, cloud S3/OSS or explicitly approved local object-store policy, and rollback rehearsal.
