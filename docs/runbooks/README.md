@@ -10,10 +10,11 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [Staging Deployment](staging-deployment.md): deploy order and smoke sequence for staging.
 - [Backup And Restore](backup-restore.md): backup and restore drill procedure.
 - [Rollback](rollback.md): rollback rehearsal and emergency rollback sequence.
+- [Self-Hosted Release And Rollback](release-rollback.md): M6.6 release-candidate, capacity, target synthetic, and rollback rehearsal procedure.
 - [Monitoring And Alerting](monitoring-alerting.md): signals, alerts, and first triage.
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.
 - [Agent Provider](agent-provider.md): live provider readiness, fallback, and trace evidence.
 
 ## Evidence Rule
 
-Repository-local tests can prove code paths and local integration. Target-environment claims need evidence from the target environment. Record M5 evidence in [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md).
+Repository-local tests can prove code paths and local integration. Target-environment claims need evidence from the target environment. Record M5 pilot evidence in [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md). Record M6 self-hosted release, rollback, capacity, and target synthetic evidence in [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or an approved external release record.

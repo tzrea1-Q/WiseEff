@@ -91,35 +91,35 @@ Modify:
 
 ### Task 1: Release Gate Metadata
 
-- [ ] Write failing tests in `scripts/run-self-hosted-release-gate.test.ts`.
-- [ ] Require branch, commit SHA, version label, dirty-worktree status, target environment label, migration list, backup evidence path, rollback plan path, and synthetic acceptance mode.
-- [ ] Require explicit HDC status: unavailable, skipped by scope, or enabled with evidence.
-- [ ] Implement the release gate metadata checker and evidence writer.
-- [ ] Run focused release-gate tests.
+- [x] Write failing tests in `scripts/run-self-hosted-release-gate.test.ts`.
+- [x] Require branch, commit SHA, version label, dirty-worktree status, target environment label, migration list, backup evidence path, rollback plan path, and synthetic acceptance mode.
+- [x] Require explicit HDC status: unavailable, skipped by scope, or enabled with evidence.
+- [x] Implement the release gate metadata checker and evidence writer.
+- [x] Run focused release-gate tests.
 
 ### Task 2: Pre-Release Command Orchestration
 
-- [ ] Wire the release gate to run or verify `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, and `git diff --check`.
-- [ ] Add self-hosted config checks from M6.1.
-- [ ] Add backup check from M6.3.
-- [ ] Add queue readiness check from M6.4.
-- [ ] Add observability config check from M6.5.
-- [ ] Ensure failures produce a readable evidence report.
+- [x] Wire the release gate to run or verify `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, and `git diff --check`.
+- [x] Add self-hosted config checks from M6.1.
+- [x] Add backup check from M6.3 as evidence-path validation; target backup/restore evidence remains pending.
+- [x] Add queue readiness check from M6.4 as explicit pending dependency until M6.4 target evidence exists.
+- [x] Add observability config check from M6.5 as explicit pending dependency until M6.5 target evidence exists.
+- [x] Ensure failures produce a readable evidence report.
 
 ### Task 3: Release And Rollback Runbook
 
-- [ ] Add `docs/runbooks/release-rollback.md`.
-- [ ] Define pre-deploy backup, queue drain/pause, migration execution, web/API/worker deployment, smoke, observability watch, and rollback decision points.
-- [ ] Define rollback for web/API/worker artifact, database migration failure, object-store inconsistency, and queue backlog.
-- [ ] Define forward-fix policy for irreversible migrations.
-- [ ] Update `docs/runbooks/rollback.md` to point to the M6.6 release-specific runbook.
+- [x] Add `docs/runbooks/release-rollback.md`.
+- [x] Define pre-deploy backup, queue drain/pause, migration execution, web/API/worker deployment, smoke, observability watch, and rollback decision points.
+- [x] Define rollback for web/API/worker artifact, database migration failure, object-store inconsistency, and queue backlog.
+- [x] Define forward-fix policy for irreversible migrations.
+- [x] Update `docs/runbooks/rollback.md` to point to the M6.6 release-specific runbook.
 
 ### Task 4: Capacity Gate
 
-- [ ] Write failing capacity evidence tests for threshold config, target URL, auth token redaction, and output summary.
-- [ ] Add a capacity script covering health, `/api/v1/me`, parameter reads, log list/detail, and selected safe write flow only if a non-customer environment is available.
-- [ ] Capture p95 latency, error rate, throughput, CPU/memory, database connections, queue backlog, and object-store probe results.
-- [ ] Set first pilot thresholds in docs and make them easy to revise with evidence.
+- [x] Write failing capacity evidence tests for threshold config, target URL, auth token redaction, and output summary.
+- [x] Add a capacity script covering health, `/api/v1/me`, parameter reads, and log list. Safe writes remain disabled unless a non-customer environment explicitly enables them.
+- [x] Capture p95 latency, error rate, throughput, CPU/memory, database connections, queue backlog, and object-store probe results as CLI evidence inputs; target collection remains pending.
+- [x] Set first pilot thresholds in docs and make them easy to revise with evidence.
 - [ ] Run capacity tests against a non-customer self-hosted target before marking capacity complete.
 
 ### Task 5: Target Synthetic Acceptance
@@ -131,14 +131,18 @@ Modify:
 
 ### Task 6: Final M6 Evidence And Completion
 
-- [ ] Generate `docs/generated/m6-release-readiness.md`.
-- [ ] Update quality score and technical debt tracker with what is ready, blocked, or explicitly out of scope.
-- [ ] Run `npm run docs:check`.
-- [ ] Run `npm run contract:check`.
-- [ ] Run `npm run test:all`.
-- [ ] Run `npm run build`.
-- [ ] Run `git diff --check`.
+- [x] Generate `docs/generated/m6-release-readiness.md`.
+- [x] Update quality score and technical debt tracker with what is ready, blocked, or explicitly out of scope.
+- [x] Run `npm run docs:check`.
+- [x] Run `npm run contract:check`.
+- [x] Run `npm run test:all`.
+- [x] Run `npm run build`.
+- [x] Run `git diff --check`.
 - [ ] Move M6.1-M6.6 plans to completed only after each phase has its own verification evidence.
+
+## Current Execution Status
+
+Implementation-side release/capacity gates are in place and locally tested. Target-environment evidence is still pending for capacity, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability watch, backup/restore rehearsal, and HDC/full-pilot readiness. This plan must remain in `active/` until those target gates are run and archived.
 
 ## External Inputs Needed
 

@@ -11,7 +11,7 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 3. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
 4. [Developer Docs](developer/README.md): local setup, environment variables, and verification matrix.
 5. [API Docs](api/README.md): authentication, errors, examples, and OpenAPI contract usage.
-6. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
+6. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, self-hosted release/rollback, staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
 7. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
 8. [Plans](PLANS.md): how active and completed execution plans are managed.
 9. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
@@ -57,6 +57,7 @@ docs/
   runbooks/
     README.md
     self-hosted-runtime.md
+    release-rollback.md
     manual-acceptance.md
     m5-commercial-pilot-readiness.md
     staging-deployment.md
@@ -81,6 +82,7 @@ docs/
     security-reliability.md
     quality-and-plans.md
     manual-acceptance.md
+    m6-release-readiness.md
   references/
     design-system-reference-llms.txt
     nixpacks-llms.txt
@@ -109,6 +111,7 @@ Current baseline:
 - Runtime seams: local/S3-compatible object storage, dedicated log worker runner, simulator/HDC device gateway, deterministic/live Agent provider.
 - Release state: M5 pilot-readiness gate is implemented; external staging, HDC device-lab, backup/restore, rollback, and live provider evidence must still be recorded before calling an environment pilot-ready.
 - Self-hosted runtime: M6.1 adds `ops/self-hosted/`, `npm run selfhost:check`, and `npm run selfhost:smoke` for a single-Linux-server baseline.
+- Self-hosted release operations: M6.6 adds `npm run selfhost:release-gate`, `npm run capacity:gate`, `ops/self-hosted/releases/`, and [runbooks/release-rollback.md](runbooks/release-rollback.md) for release-candidate evidence, capacity thresholds, and rollback rehearsal tracking. Target capacity, rollback, synthetic acceptance, observability, queue, and HDC evidence remain pending until they are run against a non-customer target environment.
 - Developer docs: `docs/zh-CN/` provides the Chinese developer onboarding and daily reference layer for the key architecture, runtime, quality, security, reliability, and planning topics.
 - Manual acceptance: `docs/runbooks/manual-acceptance.md` provides the human checklist for product workflow acceptance, runtime gates, evidence capture, and Go/No-Go judgment.
 - Documentation checks: `npm run docs:check` validates active plan governance, key doc entry points, local markdown links, and `.env.example` coverage.

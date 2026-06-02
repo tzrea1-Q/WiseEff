@@ -27,6 +27,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 | `npm run selfhost:check` | M6.1 self-hosted compose/env/proxy metadata | After changing `ops/self-hosted/`, package selfhost scripts, or self-hosted runtime docs. |
 | `npm run selfhost:smoke` | M6.1 live self-hosted API smoke and evidence | Against a running self-hosted target with `--base-url` and smoke authorization configured. |
+| `npm run capacity:gate` | M6.6 capacity threshold evidence shape and redacted capacity report | After changing capacity thresholds, capacity scripts, release evidence docs, or when recording a target capacity run. |
+| `npm run selfhost:release-gate` | M6.6 release-candidate metadata, command-gate, dependency, and evidence summary | Before accepting a self-hosted release candidate or after changing release/rollback/capacity scripts and docs. |
 
 `npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
 
@@ -46,6 +48,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M5.12 target synthetic acceptance | GitHub Actions `target-synthetic-acceptance` workflow_dispatch | Target frontend/API URLs, auth secrets, optional target `DATABASE_URL`, external dependency evidence | Runs manual target non-HDC or full-pilot synthetic checks with `--no-start-runtime` and archives evidence artifacts. |
 | M5 full pilot gate | `npm run test:m5` | PostgreSQL, live API, and target evidence inputs | Before claiming commercial pilot baseline in an environment. |
 | M6.1 self-hosted baseline | `npm run selfhost:check` plus `npm run selfhost:smoke -- --base-url <target-url>` | Linux host, compose runtime, admin smoke token, object store, Agent provider | Before treating a self-hosted target as deployed. |
+| M6.6 release, rollback, and capacity | `npm run capacity:gate` plus `npm run selfhost:release-gate` | Deployed self-hosted target, backup/restore evidence, queue readiness, observability, target synthetic acceptance, rollback rehearsal, capacity metrics | Before treating a self-hosted release candidate as ready for a controlled commercial pilot. |
 
 ## UI Interaction Acceptance Rule
 
@@ -99,3 +102,5 @@ npm run test:server -- scripts/check-doc-governance.test.ts
 - `M5_SMOKE_ALLOW_NO_API=true` is a documented local skip, not pilot evidence.
 - HDC device-lab, backup/restore, rollback, live provider, and staging smoke evidence must be recorded in [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md).
 - Do not mark TD-019 complete until target-environment evidence exists.
+- M6.6 release readiness must be recorded in [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or an approved external release record. `npm run capacity:gate` without observed target metrics is a pending evidence artifact, not a capacity pass.
+- Rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability release watch, and HDC evidence cannot be marked complete from local script output alone.

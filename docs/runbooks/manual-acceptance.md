@@ -174,6 +174,15 @@ Expected:
 - All commands pass.
 - Existing Vite chunk-size warning is acceptable if the build succeeds.
 
+For M6.6 self-hosted release candidates, also run the release and capacity metadata gates:
+
+```bash
+npm run capacity:gate -- --target-url https://<host>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+```
+
+These commands may produce failed or pending evidence until a real target capacity run, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, and observability watch are attached.
+
 ## Start The Local Review Runtime
 
 Use three terminals for local API-mode review.
@@ -299,6 +308,8 @@ M5.12 adds CI and target synthetic archiving for these gates. Pull requests and 
 `npm run acceptance:ci` is the local metadata guard for this workflow. It must pass after changing `.github/workflows/ci.yml` or CI artifact paths. Target synthetic runs test an already deployed target frontend; that frontend must already have the correct API base URL and production-auth bearer-token injection path configured by the deployment. PR artifacts prove local non-HDC readiness only. Full-pilot artifacts count only when the manual run is backed by real target environment secrets plus HDC, backup/restore, rollback, object-store, worker, and live Agent evidence.
 
 M6.1 self-hosted runtime evidence is collected separately with `npm run selfhost:check` and `npm run selfhost:smoke -- --base-url <target-url>`. This proves the self-hosted services are reachable and production-shaped; it does not prove OIDC, durable queue, observability, rollback, capacity, or HDC readiness.
+
+M6.6 release evidence is collected with `npm run selfhost:release-gate`, `npm run capacity:gate`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence.
 
 ### Reviewing Operation Evidence
 
@@ -580,7 +591,7 @@ Pass criteria:
 
 ## Rollback Acceptance
 
-Follow [Rollback](rollback.md).
+Follow [Rollback](rollback.md). For M6.6 self-hosted release candidates, follow [Self-Hosted Release And Rollback](release-rollback.md).
 
 Checklist:
 
@@ -594,6 +605,7 @@ Checklist:
 - [ ] Database/object-store restore is performed if data changed.
 - [ ] Post-rollback smoke passes.
 - [ ] Evidence is recorded in [M5 Pilot Acceptance Evidence](../generated/m5-pilot-acceptance.md).
+- [ ] For M6.6 releases, evidence is also recorded in [M6 Release Readiness](../generated/m6-release-readiness.md) or the approved external release record.
 
 Pass criteria:
 
@@ -639,6 +651,11 @@ API URL:
 - Health/readiness:
 - Backup/restore:
 - Rollback:
+- M6 release gate:
+- Capacity gate:
+- Target synthetic acceptance:
+- Queue drain/pause/resume:
+- Observability release watch:
 - Agent provider:
 - Object storage:
 - Worker:
@@ -667,6 +684,15 @@ Mark **Go for non-HDC target acceptance** only if:
 - HDC is the only remaining explicit blocker.
 - The acceptance record states that full pilot readiness is not claimed.
 
+Mark **Go for controlled self-hosted release candidate** only if:
+
+- `npm run selfhost:smoke` passes against the deployed target.
+- `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime` passes or full-pilot mode passes with real HDC evidence.
+- `npm run capacity:gate` includes observed target metrics and meets thresholds.
+- Backup/restore evidence and rollback rehearsal evidence are attached.
+- Queue readiness and observability release-watch evidence are attached.
+- `npm run selfhost:release-gate` references the release version, commit, artifact, environment fingerprint, migration set, capacity evidence, and rollback evidence.
+
 Mark **Go for full pilot-ready** only if:
 
 - Strict `npm run smoke:m5` passes against the target live API.
@@ -687,6 +713,7 @@ Mark **No-Go** if:
 - Debugging writes do not create snapshots or audit evidence.
 - Restore or rollback cannot be demonstrated.
 - Evidence is missing for a gate being claimed as complete.
+- M6.6 capacity, rollback, target synthetic, queue, or observability evidence is pending while the release is being claimed ready.
 
 ## Known Current Caveats
 
