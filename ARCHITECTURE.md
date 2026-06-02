@@ -70,6 +70,12 @@ Agent and device workflows are higher-risk variants of the same pattern. Agent w
 
 Release operations add a pilot gate on top of the basic health checks. `GET /api/v1/operations/pilot-readiness` is admin-gated and aggregates the route contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence into a single `pilot_ready` or `blocked` result. The companion `npm run smoke:m5` check requires a live API URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs.
 
+## Self-Hosted Runtime
+
+M6.1 adds a single-Linux-server self-hosted baseline under `ops/self-hosted/`. It runs PostgreSQL, API, web, worker, and Caddy reverse proxy as separate services. The API defaults to `HOST=127.0.0.1` for local development; self-hosted containers set `HOST=0.0.0.0` so the proxy can reach the API over the compose network. The API container sets `LOG_WORKER_ENABLED=false`, while the dedicated worker container runs `npm run worker:logs`.
+
+The M6.1 baseline is deployment plumbing, not full production hardening. OIDC identity, self-hosted object-store provider selection, durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6.2-M6.6 work.
+
 ## Deeper Docs
 
 - Full system design: `docs/design-docs/full-stack-architecture.md`

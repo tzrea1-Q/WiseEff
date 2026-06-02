@@ -41,6 +41,19 @@ Current endpoints:
 - `/health/ready`: commercial readiness check for configured dependencies. It currently checks database connectivity and object-store readiness, returning 503 with per-dependency reasons when either dependency is missing or failed.
 - `/api/v1/health`: compatibility smoke endpoint for existing clients.
 
+## Self-Hosted Runtime Baseline
+
+M6.1 adds a self-hosted Linux runtime under `ops/self-hosted/`. It separates PostgreSQL, API, web, worker, and reverse proxy services. Local API startup still binds to `HOST=127.0.0.1` by default. Self-hosted API containers set `HOST=0.0.0.0` and `LOG_WORKER_ENABLED=false`; the dedicated worker container runs `npm run worker:logs`.
+
+Self-hosted operators should run:
+
+```bash
+npm run selfhost:check
+npm run selfhost:smoke -- --base-url https://<host>
+```
+
+The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default and probes `/health/live`, `/health/ready`, `/api/v1/me`, and `/api/v1/operations/pilot-readiness`. Allowing `deviceGateway` as the only blocked gate is valid only for non-HDC staging.
+
 ## Production Configuration Gate
 
 - `NODE_ENV=production` requires `DATABASE_URL`.

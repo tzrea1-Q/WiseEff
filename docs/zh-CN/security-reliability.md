@@ -107,3 +107,14 @@ rollback rehearsal 至少要记录：
 5. 数据库和对象存储恢复步骤。
 6. 重新运行 smoke。
 7. 更新 evidence artifact。
+
+## Self-hosted smoke / 自托管 smoke
+
+M6.1 自托管运行时使用：
+
+```bash
+npm run selfhost:check
+npm run selfhost:smoke -- --base-url https://<host>
+```
+
+`selfhost:smoke` 会探测 `/health/live`、`/health/ready`、`/api/v1/me` 和 `/api/v1/operations/pilot-readiness`，并写入脱敏 evidence。`--allow-only-blocked=deviceGateway` 只适用于非 HDC staging，且其他 readiness gate 必须真实完成，包括 backup/restore drill 后设置 `M5_BACKUP_RESTORE_DRILL_AT`。完整 pilot readiness 仍然需要真实 HDC、backup/restore、rollback、object store、worker、Agent provider 和 identity evidence。

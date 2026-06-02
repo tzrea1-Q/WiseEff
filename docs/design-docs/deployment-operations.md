@@ -188,6 +188,25 @@ Device Gateway 健康检查：
 - PR #39 merged M5 on 2026-05-29 and GitHub CI passed for the merged branch. This repository evidence does not replace staging live API, HDC device-lab, backup/restore, rollback, or live provider evidence.
 - Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
 
+## M6.1 Self-Hosted Runtime Baseline
+
+The self-hosted baseline lives in `ops/self-hosted/` and is validated with:
+
+```bash
+npm run selfhost:check
+npm run selfhost:smoke -- --base-url https://<host>
+```
+
+Runtime services:
+
+- `postgres`: PostgreSQL source of truth with a persistent volume.
+- `api`: WiseEff API with `HOST=0.0.0.0`, `NODE_ENV=production`, and `LOG_WORKER_ENABLED=false`.
+- `worker`: dedicated `npm run worker:logs` process.
+- `web`: built Vite frontend served by `npm run preview -- --host 0.0.0.0`.
+- `proxy`: Caddy TLS and reverse proxy for frontend, `/api/*`, and `/health/*`.
+
+This is an M6.1 deployment baseline only. OIDC, self-hosted object-store provider selection, durable queues, observability, release rollback, and capacity evidence are M6.2-M6.6.
+
 ## M5 Live Agent Provider Boundary
 
 - `AGENT_PROVIDER=live` requires `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_BASE_URL`.

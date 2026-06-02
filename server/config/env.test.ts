@@ -6,6 +6,7 @@ describe("loadServerEnv", () => {
     const env = loadServerEnv({});
 
     expect(env.NODE_ENV).toBe("development");
+    expect(env.HOST).toBe("127.0.0.1");
     expect(env.PORT).toBe(8787);
     expect(env.AUTH_MODE).toBe("development");
     expect(env.AUTH_TOKEN_ISSUER).toBeUndefined();
@@ -28,11 +29,13 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_BASE_URL).toBeUndefined();
     expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
+    expect(env.LOG_WORKER_ENABLED).toBe(true);
   });
 
   it("parses explicit API settings", () => {
     const env = loadServerEnv({
       NODE_ENV: "test",
+      HOST: "0.0.0.0",
       PORT: "9001",
       AUTH_MODE: "production",
       AUTH_TOKEN_ISSUER: "wiseeff-test",
@@ -55,10 +58,12 @@ describe("loadServerEnv", () => {
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com",
       AGENT_API_TIMEOUT_MS: "1500",
-      AGENT_PROMPT_VERSION: "m5-agent-v1"
+      AGENT_PROMPT_VERSION: "m5-agent-v1",
+      LOG_WORKER_ENABLED: "false"
     });
 
     expect(env.NODE_ENV).toBe("test");
+    expect(env.HOST).toBe("0.0.0.0");
     expect(env.PORT).toBe(9001);
     expect(env.AUTH_MODE).toBe("production");
     expect(env.AUTH_TOKEN_ISSUER).toBe("wiseeff-test");
@@ -82,6 +87,7 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
+    expect(env.LOG_WORKER_ENABLED).toBe(false);
   });
 
   it("rejects production mock runtime", () => {

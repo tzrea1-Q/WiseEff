@@ -130,3 +130,18 @@ AGENT_API_TIMEOUT_MS=30000
 ```
 
 `/health/ready` 会检查 provider health。真实 chat completion 还需要通过 Agent API 请求验证，并检查 trace 中的 provider、model、usage、safety 和 fallback 信息。
+
+## Self-hosted runtime / 自托管运行
+
+M6.1 在 `ops/self-hosted/` 下新增 Linux 自托管基线。它把 PostgreSQL、API、web、worker 和 Caddy proxy 拆成独立服务。
+
+关键命令：
+
+```bash
+npm run selfhost:check
+npm run selfhost:smoke -- --base-url https://<host>
+```
+
+本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
+
+这只是 M6.1 baseline。OIDC、自托管对象存储备份、durable queue、observability、rollback 和 capacity gates 属于后续 M6 阶段。
