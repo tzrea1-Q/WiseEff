@@ -43,7 +43,7 @@ const webServers = [
 export default defineConfig({
   testDir: "./e2e/quality",
   outputDir: "test-results/quality",
-  snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{arg}{ext}",
+  snapshotPathTemplate: "{testDir}/{testFileName}-snapshots/{platform}/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   reporter: [
