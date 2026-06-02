@@ -21,6 +21,42 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "audit.listEvents": { summary: "List audit events", tags: ["audit"], responseBody: "AuditEventListResponse" },
 
+  "users.list": {
+    summary: "List governed users",
+    tags: ["users"],
+    responseBody: "UserGovernanceListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "users.create": {
+    summary: "Create governed user",
+    tags: ["users"],
+    requestBody: "CreateUserGovernanceRequest",
+    responseBody: "UserGovernanceResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.update": {
+    summary: "Update governed user profile",
+    tags: ["users"],
+    requestBody: "UpdateUserGovernanceRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "users.activation": {
+    summary: "Update governed user activation",
+    tags: ["users"],
+    requestBody: "UpdateUserActivationRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.replaceRoles": {
+    summary: "Replace governed user role bindings",
+    tags: ["users"],
+    requestBody: "ReplaceUserRolesRequest",
+    responseBody: "UserGovernanceResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+
   "parameters.listProjects": { summary: "List projects", tags: ["parameters"], responseBody: "ProjectListResponse" },
   "parameters.listProjectModules": {
     summary: "List project modules",

@@ -300,6 +300,8 @@ M5.12 adds CI and target synthetic archiving for these gates. Pull requests and 
 
 M6.1 self-hosted runtime evidence is collected separately with `npm run selfhost:check` and `npm run selfhost:smoke -- --base-url <target-url>`. This proves the self-hosted services are reachable and production-shaped; it does not prove OIDC, durable queue, observability, rollback, capacity, or HDC readiness.
 
+M6.2 local identity evidence is collected with `npm run acceptance:browser` and `npm run acceptance:evidence`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
+
 ### Reviewing Operation Evidence
 
 After `npm run acceptance:browser`, open `docs/generated/acceptance-operation-evidence.md` and `docs/generated/acceptance-operation-evidence/index.json`. Each automated operation should show a role, route, assertion types, status, artifact path, runtime, trace/report location, and reproduction steps. For operations with `api` assertions, verify that the record includes compact request/response summaries with method, path, status, and request ID when available. For operations with `db` assertions, verify the table, predicate, observed state, and row count summary. For operations with `audit` assertions, verify event ID, kind, action, target ID, and request or trace correlation when available. Treat missing P0/P1 automated operation evidence, evidence records without review metadata, missing required API/DB/audit summaries, or unredacted secrets as blocking acceptance failures.

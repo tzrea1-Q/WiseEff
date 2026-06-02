@@ -1,13 +1,13 @@
 import type { AgentGateway } from "@/application/ports/AgentGateway";
 import { createApiClient } from "./apiClient";
 import { agentSessionFromDto, agentTurnFromDto, type AgentTurnDto } from "./agentDtos";
-import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "./runtimeMode";
+import { createDefaultApiClient } from "./defaultApiClient";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
 type TurnEnvelope = { turn: AgentTurnDto };
 
-export function createHttpAgentGateway(apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl, authorization: wiseEffApiAuthorization })): AgentGateway {
+export function createHttpAgentGateway(apiClient: ApiClient = createDefaultApiClient()): AgentGateway {
   return {
     async startSession(context) {
       const response = await apiClient.post<TurnEnvelope>("/api/v1/agent/sessions", { context });

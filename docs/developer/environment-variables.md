@@ -19,10 +19,15 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `AUTH_MODE` | `production` in `.env.example` | production-mode smoke | Use `development` only for local development-user flows. |
-| `AUTH_TOKEN_ISSUER` | `wiseeff-local` | production auth | Must match signed token issuer. |
-| `AUTH_TOKEN_HMAC_SECRET` | local sample secret | production auth | Use real secrets outside local work. |
+| `AUTH_PROVIDER` | `hmac` in local `.env.example`; `oidc` in self-hosted example | production auth | Use `oidc` for target self-hosted identity; keep `hmac` for local smoke/test only. |
+| `AUTH_TOKEN_ISSUER` | `wiseeff-local` | local HMAC smoke | Must match signed local smoke token issuer. |
+| `AUTH_TOKEN_HMAC_SECRET` | local sample secret | local HMAC smoke | Use only for local smoke/test profiles. |
+| `AUTH_OIDC_ISSUER` | unset locally | self-hosted OIDC | OIDC issuer URL, for example `https://id.example.com/realms/wiseeff`. |
+| `AUTH_OIDC_AUDIENCE` | unset locally | self-hosted OIDC | Expected access-token audience, for example `wiseeff-api`. |
+| `AUTH_OIDC_JWKS_URI` | unset locally | self-hosted OIDC override | Optional JWKS endpoint when discovery should not be used. |
 | `M5_SMOKE_AUTHORIZATION` | local admin bearer token | M5 smoke | Grants `admin:access` to pilot-readiness smoke. |
 | `WISEEFF_SMOKE_AUTHORIZATION` | local admin bearer token | M5 smoke | Alternate name accepted by smoke scripts. |
+| `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | unset locally | self-hosted smoke | Preferred self-hosted Admin bearer token; use an OIDC access token in target environments. |
 
 ## Object Store
 
@@ -69,7 +74,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 
 ## Self-Hosted Runtime
 
-M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, auth, S3-compatible object storage, Agent provider, and smoke authorization values.
+M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches the target identity profile to OIDC. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, OIDC issuer/audience, S3-compatible object storage, Agent provider, and smoke authorization values.
 
 | Variable | Self-hosted value | Notes |
 | --- | --- | --- |
@@ -77,4 +82,7 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. It keeps secrets
 | `LOG_WORKER_ENABLED` | `false` in API, `true` in worker | Prevents the API container from running a duplicate in-process worker. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
-| `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | admin bearer token | Preferred self-hosted smoke token; M5 smoke token names are also accepted. |
+| `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. |
+| `AUTH_OIDC_ISSUER` | operator-provided issuer | Must match the access-token `iss` claim. |
+| `AUTH_OIDC_AUDIENCE` | `wiseeff-api` or operator value | Must match the access-token `aud` claim. |
+| `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | Admin OIDC bearer token | Preferred self-hosted smoke token; M5 smoke token names are accepted only for compatibility. |

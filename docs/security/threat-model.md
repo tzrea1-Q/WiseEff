@@ -20,7 +20,7 @@ This threat model focuses on the current WiseEff productization baseline and the
 | Log upload | sensitive data exposure or parser failure | object-store boundary, failure records, audit, retention policy |
 | Device write | unsafe physical/device state change | device lease, range/access validation, confirmation, snapshot, readback, audit |
 | Agent mutating tool | model bypasses governance | backend tool registry, approval record, approval-time authz, audit |
-| Production auth | forged identity | HMAC verifier now, future OIDC/JWT, issuer/subject/org validation |
+| Production auth | forged identity | target production requires OIDC/JWKS; local HMAC remains smoke/test only; issuer/audience/subject/org/role validation |
 | Object storage | lost or leaked file bytes | checksum metadata, scoped keys, provider access policy, backup/restore drill |
 
 ## STRIDE Summary
@@ -36,7 +36,7 @@ This threat model focuses on the current WiseEff productization baseline and the
 
 ## Pilot Gaps
 
-- Enterprise SSO/OIDC is not implemented yet.
+- OIDC/JWKS verifier and frontend token-provider seam exist, but target-environment Keycloak/OIDC evidence is still required before TD-020 can close.
 - Target-environment HDC evidence is still required.
 - Backup/restore and rollback evidence must be collected outside local simulator checks.
 - Provider safety evidence must be collected with the live provider configuration.

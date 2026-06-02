@@ -37,7 +37,7 @@
         "api",
         "audit"
       ],
-      "notes": "Agent session agent-session-524ca11c-83db-40a7-8771-19fbdfd8cb5c required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.",
+      "notes": "Agent session agent-session-51966be9-c25c-4a83-844e-ea16157585d9 required approval, preserved state on rejection, executed after approval, and produced trace/audit evidence.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png"
       ],
@@ -46,40 +46,40 @@
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "responseSummary": "session agent-session-524ca11c-83db-40a7-8771-19fbdfd8cb5c includes approval-rejected and approval-executed audit actions"
+          "responseSummary": "session agent-session-51966be9-c25c-4a83-844e-ea16157585d9 includes approval-rejected and approval-executed audit actions"
         }
       ],
       "db": [
         {
           "table": "agent_tool_calls",
-          "predicate": "sessionId=agent-session-524ca11c-83db-40a7-8771-19fbdfd8cb5c",
+          "predicate": "sessionId=agent-session-51966be9-c25c-4a83-844e-ea16157585d9",
           "observed": "toolCalls=5; approvals=2; traces=3",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "audit-006ddfa8-0864-4800-b6d9-816bcd5e2df5",
+          "id": "audit-1c0dc5f2-412b-419d-a721-030fcc046001",
           "kind": "agent-tool",
           "action": "approval-requested",
-          "targetId": "agent-tool-924d7ae3-12d6-47dd-9445-5751734693ea",
-          "requestId": "66e50676-ff50-4632-811e-54d21b62fb05",
+          "targetId": "agent-tool-d4dd381c-d67a-4996-badc-1f902fea4712",
+          "requestId": "68f2d26d-ccb2-47ad-9320-7877b4faccda",
           "metadataSummary": "approvalId,initiatedByUserId,sessionId,toolCallId,toolName"
         },
         {
-          "id": "audit-c4444924-f46d-48ea-b8da-3efd5ec9c9a1",
+          "id": "audit-c4ad5886-6249-4623-8158-ffd8cd5ef5ef",
           "kind": "agent-tool",
           "action": "approval-rejected",
-          "targetId": "agent-tool-924d7ae3-12d6-47dd-9445-5751734693ea",
-          "requestId": "863b05a3-5e12-4f29-8763-f06a10ea1b74",
+          "targetId": "agent-tool-d4dd381c-d67a-4996-badc-1f902fea4712",
+          "requestId": "fa8837af-5945-4f89-b297-5035ab6bb030",
           "metadataSummary": "approvalId,initiatedByUserId,reason,sessionId,toolCallId"
         },
         {
-          "id": "audit-3a87e606-16b8-4344-8186-a558f76b01cc",
+          "id": "audit-b1e831ed-6248-47e3-a7e2-ed5cac02c380",
           "kind": "agent-tool",
           "action": "approval-executed",
-          "targetId": "agent-tool-a0087633-3529-4574-8516-eac53a14fae9",
-          "requestId": "18c442c9-44e6-4c9b-8096-ef60c4bdcfe8",
+          "targetId": "agent-tool-108ef659-9ab0-4e85-b98a-83e0921a9f3b",
+          "requestId": "6f66cdda-c06f-4cb8-8513-ce5e9651bfda",
           "metadataSummary": "approvalId,initiatedByUserId,sessionId,summary,toolCallId,toolName"
         }
       ],
@@ -100,7 +100,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -110,7 +110,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AGENT-APPROVAL-001-agent-approval-reject-execute-trace-audit.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:49:41.724Z"
+      "recordedAt": "2026-06-02T11:17:15.029Z"
     },
     {
       "operationId": "AGENT-UNAUTH-001",
@@ -122,26 +122,26 @@
         "api",
         "audit"
       ],
-      "notes": "Agent session agent-session-90123fc2-55e6-409e-a6db-c5157bba36bb rejected direct run for pending tool call agent-tool-13d7e92f-e930-4326-a395-cafc8e548deb with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.",
+      "notes": "Agent session agent-session-f0b0fb0a-cbef-44b1-aa5c-6c3267950923 rejected direct run for pending tool call agent-tool-88f8e74c-d19d-41ff-89c1-702711373cb6 with APPROVAL_REQUIRED and preserved pending approval state without draft side effects.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/agent/sessions/agent-session-90123fc2-55e6-409e-a6db-c5157bba36bb/tool-calls/agent-tool-13d7e92f-e930-4326-a395-cafc8e548deb/run",
+          "path": "/api/v1/agent/sessions/agent-session-f0b0fb0a-cbef-44b1-aa5c-6c3267950923/tool-calls/agent-tool-88f8e74c-d19d-41ff-89c1-702711373cb6/run",
           "status": 409,
-          "requestId": "6f1a9d33-d198-4815-b830-ab5a3d1dd89f",
+          "requestId": "2612a467-32b9-4b76-9b82-a515428b61fb",
           "responseSummary": "APPROVAL_REQUIRED"
         }
       ],
       "audit": [
         {
-          "id": "audit-7cbd5fea-fb7d-45b3-9b36-24fbe0956cd2",
+          "id": "audit-6759571a-6c09-4632-b6b6-7bbd17b0f237",
           "kind": "agent-tool",
           "action": "approval-requested",
-          "targetId": "agent-tool-13d7e92f-e930-4326-a395-cafc8e548deb",
-          "requestId": "d6101b02-cad8-4996-96dd-6040c409f1b6",
+          "targetId": "agent-tool-88f8e74c-d19d-41ff-89c1-702711373cb6",
+          "requestId": "1c166efe-47d6-4df9-ba3f-2c8086ab87a5",
           "metadataSummary": "approvalId,initiatedByUserId,sessionId,toolCallId,toolName"
         }
       ],
@@ -162,7 +162,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -172,7 +172,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AGENT-UNAUTH-001-agent-direct-run-rejected-before-approval.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:49:38.901Z"
+      "recordedAt": "2026-06-02T11:17:12.386Z"
     },
     {
       "operationId": "AUTH-RUNTIME-001",
@@ -193,7 +193,7 @@
           "method": "GET",
           "path": "/api/v1/me",
           "status": 200,
-          "requestId": "aa1bcc64-d136-47d6-8f03-40878bb9a934",
+          "requestId": "b1886d7b-67c6-4e47-aca4-d0711051bc4f",
           "responseSummary": "smoke auth accepted for current user"
         }
       ],
@@ -214,7 +214,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -224,7 +224,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\AUTH-RUNTIME-001-api-mode-browser-auth-runtime-parity.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:49:43.765Z"
+      "recordedAt": "2026-06-02T11:17:16.688Z"
     },
     {
       "operationId": "DEBUG-PERM-001",
@@ -245,21 +245,21 @@
           "method": "GET",
           "path": "/api/v1/me",
           "status": 200,
-          "requestId": "43d497ac-6c9e-4c6c-a627-75c038302cb8",
+          "requestId": "92577497-1d37-4e7e-a08d-4acc4f4c52f3",
           "responseSummary": "user=acceptance-debug-nonwriter; missing debugging:write"
         },
         {
           "method": "POST",
           "path": "/api/v1/debugging/nodes/write",
           "status": 403,
-          "requestId": "14ca76a8-2259-4f95-a68e-3577f4aa342f",
+          "requestId": "288af9ce-6edb-44a0-ae97-cc5bff35bbc8",
           "responseSummary": "Missing permission: debugging:write."
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "833fe52f-e624-477a-ae95-5575c1d90265",
+          "requestId": "df1ea1ba-da91-4b9f-bba4-ab9b333a05f2",
           "responseSummary": "audit events=100; no debug-node-write for acceptance-debug-nonwriter"
         }
       ],
@@ -280,7 +280,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -290,7 +290,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\DEBUG-PERM-001-debugging-write-permission-denial-ui-and-api.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:50:31.276Z"
+      "recordedAt": "2026-06-02T11:18:03.985Z"
     },
     {
       "operationId": "DEBUG-SIM-001",
@@ -304,55 +304,55 @@
         "db",
         "audit"
       ],
-      "notes": "Simulator write and mismatch paths produced audit evidence; snapshot c57227e0-f241-42b3-af31-05b29efc2397 rolled back to the original safe value.",
+      "notes": "Simulator write and mismatch paths produced audit evidence; snapshot b91553ba-5d28-4086-bf30-099c9c8a8b74 rolled back to the original safe value.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/debugging/snapshots/c57227e0-f241-42b3-af31-05b29efc2397/rollback",
+          "path": "/api/v1/debugging/snapshots/b91553ba-5d28-4086-bf30-099c9c8a8b74/rollback",
           "status": 200,
-          "requestId": "a0f45560-ecf8-4be4-8166-9efb6673f864",
-          "responseSummary": "rolled back snapshot c57227e0-f241-42b3-af31-05b29efc2397"
+          "requestId": "36e2d313-f831-4f1a-9376-9840f9c68b85",
+          "responseSummary": "rolled back snapshot b91553ba-5d28-4086-bf30-099c9c8a8b74"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "ae68dcc0-c84e-4a54-a648-0ae54c0b2db8",
+          "requestId": "811a5234-4825-4985-a998-99809e6f4431",
           "responseSummary": "audit events=100"
         }
       ],
       "db": [
         {
           "table": "debugging_parameters",
-          "predicate": "projectId=aurora; parameterId=dbg-fast-charge-current; snapshotId=c57227e0-f241-42b3-af31-05b29efc2397",
+          "predicate": "projectId=aurora; parameterId=dbg-fast-charge-current; snapshotId=b91553ba-5d28-4086-bf30-099c9c8a8b74",
           "observed": "currentValue=3100; snapshotStatus=consumed",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "29e559bb-39f6-4aa6-8cc6-b19d8e2332bf",
+          "id": "d6c5a6bb-70f8-4a05-814e-ddc8d181b4c1",
           "kind": "debug-node-write",
           "targetId": "dbg-fast-charge-current",
-          "requestId": "4847a7d4-72fb-4c1d-8e3f-609aafa0bbaa",
-          "metadataSummary": "nodePath=/sys/class/power_supply/battery/constant_charge_current; verified=true; sessionId=dbd53567-8ef0-4e4f-aa70-5e69d7361925; snapshotId=c57227e0-f241-42b3-af31-05b29efc2397; operationId=af834d25-ae40-4166-9439-015b0d8b9a9c; failureReason=null; previousValue=3000; readbackValue=3100; requestedValue=3100"
+          "requestId": "daa20553-bd08-4d55-8b0b-7b953798bab0",
+          "metadataSummary": "nodePath=/sys/class/power_supply/battery/constant_charge_current; verified=true; sessionId=80c65ce3-e8de-4d57-b271-155227ae1209; snapshotId=b91553ba-5d28-4086-bf30-099c9c8a8b74; operationId=19711c94-1359-4f66-a989-5d688ec08c70; failureReason=null; previousValue=3000; readbackValue=3100; requestedValue=3100"
         },
         {
-          "id": "f5d8859e-539b-4d74-9f31-f9e6e56a6318",
+          "id": "266bebeb-512e-4661-a8c5-51ccbcce4e1b",
           "kind": "debug-node-write",
           "targetId": "dbg-readback-mismatch",
-          "requestId": "52177729-75bd-426d-9181-896d72fa05d5",
-          "metadataSummary": "nodePath=/sys/class/power_supply/battery/readback_mismatch; verified=false; sessionId=dbd53567-8ef0-4e4f-aa70-5e69d7361925; snapshotId=2455f4f2-3dfd-46bc-b6f1-7a884bd41e40; operationId=80111c18-5e02-4296-a76d-f0b7360431e6; failureReason=Readback mismatch.; previousValue=1; readbackValue=1; requestedValue=2"
+          "requestId": "80b36429-f93a-490f-a8a7-b23db6d5f300",
+          "metadataSummary": "nodePath=/sys/class/power_supply/battery/readback_mismatch; verified=false; sessionId=80c65ce3-e8de-4d57-b271-155227ae1209; snapshotId=4b1c6f09-d6f0-4c13-b368-7469a375fef1; operationId=aa511a8c-c371-4036-ad7d-010542957e45; failureReason=Readback mismatch.; previousValue=1; readbackValue=1; requestedValue=2"
         },
         {
-          "id": "cb97d747-4fbf-4b10-87ed-c7cf626e5d2f",
+          "id": "920fedc4-b615-45e4-9039-5010762b6c90",
           "kind": "debug-snapshot-rollback",
-          "targetId": "c57227e0-f241-42b3-af31-05b29efc2397",
-          "requestId": "a0f45560-ecf8-4be4-8166-9efb6673f864",
-          "metadataSummary": "failed=false; sessionId=dbd53567-8ef0-4e4f-aa70-5e69d7361925; operationIds=8dd149d0-5ce5-4f58-8915-ce29dac33d84"
+          "targetId": "b91553ba-5d28-4086-bf30-099c9c8a8b74",
+          "requestId": "36e2d313-f831-4f1a-9376-9840f9c68b85",
+          "metadataSummary": "failed=false; sessionId=80c65ce3-e8de-4d57-b271-155227ae1209; operationIds=9d27eb50-a058-4946-a5b3-fa22146b6fbe"
         }
       ],
       "trace": {
@@ -372,7 +372,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -382,7 +382,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\DEBUG-SIM-001-debugging-simulator-read-write-mismatch-rollback-audit.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:50:29.226Z"
+      "recordedAt": "2026-06-02T11:18:02.169Z"
     },
     {
       "operationId": "LOG-HAPPY-001",
@@ -396,56 +396,56 @@
         "db",
         "audit"
       ],
-      "notes": "Log 3bfa2576-19b4-4837-a1e7-506b67015682 completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
+      "notes": "Log 51d23a21-700a-4b25-a433-21253b197423 completed analysis, linked evidence, recorded feedback, archived successfully, and rejected unsupported upload with a readable failure.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/logs/3bfa2576-19b4-4837-a1e7-506b67015682/archive",
+          "path": "/api/v1/logs/51d23a21-700a-4b25-a433-21253b197423/archive",
           "status": 200,
-          "requestId": "d708873e-8f31-487b-856f-8afb90b023a6",
+          "requestId": "1e91c0a3-e4c4-41ba-8654-85188e2ca6b2",
           "responseSummary": "archiveState=archived"
         },
         {
           "method": "GET",
           "path": "/api/v1/logs?projectId=aurora",
           "status": 200,
-          "requestId": "d6427c8e-0415-414f-a8e4-b12475e95077",
+          "requestId": "3369d99d-2572-486b-8414-a496d3e86923",
           "responseSummary": "active logs=0; archived log hidden"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "6024f08f-8690-4011-b548-35d1d74745b5",
+          "requestId": "7900088d-766d-4e27-8304-6d7032375bfb",
           "responseSummary": "audit events=100"
         }
       ],
       "db": [
         {
           "table": "log_records",
-          "predicate": "id=3bfa2576-19b4-4837-a1e7-506b67015682",
-          "observed": "status=complete; archiveState=archived; currentRunId=dad28506-227e-4a31-b008-9f4ea1181a4c",
+          "predicate": "id=51d23a21-700a-4b25-a433-21253b197423",
+          "observed": "status=complete; archiveState=archived; currentRunId=faeaf83c-815b-450e-b6ab-4605085f3f50",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "4943074b-4a14-43ef-aa4b-8e16a2d9bfd4",
+          "id": "e2178486-d70d-4467-9b79-64da116c9a22",
           "kind": "log-feedback",
           "action": "feedback",
-          "targetId": "3bfa2576-19b4-4837-a1e7-506b67015682",
-          "requestId": "663579c4-f2b7-4d32-a103-753c85354c6d",
+          "targetId": "51d23a21-700a-4b25-a433-21253b197423",
+          "requestId": "ddc654e0-7fd8-4da6-a1e0-faf0e7207048",
           "metadataSummary": "rating"
         },
         {
-          "id": "030db3c9-6471-4506-a16e-f327215713c0",
+          "id": "3ace190d-d0a5-4616-97b9-2cf275d6f95d",
           "kind": "log-archive",
           "action": "archive",
-          "targetId": "3bfa2576-19b4-4837-a1e7-506b67015682",
-          "requestId": "d708873e-8f31-487b-856f-8afb90b023a6",
+          "targetId": "51d23a21-700a-4b25-a433-21253b197423",
+          "requestId": "1e91c0a3-e4c4-41ba-8654-85188e2ca6b2",
           "metadataSummary": "archiveState"
         }
       ],
@@ -466,7 +466,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -476,7 +476,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\LOG-HAPPY-001-log-upload-complete-evidence-feedback-archive-unsupported.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:51:20.024Z"
+      "recordedAt": "2026-06-02T11:18:51.650Z"
     },
     {
       "operationId": "LOG-REANALYZE-001",
@@ -490,47 +490,47 @@
         "db",
         "audit"
       ],
-      "notes": "Log 52ab6346-ccdd-4205-ae28-b71f288e8b70 created rerun 94e35539-fec1-421b-a58b-f8cc5f1bf9e2; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
+      "notes": "Log 6524ffa2-fd26-4b85-a2eb-c729ff159ca4 created rerun 43338b52-8559-4c7c-a826-8b9f51e122cc; UI refreshed the log workbench and audit recorded log-rerun with job metadata.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png"
       ],
       "api": [
         {
           "method": "POST",
-          "path": "/api/v1/logs/52ab6346-ccdd-4205-ae28-b71f288e8b70/rerun",
+          "path": "/api/v1/logs/6524ffa2-fd26-4b85-a2eb-c729ff159ca4/rerun",
           "status": 200,
-          "requestId": "94ce1071-ebe8-4932-8969-942c7a80539e",
-          "responseSummary": "created run=94e35539-fec1-421b-a58b-f8cc5f1bf9e2"
+          "requestId": "d8a73d45-2880-4827-9643-f1340580e66c",
+          "responseSummary": "created run=43338b52-8559-4c7c-a826-8b9f51e122cc"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "d932d0f0-a47e-4386-a513-4bad8714ea63",
+          "requestId": "a0c0ddc2-1263-4da1-9517-11144b1f33a9",
           "responseSummary": "audit events=100"
         }
       ],
       "db": [
         {
           "table": "log_records",
-          "predicate": "id=52ab6346-ccdd-4205-ae28-b71f288e8b70",
-          "observed": "status=complete; archiveState=active; currentRunId=94e35539-fec1-421b-a58b-f8cc5f1bf9e2",
+          "predicate": "id=6524ffa2-fd26-4b85-a2eb-c729ff159ca4",
+          "observed": "status=complete; archiveState=active; currentRunId=43338b52-8559-4c7c-a826-8b9f51e122cc",
           "rowCount": 1
         },
         {
           "table": "log_analysis_runs",
-          "predicate": "id=94e35539-fec1-421b-a58b-f8cc5f1bf9e2",
-          "observed": "status=complete; progress=100; jobId=2af2aeb7-1aa0-499a-9dec-b54b5efd72e7",
+          "predicate": "id=43338b52-8559-4c7c-a826-8b9f51e122cc",
+          "observed": "status=complete; progress=100; jobId=f65eaae2-1488-4c2a-bb9b-15327b8f564a",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "2e9ac417-a233-473c-b706-483ab537dabb",
+          "id": "8a812f1e-762f-4abe-9001-231138e994c5",
           "kind": "log-rerun",
           "action": "rerun",
-          "targetId": "52ab6346-ccdd-4205-ae28-b71f288e8b70",
-          "requestId": "94ce1071-ebe8-4932-8969-942c7a80539e",
+          "targetId": "6524ffa2-fd26-4b85-a2eb-c729ff159ca4",
+          "requestId": "d8a73d45-2880-4827-9643-f1340580e66c",
           "metadataSummary": "jobId,runId"
         }
       ],
@@ -551,7 +551,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -561,7 +561,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\LOG-REANALYZE-001-completed-log-reanalysis-creates-rerun-job-progress-and-audit.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:51:26.256Z"
+      "recordedAt": "2026-06-02T11:18:54.584Z"
     },
     {
       "operationId": "PARAM-ADMIN-001",
@@ -579,11 +579,11 @@
       ],
       "audit": [
         {
-          "id": "b3a2c17c-edc2-4f7a-9446-feb7e642fb15",
+          "id": "f360c7e3-30bf-4bfb-9c0e-4f9f820fda53",
           "kind": "parameter-merge",
           "action": "merge",
-          "targetId": "82fb1601-83d2-45b3-9b7c-82ae68c3b34d",
-          "requestId": "3081d989-292c-45b0-baf5-6f79914a0d3d"
+          "targetId": "cd9f5f1b-abc6-464d-a0ba-2b2b52d6cf44",
+          "requestId": "79adeaf6-dd72-4002-bf05-33edb0b40f55"
         }
       ],
       "trace": {
@@ -603,7 +603,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -613,7 +613,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ADMIN-001-parameter-admin-import-preview-and-audit-drawer.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:42.959Z"
+      "recordedAt": "2026-06-02T11:20:08.907Z"
     },
     {
       "operationId": "PARAM-ASSIGNEE-001",
@@ -645,7 +645,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -655,7 +655,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-001-workflow-assignee-defaults-are-eligible.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:05.368Z"
+      "recordedAt": "2026-06-02T11:19:32.251Z"
     },
     {
       "operationId": "PARAM-ASSIGNEE-002",
@@ -687,7 +687,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -697,7 +697,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-002-workflow-assignee-dropdowns-hide-ineligible-users.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:05.432Z"
+      "recordedAt": "2026-06-02T11:19:32.301Z"
     },
     {
       "operationId": "PARAM-ASSIGNEE-003",
@@ -717,7 +717,7 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 400,
-          "requestId": "eff93b80-69a5-4bd2-a5fe-228b0f42ff86",
+          "requestId": "b4faa511-32c6-4cdd-bc16-5d1417308173",
           "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
         }
       ],
@@ -738,7 +738,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -748,7 +748,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-ASSIGNEE-003-forced-invalid-workflow-assignees-rejected.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:05.680Z"
+      "recordedAt": "2026-06-02T11:19:32.509Z"
     },
     {
       "operationId": "PARAM-DRAFT-EDIT-001",
@@ -770,14 +770,14 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 201,
-          "requestId": "9feb9ba3-e1cd-4a38-9b95-9805c88856f0",
-          "responseSummary": "submitted request 9bfdab90-ec55-4616-94e9-7305ad365a2e; removed target 4331 absent"
+          "requestId": "71cbc85d-5424-44e8-8ea9-32c7740d9ea7",
+          "responseSummary": "submitted request 2b6a49f9-5c9d-4231-b5fa-3274d5275dfb; removed target 4331 absent"
         }
       ],
       "db": [
         {
           "table": "parameter_submission_items",
-          "predicate": "requestId=9bfdab90-ec55-4616-94e9-7305ad365a2e; excludedTargetValue=4331",
+          "predicate": "requestId=2b6a49f9-5c9d-4231-b5fa-3274d5275dfb; excludedTargetValue=4331",
           "observed": "targetValue=3122; submittedCount=1; excludedCount=0",
           "rowCount": 1
         }
@@ -799,7 +799,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -809,7 +809,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-DRAFT-EDIT-001-parameter-draft-edit-and-remove-before-submission.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:02.748Z"
+      "recordedAt": "2026-06-02T11:19:30.308Z"
     },
     {
       "operationId": "PARAM-HAPPY-001",
@@ -823,7 +823,7 @@
         "db",
         "audit"
       ],
-      "notes": "Parameter request 82fb1601-83d2-45b3-9b7c-82ae68c3b34d merged, persisted target value, and produced parameter-merge audit evidence.",
+      "notes": "Parameter request cd9f5f1b-abc6-464d-a0ba-2b2b52d6cf44 merged, persisted target value, and produced parameter-merge audit evidence.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png"
       ],
@@ -832,31 +832,31 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 201,
-          "responseSummary": "created request 82fb1601-83d2-45b3-9b7c-82ae68c3b34d"
+          "responseSummary": "created request cd9f5f1b-abc6-464d-a0ba-2b2b52d6cf44"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "c96b82f1-61ad-49f3-8e98-9ad522c1cd33",
+          "requestId": "5502c888-1b06-44b2-84ad-3ea2bf033697",
           "responseSummary": "found 100 audit events"
         }
       ],
       "db": [
         {
           "table": "parameter_change_requests",
-          "predicate": "id=82fb1601-83d2-45b3-9b7c-82ae68c3b34d",
-          "observed": "status=merged; targetValue=3381",
+          "predicate": "id=cd9f5f1b-abc6-464d-a0ba-2b2b52d6cf44",
+          "observed": "status=merged; targetValue=3390",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "b3a2c17c-edc2-4f7a-9446-feb7e642fb15",
+          "id": "f360c7e3-30bf-4bfb-9c0e-4f9f820fda53",
           "kind": "parameter-merge",
           "action": "merge",
-          "targetId": "82fb1601-83d2-45b3-9b7c-82ae68c3b34d",
-          "requestId": "3081d989-292c-45b0-baf5-6f79914a0d3d"
+          "targetId": "cd9f5f1b-abc6-464d-a0ba-2b2b52d6cf44",
+          "requestId": "79adeaf6-dd72-4002-bf05-33edb0b40f55"
         }
       ],
       "trace": {
@@ -876,7 +876,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -886,7 +886,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-HAPPY-001-parameter-management-submit-review-merge-persistence-audit.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:42.852Z"
+      "recordedAt": "2026-06-02T11:20:08.801Z"
     },
     {
       "operationId": "PARAM-REASON-001",
@@ -918,7 +918,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -928,7 +928,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-REASON-001-blank-parameter-draft-reason-blocked.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:00.335Z"
+      "recordedAt": "2026-06-02T11:19:28.090Z"
     },
     {
       "operationId": "PARAM-REJECT-001",
@@ -942,7 +942,7 @@
         "db",
         "audit"
       ],
-      "notes": "Parameter request 87609291-45e3-40d3-8d54-1e166c70795a was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.",
+      "notes": "Parameter request 5a1fc68f-cf1e-490b-84a3-999a97c34dd8 was rejected through the browser UI and produced persisted rejection and parameter-review-reject audit evidence.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png"
       ],
@@ -951,32 +951,32 @@
           "method": "GET",
           "path": "/api/v1/parameter-change-requests?projectId=aurora",
           "status": 200,
-          "requestId": "2f0629a0-a7ab-491a-9372-26c30beaf2d0",
-          "responseSummary": "request 87609291-45e3-40d3-8d54-1e166c70795a status=rejected"
+          "requestId": "b5c5488b-b526-4f5d-b3d5-7196116255a1",
+          "responseSummary": "request 5a1fc68f-cf1e-490b-84a3-999a97c34dd8 status=rejected"
         },
         {
           "method": "GET",
           "path": "/api/v1/audit-events",
           "status": 200,
-          "requestId": "7c0319b1-30ff-425d-ab94-c02b38fef6bf",
+          "requestId": "7c027fcb-dbca-48ed-a912-d6b3e00b6b43",
           "responseSummary": "found 100 audit events"
         }
       ],
       "db": [
         {
           "table": "parameter_change_requests",
-          "predicate": "id=87609291-45e3-40d3-8d54-1e166c70795a",
+          "predicate": "id=5a1fc68f-cf1e-490b-84a3-999a97c34dd8",
           "observed": "status=rejected; targetValue=4333",
           "rowCount": 1
         }
       ],
       "audit": [
         {
-          "id": "4165d077-e717-4c90-b3dc-f72a49bda9a3",
+          "id": "218deade-cb24-4eef-8b96-1dfe7c10f78d",
           "kind": "parameter-review-reject",
           "action": "reject",
-          "targetId": "87609291-45e3-40d3-8d54-1e166c70795a",
-          "requestId": "6dbc87d9-e104-4374-b515-748ee5742271"
+          "targetId": "5a1fc68f-cf1e-490b-84a3-999a97c34dd8",
+          "requestId": "2c03c971-85f9-4c0b-ae19-3a89dc3b3099"
         }
       ],
       "trace": {
@@ -996,7 +996,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1006,7 +1006,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PARAM-REJECT-001-parameter-review-rejection-reason-persistence-audit.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:44.999Z"
+      "recordedAt": "2026-06-02T11:20:10.675Z"
     },
     {
       "operationId": "PERM-GOV-001",
@@ -1038,7 +1038,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1048,7 +1048,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-GOV-001-user-governance-admin-only-and-self-protection.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:19.721Z"
+      "recordedAt": "2026-06-02T11:20:43.067Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1080,7 +1080,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1090,7 +1090,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-admin.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:56.301Z"
+      "recordedAt": "2026-06-02T11:20:20.142Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1122,7 +1122,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1132,7 +1132,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-guest.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:46.817Z"
+      "recordedAt": "2026-06-02T11:20:12.208Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1164,7 +1164,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1174,7 +1174,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-committer.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:52.482Z"
+      "recordedAt": "2026-06-02T11:20:16.858Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1206,7 +1206,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1216,7 +1216,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-hardware-user.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:48.745Z"
+      "recordedAt": "2026-06-02T11:20:13.724Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1248,7 +1248,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1258,7 +1258,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-committer.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:54.473Z"
+      "recordedAt": "2026-06-02T11:20:18.364Z"
     },
     {
       "operationId": "PERM-MATRIX-001",
@@ -1290,7 +1290,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1300,7 +1300,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-001-visible-route-permissions-for-software-user.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:50.453Z"
+      "recordedAt": "2026-06-02T11:20:15.146Z"
     },
     {
       "operationId": "PERM-MATRIX-002",
@@ -1320,7 +1320,7 @@
           "method": "POST",
           "path": "/api/v1/parameter-submission-rounds",
           "status": 400,
-          "requestId": "aef09f82-9361-48d5-9e07-3e155720a33f",
+          "requestId": "bf9e6b98-496d-469a-bc12-3dd004ef5868",
           "responseSummary": "VALIDATION_FAILED for role-ineligible workflow assignees"
         }
       ],
@@ -1341,7 +1341,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1351,7 +1351,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-MATRIX-002-api-workflow-eligibility-stricter-than-visible-role-inclusion.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:52:56.528Z"
+      "recordedAt": "2026-06-02T11:20:20.357Z"
     },
     {
       "operationId": "PERM-USER-MGMT-001",
@@ -1360,11 +1360,56 @@
       "role": "Admin",
       "route": "/user-permissions",
       "assertions": [
-        "ui"
+        "ui",
+        "api",
+        "db",
+        "audit"
       ],
-      "notes": "Admin changed a non-self user's role and created a local prototype user in the UI. Software User was denied access to /user-permissions. Durable backend user-management mutation/audit remains annotated as a product gap when no API audit evidence is visible.",
+      "notes": "Admin changed a non-self user's role and created a backend-governed user through the UI. Software User was denied access to /user-permissions, and API, DB, and audit evidence confirmed durable user-governance writes.",
       "artifacts": [
         "test-results\\acceptance\\operation-evidence\\PERM-USER-MGMT-001-admin-user-management-ui-and-non-admin-denial.png"
+      ],
+      "api": [
+        {
+          "method": "GET",
+          "path": "/api/v1/users",
+          "status": 200,
+          "requestId": "1c713b2f-2827-4ea1-917a-32a2a938f225",
+          "responseSummary": "created user u-d3130d42-921d-44ef-b5bb-78f4e3b23250 listed with software-user role"
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/audit-events",
+          "status": 200,
+          "requestId": "ee2321b2-e258-4683-a730-93b2719d5e0b",
+          "responseSummary": "user-create and user-role-replace audit events visible"
+        }
+      ],
+      "db": [
+        {
+          "table": "users,user_role_bindings",
+          "predicate": "userId=u-d3130d42-921d-44ef-b5bb-78f4e3b23250; email=chen.rui.acceptance.1780399220445@chargelab.cn; roleId=software-user",
+          "observed": "users=1; roles=1; active=true",
+          "rowCount": 1
+        }
+      ],
+      "audit": [
+        {
+          "id": "1169ef2c-ec54-4a89-9030-a9fd7a974ce3",
+          "kind": "user-create",
+          "action": "create",
+          "targetId": "u-d3130d42-921d-44ef-b5bb-78f4e3b23250",
+          "requestId": "aa0ffd74-19a4-477d-bb31-3acc080166ab",
+          "metadataSummary": "email,roles"
+        },
+        {
+          "id": "01cc5f8d-680b-4adb-b6b9-3fc863870617",
+          "kind": "user-role-replace",
+          "action": "replace-roles",
+          "targetId": "u-wang-jie",
+          "requestId": "e580afa7-6816-4d05-92c1-8564eb4de1a6",
+          "metadataSummary": "roles"
+        }
       ],
       "trace": {
         "mode": "retain-on-failure",
@@ -1383,7 +1428,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1393,7 +1438,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\PERM-USER-MGMT-001-admin-user-management-ui-and-non-admin-denial.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:21.304Z"
+      "recordedAt": "2026-06-02T11:20:44.561Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1425,7 +1470,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1435,7 +1480,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging-admin.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:35.531Z"
+      "recordedAt": "2026-06-02T11:20:58.240Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1467,7 +1512,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1477,7 +1522,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-debugging.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:32.367Z"
+      "recordedAt": "2026-06-02T11:20:55.095Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1509,7 +1554,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1519,7 +1564,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-home.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:22.749Z"
+      "recordedAt": "2026-06-02T11:20:45.831Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1551,7 +1596,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1561,7 +1606,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-log-admin.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:30.813Z"
+      "recordedAt": "2026-06-02T11:20:53.406Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1593,7 +1638,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1603,7 +1648,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-logs.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:29.101Z"
+      "recordedAt": "2026-06-02T11:20:51.943Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1635,7 +1680,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1645,7 +1690,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-node-debugging.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:33.942Z"
+      "recordedAt": "2026-06-02T11:20:56.741Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1677,7 +1722,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1687,7 +1732,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-admin.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:27.541Z"
+      "recordedAt": "2026-06-02T11:20:50.451Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1719,7 +1764,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1729,7 +1774,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameter-review.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:25.999Z"
+      "recordedAt": "2026-06-02T11:20:48.942Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1761,7 +1806,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1771,7 +1816,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-parameters.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:24.404Z"
+      "recordedAt": "2026-06-02T11:20:47.428Z"
     },
     {
       "operationId": "SHELL-DIAG-001",
@@ -1803,7 +1848,7 @@
           "OBJECT_STORE_MODE": "local",
           "DEBUG_DEVICE_GATEWAY_MODE": "simulator",
           "AGENT_PROVIDER": "live",
-          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "false"
+          "WISEEFF_ACCEPTANCE_NO_START_RUNTIME": "true"
         }
       },
       "reproduction": {
@@ -1813,7 +1858,7 @@
           "Review operation artifacts: test-results\\acceptance\\operation-evidence\\SHELL-DIAG-001-shell-route-user-permissions.png."
         ]
       },
-      "recordedAt": "2026-06-01T12:53:37.148Z"
+      "recordedAt": "2026-06-02T11:20:59.751Z"
     }
   ]
 }
