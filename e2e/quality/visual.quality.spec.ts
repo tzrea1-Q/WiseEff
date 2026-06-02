@@ -22,7 +22,7 @@ test.describe("M5.11 visual quality gate", () => {
       await expectUsablePage(page);
 
       await expect(page.locator("main, .main-content").first()).toHaveScreenshot(`${route.name}.png`, {
-        mask: stableMasks(page)
+        mask: stableMasks(page, route.path)
       });
     });
   }

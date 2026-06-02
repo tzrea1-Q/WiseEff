@@ -30,8 +30,8 @@ export async function openAgentPanel(page: Page) {
   return panel;
 }
 
-export function stableMasks(page: Page): Locator[] {
-  return [
+export function stableMasks(page: Page, routePath = ""): Locator[] {
+  const masks = [
     page.locator(".topbar-user-menu"),
     page.locator(".agent-panel .agent-message"),
     page.locator(".agent-panel .agent-context"),
@@ -41,6 +41,12 @@ export function stableMasks(page: Page): Locator[] {
     page.locator(".review-detail"),
     page.locator("[aria-live]")
   ];
+
+  if (routePath === "/parameters") {
+    masks.push(page.locator(".parameters-table-grid tbody"));
+  }
+
+  return masks;
 }
 
 export async function expectNoHorizontalOverflow(page: Page, tolerancePx = 2) {

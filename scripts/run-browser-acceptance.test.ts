@@ -20,6 +20,7 @@ describe("browser acceptance runner", () => {
     expect(parseBrowserAcceptanceArgs([], {})).toEqual({
       mode: "local-non-hdc",
       envFile: ".env",
+      frontendUrl: "http://127.0.0.1:5173",
       evidenceOut: "docs/generated/acceptance-browser-evidence.md",
       skipPreflight: false,
       startRuntime: true,
@@ -43,6 +44,8 @@ describe("browser acceptance runner", () => {
           "full-pilot",
           "--env-file",
           ".env.pilot",
+          "--frontend-url",
+          "https://staging.example.test",
           "--evidence-out",
           "artifacts/browser.md",
           "--skip-preflight",
@@ -52,9 +55,10 @@ describe("browser acceptance runner", () => {
         {}
       )
     ).toEqual({
-      mode: "full-pilot",
-      envFile: ".env.pilot",
-      evidenceOut: "artifacts/browser.md",
+        mode: "full-pilot",
+        envFile: ".env.pilot",
+        frontendUrl: "https://staging.example.test",
+        evidenceOut: "artifacts/browser.md",
       skipPreflight: true,
       startRuntime: false,
       headed: true
@@ -72,6 +76,7 @@ describe("browser acceptance runner", () => {
       parseBrowserAcceptanceArgs([], {
         npm_config_mode: "target-non-hdc",
         npm_config_env_file: ".env.target",
+        npm_config_frontend_url: "https://target.example.test",
         npm_config_evidence_out: "evidence/target.md",
         npm_config_skip_preflight: "true",
         npm_config_no_start_runtime: "true",
@@ -80,6 +85,7 @@ describe("browser acceptance runner", () => {
     ).toEqual({
       mode: "target-non-hdc",
       envFile: ".env.target",
+      frontendUrl: "https://target.example.test",
       evidenceOut: "evidence/target.md",
       skipPreflight: true,
       startRuntime: false,
@@ -96,6 +102,8 @@ describe("browser acceptance runner", () => {
         "--",
         "--env-file",
         ".env",
+        "--frontend-url",
+        "http://127.0.0.1:5173",
         "--evidence-out",
         "test-results/acceptance/preflight-evidence.md"
       ]
@@ -109,6 +117,8 @@ describe("browser acceptance runner", () => {
       "--",
       "--env-file",
       ".env",
+      "--frontend-url",
+      "http://127.0.0.1:5173",
       "--evidence-out",
       "test-results/acceptance/preflight-evidence.md",
       "--no-start-runtime"
@@ -122,6 +132,8 @@ describe("browser acceptance runner", () => {
       "--",
       "--env-file",
       ".env",
+      "--frontend-url",
+      "http://127.0.0.1:5173",
       "--evidence-out",
       "test-results/acceptance/preflight-evidence.md",
       "--require-pilot-ready",
@@ -227,9 +239,33 @@ describe("browser acceptance runner", () => {
 
     expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs(["--env-file", ".env.target"], {}), env).env).toMatchObject({
       VITE_WISEEFF_API_BASE_URL: "http://explicit",
+      WISEEFF_ACCEPTANCE_FRONTEND_URL: "http://127.0.0.1:5173",
       M5_SMOKE_AUTHORIZATION: "file-token",
       EXISTING: "kept"
     });
+  });
+
+  it("passes the selected frontend URL into preflight and Playwright", () => {
+    const options = parseBrowserAcceptanceArgs(["--frontend-url", "https://frontend.example.test"], {});
+
+    expect(buildPreflightCommand(options)?.args).toEqual(
+      expect.arrayContaining(["--frontend-url", "https://frontend.example.test"])
+    );
+    expect(buildBrowserAcceptanceCommand(options, {}).env).toMatchObject({
+      WISEEFF_ACCEPTANCE_FRONTEND_URL: "https://frontend.example.test"
+    });
+  });
+
+  it("marks Playwright no-start runtime when preflight owns runtime startup", () => {
+    expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs([], {}), {}).env).toMatchObject({
+      WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
+    });
+  });
+
+  it("lets Playwright start runtime when preflight is skipped", () => {
+    expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs(["--skip-preflight"], {}), {}).env).not.toHaveProperty(
+      "WISEEFF_ACCEPTANCE_NO_START_RUNTIME"
+    );
   });
 
   it("marks Playwright no-start runtime for target mode and no-start mode", () => {
@@ -243,9 +279,6 @@ describe("browser acceptance runner", () => {
     ).toMatchObject({
       WISEEFF_ACCEPTANCE_NO_START_RUNTIME: "true"
     });
-    expect(buildBrowserAcceptanceCommand(parseBrowserAcceptanceArgs([], {}), {}).env).not.toHaveProperty(
-      "WISEEFF_ACCEPTANCE_NO_START_RUNTIME"
-    );
   });
 
   it("marks Playwright HDC ready only when HDC gateway mode and lab are both enabled", () => {
@@ -491,6 +524,20 @@ describe("playwright acceptance config", () => {
     expect(Array.isArray(config.webServer)).toBe(true);
     expect(config.webServer).toHaveLength(2);
   });
+
+  it("uses the configured target frontend URL", async () => {
+    const config = await importAcceptanceConfig(undefined, "https://frontend.example.test");
+
+    expect(config.use).toMatchObject({ baseURL: "https://frontend.example.test" });
+  });
+});
+
+describe("playwright quality config", () => {
+  it("uses the configured target frontend URL", async () => {
+    const config = await importQualityConfig("https://frontend.example.test");
+
+    expect(config.use).toMatchObject({ baseURL: "https://frontend.example.test" });
+  });
 });
 
 describe("browser acceptance evidence", () => {
@@ -595,23 +642,55 @@ describe("browser acceptance evidence", () => {
   });
 });
 
-async function importAcceptanceConfig(noStartRuntime: string | undefined) {
+async function importAcceptanceConfig(noStartRuntime: string | undefined, frontendUrl?: string) {
   const previous = process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME;
+  const previousFrontendUrl = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
   if (noStartRuntime === undefined) {
     delete process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME;
   } else {
     process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME = noStartRuntime;
   }
+  if (frontendUrl === undefined) {
+    delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
+  } else {
+    process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL = frontendUrl;
+  }
 
   try {
     vi.resetModules();
     const module = await import("../playwright.acceptance.config");
-    return module.default as { webServer?: unknown };
+    return module.default as { webServer?: unknown; use?: unknown };
   } finally {
     if (previous === undefined) {
       delete process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME;
     } else {
       process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME = previous;
+    }
+    if (previousFrontendUrl === undefined) {
+      delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
+    } else {
+      process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL = previousFrontendUrl;
+    }
+  }
+}
+
+async function importQualityConfig(frontendUrl?: string) {
+  const previousFrontendUrl = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
+  if (frontendUrl === undefined) {
+    delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
+  } else {
+    process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL = frontendUrl;
+  }
+
+  try {
+    vi.resetModules();
+    const module = await import("../playwright.quality.config");
+    return module.default as { use?: unknown };
+  } finally {
+    if (previousFrontendUrl === undefined) {
+      delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
+    } else {
+      process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL = previousFrontendUrl;
     }
   }
 }

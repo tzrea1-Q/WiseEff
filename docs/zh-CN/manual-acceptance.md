@@ -284,6 +284,10 @@ npm run acceptance:browser -- --mode full-pilot --no-start-runtime
 
 M5.11 之后，工作流门禁旁边还增加确定性的质量门禁。修改 quality scripts、Playwright quality config 或 quality spec 路径时运行 `npm run acceptance:quality`；修改页面结构、弹窗、表单、导航、label、heading、focus 或 Agent 面板时运行 `npm run acceptance:a11y`；修改 CSS、布局、稳定页面区域、截图 mask 或视觉层级时运行 `npm run acceptance:visual`；修改表格、工具栏、导航、弹窗或 viewport-dependent UI 时运行 `npm run acceptance:responsive`。视觉快照只能有意更新：先运行 `npm run acceptance:visual -- --update-snapshots`，再不带 `--update-snapshots` 复跑通过后再接受结果。
 
+M5.12 之后，GitHub Actions 也会归档这些自动化验收产物。PR 和 push 会运行 `acceptance-local-non-hdc`，上传 `wiseeff-acceptance-local-non-hdc` artifact；手动 `workflow_dispatch` 可以选择 `target-non-hdc` 或 `full-pilot`，使用目标环境 URL、GitHub Secrets 和 `--no-start-runtime` 运行，并上传 `wiseeff-acceptance-<mode>` artifact。artifact 应包含 Playwright acceptance report、`test-results/acceptance`、浏览器证据、operation evidence，以及 quality report。PR artifact 只能证明本地非 HDC readiness；完整 full-pilot 仍必须有真实目标环境、HDC、backup/restore、rollback、object-store、worker 和 live Agent 证据。
+
+`npm run acceptance:ci` 用来检查 CI workflow 是否仍然包含本地非 HDC job、target synthetic job、full-pilot 手动门禁和 artifact 路径。修改 `.github/workflows/ci.yml` 或验收 artifact 路径后必须运行该命令。Target synthetic 测的是已经部署好的目标前端；该前端必须已经通过部署配置好 API base URL 和 production-auth bearer-token 注入路径，否则浏览器验收会真实失败。
+
 ### 6.6 操作级证据复核
 
 运行 `npm run acceptance:browser` 后，查看 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json`。每个自动化 operation 都应包含角色、路由、断言类型、状态、artifact 路径、runtime、trace/report 路径和复现步骤。声明 `api` 断言的 operation 必须包含 method、path、status 和可用 requestId；声明 `db` 断言的 operation 必须包含 table、predicate、observed state 和可用 row count；声明 `audit` 断言的 operation 必须包含 event id、kind、action、targetId 和可用 request/trace 关联。P0/P1 自动化 operation 缺少证据、证据缺少复核元数据、缺少必需 API/DB/audit 摘要，或证据中出现未脱敏 secret/token/authorization 内容时，验收不得通过。

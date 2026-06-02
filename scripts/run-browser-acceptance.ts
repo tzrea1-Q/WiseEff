@@ -30,6 +30,7 @@ type RuntimeEnv = Record<string, string | undefined>;
 export type BrowserAcceptanceOptions = {
   mode: BrowserAcceptanceMode;
   envFile: string;
+  frontendUrl: string;
   evidenceOut: string;
   skipPreflight: boolean;
   startRuntime: boolean;
@@ -154,6 +155,7 @@ export function parseBrowserAcceptanceArgs(
   const options: BrowserAcceptanceOptions = {
     mode: parseMode(env.npm_config_mode?.trim() || "local-non-hdc"),
     envFile: env.npm_config_env_file?.trim() || ".env",
+    frontendUrl: env.npm_config_frontend_url?.trim() || "http://127.0.0.1:5173",
     evidenceOut: env.npm_config_evidence_out?.trim() || defaultEvidenceOut,
     skipPreflight: parseBoolean(env.npm_config_skip_preflight),
     startRuntime: resolveStartRuntimeFlag(env),
@@ -174,6 +176,11 @@ export function parseBrowserAcceptanceArgs(
       index += 1;
     } else if (arg.startsWith("--env-file=")) {
       options.envFile = arg.slice("--env-file=".length);
+    } else if (arg === "--frontend-url" && next) {
+      options.frontendUrl = next;
+      index += 1;
+    } else if (arg.startsWith("--frontend-url=")) {
+      options.frontendUrl = arg.slice("--frontend-url=".length);
     } else if (arg === "--evidence-out" && next) {
       options.evidenceOut = next;
       index += 1;
@@ -204,6 +211,8 @@ export function buildPreflightCommand(options: BrowserAcceptanceOptions): Comman
     "--",
     "--env-file",
     options.envFile,
+    "--frontend-url",
+    options.frontendUrl,
     "--evidence-out",
     defaultPreflightEvidenceOut
   ];
@@ -255,8 +264,9 @@ export function buildBrowserAcceptanceCommand(
 
 export function buildPlaywrightEnv(options: BrowserAcceptanceOptions, loadedEnv: RuntimeEnv = process.env): RuntimeEnv {
   const env: RuntimeEnv = { ...loadedEnv };
+  env.WISEEFF_ACCEPTANCE_FRONTEND_URL = options.frontendUrl;
 
-  if (options.mode === "target-non-hdc" || !options.startRuntime) {
+  if (options.mode === "target-non-hdc" || !options.startRuntime || !options.skipPreflight) {
     env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME = "true";
   }
 

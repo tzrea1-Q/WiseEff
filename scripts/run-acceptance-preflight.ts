@@ -208,11 +208,49 @@ export function evaluatePilotReadiness(
     };
   }
 
+  if (
+    !options.requirePilotReady &&
+    options.startRuntime !== false &&
+    blockerSet.size === 3 &&
+    blockerSet.has("deviceGateway") &&
+    blockerSet.has("agentProvider") &&
+    blockerSet.has("backups")
+  ) {
+    return {
+      accepted: true,
+      outcome: "non_hdc_local",
+      detail: "Accepted for local non-HDC preflight; deviceGateway, agentProvider, and backups remain blocked."
+    };
+  }
+
   return {
     accepted: false,
     outcome: "blocked",
     detail: `Pilot-readiness is blocked by: ${blockedBy.length > 0 ? blockedBy.join(", ") : "unknown"}.`
   };
+}
+
+const testGateEnvDenylist = [
+  "VITE_WISEEFF_RUNTIME_MODE",
+  "M5_CONTRACT_CHECK_PASSED",
+  "M5_CONTRACT_ARTIFACT_CHECKED_AT",
+  "M5_BACKUP_RESTORE_DRILL_AT",
+  "M5_DEVICE_GATEWAY_EVIDENCE",
+  "DEBUG_DEVICE_GATEWAY_MODE",
+  "HDC_DEVICE_LAB_AVAILABLE",
+  "AGENT_PROVIDER"
+] as const;
+
+export function buildTestGateEnv(env: RuntimeEnv = process.env): RuntimeEnv {
+  const gateEnv: RuntimeEnv = { ...env, VITE_WISEEFF_RUNTIME_MODE: "mock" };
+
+  for (const key of testGateEnvDenylist) {
+    if (key !== "VITE_WISEEFF_RUNTIME_MODE") {
+      delete gateEnv[key];
+    }
+  }
+
+  return gateEnv;
 }
 
 export function buildEnvSummary(env: RuntimeEnv): Record<string, string> {
@@ -363,7 +401,8 @@ async function runApiChecks(env: RuntimeEnv, options: PreflightOptions) {
 function runCommandCheck(name: string, command: string, args: string[]): CheckResult {
   const result = spawnSync(command, args, {
     encoding: "utf8",
-    shell: process.platform === "win32"
+    shell: process.platform === "win32",
+    env: name === "test:all" ? buildTestGateEnv() : process.env
   });
 
   return commandResultToCheck(name, result);
