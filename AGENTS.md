@@ -21,7 +21,7 @@ This file is the short map for agents working in this repository. Keep it small.
 - `docs/developer/`: local setup, environment variables, and verification matrix.
 - `docs/api/`: API authentication, errors, examples, and contract usage.
 - `docs/security/`: threat model, data classification, secrets, and audit retention.
-- `docs/runbooks/`: staging, backup/restore, rollback, monitoring, HDC, Agent provider, and pilot operations.
+- `docs/runbooks/`: staging, backup/restore, rollback, monitoring, observability, incidents, HDC, Agent provider, and pilot operations.
 - `docs/product-specs/`: product truth, user workflows, MVP scope, and prototype behavior.
 - `docs/design-docs/`: architecture, domain model, API contract, design history, testing, security, deployment.
 - `docs/exec-plans/`: active plans, completed plans, and the technical debt tracker.
@@ -72,6 +72,7 @@ npm run test:server
 npm run test:all
 npm run build
 npm run selfhost:check
+npm run observability:check
 ```
 
 Use targeted tests while developing. Before claiming a code change is complete, run the narrow relevant tests plus `npm run build` when the change touches TypeScript, Vite config, routing, or shared types.

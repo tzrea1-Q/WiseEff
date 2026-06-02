@@ -205,7 +205,7 @@ Runtime services:
 - `web`: built Vite frontend served by `npm run preview -- --host 0.0.0.0`.
 - `proxy`: Caddy TLS and reverse proxy for frontend, `/api/*`, and `/health/*`.
 
-This is an M6.1 deployment baseline only. OIDC, self-hosted object-store provider selection, durable queues, observability, release rollback, and capacity evidence are M6.2-M6.6.
+This started as an M6.1 deployment baseline. M6.5 now adds the first self-hosted observability baseline: `GET /metrics`, `npm run observability:check`, Prometheus scrape config, alert rules with runbook links, and Grafana dashboard templates. OIDC, self-hosted object-store backup evidence, durable queue target evidence, release rollback, capacity evidence, and target Prometheus/Grafana/Alertmanager proof remain M6.2-M6.6 work.
 
 ## M5 Live Agent Provider Boundary
 

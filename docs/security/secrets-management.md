@@ -39,3 +39,5 @@ Rotate secrets when:
 - New docs do not include real secrets.
 - Smoke tokens in committed docs are local examples only.
 - Target-environment evidence is redacted before commit.
+- `npm run observability:check` passes after changing Prometheus config, alert rules, or Grafana dashboards.
+- Metrics labels, dashboard links, and alert annotations do not contain bearer tokens, provider keys, object-store keys, raw uploaded logs, raw parameter values, or raw device payloads.

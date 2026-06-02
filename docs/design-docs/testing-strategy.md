@@ -177,6 +177,17 @@ npm run selfhost:smoke -- --base-url <target-url>
 
 `selfhost:check` validates the compose services, self-hosted env template, Caddy routing, and package script wiring. `selfhost:smoke` probes a running self-hosted target and writes redacted evidence. It can accept `--allow-only-blocked=deviceGateway` only for non-HDC staging.
 
+## 9.2 M6.5 Observability Gates
+
+M6.5 adds local observability configuration and runtime checks:
+
+```bash
+npm test -- scripts/check-observability-config.test.ts server/observability/*.test.ts server/app.test.ts server/shared/http/router.test.ts
+npm run observability:check
+```
+
+`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, structured log redaction, correlation metadata, and tracing export failure isolation. Target Prometheus scrape, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

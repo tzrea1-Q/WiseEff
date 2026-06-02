@@ -1,0 +1,112 @@
+groups:
+  - name: wiseeff-self-hosted
+    rules:
+      - alert: WiseEffApiDown
+        expr: up{job="wiseeff-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: WiseEff API metrics target is down
+          description: Prometheus cannot scrape the WiseEff API metrics target for more than 2 minutes.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffapidown
+
+      - alert: WiseEffReadinessBlocked
+        expr: wiseeff_readiness_status{status="not_ready"} > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: readiness
+        annotations:
+          summary: WiseEff readiness is blocked
+          description: One or more readiness dependencies are blocking pilot operation.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffreadinessblocked
+
+      - alert: WiseEffElevatedHttp5xx
+        expr: sum(rate(wiseeff_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(wiseeff_http_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: WiseEff API 5xx rate is elevated
+          description: More than 5 percent of API requests are returning 5xx responses over 10 minutes.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffelevatedhttp5xx
+
+      - alert: WiseEffHighApiLatency
+        expr: histogram_quantile(0.95, sum(rate(wiseeff_http_request_duration_seconds_bucket[5m])) by (le, route)) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: WiseEff API P95 latency is high
+          description: API route P95 latency is above the 800ms MVP target for more than 10 minutes.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffhighapilatency
+
+      - alert: WiseEffQueueBacklogHigh
+        expr: sum(wiseeff_queue_backlog) > 25
+        for: 15m
+        labels:
+          severity: warning
+          component: worker
+        annotations:
+          summary: WiseEff job queue backlog is high
+          description: Queued log-analysis jobs have remained above the self-hosted threshold.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffqueuebackloghigh
+
+      - alert: WiseEffDeadLetterGrowth
+        expr: sum(wiseeff_queue_dead_lettered) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: WiseEff jobs entered dead-letter state
+          description: At least one log-analysis job exhausted retries and moved to dead-letter handling.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffdeadlettergrowth
+
+      - alert: WiseEffObjectStoreProbeFailure
+        expr: wiseeff_object_store_ready == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: object-store
+        annotations:
+          summary: WiseEff object-store readiness probe failed
+          description: The object-store health seam cannot complete the configured readiness probe.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffobjectstoreprobefailure
+
+      - alert: WiseEffDatabaseUnavailable
+        expr: wiseeff_database_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: WiseEff database is unavailable
+          description: The API readiness check reports the database dependency as unavailable.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffdatabaseunavailable
+
+      - alert: WiseEffAgentProviderFailure
+        expr: wiseeff_agent_provider_ready == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: agent
+        annotations:
+          summary: WiseEff Agent provider is degraded
+          description: The live Agent provider is unavailable or fallback events are spiking.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffagentproviderfailure
+
+      - alert: WiseEffHostDiskPressure
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.15
+        for: 10m
+        labels:
+          severity: warning
+          component: host
+        annotations:
+          summary: WiseEff host disk free space is low
+          description: Host filesystem free space is below 15 percent on a monitored mount.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffhostdiskpressure

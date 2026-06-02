@@ -49,6 +49,7 @@ Rules:
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
 - `server/modules/agent/`: M4 Agent sessions, tools, approvals, and provider boundary.
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
+- `server/observability/`: correlation context, structured log helpers, metrics registry, and tracing boundary.
 - `server/migrations/`: SQL schema baseline.
 
 The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
@@ -74,7 +75,13 @@ Release operations add a pilot gate on top of the basic health checks. `GET /api
 
 M6.1 adds a single-Linux-server self-hosted baseline under `ops/self-hosted/`. It runs PostgreSQL, API, web, worker, and Caddy reverse proxy as separate services. The API defaults to `HOST=127.0.0.1` for local development; self-hosted containers set `HOST=0.0.0.0` so the proxy can reach the API over the compose network. The API container sets `LOG_WORKER_ENABLED=false`, while the dedicated worker container runs `npm run worker:logs`.
 
-The M6.1 baseline is deployment plumbing, not full production hardening. OIDC identity, self-hosted object-store provider selection, durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6.2-M6.6 work.
+The M6.1 baseline is deployment plumbing, not full production hardening. OIDC identity, self-hosted object-store provider selection, durable Redis/BullMQ queues, release rollback, and capacity gates remain M6.2-M6.6 work.
+
+## Observability
+
+M6.5 adds a self-hosted observability baseline. The API exposes `GET /metrics` as Prometheus text, refreshes readiness, dependency, and worker queue gauges before rendering the scrape response, and records HTTP request counts and duration buckets through the shared HTTP adapter. The observability helpers keep correlation IDs, structured logs, metrics, and tracing boundaries in `server/observability/` without requiring a SaaS vendor.
+
+Prometheus, alert rules, and Grafana dashboard templates live in `ops/self-hosted/observability/`. `/metrics` is internal operations data and must be scraped only over a private network, VPN, reverse-proxy allowlist, mTLS, or a stronger equivalent control.
 
 ## Deeper Docs
 

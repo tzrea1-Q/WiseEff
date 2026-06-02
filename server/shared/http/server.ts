@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { MetricsRegistry } from "../../observability/metrics";
 import { ApiError, serializeApiError } from "./errors";
 import type { HttpMethod, RouteRequest, RouteResponse } from "./router";
 
@@ -140,6 +141,12 @@ function sendJson(response: ServerResponse, status: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
+function sendText(response: ServerResponse, status: number, contentType: string, text: string) {
+  response.statusCode = status;
+  response.setHeader("Content-Type", contentType);
+  response.end(text);
+}
+
 async function sendSse(response: ServerResponse, events: AsyncIterable<{ event: string; data: unknown }>) {
   response.statusCode = 200;
   response.setHeader("Content-Type", "text/event-stream");
@@ -207,8 +214,9 @@ function parseQuery(searchParams: URLSearchParams) {
   return query;
 }
 
-export function createHttpServer(router: { handle(request: RouteRequest): Promise<RouteResponse> }) {
+export function createHttpServer(router: { handle(request: RouteRequest): Promise<RouteResponse> }, options: { metrics?: MetricsRegistry } = {}) {
   return createServer(async (request, response) => {
+    const startedAt = Date.now();
     const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
     setCorsHeaders(request, response);
 
@@ -234,16 +242,41 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
       response.setHeader("X-Request-Id", requestId);
       if ("sse" in routeResponse) {
         await sendSse(response, routeResponse.sse);
+      } else if ("text" in routeResponse) {
+        sendText(response, routeResponse.status, routeResponse.contentType, routeResponse.text);
       } else {
         sendJson(response, routeResponse.status, routeResponse.body);
       }
+      options.metrics?.recordHttpRequest({
+        method: request.method ?? "GET",
+        route: url.pathname,
+        status: routeResponse.status,
+        durationMs: Date.now() - startedAt
+      });
     } catch (error) {
       if (response.headersSent) {
         response.destroy(error instanceof Error ? error : undefined);
         return;
       }
       response.setHeader("X-Request-Id", requestId);
-      sendJson(response, getErrorStatus(error), serializeApiError(error, requestId));
+      const status = getErrorStatus(error);
+      sendJson(response, status, serializeApiError(error, requestId));
+      try {
+        const url = new URL(request.url ?? "/", "http://localhost");
+        options.metrics?.recordHttpRequest({
+          method: request.method ?? "GET",
+          route: url.pathname,
+          status,
+          durationMs: Date.now() - startedAt
+        });
+      } catch {
+        options.metrics?.recordHttpRequest({
+          method: request.method ?? "GET",
+          route: "/unknown",
+          status,
+          durationMs: Date.now() - startedAt
+        });
+      }
     }
   });
 }

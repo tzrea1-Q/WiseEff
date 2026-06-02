@@ -1,6 +1,6 @@
 # Monitoring And Alerting Runbook
 
-This runbook defines the minimum signals needed for controlled staging and pilot operation.
+This runbook defines the minimum signals needed for controlled staging and pilot operation. M6.5 adds Prometheus, alert rules, and Grafana dashboard templates under `ops/self-hosted/observability/`; use [Observability Operations](observability-operations.md) for concrete scrape, dashboard, and alert-response steps.
 
 ## Required Signals
 
@@ -28,6 +28,14 @@ Page or immediately escalate:
 - object-store health failure,
 - worker dead-letter growth,
 - provider unsafe response or unexpected fallback spike.
+
+M6.5 production alerts must include a `runbook_url` annotation that points to an actionable runbook section. The baseline alert file is `ops/self-hosted/observability/alerts.yml` currently covers API scrape/down, readiness not-ready, elevated 5xx, high latency, queue backlog, dead-letter presence, object-store probe failure, database unavailable, Agent provider readiness failure, and host disk pressure.
+
+Per-Agent call failure counters, per-device gateway operation counters, audit write failure counters, and per-job duration/failure-reason histograms require deeper service instrumentation and remain follow-up work before they can become hard alert rules.
+
+## Metrics Access
+
+Metrics are private operations data. Prometheus should scrape `api:8787/metrics` from the self-hosted private network. If an operator exposes `/metrics` through a reverse proxy, the route must be restricted to an operations VPN or fixed allowlist. Do not expose `/metrics` publicly, and do not put bearer tokens, provider keys, raw uploaded logs, raw parameter values, or raw device write payloads in metric labels.
 
 ## First Triage
 

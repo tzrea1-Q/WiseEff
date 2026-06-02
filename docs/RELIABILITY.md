@@ -54,6 +54,14 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default and probes `/health/live`, `/health/ready`, `/api/v1/me`, and `/api/v1/operations/pilot-readiness`. Allowing `deviceGateway` as the only blocked gate is valid only for non-HDC staging.
 
+## M6.5 Observability Baseline
+
+M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and three Grafana dashboards for overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.
+
+Metrics are internal operations data. Production and pilot deployments must keep `/metrics` private through direct private-network scraping, a reverse-proxy allowlist, VPN, mTLS, or stronger equivalent control. Public `/metrics` exposure is not acceptable for readiness.
+
+Every production alert rule must include a `runbook_url` annotation. Use [runbooks/observability-operations.md](runbooks/observability-operations.md) for alert response and [runbooks/incidents.md](runbooks/incidents.md) for incident severity, handoff, evidence, and closure.
+
 ## Production Configuration Gate
 
 - `NODE_ENV=production` requires `DATABASE_URL`.

@@ -83,6 +83,12 @@ M3 debugging emits backend audit events for target detection, session creation, 
 
 M3.5 request correlation uses `X-Request-Id` as the HTTP request id. The server reflects a client-provided id or generates one, includes it in error responses, and passes it through M1 parameter, M2 log, and M3 debugging write services as audit `traceId`. Direct service calls without an HTTP request still generate a trace id.
 
+## Telemetry Security
+
+M6.5 observability data is operations evidence, not a public API. `/metrics` can expose route names, dependency status, queue counts, provider status, and high-risk operation counters, so production and pilot deployments must keep it private through private-network scraping, VPN, reverse-proxy allowlist, mTLS, or a stronger equivalent control.
+
+Telemetry must not include bearer tokens, provider keys, raw uploaded log content, raw parameter values, raw device write payloads, or credentials in labels, logs, traces, dashboards, alert annotations, or incident evidence. Structured log helpers redact common secret-bearing keys, and `npm run observability:check` scans observability config and dashboards for obvious secret leakage.
+
 ## Agent Safety
 
 Agent tools should be classified as:

@@ -20,6 +20,8 @@ M0-M5 implementation note: the repository now contains the modular API, PostgreS
 
 M6.1 self-hosted note: `ops/self-hosted/` now provides a single-Linux-server baseline with separate PostgreSQL, API, web, worker, and Caddy proxy services. The API can bind through `HOST`, and self-hosted API containers disable the in-process worker with `LOG_WORKER_ENABLED=false` so the dedicated worker service owns log processing.
 
+M6.5 observability note: `server/observability/` provides correlation, structured-log redaction helpers, a Prometheus metrics registry, and a tracing boundary. `GET /metrics` exposes build, HTTP, readiness, database, object-store, Agent provider readiness, and worker queue gauges/counters. Prometheus, alerts, and Grafana templates live under `ops/self-hosted/observability/`; `/metrics` must remain private to the operations network, VPN, allowlisted proxy, mTLS, or stronger access control.
+
 ## 2. 推荐技术栈
 
 | 层级 | 推荐 |

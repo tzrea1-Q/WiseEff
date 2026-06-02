@@ -145,3 +145,25 @@ npm run selfhost:smoke -- --base-url https://<host>
 本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
 
 这只是 M6.1 baseline。OIDC、自托管对象存储备份、durable queue、observability、rollback 和 capacity gates 属于后续 M6 阶段。
+
+## Observability / 观测性
+
+M6.5 新增自托管观测性基线：
+
+```text
+GET /metrics
+```
+
+`/metrics` 返回 Prometheus text，并在返回前刷新 readiness、database、object store、Agent provider 和 worker queue 指标。Prometheus/Grafana/alert 配置位于：
+
+```text
+ops/self-hosted/observability/
+```
+
+本地配置校验：
+
+```bash
+npm run observability:check
+```
+
+`/metrics` 是内部运维数据，生产和 pilot 环境必须通过 private network、VPN、反向代理 allowlist、mTLS 或更强控制访问，不能直接公开到公网。

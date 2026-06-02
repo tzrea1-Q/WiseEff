@@ -49,12 +49,81 @@ function createAuthBoundaryDb() {
   return { calls, db };
 }
 
+function createObservabilityDb() {
+  const db: Database = {
+    query: async <Row,>(text: string): Promise<QueryResult<Row>> => {
+      if (text.includes("from jobs")) {
+        return {
+          rows: [
+            {
+              queued: "3",
+              processing: "1",
+              dead_lettered: "0",
+              oldest_queued_at: null
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+
+      return { rows: [{ ok: 1 } as Row], rowCount: 1 };
+    },
+    transaction: async (fn) => fn(db)
+  };
+
+  return db;
+}
+
 describe("WiseEff API", () => {
   it("serves the health endpoint", async () => {
     const response = await requestJson(createWiseEffServer(), "/api/v1/health");
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ ok: true, service: "wiseeff-api" });
+  });
+
+  it("serves Prometheus metrics and records request outcomes", async () => {
+    const server = createWiseEffServer();
+
+    await requestJson(server, "/api/v1/health");
+    const response = await requestJson(server, "/metrics");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    expect(response.bodyText).toContain("wiseeff_build_info");
+    expect(response.bodyText).toContain('wiseeff_http_requests_total{method="GET",route="/api/v1/health",status="200"} 1');
+    expect(response.bodyText).not.toMatch(/authorization|password|secret|token/i);
+  });
+
+  it("refreshes dependency and worker readiness metrics before rendering /metrics", async () => {
+    const response = await requestJson(
+      createWiseEffServer({
+        db: createObservabilityDb(),
+        objectStoreHealth: {
+          checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+        },
+        agentProvider: {
+          metadata: () => ({ provider: "live" as const, model: "pilot", promptVersion: "m6" }),
+          planTurn: async () => ({
+            assistantDraft: { content: "ready", citations: [], confidence: 0.9 },
+            toolRequests: [],
+            provider: "live" as const,
+            model: "pilot",
+            promptVersion: "m6"
+          }),
+          checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+        }
+      }),
+      "/metrics"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.bodyText).toContain('wiseeff_readiness_status{status="ready"} 1');
+    expect(response.bodyText).toContain('wiseeff_dependency_health{dependency="database"} 1');
+    expect(response.bodyText).toContain('wiseeff_database_ready 1');
+    expect(response.bodyText).toContain('wiseeff_object_store_ready 1');
+    expect(response.bodyText).toContain('wiseeff_agent_provider_ready 1');
+    expect(response.bodyText).toContain('wiseeff_queue_backlog{queue="log-analysis"} 3');
   });
 
   it("parses query strings with repeated params", async () => {

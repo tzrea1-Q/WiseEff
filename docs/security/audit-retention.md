@@ -36,4 +36,5 @@ Operators should be able to investigate by:
 - formal retention period and legal hold policy,
 - immutable audit store or append-only export,
 - scheduled audit export,
-- admin-facing audit review workflow.
+- admin-facing audit review workflow,
+- dedicated audit write failure metrics and alerts. M6.5 dashboards currently use readiness and HTTP error signals; audit-specific counters require deeper service instrumentation.
