@@ -29,6 +29,8 @@ export type BackupDrillInput = {
   databaseRestoreTarget: string;
   commandResults: BackupCommandResult[];
   redisAvailable: boolean;
+  redisSnapshotTarget?: string;
+  redisCheckpointValidated?: boolean;
 };
 
 export function buildBackupDrillEvidence(input: BackupDrillInput): BackupDrillEvidence & { commands: BackupCommandResult[] } {
@@ -62,11 +64,17 @@ export function buildBackupDrillEvidence(input: BackupDrillInput): BackupDrillEv
     },
     queue: input.redisAvailable
       ? {
-          status: "captured"
+          mode: "durable",
+          status: "captured",
+          persistence: {
+            snapshotTarget: input.redisSnapshotTarget ?? "",
+            checkpointValidated: input.redisCheckpointValidated === true
+          }
         }
       : {
+          mode: "polling",
           status: "conditional",
-          reason: "Redis durable queue is introduced in M6.4."
+          reason: "Redis durable queue is not enabled for this drill."
         },
     restore: {
       startedAt: now,
@@ -109,7 +117,9 @@ if (process.argv[1]?.endsWith("run-backup-drill.ts")) {
     databaseBackupTarget: process.env.BACKUP_DATABASE_TARGET ?? "",
     databaseRestoreTarget: process.env.RESTORE_DATABASE_URL ?? "",
     commandResults: [],
-    redisAvailable: process.env.REDIS_URL?.trim() ? true : false
+    redisAvailable: process.env.REDIS_URL?.trim() ? true : false,
+    redisSnapshotTarget: process.env.BACKUP_REDIS_SNAPSHOT_TARGET ?? "",
+    redisCheckpointValidated: process.env.BACKUP_REDIS_CHECKPOINT_VALIDATED === "true"
   });
   const result = writeBackupDrillEvidence({ outputDir: join("docs", "generated"), evidence });
   console.log(JSON.stringify(result.evaluation, null, 2));

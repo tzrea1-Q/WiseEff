@@ -2,7 +2,7 @@
 
 Backup and restore evidence is required before calling a pilot or self-hosted target environment ready.
 
-M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. Redis queue backup remains conditional until M6.4 introduces the durable queue service.
+M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. Redis queue backup is conditional only when durable queue mode is not enabled. When `LOG_ANALYSIS_QUEUE_MODE=durable`, target evidence must capture Redis or BullMQ-equivalent persistence metadata.
 
 M6.6 also requires a pre-release backup before deploying a self-hosted release candidate. Link the backup artifact and restore rehearsal from [release-rollback.md](release-rollback.md) and the release record in `ops/self-hosted/releases/`.
 
@@ -99,7 +99,7 @@ Local evidence must not be used to claim target restore readiness. Target readin
 - branch, commit, and environment label,
 - object-store endpoint, bucket, health prefix, backup target, restore target, object count, and checksum status,
 - database backup command, backup target, restore target, and table-count validation status,
-- queue status, which may be `conditional` until M6.4,
+- queue mode, status, and Redis persistence metadata when durable queue mode is enabled,
 - restore start and completion timestamps,
 - isolated restore target names,
 - sampled log reference count and missing object count,
@@ -125,12 +125,24 @@ If durable queue mode is not enabled, queue evidence should be:
 
 ```json
 {
+  "mode": "polling",
   "status": "conditional",
   "reason": "Redis durable queue is not enabled for this drill."
 }
 ```
 
-When durable queue mode is enabled, Redis persistence or BullMQ-equivalent queue state must be validated through `queue:check` before the target drill is accepted.
+When durable queue mode is enabled, `queue.status` cannot be `conditional`. Target evidence should include Redis persistence or BullMQ-equivalent queue state plus `queue:check` validation before the target drill is accepted:
+
+```json
+{
+  "mode": "durable",
+  "status": "captured",
+  "persistence": {
+    "snapshotTarget": "file:///backups/wiseeff/redis.rdb",
+    "checkpointValidated": true
+  }
+}
+```
 
 ## Failure Handling
 

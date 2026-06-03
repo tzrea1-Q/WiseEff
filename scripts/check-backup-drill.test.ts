@@ -1,6 +1,58 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { evaluateBackupDrillEvidence, redactBackupDrillEvidence, renderBackupDrillMarkdown } from "./check-backup-drill";
+import {
+  evaluateBackupDrillEvidence,
+  redactBackupDrillEvidence,
+  renderBackupDrillMarkdown,
+  type BackupDrillEvidence
+} from "./check-backup-drill";
+
+function completeBackupEvidence(overrides: Partial<BackupDrillEvidence> = {}): BackupDrillEvidence {
+  return {
+    providerDecision: {
+      selectedProvider: "rustfs",
+      decisionRecordPath: "ops/self-hosted/storage/provider-decision.md"
+    },
+    environment: {
+      label: "target-non-customer",
+      branch: "codex/m6-3-self-hosted-storage-backup",
+      commit: "abc123"
+    },
+    objectStore: {
+      endpoint: "https://storage.example.test",
+      bucket: "wiseeff-backup",
+      healthPrefix: "wiseeff-health/",
+      tlsPolicy: "required",
+      pathStyle: true,
+      backupTarget: "file:///backups/wiseeff/objects",
+      restoreTarget: "s3://wiseeff-restore/m6-restore/",
+      objectCount: 12,
+      checksumValidated: true
+    },
+    database: {
+      backupCommand: "pg_dump --format=custom",
+      backupTarget: "file:///backups/wiseeff/postgres.dump",
+      restoreTarget: "postgres://wiseeff_restore@localhost:5432/wiseeff_restore",
+      tableCountsValidated: true
+    },
+    queue: {
+      status: "skipped",
+      reason: "Polling mode does not require Redis persistence."
+    },
+    restore: {
+      startedAt: "2026-06-02T00:00:00.000Z",
+      completedAt: "2026-06-02T00:10:00.000Z",
+      isolatedTargets: ["postgres://wiseeff_restore@localhost:5432/wiseeff_restore", "s3://wiseeff-restore/m6-restore/"],
+      sampledLogReferences: 5,
+      missingLogObjects: 0
+    },
+    redaction: {
+      checked: true,
+      secretsRedacted: true
+    },
+    ...overrides
+  };
+}
 
 describe("M6.3 backup drill evidence checker", () => {
   it("passes complete self-hosted PostgreSQL, object-store, and conditional Redis evidence", () => {
@@ -54,6 +106,65 @@ describe("M6.3 backup drill evidence checker", () => {
       unsafeFields: [],
       validationErrors: []
     });
+  });
+
+  it("fails when target durable queue evidence is only conditional", () => {
+    const result = evaluateBackupDrillEvidence(
+      completeBackupEvidence({
+        environment: {
+          label: "self-hosted-target",
+          branch: "codex/m6-3-self-hosted-storage-backup",
+          commit: "abc123"
+        },
+        queue: {
+          status: "conditional",
+          reason: "Redis backup was not captured for this target.",
+          mode: "durable"
+        } as BackupDrillEvidence["queue"]
+      })
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.validationErrors).toContain(
+      "queue.status cannot be conditional when durable queue mode is enabled for target evidence."
+    );
+  });
+
+  it("passes target durable queue evidence when Redis persistence metadata is captured", () => {
+    const result = evaluateBackupDrillEvidence(
+      completeBackupEvidence({
+        queue: {
+          status: "captured",
+          mode: "durable",
+          persistence: {
+            snapshotTarget: "file:///backups/wiseeff/redis.rdb",
+            checkpointValidated: true
+          }
+        } as BackupDrillEvidence["queue"]
+      })
+    );
+
+    expect(result).toEqual({
+      status: "passed",
+      missingFields: [],
+      unsafeFields: [],
+      validationErrors: []
+    });
+  });
+
+  it("fails when target durable queue evidence omits Redis persistence metadata", () => {
+    const result = evaluateBackupDrillEvidence(
+      completeBackupEvidence({
+        queue: {
+          status: "captured",
+          mode: "durable"
+        } as BackupDrillEvidence["queue"]
+      })
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.missingFields).toContain("queue.persistence.snapshotTarget");
+    expect(result.validationErrors).toContain("queue.persistence.checkpointValidated must be true for durable queue evidence.");
   });
 
   it("fails when provider decision, backup targets, restore targets, or redaction proof are missing", () => {
@@ -255,8 +366,12 @@ describe("M6.3 backup drill evidence checker", () => {
           tableCountsValidated: true
         },
         queue: {
-          status: "conditional",
-          reason: "Redis durable queue is introduced in M6.4."
+          mode: "durable",
+          status: "captured",
+          persistence: {
+            snapshotTarget: "file:///backups/wiseeff/redis.rdb",
+            checkpointValidated: true
+          }
         },
         restore: {
           startedAt: "2026-06-02T00:00:00.000Z",
@@ -276,7 +391,9 @@ describe("M6.3 backup drill evidence checker", () => {
     expect(markdown).toContain("Environment: `local-non-customer`");
     expect(markdown).toContain("Restore targets:");
     expect(markdown).toContain("s3://wiseeff-restore/m6-drill/");
-    expect(markdown).toContain("Queue: `conditional`");
+    expect(markdown).toContain("Queue: `durable` / `captured`");
+    expect(markdown).toContain("Queue snapshot: `file:///backups/wiseeff/redis.rdb`");
+    expect(markdown).toContain("Queue checkpoint validated: `true`");
   });
 
   it("requires package scripts for backup, restore, and evidence checks", () => {

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 type QueueStatus = "captured" | "conditional" | "skipped" | "failed";
+type QueueMode = "polling" | "durable";
 
 export type BackupDrillEvidence = {
   providerDecision?: {
@@ -35,6 +36,11 @@ export type BackupDrillEvidence = {
   queue?: {
     status?: QueueStatus;
     reason?: string;
+    mode?: QueueMode;
+    persistence?: {
+      snapshotTarget?: string;
+      checkpointValidated?: boolean;
+    };
   };
   restore?: {
     startedAt?: string;
@@ -135,6 +141,17 @@ export function evaluateBackupDrillEvidence(evidence: BackupDrillEvidence): Back
   if ((evidence.queue?.status === "conditional" || evidence.queue?.status === "failed") && !hasText(evidence.queue.reason)) {
     validationErrors.push("queue.reason is required when queue.status is conditional or failed.");
   }
+  if (evidence.queue?.mode === "durable") {
+    if (evidence.queue.status === "conditional") {
+      validationErrors.push("queue.status cannot be conditional when durable queue mode is enabled for target evidence.");
+    }
+    if (evidence.queue.status === "captured") {
+      requireText(missingFields, "queue.persistence.snapshotTarget", evidence.queue.persistence?.snapshotTarget);
+      if (evidence.queue.persistence?.checkpointValidated !== true) {
+        validationErrors.push("queue.persistence.checkpointValidated must be true for durable queue evidence.");
+      }
+    }
+  }
   for (const command of evidence.commands ?? []) {
     const exitCode = command.exitCode;
     if (exitCode !== 0) {
@@ -212,7 +229,9 @@ export function renderBackupDrillMarkdown(evaluation: BackupDrillEvaluation, evi
       `- Object checksum validated: \`${evidence.objectStore?.checksumValidated === true ? "true" : "false"}\``,
       `- Database table counts validated: \`${evidence.database?.tableCountsValidated === true ? "true" : "false"}\``,
       `- Missing log objects: \`${evidence.restore?.missingLogObjects ?? "unknown"}\``,
-      `- Queue: \`${evidence.queue?.status ?? "unknown"}\`${evidence.queue?.reason ? ` (${evidence.queue.reason})` : ""}`,
+      `- Queue: \`${evidence.queue?.mode ?? "unknown"}\` / \`${evidence.queue?.status ?? "unknown"}\`${evidence.queue?.reason ? ` (${evidence.queue.reason})` : ""}`,
+      `- Queue snapshot: \`${evidence.queue?.persistence?.snapshotTarget ?? "n/a"}\``,
+      `- Queue checkpoint validated: \`${evidence.queue?.persistence?.checkpointValidated === true ? "true" : "false"}\``,
       "",
       "## Restore targets:",
       "",

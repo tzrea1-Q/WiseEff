@@ -10,7 +10,7 @@
 
 **Current status (2026-06-02):** Local implementation, documentation, evidence-shape checks, restore-target safety checks, and repository verification are complete in branch `codex/m6-3-self-hosted-storage-backup`. The generated M6 evidence is local non-customer example evidence only. This plan remains active and must not move to `docs/exec-plans/completed/` until a real non-customer or pilot target restore drill runs against isolated PostgreSQL and object-store restore targets.
 
-**Reconciliation (2026-06-03):** The integrated M6 branch contains the provider decision docs, object-store env template, backup/restore scripts, evidence checker, generated local evidence, runbook updates, and S3-compatible object-store tests. Fresh local checks passed with `npm test -- --run scripts/check-backup-drill.test.ts scripts/run-backup-drill.test.ts scripts/run-restore-drill.test.ts`, `npm run test:server -- server/modules/logs/objectStore.test.ts server/modules/logs/s3ObjectStore.test.ts server/objectStoreFactory.test.ts`, and `npm run backup:check`. These prove repository-local implementation and evidence-shape readiness only. The remaining blocker is still the real target restore drill: isolated PostgreSQL restore, isolated object-store bucket/prefix restore, cross-store log reference validation, and redacted target evidence archival.
+**Reconciliation (2026-06-03):** The integrated M6 branch contains the provider decision docs, object-store env template, backup/restore scripts, evidence checker, generated local evidence, runbook updates, and S3-compatible object-store tests. Fresh local checks passed with `npm test -- --run scripts/check-backup-drill.test.ts scripts/run-backup-drill.test.ts scripts/run-restore-drill.test.ts`, `npm run test:server -- server/modules/logs/objectStore.test.ts server/modules/logs/s3ObjectStore.test.ts server/objectStoreFactory.test.ts`, and `npm run backup:check`. The backup checker now rejects `queue.status=conditional` when target evidence declares `queue.mode=durable`, and requires Redis persistence snapshot/checkpoint metadata for captured durable queue evidence. These prove repository-local implementation and evidence-shape readiness only. The remaining blocker is still the real target restore drill: isolated PostgreSQL restore, isolated object-store bucket/prefix restore, durable queue persistence validation when enabled, cross-store log reference validation, and redacted target evidence archival.
 
 ---
 
@@ -65,7 +65,7 @@ M6.3 excludes:
 
 - M6.1 should provide the self-hosted runtime baseline.
 - M6.2 may change auth but is not required for object-store backup mechanics.
-- Redis backup execution remains conditional until M6.4 lands.
+- Redis backup execution is conditional only for polling mode or targets without durable queue enabled. After M6.4, durable queue target evidence must record Redis persistence metadata and pass `queue:check`.
 - M6.6 will consume M6.3 backup/restore scripts for release rollback rehearsal.
 
 ## Success Criteria
@@ -76,7 +76,7 @@ M6.3 excludes:
 - PostgreSQL backup can be restored into an isolated database and validated.
 - Object-store backup can be restored into an isolated bucket/prefix and validated.
 - Cross-store validation confirms referenced log objects exist after restore.
-- Redis backup procedure is present and marked conditional until M6.4; after M6.4, the same plan/runbook must be updated to validate Redis persistence.
+- Redis backup procedure is present. For durable queue targets, Redis persistence metadata and queue validation are required; conditional queue evidence remains valid only for polling mode or explicitly non-durable drills.
 - Backup/restore evidence is recorded without secrets or customer data.
 
 ## Expected File Structure
@@ -187,7 +187,7 @@ Modify:
 
 - `npm run docs:check` must pass before this plan is moved to completed.
 - Provider decision and backup/restore runbook updates are blocking.
-- If Redis is not present until M6.4, record the conditional Redis backup status in docs and technical debt rather than marking it complete.
+- If durable queue mode is not enabled, record the conditional Redis backup status in docs and technical debt rather than marking it complete. If durable queue mode is enabled, target evidence must capture Redis persistence metadata instead of using conditional status.
 - Target restore evidence must name the isolated restore targets and validation commands.
 
 ## UI Interaction Automation Review
