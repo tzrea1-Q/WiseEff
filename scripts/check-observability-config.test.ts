@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildObservabilityEvidence,
   evaluateObservabilityConfig,
+  parseObservabilityArgs,
   requiredObservabilityDashboardFiles,
   requiredObservabilityFiles,
   requiredObservabilityScripts
@@ -204,5 +206,34 @@ groups:
     });
 
     expect(result.forbiddenSecretMatches).toEqual([]);
+  });
+
+  it("parses output path for generated release evidence", () => {
+    expect(parseObservabilityArgs(["--output=docs/generated/observability.md"], {})).toEqual({
+      output: "docs/generated/observability.md"
+    });
+    expect(parseObservabilityArgs([], { npm_config_output: "docs/generated/npm-observability.md" })).toEqual({
+      output: "docs/generated/npm-observability.md"
+    });
+  });
+
+  it("builds redacted markdown evidence for release records", () => {
+    const evidence = buildObservabilityEvidence({
+      date: "2026-06-03T00:00:00.000Z",
+      result: evaluateObservabilityConfig({
+        packageJson: validPackageJson,
+        files: {
+          "ops/self-hosted/observability/prometheus.yml": validPrometheus,
+          "ops/self-hosted/observability/alerts.yml": validAlerts,
+          ...validDashboards
+        }
+      })
+    });
+
+    expect(evidence).toContain("## M6.5 Observability Evidence");
+    expect(evidence).toContain("- Status: `passed`");
+    expect(evidence).toContain("- Missing scripts: none");
+    expect(evidence).toContain("- Missing files: none");
+    expect(evidence).not.toContain("sk-live-value");
   });
 });

@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-03T07:01:59.709Z
+- Date: 2026-06-03T07:29:10.938Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `83be412e00cec6e17226f355f567ae2d26beb1f2`
+- Commit: `46e460c0d7b68ca18c9050830d1f99a70e464ddf`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`

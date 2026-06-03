@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateDurableQueueReadyBody, parseDurableQueueArgs, runDurableQueueCheck } from "./check-durable-queue";
+import {
+  buildDurableQueueEvidence,
+  evaluateDurableQueueReadyBody,
+  parseDurableQueueArgs,
+  runDurableQueueCli,
+  runDurableQueueCheck
+} from "./check-durable-queue";
 
 function readyBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -90,13 +96,57 @@ describe("durable queue check", () => {
     });
     expect(
       parseDurableQueueArgs(
-        ["--env-file=ops/self-hosted/target.env", "--authorization=Bearer local"],
+        ["--env-file=ops/self-hosted/target.env", "--authorization=Bearer local", "--output=docs/generated/queue.md"],
         { npm_config_base_url: "https://npm.example.test" }
       )
     ).toMatchObject({
       envFile: "ops/self-hosted/target.env",
       baseUrl: "https://npm.example.test",
-      authorization: "Bearer local"
+      authorization: "Bearer local",
+      output: "docs/generated/queue.md"
     });
+  });
+
+  it("builds redacted markdown evidence for release records", () => {
+    const evidence = buildDurableQueueEvidence({
+      date: "2026-06-03T00:00:00.000Z",
+      baseUrl: "https://wiseeff.example.test?token=secret",
+      authorization: "Bearer sensitive-token",
+      result: {
+        status: "passed",
+        detail: "Durable queue transport and PostgreSQL job state are ready.",
+        body: readyBody()
+      }
+    });
+
+    expect(evidence).toContain("## M6.4 Durable Queue Readiness Evidence");
+    expect(evidence).toContain("- Status: `passed`");
+    expect(evidence).toContain("- Base URL: `https://wiseeff.example.test?token=<redacted>`");
+    expect(evidence).toContain("- Authorization: `<set>`");
+    expect(evidence).toContain("Durable queue transport and PostgreSQL job state are ready.");
+    expect(evidence).not.toContain("sensitive-token");
+    expect(evidence).not.toContain("token=secret");
+  });
+
+  it("writes failed evidence when the target base URL is missing", async () => {
+    const writes: Array<{ path: string; content: string }> = [];
+    const result = await runDurableQueueCli({
+      args: ["--output=docs/generated/missing-queue.md"],
+      env: {},
+      fileSystem: {
+        existsSync: () => false,
+        readFileSync: () => "",
+        mkdirSync: () => undefined,
+        writeFileSync: (filePath, content) => writes.push({ path: filePath, content })
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.detail).toBe("Durable queue check requires --base-url, WISEEFF_API_BASE_URL, or VITE_WISEEFF_API_BASE_URL.");
+    expect(writes).toHaveLength(1);
+    expect(writes[0].path).toBe("docs/generated/missing-queue.md");
+    expect(writes[0].content).toContain("- Status: `failed`");
+    expect(writes[0].content).toContain("Durable queue check requires --base-url");
+    expect(writes[0].content).toContain("```json\nnull\n```");
   });
 });
