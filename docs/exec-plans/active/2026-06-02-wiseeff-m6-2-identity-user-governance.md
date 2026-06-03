@@ -179,6 +179,8 @@ Local non-HDC M6.2 implementation evidence was captured on 2026-06-02 from branc
 
 Target-environment OIDC evidence is still required before TD-020 can close: real self-hosted issuer discovery/JWKS, real browser token acquisition/refresh/logout, `/api/v1/me` with target OIDC access tokens, issuer/audience/expiry negative checks, and redacted target smoke evidence.
 
+M6.2 target evidence gate added on 2026-06-03: `npm run identity:check` writes `docs/generated/m6-identity-evidence.md` and verifies target OIDC discovery/JWKS, Admin `/api/v1/me`, wrong-issuer rejection, wrong-audience rejection, expired-token rejection, and browser-runtime evidence status. This makes the target OIDC closure repeatable, but it does not close TD-020/TD-021 until it is run against a real self-hosted IdP/API target with redacted evidence and browser runtime proof.
+
 ## External Inputs Needed
 
 - Preferred self-hosted identity provider. Default plan assumes Keycloak.

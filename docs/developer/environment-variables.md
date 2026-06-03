@@ -28,6 +28,10 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M5_SMOKE_AUTHORIZATION` | local admin bearer token | M5 smoke | Grants `admin:access` to pilot-readiness smoke. |
 | `WISEEFF_SMOKE_AUTHORIZATION` | local admin bearer token | M5 smoke | Alternate name accepted by smoke scripts. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | unset locally | self-hosted smoke | Preferred self-hosted Admin bearer token; use an OIDC access token in target environments. |
+| `M6_IDENTITY_AUTHORIZATION` | unset locally | M6.2 identity evidence | Admin OIDC bearer token used by `npm run identity:check` for `/api/v1/me`. |
+| `M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for issuer mismatch. |
+| `M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for audience mismatch. |
+| `M6_IDENTITY_EXPIRED_AUTHORIZATION` | unset locally | M6.2 identity evidence | Expired token expected to be rejected. |
 
 ## Object Store
 
@@ -118,6 +122,7 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `AUTH_OIDC_ISSUER` | operator-provided issuer | Must match the access-token `iss` claim. |
 | `AUTH_OIDC_AUDIENCE` | `wiseeff-api` or operator value | Must match the access-token `aud` claim. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | Admin OIDC bearer token | Preferred self-hosted smoke token; M5 smoke token names are accepted only for compatibility. |
+| `M6_IDENTITY_*` token variables | target OIDC test tokens | Used by `npm run identity:check`; keep unset locally unless a real self-hosted IdP/API target is available. |
 
 M6.3 adds `ops/self-hosted/storage/object-store.env.example` for the S3-compatible storage profile. Run `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check` after filling isolated backup and restore targets.
 
