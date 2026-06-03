@@ -59,6 +59,9 @@ export type ReleaseGateInput = {
     selfHostedConfig: GateStatus;
     backupRestore: GateStatus;
     identityReadiness: GateStatus;
+    rollbackReadiness: GateStatus;
+    capacityReadiness: GateStatus;
+    targetSyntheticReadiness: GateStatus;
     queueReadiness: GateStatus;
     observability: GateStatus;
   };
@@ -90,6 +93,9 @@ type ReleaseGateCliOptions = {
   runCommands: boolean;
   backupRestoreStatus: GateStatus | null;
   identityReadinessStatus: GateStatus;
+  rollbackReadinessStatus: GateStatus;
+  capacityReadinessStatus: GateStatus;
+  targetSyntheticReadinessStatus: GateStatus;
   queueReadinessStatus: GateStatus;
   observabilityStatus: GateStatus;
 };
@@ -138,13 +144,25 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
     blockers.push("Rollback plan path is required.");
   }
   if (!input.evidence.rollbackRehearsalEvidencePath.trim()) {
-    pending.push("Rollback rehearsal evidence is pending.");
+    if (input.dependencies.rollbackReadiness === "passed") {
+      blockers.push("Rollback evidence path is required when rollback readiness is passed.");
+    } else {
+      pending.push("Rollback rehearsal evidence is pending.");
+    }
   }
   if (!input.evidence.targetSyntheticEvidencePath.trim()) {
-    pending.push("Target synthetic acceptance evidence is pending.");
+    if (input.dependencies.targetSyntheticReadiness === "passed") {
+      blockers.push("Target synthetic evidence path is required when target synthetic readiness is passed.");
+    } else {
+      pending.push("Target synthetic acceptance evidence is pending.");
+    }
   }
   if (!input.evidence.capacityEvidencePath.trim()) {
-    pending.push("Capacity gate evidence is pending.");
+    if (input.dependencies.capacityReadiness === "passed") {
+      blockers.push("Capacity evidence path is required when capacity readiness is passed.");
+    } else {
+      pending.push("Capacity gate evidence is pending.");
+    }
   }
   if (input.dependencies.queueReadiness === "passed" && !input.evidence.queueEvidencePath.trim()) {
     blockers.push("Queue evidence path is required when queue readiness is passed.");
@@ -167,6 +185,9 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   collectDependencyStatus(input.dependencies.selfHostedConfig, "Self-hosted config", blockers, pending);
   collectDependencyStatus(input.dependencies.backupRestore, "Backup/restore", blockers, pending);
   collectDependencyStatus(input.dependencies.identityReadiness, "Identity readiness", blockers, pending);
+  collectDependencyStatus(input.dependencies.rollbackReadiness, "Rollback readiness", blockers, pending);
+  collectDependencyStatus(input.dependencies.capacityReadiness, "Capacity readiness", blockers, pending);
+  collectDependencyStatus(input.dependencies.targetSyntheticReadiness, "Target synthetic readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.queueReadiness, "Queue readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.observability, "Observability", blockers, pending);
 
@@ -230,6 +251,9 @@ export function buildReleaseGateEvidence(args: {
     `| self-hosted config | ${args.input.dependencies.selfHostedConfig} |`,
     `| backup/restore | ${args.input.dependencies.backupRestore} |`,
     `| identity readiness | ${args.input.dependencies.identityReadiness} |`,
+    `| rollback readiness | ${args.input.dependencies.rollbackReadiness} |`,
+    `| capacity readiness | ${args.input.dependencies.capacityReadiness} |`,
+    `| target synthetic readiness | ${args.input.dependencies.targetSyntheticReadiness} |`,
     `| queue readiness | ${args.input.dependencies.queueReadiness} |`,
     `| observability | ${args.input.dependencies.observability} |`,
     "",
@@ -296,6 +320,9 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
       selfHostedConfig: commandStatus(commands, "selfhost:check"),
       backupRestore: options.backupRestoreStatus ?? pathExistsStatus(options.backupEvidencePath),
       identityReadiness: options.identityReadinessStatus,
+      rollbackReadiness: options.rollbackReadinessStatus,
+      capacityReadiness: options.capacityReadinessStatus,
+      targetSyntheticReadiness: options.targetSyntheticReadinessStatus,
       queueReadiness: options.queueReadinessStatus,
       observability: options.observabilityStatus
     }
@@ -331,6 +358,12 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
   }
   const backupRestoreStatus = optionalGateStatus(getValue("--backup-restore", ""));
   const identityReadinessStatus = requiredGateStatus(getValue("--identity-readiness", "pending"), "--identity-readiness");
+  const rollbackReadinessStatus = requiredGateStatus(getValue("--rollback-readiness", "pending"), "--rollback-readiness");
+  const capacityReadinessStatus = requiredGateStatus(getValue("--capacity-readiness", "pending"), "--capacity-readiness");
+  const targetSyntheticReadinessStatus = requiredGateStatus(
+    getValue("--target-synthetic-readiness", "pending"),
+    "--target-synthetic-readiness"
+  );
   const queueReadinessStatus = requiredGateStatus(getValue("--queue-readiness", "pending"), "--queue-readiness");
   const observabilityStatus = requiredGateStatus(getValue("--observability", "pending"), "--observability");
 
@@ -354,6 +387,9 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     runCommands: args.includes("--run-command-gates"),
     backupRestoreStatus,
     identityReadinessStatus,
+    rollbackReadinessStatus,
+    capacityReadinessStatus,
+    targetSyntheticReadinessStatus,
     queueReadinessStatus,
     observabilityStatus
   };

@@ -140,6 +140,32 @@ describe("M6.5 observability configuration metadata", () => {
     ]);
   });
 
+  it("allows Agent and device metrics produced by the M6.5 runtime", () => {
+    const result = evaluateObservabilityConfig({
+      packageJson: validPackageJson,
+      files: {
+        "ops/self-hosted/observability/prometheus.yml": validPrometheus,
+        "ops/self-hosted/observability/alerts.yml": `${validAlerts}
+      - alert: WiseEffAgentProviderCalls
+        expr: wiseeff_agent_provider_calls_total > 0
+        annotations:
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffagentprovidercalls
+`,
+        ...validDashboards,
+        "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
+          title: "WiseEff Security Operations",
+          panels: [
+            { targets: [{ expr: "wiseeff_agent_provider_duration_ms_sum" }] },
+            { targets: [{ expr: "wiseeff_device_gateway_operations_total" }] }
+          ]
+        })
+      }
+    });
+
+    expect(result.unknownMetricReferences).toEqual([]);
+    expect(result.status).toBe("passed");
+  });
+
   it("fails when required scripts, files, runbooks, dashboards, or metrics scrape targets are missing", () => {
     const result = evaluateObservabilityConfig({
       packageJson: { scripts: {} },

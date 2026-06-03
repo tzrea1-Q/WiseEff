@@ -18,9 +18,12 @@ export const requiredObservabilityDashboardFiles = [
 const requiredPrometheusTokens = ["wiseeff-api", "/metrics", "wiseeff-worker", "node-exporter"] as const;
 const allowedWiseEffMetricNames = new Set([
   "wiseeff_agent_provider_ready",
+  "wiseeff_agent_provider_calls_total",
+  "wiseeff_agent_provider_duration_ms_sum",
   "wiseeff_build_info",
   "wiseeff_database_ready",
   "wiseeff_dependency_health",
+  "wiseeff_device_gateway_operations_total",
   "wiseeff_http_request_duration_ms_count",
   "wiseeff_http_request_duration_ms_sum",
   "wiseeff_http_request_duration_seconds_bucket",

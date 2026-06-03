@@ -12,7 +12,7 @@
 npm run identity:check
 npm run rollback:rehearsal
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --capacity-readiness passed --capacity-evidence docs/generated/capacity-gate.md --target-synthetic-readiness passed --target-synthetic-evidence <path-or-record> --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 ```
 
 `capacity:gate` 写入 `docs/generated/capacity-gate.md`，用于记录容量门禁证据。
@@ -23,7 +23,7 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 
 `selfhost:release-gate` 写入 `docs/generated/m6-release-readiness.md`，用于记录 release candidate 的版本、commit、artifact、环境指纹、迁移清单、身份、备份、回滚、容量、target synthetic acceptance 和 HDC scope。
 
-当 `queue readiness` 或 `observability` 被标记为 `passed` 时，release record 必须通过 `--queue-evidence` 和 `--observability-evidence` 指向真实目标环境证据或经过批准的外部记录。
+当 `rollback readiness`、`capacity readiness`、`target synthetic readiness`、`queue readiness` 或 `observability` 被标记为 `passed` 时，release record 必须通过对应的 evidence 参数指向真实目标环境证据或经过批准的外部记录。只有 evidence path 而没有 readiness passed，不能代表该门禁通过；只有 readiness passed 而没有 evidence path，也会被 release gate 阻断。
 
 ## 必须保持诚实的 Pending 项
 

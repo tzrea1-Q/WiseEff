@@ -35,7 +35,7 @@ npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run rollback:rehearsal -- --environment <label> --release-version <version> --candidate-artifact <artifact> --previous-artifact <previous-artifact> --approval-owner <owner> --maintenance-window <window> --stop-writes passed --queue-drain passed --artifact-rollback passed --post-rollback-smoke passed --smoke-evidence <path-or-record>
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --capacity-readiness passed --capacity-evidence docs/generated/capacity-gate.md --target-synthetic-readiness passed --target-synthetic-evidence <path-or-record> --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 ```
 
 Attach Playwright reports, operation evidence, rollback rehearsal evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.
@@ -81,3 +81,5 @@ Irreversible migrations or data transformations cannot be described as rollback-
 ## Evidence Rule
 
 This runbook can be rehearsed only in a non-customer target environment. Local command output proves scripts and templates; it does not complete target OIDC identity readiness, rollback rehearsal, target synthetic acceptance, capacity, HDC, or full-pilot readiness.
+
+When `rollback readiness`, `capacity readiness`, or `target synthetic readiness` is marked `passed`, the release gate must also link the matching evidence path through `--rollback-evidence`, `--capacity-evidence`, or `--target-synthetic-evidence`. A path alone is not enough; keep the readiness status `pending` or `failed` until the target evidence was produced in the intended environment.

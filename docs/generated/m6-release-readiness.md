@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-03T07:44:07.754Z
+- Date: 2026-06-03T08:13:04.484Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `afcb6ee2447bf34d6e0fa68a7bbba1a737ad1eae`
+- Commit: `da627322a8f772fde3d219ea4cae0f69fa9b5a48`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -60,6 +60,9 @@
 | self-hosted config | pending |
 | backup/restore | passed |
 | identity readiness | pending |
+| rollback readiness | pending |
+| capacity readiness | pending |
+| target synthetic readiness | pending |
 | queue readiness | pending |
 | observability | passed |
 
@@ -82,4 +85,7 @@
 - Command gate not run: git diff --check.
 - Self-hosted config evidence is pending.
 - Identity readiness evidence is pending.
+- Rollback readiness evidence is pending.
+- Capacity readiness evidence is pending.
+- Target synthetic readiness evidence is pending.
 - Queue readiness evidence is pending.

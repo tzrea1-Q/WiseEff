@@ -36,6 +36,9 @@ const baseInput: ReleaseGateInput = {
     selfHostedConfig: "passed",
     backupRestore: "passed",
     identityReadiness: "pending",
+    rollbackReadiness: "pending",
+    capacityReadiness: "pending",
+    targetSyntheticReadiness: "pending",
     queueReadiness: "pending",
     observability: "pending"
   }
@@ -49,14 +52,42 @@ describe("self-hosted release gate", () => {
         selfHostedConfig: "passed",
         backupRestore: "passed",
         identityReadiness: "passed",
+        rollbackReadiness: "passed",
+        capacityReadiness: "passed",
+        targetSyntheticReadiness: "passed",
         queueReadiness: "passed",
         observability: "passed"
       }
-    });
+    } as ReleaseGateInput);
 
     expect(result.status).toBe("passed");
     expect(result.blockers).toEqual([]);
     expect(result.pending).toEqual([]);
+  });
+
+  it("keeps rollback, capacity, and target synthetic evidence pending without explicit dependency statuses", () => {
+    const result = evaluateReleaseGate({
+      ...baseInput,
+      dependencies: {
+        selfHostedConfig: "passed",
+        backupRestore: "passed",
+        identityReadiness: "passed",
+        rollbackReadiness: "pending",
+        capacityReadiness: "pending",
+        targetSyntheticReadiness: "pending",
+        queueReadiness: "passed",
+        observability: "passed"
+      }
+    } as ReleaseGateInput);
+
+    expect(result.status).toBe("failed");
+    expect(result.pending).toEqual(
+      expect.arrayContaining([
+        "Rollback readiness evidence is pending.",
+        "Capacity readiness evidence is pending.",
+        "Target synthetic readiness evidence is pending."
+      ])
+    );
   });
 
   it("blocks missing release metadata and explicit HDC scope", () => {
@@ -125,6 +156,9 @@ describe("self-hosted release gate", () => {
     expect(evidence).toContain("- Observability evidence: `docs/generated/m6-observability-evidence.md`");
     expect(evidence).toContain("| docs:check | passed | ok |");
     expect(evidence).toContain("| identity readiness | pending |");
+    expect(evidence).toContain("| rollback readiness | pending |");
+    expect(evidence).toContain("| capacity readiness | pending |");
+    expect(evidence).toContain("| target synthetic readiness | pending |");
     expect(evidence).toContain("### Pending Evidence");
     expect(evidence).not.toContain("token=secret");
   });
@@ -156,6 +190,12 @@ describe("self-hosted release gate", () => {
         "docs/generated/target-identity-evidence.md",
         "--identity-readiness",
         "passed",
+        "--rollback-readiness",
+        "passed",
+        "--capacity-readiness",
+        "pending",
+        "--target-synthetic-readiness",
+        "passed",
         "--queue-readiness",
         "passed",
         "--queue-evidence",
@@ -169,6 +209,9 @@ describe("self-hosted release gate", () => {
       backupRestoreStatus: "passed",
       identityEvidencePath: "docs/generated/target-identity-evidence.md",
       identityReadinessStatus: "passed",
+      rollbackReadinessStatus: "passed",
+      capacityReadinessStatus: "pending",
+      targetSyntheticReadinessStatus: "passed",
       queueReadinessStatus: "passed",
       queueEvidencePath: "docs/generated/target-queue-evidence.md",
       observabilityStatus: "failed",
@@ -182,6 +225,9 @@ describe("self-hosted release gate", () => {
         "--backup-restore=passed",
         "--identity-evidence=docs/generated/target-identity-evidence.md",
         "--identity-readiness=pending",
+        "--rollback-readiness=failed",
+        "--capacity-readiness=passed",
+        "--target-synthetic-readiness=pending",
         "--queue-readiness=pending",
         "--queue-evidence=docs/generated/target-queue-evidence.md",
         "--observability=passed",
@@ -191,6 +237,9 @@ describe("self-hosted release gate", () => {
       backupRestoreStatus: "passed",
       identityEvidencePath: "docs/generated/target-identity-evidence.md",
       identityReadinessStatus: "pending",
+      rollbackReadinessStatus: "failed",
+      capacityReadinessStatus: "passed",
+      targetSyntheticReadinessStatus: "pending",
       queueReadinessStatus: "pending",
       queueEvidencePath: "docs/generated/target-queue-evidence.md",
       observabilityStatus: "passed",
@@ -221,13 +270,45 @@ describe("self-hosted release gate", () => {
     );
   });
 
+  it("blocks passed rollback, capacity, and target synthetic dependencies without evidence paths", () => {
+    const result = evaluateReleaseGate({
+      ...baseInput,
+      evidence: {
+        ...baseInput.evidence,
+        rollbackRehearsalEvidencePath: "",
+        capacityEvidencePath: "",
+        targetSyntheticEvidencePath: ""
+      },
+      dependencies: {
+        ...baseInput.dependencies,
+        rollbackReadiness: "passed",
+        capacityReadiness: "passed",
+        targetSyntheticReadiness: "passed"
+      }
+    });
+
+    expect(result.blockers).toEqual(
+      expect.arrayContaining([
+        "Rollback evidence path is required when rollback readiness is passed.",
+        "Capacity evidence path is required when capacity readiness is passed.",
+        "Target synthetic evidence path is required when target synthetic readiness is passed."
+      ])
+    );
+  });
+
   it("accepts npm-config identity readiness status", () => {
     expect(
       parseReleaseGateArgs([], {
-        npm_config_identity_readiness: "passed"
+        npm_config_identity_readiness: "passed",
+        npm_config_rollback_readiness: "failed",
+        npm_config_capacity_readiness: "passed",
+        npm_config_target_synthetic_readiness: "pending"
       })
     ).toMatchObject({
-      identityReadinessStatus: "passed"
+      identityReadinessStatus: "passed",
+      rollbackReadinessStatus: "failed",
+      capacityReadinessStatus: "passed",
+      targetSyntheticReadinessStatus: "pending"
     });
   });
 
