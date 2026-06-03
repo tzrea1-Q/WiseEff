@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-03T07:29:10.938Z
+- Date: 2026-06-03T07:44:07.754Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `46e460c0d7b68ca18c9050830d1f99a70e464ddf`
+- Commit: `afcb6ee2447bf34d6e0fa68a7bbba1a737ad1eae`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -32,7 +32,7 @@
 - Backup evidence: `docs/generated/m6-backup-restore-evidence.md`
 - Identity evidence: `docs/generated/m6-identity-evidence.md`
 - Rollback plan: `docs/runbooks/release-rollback.md`
-- Rollback rehearsal: `pending`
+- Rollback rehearsal: `docs/generated/m6-rollback-rehearsal-evidence.md`
 - Target synthetic acceptance: `pending`
 - Capacity gate: `docs/generated/capacity-gate.md`
 - Queue evidence: `docs/generated/m6-queue-readiness-evidence.md`
@@ -69,7 +69,6 @@
 
 ### Pending Evidence
 
-- Rollback rehearsal evidence is pending.
 - Target synthetic acceptance evidence is pending.
 - Command gate not run: docs:check.
 - Command gate not run: contract:check.

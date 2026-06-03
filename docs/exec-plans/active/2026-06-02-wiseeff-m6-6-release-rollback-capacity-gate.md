@@ -69,6 +69,8 @@ Create:
 - `ops/self-hosted/releases/release-template.md`: release evidence template.
 - `scripts/run-self-hosted-release-gate.ts`: orchestrates pre-release metadata checks.
 - `scripts/run-self-hosted-release-gate.test.ts`: release-gate tests.
+- `scripts/run-rollback-rehearsal.ts`: rollback rehearsal evidence writer.
+- `scripts/run-rollback-rehearsal.test.ts`: rollback rehearsal evidence tests.
 - `scripts/run-capacity-gate.ts`: capacity command wrapper and evidence writer.
 - `scripts/run-capacity-gate.test.ts`: threshold/evidence validation tests.
 - `e2e/capacity/wiseeff-smoke.k6.js` or `scripts/capacity/wiseeff-smoke.ts`: load test script selected during implementation.
@@ -77,7 +79,7 @@ Create:
 
 Modify:
 
-- `package.json`: add release/capacity gate scripts.
+- `package.json`: add release/rollback/capacity gate scripts.
 - `.github/workflows/ci.yml`: optionally add manual self-hosted target synthetic workflow if not already sufficient from M5.12.
 - `ops/self-hosted/README.md`
 - `ops/self-hosted/compose.yaml`
@@ -113,6 +115,8 @@ Modify:
 
 ### Task 3: Release And Rollback Runbook
 
+- [x] Write failing rollback rehearsal evidence tests for step status, artifact references, target-scope honesty, and redaction.
+- [x] Add `npm run rollback:rehearsal` and `docs/generated/m6-rollback-rehearsal-evidence.md`.
 - [x] Add `docs/runbooks/release-rollback.md`.
 - [x] Define pre-deploy backup, queue drain/pause, migration execution, web/API/worker deployment, smoke, observability watch, and rollback decision points.
 - [x] Define rollback for web/API/worker artifact, database migration failure, object-store inconsistency, and queue backlog.
@@ -147,7 +151,7 @@ Modify:
 
 ## Current Execution Status
 
-Implementation-side release/capacity gates are in place and locally tested. Target-environment evidence is still pending for identity readiness/target OIDC, capacity, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability watch, backup/restore rehearsal, and HDC/full-pilot readiness. This plan must remain in `active/` until those target gates are run and archived.
+Implementation-side release/rollback/capacity gates are in place and locally tested. Target-environment evidence is still pending for identity readiness/target OIDC, capacity, rollback rehearsal execution, target synthetic acceptance, queue drain/pause/resume, observability watch, backup/restore rehearsal, and HDC/full-pilot readiness. This plan must remain in `active/` until those target gates are run and archived.
 
 ## External Inputs Needed
 

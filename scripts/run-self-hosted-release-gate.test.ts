@@ -235,6 +235,7 @@ describe("self-hosted release gate", () => {
     expect(parseReleaseGateArgs([])).toMatchObject({
       backupEvidencePath: "docs/generated/m6-backup-restore-evidence.md",
       identityEvidencePath: "docs/generated/m6-identity-evidence.md",
+      rollbackRehearsalEvidencePath: "docs/generated/m6-rollback-rehearsal-evidence.md",
       queueEvidencePath: "docs/generated/m6-queue-readiness-evidence.md",
       observabilityEvidencePath: "docs/generated/m6-observability-evidence.md"
     });

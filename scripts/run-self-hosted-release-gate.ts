@@ -345,7 +345,7 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     backupEvidencePath: getValue("--backup-evidence", "docs/generated/m6-backup-restore-evidence.md"),
     identityEvidencePath: getValue("--identity-evidence", "docs/generated/m6-identity-evidence.md"),
     rollbackPlanPath: getValue("--rollback-plan", "docs/runbooks/release-rollback.md"),
-    rollbackRehearsalEvidencePath: getValue("--rollback-evidence", ""),
+    rollbackRehearsalEvidencePath: getValue("--rollback-evidence", "docs/generated/m6-rollback-rehearsal-evidence.md"),
     targetSyntheticEvidencePath: getValue("--target-synthetic-evidence", ""),
     output: getValue("--output", positionalOutput || "docs/generated/m6-release-readiness.md"),
     capacityEvidencePath: getValue("--capacity-evidence", positionalCapacityEvidence || "docs/generated/capacity-gate.md"),

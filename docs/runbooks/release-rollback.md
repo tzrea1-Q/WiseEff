@@ -33,11 +33,12 @@ Run:
 npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://<host>
 npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
+npm run rollback:rehearsal -- --environment <label> --release-version <version> --candidate-artifact <artifact> --previous-artifact <previous-artifact> --approval-owner <owner> --maintenance-window <window> --stop-writes passed --queue-drain passed --artifact-rollback passed --post-rollback-smoke passed --smoke-evidence <path-or-record>
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 ```
 
-Attach Playwright reports, operation evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.
+Attach Playwright reports, operation evidence, rollback rehearsal evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.
 
 ## Rollback Decision Points
 
@@ -61,7 +62,7 @@ Trigger rollback when any of these occur during the release window:
 6. Re-run `npm run selfhost:smoke` against the target.
 7. Confirm `/health/live`, `/health/ready`, `/api/v1/me` with a target OIDC token, and `/api/v1/operations/pilot-readiness`.
 8. Resume workers only after queue and readiness checks are safe.
-9. Record rollback rehearsal evidence and update `docs/generated/m6-release-readiness.md` or the external release evidence store.
+9. Run `npm run rollback:rehearsal` with the actual step statuses, record `docs/generated/m6-rollback-rehearsal-evidence.md`, and update `docs/generated/m6-release-readiness.md` or the external release evidence store.
 
 ## Failure Classes
 
