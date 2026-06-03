@@ -16,6 +16,7 @@ export const requiredReleaseGateCommands = [
   "acceptance:operations",
   "acceptance:evidence",
   "selfhost:check",
+  "identity:check",
   "git diff --check"
 ] as const;
 
@@ -45,6 +46,7 @@ export type ReleaseGateInput = {
   };
   evidence: {
     backupEvidencePath: string;
+    identityEvidencePath: string;
     rollbackPlanPath: string;
     rollbackRehearsalEvidencePath: string;
     targetSyntheticEvidencePath: string;
@@ -54,6 +56,7 @@ export type ReleaseGateInput = {
   dependencies: {
     selfHostedConfig: GateStatus;
     backupRestore: GateStatus;
+    identityReadiness: GateStatus;
     queueReadiness: GateStatus;
     observability: GateStatus;
   };
@@ -74,6 +77,7 @@ type ReleaseGateCliOptions = {
   hdcStatus: HdcReleaseStatus;
   hdcEvidencePath: string | null;
   backupEvidencePath: string;
+  identityEvidencePath: string;
   rollbackPlanPath: string;
   rollbackRehearsalEvidencePath: string;
   targetSyntheticEvidencePath: string;
@@ -81,6 +85,7 @@ type ReleaseGateCliOptions = {
   output: string;
   runCommands: boolean;
   backupRestoreStatus: GateStatus | null;
+  identityReadinessStatus: GateStatus;
   queueReadinessStatus: GateStatus;
   observabilityStatus: GateStatus;
 };
@@ -122,6 +127,9 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   if (!input.evidence.backupEvidencePath.trim()) {
     blockers.push("Backup evidence path is required.");
   }
+  if (!input.evidence.identityEvidencePath.trim()) {
+    blockers.push("Identity evidence path is required.");
+  }
   if (!input.evidence.rollbackPlanPath.trim()) {
     blockers.push("Rollback plan path is required.");
   }
@@ -148,6 +156,7 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
 
   collectDependencyStatus(input.dependencies.selfHostedConfig, "Self-hosted config", blockers, pending);
   collectDependencyStatus(input.dependencies.backupRestore, "Backup/restore", blockers, pending);
+  collectDependencyStatus(input.dependencies.identityReadiness, "Identity readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.queueReadiness, "Queue readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.observability, "Observability", blockers, pending);
 
@@ -188,6 +197,7 @@ export function buildReleaseGateEvidence(args: {
     "### Evidence Paths",
     "",
     `- Backup evidence: \`${sanitize(args.input.evidence.backupEvidencePath)}\``,
+    `- Identity evidence: \`${sanitize(args.input.evidence.identityEvidencePath)}\``,
     `- Rollback plan: \`${sanitize(args.input.evidence.rollbackPlanPath)}\``,
     `- Rollback rehearsal: \`${sanitize(args.input.evidence.rollbackRehearsalEvidencePath || "pending")}\``,
     `- Target synthetic acceptance: \`${sanitize(args.input.evidence.targetSyntheticEvidencePath || "pending")}\``,
@@ -207,6 +217,7 @@ export function buildReleaseGateEvidence(args: {
     "| --- | --- |",
     `| self-hosted config | ${args.input.dependencies.selfHostedConfig} |`,
     `| backup/restore | ${args.input.dependencies.backupRestore} |`,
+    `| identity readiness | ${args.input.dependencies.identityReadiness} |`,
     `| queue readiness | ${args.input.dependencies.queueReadiness} |`,
     `| observability | ${args.input.dependencies.observability} |`,
     "",
@@ -260,6 +271,7 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
     },
     evidence: {
       backupEvidencePath: options.backupEvidencePath,
+      identityEvidencePath: options.identityEvidencePath,
       rollbackPlanPath: options.rollbackPlanPath,
       rollbackRehearsalEvidencePath: options.rollbackRehearsalEvidencePath,
       targetSyntheticEvidencePath: options.targetSyntheticEvidencePath,
@@ -269,6 +281,7 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
     dependencies: {
       selfHostedConfig: commandStatus(commands, "selfhost:check"),
       backupRestore: options.backupRestoreStatus ?? pathExistsStatus(options.backupEvidencePath),
+      identityReadiness: options.identityReadinessStatus,
       queueReadiness: options.queueReadinessStatus,
       observability: options.observabilityStatus
     }
@@ -303,6 +316,7 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     throw new Error(`Unsupported HDC release status: ${hdcStatus}`);
   }
   const backupRestoreStatus = optionalGateStatus(getValue("--backup-restore", ""));
+  const identityReadinessStatus = requiredGateStatus(getValue("--identity-readiness", "pending"), "--identity-readiness");
   const queueReadinessStatus = requiredGateStatus(getValue("--queue-readiness", "pending"), "--queue-readiness");
   const observabilityStatus = requiredGateStatus(getValue("--observability", "pending"), "--observability");
 
@@ -315,6 +329,7 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     hdcStatus,
     hdcEvidencePath: getValue("--hdc-evidence", ""),
     backupEvidencePath: getValue("--backup-evidence", "docs/generated/m6-backup-restore-evidence.md"),
+    identityEvidencePath: getValue("--identity-evidence", "docs/generated/m6-identity-evidence.md"),
     rollbackPlanPath: getValue("--rollback-plan", "docs/runbooks/release-rollback.md"),
     rollbackRehearsalEvidencePath: getValue("--rollback-evidence", ""),
     targetSyntheticEvidencePath: getValue("--target-synthetic-evidence", ""),
@@ -322,6 +337,7 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     capacityEvidencePath: getValue("--capacity-evidence", positionalCapacityEvidence || "docs/generated/capacity-gate.md"),
     runCommands: args.includes("--run-command-gates"),
     backupRestoreStatus,
+    identityReadinessStatus,
     queueReadinessStatus,
     observabilityStatus
   };

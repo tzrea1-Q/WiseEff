@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-03T02:21:26.054Z
+- Date: 2026-06-03T06:47:22.659Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `9cd840477875cccfbdf6e97e1b24d26d489ad674`
+- Commit: `d1f237c882d782f156c2df66e6dfa3724438377c`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -30,6 +30,7 @@
 ### Evidence Paths
 
 - Backup evidence: `docs/generated/m6-backup-restore-evidence.md`
+- Identity evidence: `docs/generated/m6-identity-evidence.md`
 - Rollback plan: `docs/runbooks/release-rollback.md`
 - Rollback rehearsal: `pending`
 - Target synthetic acceptance: `pending`
@@ -47,6 +48,7 @@
 | acceptance:operations | pending | configured_not_run |
 | acceptance:evidence | pending | configured_not_run |
 | selfhost:check | pending | configured_not_run |
+| identity:check | pending | configured_not_run |
 | git diff --check | pending | configured_not_run |
 
 ### Dependency Gates
@@ -55,6 +57,7 @@
 | --- | --- |
 | self-hosted config | pending |
 | backup/restore | passed |
+| identity readiness | pending |
 | queue readiness | pending |
 | observability | passed |
 
@@ -74,6 +77,8 @@
 - Command gate not run: acceptance:operations.
 - Command gate not run: acceptance:evidence.
 - Command gate not run: selfhost:check.
+- Command gate not run: identity:check.
 - Command gate not run: git diff --check.
 - Self-hosted config evidence is pending.
+- Identity readiness evidence is pending.
 - Queue readiness evidence is pending.

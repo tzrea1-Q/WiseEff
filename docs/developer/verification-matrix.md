@@ -34,7 +34,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run identity:check` | M6.2 target OIDC discovery, `/api/v1/me`, and negative-token evidence | Against a self-hosted OIDC target after preparing Admin, wrong-issuer, wrong-audience, and expired access tokens. |
 | `npm run observability:check` | M6.5 observability config, dashboards, alerts, runbook links, metric references, and secret hygiene | After changing Prometheus, Alertmanager, Grafana, observability runbooks, or server observability wiring. |
 | `npm run capacity:gate` | M6.6 capacity threshold evidence shape and redacted capacity report | After changing capacity thresholds, capacity scripts, release evidence docs, or when recording a target capacity run. |
-| `npm run selfhost:release-gate` | M6.6 release-candidate metadata, command-gate, dependency, and evidence summary | Before accepting a self-hosted release candidate or after changing release/rollback/capacity scripts and docs. |
+| `npm run selfhost:release-gate` | M6.6 release-candidate metadata, command-gate, identity/dependency, and evidence summary | Before accepting a self-hosted release candidate or after changing release/rollback/capacity scripts and docs. |
 
 `npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
 
@@ -58,7 +58,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M6.3 self-hosted storage and backup | `npm run restore:drill`, `npm run backup:drill`, `npm run backup:check` | S3-compatible object store, PostgreSQL backup target, isolated restore database, isolated restore bucket/prefix | Before claiming backup/restore evidence for a self-hosted target. |
 | M6.4 durable queue | `npm run queue:check -- --base-url <target-url>` | Running API with `LOG_ANALYSIS_QUEUE_MODE=durable`, Redis/BullMQ, PostgreSQL job table | Before treating a self-hosted queue transport as ready. |
 | M6.5 observability and operations | `npm run observability:check` plus focused server observability tests | Prometheus config, Alertmanager rules, Grafana dashboard JSON, runbook links, API metrics endpoint | Before treating a self-hosted target as observable or before relying on alerts for operations. |
-| M6.6 release, rollback, and capacity | `npm run capacity:gate` plus `npm run selfhost:release-gate` | Deployed self-hosted target, backup/restore evidence, queue readiness, observability, target synthetic acceptance, rollback rehearsal, capacity metrics | Before treating a self-hosted release candidate as ready for a controlled commercial pilot. |
+| M6.6 release, rollback, and capacity | `npm run identity:check`, `npm run capacity:gate`, plus `npm run selfhost:release-gate` | Deployed self-hosted target, target OIDC identity evidence, `docs/generated/m6-identity-evidence.md`, backup/restore evidence, queue readiness, observability, target synthetic acceptance, rollback rehearsal, capacity metrics | Before treating a self-hosted release candidate as ready for a controlled commercial pilot. |
 
 ## UI Interaction Acceptance Rule
 
@@ -124,4 +124,5 @@ npm run test:server -- scripts/check-doc-governance.test.ts
 - Do not mark TD-019 complete until target-environment evidence exists.
 - M6.3 local `docs/generated/m6-backup-restore-evidence.*` proves evidence shape, redaction, failed-command handling, and restore target safety. It proves target readiness only when produced from a real non-customer or pilot target restore drill.
 - M6.6 release readiness must be recorded in [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or an approved external release record. `npm run capacity:gate` without observed target metrics is a pending evidence artifact, not a capacity pass.
+- Identity readiness cannot be marked complete from local HMAC smoke or static bearer injection; it requires target OIDC evidence from `npm run identity:check`.
 - Rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability release watch, and HDC evidence cannot be marked complete from local script output alone.

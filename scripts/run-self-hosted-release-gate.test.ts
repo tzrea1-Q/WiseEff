@@ -23,6 +23,7 @@ const baseInput: ReleaseGateInput = {
   },
   evidence: {
     backupEvidencePath: "docs/generated/backup-restore-drill.md",
+    identityEvidencePath: "docs/generated/m6-identity-evidence.md",
     rollbackPlanPath: "docs/runbooks/release-rollback.md",
     rollbackRehearsalEvidencePath: "docs/generated/rollback-rehearsal.md",
     targetSyntheticEvidencePath: "docs/generated/acceptance-browser-evidence.md",
@@ -32,6 +33,7 @@ const baseInput: ReleaseGateInput = {
   dependencies: {
     selfHostedConfig: "passed",
     backupRestore: "passed",
+    identityReadiness: "pending",
     queueReadiness: "pending",
     observability: "pending"
   }
@@ -44,6 +46,7 @@ describe("self-hosted release gate", () => {
       dependencies: {
         selfHostedConfig: "passed",
         backupRestore: "passed",
+        identityReadiness: "passed",
         queueReadiness: "passed",
         observability: "passed"
       }
@@ -91,6 +94,7 @@ describe("self-hosted release gate", () => {
     expect(result.blockers).toContain("Command gate failed: build.");
     expect(result.pending).toEqual(
       expect.arrayContaining([
+        "Identity readiness evidence is pending.",
         "Queue readiness evidence is pending.",
         "Observability evidence is pending."
       ])
@@ -114,7 +118,9 @@ describe("self-hosted release gate", () => {
     expect(evidence).toContain("## M6.6 Self-Hosted Release Gate Evidence");
     expect(evidence).toContain("- Version: `m6.6-rc.1`");
     expect(evidence).toContain("- Artifact: `registry.local/wiseeff:abc1234?token=<redacted>`");
+    expect(evidence).toContain("- Identity evidence: `docs/generated/m6-identity-evidence.md`");
     expect(evidence).toContain("| docs:check | passed | ok |");
+    expect(evidence).toContain("| identity readiness | pending |");
     expect(evidence).toContain("### Pending Evidence");
     expect(evidence).not.toContain("token=secret");
   });
@@ -142,6 +148,10 @@ describe("self-hosted release gate", () => {
       parseReleaseGateArgs([
         "--backup-restore",
         "passed",
+        "--identity-evidence",
+        "docs/generated/target-identity-evidence.md",
+        "--identity-readiness",
+        "passed",
         "--queue-readiness",
         "passed",
         "--observability",
@@ -149,6 +159,8 @@ describe("self-hosted release gate", () => {
       ])
     ).toMatchObject({
       backupRestoreStatus: "passed",
+      identityEvidencePath: "docs/generated/target-identity-evidence.md",
+      identityReadinessStatus: "passed",
       queueReadinessStatus: "passed",
       observabilityStatus: "failed"
     });
@@ -158,26 +170,50 @@ describe("self-hosted release gate", () => {
     expect(
       parseReleaseGateArgs([
         "--backup-restore=passed",
+        "--identity-evidence=docs/generated/target-identity-evidence.md",
+        "--identity-readiness=pending",
         "--queue-readiness=pending",
         "--observability=passed"
       ])
     ).toMatchObject({
       backupRestoreStatus: "passed",
+      identityEvidencePath: "docs/generated/target-identity-evidence.md",
+      identityReadinessStatus: "pending",
       queueReadinessStatus: "pending",
       observabilityStatus: "passed"
     });
   });
 
+  it("accepts npm-config identity readiness status", () => {
+    expect(
+      parseReleaseGateArgs([], {
+        npm_config_identity_readiness: "passed"
+      })
+    ).toMatchObject({
+      identityReadinessStatus: "passed"
+    });
+  });
+
   it("defaults to the M6 backup restore evidence artifact", () => {
     expect(parseReleaseGateArgs([])).toMatchObject({
-      backupEvidencePath: "docs/generated/m6-backup-restore-evidence.md"
+      backupEvidencePath: "docs/generated/m6-backup-restore-evidence.md",
+      identityEvidencePath: "docs/generated/m6-identity-evidence.md"
     });
   });
 
   it("marks configured command gates as pending until they are actually run", () => {
-    const commands = buildConfiguredCommandResults({ scripts: { "docs:check": "tsx scripts/check-doc-governance.ts" } });
+    const commands = buildConfiguredCommandResults({
+      scripts: {
+        "docs:check": "tsx scripts/check-doc-governance.ts",
+        "identity:check": "tsx scripts/check-identity-evidence.ts"
+      }
+    });
 
     expect(commands.find((command) => command.name === "docs:check")).toMatchObject({
+      status: "pending",
+      detail: "configured_not_run"
+    });
+    expect(commands.find((command) => command.name === "identity:check")).toMatchObject({
       status: "pending",
       detail: "configured_not_run"
     });

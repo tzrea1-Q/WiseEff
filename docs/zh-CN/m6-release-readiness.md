@@ -9,19 +9,23 @@
 ## 关键命令
 
 ```bash
+npm run identity:check
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed
 ```
 
 `capacity:gate` 写入 `docs/generated/capacity-gate.md`，用于记录容量门禁证据。
 
-`selfhost:release-gate` 写入 `docs/generated/m6-release-readiness.md`，用于记录 release candidate 的版本、commit、artifact、环境指纹、迁移清单、备份、回滚、容量、target synthetic acceptance 和 HDC scope。
+`identity:check` 写入 `docs/generated/m6-identity-evidence.md`，用于记录 M6.2 目标 OIDC 身份证据。它必须证明 discovery/JWKS、Admin `/api/v1/me`、错误 issuer、错误 audience、过期 token、浏览器 token 获取/刷新/登出等检查。不能用本地 HMAC smoke 或静态 bearer 注入代替。
+
+`selfhost:release-gate` 写入 `docs/generated/m6-release-readiness.md`，用于记录 release candidate 的版本、commit、artifact、环境指纹、迁移清单、身份、备份、回滚、容量、target synthetic acceptance 和 HDC scope。
 
 ## 必须保持诚实的 Pending 项
 
 如果没有真实目标环境证据，以下项目不能标记为完成：
 
 - target capacity run，
+- target OIDC identity evidence，
 - rollback rehearsal，
 - target synthetic acceptance，
 - queue drain / pause / resume，
@@ -49,6 +53,6 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 
 ## Go / No-Go
 
-只有当 `selfhost:smoke`、target synthetic acceptance、capacity gate、backup/restore、rollback rehearsal、queue evidence 和 observability evidence 都有真实目标环境记录时，才可以考虑 controlled self-hosted release candidate Go。
+只有当 `identity:check`、`selfhost:smoke`、target synthetic acceptance、capacity gate、backup/restore、rollback rehearsal、queue evidence 和 observability evidence 都有真实目标环境记录时，才可以考虑 controlled self-hosted release candidate Go。
 
 缺少任一项时，结论应保持 No-Go 或 pending。

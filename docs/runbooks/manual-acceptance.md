@@ -177,11 +177,12 @@ Expected:
 For M6.6 self-hosted release candidates, also run the release and capacity metadata gates:
 
 ```bash
+npm run identity:check
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed
 ```
 
-These commands may produce failed or pending evidence until a real target capacity run, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, and observability watch are attached.
+These commands may produce failed or pending evidence until real target OIDC identity evidence, a real target capacity run, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, and observability watch are attached.
 
 ## Start The Local Review Runtime
 
@@ -309,7 +310,7 @@ M5.12 adds CI and target synthetic archiving for these gates. Pull requests and 
 
 M6.1 self-hosted runtime evidence is collected separately with `npm run selfhost:check` and `npm run selfhost:smoke -- --base-url <target-url>`. This proves the self-hosted services are reachable and production-shaped; it does not prove OIDC, durable queue, observability, rollback, capacity, or HDC readiness.
 
-M6.2 local identity evidence is collected with `npm run acceptance:browser` and `npm run acceptance:evidence`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
+M6.2 local identity evidence is collected with `npm run acceptance:browser` and `npm run acceptance:evidence`. Target identity evidence is collected with `npm run identity:check` and written to `docs/generated/m6-identity-evidence.md`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
 
 M6.3 storage and backup evidence is collected with:
 
@@ -321,7 +322,7 @@ npm run backup:check
 
 Local M6.3 evidence proves evidence shape, redaction, failed-command handling, and restore-target safety. Target acceptance requires a real restore drill against isolated PostgreSQL and object-store targets.
 
-M6.6 release evidence is collected with `npm run selfhost:release-gate`, `npm run capacity:gate`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence.
+M6.6 release evidence is collected with `npm run selfhost:release-gate`, `npm run identity:check`, `npm run capacity:gate`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless target OIDC identity evidence, capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence.
 
 ### Reviewing Operation Evidence
 
@@ -701,11 +702,12 @@ Mark **Go for non-HDC target acceptance** only if:
 Mark **Go for controlled self-hosted release candidate** only if:
 
 - `npm run selfhost:smoke` passes against the deployed target.
+- `npm run identity:check` passes against the target OIDC issuer and API, and the redacted identity evidence is attached.
 - `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime` passes or full-pilot mode passes with real HDC evidence.
 - `npm run capacity:gate` includes observed target metrics and meets thresholds.
 - Backup/restore evidence and rollback rehearsal evidence are attached.
 - Queue readiness and observability release-watch evidence are attached.
-- `npm run selfhost:release-gate` references the release version, commit, artifact, environment fingerprint, migration set, capacity evidence, and rollback evidence.
+- `npm run selfhost:release-gate` references the release version, commit, artifact, environment fingerprint, migration set, identity evidence, capacity evidence, and rollback evidence.
 
 Mark **Go for full pilot-ready** only if:
 
@@ -727,7 +729,7 @@ Mark **No-Go** if:
 - Debugging writes do not create snapshots or audit evidence.
 - Restore or rollback cannot be demonstrated.
 - Evidence is missing for a gate being claimed as complete.
-- M6.6 capacity, rollback, target synthetic, queue, or observability evidence is pending while the release is being claimed ready.
+- M6.6 identity, capacity, rollback, target synthetic, queue, or observability evidence is pending while the release is being claimed ready.
 
 ## Known Current Caveats
 

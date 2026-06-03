@@ -5,7 +5,9 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 ## Preconditions
 
 - A release candidate has a version label, commit SHA, artifact reference, target environment label, and environment-file fingerprint.
-- `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, `npm run selfhost:check`, and `git diff --check` pass.
+- `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, `npm run selfhost:check`, `npm run identity:check`, and `git diff --check` pass.
+- Production targets use `AUTH_PROVIDER=oidc`; local HMAC smoke tokens are not acceptable identity readiness evidence.
+- Target OIDC evidence is archived at `docs/generated/m6-identity-evidence.md` or an approved external record and proves discovery/JWKS, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser token acquisition/refresh/logout checks.
 - A backup is taken before deployment and can be restored into a clean target.
 - Queue pause/drain/resume behavior is documented for the target queue mode.
 - Monitoring is available during the release window.
@@ -29,9 +31,10 @@ Run:
 
 ```bash
 npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://<host>
+npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed
 ```
 
 Attach Playwright reports, operation evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.
@@ -56,7 +59,7 @@ Trigger rollback when any of these occur during the release window:
 4. Redeploy the last known good API, web, and worker artifacts.
 5. If the candidate changed data, restore PostgreSQL and object-store state from the pre-release backup.
 6. Re-run `npm run selfhost:smoke` against the target.
-7. Confirm `/health/live`, `/health/ready`, `/api/v1/me`, and `/api/v1/operations/pilot-readiness`.
+7. Confirm `/health/live`, `/health/ready`, `/api/v1/me` with a target OIDC token, and `/api/v1/operations/pilot-readiness`.
 8. Resume workers only after queue and readiness checks are safe.
 9. Record rollback rehearsal evidence and update `docs/generated/m6-release-readiness.md` or the external release evidence store.
 
@@ -76,4 +79,4 @@ Irreversible migrations or data transformations cannot be described as rollback-
 
 ## Evidence Rule
 
-This runbook can be rehearsed only in a non-customer target environment. Local command output proves scripts and templates; it does not complete rollback rehearsal, target synthetic acceptance, capacity, HDC, or full-pilot readiness.
+This runbook can be rehearsed only in a non-customer target environment. Local command output proves scripts and templates; it does not complete target OIDC identity readiness, rollback rehearsal, target synthetic acceptance, capacity, HDC, or full-pilot readiness.

@@ -23,6 +23,7 @@ M6.6 includes:
 - Versioned self-hosted release procedure.
 - Pre-release quality and documentation gate.
 - Target deployment smoke.
+- Target OIDC identity readiness dependency from M6.2.
 - Database migration safety policy and rollback guidance.
 - Queue drain/pause/resume coordination.
 - Backup-before-release and restore rehearsal.
@@ -42,7 +43,7 @@ M6.6 excludes:
 ## Dependencies And Ordering
 
 - M6.1 runtime baseline must be usable.
-- M6.2 identity path should be complete for production-like target acceptance.
+- M6.2 identity readiness must pass before release readiness can pass. `npm run identity:check` evidence must prove target OIDC discovery/JWKS, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser token acquisition/refresh/logout evidence.
 - M6.3 backup/restore scripts must exist.
 - M6.4 queue operations must support drain/pause/resume or documented equivalent.
 - M6.5 observability must provide release health signals.
@@ -51,6 +52,7 @@ M6.6 excludes:
 
 - Release candidates have a documented version, commit SHA, environment file fingerprint, migration set, and artifact reference.
 - Pre-release gates pass: docs, contract, tests, build, browser acceptance, evidence checks, and self-hosted config checks.
+- Release candidates cannot pass until `docs/generated/m6-identity-evidence.md` or an approved external identity evidence record is present and `identity readiness` is `passed`.
 - Backup runs before deployment and restore rehearsal is recorded.
 - Rollback rehearsal succeeds in a non-customer target environment.
 - Capacity test produces latency, error-rate, throughput, CPU/memory, database, queue, and object-store evidence.
@@ -102,6 +104,7 @@ Modify:
 - [x] Wire the release gate to run or verify `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, and `git diff --check`.
 - [x] Add self-hosted config checks from M6.1.
 - [x] Add backup check from M6.3 as evidence-path validation; target backup/restore evidence remains pending.
+- [x] Add M6.2 identity readiness as an explicit release dependency, backed by `npm run identity:check` and `docs/generated/m6-identity-evidence.md`; target OIDC evidence remains pending.
 - [x] Add queue readiness check from M6.4 as explicit pending dependency until M6.4 target evidence exists.
 - [x] Add observability config check from M6.5 as explicit pending dependency until M6.5 target evidence exists.
 - [x] Ensure failures produce a readable evidence report.
@@ -142,7 +145,7 @@ Modify:
 
 ## Current Execution Status
 
-Implementation-side release/capacity gates are in place and locally tested. Target-environment evidence is still pending for capacity, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability watch, backup/restore rehearsal, and HDC/full-pilot readiness. This plan must remain in `active/` until those target gates are run and archived.
+Implementation-side release/capacity gates are in place and locally tested. Target-environment evidence is still pending for identity readiness/target OIDC, capacity, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability watch, backup/restore rehearsal, and HDC/full-pilot readiness. This plan must remain in `active/` until those target gates are run and archived.
 
 ## External Inputs Needed
 
@@ -162,7 +165,7 @@ Implementation-side release/capacity gates are in place and locally tested. Targ
 | Product specs | Review | `docs/product-specs/` | Update only if release gate changes supported commercial scope. |
 | Architecture docs | Update | `ARCHITECTURE.md`, `docs/design-docs/deployment-operations.md`, `docs/design-docs/full-stack-architecture.md` | Document release topology and rollback boundaries. |
 | Quality/testing docs | Update | `docs/developer/verification-matrix.md`, `docs/design-docs/testing-strategy.md`, `docs/QUALITY_SCORE.md` | Add release, rollback, capacity, and target synthetic gates. |
-| Reliability/runbooks | Update | `docs/RELIABILITY.md`, `docs/runbooks/release-rollback.md`, `docs/runbooks/rollback.md`, `docs/runbooks/backup-restore.md`, `docs/runbooks/monitoring-alerting.md`, `docs/runbooks/manual-acceptance.md` | Core M6.6 scope. |
+| Reliability/runbooks | Update | `docs/RELIABILITY.md`, `docs/runbooks/release-rollback.md`, `docs/runbooks/rollback.md`, `docs/runbooks/backup-restore.md`, `docs/runbooks/identity-provider.md`, `docs/runbooks/monitoring-alerting.md`, `docs/runbooks/manual-acceptance.md` | Core M6.6 scope; release gates must link identity readiness evidence. |
 | Security/governance docs | Review | `docs/SECURITY.md`, `docs/security/audit-retention.md`, `docs/security/secrets-management.md` | Release evidence and capacity logs may contain sensitive metadata. |
 | Frontend/design docs | Review | `docs/FRONTEND.md`, `docs/DESIGN.md` | Update only if target release changes frontend runtime or visual gates. |
 | Generated artifacts | Update | `docs/generated/m6-release-readiness.md` | Final evidence summary, redacted before commit. |
@@ -173,6 +176,7 @@ Implementation-side release/capacity gates are in place and locally tested. Targ
 
 - `npm run docs:check` must pass before this plan is moved to completed.
 - Release readiness docs must distinguish local gates, target non-HDC gates, and full-pilot HDC gates.
+- Release readiness docs must distinguish local HMAC smoke from target OIDC identity readiness.
 - Capacity thresholds must be documented with actual results or remain explicitly open.
 - Rollback cannot be marked complete without rehearsal evidence from a non-customer target environment.
 
