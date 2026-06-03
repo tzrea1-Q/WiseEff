@@ -154,6 +154,26 @@ describe("self-hosted release gate", () => {
     });
   });
 
+  it("parses equals-form target dependency evidence statuses", () => {
+    expect(
+      parseReleaseGateArgs([
+        "--backup-restore=passed",
+        "--queue-readiness=pending",
+        "--observability=passed"
+      ])
+    ).toMatchObject({
+      backupRestoreStatus: "passed",
+      queueReadinessStatus: "pending",
+      observabilityStatus: "passed"
+    });
+  });
+
+  it("defaults to the M6 backup restore evidence artifact", () => {
+    expect(parseReleaseGateArgs([])).toMatchObject({
+      backupEvidencePath: "docs/generated/m6-backup-restore-evidence.md"
+    });
+  });
+
   it("marks configured command gates as pending until they are actually run", () => {
     const commands = buildConfiguredCommandResults({ scripts: { "docs:check": "tsx scripts/check-doc-governance.ts" } });
 

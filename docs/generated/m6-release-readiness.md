@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-02T17:53:06.321Z
+- Date: 2026-06-03T02:21:26.054Z
 - Status: `failed`
-- Branch: `codex/m6-6-release-rollback-capacity-gate`
-- Commit: `54925ef0238b373035d79387a2ec475524a34635`
+- Branch: `codex/m6-target-evidence-closure`
+- Commit: `9cd840477875cccfbdf6e97e1b24d26d489ad674`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -25,10 +25,11 @@
 - `0008_m4_agent.sql`
 - `0009_m5_job_dead_letters.sql`
 - `0010_m5_agent_provider_traces.sql`
+- `0011_m6_user_governance.sql`
 
 ### Evidence Paths
 
-- Backup evidence: `docs/generated/backup-restore-drill.md`
+- Backup evidence: `docs/generated/m6-backup-restore-evidence.md`
 - Rollback plan: `docs/runbooks/release-rollback.md`
 - Rollback rehearsal: `pending`
 - Target synthetic acceptance: `pending`
@@ -53,9 +54,9 @@
 | Dependency | Status |
 | --- | --- |
 | self-hosted config | pending |
-| backup/restore | pending |
+| backup/restore | passed |
 | queue readiness | pending |
-| observability | pending |
+| observability | passed |
 
 ### Blockers
 
@@ -75,6 +76,4 @@
 - Command gate not run: selfhost:check.
 - Command gate not run: git diff --check.
 - Self-hosted config evidence is pending.
-- Backup/restore evidence is pending.
 - Queue readiness evidence is pending.
-- Observability evidence is pending.

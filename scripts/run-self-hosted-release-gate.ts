@@ -277,6 +277,11 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
 
 export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.env): ReleaseGateCliOptions {
   const getValue = (name: string, fallback: string) => {
+    const equalsPrefix = `${name}=`;
+    const equalsArg = args.find((arg) => arg.startsWith(equalsPrefix));
+    if (equalsArg) {
+      return equalsArg.slice(equalsPrefix.length);
+    }
     const index = args.indexOf(name);
     if (index === -1) {
       const envValue = env[`npm_config_${name.slice(2).replace(/-/g, "_")}`];
@@ -309,7 +314,7 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     syntheticAcceptanceMode,
     hdcStatus,
     hdcEvidencePath: getValue("--hdc-evidence", ""),
-    backupEvidencePath: getValue("--backup-evidence", "docs/generated/backup-restore-drill.md"),
+    backupEvidencePath: getValue("--backup-evidence", "docs/generated/m6-backup-restore-evidence.md"),
     rollbackPlanPath: getValue("--rollback-plan", "docs/runbooks/release-rollback.md"),
     rollbackRehearsalEvidencePath: getValue("--rollback-evidence", ""),
     targetSyntheticEvidencePath: getValue("--target-synthetic-evidence", ""),
