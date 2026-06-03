@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateDurableQueueReadyBody, runDurableQueueCheck } from "./check-durable-queue";
+import { evaluateDurableQueueReadyBody, parseDurableQueueArgs, runDurableQueueCheck } from "./check-durable-queue";
 
 function readyBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -82,5 +82,21 @@ describe("durable queue check", () => {
 
     expect(result.status).toBe("passed");
     expect(calls).toEqual(["https://wiseeff.example.test/health/ready Bearer token"]);
+  });
+
+  it("parses equals-form CLI arguments and npm config fallback values", () => {
+    expect(parseDurableQueueArgs(["--base-url=https://target.example.test"], {})).toMatchObject({
+      baseUrl: "https://target.example.test"
+    });
+    expect(
+      parseDurableQueueArgs(
+        ["--env-file=ops/self-hosted/target.env", "--authorization=Bearer local"],
+        { npm_config_base_url: "https://npm.example.test" }
+      )
+    ).toMatchObject({
+      envFile: "ops/self-hosted/target.env",
+      baseUrl: "https://npm.example.test",
+      authorization: "Bearer local"
+    });
   });
 });

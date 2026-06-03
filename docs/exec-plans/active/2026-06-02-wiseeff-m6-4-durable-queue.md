@@ -141,6 +141,8 @@ As of 2026-06-02, the repository implementation is locally complete for queue di
 
 `npm run test:m2` was attempted on 2026-06-02. Its unit/build stages passed, but the Playwright E2E stage was blocked by local runtime setup: the current worktree has no `.env`, several E2E helpers received no `DATABASE_URL`, and port `8787` was already occupied by an existing WiseEff API that Playwright could reuse. Treat this as an environment/target evidence gap, not as completed queue-mode acceptance.
 
+On 2026-06-03, a local target-like durable queue readiness check passed with a temporary Redis container and an isolated API process configured with `LOG_ANALYSIS_QUEUE_MODE=durable`, `LOG_WORKER_ENABLED=false`, and `REDIS_URL=redis://127.0.0.1:6381`. The command `npm run queue:check -- --base-url=http://127.0.0.1:8788` returned `Durable queue transport and PostgreSQL job state are ready.` This proves the local readiness gate can detect Redis/BullMQ and PostgreSQL job-state health, but it is not target-environment evidence and does not satisfy the open target queue-mode acceptance, Redis persistence drill, queue metrics, or capacity tuning requirements.
+
 ## External Inputs Needed
 
 - Redis deployment location and persistence policy for the first self-hosted target.

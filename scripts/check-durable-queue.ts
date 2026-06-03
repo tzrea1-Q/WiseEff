@@ -74,22 +74,32 @@ export async function runDurableQueueCheck({
   };
 }
 
-function parseArgs(args: readonly string[], env: RuntimeEnv = process.env) {
+export function parseDurableQueueArgs(args: readonly string[], env: RuntimeEnv = process.env) {
   const options = {
     envFile: env.npm_config_env_file?.trim() || "ops/self-hosted/.env",
-    baseUrl: env.WISEEFF_API_BASE_URL?.trim() || env.VITE_WISEEFF_API_BASE_URL?.trim() || "",
+    baseUrl:
+      env.npm_config_base_url?.trim() ||
+      env.WISEEFF_API_BASE_URL?.trim() ||
+      env.VITE_WISEEFF_API_BASE_URL?.trim() ||
+      "",
     authorization: env.M6_SELFHOSTED_SMOKE_AUTHORIZATION?.trim() || env.M5_SMOKE_AUTHORIZATION?.trim() || env.WISEEFF_SMOKE_AUTHORIZATION?.trim()
   };
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     const next = args[index + 1];
-    if (arg === "--env-file" && next) {
+    if (arg.startsWith("--env-file=")) {
+      options.envFile = arg.slice("--env-file=".length);
+    } else if (arg === "--env-file" && next) {
       options.envFile = next;
       index += 1;
+    } else if (arg.startsWith("--base-url=")) {
+      options.baseUrl = arg.slice("--base-url=".length);
     } else if (arg === "--base-url" && next) {
       options.baseUrl = next;
       index += 1;
+    } else if (arg.startsWith("--authorization=")) {
+      options.authorization = arg.slice("--authorization=".length);
     } else if (arg === "--authorization" && next) {
       options.authorization = next;
       index += 1;
@@ -102,7 +112,7 @@ function parseArgs(args: readonly string[], env: RuntimeEnv = process.env) {
 }
 
 async function main() {
-  const cli = parseArgs(process.argv.slice(2));
+  const cli = parseDurableQueueArgs(process.argv.slice(2));
   const env = existsSync(cli.envFile) ? loadEnvContent(readFileSync(cli.envFile, "utf8"), process.env) : process.env;
   const baseUrl = cli.baseUrl || env.WISEEFF_API_BASE_URL?.trim() || env.VITE_WISEEFF_API_BASE_URL?.trim();
   if (!baseUrl) {
