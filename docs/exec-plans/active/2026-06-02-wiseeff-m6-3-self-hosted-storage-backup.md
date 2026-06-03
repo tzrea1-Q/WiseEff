@@ -10,6 +10,8 @@
 
 **Current status (2026-06-02):** Local implementation, documentation, evidence-shape checks, restore-target safety checks, and repository verification are complete in branch `codex/m6-3-self-hosted-storage-backup`. The generated M6 evidence is local non-customer example evidence only. This plan remains active and must not move to `docs/exec-plans/completed/` until a real non-customer or pilot target restore drill runs against isolated PostgreSQL and object-store restore targets.
 
+**Reconciliation (2026-06-03):** The integrated M6 branch contains the provider decision docs, object-store env template, backup/restore scripts, evidence checker, generated local evidence, runbook updates, and S3-compatible object-store tests. Fresh local checks passed with `npm test -- --run scripts/check-backup-drill.test.ts scripts/run-backup-drill.test.ts scripts/run-restore-drill.test.ts`, `npm run test:server -- server/modules/logs/objectStore.test.ts server/modules/logs/s3ObjectStore.test.ts server/objectStoreFactory.test.ts`, and `npm run backup:check`. These prove repository-local implementation and evidence-shape readiness only. The remaining blocker is still the real target restore drill: isolated PostgreSQL restore, isolated object-store bucket/prefix restore, cross-store log reference validation, and redacted target evidence archival.
+
 ---
 
 ## Reference Basis
