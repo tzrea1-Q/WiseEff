@@ -27,7 +27,9 @@ const baseInput: ReleaseGateInput = {
     rollbackPlanPath: "docs/runbooks/release-rollback.md",
     rollbackRehearsalEvidencePath: "docs/generated/rollback-rehearsal.md",
     targetSyntheticEvidencePath: "docs/generated/acceptance-browser-evidence.md",
-    capacityEvidencePath: "docs/generated/capacity-gate.md"
+    capacityEvidencePath: "docs/generated/capacity-gate.md",
+    queueEvidencePath: "docs/generated/m6-queue-readiness-evidence.md",
+    observabilityEvidencePath: "docs/generated/m6-observability-evidence.md"
   },
   commands: requiredReleaseGateCommands.map((name) => ({ name, status: "passed", detail: "ok" })),
   dependencies: {
@@ -119,6 +121,8 @@ describe("self-hosted release gate", () => {
     expect(evidence).toContain("- Version: `m6.6-rc.1`");
     expect(evidence).toContain("- Artifact: `registry.local/wiseeff:abc1234?token=<redacted>`");
     expect(evidence).toContain("- Identity evidence: `docs/generated/m6-identity-evidence.md`");
+    expect(evidence).toContain("- Queue evidence: `docs/generated/m6-queue-readiness-evidence.md`");
+    expect(evidence).toContain("- Observability evidence: `docs/generated/m6-observability-evidence.md`");
     expect(evidence).toContain("| docs:check | passed | ok |");
     expect(evidence).toContain("| identity readiness | pending |");
     expect(evidence).toContain("### Pending Evidence");
@@ -154,15 +158,21 @@ describe("self-hosted release gate", () => {
         "passed",
         "--queue-readiness",
         "passed",
+        "--queue-evidence",
+        "docs/generated/target-queue-evidence.md",
         "--observability",
-        "failed"
+        "failed",
+        "--observability-evidence",
+        "docs/generated/target-observability-evidence.md"
       ])
     ).toMatchObject({
       backupRestoreStatus: "passed",
       identityEvidencePath: "docs/generated/target-identity-evidence.md",
       identityReadinessStatus: "passed",
       queueReadinessStatus: "passed",
-      observabilityStatus: "failed"
+      queueEvidencePath: "docs/generated/target-queue-evidence.md",
+      observabilityStatus: "failed",
+      observabilityEvidencePath: "docs/generated/target-observability-evidence.md"
     });
   });
 
@@ -173,15 +183,42 @@ describe("self-hosted release gate", () => {
         "--identity-evidence=docs/generated/target-identity-evidence.md",
         "--identity-readiness=pending",
         "--queue-readiness=pending",
-        "--observability=passed"
+        "--queue-evidence=docs/generated/target-queue-evidence.md",
+        "--observability=passed",
+        "--observability-evidence=docs/generated/target-observability-evidence.md"
       ])
     ).toMatchObject({
       backupRestoreStatus: "passed",
       identityEvidencePath: "docs/generated/target-identity-evidence.md",
       identityReadinessStatus: "pending",
       queueReadinessStatus: "pending",
-      observabilityStatus: "passed"
+      queueEvidencePath: "docs/generated/target-queue-evidence.md",
+      observabilityStatus: "passed",
+      observabilityEvidencePath: "docs/generated/target-observability-evidence.md"
     });
+  });
+
+  it("blocks passed queue and observability dependencies without evidence paths", () => {
+    const result = evaluateReleaseGate({
+      ...baseInput,
+      evidence: {
+        ...baseInput.evidence,
+        queueEvidencePath: "",
+        observabilityEvidencePath: ""
+      },
+      dependencies: {
+        ...baseInput.dependencies,
+        queueReadiness: "passed",
+        observability: "passed"
+      }
+    });
+
+    expect(result.blockers).toEqual(
+      expect.arrayContaining([
+        "Queue evidence path is required when queue readiness is passed.",
+        "Observability evidence path is required when observability is passed."
+      ])
+    );
   });
 
   it("accepts npm-config identity readiness status", () => {
@@ -197,7 +234,9 @@ describe("self-hosted release gate", () => {
   it("defaults to the M6 backup restore evidence artifact", () => {
     expect(parseReleaseGateArgs([])).toMatchObject({
       backupEvidencePath: "docs/generated/m6-backup-restore-evidence.md",
-      identityEvidencePath: "docs/generated/m6-identity-evidence.md"
+      identityEvidencePath: "docs/generated/m6-identity-evidence.md",
+      queueEvidencePath: "docs/generated/m6-queue-readiness-evidence.md",
+      observabilityEvidencePath: "docs/generated/m6-observability-evidence.md"
     });
   });
 

@@ -179,7 +179,7 @@ For M6.6 self-hosted release candidates, also run the release and capacity metad
 ```bash
 npm run identity:check
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 ```
 
 These commands may produce failed or pending evidence until real target OIDC identity evidence, a real target capacity run, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, and observability watch are attached.
@@ -706,7 +706,7 @@ Mark **Go for controlled self-hosted release candidate** only if:
 - `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime` passes or full-pilot mode passes with real HDC evidence.
 - `npm run capacity:gate` includes observed target metrics and meets thresholds.
 - Backup/restore evidence and rollback rehearsal evidence are attached.
-- Queue readiness and observability release-watch evidence are attached.
+- Queue readiness and observability release-watch evidence are attached and referenced by `--queue-evidence` and `--observability-evidence`.
 - `npm run selfhost:release-gate` references the release version, commit, artifact, environment fingerprint, migration set, identity evidence, capacity evidence, and rollback evidence.
 
 Mark **Go for full pilot-ready** only if:

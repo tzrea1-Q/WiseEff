@@ -53,6 +53,7 @@ M6.6 excludes:
 - Release candidates have a documented version, commit SHA, environment file fingerprint, migration set, and artifact reference.
 - Pre-release gates pass: docs, contract, tests, build, browser acceptance, evidence checks, and self-hosted config checks.
 - Release candidates cannot pass until `docs/generated/m6-identity-evidence.md` or an approved external identity evidence record is present and `identity readiness` is `passed`.
+- Queue and observability dependencies cannot be marked `passed` unless the release evidence links `docs/generated/m6-queue-readiness-evidence.md`, `docs/generated/m6-observability-evidence.md`, or approved external records.
 - Backup runs before deployment and restore rehearsal is recorded.
 - Rollback rehearsal succeeds in a non-customer target environment.
 - Capacity test produces latency, error-rate, throughput, CPU/memory, database, queue, and object-store evidence.
@@ -107,6 +108,7 @@ Modify:
 - [x] Add M6.2 identity readiness as an explicit release dependency, backed by `npm run identity:check` and `docs/generated/m6-identity-evidence.md`; target OIDC evidence remains pending.
 - [x] Add queue readiness check from M6.4 as explicit pending dependency until M6.4 target evidence exists.
 - [x] Add observability config check from M6.5 as explicit pending dependency until M6.5 target evidence exists.
+- [x] Require queue and observability evidence paths before their release dependencies can be marked passed.
 - [x] Ensure failures produce a readable evidence report.
 
 ### Task 3: Release And Rollback Runbook

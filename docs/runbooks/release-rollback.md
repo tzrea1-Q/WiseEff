@@ -34,7 +34,7 @@ npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://<ho
 npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 ```
 
 Attach Playwright reports, operation evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.

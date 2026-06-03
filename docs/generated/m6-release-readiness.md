@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-03T06:47:22.659Z
+- Date: 2026-06-03T07:01:59.709Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `d1f237c882d782f156c2df66e6dfa3724438377c`
+- Commit: `83be412e00cec6e17226f355f567ae2d26beb1f2`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -35,6 +35,8 @@
 - Rollback rehearsal: `pending`
 - Target synthetic acceptance: `pending`
 - Capacity gate: `docs/generated/capacity-gate.md`
+- Queue evidence: `docs/generated/m6-queue-readiness-evidence.md`
+- Observability evidence: `docs/generated/m6-observability-evidence.md`
 
 ### Command Gates
 

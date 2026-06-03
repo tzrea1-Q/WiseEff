@@ -51,6 +51,8 @@ export type ReleaseGateInput = {
     rollbackRehearsalEvidencePath: string;
     targetSyntheticEvidencePath: string;
     capacityEvidencePath: string;
+    queueEvidencePath: string;
+    observabilityEvidencePath: string;
   };
   commands: ReleaseGateCommandResult[];
   dependencies: {
@@ -82,6 +84,8 @@ type ReleaseGateCliOptions = {
   rollbackRehearsalEvidencePath: string;
   targetSyntheticEvidencePath: string;
   capacityEvidencePath: string;
+  queueEvidencePath: string;
+  observabilityEvidencePath: string;
   output: string;
   runCommands: boolean;
   backupRestoreStatus: GateStatus | null;
@@ -141,6 +145,12 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   }
   if (!input.evidence.capacityEvidencePath.trim()) {
     pending.push("Capacity gate evidence is pending.");
+  }
+  if (input.dependencies.queueReadiness === "passed" && !input.evidence.queueEvidencePath.trim()) {
+    blockers.push("Queue evidence path is required when queue readiness is passed.");
+  }
+  if (input.dependencies.observability === "passed" && !input.evidence.observabilityEvidencePath.trim()) {
+    blockers.push("Observability evidence path is required when observability is passed.");
   }
 
   for (const requiredCommand of requiredReleaseGateCommands) {
@@ -202,6 +212,8 @@ export function buildReleaseGateEvidence(args: {
     `- Rollback rehearsal: \`${sanitize(args.input.evidence.rollbackRehearsalEvidencePath || "pending")}\``,
     `- Target synthetic acceptance: \`${sanitize(args.input.evidence.targetSyntheticEvidencePath || "pending")}\``,
     `- Capacity gate: \`${sanitize(args.input.evidence.capacityEvidencePath || "pending")}\``,
+    `- Queue evidence: \`${sanitize(args.input.evidence.queueEvidencePath || "pending")}\``,
+    `- Observability evidence: \`${sanitize(args.input.evidence.observabilityEvidencePath || "pending")}\``,
     "",
     "### Command Gates",
     "",
@@ -275,7 +287,9 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
       rollbackPlanPath: options.rollbackPlanPath,
       rollbackRehearsalEvidencePath: options.rollbackRehearsalEvidencePath,
       targetSyntheticEvidencePath: options.targetSyntheticEvidencePath,
-      capacityEvidencePath: options.capacityEvidencePath
+      capacityEvidencePath: options.capacityEvidencePath,
+      queueEvidencePath: options.queueEvidencePath,
+      observabilityEvidencePath: options.observabilityEvidencePath
     },
     commands,
     dependencies: {
@@ -335,6 +349,8 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     targetSyntheticEvidencePath: getValue("--target-synthetic-evidence", ""),
     output: getValue("--output", positionalOutput || "docs/generated/m6-release-readiness.md"),
     capacityEvidencePath: getValue("--capacity-evidence", positionalCapacityEvidence || "docs/generated/capacity-gate.md"),
+    queueEvidencePath: getValue("--queue-evidence", "docs/generated/m6-queue-readiness-evidence.md"),
+    observabilityEvidencePath: getValue("--observability-evidence", "docs/generated/m6-observability-evidence.md"),
     runCommands: args.includes("--run-command-gates"),
     backupRestoreStatus,
     identityReadinessStatus,

@@ -11,7 +11,7 @@
 ```bash
 npm run identity:check
 npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 ```
 
 `capacity:gate` 写入 `docs/generated/capacity-gate.md`，用于记录容量门禁证据。
@@ -19,6 +19,8 @@ npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <ar
 `identity:check` 写入 `docs/generated/m6-identity-evidence.md`，用于记录 M6.2 目标 OIDC 身份证据。它必须证明 discovery/JWKS、Admin `/api/v1/me`、错误 issuer、错误 audience、过期 token、浏览器 token 获取/刷新/登出等检查。不能用本地 HMAC smoke 或静态 bearer 注入代替。
 
 `selfhost:release-gate` 写入 `docs/generated/m6-release-readiness.md`，用于记录 release candidate 的版本、commit、artifact、环境指纹、迁移清单、身份、备份、回滚、容量、target synthetic acceptance 和 HDC scope。
+
+当 `queue readiness` 或 `observability` 被标记为 `passed` 时，release record 必须通过 `--queue-evidence` 和 `--observability-evidence` 指向真实目标环境证据或经过批准的外部记录。
 
 ## 必须保持诚实的 Pending 项
 
