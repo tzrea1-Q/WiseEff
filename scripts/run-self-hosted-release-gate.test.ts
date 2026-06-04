@@ -115,6 +115,31 @@ describe("self-hosted release gate", () => {
     );
   });
 
+  it("does not accept local-only environments as target release evidence", () => {
+    const result = evaluateReleaseGate({
+      ...baseInput,
+      metadata: {
+        ...baseInput.metadata,
+        targetEnvironment: "local-self-hosted"
+      },
+      dependencies: {
+        selfHostedConfig: "passed",
+        backupRestore: "passed",
+        identityReadiness: "passed",
+        rollbackReadiness: "passed",
+        capacityReadiness: "passed",
+        targetSyntheticReadiness: "passed",
+        queueReadiness: "passed",
+        observability: "passed"
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain(
+      "Target environment must identify a configured target, staging, pilot, or self-hosted environment."
+    );
+  });
+
   it("blocks failed command gates and leaves unavailable M6 dependency evidence pending", () => {
     const result = evaluateReleaseGate({
       ...baseInput,

@@ -72,6 +72,8 @@ export function evaluateCapacityGate(input: CapacityGateInput): CapacityGateResu
 
   if (!input.metadata.targetUrl.trim()) {
     blockers.push("Target URL is required for capacity evidence.");
+  } else if (!isTargetCapacityUrl(input.metadata.targetUrl)) {
+    blockers.push("Target URL must be a non-local http(s) URL for capacity evidence.");
   }
   if (!input.metadata.environment.trim()) {
     blockers.push("Capacity environment label is required.");
@@ -261,6 +263,26 @@ function isFlagValue(args: string[], value: string) {
     return false;
   }
   return args[index - 1].startsWith("--");
+}
+
+function isTargetCapacityUrl(value: string) {
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    return (
+      hostname !== "localhost" &&
+      hostname !== "0.0.0.0" &&
+      hostname !== "::1" &&
+      hostname !== "[::1]" &&
+      !hostname.startsWith("127.")
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function redactCapacitySecret(value: string) {

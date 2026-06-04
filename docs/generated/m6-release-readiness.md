@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-04T09:34:17.465Z
+- Date: 2026-06-04T11:04:21.389Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `d4c1a8697c974a6d9e2c429ed03c5932bf9f8096`
+- Commit: `6117754f89d9123ff254a7be4c846d74dfb88141`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -69,6 +69,7 @@
 ### Blockers
 
 - Release worktree must be clean before producing final evidence.
+- Target environment must identify a configured target, staging, pilot, or self-hosted environment.
 
 ### Pending Evidence
 

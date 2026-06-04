@@ -79,6 +79,19 @@ describe("capacity gate", () => {
     );
   });
 
+  it("does not accept local URLs as target capacity evidence", () => {
+    const result = evaluateCapacityGate({
+      ...baseInput,
+      metadata: {
+        ...baseInput.metadata,
+        targetUrl: "http://127.0.0.1:8787"
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("Target URL must be a non-local http(s) URL for capacity evidence.");
+  });
+
   it("marks infrastructure metrics pending when they were not collected", () => {
     const result = evaluateCapacityGate({
       ...baseInput,

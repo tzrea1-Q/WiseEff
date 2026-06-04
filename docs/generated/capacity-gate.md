@@ -1,6 +1,6 @@
 ## M6.6 Capacity Gate Evidence
 
-- Date: 2026-06-02T17:53:06.181Z
+- Date: 2026-06-04T11:03:57.132Z
 - Status: `failed`
 - Target URL: `http://127.0.0.1:8787`
 - Environment: `self-hosted-target`
@@ -29,7 +29,7 @@
 
 ### Blockers
 
-- none
+- Target URL must be a non-local http(s) URL for capacity evidence.
 
 ### Pending Evidence
 

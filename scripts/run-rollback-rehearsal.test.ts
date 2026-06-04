@@ -68,6 +68,21 @@ describe("rollback rehearsal evidence", () => {
     expect(result.pending).toContain("Rollback step pending: post-rollback smoke.");
   });
 
+  it("does not accept local-only environments as target rollback evidence", () => {
+    const result = evaluateRollbackRehearsal({
+      ...baseInput,
+      metadata: {
+        ...baseInput.metadata,
+        environment: "local-self-hosted"
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain(
+      "Rollback environment must identify a configured target, staging, pilot, or self-hosted environment."
+    );
+  });
+
   it("requires restore evidence when database or object-store restore is in scope", () => {
     const result = evaluateRollbackRehearsal({
       ...baseInput,

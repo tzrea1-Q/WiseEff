@@ -1,6 +1,6 @@
 ## M6.6 Rollback Rehearsal Evidence
 
-- Date: 2026-06-03T07:43:56.468Z
+- Date: 2026-06-04T11:08:23.524Z
 - Status: `failed`
 - Environment: `local-self-hosted`
 - Release version: `v0.1.0`
@@ -29,7 +29,7 @@
 
 ### Blockers
 
-- none
+- Rollback environment must identify a configured target, staging, pilot, or self-hosted environment.
 
 ### Pending Evidence
 

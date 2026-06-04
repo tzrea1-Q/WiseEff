@@ -120,6 +120,8 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   }
   if (!input.metadata.targetEnvironment.trim()) {
     blockers.push("Target environment label is required.");
+  } else if (!isTargetEnvironment(input.metadata.targetEnvironment)) {
+    blockers.push("Target environment must identify a configured target, staging, pilot, or self-hosted environment.");
   }
   if (!input.metadata.artifactRef.trim()) {
     blockers.push("Release artifact reference is required.");
@@ -475,11 +477,6 @@ function pathExistsStatus(filePath: string): GateStatus {
   return existsSync(filePath) ? "passed" : "pending";
 }
 
-function scriptExists(name: string): boolean {
-  const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
-  return Boolean(packageJson.scripts?.[name]);
-}
-
 function collectMigrations(): string[] {
   const migrationsDirectory = "server/migrations";
   if (!existsSync(migrationsDirectory)) {
@@ -521,6 +518,39 @@ function sanitize(value: string) {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>")
     .replace(/(token|secret|key|password)=([^&\s]+)/gi, "$1=<redacted>")
     .replace(/(token|secret|key|password):([^@\s]+)/gi, "$1:<redacted>");
+}
+
+function isTargetEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !isPlaceholderEnvironment(normalized) &&
+    !isLocalEnvironment(normalized) &&
+    (normalized.includes("target") ||
+      normalized.includes("staging") ||
+      normalized.includes("pilot") ||
+      normalized.includes("self-hosted"))
+  );
+}
+
+function isPlaceholderEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "pending" ||
+    normalized === "n/a" ||
+    normalized.includes("not-configured") ||
+    normalized.includes("not_configured")
+  );
+}
+
+function isLocalEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "local" ||
+    normalized.startsWith("local-") ||
+    normalized.includes("localhost") ||
+    normalized.includes("127.0.0.1") ||
+    normalized.includes("::1")
+  );
 }
 
 function markdownCell(value: string) {
