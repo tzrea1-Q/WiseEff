@@ -142,6 +142,7 @@ Modify:
 ### Task 6: Final M6 Evidence And Completion
 
 - [x] Generate `docs/generated/m6-release-readiness.md`.
+- [x] Add `npm run m6:target-evidence` and `docs/generated/m6-target-evidence-summary.md` as the final M6.2-M6.6 target-evidence completion guard.
 - [x] Update quality score and technical debt tracker with what is ready, blocked, or explicitly out of scope.
 - [x] Run `npm run docs:check`.
 - [x] Run `npm run contract:check`.
@@ -157,6 +158,8 @@ Implementation-side release/rollback/capacity gates are in place and locally tes
 On 2026-06-04, `docs/generated/m6-release-readiness.md` was regenerated after refreshing the local M6.4 durable queue readiness evidence. The release gate now records local backup/restore, queue readiness, and observability evidence paths as available, while correctly keeping the overall release status `failed` because the worktree is not clean during evidence generation and target identity, rollback, capacity, target synthetic acceptance, and final command gates remain pending. This update is evidence bookkeeping only; it does not satisfy the non-customer target release rehearsal required to complete M6.6.
 
 Later on 2026-06-04, M6.2 local OIDC drill evidence was added and `docs/generated/m6-release-readiness.md` was regenerated while keeping `identity readiness` as `pending`. The drill proves local OIDC verifier/API/browser-token mechanics for release-gate dependency wiring, but M6.6 identity readiness still represents target Keycloak/OIDC evidence and remains pending until `npm run identity:check` is run against the deployed target.
+
+Also on 2026-06-04, `npm run m6:target-evidence` was added as a final M6.2-M6.6 completion guard. It writes `docs/generated/m6-target-evidence-summary.md`, blocks any M6.2-M6.6 plan that was moved to `completed/` before target evidence passed, and keeps the current integrated M6 status failed/pending until target OIDC, backup/restore, queue, observability, rollback, capacity, and target synthetic evidence are all attached.
 
 ## External Inputs Needed
 

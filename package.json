@@ -43,6 +43,7 @@
     "selfhost:release-gate": "tsx scripts/run-self-hosted-release-gate.ts",
     "capacity:gate": "tsx scripts/run-capacity-gate.ts",
     "rollback:rehearsal": "tsx scripts/run-rollback-rehearsal.ts",
+    "m6:target-evidence": "tsx scripts/check-m6-target-evidence.ts",
     "test:m5": "npm run contract:check && npm run test:all && npm run build && npm run test:e2e && tsx scripts/run-m5-smoke.ts --require-api",
     "contract:openapi": "tsx scripts/generate-openapi-contract.ts",
     "contract:check": "tsx scripts/check-openapi-contract.ts",
