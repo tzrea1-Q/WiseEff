@@ -3,8 +3,22 @@ import { describe, expect, it } from "vitest";
 
 describe("quality snapshot configuration", () => {
   it("keeps visual screenshot baselines platform-scoped for CI portability", () => {
-    const config = readFileSync("playwright.quality.config.ts", "utf8");
+    const qualityConfig = readFileSync("playwright.quality.config.ts", "utf8");
+    const e2eConfig = readFileSync("playwright.config.ts", "utf8");
 
-    expect(config).toContain("{platform}");
+    expect(qualityConfig).toContain("{platform}");
+    expect(e2eConfig).toContain("{platform}");
+  });
+
+  it("keeps quality specs behind the dedicated quality Playwright config", () => {
+    const e2eConfig = readFileSync("playwright.config.ts", "utf8");
+
+    expect(e2eConfig).toMatch(/testIgnore:.*quality.*\.quality\.spec\.ts/s);
+  });
+
+  it("keeps default E2E Agent flows on the deterministic provider", () => {
+    const e2eConfig = readFileSync("playwright.config.ts", "utf8");
+
+    expect(e2eConfig).toMatch(/AGENT_PROVIDER:\s*"deterministic"/);
   });
 });
