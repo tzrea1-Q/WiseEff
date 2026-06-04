@@ -423,6 +423,38 @@ Status: \`passed\`
     expect(queue?.pending).toContain("Target durable queue evidence is pending.");
   });
 
+  it("does not accept wildcard or IPv6 loopback URLs as target evidence", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        queue: targetEvidence.queue?.replace(
+          "- Base URL: `https://wiseeff-target.example.test`",
+          "- Base URL: `http://[::1]:8787`"
+        ),
+        capacity: targetEvidence.capacity?.replace(
+          "- Target URL: `https://wiseeff-target.example.test`",
+          "- Target URL: `http://0.0.0.0:8787`"
+        )
+      }
+    });
+
+    const queue = result.phases.find((phase) => phase.id === "M6.4");
+    const release = result.phases.find((phase) => phase.id === "M6.6");
+
+    expect(queue).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(release).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(queue?.pending).toContain("Target durable queue evidence is pending.");
+    expect(release?.pending).toContain("Target release, rollback, capacity, and synthetic acceptance evidence is pending.");
+  });
+
   it("does not accept durable queue evidence when transport or database is not ready", () => {
     const result = evaluateM6TargetEvidence({
       activePlans,

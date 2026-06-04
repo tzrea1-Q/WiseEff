@@ -51,7 +51,45 @@ const targetPlanEnvKeys = [
   "M6_OBSERVABILITY_PROMETHEUS_QUERY",
   "M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE",
   "M6_OBSERVABILITY_GRAFANA_EVIDENCE",
-  "WISEEFF_CAPACITY_TARGET_URL"
+  "WISEEFF_CAPACITY_TARGET_URL",
+  "WISEEFF_CAPACITY_AUTHORIZATION",
+  "M6_TARGET_CAPACITY_OBSERVED_P95_MS",
+  "M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE",
+  "M6_TARGET_CAPACITY_OBSERVED_RPS",
+  "M6_TARGET_CAPACITY_OBSERVED_CPU",
+  "M6_TARGET_CAPACITY_OBSERVED_MEMORY",
+  "M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS",
+  "M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG",
+  "M6_TARGET_CAPACITY_OBJECT_STORE_PROBE",
+  "M6_TARGET_ROLLBACK_ENVIRONMENT",
+  "M6_TARGET_ROLLBACK_RELEASE_VERSION",
+  "M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT",
+  "M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT",
+  "M6_TARGET_ROLLBACK_APPROVAL_OWNER",
+  "M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW",
+  "M6_TARGET_ROLLBACK_STOP_WRITES",
+  "M6_TARGET_ROLLBACK_QUEUE_DRAIN",
+  "M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK",
+  "M6_TARGET_ROLLBACK_DATABASE_RESTORE",
+  "M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE",
+  "M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE",
+  "M6_TARGET_ROLLBACK_BACKUP_EVIDENCE",
+  "M6_TARGET_ROLLBACK_SMOKE_EVIDENCE",
+  "M6_TARGET_ROLLBACK_NOTES",
+  "M6_TARGET_SYNTHETIC_EVIDENCE_PATH",
+  "M6_TARGET_RELEASE_ENVIRONMENT",
+  "M6_TARGET_RELEASE_ARTIFACT_REF",
+  "M6_TARGET_RELEASE_ENV_FINGERPRINT",
+  "M6_TARGET_RELEASE_IDENTITY_READINESS",
+  "M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS",
+  "M6_TARGET_RELEASE_ROLLBACK_READINESS",
+  "M6_TARGET_RELEASE_CAPACITY_READINESS",
+  "M6_TARGET_RELEASE_SYNTHETIC_READINESS",
+  "M6_TARGET_RELEASE_QUEUE_READINESS",
+  "M6_TARGET_RELEASE_OBSERVABILITY_READINESS",
+  "M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH",
+  "M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH",
+  "M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH"
 ] as const;
 
 export function buildM6TargetEvidencePlan({ env = process.env }: { env?: RuntimeEnv } = {}): M6TargetEvidencePlan {
@@ -105,6 +143,54 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
   if (!isTargetUrl(capacityTargetUrl)) {
     blockers.push("M6.6 missing WISEEFF_CAPACITY_TARGET_URL or WISEEFF_API_BASE_URL.");
   }
+  requireValue(blockers, "M6.6", "WISEEFF_CAPACITY_AUTHORIZATION", env.WISEEFF_CAPACITY_AUTHORIZATION);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_P95_MS", env.M6_TARGET_CAPACITY_OBSERVED_P95_MS);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE", env.M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_RPS", env.M6_TARGET_CAPACITY_OBSERVED_RPS);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_CPU", env.M6_TARGET_CAPACITY_OBSERVED_CPU);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_MEMORY", env.M6_TARGET_CAPACITY_OBSERVED_MEMORY);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS", env.M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS);
+  requireValue(blockers, "M6.6", "M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG", env.M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_CAPACITY_OBJECT_STORE_PROBE", env.M6_TARGET_CAPACITY_OBJECT_STORE_PROBE);
+  requireTargetEnvironment(blockers, "M6.6", "M6_TARGET_ROLLBACK_ENVIRONMENT", env.M6_TARGET_ROLLBACK_ENVIRONMENT);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_RELEASE_VERSION", env.M6_TARGET_ROLLBACK_RELEASE_VERSION);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT", env.M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT", env.M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_APPROVAL_OWNER", env.M6_TARGET_ROLLBACK_APPROVAL_OWNER);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW", env.M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_ROLLBACK_STOP_WRITES", env.M6_TARGET_ROLLBACK_STOP_WRITES);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_ROLLBACK_QUEUE_DRAIN", env.M6_TARGET_ROLLBACK_QUEUE_DRAIN);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK", env.M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_ROLLBACK_DATABASE_RESTORE", env.M6_TARGET_ROLLBACK_DATABASE_RESTORE);
+  requirePassedStatus(
+    blockers,
+    "M6.6",
+    "M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE",
+    env.M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE
+  );
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE", env.M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_BACKUP_EVIDENCE", env.M6_TARGET_ROLLBACK_BACKUP_EVIDENCE);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_SMOKE_EVIDENCE", env.M6_TARGET_ROLLBACK_SMOKE_EVIDENCE);
+  requireValue(blockers, "M6.6", "M6_TARGET_ROLLBACK_NOTES", env.M6_TARGET_ROLLBACK_NOTES);
+  requireValue(blockers, "M6.6", "M6_TARGET_SYNTHETIC_EVIDENCE_PATH", env.M6_TARGET_SYNTHETIC_EVIDENCE_PATH);
+  requireTargetEnvironment(blockers, "M6.6", "M6_TARGET_RELEASE_ENVIRONMENT", env.M6_TARGET_RELEASE_ENVIRONMENT);
+  requireValue(blockers, "M6.6", "M6_TARGET_RELEASE_ARTIFACT_REF", env.M6_TARGET_RELEASE_ARTIFACT_REF);
+  requireValue(blockers, "M6.6", "M6_TARGET_RELEASE_ENV_FINGERPRINT", env.M6_TARGET_RELEASE_ENV_FINGERPRINT);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_RELEASE_IDENTITY_READINESS", env.M6_TARGET_RELEASE_IDENTITY_READINESS);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS", env.M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_RELEASE_ROLLBACK_READINESS", env.M6_TARGET_RELEASE_ROLLBACK_READINESS);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_RELEASE_CAPACITY_READINESS", env.M6_TARGET_RELEASE_CAPACITY_READINESS);
+  requirePassedStatus(
+    blockers,
+    "M6.6",
+    "M6_TARGET_RELEASE_SYNTHETIC_READINESS",
+    env.M6_TARGET_RELEASE_SYNTHETIC_READINESS
+  );
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_RELEASE_QUEUE_READINESS", env.M6_TARGET_RELEASE_QUEUE_READINESS);
+  requirePassedStatus(blockers, "M6.6", "M6_TARGET_RELEASE_OBSERVABILITY_READINESS", env.M6_TARGET_RELEASE_OBSERVABILITY_READINESS);
+  requireValue(blockers, "M6.6", "M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH", env.M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH);
+  requireValue(blockers, "M6.6", "M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH", env.M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH);
+  requireValue(blockers, "M6.6", "M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH", env.M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH);
 
   const steps: M6TargetEvidencePlanStep[] = [
     {
@@ -205,10 +291,10 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
         "Environment fingerprint"
       ],
       commands: [
-        `npm run capacity:gate -- --target-url ${capacityTargetUrl || "<target-url>"}`,
-        "npm run rollback:rehearsal",
+        buildCapacityGateCommand(env, capacityTargetUrl),
+        buildRollbackRehearsalCommand(env),
         "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
-        "npm run selfhost:release-gate",
+        buildReleaseGateCommand(env),
         "npm run m6:target-evidence"
       ],
       evidencePaths: [
@@ -356,6 +442,82 @@ function requirePassedStatus(blockers: string[], phase: string, name: string, va
   }
 }
 
+function requireTargetEnvironment(blockers: string[], phase: string, name: string, value: string | undefined) {
+  if (!value?.trim() || !isTargetEnvironment(value)) {
+    blockers.push(`${phase} requires ${name} to identify a target, staging, pilot, or self-hosted environment.`);
+  }
+}
+
+function buildCapacityGateCommand(env: RuntimeEnv, capacityTargetUrl: string) {
+  return [
+    "npm run capacity:gate --",
+    flag("--target-url", capacityTargetUrl || "<target-url>"),
+    flag("--environment", firstSet(env.M6_TARGET_RELEASE_ENVIRONMENT, env.M6_TARGET_ROLLBACK_ENVIRONMENT, "<target-environment>")),
+    flag("--authorization", env.WISEEFF_CAPACITY_AUTHORIZATION),
+    flag("--observed-p95-ms", env.M6_TARGET_CAPACITY_OBSERVED_P95_MS),
+    flag("--observed-error-rate", env.M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE),
+    flag("--observed-rps", env.M6_TARGET_CAPACITY_OBSERVED_RPS),
+    flag("--observed-cpu", env.M6_TARGET_CAPACITY_OBSERVED_CPU),
+    flag("--observed-memory", env.M6_TARGET_CAPACITY_OBSERVED_MEMORY),
+    flag("--observed-db-connections", env.M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS),
+    flag("--observed-queue-backlog", env.M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG),
+    flag("--object-store-probe", env.M6_TARGET_CAPACITY_OBJECT_STORE_PROBE)
+  ].filter(Boolean).join(" ");
+}
+
+function buildRollbackRehearsalCommand(env: RuntimeEnv) {
+  return [
+    "npm run rollback:rehearsal --",
+    flag("--environment", env.M6_TARGET_ROLLBACK_ENVIRONMENT),
+    flag("--release-version", env.M6_TARGET_ROLLBACK_RELEASE_VERSION),
+    flag("--candidate-artifact", env.M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT),
+    flag("--previous-artifact", env.M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT),
+    flag("--approval-owner", env.M6_TARGET_ROLLBACK_APPROVAL_OWNER),
+    flag("--maintenance-window", env.M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW),
+    flag("--stop-writes", env.M6_TARGET_ROLLBACK_STOP_WRITES),
+    flag("--queue-drain", env.M6_TARGET_ROLLBACK_QUEUE_DRAIN),
+    flag("--artifact-rollback", env.M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK),
+    flag("--database-restore", env.M6_TARGET_ROLLBACK_DATABASE_RESTORE),
+    flag("--object-store-restore", env.M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE),
+    flag("--post-rollback-smoke", env.M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE),
+    flag("--backup-evidence", env.M6_TARGET_ROLLBACK_BACKUP_EVIDENCE),
+    flag("--smoke-evidence", env.M6_TARGET_ROLLBACK_SMOKE_EVIDENCE),
+    flag("--notes", env.M6_TARGET_ROLLBACK_NOTES)
+  ].filter(Boolean).join(" ");
+}
+
+function buildReleaseGateCommand(env: RuntimeEnv) {
+  return [
+    "npm run selfhost:release-gate --",
+    flag("--target-environment", env.M6_TARGET_RELEASE_ENVIRONMENT),
+    flag("--artifact-ref", env.M6_TARGET_RELEASE_ARTIFACT_REF),
+    flag("--env-fingerprint", env.M6_TARGET_RELEASE_ENV_FINGERPRINT),
+    flag("--backup-restore", env.M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS),
+    flag("--identity-readiness", env.M6_TARGET_RELEASE_IDENTITY_READINESS),
+    flag("--rollback-readiness", env.M6_TARGET_RELEASE_ROLLBACK_READINESS),
+    flag("--capacity-readiness", env.M6_TARGET_RELEASE_CAPACITY_READINESS),
+    flag("--target-synthetic-readiness", env.M6_TARGET_RELEASE_SYNTHETIC_READINESS),
+    flag("--queue-readiness", env.M6_TARGET_RELEASE_QUEUE_READINESS),
+    flag("--observability", env.M6_TARGET_RELEASE_OBSERVABILITY_READINESS),
+    flag("--target-synthetic-evidence", env.M6_TARGET_SYNTHETIC_EVIDENCE_PATH),
+    flag("--capacity-evidence", env.M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH),
+    flag("--queue-evidence", env.M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH),
+    flag("--observability-evidence", env.M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH)
+  ].filter(Boolean).join(" ");
+}
+
+function flag(name: string, value: string | undefined) {
+  return value?.trim() ? `${name} ${quoteArg(value.trim())}` : "";
+}
+
+function quoteArg(value: string) {
+  if (/^-?\d+(?:\.\d+)?$/.test(value) || /^(passed|failed|pending|skipped_by_scope)$/i.test(value)) {
+    return value;
+  }
+
+  return `"${value.replace(/(["\\])/g, "\\$1")}"`;
+}
+
 function commandSafeUrl(value: string) {
   if (!value.trim()) {
     return "";
@@ -371,7 +533,27 @@ function commandSafeUrl(value: string) {
 }
 
 function isTargetUrl(value: string) {
-  return /^https?:\/\//i.test(value) && !/^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?/i.test(value);
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    return !isLocalHostname(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isLocalHostname(hostname: string) {
+  return (
+    hostname === "localhost" ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname.startsWith("127.")
+  );
 }
 
 function isTargetEnvironment(value: string) {

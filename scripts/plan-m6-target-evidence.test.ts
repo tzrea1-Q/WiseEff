@@ -32,7 +32,45 @@ describe("M6 target evidence execution plan", () => {
         M6_OBSERVABILITY_PROMETHEUS_QUERY: "prometheus://wiseeff-up",
         M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE: "alertmanager://route/wiseeff-ready",
         M6_OBSERVABILITY_GRAFANA_EVIDENCE: "grafana://dashboards/wiseeff-overview",
-        WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test"
+        WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test",
+        WISEEFF_CAPACITY_AUTHORIZATION: "Bearer capacity.token",
+        M6_TARGET_CAPACITY_OBSERVED_P95_MS: "420",
+        M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE: "0",
+        M6_TARGET_CAPACITY_OBSERVED_RPS: "9",
+        M6_TARGET_CAPACITY_OBSERVED_CPU: "42",
+        M6_TARGET_CAPACITY_OBSERVED_MEMORY: "51",
+        M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS: "12",
+        M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG: "0",
+        M6_TARGET_CAPACITY_OBJECT_STORE_PROBE: "passed",
+        M6_TARGET_ROLLBACK_ENVIRONMENT: "self-hosted-staging",
+        M6_TARGET_ROLLBACK_RELEASE_VERSION: "m6.6-rc.1",
+        M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT: "registry.local/wiseeff:candidate",
+        M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT: "registry.local/wiseeff:stable",
+        M6_TARGET_ROLLBACK_APPROVAL_OWNER: "ops-admin",
+        M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW: "2026-06-04T10:00:00Z/2026-06-04T11:00:00Z",
+        M6_TARGET_ROLLBACK_STOP_WRITES: "passed",
+        M6_TARGET_ROLLBACK_QUEUE_DRAIN: "passed",
+        M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK: "passed",
+        M6_TARGET_ROLLBACK_DATABASE_RESTORE: "passed",
+        M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE: "passed",
+        M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE: "passed",
+        M6_TARGET_ROLLBACK_BACKUP_EVIDENCE: "docs/generated/m6-backup-restore-evidence.md",
+        M6_TARGET_ROLLBACK_SMOKE_EVIDENCE: "docs/generated/selfhost-smoke.md",
+        M6_TARGET_ROLLBACK_NOTES: "docs/generated/rollback-notes.md",
+        M6_TARGET_SYNTHETIC_EVIDENCE_PATH: "docs/generated/acceptance-browser-evidence.md",
+        M6_TARGET_RELEASE_ENVIRONMENT: "self-hosted-staging",
+        M6_TARGET_RELEASE_ARTIFACT_REF: "registry.local/wiseeff:m6.6-rc.1",
+        M6_TARGET_RELEASE_ENV_FINGERPRINT: "sha256:target-env",
+        M6_TARGET_RELEASE_IDENTITY_READINESS: "passed",
+        M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS: "passed",
+        M6_TARGET_RELEASE_ROLLBACK_READINESS: "passed",
+        M6_TARGET_RELEASE_CAPACITY_READINESS: "passed",
+        M6_TARGET_RELEASE_SYNTHETIC_READINESS: "passed",
+        M6_TARGET_RELEASE_QUEUE_READINESS: "passed",
+        M6_TARGET_RELEASE_OBSERVABILITY_READINESS: "passed",
+        M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH: "docs/generated/capacity-gate.md",
+        M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH: "docs/generated/m6-queue-readiness-evidence.md",
+        M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH: "docs/generated/m6-observability-evidence.md"
       }
     });
 
@@ -46,6 +84,16 @@ describe("M6 target evidence execution plan", () => {
       "npm run observability:target-evidence"
     ]);
     expect(plan.steps[4].commands).toContain("npm run m6:target-evidence");
+    expect(plan.steps[4].commands.join("\n")).toContain('--authorization "Bearer capacity.token"');
+    expect(plan.steps[4].commands.join("\n")).toContain("--observed-p95-ms 420");
+    expect(plan.steps[4].commands.join("\n")).toContain('--release-version "m6.6-rc.1"');
+    expect(plan.steps[4].commands.join("\n")).toContain('--candidate-artifact "registry.local/wiseeff:candidate"');
+    expect(plan.steps[4].commands.join("\n")).toContain("--database-restore passed");
+    expect(plan.steps[4].commands.join("\n")).toContain("--object-store-restore passed");
+    expect(plan.steps[4].commands.join("\n")).toContain('--backup-evidence "docs/generated/m6-backup-restore-evidence.md"');
+    expect(plan.steps[4].commands.join("\n")).toContain('--target-synthetic-evidence "docs/generated/acceptance-browser-evidence.md"');
+    expect(plan.steps[4].commands.join("\n")).toContain("--identity-readiness passed");
+    expect(plan.steps[4].commands.join("\n")).toContain('--capacity-evidence "docs/generated/capacity-gate.md"');
     expect(plan.steps.flatMap((step) => step.evidencePaths)).toEqual(
       expect.arrayContaining([
         "docs/generated/m6-identity-evidence.md",
@@ -97,6 +145,80 @@ describe("M6 target evidence execution plan", () => {
     );
   });
 
+  it("blocks M6.6 until release rollback capacity and synthetic inputs are executable", () => {
+    const plan = buildM6TargetEvidencePlan({
+      env: {
+        WISEEFF_API_BASE_URL: "https://wiseeff.example.test",
+        AUTH_OIDC_ISSUER: "https://id.example.test/realms/wiseeff",
+        AUTH_OIDC_AUDIENCE: "wiseeff-api",
+        M6_IDENTITY_AUTHORIZATION: "Bearer abc.def.ghi",
+        M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION: "Bearer wrong.issuer.token",
+        M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION: "Bearer wrong.audience.token",
+        M6_IDENTITY_EXPIRED_AUTHORIZATION: "Bearer expired.token",
+        M6_IDENTITY_BROWSER_RUNTIME: "passed",
+        RESTORE_DATABASE_URL: "postgres://restore.example.test/wiseeff_restore",
+        RESTORE_OBJECT_STORAGE_BUCKET: "wiseeff-restore",
+        RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
+        BACKUP_DATABASE_TARGET: "file:///var/backups/wiseeff/postgres/wiseeff.dump",
+        BACKUP_OBJECT_STORAGE_TARGET: "file:///var/backups/wiseeff/object-store/",
+        M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.token",
+        M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
+        M6_OBSERVABILITY_CONFIG_STATUS: "passed",
+        M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE: "passed",
+        M6_OBSERVABILITY_ALERTMANAGER_ROUTING: "passed",
+        M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT: "passed",
+        M6_OBSERVABILITY_PROMETHEUS_QUERY: "prometheus://wiseeff-up",
+        M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE: "alertmanager://route/wiseeff-ready",
+        M6_OBSERVABILITY_GRAFANA_EVIDENCE: "grafana://dashboards/wiseeff-overview",
+        WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test"
+      }
+    });
+
+    expect(plan.status).toBe("blocked");
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        "M6.6 missing WISEEFF_CAPACITY_AUTHORIZATION.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_P95_MS.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_RPS.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_CPU.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_MEMORY.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS.",
+        "M6.6 missing M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG.",
+        "M6.6 requires M6_TARGET_CAPACITY_OBJECT_STORE_PROBE=passed.",
+        "M6.6 requires M6_TARGET_ROLLBACK_ENVIRONMENT to identify a target, staging, pilot, or self-hosted environment.",
+        "M6.6 missing M6_TARGET_ROLLBACK_RELEASE_VERSION.",
+        "M6.6 missing M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT.",
+        "M6.6 missing M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT.",
+        "M6.6 missing M6_TARGET_ROLLBACK_APPROVAL_OWNER.",
+        "M6.6 missing M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW.",
+        "M6.6 requires M6_TARGET_ROLLBACK_STOP_WRITES=passed.",
+        "M6.6 requires M6_TARGET_ROLLBACK_QUEUE_DRAIN=passed.",
+        "M6.6 requires M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK=passed.",
+        "M6.6 requires M6_TARGET_ROLLBACK_DATABASE_RESTORE=passed.",
+        "M6.6 requires M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE=passed.",
+        "M6.6 requires M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE=passed.",
+        "M6.6 missing M6_TARGET_ROLLBACK_BACKUP_EVIDENCE.",
+        "M6.6 missing M6_TARGET_ROLLBACK_SMOKE_EVIDENCE.",
+        "M6.6 missing M6_TARGET_ROLLBACK_NOTES.",
+        "M6.6 missing M6_TARGET_SYNTHETIC_EVIDENCE_PATH.",
+        "M6.6 requires M6_TARGET_RELEASE_ENVIRONMENT to identify a target, staging, pilot, or self-hosted environment.",
+        "M6.6 missing M6_TARGET_RELEASE_ARTIFACT_REF.",
+        "M6.6 missing M6_TARGET_RELEASE_ENV_FINGERPRINT.",
+        "M6.6 requires M6_TARGET_RELEASE_IDENTITY_READINESS=passed.",
+        "M6.6 requires M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS=passed.",
+        "M6.6 requires M6_TARGET_RELEASE_ROLLBACK_READINESS=passed.",
+        "M6.6 requires M6_TARGET_RELEASE_CAPACITY_READINESS=passed.",
+        "M6.6 requires M6_TARGET_RELEASE_SYNTHETIC_READINESS=passed.",
+        "M6.6 requires M6_TARGET_RELEASE_QUEUE_READINESS=passed.",
+        "M6.6 requires M6_TARGET_RELEASE_OBSERVABILITY_READINESS=passed.",
+        "M6.6 missing M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH.",
+        "M6.6 missing M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH.",
+        "M6.6 missing M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH."
+      ])
+    );
+  });
+
   it("keeps local evidence separate from target evidence and reports missing target inputs", () => {
     const plan = buildM6TargetEvidencePlan({
       env: {
@@ -129,6 +251,23 @@ describe("M6 target evidence execution plan", () => {
     );
   });
 
+  it("does not accept wildcard or IPv6 loopback URLs as target execution endpoints", () => {
+    const plan = buildM6TargetEvidencePlan({
+      env: {
+        WISEEFF_API_BASE_URL: "http://0.0.0.0:8787",
+        WISEEFF_CAPACITY_TARGET_URL: "http://[::1]:8787"
+      }
+    });
+
+    expect(plan.status).toBe("blocked");
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        "M6.4 requires a non-local WISEEFF_API_BASE_URL or --base-url target.",
+        "M6.6 missing WISEEFF_CAPACITY_TARGET_URL or WISEEFF_API_BASE_URL."
+      ])
+    );
+  });
+
   it("renders a redacted operator runbook", () => {
     const plan = buildM6TargetEvidencePlan({
       env: {
@@ -156,7 +295,45 @@ describe("M6 target evidence execution plan", () => {
         M6_OBSERVABILITY_PROMETHEUS_QUERY: "https://prometheus.example.test?token=prom-secret",
         M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE: "https://alertmanager.example.test?api_key=alert-secret",
         M6_OBSERVABILITY_GRAFANA_EVIDENCE: "https://grafana.example.test/d/wiseeff?token=grafana-secret",
-        WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test?api_key=plain&accessKeyId=camel-key-id"
+        WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test?api_key=plain&accessKeyId=camel-key-id",
+        WISEEFF_CAPACITY_AUTHORIZATION: "Bearer capacity.secret",
+        M6_TARGET_CAPACITY_OBSERVED_P95_MS: "420",
+        M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE: "0",
+        M6_TARGET_CAPACITY_OBSERVED_RPS: "9",
+        M6_TARGET_CAPACITY_OBSERVED_CPU: "42",
+        M6_TARGET_CAPACITY_OBSERVED_MEMORY: "51",
+        M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS: "12",
+        M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG: "0",
+        M6_TARGET_CAPACITY_OBJECT_STORE_PROBE: "passed",
+        M6_TARGET_ROLLBACK_ENVIRONMENT: "self-hosted-staging",
+        M6_TARGET_ROLLBACK_RELEASE_VERSION: "m6.6-rc.1",
+        M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT: "registry.local/wiseeff:candidate?token=rollback-candidate-secret",
+        M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT: "registry.local/wiseeff:stable?token=rollback-previous-secret",
+        M6_TARGET_ROLLBACK_APPROVAL_OWNER: "ops-admin",
+        M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW: "2026-06-04T10:00:00Z/2026-06-04T11:00:00Z",
+        M6_TARGET_ROLLBACK_STOP_WRITES: "passed",
+        M6_TARGET_ROLLBACK_QUEUE_DRAIN: "passed",
+        M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK: "passed",
+        M6_TARGET_ROLLBACK_DATABASE_RESTORE: "passed",
+        M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE: "passed",
+        M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE: "passed",
+        M6_TARGET_ROLLBACK_BACKUP_EVIDENCE: "https://evidence.example.test/backup?token=backup-evidence-secret",
+        M6_TARGET_ROLLBACK_SMOKE_EVIDENCE: "https://evidence.example.test/smoke?token=smoke-evidence-secret",
+        M6_TARGET_ROLLBACK_NOTES: "https://evidence.example.test/rollback?token=rollback-notes-secret",
+        M6_TARGET_SYNTHETIC_EVIDENCE_PATH: "https://evidence.example.test/synthetic?token=synthetic-secret",
+        M6_TARGET_RELEASE_ENVIRONMENT: "self-hosted-staging",
+        M6_TARGET_RELEASE_ARTIFACT_REF: "registry.local/wiseeff:m6.6-rc.1?token=release-artifact-secret",
+        M6_TARGET_RELEASE_ENV_FINGERPRINT: "sha256:target-env",
+        M6_TARGET_RELEASE_IDENTITY_READINESS: "passed",
+        M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS: "passed",
+        M6_TARGET_RELEASE_ROLLBACK_READINESS: "passed",
+        M6_TARGET_RELEASE_CAPACITY_READINESS: "passed",
+        M6_TARGET_RELEASE_SYNTHETIC_READINESS: "passed",
+        M6_TARGET_RELEASE_QUEUE_READINESS: "passed",
+        M6_TARGET_RELEASE_OBSERVABILITY_READINESS: "passed",
+        M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH: "https://evidence.example.test/capacity?token=capacity-evidence-secret",
+        M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH: "https://evidence.example.test/queue?token=queue-evidence-secret",
+        M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH: "https://evidence.example.test/observability?token=observability-evidence-secret"
       }
     });
     const markdown = renderM6TargetEvidencePlanMarkdown({
@@ -190,6 +367,17 @@ describe("M6 target evidence execution plan", () => {
     expect(markdown).not.toContain("prom-secret");
     expect(markdown).not.toContain("alert-secret");
     expect(markdown).not.toContain("grafana-secret");
+    expect(markdown).not.toContain("capacity.secret");
+    expect(markdown).not.toContain("rollback-candidate-secret");
+    expect(markdown).not.toContain("rollback-previous-secret");
+    expect(markdown).not.toContain("backup-evidence-secret");
+    expect(markdown).not.toContain("smoke-evidence-secret");
+    expect(markdown).not.toContain("rollback-notes-secret");
+    expect(markdown).not.toContain("synthetic-secret");
+    expect(markdown).not.toContain("release-artifact-secret");
+    expect(markdown).not.toContain("capacity-evidence-secret");
+    expect(markdown).not.toContain("queue-evidence-secret");
+    expect(markdown).not.toContain("observability-evidence-secret");
     expect(markdown).toContain("postgres://<redacted>@restore.example.test/wiseeff_restore");
     expect(markdown).not.toContain("secret`");
   });

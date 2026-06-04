@@ -1,6 +1,6 @@
 ## M6 Target Evidence Summary
 
-- Date: 2026-06-04T11:33:46.017Z
+- Date: 2026-06-04T12:05:26.334Z
 - Status: `failed`
 
 ### Phase Gates

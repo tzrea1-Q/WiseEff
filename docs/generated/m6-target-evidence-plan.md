@@ -1,6 +1,6 @@
 ## M6 Target Evidence Execution Plan
 
-- Date: 2026-06-04T11:32:36.797Z
+- Date: 2026-06-04T12:05:11.794Z
 - Status: `blocked`
 - Target base URL: `http://127.0.0.1:8787`
 
@@ -33,6 +33,44 @@
 | M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE | `not-configured` |
 | M6_OBSERVABILITY_GRAFANA_EVIDENCE | `not-configured` |
 | WISEEFF_CAPACITY_TARGET_URL | `not-configured` |
+| WISEEFF_CAPACITY_AUTHORIZATION | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_P95_MS | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_RPS | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_CPU | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_MEMORY | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS | `not-configured` |
+| M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG | `not-configured` |
+| M6_TARGET_CAPACITY_OBJECT_STORE_PROBE | `not-configured` |
+| M6_TARGET_ROLLBACK_ENVIRONMENT | `not-configured` |
+| M6_TARGET_ROLLBACK_RELEASE_VERSION | `not-configured` |
+| M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT | `not-configured` |
+| M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT | `not-configured` |
+| M6_TARGET_ROLLBACK_APPROVAL_OWNER | `not-configured` |
+| M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW | `not-configured` |
+| M6_TARGET_ROLLBACK_STOP_WRITES | `not-configured` |
+| M6_TARGET_ROLLBACK_QUEUE_DRAIN | `not-configured` |
+| M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK | `not-configured` |
+| M6_TARGET_ROLLBACK_DATABASE_RESTORE | `not-configured` |
+| M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE | `not-configured` |
+| M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE | `not-configured` |
+| M6_TARGET_ROLLBACK_BACKUP_EVIDENCE | `not-configured` |
+| M6_TARGET_ROLLBACK_SMOKE_EVIDENCE | `not-configured` |
+| M6_TARGET_ROLLBACK_NOTES | `not-configured` |
+| M6_TARGET_SYNTHETIC_EVIDENCE_PATH | `not-configured` |
+| M6_TARGET_RELEASE_ENVIRONMENT | `not-configured` |
+| M6_TARGET_RELEASE_ARTIFACT_REF | `not-configured` |
+| M6_TARGET_RELEASE_ENV_FINGERPRINT | `not-configured` |
+| M6_TARGET_RELEASE_IDENTITY_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_ROLLBACK_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_CAPACITY_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_SYNTHETIC_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_QUEUE_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_OBSERVABILITY_READINESS | `not-configured` |
+| M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH | `not-configured` |
+| M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH | `not-configured` |
+| M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH | `not-configured` |
 
 ### Blockers
 
@@ -58,6 +96,44 @@
 - M6.5 missing M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE.
 - M6.5 missing M6_OBSERVABILITY_GRAFANA_EVIDENCE.
 - M6.6 missing WISEEFF_CAPACITY_TARGET_URL or WISEEFF_API_BASE_URL.
+- M6.6 missing WISEEFF_CAPACITY_AUTHORIZATION.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_P95_MS.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_ERROR_RATE.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_RPS.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_CPU.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_MEMORY.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_DB_CONNECTIONS.
+- M6.6 missing M6_TARGET_CAPACITY_OBSERVED_QUEUE_BACKLOG.
+- M6.6 requires M6_TARGET_CAPACITY_OBJECT_STORE_PROBE=passed.
+- M6.6 requires M6_TARGET_ROLLBACK_ENVIRONMENT to identify a target, staging, pilot, or self-hosted environment.
+- M6.6 missing M6_TARGET_ROLLBACK_RELEASE_VERSION.
+- M6.6 missing M6_TARGET_ROLLBACK_CANDIDATE_ARTIFACT.
+- M6.6 missing M6_TARGET_ROLLBACK_PREVIOUS_ARTIFACT.
+- M6.6 missing M6_TARGET_ROLLBACK_APPROVAL_OWNER.
+- M6.6 missing M6_TARGET_ROLLBACK_MAINTENANCE_WINDOW.
+- M6.6 requires M6_TARGET_ROLLBACK_STOP_WRITES=passed.
+- M6.6 requires M6_TARGET_ROLLBACK_QUEUE_DRAIN=passed.
+- M6.6 requires M6_TARGET_ROLLBACK_ARTIFACT_ROLLBACK=passed.
+- M6.6 requires M6_TARGET_ROLLBACK_DATABASE_RESTORE=passed.
+- M6.6 requires M6_TARGET_ROLLBACK_OBJECT_STORE_RESTORE=passed.
+- M6.6 requires M6_TARGET_ROLLBACK_POST_ROLLBACK_SMOKE=passed.
+- M6.6 missing M6_TARGET_ROLLBACK_BACKUP_EVIDENCE.
+- M6.6 missing M6_TARGET_ROLLBACK_SMOKE_EVIDENCE.
+- M6.6 missing M6_TARGET_ROLLBACK_NOTES.
+- M6.6 missing M6_TARGET_SYNTHETIC_EVIDENCE_PATH.
+- M6.6 requires M6_TARGET_RELEASE_ENVIRONMENT to identify a target, staging, pilot, or self-hosted environment.
+- M6.6 missing M6_TARGET_RELEASE_ARTIFACT_REF.
+- M6.6 missing M6_TARGET_RELEASE_ENV_FINGERPRINT.
+- M6.6 requires M6_TARGET_RELEASE_IDENTITY_READINESS=passed.
+- M6.6 requires M6_TARGET_RELEASE_BACKUP_RESTORE_READINESS=passed.
+- M6.6 requires M6_TARGET_RELEASE_ROLLBACK_READINESS=passed.
+- M6.6 requires M6_TARGET_RELEASE_CAPACITY_READINESS=passed.
+- M6.6 requires M6_TARGET_RELEASE_SYNTHETIC_READINESS=passed.
+- M6.6 requires M6_TARGET_RELEASE_QUEUE_READINESS=passed.
+- M6.6 requires M6_TARGET_RELEASE_OBSERVABILITY_READINESS=passed.
+- M6.6 missing M6_TARGET_RELEASE_CAPACITY_EVIDENCE_PATH.
+- M6.6 missing M6_TARGET_RELEASE_QUEUE_EVIDENCE_PATH.
+- M6.6 missing M6_TARGET_RELEASE_OBSERVABILITY_EVIDENCE_PATH.
 
 ### Ordered Execution
 
@@ -201,10 +277,10 @@ Required inputs:
 
 Commands:
 
-- `npm run capacity:gate -- --target-url http://127.0.0.1:8787`
-- `npm run rollback:rehearsal`
+- `npm run capacity:gate -- --target-url "http://127.0.0.1:8787" --environment "<target-environment>"`
+- `npm run rollback:rehearsal --`
 - `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime`
-- `npm run selfhost:release-gate`
+- `npm run selfhost:release-gate --`
 - `npm run m6:target-evidence`
 
 Evidence paths:

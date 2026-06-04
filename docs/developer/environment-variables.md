@@ -132,6 +132,13 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `M6_OBSERVABILITY_PROMETHEUS_QUERY` | evidence reference or query URL | Redacted proof reference for Prometheus target scrape. |
 | `M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE` | evidence reference | Redacted proof reference for Alertmanager routing. |
 | `M6_OBSERVABILITY_GRAFANA_EVIDENCE` | evidence reference | Redacted proof reference for Grafana dashboard import. |
+| `WISEEFF_CAPACITY_TARGET_URL` | target API URL | Required by `npm run m6:target-plan` and `npm run capacity:gate`; must be non-local. |
+| `WISEEFF_CAPACITY_AUTHORIZATION` | target Admin bearer token | Required for target capacity smoke requests; redacted in generated evidence. |
+| `M6_TARGET_CAPACITY_OBSERVED_*` | observed target metrics | Plan-only inputs for p95 latency, error rate, throughput, CPU, memory, DB connections, and queue backlog collected from the target. |
+| `M6_TARGET_CAPACITY_OBJECT_STORE_PROBE` | `passed` after target probe | Required before the M6.6 target execution plan is ready. |
+| `M6_TARGET_ROLLBACK_*` | target rollback rehearsal inputs | Plan-only inputs that map to `npm run rollback:rehearsal -- ...`; include target environment, artifact refs, approval/window, passed step statuses, database/object-store restore statuses, backup evidence, smoke evidence, and notes. |
+| `M6_TARGET_SYNTHETIC_EVIDENCE_PATH` | target browser evidence path | Required evidence path after `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime`. |
+| `M6_TARGET_RELEASE_*` | target release gate inputs | Plan-only inputs that map to `npm run selfhost:release-gate -- ...`; include target environment, artifact, env fingerprint, passed readiness statuses, and capacity/queue/observability evidence paths. |
 
 M6.3 adds `ops/self-hosted/storage/object-store.env.example` for the S3-compatible storage profile. Run `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check` after filling isolated backup and restore targets.
 

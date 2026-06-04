@@ -556,7 +556,17 @@ function isTargetEnvironment(value: string): boolean {
 }
 
 function isTargetUrl(value: string): boolean {
-  return /^https?:\/\//i.test(value) && !/^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?/i.test(value);
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    return !isLocalHostname(hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isEvidenceReference(value: string): boolean {
@@ -581,6 +591,16 @@ function isLocalEnvironment(value: string): boolean {
     normalized.startsWith("local-") ||
     normalized.includes("localhost") ||
     normalized.includes("127.0.0.1")
+  );
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "0.0.0.0" ||
+    hostname === "::1" ||
+    hostname === "[::1]" ||
+    hostname.startsWith("127.")
   );
 }
 
