@@ -9,6 +9,7 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 - Optional PostgreSQL, Caddy, and host metrics require exporter services on the same private network.
 - Grafana dashboards are versioned JSON files under `ops/self-hosted/observability/grafana/dashboards/`.
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
+- Business-path counters currently include Agent provider calls and device gateway operations for detect, read, write, and rollback actions.
 - `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files.
 
 ## Metrics Exposure Policy
@@ -81,6 +82,7 @@ Attach relevant screenshots to the target-environment evidence record when they 
 2. Capture request ID, audit ID, Agent session ID, tool call ID, approval ID, debugging session ID, device ID, and target ID when present.
 3. Redact user tokens, provider keys, raw log contents, raw parameter values, and raw device payloads from shared evidence.
 4. Pause high-risk writes if audit or rollback evidence is missing.
+5. Use `wiseeff_agent_provider_calls_total` and `wiseeff_device_gateway_operations_total` as supporting signals; they do not replace audit records or device-lab evidence.
 
 ## Alert Response
 
@@ -145,8 +147,8 @@ Attach relevant screenshots to the target-environment evidence record when they 
 
 The M6.5 baseline intentionally avoids pretending that every high-risk business operation already emits a dedicated counter. These signals require follow-up service instrumentation before they become hard alerts:
 
-- Per-Agent provider call failure counters and per-tool result counters.
-- Per-device gateway operation counters, including timeout, offline, stderr, readback mismatch, and rollback failure.
+- Per-approval and per-tool result counters.
+- Fine-grained device gateway failure categories beyond operation/action/status labels, such as timeout, offline, stderr category, and target identity.
 - Audit write failure counters.
 - Per-job duration histograms and failure-reason metrics.
 

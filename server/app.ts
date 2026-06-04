@@ -87,12 +87,15 @@ export function createWiseEffServer(
   registerDebuggingRoutes(router, {
     db: options.db,
     debugGateway: options.debugGateway,
+    debugGatewayMode: options.env?.DEBUG_DEVICE_GATEWAY_MODE,
+    metrics,
     getCurrentAuthContext: authResolver
   });
   registerAgentRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver,
-    provider: options.agentProvider
+    provider: options.agentProvider,
+    metrics
   });
 
   router.get("/metrics", async () => {

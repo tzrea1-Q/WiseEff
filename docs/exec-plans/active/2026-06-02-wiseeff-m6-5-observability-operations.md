@@ -47,7 +47,7 @@ M6.5 excludes:
 - Every API request has a request ID and trace ID in logs and responses where appropriate.
 - Audit events can be correlated with request ID, user ID, operation ID, and trace ID.
 - Log-analysis queue health exposes queued, processing, dead-letter, and oldest-queued-age metrics; per-run job duration and failure-reason metrics remain pending.
-- Agent provider readiness and Agent/debugging HTTP route outcomes are observable; per-approval, per-tool, per-device-operation, and audit-failure counters remain pending until the business services are instrumented.
+- Agent provider readiness, Agent provider calls, debugging HTTP route outcomes, and device gateway operations are observable through baseline counters; per-approval, per-tool result, audit-failure, and per-job duration/failure-reason metrics remain pending.
 - Prometheus can scrape WiseEff metrics.
 - Grafana dashboards load from versioned local files.
 - Alerts are actionable and tied to runbooks.
@@ -111,9 +111,9 @@ Modify:
 ### Task 3: Metrics Endpoint
 
 - [x] Write failing tests for metrics registration and redaction.
-- [ ] Add process, HTTP, database, object-store, queue, worker, Agent, and device metrics.
-  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, and worker queue gauges are implemented.
-  - Pending: per-Agent provider call counters in business paths, device gateway operation counters, audit write failure counters, and per-job duration/failure-reason metrics.
+- [x] Add process, HTTP, database, object-store, queue, worker, Agent, and device baseline metrics.
+  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, worker queue gauges, Agent provider call counters, and device gateway operation counters are implemented.
+  - Pending deep metrics: per-approval counters, per-tool result counters, audit write failure counters, and per-job duration/failure-reason metrics.
 - [x] Add `/metrics` with production access guidance, such as private network only or reverse-proxy allowlist.
 - [x] Add readiness checks that verify metrics registration does not break health endpoints.
 - [x] Run focused metrics tests.
@@ -147,8 +147,8 @@ Modify:
 
 ## Current Evidence Status
 
-- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, and runbooks.
-- Fresh local verification on 2026-06-03 passed with `npm test -- --run scripts/check-observability-config.test.ts`, `npm run test:server -- server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts`, and `npm run observability:check`.
+- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, Agent provider call counters, and device gateway operation counters.
+- Fresh local verification on 2026-06-03 passed with `npm test -- --run scripts/check-observability-config.test.ts`, `npm run test:server -- server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts`, `npm test -- --run server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts`, and `npm run observability:check`.
 - Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
 - Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 

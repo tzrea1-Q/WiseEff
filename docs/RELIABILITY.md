@@ -61,6 +61,8 @@ The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default 
 
 M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and three Grafana dashboards for overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.
 
+`GET /metrics` exposes build info, HTTP request counters/duration buckets, readiness/dependency gauges, worker queue gauges, Agent provider call counters, and device gateway operation counters for detect, read, write, and rollback paths. These metrics support operational triage, but audit records, device snapshots, and target evidence remain the authoritative proof for high-risk writes.
+
 Metrics are internal operations data. Production and pilot deployments must keep `/metrics` private through direct private-network scraping, a reverse-proxy allowlist, VPN, mTLS, or stronger equivalent control. Public `/metrics` exposure is not acceptable for readiness.
 
 Every production alert rule must include a `runbook_url` annotation. Use [runbooks/observability-operations.md](runbooks/observability-operations.md) for alert response and [runbooks/incidents.md](runbooks/incidents.md) for incident severity, handoff, evidence, and closure.

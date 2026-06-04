@@ -75,6 +75,12 @@ function makeServer(options: { db?: Database; gateway?: DebugDeviceGateway; auth
   return createHttpServer(router);
 }
 
+function createDeviceMetricsSpy() {
+  return {
+    recordDeviceGatewayOperation: vi.fn()
+  };
+}
+
 const timestamp = "2026-05-27T10:00:00.000Z";
 
 function deviceRecord(overrides: Partial<DebugDeviceRecord> = {}): DebugDeviceRecord {
@@ -203,6 +209,31 @@ describe("debugging routes", () => {
     expect(response.body).toEqual({ items: [device] });
     expect(serviceModule.createDebuggingService).toHaveBeenCalledWith({ db, gateway });
     expect(serviceMocks.listDevices).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora" });
+  });
+
+  it("passes metrics and gateway mode into the debugging service", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const metrics = createDeviceMetricsSpy();
+    const router = createRouter();
+    serviceMocks.listDevices.mockResolvedValue([deviceRecord()]);
+    registerDebuggingRoutes(router, {
+      db,
+      debugGateway: gateway,
+      debugGatewayMode: "hdc",
+      metrics,
+      getCurrentAuthContext: () => makeAuth()
+    });
+
+    const response = await requestJson(createHttpServer(router), "/api/v1/debugging/devices?projectId=aurora");
+
+    expect(response.status).toBe(200);
+    expect(serviceModule.createDebuggingService).toHaveBeenCalledWith({
+      db,
+      gateway,
+      gatewayMode: "hdc",
+      metrics
+    });
   });
 
   it("POST /api/v1/debugging/targets/detect validates body and returns detected targets", async () => {

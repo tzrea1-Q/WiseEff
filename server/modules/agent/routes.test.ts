@@ -62,6 +62,22 @@ function createMemoryDb() {
           rowCount: 1
         };
       }
+      if (sql.includes("select 1 as ok")) {
+        return { rows: [{ ok: 1 } as Row], rowCount: 1 };
+      }
+      if (sql.includes("from jobs")) {
+        return {
+          rows: [
+            {
+              queued: "0",
+              processing: "0",
+              dead_lettered: "0",
+              oldest_queued_at: null
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
       if (sql.includes("insert into agent_sessions")) {
         tables.sessions.push({
           id: values[0],
@@ -355,6 +371,26 @@ describe("agent routes", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.turn.session.id).toEqual(expect.stringMatching(/^agent-session-/));
+  });
+
+  it("exposes Agent provider call metrics after route-driven messages", async () => {
+    const { db } = createMemoryDb();
+    const server = createWiseEffServer({ db });
+    const sessionResponse = await requestJson<{ turn: { session: { id: string } } }>(server, "/api/v1/agent/sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        context: { path: "/overview", pageKey: "overview", projectId: "aurora", roleId: "hardware-user" }
+      })
+    });
+
+    await requestJson(server, `/api/v1/agent/sessions/${sessionResponse.body.turn.session.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: "Hello." })
+    });
+    const metricsResponse = await requestJson(server, "/metrics");
+
+    expect(metricsResponse.status).toBe(200);
+    expect(metricsResponse.bodyText).toContain('wiseeff_agent_provider_calls_total{provider="deterministic",status="succeeded"} 1');
   });
 
   it("returns not found for unknown sessions", async () => {

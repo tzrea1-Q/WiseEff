@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import type { MetricsRegistry } from "../../observability/metrics";
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -45,6 +46,8 @@ type ServiceOptions = {
   db: Database;
   gateway: DebugDeviceGateway;
   createAuditEvent?: AuditWriter;
+  metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
+  gatewayMode?: "simulator" | "hdc" | string;
 };
 
 type ProjectQuery = {
@@ -217,6 +220,15 @@ export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
   const gateway = options.gateway;
   const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const gatewayMode = options.gatewayMode ?? "unknown";
+
+  function recordGatewayOperation(action: "detect" | "read" | "write" | "rollback", status: string) {
+    options.metrics?.recordDeviceGatewayOperation({
+      mode: gatewayMode,
+      action,
+      status
+    });
+  }
 
   return {
     async listDevices(auth: AuthContext, query: ProjectQuery = {}) {
@@ -239,6 +251,7 @@ export function createDebuggingService(options: ServiceOptions) {
       }
 
       const result = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
+      recordGatewayOperation("detect", result.ok ? "succeeded" : "failed");
       if (!result.ok) {
         await db.transaction(async (tx) => {
           await insertDebugEvent(tx, {
@@ -392,6 +405,7 @@ export function createDebuggingService(options: ServiceOptions) {
         }
 
         const result = await gateway.readNode({ targetRef: target.targetRef, nodePath: input.nodePath });
+        recordGatewayOperation("read", result.ok ? "succeeded" : "failed");
         const operation = await insertNodeOperation(tx, {
           organizationId,
           projectId: session.projectId,
@@ -449,6 +463,7 @@ export function createDebuggingService(options: ServiceOptions) {
         await requireDeviceLease(tx, auth, session);
 
         const previous = await gateway.readNode({ targetRef: target.targetRef, nodePath: parameter.nodePath });
+        recordGatewayOperation("read", previous.ok ? "succeeded" : "failed");
         if (!previous.ok) {
           const operation = await insertNodeOperation(tx, {
             organizationId,
@@ -494,6 +509,7 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         const result = await gateway.writeNode({ targetRef: target.targetRef, nodePath: parameter.nodePath, value: input.value, readBack: true });
         const status = writeStatus(result);
+        recordGatewayOperation("write", status);
         const operation = await insertNodeOperation(tx, {
           organizationId,
           projectId: session.projectId,
@@ -590,6 +606,7 @@ export function createDebuggingService(options: ServiceOptions) {
         for (const entry of snapshot.entries) {
           const result = await gateway.writeNode({ targetRef: target.targetRef, nodePath: entry.nodePath, value: entry.previousValue, readBack: true });
           const status = writeStatus(result);
+          recordGatewayOperation("rollback", status);
           operations.push(
             await insertNodeOperation(tx, {
               organizationId,

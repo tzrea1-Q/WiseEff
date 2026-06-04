@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { MetricsRegistry } from "../../observability/metrics";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
@@ -68,12 +69,22 @@ export function createAgentOrchestrator(options: {
   toolRegistry?: ToolRegistry;
   provider?: AgentProvider;
   createAuditEvent?: typeof defaultCreateAuditEvent;
+  metrics?: Pick<MetricsRegistry, "recordAgentProviderCall">;
 }) {
   const db = options.db;
   const provider = options.provider ?? createDeterministicAgentProvider();
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const metrics = options.metrics;
   const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
   const toolRegistry = registryFor(db);
+
+  function recordProviderCall(input: { provider: string; status: string; startedAt: number }) {
+    metrics?.recordAgentProviderCall({
+      provider: input.provider,
+      status: input.status,
+      durationMs: Math.max(Date.now() - input.startedAt, 0)
+    });
+  }
 
   async function audit(input: {
     context: AgentRequestContext;
@@ -296,8 +307,10 @@ export function createAgentOrchestrator(options: {
     });
 
     const providerMetadata = provider.metadata();
+    const providerStartedAt = Date.now();
     const providerHealth = provider.checkHealth ? await provider.checkHealth() : undefined;
     if (providerHealth && !providerHealth.ok) {
+      recordProviderCall({ provider: providerMetadata.provider, status: "health_unavailable", startedAt: providerStartedAt });
       const fallbackReason = providerHealth.message ?? "Live Agent provider is unavailable.";
       const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
       await createAgentRunTrace(db, {
@@ -331,11 +344,14 @@ export function createAgentOrchestrator(options: {
     let plan;
     try {
       plan = await provider.planTurn({ context: session.context, message: input.message });
+      recordProviderCall({ provider: providerMetadata.provider, status: "succeeded", startedAt: providerStartedAt });
     } catch (error) {
       if (!(error instanceof LiveAgentProviderOutageError)) {
+        recordProviderCall({ provider: providerMetadata.provider, status: "failed", startedAt: providerStartedAt });
         throw error;
       }
 
+      recordProviderCall({ provider: providerMetadata.provider, status: "outage_fallback", startedAt: providerStartedAt });
       const fallbackReason = error.message;
       const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
       await createAgentRunTrace(db, {

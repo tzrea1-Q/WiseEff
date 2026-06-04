@@ -9,7 +9,7 @@ import { createDeterministicAgentProvider } from "./provider";
 import type { AgentProviderPlan } from "./provider";
 import type { AgentToolDefinition } from "./toolRegistry";
 import type { AgentToolName, AgentToolResult } from "./types";
-import { createHttpLiveAgentTransport, createLiveAgentProvider } from "./liveProvider";
+import { createHttpLiveAgentTransport, createLiveAgentProvider, LiveAgentProviderOutageError } from "./liveProvider";
 
 describe("deterministic agent provider", () => {
   it("selects parameter review and draft tools from parameter context", async () => {
@@ -378,6 +378,12 @@ function createPlan(toolRequests: AgentProviderPlan["toolRequests"]): AgentProvi
   };
 }
 
+function createAgentMetricsSpy() {
+  return {
+    recordAgentProviderCall: vi.fn()
+  };
+}
+
 describe("agent orchestrator", () => {
   it("startSession creates a session, system message, and audit event", async () => {
     const { db } = createMemoryDb();
@@ -521,6 +527,31 @@ describe("agent orchestrator", () => {
     expect(turn.approvals[0]).toMatchObject({ toolCallId: turn.toolCalls[0].id, status: "pending" });
   });
 
+  it("records provider call metrics for successful Agent turns", async () => {
+    const { db } = createMemoryDb();
+    const provider = createProvider(createPlan([]));
+    const metrics = createAgentMetricsSpy();
+    const orchestrator = createAgentOrchestrator({ db, provider, metrics });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Summarize"
+    });
+
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "deterministic",
+      status: "succeeded",
+      durationMs: expect.any(Number)
+    });
+  });
+
   it("read-only tool requests record failure audit and rethrow execution failures", async () => {
     const { db, tables } = createMemoryDb();
     const registry = createRegistry(
@@ -577,11 +608,12 @@ describe("agent orchestrator", () => {
   it("sendMessage records degraded output and fallback reason when the live provider is unavailable", async () => {
     const { db, tables } = createMemoryDb();
     const provider = createOutageProvider("model health check failed");
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
-    const orchestrator = createAgentOrchestrator({ db, provider, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, provider, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -609,10 +641,53 @@ describe("agent orchestrator", () => {
       fallback_reason: "model health check failed",
       tool_call_ids: []
     });
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "live",
+      status: "health_unavailable",
+      durationMs: expect.any(Number)
+    });
+  });
+
+  it("records outage fallback metrics when live provider planning is unavailable", async () => {
+    const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
+    const provider = {
+      metadata: vi.fn(() => ({
+        provider: "live" as const,
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1"
+      })),
+      checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const })),
+      planTurn: vi.fn(async () => {
+        throw new LiveAgentProviderOutageError("provider timed out");
+      })
+    };
+    const orchestrator = createAgentOrchestrator({ db, provider, metrics });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    const turn = await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Summarize"
+    });
+
+    expect(turn.messages.at(-1)).toMatchObject({ content: expect.stringContaining("temporarily unavailable") });
+    expect(tables.traces[0]).toMatchObject({ fallback_reason: "provider timed out" });
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "live",
+      status: "outage_fallback",
+      durationMs: expect.any(Number)
+    });
   });
 
   it("does not fall back when the live provider response is malformed", async () => {
     const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const provider = createLiveAgentProvider({
       model: "pilot-model",
       promptVersion: "m5-agent-v1",
@@ -630,7 +705,7 @@ describe("agent orchestrator", () => {
         checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const }))
       }
     });
-    const orchestrator = createAgentOrchestrator({ db, provider });
+    const orchestrator = createAgentOrchestrator({ db, provider, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -648,6 +723,11 @@ describe("agent orchestrator", () => {
 
     expect(tables.messages.at(-1)?.content).not.toContain("temporarily unavailable");
     expect(tables.traces).toHaveLength(0);
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "live",
+      status: "failed",
+      durationMs: expect.any(Number)
+    });
   });
 
   it("does not fall back when the live provider returns a contract error response", async () => {
