@@ -100,6 +100,17 @@ groups:
           description: The live Agent provider is unavailable or fallback events are spiking.
           runbook_url: docs/runbooks/observability-operations.md#wiseeffagentproviderfailure
 
+      - alert: WiseEffAuditWriteFailure
+        expr: sum(increase(wiseeff_audit_write_failures_total[5m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: audit
+        annotations:
+          summary: WiseEff audit writes are failing
+          description: At least one audited Agent path could not persist its audit event.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffauditwritefailure
+
       - alert: WiseEffHostDiskPressure
         expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.15
         for: 10m

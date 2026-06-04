@@ -381,7 +381,10 @@ function createPlan(toolRequests: AgentProviderPlan["toolRequests"]): AgentProvi
 
 function createAgentMetricsSpy() {
   return {
-    recordAgentProviderCall: vi.fn()
+    recordAgentProviderCall: vi.fn(),
+    recordAgentApproval: vi.fn(),
+    recordAgentToolResult: vi.fn(),
+    recordAuditWriteFailure: vi.fn()
   };
 }
 
@@ -507,6 +510,7 @@ describe("agent orchestrator", () => {
 
   it("approval-required tool requests create pending approvals without running the tool", async () => {
     const { db } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
@@ -514,6 +518,7 @@ describe("agent orchestrator", () => {
     const orchestrator = createAgentOrchestrator({
       db,
       toolRegistry: registry,
+      metrics,
       provider: createProvider(
         createPlan([
           {
@@ -540,6 +545,12 @@ describe("agent orchestrator", () => {
     expect(registry.run).not.toHaveBeenCalled();
     expect(turn.toolCalls[0]).toMatchObject({ status: "pending_approval", requiresApproval: true });
     expect(turn.approvals[0]).toMatchObject({ toolCallId: turn.toolCalls[0].id, status: "pending" });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "requested",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
   });
 
   it("records provider call metrics for successful Agent turns", async () => {
@@ -623,6 +634,7 @@ describe("agent orchestrator", () => {
 
   it("read-only tool requests record failure audit and rethrow execution failures", async () => {
     const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [
         createToolDefinition({ name: "parameter.summarizeReviewQueue", requiresApproval: false }),
@@ -638,6 +650,7 @@ describe("agent orchestrator", () => {
     const orchestrator = createAgentOrchestrator({
       db,
       toolRegistry: registry,
+      metrics,
       provider: createProvider(
         createPlan([
           {
@@ -672,6 +685,19 @@ describe("agent orchestrator", () => {
     expect(tables.toolCalls.map((tool) => tool.status)).toEqual(["succeeded", "failed"]);
     expect(tables.toolCalls[1].error_message).toBe("Audit warehouse unavailable");
     expect(tables.audits.at(-1)).toMatchObject({ action: "failed", trace_id: "req-turn" });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.summarizeReviewQueue",
+      kind: "read",
+      requiresApproval: false,
+      status: "succeeded"
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "audit.summarizeRecentEvents",
+      kind: "read",
+      requiresApproval: false,
+      status: "failed"
+    });
+    expect(JSON.stringify(metrics.recordAgentToolResult.mock.calls)).not.toContain("Audit warehouse unavailable");
   });
 
   it("sendMessage records degraded output and fallback reason when the live provider is unavailable", async () => {
@@ -940,6 +966,7 @@ describe("agent orchestrator", () => {
 
   it("approveToolCall re-checks registry execution, approves, succeeds the tool, and appends an assistant message", async () => {
     const { db } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({
@@ -948,7 +975,7 @@ describe("agent orchestrator", () => {
         citations: [{ type: "parameter", id: "draft-1", label: "Parameter draft draft-1" }]
       })
     );
-    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -978,6 +1005,18 @@ describe("agent orchestrator", () => {
     expect(turn.messages.at(-1)).toMatchObject({
       role: "assistant",
       content: expect.stringContaining("Created one parameter draft")
+    });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "approved",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true,
+      status: "succeeded"
     });
   });
 
@@ -1065,13 +1104,14 @@ describe("agent orchestrator", () => {
 
   it("approveToolCall records a failed tool call and failure audit when execution fails after approval claim", async () => {
     const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => {
         throw new Error("Draft service unavailable");
       }
     );
-    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -1100,11 +1140,25 @@ describe("agent orchestrator", () => {
     expect(tables.approvals[0].status).toBe("approved");
     expect(tables.toolCalls[0]).toMatchObject({ status: "failed", error_message: "Draft service unavailable" });
     expect(tables.audits.at(-1)).toMatchObject({ action: "approval-execution-failed", trace_id: "req-approve" });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "approved",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true,
+      status: "failed"
+    });
+    expect(JSON.stringify(metrics.recordAgentToolResult.mock.calls)).not.toContain("Draft service unavailable");
   });
 
   it("rolls back approval execution writes when the approval audit event cannot be recorded", async () => {
     const { db, tables } = createMemoryDb({ failAuditActions: ["approval-executed"] });
-    const orchestrator = createAgentOrchestrator({ db });
+    const metrics = createAgentMetricsSpy();
+    const orchestrator = createAgentOrchestrator({ db, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -1135,15 +1189,21 @@ describe("agent orchestrator", () => {
     expect(tables.approvals[0]).toMatchObject({ status: "pending", decided_by_user_id: null });
     expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval", result: null });
     expect(tables.messages).toHaveLength(messageCount);
+    expect(metrics.recordAuditWriteFailure).toHaveBeenCalledWith({
+      kind: "agent-tool",
+      action: "approval-executed",
+      targetType: "agent_tool_call"
+    });
   });
 
   it("rejectToolCall marks approval and tool rejected, then appends an assistant message", async () => {
     const { db } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
-    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -1173,6 +1233,18 @@ describe("agent orchestrator", () => {
     expect(turn.messages.at(-1)).toMatchObject({
       role: "assistant",
       content: expect.stringContaining("rejected")
+    });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "rejected",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true,
+      status: "rejected"
     });
   });
 

@@ -39,4 +39,4 @@ Operators should be able to investigate by:
 - immutable audit store or append-only export,
 - scheduled audit export,
 - admin-facing audit review workflow,
-- dedicated audit write failure metrics and alerts. M6.5 dashboards currently use readiness and HTTP error signals; audit-specific counters require deeper service instrumentation.
+- target-environment audit write failure evidence. M6.5 now emits Agent audit write failure counters and includes a dashboard/alert rule, but target Prometheus scrape and Alertmanager routing proof are still required before treating the signal as production-verified.

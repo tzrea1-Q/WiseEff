@@ -10,7 +10,7 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 - Grafana dashboards are versioned JSON files under `ops/self-hosted/observability/grafana/dashboards/`.
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
 - Log-analysis worker terminal metrics include duration samples by stage/status and failure counters by low-cardinality reason/stage. They intentionally omit job IDs, run IDs, raw uploaded content, and raw error messages.
-- Business-path counters currently include Agent provider calls and device gateway operations for detect, read, write, and rollback actions.
+- Business-path counters currently include Agent provider calls, Agent approval decisions, Agent tool terminal results, Agent audit write failures, and device gateway operations for detect, read, write, and rollback actions.
 - Baseline trace spans currently include HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. They intentionally avoid raw prompts, uploaded content, device values, target refs, and concrete entity IDs.
 - `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files. It writes config-only evidence to `docs/generated/m6-observability-config-evidence.md`.
 - `npm run observability:target-evidence` writes target-environment evidence to `docs/generated/m6-observability-evidence.md`.
@@ -69,7 +69,7 @@ During staging or pilot readiness, capture screenshots or exports for:
 
 - WiseEff Overview: API scrape status, readiness, request rate, latency, dependency readiness.
 - WiseEff Jobs: queued jobs, processing jobs, dead-letter count, backlog by queue, and oldest queued age.
-- WiseEff Security Operations: readiness not-ready, Agent provider readiness, Agent/debugging route request rates, and high-risk route error rates.
+- WiseEff Security Operations: readiness not-ready, Agent provider readiness, Agent approval decisions, Agent tool terminal results, Agent audit write failures, Agent/debugging route request rates, and high-risk route error rates.
 
 Attach relevant screenshots to the target-environment evidence record when they affect readiness.
 
@@ -115,7 +115,7 @@ If any target proof is not available, keep the matching status as `pending` or `
 2. Capture request ID, audit ID, Agent session ID, tool call ID, approval ID, debugging session ID, device ID, and target ID when present.
 3. Redact user tokens, provider keys, raw log contents, raw parameter values, and raw device payloads from shared evidence.
 4. Pause high-risk writes if audit or rollback evidence is missing.
-5. Use `wiseeff_agent_provider_calls_total` and `wiseeff_device_gateway_operations_total` as supporting signals; they do not replace audit records or device-lab evidence.
+5. Use `wiseeff_agent_provider_calls_total`, `wiseeff_agent_approvals_total`, `wiseeff_agent_tool_results_total`, `wiseeff_audit_write_failures_total`, and `wiseeff_device_gateway_operations_total` as supporting signals; they do not replace audit records, approval records, or device-lab evidence.
 
 ## Alert Response
 
@@ -176,16 +176,22 @@ If any target proof is not available, keep the matching status as `pending` or `
 2. Capture provider mode, model, timeout, readiness message, and request ID.
 3. If the provider is unavailable during high-risk operations, pause Agent-assisted writes.
 
+### WiseEffAuditWriteFailure
+
+1. Treat the affected write as not fully trustworthy until the missing audit evidence is explained.
+2. Capture the request ID, event kind, action, target type, affected Agent session, tool call, approval, and user.
+3. Check database connectivity, audit table writes, transaction rollback behavior, and recent deployments.
+4. Pause high-risk Agent or device writes if audit writes continue to fail.
+5. Do not reconstruct audit rows manually without preserving the original failure evidence and operator decision record.
+
 ## Pending Deep Instrumentation
 
 The M6.5 baseline intentionally avoids pretending that every high-risk business operation already emits a dedicated counter. These signals require follow-up service instrumentation before they become hard alerts:
 
-- Per-approval and per-tool result counters.
 - Per-tool execution spans.
 - Database, object-store, queue-processing, and per-job spans.
 - Fine-grained device gateway failure categories beyond operation/action/status labels, such as timeout, offline, stderr category, and target identity.
-- Audit write failure counters.
-- Target Prometheus scrape and Grafana proof for per-job terminal duration and failure-reason metrics.
+- Target Prometheus scrape and Grafana proof for per-job terminal duration, failure-reason, Agent approval/tool-result, and audit write failure metrics.
 
 ### WiseEffHostDiskPressure
 

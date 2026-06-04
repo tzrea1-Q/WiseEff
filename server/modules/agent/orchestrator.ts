@@ -70,7 +70,10 @@ export function createAgentOrchestrator(options: {
   toolRegistry?: ToolRegistry;
   provider?: AgentProvider;
   createAuditEvent?: typeof defaultCreateAuditEvent;
-  metrics?: Pick<MetricsRegistry, "recordAgentProviderCall">;
+  metrics?: Pick<
+    MetricsRegistry,
+    "recordAgentProviderCall" | "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure"
+  >;
   tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = options.db;
@@ -87,6 +90,26 @@ export function createAgentOrchestrator(options: {
       status: input.status,
       durationMs: Math.max(Date.now() - input.startedAt, 0)
     });
+  }
+
+  function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
+    const definition = toolRegistry.require(toolCall.name);
+    return {
+      tool: definition.name,
+      kind: definition.kind,
+      requiresApproval: definition.requiresApproval
+    };
+  }
+
+  function recordAgentApprovalMetric(action: "requested" | "approved" | "rejected", toolCall: Pick<AgentToolCallDto, "name">) {
+    metrics?.recordAgentApproval({ action, ...toolMetricLabels(toolCall) });
+  }
+
+  function recordAgentToolResultMetric(
+    status: "succeeded" | "failed" | "rejected",
+    toolCall: Pick<AgentToolCallDto, "name">
+  ) {
+    metrics?.recordAgentToolResult({ status, ...toolMetricLabels(toolCall) });
   }
 
   async function withProviderSpan<T>(
@@ -110,21 +133,30 @@ export function createAgentOrchestrator(options: {
     metadata?: Record<string, unknown>;
     severity?: "High" | "Medium" | "Low";
   }, auditDb: Queryable = db) {
-    await createAuditEvent(auditDb, {
-      id: newId("audit"),
-      organizationId: input.context.auth.organization.id,
-      projectId: input.projectId ?? null,
-      actorUserId: input.context.auth.user.id,
-      actorType: "agent",
-      app: "wiseeff",
-      kind: input.kind,
-      action: input.action,
-      severity: input.severity ?? "Low",
-      targetType: input.targetType,
-      targetId: input.targetId,
-      metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) },
-      traceId: input.context.requestId
-    });
+    try {
+      await createAuditEvent(auditDb, {
+        id: newId("audit"),
+        organizationId: input.context.auth.organization.id,
+        projectId: input.projectId ?? null,
+        actorUserId: input.context.auth.user.id,
+        actorType: "agent",
+        app: "wiseeff",
+        kind: input.kind,
+        action: input.action,
+        severity: input.severity ?? "Low",
+        targetType: input.targetType,
+        targetId: input.targetId,
+        metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) },
+        traceId: input.context.requestId
+      });
+    } catch (error) {
+      metrics?.recordAuditWriteFailure({
+        kind: input.kind,
+        action: input.action,
+        targetType: input.targetType
+      });
+      throw error;
+    }
   }
 
   async function loadSessionOrThrow(context: AgentRequestContext, sessionId: string) {
@@ -211,6 +243,7 @@ export function createAgentOrchestrator(options: {
       targetId: toolCall.id,
       metadata: { sessionId, toolCallId: toolCall.id, approvalId, toolName: toolCall.name }
     });
+    recordAgentApprovalMetric("requested", toolCall);
   }
 
   async function executeToolCall(input: AgentRequestContext, toolCall: AgentToolCallDto, sessionId: string) {
@@ -243,6 +276,7 @@ export function createAgentOrchestrator(options: {
         targetId: toolCall.id,
         metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
       });
+      recordAgentToolResultMetric("succeeded", toolCall);
       return result;
     } catch (error) {
       if (error instanceof ApiError && error.code === "CONFLICT") {
@@ -265,6 +299,7 @@ export function createAgentOrchestrator(options: {
         metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, error: errorMessage(error) },
         severity: "Medium"
       });
+      recordAgentToolResultMetric("failed", toolCall);
       throw error;
     }
   }
@@ -576,6 +611,8 @@ export function createAgentOrchestrator(options: {
       }, tx);
       return null;
     });
+    recordAgentApprovalMetric("approved", toolCall);
+    recordAgentToolResultMetric(executionError ? "failed" : "succeeded", toolCall);
     if (executionError) {
       throw executionError;
     }
@@ -587,6 +624,10 @@ export function createAgentOrchestrator(options: {
     const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
     if (!approval || approval.status !== "pending") {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
+    }
+    const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
+    if (!toolCall) {
+      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
     }
 
     const rejected = await markAgentApprovalRejected(
@@ -628,6 +669,8 @@ export function createAgentOrchestrator(options: {
         reason: input.reason
       }
     });
+    recordAgentApprovalMetric("rejected", toolCall);
+    recordAgentToolResultMetric("rejected", toolCall);
 
     return assembleTurn(input, approval.sessionId);
   }

@@ -160,6 +160,9 @@ describe("M6.5 observability configuration metadata", () => {
           title: "WiseEff Security Operations",
           panels: [
             { targets: [{ expr: "wiseeff_agent_provider_duration_ms_sum" }] },
+            { targets: [{ expr: "wiseeff_agent_approvals_total" }] },
+            { targets: [{ expr: "wiseeff_agent_tool_results_total" }] },
+            { targets: [{ expr: "wiseeff_audit_write_failures_total" }] },
             { targets: [{ expr: "wiseeff_device_gateway_operations_total" }] }
           ]
         })

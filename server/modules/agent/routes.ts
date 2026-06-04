@@ -98,7 +98,10 @@ export function registerAgentRoutes(
     db?: Database;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     provider?: AgentProvider;
-    metrics?: Pick<MetricsRegistry, "recordAgentProviderCall">;
+    metrics?: Pick<
+      MetricsRegistry,
+      "recordAgentProviderCall" | "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure"
+    >;
     tracing?: Pick<TracingBoundary, "withSpan">;
   }
 ) {
