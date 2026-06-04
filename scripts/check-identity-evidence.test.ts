@@ -54,6 +54,7 @@ describe("M6.2 identity evidence checker", () => {
       apiBaseUrl: "https://wiseeff.example.test",
       audience: "wiseeff-api",
       evidenceScope: "target self-hosted OIDC",
+      browserRuntime: "passed",
       result: { status: "failed", blockers: [], pending: ["Target evidence is pending."] },
       checks: [
         { name: "OIDC discovery/JWKS", status: "passed", statusCode: 200, detail: "ok" },
@@ -63,6 +64,7 @@ describe("M6.2 identity evidence checker", () => {
 
     expect(markdown).toContain("## M6.2 Identity Evidence");
     expect(markdown).toContain("- Evidence scope: `target self-hosted OIDC`");
+    expect(markdown).toContain("| browser token acquisition/refresh/logout | passed | n/a | target browser runtime evidence recorded |");
     expect(markdown).toContain("token=<redacted>");
     expect(markdown).toContain("Bearer <redacted>");
     expect(markdown).not.toContain("secret");

@@ -82,9 +82,12 @@ export function buildIdentityEvidenceMarkdown(input: {
   apiBaseUrl: string;
   audience: string;
   evidenceScope?: string;
+  browserRuntime?: BrowserRuntimeEvidenceStatus;
   result: IdentityEvidenceResult;
   checks: IdentityEvidenceCheck[];
 }) {
+  const checks = withBrowserRuntimeCheck(input.checks, input.browserRuntime);
+
   return [
     "## M6.2 Identity Evidence",
     "",
@@ -99,7 +102,7 @@ export function buildIdentityEvidenceMarkdown(input: {
     "",
     "| Check | Status | HTTP | Detail |",
     "| --- | --- | --- | --- |",
-    ...input.checks.map(
+    ...checks.map(
       (check) =>
         `| ${check.name} | ${check.status} | ${check.statusCode ?? "n/a"} | ${markdownCell(redactIdentitySecret(check.detail))} |`
     ),
@@ -295,6 +298,27 @@ function markdownCell(value: string) {
   return value.replace(/\|/g, "\\|").replace(/\r?\n/g, "<br>");
 }
 
+function withBrowserRuntimeCheck(
+  checks: IdentityEvidenceCheck[],
+  browserRuntime: BrowserRuntimeEvidenceStatus | undefined
+): IdentityEvidenceCheck[] {
+  if (!browserRuntime || checks.some((check) => check.name === "browser token acquisition/refresh/logout")) {
+    return checks;
+  }
+
+  return [
+    ...checks,
+    {
+      name: "browser token acquisition/refresh/logout",
+      status: browserRuntime === "passed" ? "passed" : "failed",
+      detail:
+        browserRuntime === "passed"
+          ? "target browser runtime evidence recorded"
+          : `browser runtime evidence ${browserRuntime}`
+    }
+  ];
+}
+
 async function main() {
   const initialCli = parseIdentityCheckArgs(process.argv.slice(2));
   const env = existsSync(initialCli.envFile) ? loadEnvContent(readFileSync(initialCli.envFile, "utf8"), process.env) : process.env;
@@ -305,6 +329,7 @@ async function main() {
     issuer: cli.issuer,
     apiBaseUrl: cli.apiBaseUrl,
     audience: cli.audience,
+    browserRuntime: cli.browserRuntime,
     result,
     checks
   });

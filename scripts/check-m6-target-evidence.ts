@@ -60,6 +60,17 @@ const phaseDefinitions: PhaseDefinition[] = [
       const localStatus = markdownStatus(evidence.localIdentity);
       const targetStatus = markdownStatus(evidence.identity);
       const targetScope = markdownField(evidence.identity, "Evidence scope");
+      const issuer = markdownField(evidence.identity, "Issuer");
+      const apiBaseUrl = markdownField(evidence.identity, "API base URL");
+      const audience = markdownField(evidence.identity, "Audience");
+      const requiredChecksPassed = [
+        "OIDC discovery/JWKS",
+        "/api/v1/me",
+        "wrong issuer",
+        "wrong audience",
+        "expired token",
+        "browser token acquisition/refresh/logout"
+      ].every((check) => markdownTableStatusPassed(evidence.identity, check));
 
       if (localStatus === "passed") {
         notes.push("Local OIDC drill is present but does not satisfy target identity readiness.");
@@ -76,6 +87,10 @@ const phaseDefinitions: PhaseDefinition[] = [
         blockers.push("Target OIDC identity evidence must be scoped as target self-hosted OIDC.");
         return { evidenceStatus: "failed", blockers, pending, notes };
       }
+      if (!isTargetUrl(issuer) || !isTargetUrl(apiBaseUrl) || !isEvidenceReference(audience) || !requiredChecksPassed) {
+        pending.push("Target OIDC identity evidence is pending.");
+        return { evidenceStatus: "pending", blockers, pending, notes };
+      }
 
       return { evidenceStatus: "passed", blockers, pending, notes };
     }
@@ -89,8 +104,25 @@ const phaseDefinitions: PhaseDefinition[] = [
       const pending: string[] = [];
       const status = markdownStatus(evidence.backupRestore);
       const environment = markdownField(evidence.backupRestore, "Environment");
+      const hasCleanValidation =
+        markdownBulletIncludes(evidence.backupRestore, "Missing fields", "_none_") &&
+        markdownBulletIncludes(evidence.backupRestore, "Unsafe fields", "_none_") &&
+        markdownBulletIncludes(evidence.backupRestore, "Validation errors", "_none_");
+      const hasObjectChecksum = markdownField(evidence.backupRestore, "Object checksum validated") === "true";
+      const hasDatabaseTableCounts = markdownField(evidence.backupRestore, "Database table counts validated") === "true";
+      const hasNoMissingLogObjects = markdownField(evidence.backupRestore, "Missing log objects") === "0";
+      const hasRestoreTargets = hasPattern(evidence.backupRestore, /`postgres:\/\/[^`]+`/i) && hasPattern(evidence.backupRestore, /`s3:\/\/[^`]+`/i);
 
-      if (status === "missing" || status !== "passed" || !isTargetEnvironment(environment)) {
+      if (
+        status === "missing" ||
+        status !== "passed" ||
+        !isTargetEnvironment(environment) ||
+        !hasCleanValidation ||
+        !hasObjectChecksum ||
+        !hasDatabaseTableCounts ||
+        !hasNoMissingLogObjects ||
+        !hasRestoreTargets
+      ) {
         pending.push("Target backup/restore evidence is pending.");
         return { evidenceStatus: "pending", blockers, pending, notes: [] };
       }
@@ -108,12 +140,13 @@ const phaseDefinitions: PhaseDefinition[] = [
       const notes: string[] = [];
       const status = markdownStatus(evidence.queue);
       const baseUrl = markdownField(evidence.queue, "Base URL");
+      const hasReadyBody = durableQueueReadyBody(evidence.queue);
 
       if (baseUrl) {
         notes.push(`Queue target evidence base URL: ${baseUrl}.`);
       }
 
-      if (status === "missing" || status !== "passed" || !isTargetUrl(baseUrl)) {
+      if (status === "missing" || status !== "passed" || !isTargetUrl(baseUrl) || !hasReadyBody) {
         pending.push("Target durable queue evidence is pending.");
         return { evidenceStatus: "pending", blockers, pending, notes };
       }
@@ -181,8 +214,19 @@ const phaseDefinitions: PhaseDefinition[] = [
         "observability"
       ];
       const missingDependency = releaseDependencies.find((dependency) => !markdownTableStatusPassed(evidence.release, dependency));
+      const releaseReady = releaseEvidenceReady(evidence.release);
+      const rollbackReady = rollbackEvidenceReady(evidence.rollback);
+      const capacityReady = capacityEvidenceReady(evidence.capacity);
 
-      if (!releasePassed || !rollbackPassed || !capacityPassed || missingDependency) {
+      if (
+        !releasePassed ||
+        !rollbackPassed ||
+        !capacityPassed ||
+        missingDependency ||
+        !releaseReady ||
+        !rollbackReady ||
+        !capacityReady
+      ) {
         pending.push("Target release, rollback, capacity, and synthetic acceptance evidence is pending.");
         return { evidenceStatus: "pending", blockers, pending, notes: [] };
       }
@@ -326,6 +370,149 @@ function markdownField(markdown: string | undefined, label: string): string {
   return match?.[1] ?? "";
 }
 
+function markdownBulletIncludes(markdown: string | undefined, label: string, expected: string): boolean {
+  if (!markdown) {
+    return false;
+  }
+
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedExpected = expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`-\\s*${escapedLabel}:\\s*.*${escapedExpected}`, "i").test(markdown);
+}
+
+function hasPattern(markdown: string | undefined, pattern: RegExp): boolean {
+  return Boolean(markdown && pattern.test(markdown));
+}
+
+function durableQueueReadyBody(markdown: string | undefined): boolean {
+  const body = parseJsonFence(markdown);
+  const dependencies = asRecord(body)?.dependencies;
+  const durableQueue = asRecord(asRecord(dependencies)?.durableQueue);
+  const transport = asRecord(durableQueue?.transport);
+  const database = asRecord(durableQueue?.database);
+
+  return (
+    durableQueue?.ok === true &&
+    durableQueue.status === "ready" &&
+    transport?.ok === true &&
+    transport.status === "ready" &&
+    database?.ok === true &&
+    database.status === "ready"
+  );
+}
+
+function parseJsonFence(markdown: string | undefined): unknown {
+  if (!markdown) {
+    return null;
+  }
+
+  const match = markdown.match(/```json\s*([\s\S]*?)```/i);
+  if (!match) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function rollbackEvidenceReady(markdown: string | undefined): boolean {
+  const requiredFields = [
+    "Environment",
+    "Release version",
+    "Candidate artifact",
+    "Previous artifact",
+    "Approval owner",
+    "Maintenance window"
+  ];
+  const requiredPassedSteps = ["stop writes", "queue drain", "artifact rollback", "post-rollback smoke"];
+  const scopedRestoreSteps = ["database restore", "object-store restore"];
+
+  return (
+    requiredFields.every((field) => isEvidenceReference(markdownField(markdown, field))) &&
+    isTargetEnvironment(markdownField(markdown, "Environment")) &&
+    requiredPassedSteps.every((step) => markdownTableStatusPassed(markdown, step)) &&
+    scopedRestoreSteps.every((step) => markdownTableStatusPassed(markdown, step) || markdownTableStatus(markdown, step) === "skipped_by_scope") &&
+    isEvidenceReference(markdownField(markdown, "Backup/restore evidence")) &&
+    isEvidenceReference(markdownField(markdown, "Post-rollback smoke evidence")) &&
+    isEvidenceReference(markdownField(markdown, "Queue evidence")) &&
+    isEvidenceReference(markdownField(markdown, "Notes"))
+  );
+}
+
+function capacityEvidenceReady(markdown: string | undefined): boolean {
+  const requiredMetrics = [
+    "p95 latency",
+    "error rate",
+    "throughput",
+    "CPU utilization",
+    "memory utilization",
+    "database connections",
+    "queue backlog",
+    "object-store probe"
+  ];
+
+  return (
+    isTargetUrl(markdownField(markdown, "Target URL")) &&
+    isTargetEnvironment(markdownField(markdown, "Environment")) &&
+    isEvidenceReference(markdownField(markdown, "Profile")) &&
+    isEvidenceReference(markdownField(markdown, "Duration")) &&
+    isEvidenceReference(markdownField(markdown, "Virtual users")) &&
+    requiredMetrics.every((metric) => markdownTableObservedReady(markdown, metric)) &&
+    isEvidenceReference(markdownField(markdown, "k6 summary")) &&
+    isEvidenceReference(markdownField(markdown, "metrics snapshot"))
+  );
+}
+
+function releaseEvidenceReady(markdown: string | undefined): boolean {
+  const requiredFields = [
+    "Branch",
+    "Commit",
+    "Version",
+    "Target environment",
+    "Artifact",
+    "Environment fingerprint",
+    "Synthetic acceptance mode"
+  ];
+  const requiredEvidenceFields = [
+    "Backup evidence",
+    "Identity evidence",
+    "Rollback plan",
+    "Rollback rehearsal",
+    "Target synthetic acceptance",
+    "Capacity gate",
+    "Queue evidence",
+    "Observability evidence"
+  ];
+  const requiredCommands = [
+    "docs:check",
+    "contract:check",
+    "test:all",
+    "build",
+    "acceptance:coverage",
+    "acceptance:operations",
+    "acceptance:evidence",
+    "selfhost:check",
+    "identity:check",
+    "git diff --check"
+  ];
+
+  return (
+    requiredFields.every((field) => isEvidenceReference(markdownField(markdown, field))) &&
+    markdownField(markdown, "Dirty worktree") === "false" &&
+    isTargetEnvironment(markdownField(markdown, "Target environment")) &&
+    hasPattern(markdown, /### Migration Set/i) &&
+    requiredEvidenceFields.every((field) => isEvidenceReference(markdownField(markdown, field))) &&
+    requiredCommands.every((command) => markdownTableStatusPassed(markdown, command))
+  );
+}
+
 function markdownTableStatusPassed(markdown: string | undefined, label: string): boolean {
   if (!markdown) {
     return false;
@@ -333,6 +520,27 @@ function markdownTableStatusPassed(markdown: string | undefined, label: string):
 
   const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`\\|\\s*${escapedLabel}\\s*\\|\\s*passed\\s*\\|`, "i").test(markdown);
+}
+
+function markdownTableStatus(markdown: string | undefined, label: string): string {
+  if (!markdown) {
+    return "";
+  }
+
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = markdown.match(new RegExp(`\\|\\s*${escapedLabel}\\s*\\|\\s*([^|\\s]+)\\s*\\|`, "i"));
+  return match?.[1]?.toLowerCase() ?? "";
+}
+
+function markdownTableObservedReady(markdown: string | undefined, label: string): boolean {
+  if (!markdown) {
+    return false;
+  }
+
+  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = markdown.match(new RegExp(`\\|\\s*${escapedLabel}\\s*\\|\\s*([^|]+?)\\s*\\|`, "i"));
+  const observed = match?.[1]?.trim().toLowerCase() ?? "";
+  return observed.length > 0 && observed !== "pending" && observed !== "failed" && observed !== "n/a";
 }
 
 function isTargetEnvironment(value: string): boolean {
