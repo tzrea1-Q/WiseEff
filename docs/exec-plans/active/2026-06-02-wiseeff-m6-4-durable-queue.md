@@ -128,7 +128,7 @@ Modify:
 
 - [x] Run focused queue/log tests.
 - [x] Run `npm run test:m2`.
-- [ ] Run `npm run acceptance:browser` or focused log acceptance if full browser runtime is too expensive during development.
+- [x] Run `npm run acceptance:browser` or focused log acceptance if full browser runtime is too expensive during development.
 - [x] Run `npm run docs:check`.
 - [x] Run `npm run contract:check`.
 - [x] Run `npm run test:all`.
@@ -146,6 +146,8 @@ On 2026-06-03, a local target-like durable queue readiness check passed with a t
 On 2026-06-04, the same local target-like durable queue readiness gate was rerun after the integrated M6 evidence sweep. The temporary Redis/API setup again produced a `passed` result and regenerated `docs/generated/m6-queue-readiness-evidence.md` with `dependencies.durableQueue.status=ready`, `transport.status=ready`, and `database.status=ready`. This keeps the local M6.4 evidence current for M6.6 release-readiness evaluation, but it still does not replace a real self-hosted target queue-mode acceptance run, Redis persistence drill, queue drain/pause/resume release rehearsal, queue metrics evidence, or capacity tuning evidence.
 
 Later on 2026-06-04, `npm run test:m2` passed locally after the default Playwright E2E configuration was hardened to keep M5.11 quality specs behind `playwright.quality.config.ts` and force the deterministic Agent provider for default E2E runs. The command completed with 218 Vitest files passed, 72 server Vitest files passed, production build passed with the existing chunk-size warning, and Playwright reported 39 passed / 2 HDC skipped. This restores the local M2/M5 browser regression gate, but it still does not satisfy the open target durable queue-mode acceptance, Redis persistence drill, queue metrics evidence, or capacity tuning requirements.
+
+Also on 2026-06-04, focused log-analysis browser acceptance passed locally with `npm run test:e2e -- e2e/acceptance/log-analysis.acceptance.spec.ts`: 2 Playwright tests passed for upload/analysis/evidence/feedback/archive/unsupported-file handling and reanalysis job progress/audit/operation evidence. This satisfies the local focused browser-acceptance verification option for Task 6, but it is still local polling/default-runtime evidence and does not satisfy the target durable queue-mode acceptance requirement in the success criteria.
 
 ## External Inputs Needed
 
