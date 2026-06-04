@@ -268,6 +268,22 @@ describe("M6 target evidence execution plan", () => {
     );
   });
 
+  it("renders placeholders instead of local URLs in blocked target commands", () => {
+    const plan = buildM6TargetEvidencePlan({
+      env: {
+        WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
+        VITE_WISEEFF_API_BASE_URL: "http://localhost:5173"
+      }
+    });
+    const commands = plan.steps.flatMap((step) => step.commands).join("\n");
+
+    expect(plan.status).toBe("blocked");
+    expect(commands).toContain("npm run queue:check -- --base-url <target-url>");
+    expect(commands).toContain('npm run capacity:gate -- --target-url "<target-url>"');
+    expect(commands).not.toContain("127.0.0.1");
+    expect(commands).not.toContain("localhost");
+  });
+
   it("renders a redacted operator runbook", () => {
     const plan = buildM6TargetEvidencePlan({
       env: {

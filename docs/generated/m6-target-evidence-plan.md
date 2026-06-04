@@ -1,6 +1,6 @@
 ## M6 Target Evidence Execution Plan
 
-- Date: 2026-06-04T12:05:11.794Z
+- Date: 2026-06-04T12:20:16.883Z
 - Status: `blocked`
 - Target base URL: `http://127.0.0.1:8787`
 
@@ -214,7 +214,7 @@ Required inputs:
 
 Commands:
 
-- `npm run queue:check -- --base-url http://127.0.0.1:8787`
+- `npm run queue:check -- --base-url <target-url>`
 
 Evidence paths:
 
@@ -277,7 +277,7 @@ Required inputs:
 
 Commands:
 
-- `npm run capacity:gate -- --target-url "http://127.0.0.1:8787" --environment "<target-environment>"`
+- `npm run capacity:gate -- --target-url "<target-url>" --environment "<target-environment>"`
 - `npm run rollback:rehearsal --`
 - `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime`
 - `npm run selfhost:release-gate --`

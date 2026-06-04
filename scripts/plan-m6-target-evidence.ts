@@ -95,6 +95,8 @@ const targetPlanEnvKeys = [
 export function buildM6TargetEvidencePlan({ env = process.env }: { env?: RuntimeEnv } = {}): M6TargetEvidencePlan {
   const targetBaseUrl = commandSafeUrl(firstSet(env.WISEEFF_API_BASE_URL, env.VITE_WISEEFF_API_BASE_URL));
   const capacityTargetUrl = commandSafeUrl(firstSet(env.WISEEFF_CAPACITY_TARGET_URL, targetBaseUrl));
+  const commandTargetBaseUrl = isTargetUrl(targetBaseUrl) ? targetBaseUrl : "<target-url>";
+  const commandCapacityTargetUrl = isTargetUrl(capacityTargetUrl) ? capacityTargetUrl : "<target-url>";
   const blockers: string[] = [];
 
   requireValue(blockers, "M6.2", "AUTH_OIDC_ISSUER", env.AUTH_OIDC_ISSUER);
@@ -246,7 +248,7 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
       title: "Durable Queue Target Evidence",
       objective: "Prove the target API is running durable queue mode with Redis/BullMQ transport and PostgreSQL job-state readiness.",
       requiredInputs: ["WISEEFF_API_BASE_URL", "M6_SELFHOSTED_SMOKE_AUTHORIZATION or WISEEFF_SMOKE_AUTHORIZATION"],
-      commands: [`npm run queue:check -- --base-url ${targetBaseUrl || "<target-url>"}`],
+      commands: [`npm run queue:check -- --base-url ${commandTargetBaseUrl}`],
       evidencePaths: ["docs/generated/m6-queue-readiness-evidence.md"],
       successCriteria: [
         "/health/ready exposes dependencies.durableQueue.",
@@ -291,7 +293,7 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
         "Environment fingerprint"
       ],
       commands: [
-        buildCapacityGateCommand(env, capacityTargetUrl),
+        buildCapacityGateCommand(env, commandCapacityTargetUrl),
         buildRollbackRehearsalCommand(env),
         "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
         buildReleaseGateCommand(env),
