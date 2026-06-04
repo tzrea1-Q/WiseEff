@@ -143,6 +143,8 @@ As of 2026-06-02, the repository implementation is locally complete for queue di
 
 On 2026-06-03, a local target-like durable queue readiness check passed with a temporary Redis container and an isolated API process configured with `LOG_ANALYSIS_QUEUE_MODE=durable`, `LOG_WORKER_ENABLED=false`, and `REDIS_URL=redis://127.0.0.1:6381`. The command `npm run queue:check -- --base-url=http://127.0.0.1:8788` returned `Durable queue transport and PostgreSQL job state are ready.` This proves the local readiness gate can detect Redis/BullMQ and PostgreSQL job-state health, but it is not target-environment evidence and does not satisfy the open target queue-mode acceptance, Redis persistence drill, queue metrics, or capacity tuning requirements.
 
+On 2026-06-04, the same local target-like durable queue readiness gate was rerun after the integrated M6 evidence sweep. The temporary Redis/API setup again produced a `passed` result and regenerated `docs/generated/m6-queue-readiness-evidence.md` with `dependencies.durableQueue.status=ready`, `transport.status=ready`, and `database.status=ready`. This keeps the local M6.4 evidence current for M6.6 release-readiness evaluation, but it still does not replace a real self-hosted target queue-mode acceptance run, Redis persistence drill, queue drain/pause/resume release rehearsal, queue metrics evidence, or capacity tuning evidence.
+
 ## External Inputs Needed
 
 - Redis deployment location and persistence policy for the first self-hosted target.

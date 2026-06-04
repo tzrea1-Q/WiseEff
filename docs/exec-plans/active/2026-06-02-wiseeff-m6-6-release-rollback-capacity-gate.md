@@ -154,6 +154,8 @@ Modify:
 
 Implementation-side release/rollback/capacity gates are in place and locally tested. On 2026-06-03 the release gate was hardened so rollback, capacity, and target synthetic acceptance require explicit readiness statuses and matching evidence paths before they can be marked `passed`. Target-environment evidence is still pending for identity readiness/target OIDC, capacity, rollback rehearsal execution, target synthetic acceptance, queue drain/pause/resume, observability watch, backup/restore rehearsal, and HDC/full-pilot readiness. This plan must remain in `active/` until those target gates are run and archived.
 
+On 2026-06-04, `docs/generated/m6-release-readiness.md` was regenerated after refreshing the local M6.4 durable queue readiness evidence. The release gate now records local backup/restore, queue readiness, and observability evidence paths as available, while correctly keeping the overall release status `failed` because the worktree is not clean during evidence generation and target identity, rollback, capacity, target synthetic acceptance, and final command gates remain pending. This update is evidence bookkeeping only; it does not satisfy the non-customer target release rehearsal required to complete M6.6.
+
 ## External Inputs Needed
 
 - Release environment label and host.
