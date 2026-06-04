@@ -20,6 +20,18 @@ describe("M6 target evidence execution plan", () => {
         RESTORE_DATABASE_URL: "postgres://restore.example.test/wiseeff_restore",
         RESTORE_OBJECT_STORAGE_BUCKET: "wiseeff-restore",
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
+        BACKUP_DATABASE_TARGET: "file:///var/backups/wiseeff/postgres/wiseeff.dump",
+        BACKUP_OBJECT_STORAGE_TARGET: "file:///var/backups/wiseeff/object-store/",
+        M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.token",
+        M6_IDENTITY_BROWSER_RUNTIME: "passed",
+        M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
+        M6_OBSERVABILITY_CONFIG_STATUS: "passed",
+        M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE: "passed",
+        M6_OBSERVABILITY_ALERTMANAGER_ROUTING: "passed",
+        M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT: "passed",
+        M6_OBSERVABILITY_PROMETHEUS_QUERY: "prometheus://wiseeff-up",
+        M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE: "alertmanager://route/wiseeff-ready",
+        M6_OBSERVABILITY_GRAFANA_EVIDENCE: "grafana://dashboards/wiseeff-overview",
         WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test"
       }
     });
@@ -45,6 +57,42 @@ describe("M6 target evidence execution plan", () => {
         "docs/generated/capacity-gate.md",
         "docs/generated/m6-release-readiness.md",
         "docs/generated/m6-target-evidence-summary.md"
+      ])
+    );
+  });
+
+  it("blocks target-looking plans until every execution proof input is configured", () => {
+    const plan = buildM6TargetEvidencePlan({
+      env: {
+        WISEEFF_API_BASE_URL: "https://wiseeff.example.test",
+        AUTH_OIDC_ISSUER: "https://id.example.test/realms/wiseeff",
+        AUTH_OIDC_AUDIENCE: "wiseeff-api",
+        M6_IDENTITY_AUTHORIZATION: "Bearer abc.def.ghi",
+        M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION: "Bearer wrong.issuer.token",
+        M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION: "Bearer wrong.audience.token",
+        M6_IDENTITY_EXPIRED_AUTHORIZATION: "Bearer expired.token",
+        RESTORE_DATABASE_URL: "postgres://restore.example.test/wiseeff_restore",
+        RESTORE_OBJECT_STORAGE_BUCKET: "wiseeff-restore",
+        RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
+        WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test"
+      }
+    });
+
+    expect(plan.status).toBe("blocked");
+    expect(plan.blockers).toEqual(
+      expect.arrayContaining([
+        "M6.2 requires M6_IDENTITY_BROWSER_RUNTIME=passed.",
+        "M6.3 missing BACKUP_DATABASE_TARGET.",
+        "M6.3 missing BACKUP_OBJECT_STORAGE_TARGET.",
+        "M6.4 missing M6_SELFHOSTED_SMOKE_AUTHORIZATION or WISEEFF_SMOKE_AUTHORIZATION.",
+        "M6.5 requires M6_OBSERVABILITY_TARGET_ENVIRONMENT.",
+        "M6.5 requires M6_OBSERVABILITY_CONFIG_STATUS=passed.",
+        "M6.5 requires M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE=passed.",
+        "M6.5 requires M6_OBSERVABILITY_ALERTMANAGER_ROUTING=passed.",
+        "M6.5 requires M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT=passed.",
+        "M6.5 missing M6_OBSERVABILITY_PROMETHEUS_QUERY.",
+        "M6.5 missing M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE.",
+        "M6.5 missing M6_OBSERVABILITY_GRAFANA_EVIDENCE."
       ])
     );
   });
@@ -98,6 +146,16 @@ describe("M6 target evidence execution plan", () => {
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
         BACKUP_DATABASE_TARGET: "postgres://backup.example.test/wiseeff?aws_access_key_id=aws-key-id",
         BACKUP_OBJECT_STORAGE_TARGET: "s3://wiseeff-backup/m6?access_key=minio-key&private_key=minio-private",
+        M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.secret",
+        M6_IDENTITY_BROWSER_RUNTIME: "passed",
+        M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
+        M6_OBSERVABILITY_CONFIG_STATUS: "passed",
+        M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE: "passed",
+        M6_OBSERVABILITY_ALERTMANAGER_ROUTING: "passed",
+        M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT: "passed",
+        M6_OBSERVABILITY_PROMETHEUS_QUERY: "https://prometheus.example.test?token=prom-secret",
+        M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE: "https://alertmanager.example.test?api_key=alert-secret",
+        M6_OBSERVABILITY_GRAFANA_EVIDENCE: "https://grafana.example.test/d/wiseeff?token=grafana-secret",
         WISEEFF_CAPACITY_TARGET_URL: "https://wiseeff.example.test?api_key=plain&accessKeyId=camel-key-id"
       }
     });
@@ -128,6 +186,10 @@ describe("M6 target evidence execution plan", () => {
     expect(markdown).not.toContain("minio-private");
     expect(markdown).not.toContain("aws-key-id");
     expect(markdown).not.toContain("camel-key-id");
+    expect(markdown).not.toContain("smoke.secret");
+    expect(markdown).not.toContain("prom-secret");
+    expect(markdown).not.toContain("alert-secret");
+    expect(markdown).not.toContain("grafana-secret");
     expect(markdown).toContain("postgres://<redacted>@restore.example.test/wiseeff_restore");
     expect(markdown).not.toContain("secret`");
   });

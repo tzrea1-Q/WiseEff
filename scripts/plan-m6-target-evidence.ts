@@ -35,6 +35,7 @@ const targetPlanEnvKeys = [
   "M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION",
   "M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION",
   "M6_IDENTITY_EXPIRED_AUTHORIZATION",
+  "M6_IDENTITY_BROWSER_RUNTIME",
   "RESTORE_DATABASE_URL",
   "RESTORE_OBJECT_STORAGE_BUCKET",
   "RESTORE_OBJECT_STORAGE_PREFIX",
@@ -42,6 +43,14 @@ const targetPlanEnvKeys = [
   "BACKUP_OBJECT_STORAGE_TARGET",
   "M6_SELFHOSTED_SMOKE_AUTHORIZATION",
   "WISEEFF_SMOKE_AUTHORIZATION",
+  "M6_OBSERVABILITY_TARGET_ENVIRONMENT",
+  "M6_OBSERVABILITY_CONFIG_STATUS",
+  "M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE",
+  "M6_OBSERVABILITY_ALERTMANAGER_ROUTING",
+  "M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT",
+  "M6_OBSERVABILITY_PROMETHEUS_QUERY",
+  "M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE",
+  "M6_OBSERVABILITY_GRAFANA_EVIDENCE",
   "WISEEFF_CAPACITY_TARGET_URL"
 ] as const;
 
@@ -56,14 +65,43 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
   requireValue(blockers, "M6.2", "M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION", env.M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION);
   requireValue(blockers, "M6.2", "M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION", env.M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION);
   requireValue(blockers, "M6.2", "M6_IDENTITY_EXPIRED_AUTHORIZATION", env.M6_IDENTITY_EXPIRED_AUTHORIZATION);
+  requirePassedStatus(blockers, "M6.2", "M6_IDENTITY_BROWSER_RUNTIME", env.M6_IDENTITY_BROWSER_RUNTIME);
 
   requireValue(blockers, "M6.3", "RESTORE_DATABASE_URL", env.RESTORE_DATABASE_URL);
   requireValue(blockers, "M6.3", "RESTORE_OBJECT_STORAGE_BUCKET", env.RESTORE_OBJECT_STORAGE_BUCKET);
   requireValue(blockers, "M6.3", "RESTORE_OBJECT_STORAGE_PREFIX", env.RESTORE_OBJECT_STORAGE_PREFIX);
+  requireValue(blockers, "M6.3", "BACKUP_DATABASE_TARGET", env.BACKUP_DATABASE_TARGET);
+  requireValue(blockers, "M6.3", "BACKUP_OBJECT_STORAGE_TARGET", env.BACKUP_OBJECT_STORAGE_TARGET);
 
   if (!isTargetUrl(targetBaseUrl)) {
     blockers.push("M6.4 requires a non-local WISEEFF_API_BASE_URL or --base-url target.");
   }
+  if (!firstSet(env.M6_SELFHOSTED_SMOKE_AUTHORIZATION, env.WISEEFF_SMOKE_AUTHORIZATION)) {
+    blockers.push("M6.4 missing M6_SELFHOSTED_SMOKE_AUTHORIZATION or WISEEFF_SMOKE_AUTHORIZATION.");
+  }
+  if (!env.M6_OBSERVABILITY_TARGET_ENVIRONMENT?.trim()) {
+    blockers.push("M6.5 requires M6_OBSERVABILITY_TARGET_ENVIRONMENT.");
+  } else if (!isTargetEnvironment(env.M6_OBSERVABILITY_TARGET_ENVIRONMENT)) {
+    blockers.push("M6.5 requires M6_OBSERVABILITY_TARGET_ENVIRONMENT to identify a target, staging, pilot, or self-hosted environment.");
+  }
+  requirePassedStatus(blockers, "M6.5", "M6_OBSERVABILITY_CONFIG_STATUS", env.M6_OBSERVABILITY_CONFIG_STATUS);
+  requirePassedStatus(
+    blockers,
+    "M6.5",
+    "M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE",
+    env.M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE
+  );
+  requirePassedStatus(blockers, "M6.5", "M6_OBSERVABILITY_ALERTMANAGER_ROUTING", env.M6_OBSERVABILITY_ALERTMANAGER_ROUTING);
+  requirePassedStatus(
+    blockers,
+    "M6.5",
+    "M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT",
+    env.M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT
+  );
+  requireValue(blockers, "M6.5", "M6_OBSERVABILITY_PROMETHEUS_QUERY", env.M6_OBSERVABILITY_PROMETHEUS_QUERY);
+  requireValue(blockers, "M6.5", "M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE", env.M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE);
+  requireValue(blockers, "M6.5", "M6_OBSERVABILITY_GRAFANA_EVIDENCE", env.M6_OBSERVABILITY_GRAFANA_EVIDENCE);
+
   if (!isTargetUrl(capacityTargetUrl)) {
     blockers.push("M6.6 missing WISEEFF_CAPACITY_TARGET_URL or WISEEFF_API_BASE_URL.");
   }
@@ -312,6 +350,12 @@ function requireValue(blockers: string[], phase: string, name: string, value: st
   }
 }
 
+function requirePassedStatus(blockers: string[], phase: string, name: string, value: string | undefined) {
+  if (value?.trim().toLowerCase() !== "passed") {
+    blockers.push(`${phase} requires ${name}=passed.`);
+  }
+}
+
 function commandSafeUrl(value: string) {
   if (!value.trim()) {
     return "";
@@ -328,6 +372,19 @@ function commandSafeUrl(value: string) {
 
 function isTargetUrl(value: string) {
   return /^https?:\/\//i.test(value) && !/^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?/i.test(value);
+}
+
+function isTargetEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !normalized.startsWith("local-") &&
+    !normalized.includes("localhost") &&
+    !normalized.includes("127.0.0.1") &&
+    (normalized.includes("target") ||
+      normalized.includes("staging") ||
+      normalized.includes("pilot") ||
+      normalized.includes("self-hosted"))
+  );
 }
 
 function formatItems(items: string[]) {

@@ -123,6 +123,15 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `AUTH_OIDC_AUDIENCE` | `wiseeff-api` or operator value | Must match the access-token `aud` claim. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | Admin OIDC bearer token | Preferred self-hosted smoke token; M5 smoke token names are accepted only for compatibility. |
 | `M6_IDENTITY_*` token variables | target OIDC test tokens | Used by `npm run identity:check`; keep unset locally unless a real self-hosted IdP/API target is available. |
+| `M6_IDENTITY_BROWSER_RUNTIME` | `passed` only after target browser proof | Required by `npm run m6:target-plan`; records target browser token acquisition, refresh, and logout proof. |
+| `M6_OBSERVABILITY_TARGET_ENVIRONMENT` | target/staging/pilot/self-hosted label | Required by `npm run observability:target-evidence` and `npm run m6:target-plan`. Must not be `local-*`. |
+| `M6_OBSERVABILITY_CONFIG_STATUS` | `passed` after `npm run observability:check` | Required before target observability evidence can be treated as executable. |
+| `M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE` | `passed` after target scrape proof | Required by `npm run observability:target-evidence`; keep pending until Prometheus has scraped the deployed target. |
+| `M6_OBSERVABILITY_ALERTMANAGER_ROUTING` | `passed` after alert route proof | Required by `npm run observability:target-evidence`; keep pending until alert routing has been exercised. |
+| `M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT` | `passed` after dashboard proof | Required by `npm run observability:target-evidence`; keep pending until dashboards are imported or screenshotted. |
+| `M6_OBSERVABILITY_PROMETHEUS_QUERY` | evidence reference or query URL | Redacted proof reference for Prometheus target scrape. |
+| `M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE` | evidence reference | Redacted proof reference for Alertmanager routing. |
+| `M6_OBSERVABILITY_GRAFANA_EVIDENCE` | evidence reference | Redacted proof reference for Grafana dashboard import. |
 
 M6.3 adds `ops/self-hosted/storage/object-store.env.example` for the S3-compatible storage profile. Run `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check` after filling isolated backup and restore targets.
 
