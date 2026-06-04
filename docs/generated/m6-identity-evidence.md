@@ -1,7 +1,8 @@
 ## M6.2 Identity Evidence
 
-- Date: 2026-06-03T05:11:07.037Z
+- Date: 2026-06-04T05:14:13.183Z
 - Status: `failed`
+- Evidence scope: `target self-hosted OIDC`
 - Issuer: ``
 - API base URL: ``
 - Audience: ``

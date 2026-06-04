@@ -156,6 +156,8 @@ Implementation-side release/rollback/capacity gates are in place and locally tes
 
 On 2026-06-04, `docs/generated/m6-release-readiness.md` was regenerated after refreshing the local M6.4 durable queue readiness evidence. The release gate now records local backup/restore, queue readiness, and observability evidence paths as available, while correctly keeping the overall release status `failed` because the worktree is not clean during evidence generation and target identity, rollback, capacity, target synthetic acceptance, and final command gates remain pending. This update is evidence bookkeeping only; it does not satisfy the non-customer target release rehearsal required to complete M6.6.
 
+Later on 2026-06-04, M6.2 local OIDC drill evidence was added and `docs/generated/m6-release-readiness.md` was regenerated while keeping `identity readiness` as `pending`. The drill proves local OIDC verifier/API/browser-token mechanics for release-gate dependency wiring, but M6.6 identity readiness still represents target Keycloak/OIDC evidence and remains pending until `npm run identity:check` is run against the deployed target.
+
 ## External Inputs Needed
 
 - Release environment label and host.

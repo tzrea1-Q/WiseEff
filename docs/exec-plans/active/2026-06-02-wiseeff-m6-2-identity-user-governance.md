@@ -181,6 +181,8 @@ Target-environment OIDC evidence is still required before TD-020 can close: real
 
 M6.2 target evidence gate added on 2026-06-03: `npm run identity:check` writes `docs/generated/m6-identity-evidence.md` and verifies target OIDC discovery/JWKS, Admin `/api/v1/me`, wrong-issuer rejection, wrong-audience rejection, expired-token rejection, and browser-runtime evidence status. This makes the target OIDC closure repeatable, but it does not close TD-020/TD-021 until it is run against a real self-hosted IdP/API target with redacted evidence and browser runtime proof.
 
+On 2026-06-04, `npm run identity:local-oidc-drill` was added and passed against the local PostgreSQL-backed API. The drill starts a temporary local OIDC discovery/JWKS service, signs RS256 Admin/wrong-issuer/wrong-audience/expired tokens, runs the WiseEff API in OIDC production-auth mode, proves `/api/v1/me` resolves the OIDC subject to the database-backed `u-xu-yun` Admin context, proves issuer/audience/expiry negative checks, and proves the browser OIDC token-provider refresh/logout boundary. It writes `docs/generated/m6-local-oidc-identity-evidence.md` with `Status: passed` for this local drill while leaving `docs/generated/m6-identity-evidence.md` reserved for target `identity:check` output. This is stronger than local HMAC smoke and closes the local OIDC implementation evidence gap, but it is not a real Keycloak or deployed target evidence record. The plan remains active until target Keycloak/OIDC evidence, target browser token acquisition/refresh/logout evidence, and target user-governance acceptance evidence are archived.
+
 ## External Inputs Needed
 
 - Preferred self-hosted identity provider. Default plan assumes Keycloak.

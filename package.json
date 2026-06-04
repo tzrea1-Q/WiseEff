@@ -34,6 +34,7 @@
     "backup:drill": "tsx scripts/run-backup-drill.ts",
     "restore:drill": "tsx scripts/run-restore-drill.ts",
     "backup:check": "tsx scripts/check-backup-drill.ts",
+    "identity:local-oidc-drill": "tsx scripts/run-local-oidc-identity-drill.ts",
     "identity:check": "tsx scripts/check-identity-evidence.ts",
     "queue:check": "tsx scripts/check-durable-queue.ts",
     "observability:check": "tsx scripts/check-observability-config.ts",

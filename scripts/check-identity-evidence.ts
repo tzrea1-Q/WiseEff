@@ -81,6 +81,7 @@ export function buildIdentityEvidenceMarkdown(input: {
   issuer: string;
   apiBaseUrl: string;
   audience: string;
+  evidenceScope?: string;
   result: IdentityEvidenceResult;
   checks: IdentityEvidenceCheck[];
 }) {
@@ -89,6 +90,7 @@ export function buildIdentityEvidenceMarkdown(input: {
     "",
     `- Date: ${input.date}`,
     `- Status: \`${input.result.status}\``,
+    `- Evidence scope: \`${redactIdentitySecret(input.evidenceScope ?? "target self-hosted OIDC")}\``,
     `- Issuer: \`${redactIdentitySecret(input.issuer)}\``,
     `- API base URL: \`${redactIdentitySecret(input.apiBaseUrl)}\``,
     `- Audience: \`${redactIdentitySecret(input.audience)}\``,

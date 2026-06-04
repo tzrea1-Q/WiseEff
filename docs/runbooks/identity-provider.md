@@ -111,6 +111,14 @@ If Admin access is lost:
 
 TD-020 remains open until target-environment OIDC evidence exists. Required evidence includes OIDC discovery/JWKS validation, `/api/v1/me` with real target tokens, token-expiry rejection, wrong-audience or wrong-issuer rejection, Admin user-governance success, non-Admin rejection, and redacted browser/runtime evidence.
 
+When a real Keycloak or target IdP is not available, run the local implementation drill first:
+
+```bash
+npm run identity:local-oidc-drill
+```
+
+This starts a temporary local OIDC discovery/JWKS service, signs RS256 Admin and negative tokens, runs the WiseEff API in OIDC production-auth mode against the local PostgreSQL database, verifies `/api/v1/me`, and records browser token-provider refresh/logout proof in `docs/generated/m6-local-oidc-identity-evidence.md`. It is valid local implementation evidence, but it is not final target identity evidence and must not be used to close TD-020 or release readiness by itself.
+
 Prepare four target tokens before running the identity gate:
 
 - Admin access token for the WiseEff target.
