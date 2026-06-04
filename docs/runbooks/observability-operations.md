@@ -71,6 +71,25 @@ During staging or pilot readiness, capture screenshots or exports for:
 
 Attach relevant screenshots to the target-environment evidence record when they affect readiness.
 
+## Target Evidence Recording
+
+`npm run observability:check` validates local configuration, dashboard JSON, alert links, and secret hygiene. Target readiness additionally requires a target-environment evidence record at `docs/generated/m6-observability-evidence.md` or an approved external record referenced by the release evidence.
+
+For `npm run m6:target-evidence` to accept M6.5, the target record must include these redacted result lines after the target has been exercised:
+
+```markdown
+- Status: `passed`
+- Prometheus target scrape: `passed`
+- Alertmanager routing: `passed`
+- Grafana dashboard import: `passed`
+```
+
+Do not write those lines as `passed` from static config review alone. They require:
+
+- Prometheus `up{job="wiseeff-api"}` equals `1` for the deployed target.
+- An Alertmanager route exercise or approved alert-routing proof reaches the configured receiver.
+- The Grafana dashboard import is visible in the target Grafana instance, with dashboard export or screenshot evidence attached to the release record.
+
 ## Job And Worker Triage
 
 1. Check `WiseEff Jobs` for queued, running, failed, retrying, and dead-letter signals.

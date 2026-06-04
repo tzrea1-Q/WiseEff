@@ -161,6 +161,8 @@ Later on 2026-06-04, M6.2 local OIDC drill evidence was added and `docs/generate
 
 Also on 2026-06-04, `npm run m6:target-evidence` was added as a final M6.2-M6.6 completion guard. It writes `docs/generated/m6-target-evidence-summary.md`, blocks any M6.2-M6.6 plan that was moved to `completed/` before target evidence passed, and keeps the current integrated M6 status failed/pending until target OIDC, backup/restore, queue, observability, rollback, capacity, and target synthetic evidence are all attached.
 
+Later on 2026-06-04, `npm run m6:target-plan` was added as a redacted operator manifest for the remaining M6.2-M6.6 target evidence run. It writes `docs/generated/m6-target-evidence-plan.md`, lists target inputs, ordered commands, evidence paths, success criteria, and blockers, and intentionally reports `blocked` in the current local configuration because target OIDC tokens, isolated restore targets, non-local queue URL, and target capacity URL are not yet configured. This manifest is execution guidance only; it does not replace target evidence and does not allow any M6.2-M6.6 plan to move to completed.
+
 ## External Inputs Needed
 
 - Release environment label and host.

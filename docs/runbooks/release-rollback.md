@@ -6,6 +6,7 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 
 - A release candidate has a version label, commit SHA, artifact reference, target environment label, and environment-file fingerprint.
 - `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, `npm run selfhost:check`, `npm run identity:check`, and `git diff --check` pass.
+- `npm run m6:target-plan` has been run for the selected target. A `ready` manifest means the operator inputs are present; it does not replace any target evidence file.
 - Production targets use `AUTH_PROVIDER=oidc`; local HMAC smoke tokens are not acceptable identity readiness evidence.
 - Target OIDC evidence is archived at `docs/generated/m6-identity-evidence.md` or an approved external record and proves discovery/JWKS, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser token acquisition/refresh/logout checks.
 - A backup is taken before deployment and can be restored into a clean target.
@@ -30,15 +31,17 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 Run:
 
 ```bash
+npm run m6:target-plan
 npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://<host>
 npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
 npm run rollback:rehearsal -- --environment <label> --release-version <version> --candidate-artifact <artifact> --previous-artifact <previous-artifact> --approval-owner <owner> --maintenance-window <window> --stop-writes passed --queue-drain passed --artifact-rollback passed --post-rollback-smoke passed --smoke-evidence <path-or-record>
 npm run capacity:gate -- --target-url https://<host>
 npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --capacity-readiness passed --capacity-evidence docs/generated/capacity-gate.md --target-synthetic-readiness passed --target-synthetic-evidence <path-or-record> --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
+npm run m6:target-evidence
 ```
 
-Attach Playwright reports, operation evidence, rollback rehearsal evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.
+Attach the target evidence plan, Playwright reports, operation evidence, rollback rehearsal evidence, capacity evidence, smoke output, metrics snapshots, target evidence summary, and release readiness output to the release record.
 
 ## Rollback Decision Points
 
