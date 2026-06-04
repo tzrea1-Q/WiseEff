@@ -1,6 +1,7 @@
 import { Queue, Worker } from "bullmq";
 
 import { createBullMqDurableQueue } from "../jobs/bullmqQueue";
+import type { MetricsRegistry } from "../../observability/metrics";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import type { LogAnalysisQueuePayload } from "./logAnalysisQueue";
@@ -46,6 +47,7 @@ type CreateLogAnalysisQueueRuntimeOptions = {
   WorkerCtor?: BullMqWorkerConstructor;
   processByJobId?: (options: ProcessLogWorkerByIdOptions) => Promise<ProcessLogWorkerResult>;
   workerId?: string;
+  metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
 };
 
 export function createLogAnalysisQueueRuntime({
@@ -55,7 +57,8 @@ export function createLogAnalysisQueueRuntime({
   QueueCtor = Queue as unknown as BullMqQueueConstructor,
   WorkerCtor = Worker as unknown as BullMqWorkerConstructor,
   processByJobId = processLogAnalysisJobById,
-  workerId = "wiseeff-log-worker"
+  workerId = "wiseeff-log-worker",
+  metrics
 }: CreateLogAnalysisQueueRuntimeOptions) {
   const queueName = "log-analysis";
   const connection = { url: env.REDIS_URL };
@@ -83,7 +86,8 @@ export function createLogAnalysisQueueRuntime({
         jobId,
         workerId,
         maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
-        retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS
+        retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
+        metrics
       });
       if (result.status === "retry") {
         throw new Error(result.reason);

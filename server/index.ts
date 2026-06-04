@@ -6,12 +6,14 @@ import { createHdcDebugDeviceGateway } from "./modules/debugging/hdcGateway";
 import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { startLogWorkerLoop } from "./modules/logs/worker";
+import { createMetricsRegistry } from "./observability/metrics";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 import { createPostgresDatabase } from "./shared/database/client";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL) : undefined;
 const objectStore = db ? createObjectStoreFromEnv(env) : undefined;
+const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const agentProvider = createAgentProviderFromEnv(env);
 const debugGateway =
   env.DEBUG_DEVICE_GATEWAY_MODE === "hdc"
@@ -27,12 +29,12 @@ const logAnalysisQueueEnv = {
 const logAnalysisQueueRuntime =
   env.LOG_ANALYSIS_QUEUE_MODE === "durable" && db && objectStore
     ? env.LOG_WORKER_ENABLED
-      ? createLogAnalysisQueueRuntime({ env: logAnalysisQueueEnv, db, objectStore })
+      ? createLogAnalysisQueueRuntime({ env: logAnalysisQueueEnv, db, objectStore, metrics })
       : createLogAnalysisQueueTransport({ env: logAnalysisQueueEnv })
     : undefined;
 const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
-    ? startLogWorkerLoop({ db, objectStore })
+    ? startLogWorkerLoop({ db, objectStore, metrics })
     : undefined;
 const server = createWiseEffServerFromEnv({
   db,
@@ -42,7 +44,8 @@ const server = createWiseEffServerFromEnv({
   debugGateway,
   agentProvider,
   durableQueue: logAnalysisQueueRuntime?.queue,
-  env
+  env,
+  metrics
 });
 
 function shutdown() {

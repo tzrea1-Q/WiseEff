@@ -129,12 +129,13 @@ describe("log worker runner", () => {
     const startLoop = vi.fn(() => stop);
     const db = { query: vi.fn(), transaction: vi.fn() };
     const objectStore = { put: vi.fn(), get: vi.fn() };
+    const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
-    const runtime = createLogWorkerRuntime({ db, objectStore, startLoop, workerId: "worker-a", leaseTtlMs: 30000, intervalMs: 250 });
+    const runtime = createLogWorkerRuntime({ db, objectStore, startLoop, metrics, workerId: "worker-a", leaseTtlMs: 30000, intervalMs: 250 });
     const returnedStop = runtime.start();
 
     expect(returnedStop).toBe(stop);
-    expect(startLoop).toHaveBeenCalledWith({ db, objectStore, workerId: "worker-a", leaseTtlMs: 30000 }, 250);
+    expect(startLoop).toHaveBeenCalledWith({ db, objectStore, metrics, workerId: "worker-a", leaseTtlMs: 30000 }, 250);
   });
 
   it("starts a durable BullMQ runtime instead of polling when queue mode is durable", async () => {
@@ -153,10 +154,12 @@ describe("log worker runner", () => {
     const startLoop = vi.fn(() => vi.fn());
     const db = { query: vi.fn(), transaction: vi.fn() };
     const objectStore = { put: vi.fn(), get: vi.fn() };
+    const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
     const runtime = createLogWorkerRuntime({
       db,
       objectStore,
+      metrics,
       startLoop,
       createDurableRuntime,
       queueMode: "durable",
@@ -181,6 +184,7 @@ describe("log worker runner", () => {
       },
       db,
       objectStore,
+      metrics,
       workerId: "wiseeff-log-worker"
     });
     expect(startLoop).not.toHaveBeenCalled();

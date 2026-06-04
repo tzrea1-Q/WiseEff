@@ -12,7 +12,7 @@ import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
-import { createMetricsRegistry } from "./observability/metrics";
+import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary, type TracingBoundary } from "./observability/tracing";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
@@ -41,10 +41,11 @@ export function createWiseEffServer(
     env?: PilotReadinessEnv;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
     tracing?: Pick<TracingBoundary, "withSpan">;
+    metrics?: MetricsRegistry;
   } = {}
 ) {
   const router = createRouter();
-  const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
+  const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
   const authResolver = createAuthContextResolver({
     mode: options.auth?.mode ?? "development",
@@ -148,6 +149,7 @@ export function createWiseEffServerFromEnv(
     durableQueue?: DurableQueueHealthCheck;
     env: ServerEnv;
     authVerifierFactory?: (env: ServerEnv) => TokenVerifier;
+    metrics?: MetricsRegistry;
   }
 ) {
   const verifier = options.env.AUTH_MODE === "production" ? options.authVerifierFactory?.(options.env) ?? createVerifierFromEnv(options.env) : undefined;

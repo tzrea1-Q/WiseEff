@@ -9,6 +9,7 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 - Optional PostgreSQL, Caddy, and host metrics require exporter services on the same private network.
 - Grafana dashboards are versioned JSON files under `ops/self-hosted/observability/grafana/dashboards/`.
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
+- Log-analysis worker terminal metrics include duration samples by stage/status and failure counters by low-cardinality reason/stage. They intentionally omit job IDs, run IDs, raw uploaded content, and raw error messages.
 - Business-path counters currently include Agent provider calls and device gateway operations for detect, read, write, and rollback actions.
 - Baseline trace spans currently include HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. They intentionally avoid raw prompts, uploaded content, device values, target refs, and concrete entity IDs.
 - `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files. It writes config-only evidence to `docs/generated/m6-observability-config-evidence.md`.
@@ -184,7 +185,7 @@ The M6.5 baseline intentionally avoids pretending that every high-risk business 
 - Database, object-store, queue-processing, and per-job spans.
 - Fine-grained device gateway failure categories beyond operation/action/status labels, such as timeout, offline, stderr category, and target identity.
 - Audit write failure counters.
-- Per-job duration histograms and failure-reason metrics.
+- Target Prometheus scrape and Grafana proof for per-job terminal duration and failure-reason metrics.
 
 ### WiseEffHostDiskPressure
 

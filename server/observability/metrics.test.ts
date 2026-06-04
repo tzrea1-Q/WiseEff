@@ -38,4 +38,28 @@ describe("Prometheus metrics registry", () => {
       'wiseeff_http_requests_total{method="POST",route="/api/v1/debugging/sessions/:id/operations/:id",status="500"} 1'
     );
   });
+
+  it("records low-cardinality log-analysis terminal metrics without leaking job details", () => {
+    const registry = createMetricsRegistry({ serviceName: "wiseeff-api" });
+
+    registry.recordLogAnalysisJobResult({
+      status: "dead_lettered",
+      stage: "parse",
+      durationMs: 250,
+      failureReason: "parse_error"
+    });
+    registry.recordLogAnalysisJobResult({
+      status: "dead_lettered",
+      stage: "parse",
+      durationMs: 750,
+      failureReason: "parse_error"
+    });
+
+    const text = registry.renderPrometheus();
+
+    expect(text).toContain('wiseeff_log_analysis_job_duration_ms_sum{stage="parse",status="dead_lettered"} 1000');
+    expect(text).toContain('wiseeff_log_analysis_job_duration_ms_count{stage="parse",status="dead_lettered"} 2');
+    expect(text).toContain('wiseeff_log_analysis_job_failures_total{reason="parse_error",stage="parse"} 2');
+    expect(text).not.toMatch(/job-1|run-1|Input appears|authorization|password|secret|token/i);
+  });
 });

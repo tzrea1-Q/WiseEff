@@ -34,9 +34,9 @@ Page or immediately escalate:
 - release-window capacity threshold breach,
 - target synthetic acceptance failure after deployment.
 
-M6.5 production alerts must include a `runbook_url` annotation that points to an actionable runbook section. The baseline alert file is `ops/self-hosted/observability/alerts.yml` currently covers API scrape/down, readiness not-ready, elevated 5xx, high latency, queue backlog, dead-letter presence, object-store probe failure, database unavailable, Agent provider readiness failure, and host disk pressure. Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans are now emitted by business paths and available for dashboard or trace review when a target collector is configured.
+M6.5 production alerts must include a `runbook_url` annotation that points to an actionable runbook section. The baseline alert file is `ops/self-hosted/observability/alerts.yml` currently covers API scrape/down, readiness not-ready, elevated 5xx, high latency, queue backlog, dead-letter presence, object-store probe failure, database unavailable, Agent provider readiness failure, and host disk pressure. Log-analysis terminal job duration/failure-reason counters, Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans are now emitted by business paths and available for dashboard or trace review when a target collector is configured.
 
-Per-approval counters, per-tool result counters, audit write failure counters, fine-grained device failure-category counters, and per-job duration/failure-reason histograms require deeper service instrumentation and remain follow-up work before they can become hard alert rules.
+Per-approval counters, per-tool result counters, audit write failure counters, and fine-grained device failure-category counters require deeper service instrumentation and remain follow-up work before they can become hard alert rules. Log-analysis terminal metrics also need target Prometheus scrape history before any duration or failure-rate alert is promoted to a release-blocking rule.
 
 ## Metrics Access
 

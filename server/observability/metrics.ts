@@ -16,6 +16,10 @@ type GaugeSample = {
   value: number;
 };
 
+export type LogAnalysisJobMetricStatus = "complete" | "retry" | "dead_lettered" | "failed";
+export type LogAnalysisJobMetricStage = "parse" | "pattern" | "rootcause" | "report";
+export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" | "stale_run" | "unknown";
+
 const dynamicSegmentPattern =
   /\/(?:[a-z]+-)?[0-9a-f]{6,}(?=\/|$)|\/(?:request|session|operation|job|log|audit|approval|snapshot|target|run|op)-[^/]+/gi;
 const httpDurationBucketsSeconds = [0.05, 0.1, 0.25, 0.5, 0.8, 1, 2.5, 5, Number.POSITIVE_INFINITY] as const;
@@ -135,6 +139,22 @@ export function createMetricsRegistry(options: { serviceName: string }) {
         action: input.action,
         status: input.status
       });
+    },
+    recordLogAnalysisJobResult(input: {
+      status: LogAnalysisJobMetricStatus;
+      stage: LogAnalysisJobMetricStage;
+      durationMs: number;
+      failureReason?: LogAnalysisJobFailureReason;
+    }) {
+      const labels = { stage: input.stage, status: input.status };
+      incrementCounter("wiseeff_log_analysis_job_duration_ms_sum", "Total WiseEff log-analysis job duration in milliseconds.", labels, input.durationMs);
+      incrementCounter("wiseeff_log_analysis_job_duration_ms_count", "Count of WiseEff log-analysis job duration samples.", labels);
+      if (input.failureReason) {
+        incrementCounter("wiseeff_log_analysis_job_failures_total", "WiseEff log-analysis terminal failures by reason and stage.", {
+          reason: input.failureReason,
+          stage: input.stage
+        });
+      }
     },
     renderPrometheus() {
       const allSamples = [...gauges.values(), ...counters.values()].sort((left, right) => left.name.localeCompare(right.name) || labelsKey(left.labels).localeCompare(labelsKey(right.labels)));

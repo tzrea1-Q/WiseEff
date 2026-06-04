@@ -1,4 +1,5 @@
 import { loadServerEnv } from "../../config/env";
+import type { MetricsRegistry } from "../../observability/metrics";
 import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
@@ -29,6 +30,7 @@ type LogWorkerRuntimeOptions = {
   workerId?: string;
   leaseTtlMs?: number;
   intervalMs?: number;
+  metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
 };
 
 export function validateLogWorkerConfig(raw: RawWorkerEnv) {
@@ -65,7 +67,8 @@ export function createLogWorkerRuntime({
   env,
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
-  intervalMs = 1000
+  intervalMs = 1000,
+  metrics
 }: LogWorkerRuntimeOptions) {
   return {
     start() {
@@ -73,11 +76,11 @@ export function createLogWorkerRuntime({
         if (!env) {
           throw new Error("Durable log worker runtime requires Redis queue environment.");
         }
-        const runtime = createDurableRuntime({ env, db, objectStore, workerId });
+        const runtime = createDurableRuntime({ env, db, objectStore, workerId, metrics });
         return () => runtime.close();
       }
 
-      return startLoop({ db, objectStore, workerId, leaseTtlMs }, intervalMs);
+      return startLoop({ db, objectStore, workerId, leaseTtlMs, metrics }, intervalMs);
     }
   };
 }

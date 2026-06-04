@@ -26,6 +26,7 @@ describe("log analysis queue runtime", () => {
     });
     const db = {} as Database;
     const objectStore = {} as ObjectStore;
+    const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
     const runtime = createLogAnalysisQueueRuntime({
       env: {
@@ -37,6 +38,7 @@ describe("log analysis queue runtime", () => {
       },
       db,
       objectStore,
+      metrics,
       QueueCtor: QueueCtor as never,
       WorkerCtor: WorkerCtor as never,
       processByJobId
@@ -63,7 +65,8 @@ describe("log analysis queue runtime", () => {
         jobId: "job-from-bullmq",
         workerId: "wiseeff-log-worker",
         maxAttempts: 5,
-        retryBaseDelayMs: 2500
+        retryBaseDelayMs: 2500,
+        metrics
       });
     });
 

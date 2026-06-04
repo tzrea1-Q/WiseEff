@@ -46,8 +46,8 @@ M6.5 excludes:
 
 - Every API request has a request ID and trace ID in logs and responses where appropriate.
 - Audit events can be correlated with request ID, user ID, operation ID, and trace ID.
-- Log-analysis queue health exposes queued, processing, dead-letter, and oldest-queued-age metrics; per-run job duration and failure-reason metrics remain pending.
-- Agent provider readiness, Agent provider calls, debugging HTTP route outcomes, and device gateway operations are observable through baseline counters; per-approval, per-tool result, audit-failure, and per-job duration/failure-reason metrics remain pending.
+- Log-analysis queue health exposes queued, processing, dead-letter, oldest-queued-age, and local terminal job duration/failure-reason metrics.
+- Agent provider readiness, Agent provider calls, debugging HTTP route outcomes, and device gateway operations are observable through baseline counters; per-approval, per-tool result, and audit-failure metrics remain pending.
 - Prometheus can scrape WiseEff metrics.
 - Grafana dashboards load from versioned local files.
 - Alerts are actionable and tied to runbooks.
@@ -112,8 +112,8 @@ Modify:
 
 - [x] Write failing tests for metrics registration and redaction.
 - [x] Add process, HTTP, database, object-store, queue, worker, Agent, and device baseline metrics.
-  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, worker queue gauges, Agent provider call counters, and device gateway operation counters are implemented.
-  - Pending deep metrics: per-approval counters, per-tool result counters, audit write failure counters, and per-job duration/failure-reason metrics.
+  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, and device gateway operation counters are implemented.
+  - Pending deep metrics: per-approval counters, per-tool result counters, and audit write failure counters.
 - [x] Add `/metrics` with production access guidance, such as private network only or reverse-proxy allowlist.
 - [x] Add readiness checks that verify metrics registration does not break health endpoints.
 - [x] Run focused metrics tests.
@@ -147,9 +147,10 @@ Modify:
 
 ## Current Evidence Status
 
-- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans.
+- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans.
 - Fresh local verification on 2026-06-04 passed with `npm run docs:check`, `npm test -- --run scripts/check-observability-config.test.ts server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts server/app.test.ts`, `npm run observability:check`, `npm run test:all`, `npm run build`, and `git diff --check`.
 - Later on 2026-06-04, `npm run observability:target-evidence` was added so target Prometheus scrape, Alertmanager routing, and Grafana dashboard import proof can be recorded separately from config-only evidence. `npm run observability:check` now writes `docs/generated/m6-observability-config-evidence.md`; `docs/generated/m6-observability-evidence.md` is reserved for target observability evidence and should remain failed/pending until the real target proofs are attached.
+- Later on 2026-06-04, a local TDD slice added log-analysis worker terminal metrics for complete, retry, dead-lettered, and stale-failed paths. The shared registry exposes `wiseeff_log_analysis_job_duration_ms_sum/count` by stage/status and `wiseeff_log_analysis_job_failures_total` by reason/stage, with tests proving raw job IDs, run IDs, and error messages are not used as labels. Fresh verification passed with `npm test -- --run server/observability/metrics.test.ts server/modules/logs/worker.test.ts server/app.test.ts server/modules/logs/workerRunner.test.ts server/modules/logs/logAnalysisQueueRuntime.test.ts scripts/check-observability-config.test.ts`, `npm run observability:check`, `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, and `git diff --check`. This is local code/config evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
 - Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
 - Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 

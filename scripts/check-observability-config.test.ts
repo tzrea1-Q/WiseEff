@@ -59,7 +59,11 @@ const validDashboards = {
   }),
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json": JSON.stringify({
     title: "WiseEff Jobs",
-    panels: [{ title: "Queue backlog", type: "timeseries" }]
+    panels: [
+      { title: "Queue backlog", type: "timeseries" },
+      { targets: [{ expr: "sum(rate(wiseeff_log_analysis_job_duration_ms_sum[5m])) / clamp_min(sum(rate(wiseeff_log_analysis_job_duration_ms_count[5m])), 0.001)" }] },
+      { targets: [{ expr: "sum(rate(wiseeff_log_analysis_job_failures_total[5m])) by (reason, stage)" }] }
+    ]
   }),
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
     title: "WiseEff Security Operations",
@@ -140,7 +144,7 @@ describe("M6.5 observability configuration metadata", () => {
     ]);
   });
 
-  it("allows Agent and device metrics produced by the M6.5 runtime", () => {
+  it("allows Agent, device, and log-analysis terminal metrics produced by the M6.5 runtime", () => {
     const result = evaluateObservabilityConfig({
       packageJson: validPackageJson,
       files: {

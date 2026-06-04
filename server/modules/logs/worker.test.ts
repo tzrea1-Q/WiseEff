@@ -127,6 +127,12 @@ function createObjectStore(bytes: Buffer): ObjectStore {
   };
 }
 
+function createLogJobMetricsSpy() {
+  return {
+    recordLogAnalysisJobResult: vi.fn()
+  };
+}
+
 function createFakeWorkerDb(fixture = createFixture()) {
   const calls: string[] = [];
   let rejectNextProgressForLease = false;
@@ -469,6 +475,7 @@ describe("log worker", () => {
 
   it("processes a queued supported log and updates stages in order", async () => {
     const { db, fixture } = createFakeWorkerDb();
+    const metrics = createLogJobMetricsSpy();
     const objectStore = createObjectStore(
       Buffer.from(
         [
@@ -478,8 +485,11 @@ describe("log worker", () => {
         ].join("\n")
       )
     );
+    const times = [new Date("2026-05-25T02:00:00.000Z"), new Date("2026-05-25T02:00:01.250Z")];
+    let nowIndex = 0;
+    const now = () => times[Math.min(nowIndex++, times.length - 1)];
 
-    const result = await processNextLogAnalysisJob({ db, objectStore });
+    const result = await processNextLogAnalysisJob({ db, objectStore, metrics, now });
 
     expect(result).toBe("processed");
     expect(fixture.stages.map((stage) => [stage.stage, stage.status, stage.progress])).toEqual([
@@ -492,6 +502,12 @@ describe("log worker", () => {
       ["report", "processing", 90],
       ["report", "complete", 100]
     ]);
+    expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledOnce();
+    expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith({
+      status: "complete",
+      stage: "report",
+      durationMs: 1250
+    });
   });
 
   it("processes a queue-delivered job by id without polling for the next job", async () => {
@@ -607,6 +623,7 @@ describe("log worker", () => {
 
   it("schedules a retry on a transient failure before attempts are exhausted", async () => {
     const { db, fixture } = createFakeWorkerDb();
+    const metrics = createLogJobMetricsSpy();
 
     const result = await processNextLogAnalysisJob({
       db,
@@ -618,7 +635,8 @@ describe("log worker", () => {
           throw new Error("object store timeout");
         }
       },
-      workerId: "worker-a"
+      workerId: "worker-a",
+      metrics
     });
 
     expect(result).toBe("processed");
@@ -632,6 +650,13 @@ describe("log worker", () => {
     });
     expect(fixture.run).toMatchObject({ status: "processing", progress: 10, current_stage: "parse", error_message: null });
     expect(fixture.log).toMatchObject({ status: "processing", failure_reason: null });
+    expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith({
+      status: "retry",
+      stage: "parse",
+      durationMs: expect.any(Number),
+      failureReason: "object_store_error"
+    });
+    expect(JSON.stringify(metrics.recordLogAnalysisJobResult.mock.calls)).not.toContain("object store timeout");
   });
 
   it("dead-letters and fails the run when attempts are exhausted", async () => {
@@ -642,11 +667,13 @@ describe("log worker", () => {
       }
     });
     const { db } = createFakeWorkerDb(fixture);
+    const metrics = createLogJobMetricsSpy();
 
     const result = await processNextLogAnalysisJob({
       db,
       objectStore: createObjectStore(Buffer.from([0, 0, 0, 0, 1])),
-      workerId: "worker-a"
+      workerId: "worker-a",
+      metrics
     });
 
     expect(result).toBe("processed");
@@ -663,6 +690,13 @@ describe("log worker", () => {
       status: "failed",
       failure_reason: "Job exhausted 4 attempts."
     });
+    expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith({
+      status: "dead_lettered",
+      stage: "parse",
+      durationMs: expect.any(Number),
+      failureReason: "parse_error"
+    });
+    expect(JSON.stringify(metrics.recordLogAnalysisJobResult.mock.calls)).not.toContain("Input appears");
   });
 
   it("does not duplicate evidence when the worker runs again after completion", async () => {
@@ -692,8 +726,13 @@ describe("log worker", () => {
       }
     });
     const { db } = createFakeWorkerDb(fixture);
+    const metrics = createLogJobMetricsSpy();
 
-    const result = await processNextLogAnalysisJob({ db, objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")) });
+    const result = await processNextLogAnalysisJob({
+      db,
+      objectStore: createObjectStore(Buffer.from("WARN thermal foldback\n")),
+      metrics
+    });
 
     expect(result).toBe("processed");
     expect(fixture.run.status).toBe("failed");
@@ -710,6 +749,12 @@ describe("log worker", () => {
         message: "Log analysis job is stale because its run is no longer current."
       }
     ]);
+    expect(metrics.recordLogAnalysisJobResult).toHaveBeenCalledWith({
+      status: "failed",
+      stage: "parse",
+      durationMs: expect.any(Number),
+      failureReason: "stale_run"
+    });
   });
 
   it("runs at most one job per tick and stops after cleanup", async () => {
