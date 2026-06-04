@@ -141,8 +141,11 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
         "Alertmanager routing exercise result",
         "Grafana dashboard import or screenshot evidence"
       ],
-      commands: ["npm run observability:check"],
-      evidencePaths: ["docs/generated/m6-observability-evidence.md"],
+      commands: ["npm run observability:check", "npm run observability:target-evidence"],
+      evidencePaths: [
+        "docs/generated/m6-observability-config-evidence.md",
+        "docs/generated/m6-observability-evidence.md"
+      ],
       successCriteria: [
         "Prometheus target scrape is recorded as passed.",
         "Alertmanager routing is recorded as passed.",

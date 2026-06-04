@@ -29,12 +29,17 @@ describe("M6 target evidence execution plan", () => {
     expect(plan.steps[0].commands).toContain("npm run identity:check");
     expect(plan.steps[1].commands).toEqual(["npm run restore:drill", "npm run backup:drill", "npm run backup:check"]);
     expect(plan.steps[2].commands).toContain("npm run queue:check -- --base-url https://wiseeff.example.test");
+    expect(plan.steps[3].commands).toEqual([
+      "npm run observability:check",
+      "npm run observability:target-evidence"
+    ]);
     expect(plan.steps[4].commands).toContain("npm run m6:target-evidence");
     expect(plan.steps.flatMap((step) => step.evidencePaths)).toEqual(
       expect.arrayContaining([
         "docs/generated/m6-identity-evidence.md",
         "docs/generated/m6-backup-restore-evidence.md",
         "docs/generated/m6-queue-readiness-evidence.md",
+        "docs/generated/m6-observability-config-evidence.md",
         "docs/generated/m6-observability-evidence.md",
         "docs/generated/m6-rollback-rehearsal-evidence.md",
         "docs/generated/capacity-gate.md",

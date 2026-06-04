@@ -1,18 +1,26 @@
 ## M6.5 Observability Evidence
 
-- Date: 2026-06-04T05:22:04.853Z
-- Status: `passed`
-- Missing scripts: none
-- Missing files: none
-- Missing dashboard files: none
-- Invalid dashboard files: none
-- Alerts missing runbook URL: none
-- Missing Prometheus tokens: none
+- Date: 2026-06-04T09:41:59.131Z
+- Status: `failed`
+- Evidence scope: `target self-hosted observability`
+- Target environment: `target-not-configured`
+- Config check: `passed`
+- Prometheus target scrape: `pending`
+- Alertmanager routing: `pending`
+- Grafana dashboard import: `pending`
 
-### Forbidden Secret Matches
+### Proof
 
-- none
+- Prometheus query or scrape evidence: `pending`
+- Alert route proof: `pending`
+- Grafana dashboard proof: `pending`
 
-### Unknown Metric References
+### Blockers
 
-- none
+- Target environment label must identify a configured target, staging, pilot, or self-hosted environment.
+
+### Pending Evidence
+
+- Prometheus target scrape evidence is pending.
+- Alertmanager routing evidence is pending.
+- Grafana dashboard import evidence is pending.

@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-04T05:14:52.423Z
+- Date: 2026-06-04T09:34:17.465Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `2daf92caefc1662dc20e9b7cf66e546a372c9c55`
+- Commit: `d4c1a8697c974a6d9e2c429ed03c5932bf9f8096`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -63,8 +63,8 @@
 | rollback readiness | pending |
 | capacity readiness | pending |
 | target synthetic readiness | pending |
-| queue readiness | passed |
-| observability | passed |
+| queue readiness | pending |
+| observability | pending |
 
 ### Blockers
 
@@ -88,3 +88,5 @@
 - Rollback readiness evidence is pending.
 - Capacity readiness evidence is pending.
 - Target synthetic readiness evidence is pending.
+- Queue readiness evidence is pending.
+- Observability evidence is pending.

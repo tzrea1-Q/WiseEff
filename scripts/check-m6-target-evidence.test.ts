@@ -39,9 +39,18 @@ Status: \`passed\`
   observability: `## M6.5 Observability Evidence
 
 - Status: \`passed\`
+- Evidence scope: \`target self-hosted observability\`
+- Target environment: \`self-hosted-staging\`
+- Config check: \`passed\`
 - Prometheus target scrape: \`passed\`
 - Alertmanager routing: \`passed\`
 - Grafana dashboard import: \`passed\`
+
+### Proof
+
+- Prometheus query or scrape evidence: \`up{job="wiseeff-api"} == 1\`
+- Alert route proof: \`ops-evidence/alertmanager-route-2026-06-04.md\`
+- Grafana dashboard proof: \`ops-evidence/grafana-dashboard-2026-06-04.png\`
 `,
   rollback: `## M6.6 Rollback Rehearsal Evidence
 
@@ -135,6 +144,71 @@ Status: \`passed\`
       pending: []
     });
     expect(result.phases.every((phase) => phase.completionAllowed && phase.planLocation === "completed")).toBe(true);
+  });
+
+  it("does not accept observability target evidence without scope, config, and proof references", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        observability: `## M6.5 Observability Evidence
+
+- Status: \`passed\`
+- Prometheus target scrape: \`passed\`
+- Alertmanager routing: \`passed\`
+- Grafana dashboard import: \`passed\`
+`
+      }
+    });
+
+    const observability = result.phases.find((phase) => phase.id === "M6.5");
+
+    expect(result.status).toBe("failed");
+    expect(observability).toMatchObject({
+      evidenceStatus: "pending",
+      planLocation: "active",
+      completionAllowed: false
+    });
+    expect(observability?.pending).toContain(
+      "Target observability scrape, alert routing, and dashboard evidence is pending."
+    );
+  });
+
+  it("does not accept placeholder observability target environment labels", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        observability: `## M6.5 Observability Evidence
+
+- Status: \`passed\`
+- Evidence scope: \`target self-hosted observability\`
+- Target environment: \`target-not-configured\`
+- Config check: \`passed\`
+- Prometheus target scrape: \`passed\`
+- Alertmanager routing: \`passed\`
+- Grafana dashboard import: \`passed\`
+
+### Proof
+
+- Prometheus query or scrape evidence: \`up{job="wiseeff-api"} == 1\`
+- Alert route proof: \`ops-evidence/alertmanager-route-2026-06-04.md\`
+- Grafana dashboard proof: \`ops-evidence/grafana-dashboard-2026-06-04.png\`
+`
+      }
+    });
+
+    const observability = result.phases.find((phase) => phase.id === "M6.5");
+
+    expect(observability).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(observability?.pending).toContain(
+      "Target observability scrape, alert routing, and dashboard evidence is pending."
+    );
   });
 
   it("renders a redacted operator summary", () => {

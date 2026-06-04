@@ -235,6 +235,9 @@ groups:
   });
 
   it("parses output path for generated release evidence", () => {
+    expect(parseObservabilityArgs([], {})).toEqual({
+      output: "docs/generated/m6-observability-config-evidence.md"
+    });
     expect(parseObservabilityArgs(["--output=docs/generated/observability.md"], {})).toEqual({
       output: "docs/generated/observability.md"
     });
@@ -256,7 +259,7 @@ groups:
       })
     });
 
-    expect(evidence).toContain("## M6.5 Observability Evidence");
+    expect(evidence).toContain("## M6.5 Observability Config Evidence");
     expect(evidence).toContain("- Status: `passed`");
     expect(evidence).toContain("- Missing scripts: none");
     expect(evidence).toContain("- Missing files: none");

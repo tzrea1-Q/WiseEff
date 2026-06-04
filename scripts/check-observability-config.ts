@@ -74,7 +74,7 @@ export type ObservabilityConfigResult = {
 
 type RuntimeEnv = Record<string, string | undefined>;
 
-const defaultEvidenceOutput = "docs/generated/m6-observability-evidence.md";
+const defaultEvidenceOutput = "docs/generated/m6-observability-config-evidence.md";
 
 function hasRunbookUrl(ruleText: string) {
   return /runbook_url\s*:/i.test(ruleText);
@@ -229,7 +229,7 @@ export function parseObservabilityArgs(args: readonly string[], env: RuntimeEnv 
 export function buildObservabilityEvidence(args: { date: string; result: ObservabilityConfigResult }): string {
   const result = args.result;
   const lines = [
-    "## M6.5 Observability Evidence",
+    "## M6.5 Observability Config Evidence",
     "",
     `- Date: ${args.date}`,
     `- Status: \`${result.status}\``,

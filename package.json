@@ -38,6 +38,7 @@
     "identity:check": "tsx scripts/check-identity-evidence.ts",
     "queue:check": "tsx scripts/check-durable-queue.ts",
     "observability:check": "tsx scripts/check-observability-config.ts",
+    "observability:target-evidence": "tsx scripts/write-observability-target-evidence.ts",
     "selfhost:check": "tsx ops/self-hosted/scripts/check-self-hosted-config.ts",
     "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts",
     "selfhost:release-gate": "tsx scripts/run-self-hosted-release-gate.ts",

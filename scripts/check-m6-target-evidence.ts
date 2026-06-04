@@ -129,11 +129,32 @@ const phaseDefinitions: PhaseDefinition[] = [
       const blockers: string[] = [];
       const pending: string[] = [];
       const status = markdownStatus(evidence.observability);
+      const scope = markdownField(evidence.observability, "Evidence scope");
+      const targetEnvironment = markdownField(evidence.observability, "Target environment");
+      const configStatus = markdownField(evidence.observability, "Config check");
+      const prometheusProof = markdownField(evidence.observability, "Prometheus query or scrape evidence");
+      const alertProof = markdownField(evidence.observability, "Alert route proof");
+      const grafanaProof = markdownField(evidence.observability, "Grafana dashboard proof");
       const hasScrape = /Prometheus target scrape:\s*`passed`/i.test(evidence.observability ?? "");
       const hasAlert = /Alertmanager routing:\s*`passed`/i.test(evidence.observability ?? "");
       const hasGrafana = /Grafana dashboard import:\s*`passed`/i.test(evidence.observability ?? "");
+      const hasTargetScope = scope.toLowerCase().includes("target");
+      const hasTargetEnvironment = isTargetEnvironment(targetEnvironment);
+      const hasConfigPassed = configStatus.toLowerCase() === "passed";
+      const hasProofs =
+        isEvidenceReference(prometheusProof) && isEvidenceReference(alertProof) && isEvidenceReference(grafanaProof);
 
-      if (status === "missing" || status !== "passed" || !hasScrape || !hasAlert || !hasGrafana) {
+      if (
+        status === "missing" ||
+        status !== "passed" ||
+        !hasTargetScope ||
+        !hasTargetEnvironment ||
+        !hasConfigPassed ||
+        !hasScrape ||
+        !hasAlert ||
+        !hasGrafana ||
+        !hasProofs
+      ) {
         pending.push("Target observability scrape, alert routing, and dashboard evidence is pending.");
         return { evidenceStatus: "pending", blockers, pending, notes: [] };
       }
@@ -315,12 +336,44 @@ function markdownTableStatusPassed(markdown: string | undefined, label: string):
 }
 
 function isTargetEnvironment(value: string): boolean {
-  const normalized = value.toLowerCase();
-  return normalized.includes("target") || normalized.includes("staging") || normalized.includes("pilot");
+  const normalized = value.trim().toLowerCase();
+  return (
+    !isPlaceholderEnvironment(normalized) &&
+    !isLocalEnvironment(normalized) &&
+    (normalized.includes("target") ||
+      normalized.includes("staging") ||
+      normalized.includes("pilot") ||
+      normalized.includes("self-hosted"))
+  );
 }
 
 function isTargetUrl(value: string): boolean {
   return /^https?:\/\//i.test(value) && !/^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?/i.test(value);
+}
+
+function isEvidenceReference(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 && normalized !== "pending" && normalized !== "n/a" && normalized !== "not-configured";
+}
+
+function isPlaceholderEnvironment(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "pending" ||
+    normalized === "n/a" ||
+    normalized.includes("not-configured") ||
+    normalized.includes("not_configured")
+  );
+}
+
+function isLocalEnvironment(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "local" ||
+    normalized.startsWith("local-") ||
+    normalized.includes("localhost") ||
+    normalized.includes("127.0.0.1")
+  );
 }
 
 function listMarkdownFiles(directory: string): string[] {

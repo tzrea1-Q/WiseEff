@@ -179,6 +179,8 @@ For M6.6 self-hosted release candidates, also run the release and capacity metad
 ```bash
 npm run m6:target-plan
 npm run identity:check
+npm run observability:check
+npm run observability:target-evidence -- --target-environment <label> --config-status passed --prometheus-target-scrape passed --alertmanager-routing passed --grafana-dashboard-import passed --prometheus-query 'up{job="wiseeff-api"} == 1' --alert-route-evidence <path-or-record> --grafana-evidence <path-or-record>
 npm run capacity:gate -- --target-url https://<host>
 npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --identity-readiness passed --rollback-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --capacity-readiness passed --capacity-evidence docs/generated/capacity-gate.md --target-synthetic-readiness passed --target-synthetic-evidence <path-or-record> --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
 npm run m6:target-evidence
@@ -326,7 +328,7 @@ npm run backup:check
 
 Local M6.3 evidence proves evidence shape, redaction, failed-command handling, and restore-target safety. Target acceptance requires a real restore drill against isolated PostgreSQL and object-store targets.
 
-M6.6 release evidence is collected with `npm run m6:target-plan`, `npm run selfhost:release-gate`, `npm run identity:check`, `npm run capacity:gate`, `npm run m6:target-evidence`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless target OIDC identity evidence, capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence. M6.2-M6.6 plans should remain in `docs/exec-plans/active/` until `npm run m6:target-evidence` passes and final verification has been recorded.
+M6.6 release evidence is collected with `npm run m6:target-plan`, `npm run selfhost:release-gate`, `npm run identity:check`, `npm run observability:check`, `npm run observability:target-evidence`, `npm run capacity:gate`, `npm run m6:target-evidence`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless target OIDC identity evidence, capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence. M6.2-M6.6 plans should remain in `docs/exec-plans/active/` until `npm run m6:target-evidence` passes and final verification has been recorded.
 
 ### Reviewing Operation Evidence
 

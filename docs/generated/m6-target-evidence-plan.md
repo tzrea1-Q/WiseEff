@@ -1,6 +1,6 @@
 ## M6 Target Evidence Execution Plan
 
-- Date: 2026-06-04T07:35:33.651Z
+- Date: 2026-06-04T09:42:27.804Z
 - Status: `blocked`
 - Target base URL: `http://127.0.0.1:8787`
 
@@ -148,9 +148,11 @@ Required inputs:
 Commands:
 
 - `npm run observability:check`
+- `npm run observability:target-evidence`
 
 Evidence paths:
 
+- `docs/generated/m6-observability-config-evidence.md`
 - `docs/generated/m6-observability-evidence.md`
 
 Success criteria:

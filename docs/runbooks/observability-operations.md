@@ -11,7 +11,8 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
 - Business-path counters currently include Agent provider calls and device gateway operations for detect, read, write, and rollback actions.
 - Baseline trace spans currently include HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. They intentionally avoid raw prompts, uploaded content, device values, target refs, and concrete entity IDs.
-- `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files.
+- `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files. It writes config-only evidence to `docs/generated/m6-observability-config-evidence.md`.
+- `npm run observability:target-evidence` writes target-environment evidence to `docs/generated/m6-observability-evidence.md`.
 
 ## Metrics Exposure Policy
 
@@ -73,7 +74,7 @@ Attach relevant screenshots to the target-environment evidence record when they 
 
 ## Target Evidence Recording
 
-`npm run observability:check` validates local configuration, dashboard JSON, alert links, and secret hygiene. Target readiness additionally requires a target-environment evidence record at `docs/generated/m6-observability-evidence.md` or an approved external record referenced by the release evidence.
+`npm run observability:check` validates local configuration, dashboard JSON, alert links, and secret hygiene. It writes config-only evidence to `docs/generated/m6-observability-config-evidence.md` and must not be treated as target readiness. Target readiness additionally requires a target-environment evidence record at `docs/generated/m6-observability-evidence.md` or an approved external record referenced by the release evidence.
 
 For `npm run m6:target-evidence` to accept M6.5, the target record must include these redacted result lines after the target has been exercised:
 
@@ -89,6 +90,15 @@ Do not write those lines as `passed` from static config review alone. They requi
 - Prometheus `up{job="wiseeff-api"}` equals `1` for the deployed target.
 - An Alertmanager route exercise or approved alert-routing proof reaches the configured receiver.
 - The Grafana dashboard import is visible in the target Grafana instance, with dashboard export or screenshot evidence attached to the release record.
+
+Use the target evidence writer after collecting those proofs:
+
+```bash
+npm run observability:check
+npm run observability:target-evidence -- --target-environment <label> --config-status passed --prometheus-target-scrape passed --alertmanager-routing passed --grafana-dashboard-import passed --prometheus-query 'up{job="wiseeff-api"} == 1' --alert-route-evidence <path-or-record> --grafana-evidence <path-or-record>
+```
+
+If any target proof is not available, keep the matching status as `pending` or `failed`. The generated `docs/generated/m6-observability-evidence.md` should then remain failed and `npm run m6:target-evidence` must continue to block M6.5 completion.
 
 ## Job And Worker Triage
 
