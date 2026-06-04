@@ -21,4 +21,11 @@ describe("quality snapshot configuration", () => {
 
     expect(e2eConfig).toMatch(/AGENT_PROVIDER:\s*"deterministic"/);
   });
+
+  it("fails fast instead of reusing an unknown local E2E runtime by default", () => {
+    const e2eConfig = readFileSync("playwright.config.ts", "utf8");
+
+    expect(e2eConfig).toContain('process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "true"');
+    expect(e2eConfig).not.toContain("!process.env.CI");
+  });
 });

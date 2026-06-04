@@ -2,7 +2,7 @@ import { defineConfig, devices } from "playwright/test";
 
 const baseURL = "http://127.0.0.1:5173";
 const apiURL = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
-const reuseExistingServer = !process.env.CI;
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "true";
 
 export default defineConfig({
   testDir: "./e2e",
