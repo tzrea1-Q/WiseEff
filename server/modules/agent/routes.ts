@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -98,13 +99,14 @@ export function registerAgentRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     provider?: AgentProvider;
     metrics?: Pick<MetricsRegistry, "recordAgentProviderCall">;
+    tracing?: Pick<TracingBoundary, "withSpan">;
   }
 ) {
   router.post("/api/v1/agent/sessions", async (request) => {
     const body = parseWithSchema(createAgentSessionBodySchema, request.body);
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics });
+    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics, tracing: options.tracing });
     const turn = await orchestrator.startSession({ auth, requestId: request.requestId, context: body.context });
 
     return { status: 201, body: { turn } };
@@ -115,7 +117,7 @@ export function registerAgentRoutes(
     const body = parseWithSchema(sendAgentMessageBodySchema, request.body);
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
-    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics });
+    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics, tracing: options.tracing });
     const turn = await orchestrator.sendMessage({
       auth,
       requestId: request.requestId,
@@ -132,7 +134,7 @@ export function registerAgentRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     await requireToolCallInSession(db, auth, params.sessionId, params.toolCallId);
-    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics });
+    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics, tracing: options.tracing });
     const turn = await orchestrator.runToolCall({
       auth,
       requestId: request.requestId,
@@ -149,7 +151,7 @@ export function registerAgentRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const approval = await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
     await requireApprovalToolCallStatus(db, auth, approval, body.expectedToolCallStatus);
-    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics });
+    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics, tracing: options.tracing });
     const turn = await orchestrator.approveToolCall({
       auth,
       requestId: request.requestId,
@@ -166,7 +168,7 @@ export function registerAgentRoutes(
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
     await requireApprovalInSession(db, auth, params.sessionId, params.approvalId);
-    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics });
+    const orchestrator = createAgentOrchestrator({ db, provider: options.provider, metrics: options.metrics, tracing: options.tracing });
     const turn = await orchestrator.rejectToolCall({
       auth,
       requestId: request.requestId,

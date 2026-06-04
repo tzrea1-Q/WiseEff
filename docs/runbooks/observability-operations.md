@@ -10,6 +10,7 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 - Grafana dashboards are versioned JSON files under `ops/self-hosted/observability/grafana/dashboards/`.
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
 - Business-path counters currently include Agent provider calls and device gateway operations for detect, read, write, and rollback actions.
+- Baseline trace spans currently include HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. They intentionally avoid raw prompts, uploaded content, device values, target refs, and concrete entity IDs.
 - `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files.
 
 ## Metrics Exposure Policy
@@ -23,6 +24,8 @@ Production and pilot deployments must use one of these patterns:
 - Equivalent stronger control: mTLS or a private service mesh is acceptable when documented in the target deployment record.
 
 Do not expose `/metrics` to the public internet. Do not include authorization headers, bearer tokens, API keys, raw uploaded log content, raw parameter values, or raw device write payloads in metric labels.
+
+Trace exporters must follow the same rule. Route templates, provider/model identifiers, gateway action, mode, and status are acceptable. Raw prompts, assistant drafts, tool payloads, node paths, target refs, requested/previous/readback values, stdout/stderr, bearer tokens, and concrete user/session/device/snapshot IDs are not acceptable trace attributes.
 
 ## Files
 
@@ -148,6 +151,8 @@ Attach relevant screenshots to the target-environment evidence record when they 
 The M6.5 baseline intentionally avoids pretending that every high-risk business operation already emits a dedicated counter. These signals require follow-up service instrumentation before they become hard alerts:
 
 - Per-approval and per-tool result counters.
+- Per-tool execution spans.
+- Database, object-store, queue-processing, and per-job spans.
 - Fine-grained device gateway failure categories beyond operation/action/status labels, such as timeout, offline, stderr category, and target identity.
 - Audit write failure counters.
 - Per-job duration histograms and failure-reason metrics.

@@ -13,6 +13,7 @@ import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
 import { createMetricsRegistry } from "./observability/metrics";
+import { defaultTracingBoundary, type TracingBoundary } from "./observability/tracing";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterRoutes } from "./modules/parameters/routes";
@@ -39,10 +40,12 @@ export function createWiseEffServer(
     durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
+    tracing?: Pick<TracingBoundary, "withSpan">;
   } = {}
 ) {
   const router = createRouter();
   const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
+  const tracing = options.tracing ?? defaultTracingBoundary;
   const authResolver = createAuthContextResolver({
     mode: options.auth?.mode ?? "development",
     verifier: options.auth?.verifier,
@@ -89,13 +92,15 @@ export function createWiseEffServer(
     debugGateway: options.debugGateway,
     debugGatewayMode: options.env?.DEBUG_DEVICE_GATEWAY_MODE,
     metrics,
+    tracing,
     getCurrentAuthContext: authResolver
   });
   registerAgentRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver,
     provider: options.agentProvider,
-    metrics
+    metrics,
+    tracing
   });
 
   router.get("/metrics", async () => {
@@ -129,7 +134,7 @@ export function createWiseEffServer(
     };
   });
 
-  return createHttpServer(router, { metrics });
+  return createHttpServer(router, { metrics, tracing });
 }
 
 export function createWiseEffServerFromEnv(

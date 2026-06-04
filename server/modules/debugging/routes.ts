@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -61,6 +62,7 @@ function serviceFrom(options: {
   debugGateway?: DebugDeviceGateway;
   debugGatewayMode?: "simulator" | "hdc" | string;
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = requireDb(options.db);
   const gateway = requireDebugGateway(options.debugGateway);
@@ -71,7 +73,8 @@ function serviceFrom(options: {
       db,
       gateway,
       gatewayMode: options.debugGatewayMode,
-      metrics: options.metrics
+      metrics: options.metrics,
+      tracing: options.tracing
     })
   };
 }
@@ -97,6 +100,7 @@ export function registerDebuggingRoutes(
     debugGateway?: DebugDeviceGateway;
     debugGatewayMode?: "simulator" | "hdc" | string;
     metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
+    tracing?: Pick<TracingBoundary, "withSpan">;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {

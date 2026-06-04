@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -78,6 +79,20 @@ function makeServer(options: { db?: Database; gateway?: DebugDeviceGateway; auth
 function createDeviceMetricsSpy() {
   return {
     recordDeviceGatewayOperation: vi.fn()
+  };
+}
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
   };
 }
 
@@ -215,6 +230,7 @@ describe("debugging routes", () => {
     const db = makeDb();
     const gateway = makeGateway();
     const metrics = createDeviceMetricsSpy();
+    const { tracing } = createTraceRecorder();
     const router = createRouter();
     serviceMocks.listDevices.mockResolvedValue([deviceRecord()]);
     registerDebuggingRoutes(router, {
@@ -222,6 +238,7 @@ describe("debugging routes", () => {
       debugGateway: gateway,
       debugGatewayMode: "hdc",
       metrics,
+      tracing,
       getCurrentAuthContext: () => makeAuth()
     });
 
@@ -232,7 +249,8 @@ describe("debugging routes", () => {
       db,
       gateway,
       gatewayMode: "hdc",
-      metrics
+      metrics,
+      tracing
     });
   });
 

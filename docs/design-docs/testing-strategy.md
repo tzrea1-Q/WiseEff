@@ -224,7 +224,7 @@ npm test -- scripts/check-observability-config.test.ts server/observability/*.te
 npm run observability:check
 ```
 
-`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, Agent provider call counters, device gateway operation counters, structured log redaction, correlation metadata, and tracing export failure isolation. Target Prometheus scrape, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
+`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, Agent provider call counters, device gateway operation counters, structured log redaction, correlation metadata, tracing export failure isolation, HTTP route-template spans, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. Target Prometheus scrape, trace collector export, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
 
 ## 9.6 M6.6 Release, Rollback, And Capacity Gates
 

@@ -34,7 +34,7 @@ Page or immediately escalate:
 - release-window capacity threshold breach,
 - target synthetic acceptance failure after deployment.
 
-M6.5 production alerts must include a `runbook_url` annotation that points to an actionable runbook section. The baseline alert file is `ops/self-hosted/observability/alerts.yml` currently covers API scrape/down, readiness not-ready, elevated 5xx, high latency, queue backlog, dead-letter presence, object-store probe failure, database unavailable, Agent provider readiness failure, and host disk pressure. Agent provider call counters and device gateway operation counters are now emitted by business paths and available for dashboard review.
+M6.5 production alerts must include a `runbook_url` annotation that points to an actionable runbook section. The baseline alert file is `ops/self-hosted/observability/alerts.yml` currently covers API scrape/down, readiness not-ready, elevated 5xx, high latency, queue backlog, dead-letter presence, object-store probe failure, database unavailable, Agent provider readiness failure, and host disk pressure. Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans are now emitted by business paths and available for dashboard or trace review when a target collector is configured.
 
 Per-approval counters, per-tool result counters, audit write failure counters, fine-grained device failure-category counters, and per-job duration/failure-reason histograms require deeper service instrumentation and remain follow-up work before they can become hard alert rules.
 

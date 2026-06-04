@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, Queryable } from "../../shared/database/client";
 import { createWiseEffServer } from "../../app";
 import { requestJson } from "../../test/testClient";
 import type { BackendRoleId } from "../auth/types";
 
 type MemoryRow = Record<string, unknown>;
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
+  };
+}
 
 function isoNow() {
   return "2026-05-28T00:00:00.000Z";
@@ -391,6 +406,50 @@ describe("agent routes", () => {
 
     expect(metricsResponse.status).toBe(200);
     expect(metricsResponse.bodyText).toContain('wiseeff_agent_provider_calls_total{provider="deterministic",status="succeeded"} 1');
+  });
+
+  it("exports HTTP and Agent provider spans after route-driven messages", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const server = createWiseEffServer({ db, tracing });
+    const sessionResponse = await requestJson<{ turn: { session: { id: string } } }>(server, "/api/v1/agent/sessions", {
+      method: "POST",
+      body: JSON.stringify({
+        context: { path: "/overview", pageKey: "overview", projectId: "aurora", roleId: "hardware-user" }
+      })
+    });
+
+    await requestJson(server, `/api/v1/agent/sessions/${sessionResponse.body.turn.session.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ message: "Hello." })
+    });
+
+    expect(spans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "api.request",
+          attributes: expect.objectContaining({
+            service: "wiseeff-api",
+            method: "POST",
+            route: "/api/v1/agent/sessions",
+            status: 201,
+            requestId: "test-request"
+          })
+        }),
+        expect.objectContaining({
+          name: "agent.provider.plan_turn",
+          attributes: expect.objectContaining({
+            service: "wiseeff-api",
+            provider: "deterministic",
+            model: "wiseeff-rules-m4",
+            promptVersion: "m4-agent-v1",
+            status: "succeeded"
+          })
+        })
+      ])
+    );
+    expect(JSON.stringify(spans)).not.toContain("Hello.");
+    expect(JSON.stringify(spans)).not.toContain(sessionResponse.body.turn.session.id);
   });
 
   it("returns not found for unknown sessions", async () => {

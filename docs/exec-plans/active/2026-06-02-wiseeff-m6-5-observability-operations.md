@@ -121,9 +121,9 @@ Modify:
 ### Task 4: OpenTelemetry Tracing
 
 - [x] Add tracing setup that can be disabled in local tests and enabled in self-hosted runtime.
-- [ ] Instrument API routes, database calls, queue processing, object-store probes, Agent provider calls, and device gateway calls where the interfaces already provide clean boundaries.
-  - Current evidence: a disabled/enabled tracing boundary exists and isolates exporter failures.
-  - Pending: route/database/object-store/queue/Agent/device spans are not yet wired into the business runtime.
+- [x] Instrument API routes, database calls, queue processing, object-store probes, Agent provider calls, and device gateway calls where the interfaces already provide clean boundaries.
+  - Current evidence: the tracing boundary can be enabled or disabled and isolates exporter failures; HTTP `api.request` spans use low-cardinality route templates; Agent provider health/planning spans and debugging gateway detect/read/write/rollback spans are wired into the runtime through injectable boundaries.
+  - Pending deep spans: database calls, object-store probes, queue processing, per-tool execution, and per-job spans still need clean boundary instrumentation before they can support target-environment distributed tracing claims.
 - [x] Ensure trace export failures do not break business requests.
 - [x] Run focused tests for disabled/enabled tracer configuration and error isolation.
 
@@ -147,8 +147,8 @@ Modify:
 
 ## Current Evidence Status
 
-- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, Agent provider call counters, and device gateway operation counters.
-- Fresh local verification on 2026-06-04 passed with `npm run docs:check`, `npm test -- --run scripts/check-observability-config.test.ts server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts`, `npm run observability:check`, `npm run test:all`, `npm run build`, and `git diff --check`.
+- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans.
+- Fresh local verification on 2026-06-04 passed with `npm run docs:check`, `npm test -- --run scripts/check-observability-config.test.ts server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts server/app.test.ts`, `npm run observability:check`, `npm run test:all`, `npm run build`, and `git diff --check`.
 - Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
 - Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 

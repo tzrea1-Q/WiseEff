@@ -100,6 +100,17 @@ export function createRouter() {
     put: (path: string, handler: RouteHandler) => add("PUT", path, handler),
     patch: (path: string, handler: RouteHandler) => add("PATCH", path, handler),
     delete: (path: string, handler: RouteHandler) => add("DELETE", path, handler),
+    matchRoutePattern(method: HttpMethod, path: string) {
+      const matchingRoutes = routes
+        .map((route) => ({
+          route,
+          params: matchRoute(route, { method, path, params: {}, query: {}, headers: {}, requestId: "", body: undefined })
+        }))
+        .filter((match): match is { route: RouteEntry; params: Record<string, string> } => match.params !== undefined)
+        .sort((left, right) => right.route.staticCount - left.route.staticCount || compareEqualStaticCountPrecedence(left.route, right.route));
+
+      return matchingRoutes[0]?.route.pattern;
+    },
     async handle(request: RouteRequest): Promise<RouteResponse> {
       const matchingRoutes = routes
         .map((route) => ({ route, params: matchRoute(route, request) }))

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
@@ -70,11 +71,13 @@ export function createAgentOrchestrator(options: {
   provider?: AgentProvider;
   createAuditEvent?: typeof defaultCreateAuditEvent;
   metrics?: Pick<MetricsRegistry, "recordAgentProviderCall">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = options.db;
   const provider = options.provider ?? createDeterministicAgentProvider();
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
   const metrics = options.metrics;
+  const tracing = options.tracing;
   const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
   const toolRegistry = registryFor(db);
 
@@ -84,6 +87,17 @@ export function createAgentOrchestrator(options: {
       status: input.status,
       durationMs: Math.max(Date.now() - input.startedAt, 0)
     });
+  }
+
+  async function withProviderSpan<T>(
+    name: string,
+    attributes: Record<string, string | number | boolean>,
+    fn: (spanAttributes: Record<string, string | number | boolean>) => Promise<T> | T
+  ) {
+    if (!tracing) {
+      return fn(attributes);
+    }
+    return tracing.withSpan(name, attributes, () => fn(attributes));
   }
 
   async function audit(input: {
@@ -308,7 +322,28 @@ export function createAgentOrchestrator(options: {
 
     const providerMetadata = provider.metadata();
     const providerStartedAt = Date.now();
-    const providerHealth = provider.checkHealth ? await provider.checkHealth() : undefined;
+    const providerHealth = provider.checkHealth
+      ? await withProviderSpan(
+          "agent.provider.health",
+          {
+            provider: providerMetadata.provider,
+            model: providerMetadata.model,
+            promptVersion: providerMetadata.promptVersion,
+            status: "checking"
+          },
+          async (spanAttributes) => {
+            try {
+              const health = await provider.checkHealth!();
+              spanAttributes.status = health.ok ? health.status : "health_unavailable";
+              return health;
+            } catch (error) {
+              spanAttributes.status = "failed";
+              spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+              throw error;
+            }
+          }
+        )
+      : undefined;
     if (providerHealth && !providerHealth.ok) {
       recordProviderCall({ provider: providerMetadata.provider, status: "health_unavailable", startedAt: providerStartedAt });
       const fallbackReason = providerHealth.message ?? "Live Agent provider is unavailable.";
@@ -343,7 +378,27 @@ export function createAgentOrchestrator(options: {
 
     let plan;
     try {
-      plan = await provider.planTurn({ context: session.context, message: input.message });
+      plan = await withProviderSpan(
+        "agent.provider.plan_turn",
+        {
+          provider: providerMetadata.provider,
+          model: providerMetadata.model,
+          promptVersion: providerMetadata.promptVersion,
+          status: "planning"
+        },
+        async (spanAttributes) => {
+          try {
+            const nextPlan = await provider.planTurn({ context: session.context, message: input.message });
+            spanAttributes.status = "succeeded";
+            spanAttributes.toolRequestCount = nextPlan.toolRequests.length;
+            return nextPlan;
+          } catch (error) {
+            spanAttributes.status = error instanceof LiveAgentProviderOutageError ? "outage_fallback" : "failed";
+            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+            throw error;
+          }
+        }
+      );
       recordProviderCall({ provider: providerMetadata.provider, status: "succeeded", startedAt: providerStartedAt });
     } catch (error) {
       if (!(error instanceof LiveAgentProviderOutageError)) {

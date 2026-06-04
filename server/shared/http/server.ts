@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import { ApiError, serializeApiError } from "./errors";
 import type { HttpMethod, RouteRequest, RouteResponse } from "./router";
 
@@ -214,7 +215,10 @@ function parseQuery(searchParams: URLSearchParams) {
   return query;
 }
 
-export function createHttpServer(router: { handle(request: RouteRequest): Promise<RouteResponse> }, options: { metrics?: MetricsRegistry } = {}) {
+export function createHttpServer(
+  router: { handle(request: RouteRequest): Promise<RouteResponse>; matchRoutePattern?: (method: HttpMethod, path: string) => string | undefined },
+  options: { metrics?: MetricsRegistry; tracing?: Pick<TracingBoundary, "withSpan"> } = {}
+) {
   return createServer(async (request, response) => {
     const startedAt = Date.now();
     const requestId = request.headers["x-request-id"]?.toString() ?? randomUUID();
@@ -229,15 +233,35 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
 
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
-      const routeResponse = await router.handle({
-        method: request.method as HttpMethod,
-        path: url.pathname,
-        params: {},
-        query: parseQuery(url.searchParams),
-        headers: request.headers,
-        requestId,
-        body: await readBody(request)
-      });
+      const method = request.method as HttpMethod;
+      const route = router.matchRoutePattern?.(method, url.pathname) ?? url.pathname;
+      const spanAttributes: Record<string, string | number | boolean> = {
+        method: request.method ?? "GET",
+        route,
+        requestId
+      };
+      const handleRequest = async () => {
+        try {
+          const routeResponse = await router.handle({
+            method: request.method as HttpMethod,
+            path: url.pathname,
+            params: {},
+            query: parseQuery(url.searchParams),
+            headers: request.headers,
+            requestId,
+            body: await readBody(request)
+          });
+          spanAttributes.status = routeResponse.status;
+          return routeResponse;
+        } catch (error) {
+          spanAttributes.status = getErrorStatus(error);
+          spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+          throw error;
+        }
+      };
+      const routeResponse = options.tracing
+        ? await options.tracing.withSpan("api.request", spanAttributes, handleRequest)
+        : await handleRequest();
 
       response.setHeader("X-Request-Id", requestId);
       if ("sse" in routeResponse) {
@@ -249,7 +273,7 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
       }
       options.metrics?.recordHttpRequest({
         method: request.method ?? "GET",
-        route: url.pathname,
+        route,
         status: routeResponse.status,
         durationMs: Date.now() - startedAt
       });
@@ -263,9 +287,10 @@ export function createHttpServer(router: { handle(request: RouteRequest): Promis
       sendJson(response, status, serializeApiError(error, requestId));
       try {
         const url = new URL(request.url ?? "/", "http://localhost");
+        const method = request.method as HttpMethod;
         options.metrics?.recordHttpRequest({
           method: request.method ?? "GET",
-          route: url.pathname,
+          route: router.matchRoutePattern?.(method, url.pathname) ?? url.pathname,
           status,
           durationMs: Date.now() - startedAt
         });

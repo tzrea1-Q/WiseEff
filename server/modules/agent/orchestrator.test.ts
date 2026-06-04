@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
@@ -384,6 +385,20 @@ function createAgentMetricsSpy() {
   };
 }
 
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
+  };
+}
+
 describe("agent orchestrator", () => {
   it("startSession creates a session, system message, and audit event", async () => {
     const { db } = createMemoryDb();
@@ -550,6 +565,60 @@ describe("agent orchestrator", () => {
       status: "succeeded",
       durationMs: expect.any(Number)
     });
+  });
+
+  it("exports provider health and planning spans for successful Agent turns", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const provider = {
+      metadata: vi.fn(() => ({
+        provider: "live" as const,
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1"
+      })),
+      checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const })),
+      planTurn: vi.fn(async () => createPlan([]))
+    };
+    const orchestrator = createAgentOrchestrator({ db, provider, tracing });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Summarize"
+    });
+
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "agent.provider.health",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          provider: "live",
+          model: "pilot-model",
+          promptVersion: "m5-agent-v1",
+          status: "ready"
+        })
+      }),
+      expect.objectContaining({
+        name: "agent.provider.plan_turn",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          provider: "live",
+          model: "pilot-model",
+          promptVersion: "m5-agent-v1",
+          status: "succeeded",
+          toolRequestCount: 0
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("Summarize");
+    expect(JSON.stringify(spans)).not.toContain("req-message");
+    expect(JSON.stringify(spans)).not.toContain(start.session.id);
   });
 
   it("read-only tool requests record failure audit and rethrow execution failures", async () => {
