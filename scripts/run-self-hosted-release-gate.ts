@@ -222,6 +222,8 @@ export function buildReleaseGateEvidence(args: {
     `- Synthetic acceptance mode: \`${metadata.syntheticAcceptanceMode}\``,
     `- HDC status: \`${metadata.hdc.status}\``,
     `- HDC evidence: \`${hdcEvidence}\``,
+    "- Command gate scope: `local prerelease commands; not target evidence`",
+    "- Target evidence scope: `dependency readiness requires real self-hosted target evidence`",
     "",
     "### Migration Set",
     "",
@@ -445,7 +447,10 @@ export function buildConfiguredCommandResults(packageJson: { scripts?: Record<st
   return requiredReleaseGateCommands.map((name) => ({
     name,
     status: packageJson.scripts?.[name] || name === "git diff --check" ? "pending" : "failed",
-    detail: packageJson.scripts?.[name] || name === "git diff --check" ? "configured_not_run" : "missing package script"
+    detail:
+      packageJson.scripts?.[name] || name === "git diff --check"
+        ? "local_prerelease_command_configured_not_run_in_this_evidence"
+        : "missing package script"
   }));
 }
 

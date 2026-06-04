@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-04T11:04:21.389Z
+- Date: 2026-06-04T12:32:48.813Z
 - Status: `failed`
 - Branch: `codex/m6-target-evidence-closure`
-- Commit: `6117754f89d9123ff254a7be4c846d74dfb88141`
+- Commit: `97b2d2c840af17d7e1def8192a97ee08db6a423f`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -12,6 +12,8 @@
 - Synthetic acceptance mode: `target-non-hdc`
 - HDC status: `skipped_by_scope`
 - HDC evidence: `n/a`
+- Command gate scope: `local prerelease commands; not target evidence`
+- Target evidence scope: `dependency readiness requires real self-hosted target evidence`
 
 ### Migration Set
 
@@ -42,16 +44,16 @@
 
 | Command | Status | Detail |
 | --- | --- | --- |
-| docs:check | pending | configured_not_run |
-| contract:check | pending | configured_not_run |
-| test:all | pending | configured_not_run |
-| build | pending | configured_not_run |
-| acceptance:coverage | pending | configured_not_run |
-| acceptance:operations | pending | configured_not_run |
-| acceptance:evidence | pending | configured_not_run |
-| selfhost:check | pending | configured_not_run |
-| identity:check | pending | configured_not_run |
-| git diff --check | pending | configured_not_run |
+| docs:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| contract:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| test:all | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| build | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| acceptance:coverage | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| acceptance:operations | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| acceptance:evidence | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| selfhost:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| identity:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| git diff --check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
 
 ### Dependency Gates
 

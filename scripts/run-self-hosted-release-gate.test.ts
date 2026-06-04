@@ -174,6 +174,8 @@ describe("self-hosted release gate", () => {
     });
 
     expect(evidence).toContain("## M6.6 Self-Hosted Release Gate Evidence");
+    expect(evidence).toContain("- Command gate scope: `local prerelease commands; not target evidence`");
+    expect(evidence).toContain("- Target evidence scope: `dependency readiness requires real self-hosted target evidence`");
     expect(evidence).toContain("- Version: `m6.6-rc.1`");
     expect(evidence).toContain("- Artifact: `registry.local/wiseeff:abc1234?token=<redacted>`");
     expect(evidence).toContain("- Identity evidence: `docs/generated/m6-identity-evidence.md`");
@@ -357,11 +359,11 @@ describe("self-hosted release gate", () => {
 
     expect(commands.find((command) => command.name === "docs:check")).toMatchObject({
       status: "pending",
-      detail: "configured_not_run"
+      detail: "local_prerelease_command_configured_not_run_in_this_evidence"
     });
     expect(commands.find((command) => command.name === "identity:check")).toMatchObject({
       status: "pending",
-      detail: "configured_not_run"
+      detail: "local_prerelease_command_configured_not_run_in_this_evidence"
     });
     expect(commands.find((command) => command.name === "build")).toMatchObject({
       status: "failed",
