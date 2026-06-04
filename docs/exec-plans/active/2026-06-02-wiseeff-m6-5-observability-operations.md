@@ -140,15 +140,15 @@ Modify:
 - [x] Update monitoring and incident runbooks.
 - [x] Add a smoke step that verifies Prometheus can scrape WiseEff metrics.
 - [x] Run `npm run observability:check`.
-- [ ] Run `npm run docs:check`.
-- [ ] Run `npm run test:all`.
-- [ ] Run `npm run build`.
-- [ ] Run `git diff --check`.
+- [x] Run `npm run docs:check`.
+- [x] Run `npm run test:all`.
+- [x] Run `npm run build`.
+- [x] Run `git diff --check`.
 
 ## Current Evidence Status
 
 - Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, Agent provider call counters, and device gateway operation counters.
-- Fresh local verification on 2026-06-03 passed with `npm test -- --run scripts/check-observability-config.test.ts`, `npm run test:server -- server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts`, `npm test -- --run server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts`, and `npm run observability:check`.
+- Fresh local verification on 2026-06-04 passed with `npm run docs:check`, `npm test -- --run scripts/check-observability-config.test.ts server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts`, `npm run observability:check`, `npm run test:all`, `npm run build`, and `git diff --check`.
 - Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
 - Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 
