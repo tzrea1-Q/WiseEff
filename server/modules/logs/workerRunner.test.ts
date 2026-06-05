@@ -93,6 +93,9 @@ describe("log worker runner", () => {
     vi.doMock("../../shared/database/client", () => ({
       createPostgresDatabase
     }));
+    vi.doMock("../../observability/tracing", () => ({
+      defaultTracingBoundary: { withSpan: vi.fn() }
+    }));
 
     const { createLogWorkerRuntimeFromEnv } = await import("./workerRunner");
 
@@ -121,6 +124,10 @@ describe("log worker runner", () => {
         OBJECT_STORAGE_ACCESS_KEY_ID: "key",
         OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
       })
+    );
+    expect(createPostgresDatabase).toHaveBeenCalledWith(
+      "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      expect.objectContaining({ tracing: expect.any(Object) })
     );
   });
 

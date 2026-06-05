@@ -7,11 +7,12 @@ import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { createMetricsRegistry } from "./observability/metrics";
+import { defaultTracingBoundary } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
 import { createPostgresDatabase } from "./shared/database/client";
 
 const env = loadServerEnv(process.env);
-const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL) : undefined;
+const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
 const objectStore = db ? createObjectStoreFromEnv(env) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const agentProvider = createAgentProviderFromEnv(env);

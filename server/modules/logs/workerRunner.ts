@@ -1,5 +1,6 @@
 import { loadServerEnv } from "../../config/env";
 import type { MetricsRegistry } from "../../observability/metrics";
+import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
@@ -91,7 +92,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   validateLogWorkerConfig(env);
 
   return createLogWorkerRuntime({
-    db: createPostgresDatabase(env.DATABASE_URL!),
+    db: createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary }),
     objectStore: createObjectStoreFromEnv(env),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
     env: {
