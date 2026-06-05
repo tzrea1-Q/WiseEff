@@ -437,11 +437,14 @@ export function loadM6TargetEvidencePlanEnv({
   const envFile = parseEnvFileArg(args, processEnv);
   const env = pickTargetPlanEnv(processEnv);
 
-  if (envFile && exists(envFile)) {
+  if (envFile && exists(envFile.path)) {
     return {
       ...env,
-      ...parseTargetPlanEnvFile(readFile(envFile))
+      ...parseTargetPlanEnvFile(readFile(envFile.path))
     };
+  }
+  if (envFile && envFile.explicit) {
+    return {};
   }
 
   return env;
@@ -604,33 +607,39 @@ function formatItems(items: string[]) {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ["- none"];
 }
 
-function parseEnvFileArg(args: readonly string[], env: RuntimeEnv) {
+function parseEnvFileArg(args: readonly string[], env: RuntimeEnv): { path: string; explicit: boolean } | null {
   const targetEqualsArg = args.find((arg) => arg.startsWith("--target-env-file="));
   if (targetEqualsArg) {
-    return targetEqualsArg.slice("--target-env-file=".length);
+    return { path: targetEqualsArg.slice("--target-env-file=".length), explicit: true };
   }
 
   const targetIndex = args.indexOf("--target-env-file");
   if (targetIndex !== -1) {
-    return args[targetIndex + 1] ?? "";
+    return { path: args[targetIndex + 1] ?? "", explicit: true };
   }
 
   const equalsArg = args.find((arg) => arg.startsWith("--env-file="));
   if (equalsArg) {
-    return equalsArg.slice("--env-file=".length);
+    return { path: equalsArg.slice("--env-file=".length), explicit: true };
   }
 
   const index = args.indexOf("--env-file");
   if (index !== -1) {
-    return args[index + 1] ?? "";
+    return { path: args[index + 1] ?? "", explicit: true };
   }
 
   const positionalEnvFile = args.find((arg) => !arg.startsWith("-"));
   if (positionalEnvFile) {
-    return positionalEnvFile;
+    return { path: positionalEnvFile, explicit: true };
   }
 
-  return env.M6_TARGET_EVIDENCE_ENV_FILE?.trim() || ".env";
+  const npmConfigTargetEnvFile = env.npm_config_target_env_file?.trim();
+  if (npmConfigTargetEnvFile) {
+    return { path: npmConfigTargetEnvFile, explicit: true };
+  }
+
+  const configuredEnvFile = env.M6_TARGET_EVIDENCE_ENV_FILE?.trim();
+  return { path: configuredEnvFile || ".env", explicit: Boolean(configuredEnvFile) };
 }
 
 function pickTargetPlanEnv(env: RuntimeEnv): RuntimeEnv {

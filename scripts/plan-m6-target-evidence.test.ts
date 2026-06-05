@@ -526,4 +526,35 @@ describe("M6 target evidence execution plan", () => {
 
     expect(env.WISEEFF_API_BASE_URL).toBe("https://target.example.test");
   });
+
+  it("accepts npm config target env file values without requiring argument passthrough", () => {
+    const env = loadM6TargetEvidencePlanEnv({
+      args: [],
+      processEnv: {
+        npm_config_target_env_file: "target.env",
+        WISEEFF_API_BASE_URL: "https://process.example.test"
+      },
+      readFile: (filePath) => {
+        expect(filePath).toBe("target.env");
+        return "WISEEFF_API_BASE_URL=https://target.example.test";
+      },
+      exists: (filePath) => filePath === "target.env"
+    });
+
+    expect(env.WISEEFF_API_BASE_URL).toBe("https://target.example.test");
+  });
+
+  it("does not fall back to process target inputs when an explicit target env file is missing", () => {
+    const env = loadM6TargetEvidencePlanEnv({
+      args: ["--target-env-file=missing.env"],
+      processEnv: {
+        WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
+        WISEEFF_SMOKE_AUTHORIZATION: "Bearer local"
+      },
+      exists: () => false
+    });
+
+    expect(env.WISEEFF_API_BASE_URL).toBeUndefined();
+    expect(env.WISEEFF_SMOKE_AUTHORIZATION).toBeUndefined();
+  });
 });
