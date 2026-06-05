@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   requiredEnvExampleKeys,
   requiredRepositoryDocs,
+  validateM6ReleaseRunbookCommands,
   validateEnvExample,
   validateMarkdownLinks,
   validatePlanDocument,
@@ -133,5 +134,22 @@ describe("validateMarkdownLinks", () => {
     await write(root, "docs/README.md", "# Docs");
 
     await expect(validateMarkdownLinks(root)).resolves.toEqual([]);
+  });
+});
+
+describe("validateM6ReleaseRunbookCommands", () => {
+  it("requires M6 release runbook commands to include current evidence parameters", () => {
+    const content = [
+      "npm run rollback:rehearsal -- --environment <label> --smoke-evidence <path>",
+      "npm run capacity:gate -- --target-url https://<host>",
+      "npm run selfhost:release-gate -- --target-environment <label>"
+    ].join("\n");
+
+    expect(validateM6ReleaseRunbookCommands("docs/runbooks/release-rollback.md", content)).toEqual([
+      "docs/runbooks/release-rollback.md rollback rehearsal command is missing --notes.",
+      "docs/runbooks/release-rollback.md capacity gate command is missing --k6-summary.",
+      "docs/runbooks/release-rollback.md capacity gate command is missing --metrics-snapshot.",
+      "docs/runbooks/release-rollback.md self-hosted release gate command is missing --backup-evidence."
+    ]);
   });
 });
