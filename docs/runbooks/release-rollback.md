@@ -6,7 +6,7 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 
 - A release candidate has a version label, commit SHA, artifact reference, target environment label, and environment-file fingerprint.
 - `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, `npm run selfhost:check`, `npm run identity:check`, and `git diff --check` pass.
-- `npm run m6:target-plan` has been run for the selected target. A `ready` manifest means the operator inputs are present; it does not replace any target evidence file.
+- `npm run m6:target-plan -- --target-env-file <target-env-file>` has been run for the selected target. A `ready` manifest means the operator inputs are present; it does not replace any target evidence file.
 - Production targets use `AUTH_PROVIDER=oidc`; local HMAC smoke tokens are not acceptable identity readiness evidence.
 - Target OIDC evidence is archived at `docs/generated/m6-identity-evidence.md` or an approved external record and proves discovery/JWKS, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser token acquisition/refresh/logout checks.
 - A backup is taken before deployment and can be restored into a clean target.
@@ -31,7 +31,7 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 Run:
 
 ```bash
-npm run m6:target-plan
+npm run m6:target-plan -- --target-env-file <target-env-file>
 npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://<host>
 npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
