@@ -700,6 +700,62 @@ describe("agent orchestrator", () => {
     expect(JSON.stringify(metrics.recordAgentToolResult.mock.calls)).not.toContain("Audit warehouse unavailable");
   });
 
+  it("exports low-cardinality direct tool execution spans without payload or identifiers", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.summarizeReviewQueue", requiresApproval: false })],
+      async () => ({ summary: "1 pending review item.", data: { pending: 1 }, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({
+      db,
+      toolRegistry: registry,
+      tracing,
+      provider: createProvider(
+        createPlan([
+          {
+            name: "parameter.summarizeReviewQueue",
+            label: "Summarize review queue",
+            payload: { projectId: "aurora", secretFilter: "do-not-export" }
+          }
+        ])
+      )
+    });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start-secret",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-turn-secret",
+      sessionId: start.session.id,
+      message: "Summarize review queue"
+    });
+
+    expect(spans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "agent.tool.execute",
+          attributes: expect.objectContaining({
+            service: "wiseeff-api",
+            tool: "parameter.summarizeReviewQueue",
+            kind: "read",
+            requiresApproval: false,
+            status: "succeeded"
+          })
+        })
+      ])
+    );
+    expect(JSON.stringify(spans)).not.toContain(start.session.id);
+    expect(JSON.stringify(spans)).not.toContain("agent-tool");
+    expect(JSON.stringify(spans)).not.toContain("aurora");
+    expect(JSON.stringify(spans)).not.toContain("do-not-export");
+    expect(JSON.stringify(spans)).not.toContain("pending review");
+    expect(JSON.stringify(spans)).not.toContain("req-turn-secret");
+  });
+
   it("sendMessage records degraded output and fallback reason when the live provider is unavailable", async () => {
     const { db, tables } = createMemoryDb();
     const provider = createOutageProvider("model health check failed");
@@ -1018,6 +1074,65 @@ describe("agent orchestrator", () => {
       requiresApproval: true,
       status: "succeeded"
     });
+  });
+
+  it("exports low-cardinality approval-time tool execution spans without approval payload or result details", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({
+        summary: "Created one parameter draft for human review.",
+        data: { draftId: "draft-secret", projectId: "aurora" },
+        citations: [{ type: "parameter", id: "draft-secret", label: "Parameter draft draft-secret" }]
+      })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, tracing });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start-secret",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-tool-secret",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "secret reason" }
+      }
+    });
+
+    await orchestrator.approveToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-approve-secret",
+      approvalId: toolCall.approvalId ?? "",
+      reason: "Looks safe"
+    });
+
+    expect(spans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "agent.tool.execute",
+          attributes: expect.objectContaining({
+            service: "wiseeff-api",
+            tool: "parameter.submitChangeDraft",
+            kind: "preparation",
+            requiresApproval: true,
+            status: "succeeded"
+          })
+        })
+      ])
+    );
+    expect(JSON.stringify(spans)).not.toContain(start.session.id);
+    expect(JSON.stringify(spans)).not.toContain(toolCall.id);
+    expect(JSON.stringify(spans)).not.toContain(toolCall.approvalId ?? "");
+    expect(JSON.stringify(spans)).not.toContain("aurora");
+    expect(JSON.stringify(spans)).not.toContain("secret reason");
+    expect(JSON.stringify(spans)).not.toContain("draft-secret");
+    expect(JSON.stringify(spans)).not.toContain("Created one parameter draft");
+    expect(JSON.stringify(spans)).not.toContain("req-approve-secret");
   });
 
   it("approveToolCall does not execute when the pending approval claim is stale", async () => {

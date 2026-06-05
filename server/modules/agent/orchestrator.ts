@@ -112,6 +112,31 @@ export function createAgentOrchestrator(options: {
     metrics?.recordAgentToolResult({ status, ...toolMetricLabels(toolCall) });
   }
 
+  async function withToolExecutionSpan<T>(
+    toolCall: Pick<AgentToolCallDto, "name">,
+    fn: () => Promise<T>
+  ) {
+    const labels = toolMetricLabels(toolCall);
+    const attributes: Record<string, string | number | boolean> = {
+      tool: labels.tool,
+      kind: labels.kind,
+      requiresApproval: labels.requiresApproval
+    };
+    const execute = async () => {
+      try {
+        const result = await fn();
+        attributes.status = "succeeded";
+        return result;
+      } catch (error) {
+        attributes.status = "failed";
+        attributes.errorType = error instanceof Error ? error.name : "unknown";
+        throw error;
+      }
+    };
+
+    return tracing ? tracing.withSpan("agent.tool.execute", attributes, execute) : execute();
+  }
+
   async function withProviderSpan<T>(
     name: string,
     attributes: Record<string, string | number | boolean>,
@@ -259,7 +284,7 @@ export function createAgentOrchestrator(options: {
       throw staleTransition("Agent tool call could not be started.", { toolCallId: toolCall.id });
     }
     try {
-      const result = await toolRegistry.run(toolCall.name, executionContext, toolCall.payload);
+      const result = await withToolExecutionSpan(toolCall, () => toolRegistry.run(toolCall.name, executionContext, toolCall.payload));
       const succeeded = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
         status: "succeeded",
         result
@@ -554,7 +579,7 @@ export function createAgentOrchestrator(options: {
       const txToolRegistry = registryFor(tx);
       let result: AgentToolResult;
       try {
-        result = await txToolRegistry.run(toolCall.name, executionContext, toolCall.payload);
+        result = await withToolExecutionSpan(toolCall, () => txToolRegistry.run(toolCall.name, executionContext, toolCall.payload));
       } catch (error) {
         const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
           status: "failed",
