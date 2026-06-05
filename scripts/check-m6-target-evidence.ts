@@ -13,6 +13,7 @@ export type M6TargetEvidenceInput = {
     identity?: string;
     localIdentity?: string;
     backupRestore?: string;
+    backupRestoreJson?: string;
     queue?: string;
     observability?: string;
     rollback?: string;
@@ -118,6 +119,7 @@ const phaseDefinitions: PhaseDefinition[] = [
       const hasDatabaseTableCounts = markdownField(evidence.backupRestore, "Database table counts validated") === "true";
       const hasNoMissingLogObjects = markdownField(evidence.backupRestore, "Missing log objects") === "0";
       const hasRestoreTargets = hasPattern(evidence.backupRestore, /`postgres:\/\/[^`]+`/i) && hasPattern(evidence.backupRestore, /`s3:\/\/[^`]+`/i);
+      const hasMachineReadableTargetDrill = backupRestoreJsonReady(evidence.backupRestoreJson);
 
       if (
         status === "missing" ||
@@ -127,7 +129,8 @@ const phaseDefinitions: PhaseDefinition[] = [
         !hasObjectChecksum ||
         !hasDatabaseTableCounts ||
         !hasNoMissingLogObjects ||
-        !hasRestoreTargets
+        !hasRestoreTargets ||
+        !hasMachineReadableTargetDrill
       ) {
         pending.push("Target backup/restore evidence is pending.");
         return { evidenceStatus: "pending", blockers, pending, notes: [] };
@@ -181,7 +184,9 @@ const phaseDefinitions: PhaseDefinition[] = [
       const hasTargetEnvironment = isTargetEnvironment(targetEnvironment);
       const hasConfigPassed = configStatus.toLowerCase() === "passed";
       const hasProofs =
-        isEvidenceReference(prometheusProof) && isEvidenceReference(alertProof) && isEvidenceReference(grafanaProof);
+        isTargetProofReference(prometheusProof) &&
+        isTargetProofReference(alertProof) &&
+        isTargetProofReference(grafanaProof);
 
       if (
         status === "missing" ||
@@ -321,6 +326,7 @@ export function loadM6TargetEvidenceInput(root = process.cwd()): M6TargetEvidenc
       identity: readOptional(join(root, "docs", "generated", "m6-identity-evidence.md")),
       localIdentity: readOptional(join(root, "docs", "generated", "m6-local-oidc-identity-evidence.md")),
       backupRestore: readOptional(join(root, "docs", "generated", "m6-backup-restore-evidence.md")),
+      backupRestoreJson: readOptional(join(root, "docs", "generated", "m6-backup-restore-evidence.json")),
       queue: readOptional(join(root, "docs", "generated", "m6-queue-readiness-evidence.md")),
       observability: readOptional(join(root, "docs", "generated", "m6-observability-evidence.md")),
       rollback: readOptional(join(root, "docs", "generated", "m6-rollback-rehearsal-evidence.md")),
@@ -486,6 +492,43 @@ function operationEvidenceReady(value: string | undefined): boolean {
   );
 }
 
+function backupRestoreJsonReady(value: string | undefined): boolean {
+  const root = asRecord(parseJsonDocument(value));
+  if (!root) {
+    return false;
+  }
+
+  const environment = asRecord(root.environment);
+  const objectStore = asRecord(root.objectStore);
+  const database = asRecord(root.database);
+  const queue = asRecord(root.queue);
+  const persistence = asRecord(queue?.persistence);
+  const restore = asRecord(root.restore);
+  const isolatedTargets = Array.isArray(restore?.isolatedTargets) ? restore.isolatedTargets.map(String) : [];
+  const commands = asRecordArray(root.commands);
+  const requiredCommands = ["restore:drill", "backup:drill", "backup:check"];
+  const commandsPassed = requiredCommands.every((name) =>
+    commands.some((command) => command.name === name && Number(command.exitCode) === 0)
+  );
+
+  return (
+    isTargetEnvironment(String(environment?.label ?? "")) &&
+    String(objectStore?.restoreTarget ?? "").startsWith("s3://") &&
+    objectStore?.checksumValidated === true &&
+    String(database?.restoreTarget ?? "").startsWith("postgres://") &&
+    database?.tableCountsValidated === true &&
+    Number(restore?.missingLogObjects) === 0 &&
+    isolatedTargets.some((target) => target.startsWith("postgres://")) &&
+    isolatedTargets.some((target) => target.startsWith("s3://")) &&
+    queue?.mode === "durable" &&
+    queue?.status === "captured" &&
+    typeof persistence?.snapshotTarget === "string" &&
+    persistence.snapshotTarget.trim().length > 0 &&
+    persistence?.checkpointValidated === true &&
+    commandsPassed
+  );
+}
+
 function rollbackEvidenceReady(markdown: string | undefined): boolean {
   const requiredFields = [
     "Environment",
@@ -636,6 +679,23 @@ function isTargetUrl(value: string): boolean {
 function isEvidenceReference(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 && normalized !== "pending" && normalized !== "n/a" && normalized !== "not-configured";
+}
+
+function isTargetProofReference(value: string): boolean {
+  return isEvidenceReference(value) && !isLocalUrl(value);
+}
+
+function isLocalUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    return isLocalHostname(url.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
 }
 
 function isPlaceholderEnvironment(value: string): boolean {

@@ -22,6 +22,9 @@ describe("M6 target evidence execution plan", () => {
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
         BACKUP_DATABASE_TARGET: "file:///var/backups/wiseeff/postgres/wiseeff.dump",
         BACKUP_OBJECT_STORAGE_TARGET: "file:///var/backups/wiseeff/object-store/",
+        REDIS_URL: "redis://redis.internal:6379",
+        BACKUP_REDIS_SNAPSHOT_TARGET: "file:///var/backups/wiseeff/redis.rdb",
+        BACKUP_REDIS_CHECKPOINT_VALIDATED: "true",
         M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.token",
         M6_IDENTITY_BROWSER_RUNTIME: "passed",
         M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
@@ -78,6 +81,13 @@ describe("M6 target evidence execution plan", () => {
     expect(plan.steps.map((step) => step.phase)).toEqual(["M6.2", "M6.3", "M6.4", "M6.5", "M6.6"]);
     expect(plan.steps[0].commands).toContain("npm run identity:check");
     expect(plan.steps[1].commands).toEqual(["npm run restore:drill", "npm run backup:drill", "npm run backup:check"]);
+    expect(plan.steps[1].requiredInputs).toEqual(
+      expect.arrayContaining([
+        "REDIS_URL",
+        "BACKUP_REDIS_SNAPSHOT_TARGET",
+        "BACKUP_REDIS_CHECKPOINT_VALIDATED=true"
+      ])
+    );
     expect(plan.steps[2].commands).toContain("npm run queue:check -- --base-url https://wiseeff.example.test");
     expect(plan.steps[3].commands).toEqual([
       "npm run observability:check",
@@ -132,6 +142,9 @@ describe("M6 target evidence execution plan", () => {
         "M6.2 requires M6_IDENTITY_BROWSER_RUNTIME=passed.",
         "M6.3 missing BACKUP_DATABASE_TARGET.",
         "M6.3 missing BACKUP_OBJECT_STORAGE_TARGET.",
+        "M6.3 missing REDIS_URL.",
+        "M6.3 missing BACKUP_REDIS_SNAPSHOT_TARGET.",
+        "M6.3 requires BACKUP_REDIS_CHECKPOINT_VALIDATED=true.",
         "M6.4 missing M6_SELFHOSTED_SMOKE_AUTHORIZATION or WISEEFF_SMOKE_AUTHORIZATION.",
         "M6.5 requires M6_OBSERVABILITY_TARGET_ENVIRONMENT.",
         "M6.5 requires M6_OBSERVABILITY_CONFIG_STATUS=passed.",
@@ -161,6 +174,9 @@ describe("M6 target evidence execution plan", () => {
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
         BACKUP_DATABASE_TARGET: "file:///var/backups/wiseeff/postgres/wiseeff.dump",
         BACKUP_OBJECT_STORAGE_TARGET: "file:///var/backups/wiseeff/object-store/",
+        REDIS_URL: "redis://redis.internal:6379",
+        BACKUP_REDIS_SNAPSHOT_TARGET: "file:///var/backups/wiseeff/redis.rdb",
+        BACKUP_REDIS_CHECKPOINT_VALIDATED: "true",
         M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.token",
         M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
         M6_OBSERVABILITY_CONFIG_STATUS: "passed",
@@ -301,6 +317,9 @@ describe("M6 target evidence execution plan", () => {
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
         BACKUP_DATABASE_TARGET: "postgres://backup.example.test/wiseeff?aws_access_key_id=aws-key-id",
         BACKUP_OBJECT_STORAGE_TARGET: "s3://wiseeff-backup/m6?access_key=minio-key&private_key=minio-private",
+        REDIS_URL: "redis://redis.internal:6379?password=redis-secret",
+        BACKUP_REDIS_SNAPSHOT_TARGET: "file:///var/backups/wiseeff/redis.rdb?token=redis-snapshot-secret",
+        BACKUP_REDIS_CHECKPOINT_VALIDATED: "true",
         M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.secret",
         M6_IDENTITY_BROWSER_RUNTIME: "passed",
         M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
@@ -369,6 +388,8 @@ describe("M6 target evidence execution plan", () => {
     expect(markdown).toContain("private_key=<redacted>");
     expect(markdown).toContain("aws_access_key_id=<redacted>");
     expect(markdown).toContain("accessKeyId=<redacted>");
+    expect(markdown).toContain('registry.local/wiseeff:candidate?token=<redacted>"');
+    expect(markdown).toContain('https://evidence.example.test/rollback?token=<redacted>"');
     expect(markdown).not.toContain("abc.def.ghi");
     expect(markdown).not.toContain("plain");
     expect(markdown).not.toContain("db-secret");
@@ -379,6 +400,8 @@ describe("M6 target evidence execution plan", () => {
     expect(markdown).not.toContain("minio-private");
     expect(markdown).not.toContain("aws-key-id");
     expect(markdown).not.toContain("camel-key-id");
+    expect(markdown).not.toContain("redis-secret");
+    expect(markdown).not.toContain("redis-snapshot-secret");
     expect(markdown).not.toContain("smoke.secret");
     expect(markdown).not.toContain("prom-secret");
     expect(markdown).not.toContain("alert-secret");
@@ -430,5 +453,21 @@ describe("M6 target evidence execution plan", () => {
 
     expect(env.WISEEFF_API_BASE_URL).toBe("https://target.example.test");
     expect(env.SHOULD_NOT_COPY).toBeUndefined();
+  });
+
+  it("treats a positional env filename as the target evidence env file", () => {
+    const env = loadM6TargetEvidencePlanEnv({
+      args: ["target.env"],
+      processEnv: {
+        WISEEFF_API_BASE_URL: "https://process.example.test"
+      },
+      readFile: (filePath) => {
+        expect(filePath).toBe("target.env");
+        return "WISEEFF_API_BASE_URL=https://target.example.test";
+      },
+      exists: (filePath) => filePath === "target.env"
+    });
+
+    expect(env.WISEEFF_API_BASE_URL).toBe("https://target.example.test");
   });
 });

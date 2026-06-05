@@ -169,6 +169,8 @@ On 2026-06-05, `npm run capacity:gate` was tightened so capacity evidence must n
 
 On 2026-06-05, `npm run rollback:rehearsal` was tightened so rollback evidence must include a rollback notes evidence path. This makes stop-write, queue drain, artifact rollback, restore scope, and post-rollback smoke decisions reviewable instead of relying only on step statuses.
 
+On 2026-06-05, `npm run m6:target-evidence` was also tightened for the M6.3 and M6.5 dependencies: backup/restore readiness now requires the machine-readable `docs/generated/m6-backup-restore-evidence.json` in addition to the Markdown summary, and observability readiness rejects proof URLs pointing at local hosts. The backup/restore JSON must prove target scope, isolated restore targets, successful restore/backup/check command records, zero missing log objects, and durable queue persistence metadata.
+
 ## External Inputs Needed
 
 - Release environment label and host.

@@ -103,6 +103,28 @@ describe("M6.5 target observability evidence writer", () => {
     );
   });
 
+  it("does not accept local proof URLs as target observability evidence references", () => {
+    const result = evaluateObservabilityTargetEvidence({
+      configStatus: "passed",
+      prometheusTargetScrape: "passed",
+      alertmanagerRouting: "passed",
+      grafanaDashboardImport: "passed",
+      targetEnvironment: "self-hosted-staging",
+      prometheusQuery: "http://127.0.0.1:9090/api/v1/query?query=up",
+      alertRouteEvidence: "http://localhost:9093/#/alerts",
+      grafanaEvidence: "http://[::1]:3000/d/wiseeff"
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toEqual(
+      expect.arrayContaining([
+        "Prometheus query or scrape evidence must not use a local URL.",
+        "Alertmanager routing evidence must not use a local URL.",
+        "Grafana import evidence must not use a local URL."
+      ])
+    );
+  });
+
   it("renders m6 target-gate-compatible redacted markdown", () => {
     const input = {
       configStatus: "passed" as const,

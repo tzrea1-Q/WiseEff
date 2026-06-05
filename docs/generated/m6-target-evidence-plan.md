@@ -1,15 +1,15 @@
 ## M6 Target Evidence Execution Plan
 
-- Date: 2026-06-04T12:20:16.883Z
+- Date: 2026-06-05T01:26:32.803Z
 - Status: `blocked`
-- Target base URL: `http://127.0.0.1:8787`
+- Target base URL: `not-configured`
 
 ### Configured Target Inputs
 
 | Key | Value |
 | --- | --- |
-| WISEEFF_API_BASE_URL | `http://127.0.0.1:8787` |
-| VITE_WISEEFF_API_BASE_URL | `http://127.0.0.1:8787` |
+| WISEEFF_API_BASE_URL | `not-configured` |
+| VITE_WISEEFF_API_BASE_URL | `not-configured` |
 | AUTH_OIDC_ISSUER | `not-configured` |
 | AUTH_OIDC_AUDIENCE | `not-configured` |
 | M6_IDENTITY_AUTHORIZATION | `not-configured` |
@@ -22,8 +22,11 @@
 | RESTORE_OBJECT_STORAGE_PREFIX | `not-configured` |
 | BACKUP_DATABASE_TARGET | `not-configured` |
 | BACKUP_OBJECT_STORAGE_TARGET | `not-configured` |
+| REDIS_URL | `not-configured` |
+| BACKUP_REDIS_SNAPSHOT_TARGET | `not-configured` |
+| BACKUP_REDIS_CHECKPOINT_VALIDATED | `not-configured` |
 | M6_SELFHOSTED_SMOKE_AUTHORIZATION | `not-configured` |
-| WISEEFF_SMOKE_AUTHORIZATION | `Bearer <redacted>` |
+| WISEEFF_SMOKE_AUTHORIZATION | `not-configured` |
 | M6_OBSERVABILITY_TARGET_ENVIRONMENT | `not-configured` |
 | M6_OBSERVABILITY_CONFIG_STATUS | `not-configured` |
 | M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE | `not-configured` |
@@ -86,7 +89,11 @@
 - M6.3 missing RESTORE_OBJECT_STORAGE_PREFIX.
 - M6.3 missing BACKUP_DATABASE_TARGET.
 - M6.3 missing BACKUP_OBJECT_STORAGE_TARGET.
+- M6.3 missing REDIS_URL.
+- M6.3 missing BACKUP_REDIS_SNAPSHOT_TARGET.
+- M6.3 requires BACKUP_REDIS_CHECKPOINT_VALIDATED=true.
 - M6.4 requires a non-local WISEEFF_API_BASE_URL or --base-url target.
+- M6.4 missing M6_SELFHOSTED_SMOKE_AUTHORIZATION or WISEEFF_SMOKE_AUTHORIZATION.
 - M6.5 requires M6_OBSERVABILITY_TARGET_ENVIRONMENT.
 - M6.5 requires M6_OBSERVABILITY_CONFIG_STATUS=passed.
 - M6.5 requires M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE=passed.
@@ -181,6 +188,9 @@ Required inputs:
 - RESTORE_OBJECT_STORAGE_PREFIX
 - BACKUP_DATABASE_TARGET
 - BACKUP_OBJECT_STORAGE_TARGET
+- REDIS_URL
+- BACKUP_REDIS_SNAPSHOT_TARGET
+- BACKUP_REDIS_CHECKPOINT_VALIDATED=true
 
 Commands:
 
@@ -197,6 +207,7 @@ Success criteria:
 
 - Restore targets are isolated from live database and object-store locations.
 - PostgreSQL restore validation and object-store checksum validation pass.
+- Durable queue Redis persistence snapshot and checkpoint metadata are captured.
 - Evidence is redacted and records the target environment label.
 
 Notes:

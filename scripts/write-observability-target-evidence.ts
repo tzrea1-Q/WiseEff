@@ -56,6 +56,15 @@ export function evaluateObservabilityTargetEvidence(
   if (input.grafanaDashboardImport === "passed" && !input.grafanaEvidence.trim()) {
     blockers.push("Grafana import evidence reference is required when dashboard import is passed.");
   }
+  if (isLocalUrl(input.prometheusQuery)) {
+    blockers.push("Prometheus query or scrape evidence must not use a local URL.");
+  }
+  if (isLocalUrl(input.alertRouteEvidence)) {
+    blockers.push("Alertmanager routing evidence must not use a local URL.");
+  }
+  if (isLocalUrl(input.grafanaEvidence)) {
+    blockers.push("Grafana import evidence must not use a local URL.");
+  }
 
   return {
     status: blockers.length === 0 && pending.length === 0 ? "passed" : "failed",
@@ -220,6 +229,26 @@ function isLocalEnvironment(value: string): boolean {
     normalized.includes("localhost") ||
     normalized.includes("127.0.0.1")
   );
+}
+
+function isLocalUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    if (!["http:", "https:"].includes(url.protocol)) {
+      return false;
+    }
+
+    const hostname = url.hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "0.0.0.0" ||
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      hostname.startsWith("127.")
+    );
+  } catch {
+    return false;
+  }
 }
 
 function sanitize(value: string) {

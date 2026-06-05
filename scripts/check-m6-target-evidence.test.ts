@@ -62,6 +62,39 @@ Status: \`passed\`
 - \`postgres://wiseeff_restore@localhost:5432/wiseeff_restore\`
 - \`s3://wiseeff-restore/m6-drill/\`
 `,
+  backupRestoreJson: JSON.stringify({
+    environment: {
+      label: "target-non-customer",
+      branch: "codex/m6-target-evidence-closure",
+      commit: "abcdef1234567890"
+    },
+    objectStore: {
+      endpoint: "https://storage.example.test",
+      restoreTarget: "s3://wiseeff-restore/m6-drill/",
+      checksumValidated: true
+    },
+    database: {
+      restoreTarget: "postgres://wiseeff_restore@localhost:5432/wiseeff_restore",
+      tableCountsValidated: true
+    },
+    queue: {
+      mode: "durable",
+      status: "captured",
+      persistence: {
+        snapshotTarget: "file:///backups/wiseeff/redis.rdb",
+        checkpointValidated: true
+      }
+    },
+    restore: {
+      isolatedTargets: ["postgres://wiseeff_restore@localhost:5432/wiseeff_restore", "s3://wiseeff-restore/m6-drill/"],
+      missingLogObjects: 0
+    },
+    commands: [
+      { name: "restore:drill", exitCode: 0 },
+      { name: "backup:drill", exitCode: 0 },
+      { name: "backup:check", exitCode: 0 }
+    ]
+  }),
   queue: `## M6.4 Durable Queue Readiness Evidence
 
 - Status: \`passed\`
@@ -411,6 +444,72 @@ Status: \`passed\`
     expect(backup?.pending).toContain("Target backup/restore evidence is pending.");
   });
 
+  it("does not accept backup restore markdown without machine-readable target drill JSON evidence", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        backupRestoreJson: undefined
+      } as M6TargetEvidenceInput["evidence"]
+    });
+
+    const backup = result.phases.find((phase) => phase.id === "M6.3");
+
+    expect(backup).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(backup?.pending).toContain("Target backup/restore evidence is pending.");
+  });
+
+  it("does not accept backup restore JSON from local drills or without durable queue persistence", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        backupRestoreJson: JSON.stringify({
+          environment: {
+            label: "local-non-customer"
+          },
+          objectStore: {
+            restoreTarget: "s3://wiseeff-restore/m6-drill/",
+            checksumValidated: true
+          },
+          database: {
+            restoreTarget: "postgres://wiseeff_restore@localhost:5432/wiseeff_restore",
+            tableCountsValidated: true
+          },
+          queue: {
+            mode: "durable",
+            status: "captured"
+          },
+          restore: {
+            isolatedTargets: [
+              "postgres://wiseeff_restore@localhost:5432/wiseeff_restore",
+              "s3://wiseeff-restore/m6-drill/"
+            ],
+            missingLogObjects: 0
+          },
+          commands: [
+            { name: "restore:drill", exitCode: 0 },
+            { name: "backup:drill", exitCode: 0 },
+            { name: "backup:check", exitCode: 0 }
+          ]
+        })
+      }
+    });
+
+    const backup = result.phases.find((phase) => phase.id === "M6.3");
+
+    expect(backup).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(backup?.pending).toContain("Target backup/restore evidence is pending.");
+  });
+
   it("does not accept backup restore evidence without validation summaries and restore targets", () => {
     const result = evaluateM6TargetEvidence({
       activePlans,
@@ -644,6 +743,42 @@ Status: \`passed\`
 - Prometheus query or scrape evidence: \`up{job="wiseeff-api"} == 1\`
 - Alert route proof: \`ops-evidence/alertmanager-route-2026-06-04.md\`
 - Grafana dashboard proof: \`ops-evidence/grafana-dashboard-2026-06-04.png\`
+`
+      }
+    });
+
+    const observability = result.phases.find((phase) => phase.id === "M6.5");
+
+    expect(observability).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(observability?.pending).toContain(
+      "Target observability scrape, alert routing, and dashboard evidence is pending."
+    );
+  });
+
+  it("does not accept local observability proof URLs in handwritten target evidence", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        observability: `## M6.5 Observability Evidence
+
+- Status: \`passed\`
+- Evidence scope: \`target self-hosted observability\`
+- Target environment: \`self-hosted-staging\`
+- Config check: \`passed\`
+- Prometheus target scrape: \`passed\`
+- Alertmanager routing: \`passed\`
+- Grafana dashboard import: \`passed\`
+
+### Proof
+
+- Prometheus query or scrape evidence: \`http://127.0.0.1:9090/api/v1/query?query=up\`
+- Alert route proof: \`http://localhost:9093/#/alerts\`
+- Grafana dashboard proof: \`http://[::1]:3000/d/wiseeff\`
 `
       }
     });

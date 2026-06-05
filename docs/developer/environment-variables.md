@@ -116,6 +116,8 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `LOG_WORKER_ENABLED` | `false` in API, `true` in worker | Prevents the API container from running a duplicate in-process worker. |
 | `LOG_ANALYSIS_QUEUE_MODE` | `durable` | Uses Redis/BullMQ transport while PostgreSQL remains the source of truth. |
 | `REDIS_URL` | `redis://redis:6379` | Compose Redis service used by API and worker containers. |
+| `BACKUP_REDIS_SNAPSHOT_TARGET` | restore-drill snapshot path | Required by `npm run m6:target-plan` for final M6.3 target evidence when durable queue mode is in scope. |
+| `BACKUP_REDIS_CHECKPOINT_VALIDATED` | `true` after Redis checkpoint validation | Required by `npm run m6:target-plan`; target M6.3 evidence must prove durable queue persistence was captured. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
 | `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. |

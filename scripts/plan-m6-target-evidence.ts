@@ -41,6 +41,9 @@ const targetPlanEnvKeys = [
   "RESTORE_OBJECT_STORAGE_PREFIX",
   "BACKUP_DATABASE_TARGET",
   "BACKUP_OBJECT_STORAGE_TARGET",
+  "REDIS_URL",
+  "BACKUP_REDIS_SNAPSHOT_TARGET",
+  "BACKUP_REDIS_CHECKPOINT_VALIDATED",
   "M6_SELFHOSTED_SMOKE_AUTHORIZATION",
   "WISEEFF_SMOKE_AUTHORIZATION",
   "M6_OBSERVABILITY_TARGET_ENVIRONMENT",
@@ -112,6 +115,9 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
   requireValue(blockers, "M6.3", "RESTORE_OBJECT_STORAGE_PREFIX", env.RESTORE_OBJECT_STORAGE_PREFIX);
   requireValue(blockers, "M6.3", "BACKUP_DATABASE_TARGET", env.BACKUP_DATABASE_TARGET);
   requireValue(blockers, "M6.3", "BACKUP_OBJECT_STORAGE_TARGET", env.BACKUP_OBJECT_STORAGE_TARGET);
+  requireValue(blockers, "M6.3", "REDIS_URL", env.REDIS_URL);
+  requireValue(blockers, "M6.3", "BACKUP_REDIS_SNAPSHOT_TARGET", env.BACKUP_REDIS_SNAPSHOT_TARGET);
+  requireTrueStatus(blockers, "M6.3", "BACKUP_REDIS_CHECKPOINT_VALIDATED", env.BACKUP_REDIS_CHECKPOINT_VALIDATED);
 
   if (!isTargetUrl(targetBaseUrl)) {
     blockers.push("M6.4 requires a non-local WISEEFF_API_BASE_URL or --base-url target.");
@@ -229,7 +235,10 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
         "RESTORE_OBJECT_STORAGE_BUCKET",
         "RESTORE_OBJECT_STORAGE_PREFIX",
         "BACKUP_DATABASE_TARGET",
-        "BACKUP_OBJECT_STORAGE_TARGET"
+        "BACKUP_OBJECT_STORAGE_TARGET",
+        "REDIS_URL",
+        "BACKUP_REDIS_SNAPSHOT_TARGET",
+        "BACKUP_REDIS_CHECKPOINT_VALIDATED=true"
       ],
       commands: ["npm run restore:drill", "npm run backup:drill", "npm run backup:check"],
       evidencePaths: [
@@ -239,6 +248,7 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
       successCriteria: [
         "Restore targets are isolated from live database and object-store locations.",
         "PostgreSQL restore validation and object-store checksum validation pass.",
+        "Durable queue Redis persistence snapshot and checkpoint metadata are captured.",
         "Evidence is redacted and records the target environment label."
       ],
       notes: ["Local backup evidence proves shape only unless generated from the real target restore drill."]
@@ -444,6 +454,12 @@ function requirePassedStatus(blockers: string[], phase: string, name: string, va
   }
 }
 
+function requireTrueStatus(blockers: string[], phase: string, name: string, value: string | undefined) {
+  if (value?.trim().toLowerCase() !== "true") {
+    blockers.push(`${phase} requires ${name}=true.`);
+  }
+}
+
 function requireTargetEnvironment(blockers: string[], phase: string, name: string, value: string | undefined) {
   if (!value?.trim() || !isTargetEnvironment(value)) {
     blockers.push(`${phase} requires ${name} to identify a target, staging, pilot, or self-hosted environment.`);
@@ -586,6 +602,11 @@ function parseEnvFileArg(args: readonly string[], env: RuntimeEnv) {
     return args[index + 1] ?? "";
   }
 
+  const positionalEnvFile = args.find((arg) => !arg.startsWith("-"));
+  if (positionalEnvFile) {
+    return positionalEnvFile;
+  }
+
   return env.M6_TARGET_EVIDENCE_ENV_FILE?.trim() || ".env";
 }
 
@@ -635,7 +656,7 @@ function sanitize(value: string) {
 }
 
 function secretAssignmentPattern(separator: "=" | ":") {
-  return new RegExp(`([A-Za-z0-9_.-]*(?:token|secret|key|password)[A-Za-z0-9_.-]*${separator})([^&\\s\`]+)`, "gi");
+  return new RegExp(`([A-Za-z0-9_.-]*(?:token|secret|key|password)[A-Za-z0-9_.-]*${separator})([^&\\s\`"']+)`, "gi");
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
