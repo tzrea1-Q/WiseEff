@@ -18,6 +18,7 @@ export type M6TargetEvidenceInput = {
     rollback?: string;
     capacity?: string;
     release?: string;
+    operationEvidence?: string;
   };
 };
 
@@ -71,6 +72,7 @@ const phaseDefinitions: PhaseDefinition[] = [
         "expired token",
         "browser token acquisition/refresh/logout"
       ].every((check) => markdownTableStatusPassed(evidence.identity, check));
+      const userGovernanceEvidenceReady = operationEvidenceReady(evidence.operationEvidence);
 
       if (localStatus === "passed") {
         notes.push("Local OIDC drill is present but does not satisfy target identity readiness.");
@@ -89,6 +91,10 @@ const phaseDefinitions: PhaseDefinition[] = [
       }
       if (!isTargetUrl(issuer) || !isTargetUrl(apiBaseUrl) || !isEvidenceReference(audience) || !requiredChecksPassed) {
         pending.push("Target OIDC identity evidence is pending.");
+        return { evidenceStatus: "pending", blockers, pending, notes };
+      }
+      if (!userGovernanceEvidenceReady) {
+        pending.push("Target user-governance operation evidence is pending.");
         return { evidenceStatus: "pending", blockers, pending, notes };
       }
 
@@ -319,7 +325,8 @@ export function loadM6TargetEvidenceInput(root = process.cwd()): M6TargetEvidenc
       observability: readOptional(join(root, "docs", "generated", "m6-observability-evidence.md")),
       rollback: readOptional(join(root, "docs", "generated", "m6-rollback-rehearsal-evidence.md")),
       capacity: readOptional(join(root, "docs", "generated", "capacity-gate.md")),
-      release: readOptional(join(root, "docs", "generated", "m6-release-readiness.md"))
+      release: readOptional(join(root, "docs", "generated", "m6-release-readiness.md")),
+      operationEvidence: readOptional(join(root, "docs", "generated", "acceptance-operation-evidence", "index.json"))
     }
   };
 }
@@ -418,8 +425,65 @@ function parseJsonFence(markdown: string | undefined): unknown {
   }
 }
 
+function parseJsonDocument(value: string | undefined): unknown {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function asRecordArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? value.flatMap((item) => (asRecord(item) ? [item as Record<string, unknown>] : [])) : [];
+}
+
+function operationEvidenceReady(value: string | undefined): boolean {
+  const root = asRecord(parseJsonDocument(value));
+  if (!root || root.status !== "passed") {
+    return false;
+  }
+
+  const records = asRecordArray(root.records);
+  const record = records.find((item) => item.operationId === "PERM-USER-MGMT-001");
+  if (!record || record.status !== "passed") {
+    return false;
+  }
+
+  const assertions = Array.isArray(record.assertions) ? record.assertions : [];
+  const requiredAssertions = ["ui", "api", "db", "audit"];
+  const runtime = asRecord(record.runtime);
+  const api = asRecordArray(record.api);
+  const hasAdminMutation = api.some((item) => {
+    const method = String(item.method ?? "").toUpperCase();
+    const path = String(item.path ?? "");
+    const status = Number(item.status);
+
+    return ["POST", "PUT", "PATCH", "DELETE"].includes(method) && path.startsWith("/api/v1/users") && status >= 200 && status < 300;
+  });
+  const hasNonAdminRejection = api.some((item) => {
+    const path = String(item.path ?? "");
+    const status = Number(item.status);
+
+    return path.startsWith("/api/v1/users") && (status === 401 || status === 403);
+  });
+
+  return (
+    requiredAssertions.every((assertion) => assertions.includes(assertion)) &&
+    isTargetUrl(String(runtime?.apiBaseUrl ?? "")) &&
+    api.length > 0 &&
+    hasAdminMutation &&
+    hasNonAdminRejection &&
+    asRecordArray(record.db).length > 0 &&
+    asRecordArray(record.audit).length > 0
+  );
 }
 
 function rollbackEvidenceReady(markdown: string | undefined): boolean {

@@ -218,7 +218,25 @@ Status: \`passed\`
 | target synthetic readiness | passed |
 | queue readiness | passed |
 | observability | passed |
-`
+`,
+  operationEvidence: JSON.stringify({
+    status: "passed",
+    records: [
+      {
+        operationId: "PERM-USER-MGMT-001",
+        status: "passed",
+        assertions: ["ui", "api", "db", "audit"],
+        api: [
+          { method: "POST", path: "/api/v1/users", status: 201 },
+          { method: "PATCH", path: "/api/v1/users/u-target-user/roles", status: 200 },
+          { method: "PATCH", path: "/api/v1/users/u-target-user/roles", status: 403 }
+        ],
+        db: [{ table: "users,user_role_bindings", predicate: "target user", observed: "active=true", rowCount: 1 }],
+        audit: [{ kind: "user-create", action: "create", targetId: "u-target-user" }],
+        runtime: { mode: "api", apiBaseUrl: "https://wiseeff-target.example.test" }
+      }
+    ]
+  })
 };
 
 describe("M6 target evidence completion gate", () => {
@@ -274,6 +292,64 @@ describe("M6 target evidence completion gate", () => {
       completionAllowed: false
     });
     expect(identity?.pending).toContain("Target OIDC identity evidence is pending.");
+  });
+
+  it("does not accept target identity readiness without target user-governance operation evidence", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        operationEvidence: undefined
+      } as M6TargetEvidenceInput["evidence"]
+    });
+
+    const identity = result.phases.find((phase) => phase.id === "M6.2");
+
+    expect(identity).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(identity?.pending).toContain("Target user-governance operation evidence is pending.");
+  });
+
+  it("does not accept target user-governance evidence without Admin mutation and non-Admin rejection API proof", () => {
+    const result = evaluateM6TargetEvidence({
+      activePlans,
+      completedPlans: [],
+      evidence: {
+        ...targetEvidence,
+        operationEvidence: JSON.stringify({
+          status: "passed",
+          records: [
+            {
+              operationId: "PERM-USER-MGMT-001",
+              status: "passed",
+              assertions: ["ui", "api", "db", "audit"],
+              api: [{ method: "GET", path: "/api/v1/users", status: 200 }],
+              db: [
+                {
+                  table: "users,user_role_bindings",
+                  predicate: "target user",
+                  observed: "active=true",
+                  rowCount: 1
+                }
+              ],
+              audit: [{ kind: "user-create", action: "create", targetId: "u-target-user" }],
+              runtime: { mode: "api", apiBaseUrl: "https://wiseeff-target.example.test" }
+            }
+          ]
+        })
+      }
+    });
+
+    const identity = result.phases.find((phase) => phase.id === "M6.2");
+
+    expect(identity).toMatchObject({
+      evidenceStatus: "pending",
+      completionAllowed: false
+    });
+    expect(identity?.pending).toContain("Target user-governance operation evidence is pending.");
   });
 
   it("does not accept local API URLs as target identity evidence", () => {

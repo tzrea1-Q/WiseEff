@@ -91,6 +91,9 @@ export function evaluateRollbackRehearsal(input: RollbackRehearsalInput): Rollba
   if (input.steps.queueDrain === "passed" && !input.artifacts.queueEvidencePath.trim()) {
     blockers.push("Queue evidence path is required when queue drain passes.");
   }
+  if (!input.artifacts.notesPath.trim()) {
+    blockers.push("Rollback notes evidence path is required.");
+  }
 
   return {
     status: blockers.length === 0 && pending.length === 0 ? "passed" : "failed",

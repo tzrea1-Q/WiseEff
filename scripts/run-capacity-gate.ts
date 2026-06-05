@@ -77,12 +77,20 @@ export function evaluateCapacityGate(input: CapacityGateInput): CapacityGateResu
   }
   if (!input.metadata.environment.trim()) {
     blockers.push("Capacity environment label is required.");
+  } else if (!isTargetEnvironment(input.metadata.environment)) {
+    blockers.push("Capacity environment must identify a configured target, staging, pilot, or self-hosted environment.");
   }
   if (input.metadata.vus <= 0) {
     blockers.push("Virtual users must be greater than zero.");
   }
   if (!input.metadata.duration.trim()) {
     blockers.push("Capacity duration is required.");
+  }
+  if (!input.artifacts.k6SummaryPath.trim()) {
+    blockers.push("k6 summary artifact path is required.");
+  }
+  if (!input.artifacts.metricsSnapshotPath.trim()) {
+    blockers.push("metrics snapshot artifact path is required.");
   }
 
   compareMax(input.observed.p95LatencyMs, input.thresholds.p95LatencyMs, "p95 latency", "ms", blockers, pending);
@@ -283,6 +291,39 @@ function isTargetCapacityUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+function isTargetEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !isPlaceholderEnvironment(normalized) &&
+    !isLocalEnvironment(normalized) &&
+    (normalized.includes("target") ||
+      normalized.includes("staging") ||
+      normalized.includes("pilot") ||
+      normalized.includes("self-hosted"))
+  );
+}
+
+function isPlaceholderEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "pending" ||
+    normalized === "n/a" ||
+    normalized.includes("not-configured") ||
+    normalized.includes("not_configured")
+  );
+}
+
+function isLocalEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "local" ||
+    normalized.startsWith("local-") ||
+    normalized.includes("localhost") ||
+    normalized.includes("127.0.0.1") ||
+    normalized.includes("::1")
+  );
 }
 
 export function redactCapacitySecret(value: string) {

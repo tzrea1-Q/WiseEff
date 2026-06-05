@@ -163,6 +163,12 @@ Also on 2026-06-04, `npm run m6:target-evidence` was added as a final M6.2-M6.6 
 
 Later on 2026-06-04, `npm run m6:target-plan` was added as a redacted operator manifest for the remaining M6.2-M6.6 target evidence run. It writes `docs/generated/m6-target-evidence-plan.md`, lists target inputs, ordered commands, evidence paths, success criteria, and blockers, and intentionally reports `blocked` in the current local configuration because target OIDC tokens, isolated restore targets, non-local queue URL, and target capacity URL are not yet configured. This manifest is execution guidance only; it does not replace target evidence and does not allow any M6.2-M6.6 plan to move to completed.
 
+On 2026-06-05, `npm run m6:target-evidence` was tightened for the M6.2 dependency: target OIDC evidence is no longer sufficient unless `docs/generated/acceptance-operation-evidence/index.json` also contains target, non-local `PERM-USER-MGMT-001` operation evidence with `ui`, `api`, `db`, and `audit` assertions. The operation evidence must show a successful Admin user-governance mutation and a non-Admin 401/403 rejection on the user-governance API. This prevents a release candidate from passing the identity dependency without target Admin user-governance evidence.
+
+On 2026-06-05, `npm run capacity:gate` was tightened so capacity evidence must name a target/staging/pilot/self-hosted environment, reject local-only environment labels, and include both k6 summary and metrics snapshot artifact references. This keeps capacity readiness from passing on observed numbers alone without reviewable target artifacts.
+
+On 2026-06-05, `npm run rollback:rehearsal` was tightened so rollback evidence must include a rollback notes evidence path. This makes stop-write, queue drain, artifact rollback, restore scope, and post-rollback smoke decisions reviewable instead of relying only on step statuses.
+
 ## External Inputs Needed
 
 - Release environment label and host.

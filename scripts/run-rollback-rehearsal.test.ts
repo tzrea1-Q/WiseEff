@@ -100,6 +100,19 @@ describe("rollback rehearsal evidence", () => {
     expect(result.blockers).toContain("Backup/restore evidence path is required when data restore is in scope.");
   });
 
+  it("requires rollback notes for reviewable target rehearsal evidence", () => {
+    const result = evaluateRollbackRehearsal({
+      ...baseInput,
+      artifacts: {
+        ...baseInput.artifacts,
+        notesPath: ""
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("Rollback notes evidence path is required.");
+  });
+
   it("parses CLI statuses and default evidence output", () => {
     expect(
       parseRollbackRehearsalArgs([
