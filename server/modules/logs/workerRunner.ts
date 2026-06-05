@@ -93,7 +93,7 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
 
   return createLogWorkerRuntime({
     db: createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary }),
-    objectStore: createObjectStoreFromEnv(env),
+    objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
     env: {
       REDIS_URL: env.REDIS_URL ?? "",

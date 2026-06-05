@@ -123,7 +123,8 @@ describe("log worker runner", () => {
         OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
         OBJECT_STORAGE_ACCESS_KEY_ID: "key",
         OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
-      })
+      }),
+      expect.objectContaining({ tracing: expect.any(Object) })
     );
     expect(createPostgresDatabase).toHaveBeenCalledWith(
       "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",

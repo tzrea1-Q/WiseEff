@@ -13,7 +13,7 @@ import { createPostgresDatabase } from "./shared/database/client";
 
 const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
-const objectStore = db ? createObjectStoreFromEnv(env) : undefined;
+const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const agentProvider = createAgentProviderFromEnv(env);
 const debugGateway =
