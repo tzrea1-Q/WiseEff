@@ -1,6 +1,6 @@
 ## M6 Target Evidence Execution Plan
 
-- Date: 2026-06-05T01:26:32.803Z
+- Date: 2026-06-05T02:53:40.696Z
 - Status: `blocked`
 - Target base URL: `not-configured`
 
@@ -17,6 +17,7 @@
 | M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION | `not-configured` |
 | M6_IDENTITY_EXPIRED_AUTHORIZATION | `not-configured` |
 | M6_IDENTITY_BROWSER_RUNTIME | `not-configured` |
+| M6_IDENTITY_USER_GOVERNANCE_EVIDENCE | `not-configured` |
 | RESTORE_DATABASE_URL | `not-configured` |
 | RESTORE_OBJECT_STORAGE_BUCKET | `not-configured` |
 | RESTORE_OBJECT_STORAGE_PREFIX | `not-configured` |
@@ -84,6 +85,7 @@
 - M6.2 missing M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION.
 - M6.2 missing M6_IDENTITY_EXPIRED_AUTHORIZATION.
 - M6.2 requires M6_IDENTITY_BROWSER_RUNTIME=passed.
+- M6.2 requires M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed.
 - M6.3 missing RESTORE_DATABASE_URL.
 - M6.3 missing RESTORE_OBJECT_STORAGE_BUCKET.
 - M6.3 missing RESTORE_OBJECT_STORAGE_PREFIX.
@@ -157,14 +159,19 @@ Required inputs:
 - M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION
 - M6_IDENTITY_EXPIRED_AUTHORIZATION
 - M6_IDENTITY_BROWSER_RUNTIME=passed after browser refresh/logout proof
+- M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed after target PERM-USER-MGMT-001 UI/API/DB/audit proof
 
 Commands:
 
 - `npm run identity:check`
+- `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime`
+- `npm run acceptance:evidence`
 
 Evidence paths:
 
 - `docs/generated/m6-identity-evidence.md`
+- `docs/generated/acceptance-operation-evidence.md`
+- `docs/generated/acceptance-operation-evidence/index.json`
 
 Success criteria:
 
@@ -172,10 +179,12 @@ Success criteria:
 - /api/v1/me resolves the target Admin user through production OIDC.
 - Wrong issuer, wrong audience, and expired token checks return 401.
 - Browser token acquisition, refresh, and logout are recorded as passed.
+- PERM-USER-MGMT-001 records target UI, API, DB, and audit evidence for Admin mutation and non-Admin rejection.
 
 Notes:
 
 - docs/generated/m6-local-oidc-identity-evidence.md is local implementation proof only and is not accepted as target evidence.
+- Final M6 completion requires both target OIDC evidence and target operation evidence for user governance.
 
 #### M6.3 Self-Hosted Storage And Backup Target Evidence
 

@@ -165,6 +165,8 @@ Later on 2026-06-04, `npm run m6:target-plan` was added as a redacted operator m
 
 On 2026-06-05, `npm run m6:target-evidence` was tightened for the M6.2 dependency: target OIDC evidence is no longer sufficient unless `docs/generated/acceptance-operation-evidence/index.json` also contains target, non-local `PERM-USER-MGMT-001` operation evidence with `ui`, `api`, `db`, and `audit` assertions. The operation evidence must show a successful Admin user-governance mutation and a non-Admin 401/403 rejection on the user-governance API. This prevents a release candidate from passing the identity dependency without target Admin user-governance evidence.
 
+Later on 2026-06-05, `npm run m6:target-plan` was aligned with the same M6.2 release dependency. The operator manifest now treats `M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed`, target browser acceptance, `acceptance:evidence`, and the generated operation evidence index as part of M6.2 target evidence collection. This keeps release execution guidance from under-specifying a dependency that the final M6 target gate already enforces.
+
 On 2026-06-05, `npm run capacity:gate` was tightened so capacity evidence must name a target/staging/pilot/self-hosted environment, reject local-only environment labels, and include both k6 summary and metrics snapshot artifact references. This keeps capacity readiness from passing on observed numbers alone without reviewable target artifacts.
 
 On 2026-06-05, `npm run rollback:rehearsal` was tightened so rollback evidence must include a rollback notes evidence path. This makes stop-write, queue drain, artifact rollback, restore scope, and post-rollback smoke decisions reviewable instead of relying only on step statuses.

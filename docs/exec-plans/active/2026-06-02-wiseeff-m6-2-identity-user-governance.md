@@ -185,6 +185,8 @@ On 2026-06-04, `npm run identity:local-oidc-drill` was added and passed against 
 
 On 2026-06-05, the final M6 target-evidence guard was tightened so M6.2 cannot complete from OIDC evidence alone. `npm run m6:target-evidence` now also requires machine-readable `PERM-USER-MGMT-001` operation evidence from `docs/generated/acceptance-operation-evidence/index.json` with target, non-local API runtime metadata plus `ui`, `api`, `db`, and `audit` assertions. The API evidence must include a successful Admin user-governance mutation and a non-Admin 401/403 rejection on the user-governance API. This preserves the M6.2 requirement that Admin user governance is proven through UI, backend API, database, and audit evidence against the deployed target.
 
+Later on 2026-06-05, `npm run m6:target-plan` was aligned with that final gate. The target execution plan now requires `M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed`, lists target `acceptance:browser -- --mode target-non-hdc --no-start-runtime` and `acceptance:evidence` as M6.2 commands, and records `docs/generated/acceptance-operation-evidence.md` plus `docs/generated/acceptance-operation-evidence/index.json` as M6.2 evidence paths. This is an execution-plan guard only; the plan remains active until real target OIDC and target user-governance operation evidence exist.
+
 ## External Inputs Needed
 
 - Preferred self-hosted identity provider. Default plan assumes Keycloak.

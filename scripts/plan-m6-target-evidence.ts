@@ -36,6 +36,7 @@ const targetPlanEnvKeys = [
   "M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION",
   "M6_IDENTITY_EXPIRED_AUTHORIZATION",
   "M6_IDENTITY_BROWSER_RUNTIME",
+  "M6_IDENTITY_USER_GOVERNANCE_EVIDENCE",
   "RESTORE_DATABASE_URL",
   "RESTORE_OBJECT_STORAGE_BUCKET",
   "RESTORE_OBJECT_STORAGE_PREFIX",
@@ -109,6 +110,7 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
   requireValue(blockers, "M6.2", "M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION", env.M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION);
   requireValue(blockers, "M6.2", "M6_IDENTITY_EXPIRED_AUTHORIZATION", env.M6_IDENTITY_EXPIRED_AUTHORIZATION);
   requirePassedStatus(blockers, "M6.2", "M6_IDENTITY_BROWSER_RUNTIME", env.M6_IDENTITY_BROWSER_RUNTIME);
+  requirePassedStatus(blockers, "M6.2", "M6_IDENTITY_USER_GOVERNANCE_EVIDENCE", env.M6_IDENTITY_USER_GOVERNANCE_EVIDENCE);
 
   requireValue(blockers, "M6.3", "RESTORE_DATABASE_URL", env.RESTORE_DATABASE_URL);
   requireValue(blockers, "M6.3", "RESTORE_OBJECT_STORAGE_BUCKET", env.RESTORE_OBJECT_STORAGE_BUCKET);
@@ -212,18 +214,29 @@ export function buildM6TargetEvidencePlan({ env = process.env }: { env?: Runtime
         "M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION",
         "M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION",
         "M6_IDENTITY_EXPIRED_AUTHORIZATION",
-        "M6_IDENTITY_BROWSER_RUNTIME=passed after browser refresh/logout proof"
+        "M6_IDENTITY_BROWSER_RUNTIME=passed after browser refresh/logout proof",
+        "M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed after target PERM-USER-MGMT-001 UI/API/DB/audit proof"
       ],
-      commands: ["npm run identity:check"],
-      evidencePaths: ["docs/generated/m6-identity-evidence.md"],
+      commands: [
+        "npm run identity:check",
+        "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
+        "npm run acceptance:evidence"
+      ],
+      evidencePaths: [
+        "docs/generated/m6-identity-evidence.md",
+        "docs/generated/acceptance-operation-evidence.md",
+        "docs/generated/acceptance-operation-evidence/index.json"
+      ],
       successCriteria: [
         "OIDC discovery/JWKS passes against the target issuer.",
         "/api/v1/me resolves the target Admin user through production OIDC.",
         "Wrong issuer, wrong audience, and expired token checks return 401.",
-        "Browser token acquisition, refresh, and logout are recorded as passed."
+        "Browser token acquisition, refresh, and logout are recorded as passed.",
+        "PERM-USER-MGMT-001 records target UI, API, DB, and audit evidence for Admin mutation and non-Admin rejection."
       ],
       notes: [
-        "docs/generated/m6-local-oidc-identity-evidence.md is local implementation proof only and is not accepted as target evidence."
+        "docs/generated/m6-local-oidc-identity-evidence.md is local implementation proof only and is not accepted as target evidence.",
+        "Final M6 completion requires both target OIDC evidence and target operation evidence for user governance."
       ]
     },
     {
@@ -592,6 +605,16 @@ function formatItems(items: string[]) {
 }
 
 function parseEnvFileArg(args: readonly string[], env: RuntimeEnv) {
+  const targetEqualsArg = args.find((arg) => arg.startsWith("--target-env-file="));
+  if (targetEqualsArg) {
+    return targetEqualsArg.slice("--target-env-file=".length);
+  }
+
+  const targetIndex = args.indexOf("--target-env-file");
+  if (targetIndex !== -1) {
+    return args[targetIndex + 1] ?? "";
+  }
+
   const equalsArg = args.find((arg) => arg.startsWith("--env-file="));
   if (equalsArg) {
     return equalsArg.slice("--env-file=".length);

@@ -17,6 +17,7 @@ describe("M6 target evidence execution plan", () => {
         M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION: "Bearer wrong.issuer.token",
         M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION: "Bearer wrong.audience.token",
         M6_IDENTITY_EXPIRED_AUTHORIZATION: "Bearer expired.token",
+        M6_IDENTITY_USER_GOVERNANCE_EVIDENCE: "passed",
         RESTORE_DATABASE_URL: "postgres://restore.example.test/wiseeff_restore",
         RESTORE_OBJECT_STORAGE_BUCKET: "wiseeff-restore",
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
@@ -139,6 +140,7 @@ describe("M6 target evidence execution plan", () => {
     expect(plan.status).toBe("blocked");
     expect(plan.blockers).toEqual(
       expect.arrayContaining([
+        "M6.2 requires M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed.",
         "M6.2 requires M6_IDENTITY_BROWSER_RUNTIME=passed.",
         "M6.3 missing BACKUP_DATABASE_TARGET.",
         "M6.3 missing BACKUP_OBJECT_STORAGE_TARGET.",
@@ -158,6 +160,42 @@ describe("M6 target evidence execution plan", () => {
     );
   });
 
+  it("requires target user-governance operation evidence for M6.2 execution readiness", () => {
+    const plan = buildM6TargetEvidencePlan({
+      env: {
+        WISEEFF_API_BASE_URL: "https://wiseeff.example.test",
+        AUTH_OIDC_ISSUER: "https://id.example.test/realms/wiseeff",
+        AUTH_OIDC_AUDIENCE: "wiseeff-api",
+        M6_IDENTITY_AUTHORIZATION: "Bearer abc.def.ghi",
+        M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION: "Bearer wrong.issuer.token",
+        M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION: "Bearer wrong.audience.token",
+        M6_IDENTITY_EXPIRED_AUTHORIZATION: "Bearer expired.token",
+        M6_IDENTITY_BROWSER_RUNTIME: "passed"
+      }
+    });
+    const identityStep = plan.steps.find((step) => step.phase === "M6.2");
+
+    expect(plan.blockers).toContain("M6.2 requires M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed.");
+    expect(identityStep?.requiredInputs).toContain(
+      "M6_IDENTITY_USER_GOVERNANCE_EVIDENCE=passed after target PERM-USER-MGMT-001 UI/API/DB/audit proof"
+    );
+    expect(identityStep?.commands).toEqual(
+      expect.arrayContaining([
+        "npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime",
+        "npm run acceptance:evidence"
+      ])
+    );
+    expect(identityStep?.evidencePaths).toEqual(
+      expect.arrayContaining([
+        "docs/generated/acceptance-operation-evidence.md",
+        "docs/generated/acceptance-operation-evidence/index.json"
+      ])
+    );
+    expect(identityStep?.successCriteria).toContain(
+      "PERM-USER-MGMT-001 records target UI, API, DB, and audit evidence for Admin mutation and non-Admin rejection."
+    );
+  });
+
   it("blocks M6.6 until release rollback capacity and synthetic inputs are executable", () => {
     const plan = buildM6TargetEvidencePlan({
       env: {
@@ -169,6 +207,7 @@ describe("M6 target evidence execution plan", () => {
         M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION: "Bearer wrong.audience.token",
         M6_IDENTITY_EXPIRED_AUTHORIZATION: "Bearer expired.token",
         M6_IDENTITY_BROWSER_RUNTIME: "passed",
+        M6_IDENTITY_USER_GOVERNANCE_EVIDENCE: "passed",
         RESTORE_DATABASE_URL: "postgres://restore.example.test/wiseeff_restore",
         RESTORE_OBJECT_STORAGE_BUCKET: "wiseeff-restore",
         RESTORE_OBJECT_STORAGE_PREFIX: "m6-restore/",
@@ -322,6 +361,7 @@ describe("M6 target evidence execution plan", () => {
         BACKUP_REDIS_CHECKPOINT_VALIDATED: "true",
         M6_SELFHOSTED_SMOKE_AUTHORIZATION: "Bearer smoke.secret",
         M6_IDENTITY_BROWSER_RUNTIME: "passed",
+        M6_IDENTITY_USER_GOVERNANCE_EVIDENCE: "passed",
         M6_OBSERVABILITY_TARGET_ENVIRONMENT: "self-hosted-staging",
         M6_OBSERVABILITY_CONFIG_STATUS: "passed",
         M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE: "passed",
@@ -425,7 +465,7 @@ describe("M6 target evidence execution plan", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { scripts: Record<string, string> };
 
     expect(packageJson.scripts).toMatchObject({
-      "m6:target-plan": "tsx scripts/plan-m6-target-evidence.ts"
+      "m6:target-plan": "tsx -- scripts/plan-m6-target-evidence.ts"
     });
   });
 
@@ -458,6 +498,22 @@ describe("M6 target evidence execution plan", () => {
   it("treats a positional env filename as the target evidence env file", () => {
     const env = loadM6TargetEvidencePlanEnv({
       args: ["target.env"],
+      processEnv: {
+        WISEEFF_API_BASE_URL: "https://process.example.test"
+      },
+      readFile: (filePath) => {
+        expect(filePath).toBe("target.env");
+        return "WISEEFF_API_BASE_URL=https://target.example.test";
+      },
+      exists: (filePath) => filePath === "target.env"
+    });
+
+    expect(env.WISEEFF_API_BASE_URL).toBe("https://target.example.test");
+  });
+
+  it("accepts target-env-file as a runtime-safe alias for env file loading", () => {
+    const env = loadM6TargetEvidencePlanEnv({
+      args: ["--target-env-file=target.env"],
       processEnv: {
         WISEEFF_API_BASE_URL: "https://process.example.test"
       },
