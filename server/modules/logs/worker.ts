@@ -3,6 +3,7 @@ import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
 import type { LogAnalysisJobFailureReason, MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
@@ -24,6 +25,7 @@ export type ProcessLogWorkerOptions = {
   retryBaseDelayMs?: number;
   now?: () => Date;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
 };
 
 export type ProcessLogWorkerByIdOptions = ProcessLogWorkerOptions & {
@@ -42,6 +44,27 @@ class JobLeaseLostError extends Error {
   constructor() {
     super("Log analysis job lease was lost before the worker write completed.");
   }
+}
+
+async function traceLogAnalysisJob(
+  tracing: Pick<TracingBoundary, "withSpan"> | undefined,
+  trigger: "polling" | "queue",
+  fn: () => Promise<ProcessLogWorkerResult>
+): Promise<ProcessLogWorkerResult> {
+  const attributes: Record<string, string | number | boolean> = { trigger };
+  const execute = async () => {
+    try {
+      const result = await fn();
+      attributes.status = result.status;
+      return result;
+    } catch (error) {
+      attributes.status = "failed";
+      attributes.errorType = error instanceof Error ? error.name : "unknown";
+      throw error;
+    }
+  };
+
+  return tracing ? tracing.withSpan("log_analysis.job", attributes, execute) : execute();
 }
 
 function assertActiveJobLease(updated: boolean) {
@@ -345,11 +368,13 @@ export async function processNextLogAnalysisJob({
   maxAttempts = 4,
   retryBaseDelayMs = 1000,
   now = () => new Date(),
-  metrics
+  metrics,
+  tracing
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
-  const result = await processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  const result = await traceLogAnalysisJob(tracing, "polling", process);
   return result.status === "idle" ? "idle" : "processed";
 }
 
@@ -363,11 +388,13 @@ export async function processLogAnalysisJobById({
   maxAttempts = 4,
   retryBaseDelayMs = 1000,
   now = () => new Date(),
-  metrics
+  metrics,
+  tracing
 }: ProcessLogWorkerByIdOptions): Promise<ProcessLogWorkerResult> {
   const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
   if (!job) return { status: "idle" };
-  return processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  return traceLogAnalysisJob(tracing, "queue", process);
 }
 
 export function startLogWorkerLoop(options: ProcessLogWorkerOptions, intervalMs = 1000): () => void {

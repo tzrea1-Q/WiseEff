@@ -2,6 +2,7 @@ import { Queue, Worker } from "bullmq";
 
 import { createBullMqDurableQueue } from "../jobs/bullmqQueue";
 import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import type { LogAnalysisQueuePayload } from "./logAnalysisQueue";
@@ -48,6 +49,7 @@ type CreateLogAnalysisQueueRuntimeOptions = {
   processByJobId?: (options: ProcessLogWorkerByIdOptions) => Promise<ProcessLogWorkerResult>;
   workerId?: string;
   metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
 };
 
 export function createLogAnalysisQueueRuntime({
@@ -58,7 +60,8 @@ export function createLogAnalysisQueueRuntime({
   WorkerCtor = Worker as unknown as BullMqWorkerConstructor,
   processByJobId = processLogAnalysisJobById,
   workerId = "wiseeff-log-worker",
-  metrics
+  metrics,
+  tracing
 }: CreateLogAnalysisQueueRuntimeOptions) {
   const queueName = "log-analysis";
   const connection = { url: env.REDIS_URL };
@@ -75,24 +78,37 @@ export function createLogAnalysisQueueRuntime({
   const worker = new WorkerCtor(
     queueName,
     async (job) => {
-      const jobId = job.data?.jobId;
-      if (!jobId) {
-        throw new Error("BullMQ log-analysis job payload must include jobId.");
-      }
+      const attributes: Record<string, string | number | boolean> = { queue: queueName };
+      const process = async () => {
+        const jobId = job.data?.jobId;
+        if (!jobId) {
+          throw new Error("BullMQ log-analysis job payload must include jobId.");
+        }
 
-      const result = await processByJobId({
-        db,
-        objectStore,
-        jobId,
-        workerId,
-        maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
-        retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
-        metrics
-      });
-      if (result.status === "retry") {
-        throw new Error(result.reason);
+        const result = await processByJobId({
+          db,
+          objectStore,
+          jobId,
+          workerId,
+          maxAttempts: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
+          retryBaseDelayMs: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
+          metrics,
+          ...(tracing ? { tracing } : {})
+        });
+        if (result.status === "retry") {
+          throw new Error(result.reason);
+        }
+        attributes.status = result.status;
+        return result.status;
+      };
+
+      try {
+        return tracing ? await tracing.withSpan("log_analysis.queue.process", attributes, process) : await process();
+      } catch (error) {
+        attributes.status = "failed";
+        attributes.errorType = error instanceof Error ? error.name : "unknown";
+        throw error;
       }
-      return result.status;
     },
     {
       connection,

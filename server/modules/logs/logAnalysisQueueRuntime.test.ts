@@ -1,8 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./logAnalysisQueueRuntime";
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
+  };
+}
 
 describe("log analysis queue runtime", () => {
   it("creates a BullMQ queue and worker with Redis connection settings", async () => {
@@ -142,6 +157,56 @@ describe("log analysis queue runtime", () => {
     });
 
     await expect(processor?.({ data: { jobId: "job-1" } })).rejects.toThrow("Retry 2 of 4 after 2000ms.");
+  });
+
+  it("exports low-cardinality durable queue processor spans without Redis or job identifiers", async () => {
+    const { spans, tracing } = createTraceRecorder();
+    let processor: ((job: { data: { jobId: string } }) => Promise<string>) | undefined;
+    const QueueCtor = vi.fn(function () {
+      return {
+        add: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        getJobCounts: vi.fn(),
+        close: vi.fn()
+      };
+    });
+    const WorkerCtor = vi.fn(function (_name: string, handler: (job: { data: { jobId: string } }) => Promise<string>) {
+      processor = handler;
+      return { close: vi.fn() };
+    });
+
+    createLogAnalysisQueueRuntime({
+      env: {
+        REDIS_URL: "redis://redis-secret:6379",
+        LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff-secret",
+        LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
+        LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
+        LOG_ANALYSIS_QUEUE_CONCURRENCY: 1
+      },
+      db: {} as Database,
+      objectStore: {} as ObjectStore,
+      QueueCtor: QueueCtor as never,
+      WorkerCtor: WorkerCtor as never,
+      processByJobId: vi.fn(async () => ({ status: "processed" as const })),
+      tracing
+    });
+
+    await expect(processor?.({ data: { jobId: "job-secret" } })).resolves.toBe("processed");
+
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "log_analysis.queue.process",
+        attributes: {
+          service: "wiseeff-api",
+          queue: "log-analysis",
+          status: "processed"
+        }
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("job-secret");
+    expect(JSON.stringify(spans)).not.toContain("redis-secret");
+    expect(JSON.stringify(spans)).not.toContain("wiseeff-secret");
   });
 
   it("creates an API-side queue transport without starting a worker", async () => {

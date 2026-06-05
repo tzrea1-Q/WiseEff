@@ -193,6 +193,7 @@ describe("log worker runner", () => {
       db,
       objectStore,
       metrics,
+      tracing: expect.any(Object),
       workerId: "wiseeff-log-worker"
     });
     expect(startLoop).not.toHaveBeenCalled();

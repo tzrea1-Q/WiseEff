@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { claimNextJob } from "../jobs/repository";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import type { ObjectStore } from "./objectStore";
 import { processLogAnalysisJobById, processNextLogAnalysisJob, startLogWorkerLoop } from "./worker";
@@ -130,6 +131,20 @@ function createObjectStore(bytes: Buffer): ObjectStore {
 function createLogJobMetricsSpy() {
   return {
     recordLogAnalysisJobResult: vi.fn()
+  };
+}
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
   };
 }
 
@@ -508,6 +523,32 @@ describe("log worker", () => {
       stage: "report",
       durationMs: 1250
     });
+  });
+
+  it("exports low-cardinality job processing spans without job, run, or object identifiers", async () => {
+    const { db } = createFakeWorkerDb();
+    const { spans, tracing } = createTraceRecorder();
+    const objectStore = createObjectStore(Buffer.from("WARN thermal foldback\n"));
+
+    const result = await processNextLogAnalysisJob({ db, objectStore, tracing });
+
+    expect(result).toBe("processed");
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "log_analysis.job",
+        attributes: {
+          service: "wiseeff-api",
+          trigger: "polling",
+          status: "processed"
+        }
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("job-1");
+    expect(JSON.stringify(spans)).not.toContain("run-1");
+    expect(JSON.stringify(spans)).not.toContain("log-1");
+    expect(JSON.stringify(spans)).not.toContain("org-1");
+    expect(JSON.stringify(spans)).not.toContain("project-1");
+    expect(JSON.stringify(spans)).not.toContain("pack-controller");
   });
 
   it("processes a queue-delivered job by id without polling for the next job", async () => {
