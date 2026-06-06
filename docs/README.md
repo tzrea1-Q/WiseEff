@@ -11,7 +11,7 @@ This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.m
 3. [Design Docs](design-docs/index.md): full-stack architecture, domain model, API contract, historical designs, testing, deployment, and security.
 4. [Developer Docs](developer/README.md): local setup, environment variables, and verification matrix.
 5. [API Docs](api/README.md): authentication, errors, examples, and OpenAPI contract usage.
-6. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, self-hosted release/rollback, staging, backup/restore, rollback, monitoring, observability, incidents, HDC, Agent provider, and pilot operations.
+6. [Runbooks](runbooks/README.md): manual acceptance, self-hosted runtime, WSL validation, self-hosted release/rollback, staging, backup/restore, rollback, monitoring, observability, incidents, HDC, Agent provider, and pilot operations.
 7. [Frontend](FRONTEND.md): frontend structure, UI rules, runtime modes, and testing expectations.
 8. [Plans](PLANS.md): how active and completed execution plans are managed.
 9. [Quality Score](QUALITY_SCORE.md): current quality grades and verification gates.
@@ -57,6 +57,7 @@ docs/
   runbooks/
     README.md
     self-hosted-runtime.md
+    wsl-linux-validation.md
     release-rollback.md
     manual-acceptance.md
     m5-commercial-pilot-readiness.md

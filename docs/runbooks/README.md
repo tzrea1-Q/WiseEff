@@ -6,6 +6,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 
 - [M5 Commercial Pilot Readiness](m5-commercial-pilot-readiness.md): current go/no-go checklist and pilot gate.
 - [Self-Hosted Runtime](self-hosted-runtime.md): M6.1 single-Linux-server runtime startup, smoke, and emergency stop.
+- [WSL Linux Validation](wsl-linux-validation.md): local WSL lab validation scope, known limitations, and target-evidence gaps.
 - [Identity Provider](identity-provider.md): M6.2 self-hosted OIDC, Keycloak reference setup, token rotation, and Admin recovery.
 - [Durable Queue](durable-queue.md): M6.4 Redis/BullMQ queue operation, health, retry, and incident handling.
 - [Manual Acceptance](manual-acceptance.md): human acceptance checklist for product workflows, runtime gates, evidence capture, and Go/No-Go judgment.

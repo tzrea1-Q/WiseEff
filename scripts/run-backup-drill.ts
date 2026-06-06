@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   evaluateBackupDrillEvidence,
@@ -6,6 +6,9 @@ import {
   renderBackupDrillMarkdown,
   type BackupDrillEvidence
 } from "./check-backup-drill";
+import { loadEnvContent } from "./run-m5-smoke.shared";
+
+type RuntimeEnv = Record<string, string | undefined>;
 
 export type BackupCommandResult = {
   name: string;
@@ -31,6 +34,11 @@ export type BackupDrillInput = {
   redisAvailable: boolean;
   redisSnapshotTarget?: string;
   redisCheckpointValidated?: boolean;
+};
+
+type BackupDrillFileSystem = {
+  existsSync: typeof existsSync;
+  readFileSync: (filePath: string, encoding: BufferEncoding) => string;
 };
 
 export function buildBackupDrillEvidence(input: BackupDrillInput): BackupDrillEvidence & { commands: BackupCommandResult[] } {
@@ -101,27 +109,85 @@ export function writeBackupDrillEvidence(input: { outputDir: string; evidence: B
   return { jsonPath, markdownPath, evaluation };
 }
 
-if (process.argv[1]?.endsWith("run-backup-drill.ts")) {
-  const evidence = buildBackupDrillEvidence({
+export function buildBackupDrillEvidenceFromEnv(env: RuntimeEnv) {
+  return buildBackupDrillEvidence({
     providerDecisionPath: "ops/self-hosted/storage/provider-decision.md",
-    selectedProvider: process.env.OBJECT_STORAGE_PROVIDER ?? "s3-compatible",
-    environmentLabel: process.env.BACKUP_DRILL_ENVIRONMENT ?? "local",
-    branch: process.env.GIT_BRANCH ?? "unknown",
-    commit: process.env.GIT_COMMIT ?? "unknown",
-    objectStoreEndpoint: process.env.OBJECT_STORAGE_ENDPOINT ?? "",
-    objectStoreBucket: process.env.OBJECT_STORAGE_BUCKET ?? "",
-    objectStoreHealthPrefix: process.env.OBJECT_STORAGE_HEALTH_PREFIX ?? ".health/",
-    objectStoreBackupTarget: process.env.BACKUP_OBJECT_STORAGE_TARGET ?? "",
-    objectStoreRestoreTarget: `s3://${process.env.RESTORE_OBJECT_STORAGE_BUCKET ?? ""}/${process.env.RESTORE_OBJECT_STORAGE_PREFIX ?? ""}`,
-    databaseBackupCommand: process.env.BACKUP_DATABASE_COMMAND ?? "pg_dump --format=custom",
-    databaseBackupTarget: process.env.BACKUP_DATABASE_TARGET ?? "",
-    databaseRestoreTarget: process.env.RESTORE_DATABASE_URL ?? "",
+    selectedProvider: env.OBJECT_STORAGE_PROVIDER ?? "s3-compatible",
+    environmentLabel: env.BACKUP_DRILL_ENVIRONMENT ?? "local",
+    branch: env.GIT_BRANCH ?? "unknown",
+    commit: env.GIT_COMMIT ?? "unknown",
+    objectStoreEndpoint: env.OBJECT_STORAGE_ENDPOINT ?? "",
+    objectStoreBucket: env.OBJECT_STORAGE_BUCKET ?? "",
+    objectStoreHealthPrefix: env.OBJECT_STORAGE_HEALTH_PREFIX ?? ".health/",
+    objectStoreBackupTarget: env.BACKUP_OBJECT_STORAGE_TARGET ?? "",
+    objectStoreRestoreTarget: `s3://${env.RESTORE_OBJECT_STORAGE_BUCKET ?? ""}/${env.RESTORE_OBJECT_STORAGE_PREFIX ?? ""}`,
+    databaseBackupCommand: env.BACKUP_DATABASE_COMMAND ?? "pg_dump --format=custom",
+    databaseBackupTarget: env.BACKUP_DATABASE_TARGET ?? "",
+    databaseRestoreTarget: env.RESTORE_DATABASE_URL ?? "",
     commandResults: [],
-    redisAvailable: process.env.REDIS_URL?.trim() ? true : false,
-    redisSnapshotTarget: process.env.BACKUP_REDIS_SNAPSHOT_TARGET ?? "",
-    redisCheckpointValidated: process.env.BACKUP_REDIS_CHECKPOINT_VALIDATED === "true"
+    redisAvailable: env.REDIS_URL?.trim() ? true : false,
+    redisSnapshotTarget: env.BACKUP_REDIS_SNAPSHOT_TARGET ?? "",
+    redisCheckpointValidated: env.BACKUP_REDIS_CHECKPOINT_VALIDATED === "true"
   });
-  const result = writeBackupDrillEvidence({ outputDir: join("docs", "generated"), evidence });
+}
+
+export function parseBackupDrillArgs(
+  args: readonly string[],
+  {
+    processEnv = process.env,
+    fileSystem = { existsSync, readFileSync }
+  }: {
+    processEnv?: RuntimeEnv;
+    fileSystem?: BackupDrillFileSystem;
+  } = {}
+): RuntimeEnv {
+  let envFile = envValue(processEnv.npm_config_target_env_file) || envValue(processEnv.npm_config_env_file) || "ops/self-hosted/.env";
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    const next = args[index + 1];
+
+    if (arg.startsWith("--env-file=")) {
+      envFile = arg.slice("--env-file=".length);
+    } else if (arg === "--env-file" && next) {
+      envFile = next;
+      index += 1;
+    } else if (arg.startsWith("--target-env-file=")) {
+      envFile = arg.slice("--target-env-file=".length);
+    } else if (arg === "--target-env-file" && next) {
+      envFile = next;
+      index += 1;
+    } else if (!arg.startsWith("--") && args.length === 1) {
+      envFile = arg;
+    } else {
+      throw new Error(`Unknown or incomplete backup drill argument: ${arg}`);
+    }
+  }
+
+  return envFile && fileSystem.existsSync(envFile)
+    ? loadEnvContent(fileSystem.readFileSync(envFile, "utf8"), processEnv)
+    : processEnv;
+}
+
+function envValue(value: string | undefined) {
+  const normalized = value?.trim();
+  return normalized && normalized !== "true" ? normalized : "";
+}
+
+export function runBackupDrillCli({
+  args = process.argv.slice(2),
+  processEnv = process.env
+}: {
+  args?: readonly string[];
+  processEnv?: RuntimeEnv;
+} = {}) {
+  const env = parseBackupDrillArgs(args, { processEnv });
+  const evidence = buildBackupDrillEvidenceFromEnv(env);
+  return writeBackupDrillEvidence({ outputDir: join("docs", "generated"), evidence });
+}
+
+if (process.argv[1]?.endsWith("run-backup-drill.ts")) {
+  const result = runBackupDrillCli();
   console.log(JSON.stringify(result.evaluation, null, 2));
   if (result.evaluation.status !== "passed") {
     process.exitCode = 1;

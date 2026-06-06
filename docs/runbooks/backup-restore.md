@@ -56,6 +56,14 @@ Readiness failures should expose safe categories and remediation hints, not cred
 npm run restore:drill
 ```
 
+When explicitly loading an env file in PowerShell, WSL, or Node 22 based shells, prefer the WiseEff-specific alias:
+
+```bash
+npm run restore:drill --target-env-file=ops/self-hosted/.env
+```
+
+Avoid `source ops/self-hosted/.env` because dotenv values can contain spaces, including `Bearer <token>` authorization values.
+
 9. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
 10. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
 11. Restore Redis or queue persistence into the target queue service when durable queue mode is enabled.
@@ -79,6 +87,12 @@ npm run queue:check -- --base-url https://<host>
 ```bash
 npm run backup:drill
 npm run backup:check
+```
+
+The backup drill accepts the same env-file alias:
+
+```bash
+npm run backup:drill --target-env-file=ops/self-hosted/.env
 ```
 
 18. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
