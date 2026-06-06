@@ -237,6 +237,39 @@ describe("createHttpObjectStorageTransport", () => {
     expect(calls[3].init?.headers).toHaveProperty("authorization", expect.stringContaining("AWS4-HMAC-SHA256"));
   });
 
+  it("includes content and metadata headers in the SigV4 signed headers for PUT requests", async () => {
+    const calls: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      calls.push({ input, init });
+      return new Response(null, { status: 200 });
+    });
+    const transport = createHttpObjectStorageTransport({
+      endpoint: "https://storage.example.com",
+      accessKeyId: "key",
+      secretAccessKey: "secret",
+      region: "us-east-1",
+      fetchImpl
+    });
+    const bytes = Buffer.from("stored bytes", "utf8");
+
+    await transport.put({
+      bucket: "wiseeff-pilot",
+      key: "org-1/file.log",
+      bytes,
+      contentType: "text/plain",
+      metadata: {
+        checksumSha256: "checksum",
+        retentionClass: "pilot-default"
+      }
+    });
+
+    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(headers["x-amz-content-sha256"]).toBe(createHash("sha256").update(bytes).digest("hex"));
+    expect(headers.authorization).toContain(
+      "SignedHeaders=content-type;host;x-amz-content-sha256;x-amz-date;x-amz-meta-checksum-sha256;x-amz-meta-retention-class"
+    );
+  });
+
   it.each([
     ["HEAD", async (transport: ObjectStorageTransport) => transport.head({ bucket: "wiseeff-pilot" })],
     ["GET", async (transport: ObjectStorageTransport) => transport.get({ bucket: "wiseeff-pilot", key: "org-1/file.log" })],
