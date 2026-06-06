@@ -177,6 +177,19 @@ npm run selfhost:smoke -- --base-url <target-url>
 
 `selfhost:check` validates the compose services, self-hosted env template, Caddy routing, and package script wiring. `selfhost:smoke` probes a running self-hosted target and writes redacted evidence. It can accept `--allow-only-blocked=deviceGateway` only for non-HDC staging.
 
+## 9.2 M6.2 Identity And User Governance Gates
+
+M6.2 adds OIDC verifier, frontend token-provider, user-governance API, and user-permission browser evidence gates:
+
+```bash
+npm run test:server -- server/modules/auth/oidcVerifier.test.ts server/modules/users/service.test.ts server/modules/users/routes.test.ts server/config/env.test.ts server/modules/contracts/openapi.test.ts
+npm test -- src/infrastructure/auth/oidcAuthProvider.test.ts src/infrastructure/http/userGovernanceClient.test.ts src/UserPermissionsPage.test.tsx src/App.test.tsx
+npm run acceptance:browser
+npm run acceptance:evidence
+```
+
+Local non-HDC evidence can use the deterministic HMAC smoke token. Target self-hosted identity evidence must use real OIDC access tokens and must include discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and redacted user-governance mutation evidence before TD-020 closes.
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

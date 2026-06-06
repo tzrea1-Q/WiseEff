@@ -6,6 +6,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 
 - [M5 Commercial Pilot Readiness](m5-commercial-pilot-readiness.md): current go/no-go checklist and pilot gate.
 - [Self-Hosted Runtime](self-hosted-runtime.md): M6.1 single-Linux-server runtime startup, smoke, and emergency stop.
+- [Identity Provider](identity-provider.md): M6.2 self-hosted OIDC, Keycloak reference setup, token rotation, and Admin recovery.
 - [Manual Acceptance](manual-acceptance.md): human acceptance checklist for product workflows, runtime gates, evidence capture, and Go/No-Go judgment.
 - [Staging Deployment](staging-deployment.md): deploy order and smoke sequence for staging.
 - [Backup And Restore](backup-restore.md): backup and restore drill procedure.

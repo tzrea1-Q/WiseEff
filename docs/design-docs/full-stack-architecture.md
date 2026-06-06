@@ -20,6 +20,8 @@ M0-M5 implementation note: the repository now contains the modular API, PostgreS
 
 M6.1 self-hosted note: `ops/self-hosted/` now provides a single-Linux-server baseline with separate PostgreSQL, API, web, worker, and Caddy proxy services. The API can bind through `HOST`, and self-hosted API containers disable the in-process worker with `LOG_WORKER_ENABLED=false` so the dedicated worker service owns log processing.
 
+M6.2 identity note: target production auth now requires `AUTH_PROVIDER=oidc` and validates access tokens through OIDC discovery/JWKS before resolving the effective `AuthContext` from WiseEff PostgreSQL users and role bindings. OIDC `wiseeff_roles` may exist for diagnostics, but the database is the authorization source after identity verification. The HMAC verifier remains available for local smoke/test profiles only. Backend user-governance APIs persist user/role changes in PostgreSQL transactions and write audit events for create, profile, activation, and role replacement mutations.
+
 ## 2. 推荐技术栈
 
 | 层级 | 推荐 |

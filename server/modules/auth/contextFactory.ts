@@ -2,6 +2,8 @@ import type { RouteRequest } from "../../shared/http/router";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "./types";
 import type { TokenVerifier } from "./tokenVerifier";
+import type { Queryable } from "../../shared/database/client";
+import { getAuthContextForExternalIdentity } from "./repository";
 
 export type AuthMode = "development" | "production";
 
@@ -10,6 +12,7 @@ export type AuthContextResolver = (request: Pick<RouteRequest, "headers">) => Pr
 export type AuthContextResolverOptions = {
   mode: AuthMode;
   verifier?: TokenVerifier;
+  db?: Queryable;
   developmentAuthContext?: AuthContext;
   getDevelopmentAuthContext?: (request: Pick<RouteRequest, "headers">) => Promise<AuthContext> | AuthContext;
 };
@@ -22,7 +25,15 @@ export function createAuthContextResolver(options: AuthContextResolverOptions): 
 
     return async (request) => {
       try {
-        return await options.verifier!.verify(request.headers.authorization);
+        const verifiedContext = await options.verifier!.verify(request.headers.authorization);
+        if (!options.db) {
+          throw new ApiError("INTERNAL_ERROR", "Database-backed auth context is required when AUTH_MODE=production.", 500);
+        }
+        return await getAuthContextForExternalIdentity(options.db, {
+          organizationId: verifiedContext.user.organizationId,
+          subject: verifiedContext.user.id,
+          email: verifiedContext.user.emailVerified ? verifiedContext.user.email : undefined
+        });
       } catch (error) {
         if (error instanceof ApiError) {
           throw error;

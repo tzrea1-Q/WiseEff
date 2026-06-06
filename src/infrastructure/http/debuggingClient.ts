@@ -20,7 +20,7 @@ import {
   type DebugTargetDto,
   type NodeOperationDto
 } from "./debuggingDtos";
-import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "./runtimeMode";
+import { createDefaultApiClient } from "./defaultApiClient";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemsEnvelope<T> = { items: T[] };
@@ -48,7 +48,7 @@ function snapshotRollbackPath(snapshotId: string) {
   return `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`;
 }
 
-export function createHttpDebuggingGateway(apiClient: ApiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl, authorization: wiseEffApiAuthorization })): DebuggingGateway {
+export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultApiClient()): DebuggingGateway {
   return {
     async listDevices() {
       const response = await apiClient.get<ItemsEnvelope<DebugDeviceDto>>("/api/v1/debugging/devices");

@@ -46,6 +46,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M5.12 target synthetic acceptance | GitHub Actions `target-synthetic-acceptance` workflow_dispatch | Target frontend/API URLs, auth secrets, optional target `DATABASE_URL`, external dependency evidence | Runs manual target non-HDC or full-pilot synthetic checks with `--no-start-runtime` and archives evidence artifacts. |
 | M5 full pilot gate | `npm run test:m5` | PostgreSQL, live API, and target evidence inputs | Before claiming commercial pilot baseline in an environment. |
 | M6.1 self-hosted baseline | `npm run selfhost:check` plus `npm run selfhost:smoke -- --base-url <target-url>` | Linux host, compose runtime, admin smoke token, object store, Agent provider | Before treating a self-hosted target as deployed. |
+| M6.2 identity and user governance | `npm run acceptance:browser` plus `npm run acceptance:evidence` and focused auth/user tests | PostgreSQL, API-mode runtime, local smoke token or target OIDC token | Before accepting OIDC/auth runtime or backend user-governance changes. |
 
 ## UI Interaction Acceptance Rule
 
@@ -77,6 +78,8 @@ M5.10 evidence-grade rule: every passed operation evidence record must include r
 M5.11 quality-gate rule: UI-facing changes should run the narrow quality gate that matches the risk, plus `npm run acceptance:quality` when scripts or spec wiring change. `npm run acceptance:a11y` covers automated WCAG A/AA scans, `npm run acceptance:visual` covers stable masked snapshots, and `npm run acceptance:responsive` covers desktop/tablet/mobile usability and horizontal-overflow checks. These gates supplement browser acceptance; they do not replace operation evidence or manual judgment for ambiguous visual issues.
 
 M5.12 CI/synthetic rule: `.github/workflows/ci.yml` must keep a local non-HDC acceptance job for PR/push candidates, a manual target synthetic job for `target-non-hdc` and `full-pilot`, and artifact uploads for Playwright reports, traces, screenshots, browser evidence, and operation evidence. Run `npm run acceptance:ci` after changing the workflow. PR CI may prove local non-HDC readiness only; full-pilot remains valid only when the manual workflow uses target environment secrets plus real HDC, backup/restore, rollback, object-store, worker, and Agent provider evidence.
+
+M6.2 identity rule: production `NODE_ENV=production` must use `AUTH_PROVIDER=oidc`. Local HMAC smoke is valid for deterministic local gates only. Target OIDC evidence must be redacted and must prove discovery/JWKS, token expiry/issuer/audience negative checks, browser token acquisition/refresh/logout, `/api/v1/me`, WiseEff DB-backed active/role authorization, and Admin user-governance API/DB/audit evidence.
 
 ## Documentation-Only Changes
 
