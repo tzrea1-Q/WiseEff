@@ -242,6 +242,63 @@ describe("operation evidence checker", () => {
     }
   });
 
+  it("fails when evidence omits assertions required by the operation matrix", () => {
+    const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
+
+    try {
+      const artifactPath = join(root, "artifact.png");
+      writeFileSync(artifactPath, "fake-png", "utf8");
+      const result = evaluateOperationEvidence({
+        operations: [
+          {
+            id: "PERM-USER-MGMT-001",
+            priority: "P1",
+            coverage: "automated",
+            assertions: ["ui", "api", "db", "audit"]
+          }
+        ],
+        records: [
+          {
+            operationId: "PERM-USER-MGMT-001",
+            status: "passed",
+            role: "Admin",
+            route: "/user-permissions",
+            assertions: ["ui"],
+            artifacts: [artifactPath],
+            runtime: {
+              mode: "api",
+              apiBaseUrl: "http://127.0.0.1:8787"
+            },
+            report: {
+              path: "playwright-report/acceptance/index.html",
+              format: "html"
+            },
+            trace: {
+              mode: "retain-on-failure",
+              path: "test-results/acceptance"
+            },
+            reproduction: {
+              steps: ["Open /user-permissions", "Run user governance operation"]
+            }
+          }
+        ]
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.validationErrors).toEqual(
+        expect.arrayContaining([
+          {
+            operationId: "PERM-USER-MGMT-001",
+            field: "assertions",
+            message: "Evidence is missing required operation assertions: api, db, audit."
+          }
+        ])
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("passes evidence with required forensic summaries and renders them in Markdown", () => {
     const root = mkdtempSync(join(tmpdir(), "wiseeff-operation-evidence-"));
 

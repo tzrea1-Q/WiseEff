@@ -32,6 +32,41 @@ describe("createApiClient", () => {
     });
   });
 
+  it("loads authorization from an async token provider for OIDC runtimes", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const getAuthorization = vi.fn(async () => "Bearer oidc-token");
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8787",
+      getAuthorization,
+      fetchImpl: fetchMock
+    });
+
+    await expect(client.get("/api/v1/me")).resolves.toEqual({ ok: true });
+
+    expect(getAuthorization).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/me", {
+      headers: { Accept: "application/json", Authorization: "Bearer oidc-token" },
+      method: "GET"
+    });
+  });
+
+  it("notifies the auth runtime when token resolution fails", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const onAuthorizationFailure = vi.fn();
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8787",
+      getAuthorization: async () => {
+        throw new Error("refresh failed");
+      },
+      onAuthorizationFailure,
+      fetchImpl: fetchMock
+    });
+
+    await expect(client.get("/api/v1/me")).rejects.toThrow("refresh failed");
+    expect(onAuthorizationFailure).toHaveBeenCalledWith(expect.objectContaining({ message: "refresh failed" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("sends DELETE requests with JSON accept headers", async () => {
     const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
@@ -54,6 +89,18 @@ describe("createApiClient", () => {
       body: JSON.stringify({ value: 42 }),
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       method: "PUT"
+    });
+  });
+
+  it("sends PATCH requests with JSON bodies", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = createApiClient({ baseUrl: "http://127.0.0.1:8787", fetchImpl: fetchMock });
+
+    await expect(client.patch("/api/v1/users/u-target/activation", { isActive: false })).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/users/u-target/activation", {
+      body: JSON.stringify({ isActive: false }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "PATCH"
     });
   });
 

@@ -61,6 +61,7 @@ export type OperationEvidenceOperation = {
   id: string;
   priority: string;
   coverage: string;
+  assertions?: AcceptanceOperationAssertion[];
 };
 
 export type OperationEvidenceEvaluation = {
@@ -101,9 +102,10 @@ export function evaluateOperationEvidence(input: EvaluateOperationEvidenceInput)
     .filter((operation) => isRequiredAutomatedOperation(operation) && !coveredSet.has(operation.id))
     .map((operation) => operation.id)
     .sort();
+  const operationById = new Map(input.operations.map((operation) => [operation.id, operation]));
   const validationErrors = input.records
     .filter((record) => record.status === "passed")
-    .flatMap((record) => validateReviewMetadata(record));
+    .flatMap((record) => validateReviewMetadata(record, operationById.get(parentOperationId(record.operationId))));
   const invalidEvidenceIds = Array.from(new Set(validationErrors.map((error) => error.operationId))).sort();
 
   return {
@@ -191,9 +193,14 @@ function isRequiredAutomatedOperation(operation: OperationEvidenceOperation) {
   return operation.coverage === "automated" && requiredPriorities.has(operation.priority);
 }
 
-function validateReviewMetadata(record: OperationEvidenceRecord): OperationEvidenceValidationError[] {
+function validateReviewMetadata(
+  record: OperationEvidenceRecord,
+  operation?: OperationEvidenceOperation
+): OperationEvidenceValidationError[] {
   const errors: OperationEvidenceValidationError[] = [];
-  const assertions = record.assertions ?? [];
+  const recordAssertions = record.assertions ?? [];
+  const requiredAssertions = operation?.assertions ?? [];
+  const assertions = Array.from(new Set([...recordAssertions, ...requiredAssertions]));
 
   if (!record.role?.trim()) {
     errors.push({ operationId: record.operationId, field: "role", message: "Evidence requires a role summary." });
@@ -201,8 +208,16 @@ function validateReviewMetadata(record: OperationEvidenceRecord): OperationEvide
   if (!record.route?.trim()) {
     errors.push({ operationId: record.operationId, field: "route", message: "Evidence requires a route summary." });
   }
-  if (assertions.length === 0) {
+  if (recordAssertions.length === 0) {
     errors.push({ operationId: record.operationId, field: "assertions", message: "Evidence requires assertion metadata." });
+  }
+  const missingAssertions = requiredAssertions.filter((assertion) => !recordAssertions.includes(assertion));
+  if (missingAssertions.length > 0) {
+    errors.push({
+      operationId: record.operationId,
+      field: "assertions",
+      message: `Evidence is missing required operation assertions: ${missingAssertions.join(", ")}.`
+    });
   }
   if (record.artifacts.length === 0) {
     errors.push({ operationId: record.operationId, field: "artifacts", message: "Evidence requires at least one artifact." });
@@ -267,6 +282,10 @@ function validateReviewMetadata(record: OperationEvidenceRecord): OperationEvide
   }
 
   return errors;
+}
+
+function parentOperationId(operationId: string) {
+  return operationId.split(":")[0];
 }
 
 function escapeMarkdownTableCell(value: string) {

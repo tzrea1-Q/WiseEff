@@ -15,9 +15,7 @@ type AuthRow = {
   role_id: BackendRoleId;
 };
 
-export async function getAuthContext(db: Queryable, userId: string): Promise<AuthContext> {
-  const result = await db.query<AuthRow>(
-    `
+const authContextSelect = `
     select
       users.id as user_id,
       users.organization_id,
@@ -31,22 +29,19 @@ export async function getAuthContext(db: Queryable, userId: string): Promise<Aut
     from users
     join organizations on organizations.id = users.organization_id
     join user_role_bindings on user_role_bindings.user_id = users.id
-    where users.id = $1
-    order by user_role_bindings.project_id nulls first
-    `,
-    [userId]
-  );
+`;
 
-  if (result.rows.length === 0) {
+function authContextFromRows(rows: AuthRow[]) {
+  if (rows.length === 0) {
     throw new ApiError("UNAUTHENTICATED", "User is not authenticated.", 401);
   }
 
-  const first = result.rows[0];
+  const first = rows[0];
   if (!first.is_active) {
     throw new ApiError("FORBIDDEN", "User is inactive.", 403);
   }
 
-  const roles = result.rows.map((row) => ({ projectId: row.project_id, roleId: row.role_id }));
+  const roles = rows.map((row) => ({ projectId: row.project_id, roleId: row.role_id }));
 
   return {
     user: {
@@ -64,4 +59,49 @@ export async function getAuthContext(db: Queryable, userId: string): Promise<Aut
     roles,
     permissions: permissionsForRoles(roles.map((role) => role.roleId))
   };
+}
+
+export async function getAuthContext(db: Queryable, userId: string): Promise<AuthContext> {
+  const result = await db.query<AuthRow>(
+    `
+    ${authContextSelect}
+    where users.id = $1
+    order by user_role_bindings.project_id nulls first
+    `,
+    [userId]
+  );
+
+  return authContextFromRows(result.rows);
+}
+
+export async function getAuthContextForExternalIdentity(
+  db: Queryable,
+  input: { organizationId: string; subject: string; email?: string }
+): Promise<AuthContext> {
+  const subjectResult = await db.query<AuthRow>(
+    `
+    ${authContextSelect}
+    where users.organization_id = $1 and users.id = $2
+    order by user_role_bindings.project_id nulls first
+    `,
+    [input.organizationId, input.subject]
+  );
+  if (subjectResult.rows.length > 0) {
+    return authContextFromRows(subjectResult.rows);
+  }
+
+  if (!input.email?.trim()) {
+    throw new ApiError("UNAUTHENTICATED", "User is not authenticated.", 401);
+  }
+
+  const emailResult = await db.query<AuthRow>(
+    `
+    ${authContextSelect}
+    where users.organization_id = $1 and lower(users.email) = lower($2)
+    order by user_role_bindings.project_id nulls first
+    `,
+    [input.organizationId, input.email]
+  );
+
+  return authContextFromRows(emailResult.rows);
 }

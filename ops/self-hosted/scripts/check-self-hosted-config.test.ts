@@ -3,7 +3,10 @@ import { evaluateSelfHostedConfig } from "./check-self-hosted-config";
 
 const validPackageJson = {
   scripts: {
+    "backup:check": "tsx scripts/check-backup-drill.ts",
+    "backup:drill": "tsx scripts/run-backup-drill.ts",
     "queue:check": "tsx scripts/check-durable-queue.ts",
+    "restore:drill": "tsx scripts/run-restore-drill.ts",
     "selfhost:check": "tsx ops/self-hosted/scripts/check-self-hosted-config.ts",
     "selfhost:smoke": "tsx ops/self-hosted/scripts/run-self-hosted-smoke.ts"
   }
@@ -82,8 +85,11 @@ PORT=8787
 POSTGRES_PASSWORD=
 DATABASE_URL=
 AUTH_MODE=production
-AUTH_TOKEN_ISSUER=
-AUTH_TOKEN_HMAC_SECRET=
+AUTH_PROVIDER=oidc
+AUTH_OIDC_ISSUER=https://id.example.com/realms/wiseeff
+AUTH_OIDC_AUDIENCE=wiseeff-api
+AUTH_OIDC_JWKS_URI=
+M6_SELFHOSTED_SMOKE_AUTHORIZATION=
 VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=
 OBJECT_STORE_MODE=s3
@@ -91,6 +97,15 @@ OBJECT_STORAGE_ENDPOINT=
 OBJECT_STORAGE_BUCKET=
 OBJECT_STORAGE_ACCESS_KEY_ID=
 OBJECT_STORAGE_SECRET_ACCESS_KEY=
+OBJECT_STORAGE_TLS_POLICY=required
+OBJECT_STORAGE_PATH_STYLE=true
+OBJECT_STORAGE_HEALTH_PREFIX=.health/
+OBJECT_STORAGE_RETENTION_CLASS=pilot-default
+BACKUP_DATABASE_TARGET=
+BACKUP_OBJECT_STORAGE_TARGET=
+RESTORE_DATABASE_URL=
+RESTORE_OBJECT_STORAGE_BUCKET=
+RESTORE_OBJECT_STORAGE_PREFIX=
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
 AGENT_PROVIDER=live
@@ -135,6 +150,12 @@ describe("self-hosted config metadata", () => {
       dockerignoreText: validDockerignore,
       envExampleText: validEnvExample,
       caddyfileText: validCaddyfile
+      ,
+      existingFiles: new Set([
+        "ops/self-hosted/storage/README.md",
+        "ops/self-hosted/storage/provider-decision.md",
+        "ops/self-hosted/storage/object-store.env.example"
+      ])
     });
 
     expect(result).toEqual({
@@ -145,7 +166,8 @@ describe("self-hosted config metadata", () => {
       missingDockerfileTokens: [],
       missingDockerignoreTokens: [],
       missingEnvKeys: [],
-      missingProxyTokens: []
+      missingProxyTokens: [],
+      missingFiles: []
     });
   });
 
@@ -156,11 +178,12 @@ describe("self-hosted config metadata", () => {
       dockerfileText: "FROM node:22-alpine\nCOPY . .\nRUN npm run build\n",
       dockerignoreText: "node_modules/\n",
       envExampleText: "NODE_ENV=production\n",
-      caddyfileText: ""
+      caddyfileText: "",
+      existingFiles: new Set()
     });
 
     expect(result.status).toBe("failed");
-    expect(result.missingScripts).toEqual(["selfhost:check", "selfhost:smoke", "queue:check"]);
+    expect(result.missingScripts).toEqual(["selfhost:check", "selfhost:smoke", "backup:drill", "restore:drill", "backup:check", "queue:check"]);
     expect(result.missingServices).toEqual(["postgres", "redis", "worker", "web", "proxy"]);
     expect(result.missingComposeTokens).toEqual(
       expect.arrayContaining([
@@ -175,8 +198,37 @@ describe("self-hosted config metadata", () => {
     expect(result.missingDockerfileTokens).toEqual(expect.arrayContaining(["ARG VITE_WISEEFF_API_BASE_URL"]));
     expect(result.missingDockerignoreTokens).toEqual(expect.arrayContaining(["**/.env", "**/.env.*"]));
     expect(result.missingEnvKeys).toEqual(
-      expect.arrayContaining(["HOST", "DATABASE_URL", "LOG_WORKER_ENABLED", "REDIS_URL", "M5_BACKUP_RESTORE_DRILL_AT"])
+      expect.arrayContaining([
+        "HOST",
+        "DATABASE_URL",
+        "AUTH_PROVIDER",
+        "AUTH_OIDC_ISSUER",
+        "AUTH_OIDC_AUDIENCE",
+        "AUTH_OIDC_JWKS_URI",
+        "M6_SELFHOSTED_SMOKE_AUTHORIZATION",
+        "LOG_WORKER_ENABLED",
+        "M5_BACKUP_RESTORE_DRILL_AT",
+        "OBJECT_STORAGE_TLS_POLICY",
+        "OBJECT_STORAGE_PATH_STYLE",
+        "OBJECT_STORAGE_HEALTH_PREFIX",
+        "BACKUP_DATABASE_TARGET",
+        "BACKUP_OBJECT_STORAGE_TARGET",
+        "RESTORE_DATABASE_URL",
+        "RESTORE_OBJECT_STORAGE_BUCKET",
+        "RESTORE_OBJECT_STORAGE_PREFIX",
+        "LOG_ANALYSIS_QUEUE_MODE",
+        "REDIS_URL",
+        "LOG_ANALYSIS_QUEUE_PREFIX",
+        "LOG_ANALYSIS_QUEUE_ATTEMPTS",
+        "LOG_ANALYSIS_QUEUE_BACKOFF_MS",
+        "LOG_ANALYSIS_QUEUE_CONCURRENCY"
+      ])
     );
     expect(result.missingProxyTokens).toEqual(expect.arrayContaining(["reverse_proxy api:8787", "tls"]));
+    expect(result.missingFiles).toEqual([
+      "ops/self-hosted/storage/README.md",
+      "ops/self-hosted/storage/provider-decision.md",
+      "ops/self-hosted/storage/object-store.env.example"
+    ]);
   });
 });

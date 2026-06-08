@@ -76,19 +76,23 @@ describe("operations health", () => {
         status: "not_ready",
         dependencies: {
           database: { ok: true, status: "ready" },
-          objectStore: { ok: false, status: "failed", message: "Object store probe failed." }
+          objectStore: {
+            ok: false,
+            status: "failed",
+            message: "Object store readiness failed. Verify endpoint, bucket, credentials, TLS policy, and S3 compatibility."
+          }
         }
       }
     });
   });
 
-  it("returns 503 when object store readiness throws", async () => {
+  it("returns 503 with sanitized actionable object-store readiness failures", async () => {
     const db: Pick<Queryable, "query"> = {
       query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
     };
     const objectStore = {
       checkHealth: async () => {
-        throw new Error("object store permission denied");
+        throw new Error("AccessDenied secretAccessKey=super-secret https://storage.example.com/bucket?X-Amz-Signature=abc");
       }
     };
 
@@ -99,7 +103,11 @@ describe("operations health", () => {
         status: "not_ready",
         dependencies: {
           database: { ok: true, status: "ready" },
-          objectStore: { ok: false, status: "failed", message: "object store permission denied" }
+          objectStore: {
+            ok: false,
+            status: "failed",
+            message: "Object store readiness failed: credentials or access policy denied. Verify endpoint, bucket policy, access key, and secret rotation."
+          }
         }
       }
     });

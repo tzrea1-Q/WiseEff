@@ -37,7 +37,9 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 - `DATABASE_URL`：PostgreSQL 连接。
 - `AUTH_MODE`：`development` 或 `production`。
-- `AUTH_TOKEN_ISSUER` / `AUTH_TOKEN_HMAC_SECRET`：production-mode HMAC auth。
+- `AUTH_PROVIDER`：本地 smoke 使用 `hmac`，目标自托管环境使用 `oidc`。
+- `AUTH_TOKEN_ISSUER` / `AUTH_TOKEN_HMAC_SECRET`：仅用于本地 HMAC smoke/test。
+- `AUTH_OIDC_ISSUER` / `AUTH_OIDC_AUDIENCE` / `AUTH_OIDC_JWKS_URI`：M6.2 OIDC issuer、audience 和可选 JWKS 覆盖。
 - `OBJECT_STORE_MODE`：`local` 或 `s3`。
 - `OBJECT_STORE_ROOT`：local object store 目录。
 - `DEBUG_DEVICE_GATEWAY_MODE`：`simulator` 或 `hdc`。
@@ -168,4 +170,4 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
 
-M6.4 已经补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 `queue:check` 和 `selfhost:smoke` 证据。OIDC、自托管对象存储备份、observability、rollback 和 capacity gates 属于后续 M6 阶段或目标环境验收。
+M6.2 增加 OIDC 身份边界和后端用户治理 API。目标自托管环境应使用 `AUTH_PROVIDER=oidc`、`AUTH_OIDC_ISSUER` 和 `AUTH_OIDC_AUDIENCE`，并使用 OIDC access token 运行 smoke。HMAC token 只保留给本地 smoke/test；目标环境证据必须来自真实 OIDC/JWKS。M6.3 增加自托管 S3-compatible 对象存储和备份/恢复证据。M6.4 已经补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 `queue:check` 和 `selfhost:smoke` 证据。observability、rollback 和 capacity gates 属于后续 M6 阶段或目标环境验收。

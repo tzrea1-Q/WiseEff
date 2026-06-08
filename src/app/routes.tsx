@@ -27,6 +27,7 @@ import { ParameterAdminPage } from "@/ParameterAdminPage";
 import { ParameterManagementHomePage } from "@/ParameterManagementHomePage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
+import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
@@ -58,6 +59,7 @@ export type PageProps = {
   debuggingRuntimeReady?: boolean;
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
+  userGovernanceActions?: UserGovernanceActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
   runtimeMode?: WiseEffRuntimeMode;
 };
@@ -85,6 +87,7 @@ export function PageRouter({
   debuggingRuntimeReady = true,
   logActions,
   parameterActions,
+  userGovernanceActions,
   parameterHomeTimeWindow,
   runtimeMode,
   HomePage,
@@ -185,7 +188,7 @@ export function PageRouter({
     case "debugging-admin":
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} debuggingActions={debuggingActions} debuggingGateway={debuggingGateway} logActions={logActions} parameterActions={parameterActions} />;
     case "user-permissions":
-      return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />;
+      return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} userGovernanceActions={userGovernanceActions} />;
     default:
       return <HomePage />;
   }
