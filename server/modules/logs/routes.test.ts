@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
+import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import type { ObjectStore } from "./objectStore";
 import { ApiError } from "../../shared/http/errors";
 import { createHttpServer } from "../../shared/http/server";
@@ -138,11 +139,18 @@ function fileObject(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function makeServer(options: { db?: Database; objectStore?: ObjectStore; auth?: AuthContext } = {}) {
+function makeQueue(): LogAnalysisQueue {
+  return {
+    enqueue: vi.fn()
+  };
+}
+
+function makeServer(options: { db?: Database; objectStore?: ObjectStore; auth?: AuthContext; logAnalysisQueue?: LogAnalysisQueue } = {}) {
   const router = createRouter();
   registerLogRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
+    logAnalysisQueue: options.logAnalysisQueue,
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
   return createHttpServer(router);
@@ -191,6 +199,34 @@ describe("log routes", () => {
         analysisQuestion: "Why did fast charging fold back?"
       },
       { requestId: "test-request" }
+    );
+  });
+
+  it("passes the durable log-analysis queue through upload service context", async () => {
+    const db = makeDb();
+    const objectStore = makeObjectStore();
+    const logAnalysisQueue = makeQueue();
+    const log = logRecord();
+    const job = jobRecord();
+    const file = fileObject();
+    vi.mocked(service.uploadLogFile).mockResolvedValue({ fileObject: file, log, job });
+
+    await requestJson(makeServer({ db, objectStore, logAnalysisQueue }), "/api/v1/log-files", {
+      method: "POST",
+      body: JSON.stringify({
+        projectId: "aurora",
+        fileName: "charging-foldback.log",
+        contentType: "text/plain",
+        contentBase64: Buffer.from("WARN foldback").toString("base64")
+      })
+    });
+
+    expect(service.uploadLogFile).toHaveBeenCalledWith(
+      db,
+      objectStore,
+      makeAuth(),
+      expect.objectContaining({ fileName: "charging-foldback.log" }),
+      { requestId: "test-request", logAnalysisQueue }
     );
   });
 
@@ -392,6 +428,27 @@ describe("log routes", () => {
         analysisQuestion: "Try again with charger context."
       },
       { requestId: "test-request" }
+    );
+  });
+
+  it("passes the durable log-analysis queue through rerun service context", async () => {
+    const db = makeDb();
+    const logAnalysisQueue = makeQueue();
+    const log = logRecord({ id: "log-route" });
+    const job = jobRecord();
+    const runs = [runRecord({ id: "run-new", logId: "log-route" })];
+    vi.mocked(service.rerunLogAnalysis).mockResolvedValue({ log, job, runs });
+
+    await requestJson(makeServer({ db, objectStore: makeObjectStore(), logAnalysisQueue }), "/api/v1/logs/log-route/rerun", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+
+    expect(service.rerunLogAnalysis).toHaveBeenCalledWith(
+      db,
+      makeAuth(),
+      { logId: "log-route" },
+      { requestId: "test-request", logAnalysisQueue }
     );
   });
 

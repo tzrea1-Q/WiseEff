@@ -8,6 +8,7 @@ Secrets should be supplied by local `.env` files or the target environment's sec
 - Real OIDC client secrets, admin recovery passwords, and target bearer tokens.
 - Non-local `AUTH_TOKEN_HMAC_SECRET`; HMAC is local smoke/test only after M6.2.
 - Object-store access keys.
+- Redis credentials or queue connection URLs for target environments.
 - S3 signed URLs or raw provider error payloads that include signed headers.
 - Database URLs that include restore or backup passwords.
 - Agent provider API keys.

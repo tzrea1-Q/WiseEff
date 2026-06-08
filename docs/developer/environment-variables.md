@@ -45,6 +45,18 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `OBJECT_STORAGE_HEALTH_PREFIX` | `.health/` | readiness probe | Prefix for write/read/head/delete health probe objects. |
 | `OBJECT_STORAGE_RETENTION_CLASS` | `pilot-default` | log metadata | Stored as object metadata for retention evidence. |
 
+## Durable Queue
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `LOG_WORKER_ENABLED` | `true` | log worker startup | Self-hosted API containers set `false`; the worker container runs `npm run worker:logs`. |
+| `LOG_ANALYSIS_QUEUE_MODE` | `polling` | log worker dispatch | Use `durable` for self-hosted Redis/BullMQ dispatch. |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | durable queue mode | Required when `LOG_ANALYSIS_QUEUE_MODE=durable`. |
+| `LOG_ANALYSIS_QUEUE_PREFIX` | `wiseeff` | BullMQ key namespace | Use a unique prefix per environment if Redis is shared. |
+| `LOG_ANALYSIS_QUEUE_ATTEMPTS` | `4` | retry/dead-letter policy | Aligns BullMQ attempts with PostgreSQL job retry state. |
+| `LOG_ANALYSIS_QUEUE_BACKOFF_MS` | `1000` | retry/dead-letter policy | Base exponential backoff in milliseconds. |
+| `LOG_ANALYSIS_QUEUE_CONCURRENCY` | `1` | worker throughput | Increase only after capacity testing. |
+
 ## Device Gateway
 
 | Variable | Local default | Required for | Notes |
@@ -98,6 +110,8 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | Required inside the API container so Caddy can proxy to it. |
 | `LOG_WORKER_ENABLED` | `false` in API, `true` in worker | Prevents the API container from running a duplicate in-process worker. |
+| `LOG_ANALYSIS_QUEUE_MODE` | `durable` | Uses Redis/BullMQ transport while PostgreSQL remains the source of truth. |
+| `REDIS_URL` | `redis://redis:6379` | Compose Redis service used by API and worker containers. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
 | `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. |

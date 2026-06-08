@@ -106,9 +106,9 @@ Current baseline:
 - Frontend: React, Vite, TypeScript, mock runtime for demos/tests, and API runtime for productized flows.
 - Backend: TypeScript modular-monolith API with auth, audit, parameters, logs, jobs, debugging, Agent, contracts, and operations modules.
 - Data and contracts: PostgreSQL migrations, generated schema summary, committed OpenAPI artifact, and contract freshness check.
-- Runtime seams: local/S3-compatible object storage, dedicated log worker runner, simulator/HDC device gateway, deterministic/live Agent provider.
+- Runtime seams: local/S3-compatible object storage, dedicated log worker runner, Redis/BullMQ durable queue mode for log-analysis dispatch, simulator/HDC device gateway, deterministic/live Agent provider.
 - Release state: M5 pilot-readiness gate is implemented; external staging, HDC device-lab, backup/restore, rollback, and live provider evidence must still be recorded before calling an environment pilot-ready.
-- Self-hosted runtime: M6.1 adds `ops/self-hosted/`, `npm run selfhost:check`, and `npm run selfhost:smoke` for a single-Linux-server baseline. M6.3 adds S3-compatible self-hosted object storage guidance under `ops/self-hosted/storage/` plus `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check`.
+- Self-hosted runtime: M6.1 adds `ops/self-hosted/`, `npm run selfhost:check`, and `npm run selfhost:smoke` for a single-Linux-server baseline. M6.3 adds S3-compatible self-hosted object storage guidance under `ops/self-hosted/storage/` plus `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check`. M6.4 adds Redis/BullMQ queue wiring and `npm run queue:check`; target Redis evidence is still required before calling a deployed environment queue-ready.
 - Developer docs: `docs/zh-CN/` provides the Chinese developer onboarding and daily reference layer for the key architecture, runtime, quality, security, reliability, and planning topics.
 - Manual acceptance: `docs/runbooks/manual-acceptance.md` provides the human checklist for product workflow acceptance, runtime gates, evidence capture, and Go/No-Go judgment.
 - Documentation checks: `npm run docs:check` validates active plan governance, key doc entry points, local markdown links, and `.env.example` coverage.

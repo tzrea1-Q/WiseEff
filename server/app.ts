@@ -11,7 +11,9 @@ import type { DebugDeviceGateway } from "./modules/debugging/gateway";
 import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
+import type { DurableQueueHealthCheck } from "./modules/operations/health";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
+import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterRoutes } from "./modules/parameters/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { createHttpServer } from "./shared/http/server";
@@ -30,8 +32,10 @@ export function createWiseEffServer(
     db?: Database;
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
+    logAnalysisQueue?: LogAnalysisQueue;
     debugGateway?: DebugDeviceGateway;
     agentProvider?: AgentProvider;
+    durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
   } = {}
@@ -50,6 +54,7 @@ export function createWiseEffServer(
     objectStore: options.objectStoreHealth,
     agentProvider: options.agentProvider,
     debugGateway: options.debugGateway,
+    durableQueue: options.durableQueue,
     env: options.env,
     getCurrentAuthContext: authResolver
   });
@@ -70,6 +75,7 @@ export function createWiseEffServer(
   registerLogRoutes(router, {
     db: options.db,
     objectStore: options.objectStore,
+    logAnalysisQueue: options.logAnalysisQueue,
     getCurrentAuthContext: authResolver
   });
   registerJobRoutes(router, {
@@ -95,8 +101,10 @@ export function createWiseEffServerFromEnv(
     db?: Database;
     objectStore?: ObjectStore;
     objectStoreHealth?: ObjectStoreHealthCheck;
+    logAnalysisQueue?: LogAnalysisQueue;
     debugGateway?: DebugDeviceGateway;
     agentProvider?: AgentProvider;
+    durableQueue?: DurableQueueHealthCheck;
     env: ServerEnv;
     authVerifierFactory?: (env: ServerEnv) => TokenVerifier;
   }

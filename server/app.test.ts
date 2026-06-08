@@ -374,6 +374,11 @@ describe("WiseEff API", () => {
           AGENT_API_TIMEOUT_MS: 5000,
           AGENT_PROMPT_VERSION: "m5-agent-v1",
           LOG_WORKER_ENABLED: false,
+          LOG_ANALYSIS_QUEUE_MODE: "polling",
+          LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
+          LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
+          LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
+          LOG_ANALYSIS_QUEUE_CONCURRENCY: 1,
           MOCK_RUNTIME_ENABLED: false
         },
         authVerifierFactory: () => ({
@@ -472,6 +477,11 @@ describe("WiseEff API", () => {
           AGENT_API_TIMEOUT_MS: 5000,
           AGENT_PROMPT_VERSION: "m5-agent-v1",
           LOG_WORKER_ENABLED: false,
+          LOG_ANALYSIS_QUEUE_MODE: "polling",
+          LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
+          LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
+          LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
+          LOG_ANALYSIS_QUEUE_CONCURRENCY: 1,
           MOCK_RUNTIME_ENABLED: false
         }
       }),

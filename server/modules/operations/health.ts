@@ -1,5 +1,7 @@
 import type { Database } from "../../shared/database/client";
 import type { AgentProvider } from "../agent/provider";
+import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
+import type { DurableQueueHealth } from "../jobs/queuePort";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 
@@ -17,9 +19,12 @@ export type OperationsHealthBody = {
     database: DependencyHealth;
     objectStore: DependencyHealth;
     workerQueue?: WorkerQueueHealth;
+    durableQueue?: CombinedDurableQueueHealth;
     agentProvider?: DependencyHealth;
   };
 };
+
+export type DurableQueueHealthCheck = DurableQueueHealth | { checkHealth(): Promise<DurableQueueHealth> };
 
 export function buildLiveHealth(): OperationsHealthBody {
   return {
@@ -115,17 +120,31 @@ async function checkAgentProvider(agentProvider?: AgentProvider): Promise<Depend
   }
 }
 
+async function checkDurableQueue(durableQueue?: DurableQueueHealthCheck): Promise<DurableQueueHealth | undefined> {
+  if (!durableQueue) return undefined;
+  if ("checkHealth" in durableQueue) {
+    return durableQueue.checkHealth();
+  }
+  return durableQueue;
+}
+
 export async function buildReadyHealth(options: {
   db?: Pick<Database, "query">;
   objectStore?: ObjectStoreHealthCheck;
   includeWorkerQueue?: boolean;
+  durableQueue?: DurableQueueHealthCheck;
   agentProvider?: AgentProvider;
 }) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
   const agentProvider = await checkAgentProvider(options.agentProvider);
   const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
-  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (agentProvider?.ok ?? true);
+  const durableQueueTransport = await checkDurableQueue(options.durableQueue);
+  const durableQueue =
+    durableQueueTransport && workerQueue
+      ? buildDurableQueueHealth({ transport: durableQueueTransport, database: workerQueue })
+      : undefined;
+  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (durableQueue?.ok ?? true) && (agentProvider?.ok ?? true);
 
   return {
     status: ok ? 200 : 503,
@@ -137,6 +156,7 @@ export async function buildReadyHealth(options: {
         database,
         objectStore,
         ...(workerQueue ? { workerQueue } : {}),
+        ...(durableQueue ? { durableQueue } : {}),
         ...(agentProvider ? { agentProvider } : {})
       }
     } satisfies OperationsHealthBody

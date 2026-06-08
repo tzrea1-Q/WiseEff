@@ -1,6 +1,6 @@
 # Self-Hosted Runtime Runbook
 
-This runbook covers the M6.1 self-hosted Linux baseline. It proves WiseEff can run as separate API, web, worker, PostgreSQL, and reverse-proxy services on a controlled Linux host. It does not replace M6.2-M6.6 hardening for OIDC, self-hosted object storage, durable queues, observability, rollback, and capacity.
+This runbook covers the M6.1 self-hosted Linux baseline plus the M6.4 durable queue runtime shape. It proves WiseEff can run as separate API, web, worker, PostgreSQL, Redis, and reverse-proxy services on a controlled Linux host. It does not replace the remaining M6 hardening for OIDC, self-hosted object storage evidence, observability, rollback, and capacity.
 
 ## Preconditions
 
@@ -40,7 +40,7 @@ Fill every blank value in `.env`. The self-hosted API container uses:
 - `NODE_ENV=production`
 - `LOG_WORKER_ENABLED=false`
 
-The separate worker service runs `npm run worker:logs`.
+The separate worker service runs `npm run worker:logs`. In M6.4 durable mode, API and worker both use Redis/BullMQ through `REDIS_URL`, while PostgreSQL remains the source of truth for job state.
 
 Do not commit `ops/self-hosted/.env`. The repository `.dockerignore` also excludes `.env` files from image build contexts so operator secrets do not get baked into container layers.
 
@@ -62,9 +62,10 @@ From the repository root:
 
 ```bash
 npm run selfhost:check
+npm run queue:check -- --env-file ops/self-hosted/.env --base-url https://wiseeff.example.com
 ```
 
-This validates package scripts, compose services, persistent PostgreSQL storage, env keys, and Caddy routing.
+This validates package scripts, compose services, persistent PostgreSQL and Redis storage, env keys, Caddy routing, and target durable queue readiness.
 
 ## Smoke
 
@@ -84,6 +85,8 @@ The smoke probes:
 - `/health/ready`
 - `/api/v1/me`
 - `/api/v1/operations/pilot-readiness`
+
+M6.4 requires `/health/ready` to include `dependencies.durableQueue.transport` and `dependencies.durableQueue.database`.
 
 Evidence is written to `docs/generated/m6-self-hosted-runtime-evidence.md` by default. Do not commit evidence that exposes internal hostnames, customer identifiers, or secrets.
 
@@ -123,6 +126,6 @@ After upgrade, run self-hosted smoke and review proxy/API/worker logs.
 
 - Production identity is still the M5 HMAC boundary until M6.2.
 - Object storage must be S3-compatible, but provider deployment and backup are M6.3.
-- Queueing still uses the M5 worker seam until M6.4.
+- Queueing uses the M6.4 Redis/BullMQ durable transport in self-hosted durable mode. Target evidence still requires `queue:check` and `selfhost:smoke` against the deployed host.
 - Metrics, dashboards, and alerts are M6.5.
 - Release rollback and capacity gates are M6.6.

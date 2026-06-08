@@ -1,4 +1,5 @@
-import { claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
+import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettered, markJobRetryScheduled, updateJobProgress } from "../jobs/repository";
+import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
 import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
@@ -22,6 +23,16 @@ export type ProcessLogWorkerOptions = {
   retryBaseDelayMs?: number;
   now?: () => Date;
 };
+
+export type ProcessLogWorkerByIdOptions = ProcessLogWorkerOptions & {
+  jobId: string;
+};
+
+export type ProcessLogWorkerResult =
+  | { status: "processed" }
+  | { status: "idle" }
+  | { status: "retry"; reason: string }
+  | { status: "dead-lettered"; reason: string };
 
 type StageStatus = "processing" | "complete" | "failed";
 
@@ -74,18 +85,19 @@ function readableError(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function processNextLogAnalysisJob({
-  db,
-  objectStore,
-  analyzer = createRuleBasedLogAnalyzer(),
-  workerId = "wiseeff-log-worker",
-  leaseTtlMs = 60_000,
-  maxAttempts = 4,
-  retryBaseDelayMs = 1000,
-  now = () => new Date()
-}: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
-  const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
-  if (!job) return "idle";
+async function processClaimedLogAnalysisJob(
+  {
+    db,
+    objectStore,
+    analyzer,
+    workerId,
+    maxAttempts,
+    retryBaseDelayMs,
+    now
+  }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "now">> &
+    Pick<ProcessLogWorkerOptions, "db" | "objectStore">,
+  job: ClaimedLogAnalysisJobDto
+): Promise<ProcessLogWorkerResult> {
   const leaseOwner = job.leaseOwner ?? workerId;
 
   const options = { db, objectStore, analyzer };
@@ -104,7 +116,7 @@ export async function processNextLogAnalysisJob({
       error: staleReason,
       leaseOwner
     });
-    if (!failedJob) return "idle";
+    if (!failedJob) return { status: "idle" };
 
     if (jobSnapshot) {
       await updateRunStageProgress(db, {
@@ -124,7 +136,7 @@ export async function processNextLogAnalysisJob({
         error: staleReason
       });
     }
-    return "processed";
+    return { status: "processed" };
   }
 
   let currentStage: LogStage = "parse";
@@ -245,12 +257,12 @@ export async function processNextLogAnalysisJob({
       },
       evidence: analysis.evidence
     });
-    if (!completed) return "idle";
+    if (!completed) return { status: "idle" };
 
-    return "processed";
+    return { status: "processed" };
   } catch (error) {
     if (error instanceof JobLeaseLostError) {
-      return "idle";
+      return { status: "idle" };
     }
     const message = readableError(error);
     const decision = decideRetry({ attemptCount: job.attemptCount, maxAttempts, baseDelayMs: retryBaseDelayMs, now: now() });
@@ -264,8 +276,8 @@ export async function processNextLogAnalysisJob({
         reason: decision.reason,
         leaseOwner
       });
-      if (!scheduled) return "idle";
-      return "processed";
+      if (!scheduled) return { status: "idle" };
+      return { status: "retry", reason: decision.reason };
     }
 
     const deadLettered = await markJobDeadLettered(db, {
@@ -276,7 +288,7 @@ export async function processNextLogAnalysisJob({
       reason: decision.reason,
       leaseOwner
     });
-    if (!deadLettered) return "idle";
+    if (!deadLettered) return { status: "idle" };
 
     await updateRunStageProgress(options.db, {
       organizationId: snapshot.organizationId,
@@ -294,8 +306,40 @@ export async function processNextLogAnalysisJob({
       currentStage,
       error: decision.reason
     });
-    return "processed";
+    return { status: "dead-lettered", reason: decision.reason };
   }
+}
+
+export async function processNextLogAnalysisJob({
+  db,
+  objectStore,
+  analyzer = createRuleBasedLogAnalyzer(),
+  workerId = "wiseeff-log-worker",
+  leaseTtlMs = 60_000,
+  maxAttempts = 4,
+  retryBaseDelayMs = 1000,
+  now = () => new Date()
+}: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
+  const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
+  if (!job) return "idle";
+  const result = await processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now }, job);
+  return result.status === "idle" ? "idle" : "processed";
+}
+
+export async function processLogAnalysisJobById({
+  db,
+  objectStore,
+  jobId,
+  analyzer = createRuleBasedLogAnalyzer(),
+  workerId = "wiseeff-log-worker",
+  leaseTtlMs = 60_000,
+  maxAttempts = 4,
+  retryBaseDelayMs = 1000,
+  now = () => new Date()
+}: ProcessLogWorkerByIdOptions): Promise<ProcessLogWorkerResult> {
+  const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
+  if (!job) return { status: "idle" };
+  return processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now }, job);
 }
 
 export function startLogWorkerLoop(options: ProcessLogWorkerOptions, intervalMs = 1000): () => void {

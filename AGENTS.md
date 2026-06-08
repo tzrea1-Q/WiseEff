@@ -72,6 +72,7 @@ npm run test:server
 npm run test:all
 npm run build
 npm run selfhost:check
+npm run queue:check
 ```
 
 Use targeted tests while developing. Before claiming a code change is complete, run the narrow relevant tests plus `npm run build` when the change touches TypeScript, Vite config, routing, or shared types.
