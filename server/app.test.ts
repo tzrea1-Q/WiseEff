@@ -72,6 +72,31 @@ function createAuthBoundaryDb() {
   return { calls, db };
 }
 
+function createObservabilityDb() {
+  const db: Database = {
+    query: async <Row,>(text: string): Promise<QueryResult<Row>> => {
+      if (text.includes("from jobs")) {
+        return {
+          rows: [
+            {
+              queued: "3",
+              processing: "1",
+              dead_lettered: "0",
+              oldest_queued_at: null
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+
+      return { rows: [{ ok: 1 } as Row], rowCount: 1 };
+    },
+    transaction: async (fn) => fn(db)
+  };
+
+  return db;
+}
+
 function createProductionIdentityDb(input: {
   dbUserId: string;
   email: string;
@@ -119,31 +144,6 @@ function createProductionIdentityDb(input: {
   };
 
   return { calls, db };
-}
-
-function createObservabilityDb() {
-  const db: Database = {
-    query: async <Row,>(text: string): Promise<QueryResult<Row>> => {
-      if (text.includes("from jobs")) {
-        return {
-          rows: [
-            {
-              queued: "3",
-              processing: "1",
-              dead_lettered: "0",
-              oldest_queued_at: null
-            }
-          ] as Row[],
-          rowCount: 1
-        };
-      }
-
-      return { rows: [{ ok: 1 } as Row], rowCount: 1 };
-    },
-    transaction: async (fn) => fn(db)
-  };
-
-  return db;
 }
 
 afterEach(() => {

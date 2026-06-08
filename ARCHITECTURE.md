@@ -79,7 +79,7 @@ Release operations add a pilot gate on top of the basic health checks. `GET /api
 
 M6.1 adds a single-Linux-server self-hosted baseline under `ops/self-hosted/`. It runs PostgreSQL, API, web, worker, and Caddy reverse proxy as separate services. The API defaults to `HOST=127.0.0.1` for local development; self-hosted containers set `HOST=0.0.0.0` so the proxy can reach the API over the compose network. The API container sets `LOG_WORKER_ENABLED=false`, while the dedicated worker container runs `npm run worker:logs`.
 
-M6.2 adds the OIDC-capable identity boundary and durable backend user-governance API surface. Target self-hosted deployments should use `AUTH_PROVIDER=oidc` with issuer, audience, and JWKS discovery. Target-environment OIDC evidence remains required before production identity debt can close.
+M6.2 adds the OIDC-capable identity boundary and durable backend user-governance API surface. Target self-hosted deployments should use `AUTH_PROVIDER=oidc` with issuer, audience, and JWKS discovery.
 
 M6.3 keeps object storage self-hosted by targeting an S3-compatible contract rather than a cloud account. The readiness seam now performs bucket and probe-object write/read/head/delete checks, and backup/restore drills generate redacted evidence for PostgreSQL, object storage, isolated restore targets, and conditional Redis status.
 
@@ -89,7 +89,7 @@ M6.5 adds a self-hosted observability baseline. The API exposes `GET /metrics` a
 
 Prometheus, alert rules, and Grafana dashboard templates live in `ops/self-hosted/observability/`. `/metrics` is internal operations data and must be scraped only over a private network, VPN, reverse-proxy allowlist, mTLS, or a stronger equivalent control.
 
-The M6.1-M6.5 baseline is deployment plumbing plus identity, storage, queue, and observability hardening, not full production hardening. Target OIDC evidence, completed self-hosted restore evidence, target Redis/BullMQ queue evidence, target Prometheus/Grafana/Alertmanager evidence, release rollback, and capacity gates remain open until their target evidence is recorded.
+The M6.1-M6.5 baseline is deployment plumbing, identity/storage evidence scaffolding, queue hardening, and local observability operations, not full production hardening. Target OIDC evidence, target backup/restore evidence, target Redis/BullMQ queue evidence, target Prometheus/Grafana/Alertmanager evidence, release rollback, and capacity gates remain M6 follow-up work.
 
 ## Deeper Docs
 

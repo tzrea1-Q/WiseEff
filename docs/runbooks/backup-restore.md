@@ -2,7 +2,7 @@
 
 Backup and restore evidence is required before calling a pilot or self-hosted target environment ready.
 
-M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. Redis queue backup is conditional only when durable queue mode is not enabled. When `LOG_ANALYSIS_QUEUE_MODE=durable`, target evidence must capture Redis or BullMQ-equivalent persistence metadata.
+M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. M6.4 adds Redis/BullMQ queue persistence checks: queue backup is conditional only when durable queue mode is not enabled. When `LOG_ANALYSIS_QUEUE_MODE=durable`, target evidence must capture Redis or BullMQ-equivalent persistence metadata.
 
 M6.6 also requires a pre-release backup before deploying a self-hosted release candidate. Link the backup artifact and restore rehearsal from [release-rollback.md](release-rollback.md) and the release record in `ops/self-hosted/releases/`.
 
@@ -66,7 +66,7 @@ Avoid `source ops/self-hosted/.env` because dotenv values can contain spaces, in
 
 9. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
 10. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
-11. Restore Redis or queue persistence into the target queue service when durable queue mode is enabled.
+11. Restore Redis persistence when durable queue mode is enabled.
 12. Start API and worker against the restored state.
 13. Validate table counts and sampled log object references.
 14. Run smoke against the restored environment:
@@ -97,7 +97,6 @@ npm run backup:drill --target-env-file=ops/self-hosted/.env
 
 18. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
 19. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
-20. For M6.6 releases, link the same backup and restore evidence from [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or the approved external release evidence record.
 
 ## Local Evidence
 
@@ -122,6 +121,8 @@ Local evidence must not be used to claim target restore readiness. Target readin
 
 `docs/generated/m6-backup-restore-evidence.md` is the human-readable summary generated from the JSON evidence.
 
+For M6.6 releases, link the same backup and restore evidence from [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or the approved external release evidence record.
+
 ## Acceptance
 
 - PostgreSQL backup is restored into an isolated database.
@@ -135,13 +136,13 @@ Local evidence must not be used to claim target restore readiness. Target readin
 
 ## Redis Conditional Status
 
-If durable queue mode is not enabled, queue evidence should be:
+When polling mode is used, queue evidence should be:
 
 ```json
 {
   "mode": "polling",
   "status": "conditional",
-  "reason": "Redis durable queue is not enabled for this drill."
+  "reason": "LOG_ANALYSIS_QUEUE_MODE is not durable for this environment."
 }
 ```
 
@@ -157,6 +158,8 @@ When durable queue mode is enabled, `queue.status` cannot be `conditional`. Targ
   }
 }
 ```
+
+If the target intentionally avoids restoring queue persistence, the operator must document the queue-drain procedure and validate the post-restore queue state with `npm run queue:check -- --base-url <target-url>`.
 
 ## Failure Handling
 

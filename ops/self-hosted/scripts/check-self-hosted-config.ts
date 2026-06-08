@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-export const requiredSelfHostedScripts = ["selfhost:check", "selfhost:smoke", "queue:check"] as const;
+export const requiredSelfHostedScripts = ["selfhost:check", "selfhost:smoke", "backup:drill", "restore:drill", "backup:check", "queue:check"] as const;
 
 export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
 
@@ -44,6 +44,7 @@ export const requiredEnvKeys = [
   "AUTH_OIDC_ISSUER",
   "AUTH_OIDC_AUDIENCE",
   "AUTH_OIDC_JWKS_URI",
+  "M6_SELFHOSTED_SMOKE_AUTHORIZATION",
   "VITE_WISEEFF_RUNTIME_MODE",
   "VITE_WISEEFF_API_BASE_URL",
   "OBJECT_STORE_MODE",

@@ -19,8 +19,8 @@ WiseEff handles engineering workflow data. Treat data according to the highest-r
 - Commit synthetic test fixtures only.
 - Do not commit real customer logs, provider prompts, HDC device identifiers, or access keys.
 - Redact bearer tokens unless they are explicitly local sample tokens generated for `.env.example`.
-- Do not commit database dumps, restored database contents, object bytes, or raw customer log exports as backup evidence.
 - Do not commit public `/metrics` output from customer or pilot environments unless it has been reviewed for route, dependency, provider, device, and incident metadata exposure.
+- Do not commit database dumps, restored database contents, object bytes, or raw customer log exports as backup evidence.
 
 ## Audit Evidence
 
