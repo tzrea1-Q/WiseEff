@@ -6,12 +6,16 @@ Runbooks describe repeatable operational procedures. They complement the design 
 
 - [M5 Commercial Pilot Readiness](m5-commercial-pilot-readiness.md): current go/no-go checklist and pilot gate.
 - [Self-Hosted Runtime](self-hosted-runtime.md): M6.1 single-Linux-server runtime startup, smoke, and emergency stop.
+- [Identity Provider](identity-provider.md): M6.2 self-hosted OIDC, Keycloak reference setup, token rotation, and Admin recovery.
+- [Durable Queue](durable-queue.md): M6.4 Redis/BullMQ queue operation, health, retry, and incident handling.
 - [Manual Acceptance](manual-acceptance.md): human acceptance checklist for product workflows, runtime gates, evidence capture, and Go/No-Go judgment.
 - [Staging Deployment](staging-deployment.md): deploy order and smoke sequence for staging.
-- [Backup And Restore](backup-restore.md): backup and restore drill procedure.
+- [Backup And Restore](backup-restore.md): M6.3 PostgreSQL and S3-compatible object-store backup/restore drill procedure.
 - [Rollback](rollback.md): rollback rehearsal and emergency rollback sequence.
 - [Self-Hosted Release And Rollback](release-rollback.md): M6.6 release-candidate, capacity, target synthetic, and rollback rehearsal procedure.
 - [Monitoring And Alerting](monitoring-alerting.md): signals, alerts, and first triage.
+- [Observability Operations](observability-operations.md): Prometheus, alert rules, Grafana dashboards, and M6.5 alert response.
+- [Incidents](incidents.md): severity, evidence, handoff, and closure for operational incidents.
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.
 - [Agent Provider](agent-provider.md): live provider readiness, fallback, and trace evidence.
 

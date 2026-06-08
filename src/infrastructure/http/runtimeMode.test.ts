@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRuntimeMode } from "./runtimeMode";
+import { parseRuntimeMode, parseStaticApiAuthorization } from "./runtimeMode";
 
 describe("parseRuntimeMode", () => {
   it("defaults to mock mode", () => {
@@ -12,5 +12,13 @@ describe("parseRuntimeMode", () => {
 
   it("blocks mock mode in production", () => {
     expect(() => parseRuntimeMode("mock", "production")).toThrow("Mock runtime cannot be used in production builds");
+  });
+
+  it("allows static API authorization only outside production builds", () => {
+    expect(parseStaticApiAuthorization("Bearer smoke", "development")).toBe("Bearer smoke");
+    expect(parseStaticApiAuthorization(undefined, "production")).toBeUndefined();
+    expect(() => parseStaticApiAuthorization("Bearer static-token", "production")).toThrow(
+      "Static API authorization cannot be used in production builds"
+    );
   });
 });

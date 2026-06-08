@@ -147,7 +147,7 @@ async function seedReadOnlyDebuggingUser(client: Client) {
   await client.query(
     `
     insert into users (id, organization_id, name, email, title, is_active)
-    values ($1, 'org-chargelab', 'Acceptance Debug Nonwriter', 'acceptance-debug-nonwriter@chargelab.cn', 'Guest', true)
+    values ($1, 'org-chargelab', 'Acceptance Debug Nonwriter', 'acceptance-debug-nonwriter@chargelab.cn', 'Hardware User', true)
     on conflict (id) do update set
       organization_id = excluded.organization_id,
       name = excluded.name,
@@ -160,7 +160,7 @@ async function seedReadOnlyDebuggingUser(client: Client) {
   await client.query(
     `
     insert into user_role_bindings (id, user_id, organization_id, project_id, role_id)
-    values ('acceptance-debug-nonwriter-guest', $1, 'org-chargelab', null, 'guest')
+    values ('acceptance-debug-nonwriter-hardware-user', $1, 'org-chargelab', null, 'hardware-user')
     on conflict (id) do update set
       project_id = excluded.project_id,
       role_id = excluded.role_id

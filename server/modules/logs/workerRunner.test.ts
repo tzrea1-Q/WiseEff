@@ -44,6 +44,28 @@ describe("log worker runner", () => {
     ).not.toThrow();
   });
 
+  it("requires Redis URL when durable queue mode is enabled", () => {
+    expect(() =>
+      validateLogWorkerConfig({
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        OBJECT_STORE_MODE: "local",
+        OBJECT_STORE_ROOT: ".wiseeff-object-store",
+        LOG_ANALYSIS_QUEUE_MODE: "durable"
+      })
+    ).toThrow("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable.");
+  });
+
+  it("allows explicit polling mode without Redis", () => {
+    expect(() =>
+      validateLogWorkerConfig({
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+        OBJECT_STORE_MODE: "local",
+        OBJECT_STORE_ROOT: ".wiseeff-object-store",
+        LOG_ANALYSIS_QUEUE_MODE: "polling"
+      })
+    ).not.toThrow();
+  });
+
   it("uses the env-aware object store factory when starting from env", async () => {
     vi.resetModules();
 
@@ -113,5 +135,55 @@ describe("log worker runner", () => {
 
     expect(returnedStop).toBe(stop);
     expect(startLoop).toHaveBeenCalledWith({ db, objectStore, workerId: "worker-a", leaseTtlMs: 30000 }, 250);
+  });
+
+  it("starts a durable BullMQ runtime instead of polling when queue mode is durable", async () => {
+    const close = vi.fn(async () => undefined);
+    const createDurableRuntime = vi.fn(() => ({
+      queue: {
+        enqueue: vi.fn(),
+        processNext: vi.fn(),
+        pause: vi.fn(),
+        resume: vi.fn(),
+        getStats: vi.fn(),
+        checkHealth: vi.fn()
+      },
+      close
+    }));
+    const startLoop = vi.fn(() => vi.fn());
+    const db = { query: vi.fn(), transaction: vi.fn() };
+    const objectStore = { put: vi.fn(), get: vi.fn() };
+
+    const runtime = createLogWorkerRuntime({
+      db,
+      objectStore,
+      startLoop,
+      createDurableRuntime,
+      queueMode: "durable",
+      env: {
+        REDIS_URL: "redis://redis:6379",
+        LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
+        LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
+        LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
+        LOG_ANALYSIS_QUEUE_CONCURRENCY: 2
+      }
+    });
+    const stop = runtime.start();
+    await stop();
+
+    expect(createDurableRuntime).toHaveBeenCalledWith({
+      env: {
+        REDIS_URL: "redis://redis:6379",
+        LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
+        LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
+        LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
+        LOG_ANALYSIS_QUEUE_CONCURRENCY: 2
+      },
+      db,
+      objectStore,
+      workerId: "wiseeff-log-worker"
+    });
+    expect(startLoop).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
   });
 });

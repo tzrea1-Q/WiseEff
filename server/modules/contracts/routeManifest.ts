@@ -1,6 +1,6 @@
 import type { HttpMethod } from "../../shared/http/router";
 
-export type RouteModule = "auth" | "audit" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
+export type RouteModule = "auth" | "audit" | "users" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
 export type RouteStability = "mvp" | "commercial-readiness";
 
 export type RouteManifestEntry = {
@@ -16,6 +16,24 @@ export const routeManifest = [
 
   { id: "audit.createEvent", method: "POST", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
   { id: "audit.listEvents", method: "GET", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
+
+  { id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
+  { id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
+  { id: "users.update", method: "PATCH", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" },
+  {
+    id: "users.activation",
+    method: "PATCH",
+    path: "/api/v1/users/:userId/activation",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.replaceRoles",
+    method: "PUT",
+    path: "/api/v1/users/:userId/roles",
+    module: "users",
+    stability: "commercial-readiness"
+  },
 
   { id: "parameters.listProjects", method: "GET", path: "/api/v1/projects", module: "parameters", stability: "mvp" },
   { id: "parameters.listProjectModules", method: "GET", path: "/api/v1/projects/:projectId/modules", module: "parameters", stability: "mvp" },

@@ -12,6 +12,14 @@ type UserPermissionsPageProps = {
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  userGovernanceActions?: UserGovernanceActions;
+};
+
+export type UserGovernanceActions = {
+  listUsers(): Promise<User[]>;
+  createUser(input: { name: string; email: string; title: string; roleId: PlatformRoleId }): Promise<User | void>;
+  assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
+  setUserActive(userId: string, isActive: boolean): Promise<User | void>;
 };
 
 const statusOptions = [
@@ -64,7 +72,7 @@ function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
   return user.lastActive;
 }
 
-export function UserPermissionsPage({ state, dispatch, search: _search }: UserPermissionsPageProps) {
+export function UserPermissionsPage({ state, dispatch, search: _search, userGovernanceActions }: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -130,7 +138,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
     );
   }
 
-  function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
@@ -141,13 +149,26 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
       return;
     }
 
-    dispatch({
-      type: "ADD_USER",
-      name: trimmedName,
-      email: trimmedEmail,
-      title: trimmedTitle,
-      roleId: initialRoleId
-    });
+    try {
+      const createdUser = await userGovernanceActions?.createUser({
+        name: trimmedName,
+        email: trimmedEmail,
+        title: trimmedTitle,
+        roleId: initialRoleId
+      });
+      dispatch({
+        type: "ADD_USER",
+        id: createdUser?.id,
+        name: createdUser?.name ?? trimmedName,
+        email: createdUser?.email ?? trimmedEmail,
+        title: createdUser?.title ?? trimmedTitle,
+        roleId: createdUser?.roleId ?? initialRoleId
+      });
+    } catch (error) {
+      setAddUserError(error instanceof Error ? error.message : "Create user failed.");
+      return;
+    }
+
     setAddUserOpen(false);
     setName("");
     setEmail("");
@@ -228,13 +249,15 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
                         aria-label={`Role for ${user.name}`}
                         value={normalizedRoleId}
                         disabled={isCurrentUser}
-                        onChange={(event) =>
+                        onChange={async (event) => {
+                          const roleId = event.target.value as PlatformRoleId;
+                          await userGovernanceActions?.assignUserRole(user.id, roleId);
                           dispatch({
                             type: "ASSIGN_USER_ROLE",
                             userId: user.id,
-                            roleId: event.target.value as PlatformRoleId
-                          })
-                        }
+                            roleId
+                          });
+                        }}
                       >
                         {platformRoles.map((role) => (
                           <option key={role.id} value={role.id}>
@@ -248,13 +271,15 @@ export function UserPermissionsPage({ state, dispatch, search: _search }: UserPe
                         className="button"
                         type="button"
                         disabled={isCurrentUser}
-                        onClick={() =>
+                        onClick={async () => {
+                          const isActive = !user.isActive;
+                          await userGovernanceActions?.setUserActive(user.id, isActive);
                           dispatch({
                             type: "TOGGLE_USER_ACTIVE",
                             userId: user.id,
-                            isActive: !user.isActive
-                          })
-                        }
+                            isActive
+                          });
+                        }}
                       >
                         {user.isActive ? `Disable ${user.name}` : `Enable ${user.name}`}
                       </button>

@@ -99,6 +99,9 @@ describe("validateEnvExample", () => {
 
     expect(errors).toContain("Missing required .env.example key: AGENT_MODEL.");
     expect(errors).toContain("Missing required .env.example key: AGENT_API_KEY.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_QUEUE_MODE.");
+    expect(errors).toContain("Missing required .env.example key: REDIS_URL.");
+    expect(errors).toContain("Missing required .env.example key: LOG_ANALYSIS_QUEUE_CONCURRENCY.");
     expect(errors.length).toBeGreaterThan(2);
   });
 

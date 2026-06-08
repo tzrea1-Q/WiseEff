@@ -6,6 +6,7 @@ import { initialState } from "./mockData";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const committerState = { ...initialState, activeRoleId: "committer" };
@@ -119,6 +120,20 @@ function createResolvedAuthClient() {
       roles: [{ projectId: null, roleId: "user" }],
       permissions: ["parameter:edit"]
     }))
+  };
+}
+
+type TestUserGovernanceActions = UserGovernanceActions & {
+  listUsers: ReturnType<typeof vi.fn>;
+};
+
+function createUserGovernanceActions(overrides: Partial<TestUserGovernanceActions> = {}): TestUserGovernanceActions {
+  return {
+    listUsers: vi.fn().mockResolvedValue(adminState.users),
+    createUser: vi.fn().mockResolvedValue(undefined),
+    assignUserRole: vi.fn().mockResolvedValue(undefined),
+    setUserActive: vi.fn().mockResolvedValue(undefined),
+    ...overrides
   };
 }
 
@@ -254,6 +269,163 @@ describe("WiseEff app shell", () => {
 
     expect(await screen.findByText("API Admin")).toBeInTheDocument();
     expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("routes user governance page mutations through injected API-mode actions", async () => {
+    window.history.replaceState(null, "", "/user-permissions");
+    const userGovernanceActions = createUserGovernanceActions();
+
+    render(
+      <App
+        initialAppState={adminState}
+        runtimeMode="api"
+        authClient={{
+          getCurrentAuthContext: vi.fn(async () => ({
+            user: {
+              id: "u-xu-yun",
+              organizationId: "org-chargelab",
+              name: "Xu Yun",
+              email: "xu@chargelab.cn",
+              title: "Platform Owner",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "users:manage"]
+          }))
+        }}
+        userGovernanceActions={userGovernanceActions}
+      />
+    );
+
+    const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
+    changeSelectValue(within(row).getByRole("combobox", { name: "Role for Liu Min" }), "software-committer");
+    await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
+  });
+
+  it("hydrates backend governed users before rendering API-mode user governance", async () => {
+    window.history.replaceState(null, "", "/user-permissions");
+    const userGovernanceActions = createUserGovernanceActions({
+      listUsers: vi.fn().mockResolvedValue([
+        {
+          id: "u-backend-governed",
+          name: "Backend Governed User",
+          email: "backend-governed@chargelab.cn",
+          title: "Backend Operator",
+          roleId: "software-user",
+          isActive: true,
+          createdAt: "2026-06-02T00:00:00.000Z",
+          lastActive: "never"
+        }
+      ])
+    });
+
+    render(
+      <App
+        initialAppState={adminState}
+        runtimeMode="api"
+        authClient={{
+          getCurrentAuthContext: vi.fn(async () => ({
+            user: {
+              id: "u-xu-yun",
+              organizationId: "org-chargelab",
+              name: "Xu Yun",
+              email: "xu@chargelab.cn",
+              title: "Platform Owner",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "users:manage"]
+          }))
+        }}
+        parameterRepository={createAppParameterRepository()}
+        userGovernanceActions={userGovernanceActions}
+      />
+    );
+
+    expect(await screen.findByText("Backend Governed User")).toBeInTheDocument();
+    expect(userGovernanceActions.listUsers).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not hydrate backend governed users on non-user-governance API pages", async () => {
+    window.history.replaceState(null, "", "/parameters");
+    const userGovernanceActions = createUserGovernanceActions({
+      listUsers: vi.fn().mockResolvedValue([
+        {
+          id: "u-backend-governed",
+          name: "Backend Governed User",
+          email: "backend-governed@chargelab.cn",
+          title: "Backend Operator",
+          roleId: "software-user",
+          isActive: true,
+          createdAt: "2026-06-02T00:00:00.000Z",
+          lastActive: "never"
+        }
+      ])
+    });
+
+    render(
+      <App
+        initialAppState={adminState}
+        runtimeMode="api"
+        authClient={{
+          getCurrentAuthContext: vi.fn(async () => ({
+            user: {
+              id: "u-xu-yun",
+              organizationId: "org-chargelab",
+              name: "Xu Yun",
+              email: "xu@chargelab.cn",
+              title: "Platform Owner",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "users:manage"]
+          }))
+        }}
+        parameterRepository={createAppParameterRepository()}
+        userGovernanceActions={userGovernanceActions}
+      />
+    );
+
+    expect(await screen.findAllByText("api_runtime_voltage_limit")).not.toHaveLength(0);
+    expect(userGovernanceActions.listUsers).not.toHaveBeenCalled();
+  });
+
+  it("does not rehydrate API auth context after local route changes", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn(async () => ({
+        user: {
+          id: "u-xu-yun",
+          organizationId: "org-chargelab",
+          name: "Xu Yun",
+          email: "xu@chargelab.cn",
+          title: "Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access", "users:manage"]
+      }))
+    };
+
+    render(
+      <App
+        initialAppState={adminState}
+        runtimeMode="api"
+        authClient={authClient}
+        parameterRepository={createAppParameterRepository()}
+      />
+    );
+
+    expect(await screen.findByText("Xu Yun")).toBeInTheDocument();
+    window.history.pushState(null, "", "/debugging");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await waitFor(() => expect(window.location.pathname).toBe("/debugging"));
+    expect(authClient.getCurrentAuthContext).toHaveBeenCalledTimes(1);
   });
 
   it("hydrates parameter runtime data from the API repository after auth", async () => {

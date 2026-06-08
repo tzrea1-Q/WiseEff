@@ -5,7 +5,7 @@ import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { AgentProvider } from "../agent/provider";
 import type { DebugDeviceGateway } from "../debugging/gateway";
-import { buildLiveHealth, buildReadyHealth } from "./health";
+import { buildLiveHealth, buildReadyHealth, type DurableQueueHealthCheck } from "./health";
 import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadiness";
 
 export type PilotReadinessEnv = {
@@ -200,6 +200,7 @@ export function registerOperationsRoutes(
     objectStore?: ObjectStoreHealthCheck;
     agentProvider?: AgentProvider;
     debugGateway?: DebugDeviceGateway;
+    durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
     getCurrentAuthContext?: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
@@ -216,6 +217,7 @@ export function registerOperationsRoutes(
       db: options.db,
       objectStore: options.objectStore,
       agentProvider: options.agentProvider,
+      durableQueue: options.durableQueue,
       includeWorkerQueue: true
     })
   );
@@ -237,6 +239,7 @@ export function registerOperationsRoutes(
       db: options.db,
       objectStore: options.objectStore,
       includeWorkerQueue: true,
+      durableQueue: options.durableQueue,
       agentProvider: options.agentProvider
     });
     const dependencies = readyHealth.body.dependencies;
@@ -250,7 +253,7 @@ export function registerOperationsRoutes(
       },
       database: dependencies.database,
       objectStore: dependencies.objectStore,
-      worker: dependencies.workerQueue ?? {
+      worker: dependencies.durableQueue ?? dependencies.workerQueue ?? {
         ok: false,
         status: "missing",
         message: "Worker queue health is unavailable."

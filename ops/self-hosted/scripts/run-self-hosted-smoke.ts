@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
+import { evaluateDurableQueueReadyBody } from "../../../scripts/check-durable-queue";
 import { canAcceptPilotReadiness, loadEnvContent, parseAllowedBlockedGates } from "../../../scripts/run-m5-smoke.shared";
 
 type RuntimeEnv = Record<string, string | undefined>;
@@ -64,8 +65,14 @@ export async function runSelfHostedSmokeChecks({
       fetchImpl
     });
 
-    if (route.name === "health ready" && check.status === "passed" && check.detail !== "ok") {
-      check.status = "failed";
+    if (route.name === "health ready" && check.status === "passed") {
+      const durableQueue = evaluateDurableQueueReadyBody(check.body);
+      if (durableQueue.status === "failed") {
+        check.status = "failed";
+        check.detail = durableQueue.detail;
+      } else if (check.detail !== "ok") {
+        check.status = "failed";
+      }
     }
 
     if (route.name === "pilot readiness" && check.status === "passed") {

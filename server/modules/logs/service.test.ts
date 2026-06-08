@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AuthContext } from "../auth/types";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import type { ObjectStore, StoredObject } from "./objectStore";
 import {
   archiveLogRecord,
@@ -62,6 +63,24 @@ function makeObjectStore(stored: StoredObject = storedObject()) {
   };
 
   return { objectStore, puts };
+}
+
+function makeQueue() {
+  const enqueued: Array<Parameters<LogAnalysisQueue["enqueue"]>[0]> = [];
+  const queue: LogAnalysisQueue = {
+    async enqueue(input) {
+      enqueued.push(input);
+      return {
+        id: "queue-job-1",
+        name: input.name,
+        payload: input.payload,
+        idempotencyKey: input.idempotencyKey,
+        attempt: 0
+      };
+    }
+  };
+
+  return { queue, enqueued };
 }
 
 function storedObject(overrides: Partial<StoredObject> = {}): StoredObject {
@@ -261,6 +280,59 @@ describe("log service", () => {
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-upload");
   });
 
+  it("dispatches supported log uploads to the durable queue after the database job is created", async () => {
+    const { db } = createFakeDb([
+      [
+        {
+          id: "file-1",
+          organization_id: "org-1",
+          project_id: "project-1",
+          storage_key: "org-1/checksum-pack-controller.log",
+          file_name: "pack-controller.log",
+          content_type: "text/plain",
+          file_size_bytes: 2048,
+          checksum_sha256: "checksum",
+          uploaded_by_user_id: "user-1",
+          created_at: "2026-05-25T02:00:00.000Z"
+        }
+      ],
+      [logRow()],
+      [{ id: "run-1", log_record_id: "log-1", status: "queued", current_stage: "parse", progress: 0, error_message: null, updated_at: "2026-05-25T02:00:00.000Z" }],
+      [{ id: "job-1", kind: "log-analysis", target_id: "run-1", status: "queued", progress: 0, current_stage: "parse", error_message: null, updated_at: "2026-05-25T02:00:00.000Z" }],
+      [logRow()],
+      []
+    ]);
+    const { objectStore } = makeObjectStore();
+    const { queue, enqueued } = makeQueue();
+
+    const result = await uploadLogFile(
+      db,
+      objectStore,
+      makeAuth(),
+      {
+        projectId: "project-1",
+        fileName: "pack-controller.log",
+        contentType: "text/plain",
+        bytes: Buffer.from("line one")
+      },
+      { logAnalysisQueue: queue }
+    );
+
+    expect(enqueued).toEqual([
+      {
+        name: "analyze-log",
+        payload: {
+          organizationId: "org-1",
+          projectId: "project-1",
+          logId: "log-1",
+          runId: result.job?.runId,
+          jobId: "job-1"
+        },
+        idempotencyKey: "log-analysis:job-1"
+      }
+    ]);
+  });
+
   it("unsupported .bin creates Failed record with failureReason and no queued worker job", async () => {
     const { db, txCalls } = createFakeDb([
       [
@@ -307,6 +379,44 @@ describe("log service", () => {
     expect(result.job).toBeNull();
     expect(txCalls.some((call) => call.text.includes("insert into jobs"))).toBe(false);
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-upload-failed");
+  });
+
+  it("does not dispatch unsupported uploads to the durable queue", async () => {
+    const { db } = createFakeDb([
+      [
+        {
+          id: "file-1",
+          organization_id: "org-1",
+          project_id: "project-1",
+          storage_key: "org-1/checksum-pack-controller.bin",
+          file_name: "pack-controller.bin",
+          content_type: "application/octet-stream",
+          file_size_bytes: 4,
+          checksum_sha256: "checksum",
+          uploaded_by_user_id: "user-1",
+          created_at: "2026-05-25T02:00:00.000Z"
+        }
+      ],
+      [logRow({ file_name: "pack-controller.bin", status: "failed", failure_reason: "Unsupported log format. Supported extensions: .log, .txt, .csv." })],
+      []
+    ]);
+    const { objectStore } = makeObjectStore();
+    const { queue, enqueued } = makeQueue();
+
+    await uploadLogFile(
+      db,
+      objectStore,
+      makeAuth(),
+      {
+        projectId: "project-1",
+        fileName: "pack-controller.bin",
+        contentType: "application/octet-stream",
+        bytes: Buffer.from([1, 2, 3, 4])
+      },
+      { logAnalysisQueue: queue }
+    );
+
+    expect(enqueued).toEqual([]);
   });
 
   it("createLogFromFile validates file object ownership and canonical file name", async () => {
@@ -490,5 +600,39 @@ describe("log service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into log_analysis_runs"))).toBe(true);
     expect(txCalls.some((call) => call.text.includes("insert into jobs"))).toBe(true);
     expect(txCalls.find((call) => call.text.includes("insert into audit_events"))?.values).toContain("log-rerun");
+  });
+
+  it("dispatches rerun jobs to the durable queue", async () => {
+    const { db } = createFakeDb([
+      [logRow({ status: "complete", current_run_id: "run-old" })],
+      [],
+      [{ id: "run-new", log_record_id: "log-1", status: "queued", current_stage: "parse", progress: 0, error_message: null, updated_at: "2026-05-25T03:00:00.000Z" }],
+      [{ id: "job-new", kind: "log-analysis", target_id: "run-new", status: "queued", progress: 0, current_stage: "parse", error_message: null, updated_at: "2026-05-25T03:00:00.000Z" }],
+      [],
+      [logRow({ status: "processing", current_run_id: "run-new" })],
+      [],
+      [],
+      [
+        { id: "run-new", log_record_id: "log-1", status: "queued", current_stage: "parse", progress: 0, error_message: null, updated_at: "2026-05-25T03:00:00.000Z" },
+        { id: "run-old", log_record_id: "log-1", status: "complete", current_stage: "report", progress: 100, error_message: null, updated_at: "2026-05-25T02:00:00.000Z" }
+      ]
+    ]);
+    const { queue, enqueued } = makeQueue();
+
+    const result = await rerunLogAnalysis(db, adminAuth(), { logId: "log-1" }, { logAnalysisQueue: queue });
+
+    expect(enqueued).toEqual([
+      {
+        name: "analyze-log",
+        payload: {
+          organizationId: "org-1",
+          projectId: "project-1",
+          logId: "log-1",
+          runId: result.job.runId,
+          jobId: "job-new"
+        },
+        idempotencyKey: "log-analysis:job-new"
+      }
+    ]);
   });
 });

@@ -37,13 +37,18 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 - `DATABASE_URL`：PostgreSQL 连接。
 - `AUTH_MODE`：`development` 或 `production`。
-- `AUTH_TOKEN_ISSUER` / `AUTH_TOKEN_HMAC_SECRET`：production-mode HMAC auth。
+- `AUTH_PROVIDER`：本地 smoke 使用 `hmac`，目标自托管环境使用 `oidc`。
+- `AUTH_TOKEN_ISSUER` / `AUTH_TOKEN_HMAC_SECRET`：仅用于本地 HMAC smoke/test。
+- `AUTH_OIDC_ISSUER` / `AUTH_OIDC_AUDIENCE` / `AUTH_OIDC_JWKS_URI`：M6.2 OIDC issuer、audience 和可选 JWKS 覆盖。
 - `OBJECT_STORE_MODE`：`local` 或 `s3`。
 - `OBJECT_STORE_ROOT`：local object store 目录。
 - `DEBUG_DEVICE_GATEWAY_MODE`：`simulator` 或 `hdc`。
 - `AGENT_PROVIDER`：`deterministic` 或 `live`。
 - `AGENT_API_FORMAT`：`wiseeff` 或 `openai`。
 - `WISEEFF_API_BASE_URL` / `VITE_WISEEFF_API_BASE_URL`：smoke 和前端 API base URL。
+- `LOG_ANALYSIS_QUEUE_MODE`：`polling` 或 `durable`。
+- `REDIS_URL`：durable queue 模式下的 Redis 连接。
+- `LOG_ANALYSIS_QUEUE_PREFIX` / `LOG_ANALYSIS_QUEUE_ATTEMPTS` / `LOG_ANALYSIS_QUEUE_BACKOFF_MS` / `LOG_ANALYSIS_QUEUE_CONCURRENCY`：BullMQ 命名空间、重试和并发配置。
 
 ## 数据库
 
@@ -68,6 +73,27 @@ seed 命令按阶段组织：
 
 ```bash
 npm run worker:logs
+```
+
+M6.4 增加 Redis/BullMQ durable queue 模式。PostgreSQL 仍然是 job state、retry、dead-letter、audit 和 evidence 的 source of truth；Redis/BullMQ 只负责投递和重试触发。API 会在 PostgreSQL job 创建成功后 enqueue `jobId`，worker 消费后必须先 claim PostgreSQL job，再写入进度或终态。
+
+本地默认仍使用 polling：
+
+```text
+LOG_ANALYSIS_QUEUE_MODE=polling
+```
+
+自托管 durable queue：
+
+```text
+LOG_ANALYSIS_QUEUE_MODE=durable
+REDIS_URL=redis://redis:6379
+```
+
+验收命令：
+
+```bash
+npm run queue:check -- --base-url https://<host>
 ```
 
 本地对象存储：
@@ -144,4 +170,26 @@ npm run selfhost:smoke -- --base-url https://<host>
 
 本地开发继续使用 `HOST=127.0.0.1`。自托管 API 容器使用 `HOST=0.0.0.0`，这样 Caddy 才能通过 compose 网络访问 API；API 容器设置 `LOG_WORKER_ENABLED=false`，由独立 worker 容器运行 `npm run worker:logs`。
 
-这只是 M6.1 baseline。OIDC、自托管对象存储备份、durable queue、observability、rollback 和 capacity gates 属于后续 M6 阶段。
+M6.2 增加 OIDC 身份边界和后端用户治理 API。目标自托管环境应使用 `AUTH_PROVIDER=oidc`、`AUTH_OIDC_ISSUER` 和 `AUTH_OIDC_AUDIENCE`，并使用 OIDC access token 运行 smoke。HMAC token 只保留给本地 smoke/test；目标环境证据必须来自真实 OIDC/JWKS。M6.3 增加自托管 S3-compatible 对象存储和备份/恢复证据。M6.4 已经补入 Redis/BullMQ durable queue wiring；真实自托管目标仍需要 `queue:check` 和 `selfhost:smoke` 证据。M6.5 增加自托管观测性基线。rollback 和 capacity gates 属于后续 M6 阶段或目标环境验收。
+
+## Observability / 观测性
+
+M6.5 新增自托管观测性基线：
+
+```text
+GET /metrics
+```
+
+`/metrics` 返回 Prometheus text，并在返回前刷新 readiness、database、object store、Agent provider 和 worker queue 指标。Prometheus/Grafana/alert 配置位于：
+
+```text
+ops/self-hosted/observability/
+```
+
+本地配置校验：
+
+```bash
+npm run observability:check
+```
+
+`/metrics` 是内部运维数据，生产和 pilot 环境必须通过 private network、VPN、反向代理 allowlist、mTLS 或更强控制访问，不能直接公开到公网。

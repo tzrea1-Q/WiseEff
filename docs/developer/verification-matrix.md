@@ -25,8 +25,14 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:responsive` | Desktop/tablet/mobile responsive usability and overflow checks | Changing layout, dialogs, tables, toolbars, navigation, or viewport-dependent UI. |
 | `npm run acceptance:e2e` | Deterministic browser acceptance A-H flows | UI-interaction frontend/backend logic changes in API mode. |
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
+| `npm run queue:check` | M6.4 target durable queue readiness | Against a running self-hosted or staging API configured with Redis/BullMQ durable queue mode. |
 | `npm run selfhost:check` | M6.1 self-hosted compose/env/proxy metadata | After changing `ops/self-hosted/`, package selfhost scripts, or self-hosted runtime docs. |
 | `npm run selfhost:smoke` | M6.1 live self-hosted API smoke and evidence | Against a running self-hosted target with `--base-url` and smoke authorization configured. |
+| `npm run restore:drill` | M6.3 restore target safety guard | Before running restore commands or changing restore env/script behavior. |
+| `npm run backup:drill` | M6.3 backup/restore evidence generation | After collecting PostgreSQL/object-store drill evidence in local or target environments. |
+| `npm run backup:check` | M6.3 backup/restore evidence shape, redaction, and failed-command gate | After `npm run backup:drill`, or when changing backup/restore evidence schema. |
+| JSON parse of `ops/self-hosted/observability/grafana/dashboards/*.json` | Grafana dashboard JSON is syntactically valid | After changing M6.5 dashboard exports. |
+| Alert/runbook text check | Every Prometheus alert has a `runbook_url` annotation | After changing `ops/self-hosted/observability/alerts.yml`. |
 | `npm run capacity:gate` | M6.6 capacity threshold evidence shape and redacted capacity report | After changing capacity thresholds, capacity scripts, release evidence docs, or when recording a target capacity run. |
 | `npm run selfhost:release-gate` | M6.6 release-candidate metadata, command-gate, dependency, and evidence summary | Before accepting a self-hosted release candidate or after changing release/rollback/capacity scripts and docs. |
 
@@ -48,6 +54,9 @@ Use the narrowest command that proves the change while developing. Before finish
 | M5.12 target synthetic acceptance | GitHub Actions `target-synthetic-acceptance` workflow_dispatch | Target frontend/API URLs, auth secrets, optional target `DATABASE_URL`, external dependency evidence | Runs manual target non-HDC or full-pilot synthetic checks with `--no-start-runtime` and archives evidence artifacts. |
 | M5 full pilot gate | `npm run test:m5` | PostgreSQL, live API, and target evidence inputs | Before claiming commercial pilot baseline in an environment. |
 | M6.1 self-hosted baseline | `npm run selfhost:check` plus `npm run selfhost:smoke -- --base-url <target-url>` | Linux host, compose runtime, admin smoke token, object store, Agent provider | Before treating a self-hosted target as deployed. |
+| M6.2 identity and user governance | `npm run acceptance:browser` plus `npm run acceptance:evidence` and focused auth/user tests | PostgreSQL, API-mode runtime, local smoke token or target OIDC token | Before accepting OIDC/auth runtime or backend user-governance changes. |
+| M6.3 self-hosted storage and backup | `npm run restore:drill`, `npm run backup:drill`, `npm run backup:check` | S3-compatible object store, PostgreSQL backup target, isolated restore database, isolated restore bucket/prefix | Before claiming backup/restore evidence for a self-hosted target. |
+| M6.4 durable queue | `npm run queue:check -- --base-url <target-url>` | Running API with `LOG_ANALYSIS_QUEUE_MODE=durable`, Redis/BullMQ, PostgreSQL job table | Before treating a self-hosted queue transport as ready. |
 | M6.6 release, rollback, and capacity | `npm run capacity:gate` plus `npm run selfhost:release-gate` | Deployed self-hosted target, backup/restore evidence, queue readiness, observability, target synthetic acceptance, rollback rehearsal, capacity metrics | Before treating a self-hosted release candidate as ready for a controlled commercial pilot. |
 
 ## UI Interaction Acceptance Rule
@@ -81,6 +90,8 @@ M5.11 quality-gate rule: UI-facing changes should run the narrow quality gate th
 
 M5.12 CI/synthetic rule: `.github/workflows/ci.yml` must keep a local non-HDC acceptance job for PR/push candidates, a manual target synthetic job for `target-non-hdc` and `full-pilot`, and artifact uploads for Playwright reports, traces, screenshots, browser evidence, and operation evidence. Run `npm run acceptance:ci` after changing the workflow. PR CI may prove local non-HDC readiness only; full-pilot remains valid only when the manual workflow uses target environment secrets plus real HDC, backup/restore, rollback, object-store, worker, and Agent provider evidence.
 
+M6.2 identity rule: production `NODE_ENV=production` must use `AUTH_PROVIDER=oidc`. Local HMAC smoke is valid for deterministic local gates only. Target OIDC evidence must be redacted and must prove discovery/JWKS, token expiry/issuer/audience negative checks, browser token acquisition/refresh/logout, `/api/v1/me`, WiseEff DB-backed active/role authorization, and Admin user-governance API/DB/audit evidence.
+
 ## Documentation-Only Changes
 
 Run:
@@ -88,6 +99,14 @@ Run:
 ```bash
 npm run docs:check
 git diff --check
+```
+
+For M6.5 observability-only config/docs changes, also run:
+
+```bash
+npm run selfhost:check
+node -e "const fs=require('fs'); for (const f of fs.readdirSync('ops/self-hosted/observability/grafana/dashboards')) JSON.parse(fs.readFileSync('ops/self-hosted/observability/grafana/dashboards/'+f,'utf8'));"
+node -e "const fs=require('fs'); const text=fs.readFileSync('ops/self-hosted/observability/alerts.yml','utf8'); const alerts=[...text.matchAll(/^      - alert:/gm)].length; const links=[...text.matchAll(/runbook_url:/g)].length; if (!alerts || alerts !== links) throw new Error('alerts='+alerts+' runbook_url='+links);"
 ```
 
 If documentation changes include the docs checker itself, also run:
@@ -104,3 +123,4 @@ npm run test:server -- scripts/check-doc-governance.test.ts
 - Do not mark TD-019 complete until target-environment evidence exists.
 - M6.6 release readiness must be recorded in [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or an approved external release record. `npm run capacity:gate` without observed target metrics is a pending evidence artifact, not a capacity pass.
 - Rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability release watch, and HDC evidence cannot be marked complete from local script output alone.
+- M6.3 local `docs/generated/m6-backup-restore-evidence.*` proves evidence shape, redaction, failed-command handling, and restore target safety. It proves target readiness only when produced from a real non-customer or pilot target restore drill.

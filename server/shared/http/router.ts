@@ -16,6 +16,10 @@ export type RouteResponse = {
   status: number;
   body: unknown;
 } | {
+  status: number;
+  text: string;
+  contentType: string;
+} | {
   status: 200;
   sse: AsyncIterable<{ event: string; data: unknown }>;
 };
