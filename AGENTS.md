@@ -78,6 +78,33 @@ npm run observability:check
 
 Use targeted tests while developing. Before claiming a code change is complete, run the narrow relevant tests plus `npm run build` when the change touches TypeScript, Vite config, routing, or shared types.
 
+## Frontend Verification with playwright-cli
+
+Frontend-visible changes require real browser verification before completion. This applies to changes in UI, layout, styling, interactions, routes, components, forms, animation, responsive behavior, design tokens, public assets, or visible UI copy.
+
+- Start the local dev server before browser checks, usually with `npm run dev`.
+- Use `playwright-cli` to visit each affected page or route.
+- Verify at least these viewports: desktop `1440x900`, tablet `768x1024`, and mobile `390x844`.
+- For every relevant page, run both `snapshot` and `screenshot`.
+- Check `console error`; inspect network requests when the change affects loading, data flow, assets, navigation, form submission, or error handling.
+- Exercise the real interactions that matter: click, type, submit, navigate, open menus and dialogs, hover/focus controls, and verify loading and error states where relevant.
+- Inspect layout quality: no element overlap, text overflow, squeezed buttons, unintended horizontal scrolling, unreadable text, broken spacing, mobile obstruction, or confused visual hierarchy.
+- If `playwright-cli` cannot run, stop and report the blocker. Do not claim frontend verification is complete without it.
+
+Common command examples:
+
+```bash
+playwright-cli --version
+playwright-cli -s=<project-name> open <url>
+playwright-cli -s=<project-name> resize 1440 900
+playwright-cli -s=<project-name> snapshot
+playwright-cli -s=<project-name> screenshot --filename=work/ui-checks/<name>.png
+playwright-cli -s=<project-name> console error
+playwright-cli -s=<project-name> close
+```
+
+Final responses for frontend-visible work must include verification evidence: local URL or route, tested viewports, tested interactions, screenshot paths, console/network check results, and the issues found and fixed or a clear note that no issues were found.
+
 ## Runtime Rules
 
 - Frontend mock mode is for demos and tests.
