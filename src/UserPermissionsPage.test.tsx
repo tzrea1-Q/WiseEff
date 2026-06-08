@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { UserPermissionsPage } from "./UserPermissionsPage";
+import { UserPermissionsPage, type UserGovernanceActions } from "./UserPermissionsPage";
 import { createPrototypeState } from "./mockData";
 import type { PlatformRoleId } from "./domain/users/types";
 
@@ -18,6 +18,24 @@ function renderPage(search = "") {
   const onNavigate = vi.fn();
 
   const utils = render(<UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} />);
+
+  return { ...utils, state, dispatch, onNavigate };
+}
+
+function renderPageWithActions(userGovernanceActions: UserGovernanceActions) {
+  const state = { ...createPrototypeState(), activeRoleId: "admin" };
+  const dispatch = vi.fn();
+  const onNavigate = vi.fn();
+
+  const utils = render(
+    <UserPermissionsPage
+      state={state}
+      dispatch={dispatch}
+      onNavigate={onNavigate}
+      search=""
+      userGovernanceActions={userGovernanceActions}
+    />
+  );
 
   return { ...utils, state, dispatch, onNavigate };
 }
@@ -120,6 +138,47 @@ describe("UserPermissionsPage", () => {
     });
   });
 
+  it("uses backend user governance actions when adding users in API mode", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => ({
+        id: "u-demo-engineer",
+        name: "Demo Engineer Canonical",
+        email: "demo+canonical@chargelab.cn",
+        title: "User",
+        roleId: "hardware-user" as const,
+        isActive: true,
+        createdAt: "2026-06-02T00:00:00.000Z",
+        lastActive: "never"
+      })),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined)
+    };
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
+
+    await userEvent.click(screen.getByRole("button", { name: "Add user" }));
+    await userEvent.type(screen.getByLabelText("Name"), "Demo Engineer");
+    await userEvent.type(screen.getByLabelText("Email"), "demo@chargelab.cn");
+    await userEvent.type(screen.getByLabelText("Title"), "Validation Engineer");
+    await userEvent.selectOptions(screen.getByLabelText("Initial role"), "hardware-user");
+    await userEvent.click(screen.getByRole("button", { name: "Create user" }));
+
+    expect(userGovernanceActions.createUser).toHaveBeenCalledWith({
+      name: "Demo Engineer",
+      email: "demo@chargelab.cn",
+      title: "Validation Engineer",
+      roleId: "hardware-user"
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ADD_USER",
+      id: "u-demo-engineer",
+      name: "Demo Engineer Canonical",
+      email: "demo+canonical@chargelab.cn",
+      title: "User",
+      roleId: "hardware-user"
+    });
+  });
+
   it("allows the add user title to be omitted so the reducer fallback can apply", async () => {
     const { dispatch } = renderPage();
 
@@ -182,6 +241,33 @@ describe("UserPermissionsPage", () => {
     await userEvent.selectOptions(within(row).getByRole("combobox", { name: "Role for Liu Min" }), "software-committer");
     await userEvent.click(within(row).getByRole("button", { name: "Disable Liu Min" }));
 
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "ASSIGN_USER_ROLE",
+      userId: "u-liu-min",
+      roleId: "software-committer"
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "TOGGLE_USER_ACTIVE",
+      userId: "u-liu-min",
+      isActive: false
+    });
+  });
+
+  it("uses backend user governance actions when changing role and activation", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined)
+    };
+    const { dispatch } = renderPageWithActions(userGovernanceActions);
+    const row = screen.getByText("Liu Min").closest("tr")!;
+
+    await userEvent.selectOptions(within(row).getByRole("combobox", { name: "Role for Liu Min" }), "software-committer");
+    await userEvent.click(within(row).getByRole("button", { name: "Disable Liu Min" }));
+
+    expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer");
+    expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
     expect(dispatch).toHaveBeenCalledWith({
       type: "ASSIGN_USER_ROLE",
       userId: "u-liu-min",

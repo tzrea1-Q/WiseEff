@@ -164,7 +164,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { createAuthClient, type AuthContextDto } from "@/infrastructure/http/authClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
@@ -243,7 +245,8 @@ export type AppAction =
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
   | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: PlatformRoleId }
   | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
-  | { type: "ADD_USER"; name: string; email: string; title: string; roleId: PlatformRoleId }
+  | { type: "ADD_USER"; id?: string; name: string; email: string; title: string; roleId: PlatformRoleId }
+  | { type: "HYDRATE_USERS"; users: User[] }
   | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
   | { type: "DISMISS_INSIGHT"; insightId: string }
   | { type: "SET_AI_FLAGGED_IMPORT_IDS"; ids: string[] }
@@ -570,6 +573,16 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         users: [action.user, ...existingUsers],
         currentUserId: action.user.id,
         activeRoleId: action.roleId
+      };
+    }
+    case "HYDRATE_USERS": {
+      const nextUsers = action.users.some((user) => user.id === state.currentUserId)
+        ? action.users
+        : state.users.filter((user) => user.id === state.currentUserId).concat(action.users);
+
+      return {
+        ...state,
+        users: nextUsers
       };
     }
     case "HYDRATE_PARAMETER_RUNTIME": {
@@ -1462,7 +1475,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       }
 
       const newUser: User = {
-        id: `user-${state.users.length + 1}`,
+        id: action.id?.trim() || `user-${state.users.length + 1}`,
         name,
         email,
         title: action.title.trim() || "Platform user",
@@ -1758,6 +1771,7 @@ type AppProps = {
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   runtimeMode?: WiseEffRuntimeMode;
+  userGovernanceActions?: UserGovernanceActions;
 };
 
 function App({
@@ -1767,7 +1781,8 @@ function App({
   initialAppState = initialState,
   logAnalysisRepository,
   parameterRepository,
-  runtimeMode = wiseEffRuntimeMode
+  runtimeMode = wiseEffRuntimeMode,
+  userGovernanceActions
 }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
@@ -1780,6 +1795,7 @@ function App({
         logAnalysisRepository={logAnalysisRepository}
         parameterRepository={parameterRepository}
         runtimeMode={runtimeMode}
+        userGovernanceActions={userGovernanceActions}
       />
     </TooltipProvider>
   );
@@ -1792,7 +1808,8 @@ function AppShell({
   initialAppState,
   logAnalysisRepository,
   parameterRepository,
-  runtimeMode
+  runtimeMode,
+  userGovernanceActions
 }: {
   agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
@@ -1801,6 +1818,7 @@ function AppShell({
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
   runtimeMode: WiseEffRuntimeMode;
+  userGovernanceActions?: UserGovernanceActions;
 }) {
   const [state, dispatch] = useReducer(reducer, initialAppState);
   const stateRef = useRef(state);
@@ -1832,6 +1850,10 @@ function AppShell({
   const debuggingGatewayClient = useMemo(
     () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
     [debuggingGateway, runtimeMode]
+  );
+  const userGovernanceActionsClient = useMemo(
+    () => userGovernanceActions ?? (runtimeMode === "api" ? createUserGovernanceClient() : undefined),
+    [runtimeMode, userGovernanceActions]
   );
   const parameterActions = useMemo<ParameterRuntimeActions>(
     () =>
@@ -1962,6 +1984,30 @@ function AppShell({
   }, [authClient, debuggingActions, logActions, parameterActions, runtimeMode]);
 
   useEffect(() => {
+    if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
+      return;
+    }
+
+    let cancelled = false;
+    userGovernanceActionsClient
+      .listUsers()
+      .then((users) => {
+        if (!cancelled) {
+          dispatch({ type: "HYDRATE_USERS", users });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          dispatch({ type: "ADD_NOTIFICATION", message: "Cannot load WiseEff users API; local demo users are retained." });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentRoleId, page.key, runtimeMode, userGovernanceActionsClient]);
+
+  useEffect(() => {
     const syncPathFromHistory = () => {
       const nextPage = getPageByPath(window.location.pathname);
       if (nextPage.path !== window.location.pathname) {
@@ -2025,6 +2071,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
+                userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
@@ -2049,6 +2096,7 @@ function AppShell({
                 debuggingRuntimeReady={debuggingRuntimeReady}
                 logActions={logActions}
                 parameterActions={parameterActions}
+                userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}

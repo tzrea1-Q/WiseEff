@@ -105,7 +105,7 @@ The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default 
 - Live provider startup is HTTP-backed through `AGENT_API_BASE_URL` and should become ready once the configured provider health endpoint is healthy. The default `wiseeff` format expects `/agent/health` and `/agent/plan-turn`; `AGENT_API_FORMAT=openai` expects OpenAI-compatible `/models` and `/chat/completions`.
 - Live Agent provider readiness is checked through the same health seam used by `/health/ready`; if the provider is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
 - Trace metadata now includes latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so pilot operators can distinguish normal planning from provider outages.
-- Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.
+- Production auth now requires OIDC/JWKS in `NODE_ENV=production`; the pilot HMAC verifier is retained only for local smoke/test profiles. Target reliability evidence still has to prove the real self-hosted issuer, token refresh/logout behavior, and `/api/v1/me` with target OIDC access tokens.
 
 ## Rollback Expectations
 

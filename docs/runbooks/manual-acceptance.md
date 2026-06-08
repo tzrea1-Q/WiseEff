@@ -300,6 +300,8 @@ M5.12 adds CI and target synthetic archiving for these gates. Pull requests and 
 
 M6.1 self-hosted runtime evidence is collected separately with `npm run selfhost:check` and `npm run selfhost:smoke -- --base-url <target-url>`. This proves the self-hosted services are reachable and production-shaped; it does not prove OIDC, durable queue, observability, rollback, capacity, or HDC readiness.
 
+M6.2 local identity evidence is collected with `npm run acceptance:browser` and `npm run acceptance:evidence`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
+
 M6.3 storage and backup evidence is collected with:
 
 ```bash

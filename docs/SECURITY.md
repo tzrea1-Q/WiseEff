@@ -15,8 +15,9 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - Frontend role model lives in `src/domain/users/types.ts`.
 - Page/action permission helpers live in `src/app/permissions.ts`.
 - M0 backend auth context lives in `server/modules/auth/`.
-- M5 production auth uses `AUTH_MODE=production` and verifies server-side bearer tokens before mapping signed user, organization, role, and permission claims into `AuthContext`.
-- Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.
+- M6.2 production auth uses `AUTH_MODE=production` with `AUTH_PROVIDER=oidc` for OIDC discovery/JWKS validation, then resolves the effective `AuthContext` from WiseEff PostgreSQL user and role tables.
+- The M5 HMAC verifier remains available for local smoke/test profiles only; it is not target-environment identity evidence.
+- Backend user governance lives under `/api/v1/users` and requires `users:manage`, durable role updates, self-lockout prevention, and audit evidence.
 - M0 audit boundary lives in `server/modules/audit/`.
 - M1 parameter write routes live in `server/modules/parameters/`; they validate payloads, enforce server-side permissions, and write audit evidence for submits, review decisions, merges, and imports.
 - Security governance design lives in `design-docs/security-governance.md`.
@@ -35,7 +36,9 @@ Current frontend permissions include:
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
 
-Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. The pilot verifier checks `Authorization: Bearer <payload>.<signature>` using HMAC-SHA256 over the base64url payload, validates issuer, subject, and organization claims, and maps only signed claims into the backend auth context. Production routes must not fall back to the development user.
+Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`. Target self-hosted identity should use `AUTH_PROVIDER=oidc` with `AUTH_OIDC_ISSUER` and `AUTH_OIDC_AUDIENCE`; the verifier checks OIDC access tokens through discovery/JWKS and then reloads effective active state, role bindings, and permissions from WiseEff PostgreSQL. Local HMAC smoke uses `AUTH_PROVIDER=hmac`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. Production routes must not fall back to the development user or trust token role claims as final authorization.
+
+OIDC tokens must include identity and organization claims. `wiseeff_roles` may be emitted for compatibility or bootstrap diagnostics, but production authorization is database-backed. Email-based account linking is allowed only when the OIDC token includes `email_verified=true`; otherwise WiseEff matches by stable `sub` only. Role ids outside the documented platform role set, wrong issuer, wrong audience, expired tokens, not-yet-valid tokens, unsigned tokens, and invalid signatures are unauthenticated failures.
 
 For M1 parameter management:
 
@@ -82,6 +85,8 @@ M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-f
 M3 debugging emits backend audit events for target detection, session creation, node reads, node writes, and snapshot rollback. Write audit metadata includes the session, operation, node path, requested value, previous value, readback value, verification result, failure reason, and snapshot id when applicable.
 
 M3.5 request correlation uses `X-Request-Id` as the HTTP request id. The server reflects a client-provided id or generates one, includes it in error responses, and passes it through M1 parameter, M2 log, and M3 debugging write services as audit `traceId`. Direct service calls without an HTTP request still generate a trace id.
+
+M6.2 user-governance writes emit backend audit events for user creation, profile update, activation/deactivation, and role replacement. These mutations must stay transactionally coupled to durable state updates and must prevent the active Admin from removing its own final Admin capability.
 
 ## Agent Safety
 
@@ -131,3 +136,4 @@ The M3 simulator-backed path implements this boundary for local verification. M3
 - `design-docs/domain-model.md`
 - `design-docs/api-contract.md`
 - `security/README.md`
+- `runbooks/identity-provider.md`

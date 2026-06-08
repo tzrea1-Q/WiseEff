@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyObject } from "node:crypto";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWiseEffServer } from "./app";
+import { createWiseEffServerFromEnv } from "./app";
 import type { Database, QueryResult } from "./shared/database/client";
 import { createHttpServer } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -8,6 +10,26 @@ type QueryCall = {
   text: string;
   values: unknown[];
 };
+
+const oidcNow = new Date("2026-06-02T00:00:00.000Z");
+
+function createOidcKey(kid: string) {
+  const pair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const privateKey = createPrivateKey(pair.privateKey.export({ format: "pem", type: "pkcs8" }));
+  const publicKey = createPublicKey(pair.publicKey.export({ format: "pem", type: "spki" }));
+  return {
+    kid,
+    privateKey,
+    jwk: { ...publicKey.export({ format: "jwk" }), kid, alg: "RS256", use: "sig", kty: "RSA" }
+  };
+}
+
+function createOidcJwt(input: { kid: string; privateKey: KeyObject; claims: Record<string, unknown> }) {
+  const header = Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT", kid: input.kid }), "utf8").toString("base64url");
+  const payload = Buffer.from(JSON.stringify(input.claims), "utf8").toString("base64url");
+  const signature = sign("RSA-SHA256", Buffer.from(`${header}.${payload}`), input.privateKey).toString("base64url");
+  return `${header}.${payload}.${signature}`;
+}
 
 function createAuthBoundaryDb() {
   const calls: QueryCall[] = [];
@@ -48,6 +70,59 @@ function createAuthBoundaryDb() {
 
   return { calls, db };
 }
+
+function createProductionIdentityDb(input: {
+  dbUserId: string;
+  email: string;
+  isActive?: boolean;
+  roleId: string;
+  organizationId?: string;
+  organizationName?: string;
+}) {
+  const calls: QueryCall[] = [];
+  const db: Database = {
+    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      calls.push({ text, values });
+
+      if (text.includes("from users")) {
+        const requestedOrganizationId = values[0];
+        const identityValue = values[1];
+        if (requestedOrganizationId !== (input.organizationId ?? "org-chargelab")) {
+          return { rows: [], rowCount: 0 };
+        }
+        if (identityValue !== input.dbUserId && typeof identityValue === "string" && identityValue.toLowerCase() !== input.email.toLowerCase()) {
+          return { rows: [], rowCount: 0 };
+        }
+
+        return {
+          rows: [
+            {
+              user_id: input.dbUserId,
+              organization_id: input.organizationId ?? "org-chargelab",
+              organization_name: input.organizationName ?? "ChargeLab",
+              name: "Governed User",
+              email: input.email,
+              title: "Governed",
+              is_active: input.isActive ?? true,
+              project_id: null,
+              role_id: input.roleId
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+
+      return { rows: [], rowCount: 0 };
+    },
+    transaction: async (fn) => fn(db)
+  };
+
+  return { calls, db };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("WiseEff API", () => {
   it("serves the health endpoint", async () => {
@@ -119,8 +194,16 @@ describe("WiseEff API", () => {
   });
 
   it("uses production bearer auth for /me without development fallback", async () => {
+    const { db } = createProductionIdentityDb({
+      dbUserId: "u-prod",
+      email: "prod@example.com",
+      roleId: "admin",
+      organizationId: "org-prod",
+      organizationName: "Pilot Org"
+    });
     const response = await requestJson<{ user: { id: string }; organization: { id: string } }>(
       createWiseEffServer({
+        db,
         auth: {
           mode: "production",
           verifier: {
@@ -149,6 +232,87 @@ describe("WiseEff API", () => {
     expect(response.body.organization.id).toBe("org-prod");
   });
 
+  it("uses WiseEff DB roles instead of production OIDC token roles", async () => {
+    const { calls, db } = createProductionIdentityDb({
+      dbUserId: "u-governed",
+      email: "governed@example.com",
+      roleId: "hardware-user"
+    });
+
+    const response = await requestJson<{ user: { id: string }; roles: Array<{ roleId: string }>; permissions: string[] }>(
+      createWiseEffServer({
+        db,
+        auth: {
+          mode: "production",
+          verifier: {
+            verify: async () => ({
+              user: {
+                id: "oidc-sub-123",
+                organizationId: "org-chargelab",
+                name: "Token Admin",
+                email: "governed@example.com",
+                emailVerified: true,
+                title: "Token",
+                isActive: true
+              },
+              organization: { id: "org-chargelab", name: "ChargeLab" },
+              roles: [{ projectId: null, roleId: "admin" }],
+              permissions: ["admin:access", "users:manage"]
+            })
+          }
+        }
+      }),
+      "/api/v1/me",
+      { headers: { Authorization: "Bearer signed-token" } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.id).toBe("u-governed");
+    expect(response.body.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
+    expect(response.body.permissions).not.toContain("users:manage");
+    expect(calls[0].values).toEqual(["org-chargelab", "oidc-sub-123"]);
+    expect(calls[1].values).toEqual(["org-chargelab", "governed@example.com"]);
+  });
+
+  it("uses WiseEff DB active state instead of production OIDC token active claims", async () => {
+    const { db } = createProductionIdentityDb({
+      dbUserId: "u-disabled",
+      email: "disabled@example.com",
+      isActive: false,
+      roleId: "admin"
+    });
+
+    const response = await requestJson<{ error: { code: string; message: string } }>(
+      createWiseEffServer({
+        db,
+        auth: {
+          mode: "production",
+          verifier: {
+            verify: async () => ({
+              user: {
+                id: "oidc-disabled",
+                organizationId: "org-chargelab",
+                name: "Token Active",
+                email: "disabled@example.com",
+                emailVerified: true,
+                title: "Token",
+                isActive: true
+              },
+              organization: { id: "org-chargelab", name: "ChargeLab" },
+              roles: [{ projectId: null, roleId: "admin" }],
+              permissions: ["admin:access", "users:manage"]
+            })
+          }
+        }
+      }),
+      "/api/v1/me",
+      { headers: { Authorization: "Bearer signed-token" } }
+    );
+
+    expect(response.status).toBe(403);
+    expect(response.body.error).toMatchObject({ code: "FORBIDDEN", message: "User is inactive." });
+  });
+
   it("rejects production routes without bearer auth instead of falling back to development auth", async () => {
     const response = await requestJson<{ error: { code: string; message: string } }>(
       createWiseEffServer({
@@ -168,6 +332,157 @@ describe("WiseEff API", () => {
     expect(response.body.error).toMatchObject({
       code: "UNAUTHENTICATED",
       message: "Authorization bearer token is required."
+    });
+  });
+
+  it("uses OIDC verifier when AUTH_PROVIDER=oidc in environment wiring", async () => {
+    const { db } = createProductionIdentityDb({
+      dbUserId: "oidc-user",
+      email: "oidc@example.com",
+      roleId: "admin"
+    });
+    const response = await requestJson<{ user: { id: string } }>(
+      createWiseEffServerFromEnv({
+        db,
+        env: {
+          NODE_ENV: "production",
+          HOST: "127.0.0.1",
+          PORT: 8787,
+          AUTH_MODE: "production",
+          AUTH_PROVIDER: "oidc",
+          AUTH_TOKEN_ISSUER: undefined,
+          AUTH_TOKEN_HMAC_SECRET: undefined,
+          AUTH_OIDC_ISSUER: "https://id.example.com/realms/wiseeff",
+          AUTH_OIDC_AUDIENCE: "wiseeff-api",
+          AUTH_OIDC_JWKS_URI: "https://id.example.com/realms/wiseeff/protocol/openid-connect/certs",
+          DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+          OBJECT_STORE_MODE: "s3",
+          OBJECT_STORE_ROOT: ".wiseeff-object-store",
+          OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+          OBJECT_STORAGE_BUCKET: "wiseeff",
+          OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+          OBJECT_STORAGE_REGION: undefined,
+          DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+          HDC_TIMEOUT_MS: 5000,
+          DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: true,
+          AGENT_PROVIDER: "live",
+          AGENT_API_FORMAT: "openai",
+          AGENT_MODEL: "pilot-model",
+          AGENT_API_KEY: "agent-key",
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_TIMEOUT_MS: 5000,
+          AGENT_PROMPT_VERSION: "m5-agent-v1",
+          LOG_WORKER_ENABLED: false,
+          MOCK_RUNTIME_ENABLED: false
+        },
+        authVerifierFactory: () => ({
+          verify: async () => ({
+            user: {
+              id: "oidc-user",
+              organizationId: "org-chargelab",
+              name: "OIDC User",
+              email: "oidc@example.com",
+              title: "Pilot Admin",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "users:manage"]
+          })
+        })
+      }),
+      "/api/v1/me",
+      { headers: { Authorization: "Bearer oidc-token" } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.id).toBe("oidc-user");
+  });
+
+  it("discovers JWKS from the OIDC issuer when AUTH_OIDC_JWKS_URI is not configured", async () => {
+    const { db } = createProductionIdentityDb({
+      dbUserId: "u-oidc-discovered",
+      email: "u-oidc-discovered@org-chargelab",
+      roleId: "admin"
+    });
+    const key = createOidcKey("issuer-key");
+    const originalFetch = globalThis.fetch;
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      const href = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      if (href.startsWith("http://127.0.0.1:")) {
+        return originalFetch(url, init);
+      }
+      if (href === "https://id.example.com/realms/wiseeff/.well-known/openid-configuration") {
+        return new Response(
+          JSON.stringify({ jwks_uri: "https://id.example.com/realms/wiseeff/protocol/openid-connect/certs" }),
+          { status: 200 }
+        );
+      }
+      if (href === "https://id.example.com/realms/wiseeff/protocol/openid-connect/certs") {
+        return new Response(JSON.stringify({ keys: [key.jwk] }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const token = createOidcJwt({
+      kid: key.kid,
+      privateKey: key.privateKey,
+      claims: {
+        iss: "https://id.example.com/realms/wiseeff",
+        aud: "wiseeff-api",
+        sub: "u-oidc-discovered",
+        exp: 9999999999,
+        organization_id: "org-chargelab",
+        organization_name: "ChargeLab",
+        wiseeff_roles: [{ projectId: null, roleId: "admin" }]
+      }
+    });
+
+    const response = await requestJson<{ user: { id: string } }>(
+      createWiseEffServerFromEnv({
+        db,
+        env: {
+          NODE_ENV: "production",
+          HOST: "127.0.0.1",
+          PORT: 8787,
+          AUTH_MODE: "production",
+          AUTH_PROVIDER: "oidc",
+          AUTH_TOKEN_ISSUER: undefined,
+          AUTH_TOKEN_HMAC_SECRET: undefined,
+          AUTH_OIDC_ISSUER: "https://id.example.com/realms/wiseeff",
+          AUTH_OIDC_AUDIENCE: "wiseeff-api",
+          AUTH_OIDC_JWKS_URI: undefined,
+          DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+          OBJECT_STORE_MODE: "s3",
+          OBJECT_STORE_ROOT: ".wiseeff-object-store",
+          OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+          OBJECT_STORAGE_BUCKET: "wiseeff",
+          OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+          OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+          OBJECT_STORAGE_REGION: undefined,
+          DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+          HDC_TIMEOUT_MS: 5000,
+          DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: true,
+          AGENT_PROVIDER: "live",
+          AGENT_API_FORMAT: "openai",
+          AGENT_MODEL: "pilot-model",
+          AGENT_API_KEY: "agent-key",
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_TIMEOUT_MS: 5000,
+          AGENT_PROMPT_VERSION: "m5-agent-v1",
+          LOG_WORKER_ENABLED: false,
+          MOCK_RUNTIME_ENABLED: false
+        }
+      }),
+      "/api/v1/me",
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.user.id).toBe("u-oidc-discovered");
+    expect(fetchMock).toHaveBeenCalledWith("https://id.example.com/realms/wiseeff/.well-known/openid-configuration", {
+      headers: { Accept: "application/json" }
     });
   });
 });

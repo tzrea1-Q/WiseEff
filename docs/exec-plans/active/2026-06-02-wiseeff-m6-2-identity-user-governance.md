@@ -4,7 +4,7 @@
 
 **Goal:** Replace the pilot HMAC production-auth boundary with self-hosted OIDC identity and durable backend user/role governance.
 
-**Architecture:** Keycloak or another OIDC-compliant self-hosted identity provider becomes the production identity issuer while local development keeps deterministic auth paths for tests. WiseEff validates JWTs through OIDC discovery/JWKS, maps external identity claims into the existing `AuthContext`, and moves user/role mutations from prototype-local state to backend APIs with authorization, validation, transactions, and audit evidence.
+**Architecture:** Keycloak or another OIDC-compliant self-hosted identity provider becomes the production identity issuer while local development keeps deterministic auth paths for tests. WiseEff validates JWTs through OIDC discovery/JWKS, then resolves the effective `AuthContext` from WiseEff PostgreSQL user and role tables so backend user-governance changes control active state and authorization. User/role mutations move from prototype-local state to backend APIs with authorization, validation, transactions, and audit evidence.
 
 **Tech Stack:** Keycloak/OIDC, JWT/JWKS validation, TypeScript API auth module, PostgreSQL migrations, React auth provider, Playwright acceptance, Vitest, WiseEff audit and policy modules.
 
@@ -20,7 +20,7 @@
 M6.2 includes:
 
 - Self-hosted OIDC configuration guidance, with Keycloak as the default reference provider.
-- Production JWT verification through issuer, audience, expiration, signature, and role/claim validation.
+- Production JWT verification through issuer, audience, expiration, signature, and identity claim validation; effective authorization remains database-backed in WiseEff.
 - Backend user and role management APIs with project/organization scoping.
 - Audit events for user creation, activation/deactivation, role assignment, role removal, and self-lockout prevention.
 - Frontend API-mode login/logout/token refresh wiring or documented reverse-proxy/session handoff if the final flow uses an OIDC sidecar.
@@ -63,8 +63,8 @@ Role inclusion rules must remain enforced in both UI visibility and API authoriz
 ## Success Criteria
 
 - Production auth uses OIDC/JWKS validation, not static HMAC bearer injection.
-- `/api/v1/me` returns the same WiseEff `AuthContext` shape from OIDC tokens.
-- Expired, wrong-audience, wrong-issuer, unsigned, and role-missing tokens are rejected with consistent API errors.
+- `/api/v1/me` returns the same WiseEff `AuthContext` shape after OIDC identity verification and WiseEff DB user/role lookup.
+- Expired, wrong-audience, wrong-issuer, unsigned, malformed-role, and unknown-user tokens are rejected with consistent API errors.
 - Admin can create/update/deactivate users and assign roles through backend APIs.
 - Non-Admin users cannot call user-management mutation APIs.
 - The active Admin cannot disable itself or remove its last Admin capability.
@@ -112,55 +112,72 @@ Modify:
 
 ### Task 1: OIDC Verifier Contract
 
-- [ ] Write failing tests in `server/modules/auth/oidcVerifier.test.ts` for valid token, expired token, wrong issuer, wrong audience, missing roles, and JWKS key rotation.
-- [ ] Add an OIDC verifier interface that returns the existing `AuthContext` fields.
-- [ ] Implement issuer discovery, JWKS caching, audience validation, and role claim mapping.
-- [ ] Keep HMAC verifier available only for development/test or explicitly named local smoke mode.
-- [ ] Run `npm run test:server -- server/modules/auth/oidcVerifier.test.ts`.
+- [x] Write failing tests in `server/modules/auth/oidcVerifier.test.ts` for valid token, expired token, wrong issuer, wrong audience, missing roles, and JWKS key rotation.
+- [x] Add an OIDC verifier interface that returns the existing `AuthContext` fields.
+- [x] Implement issuer discovery, JWKS caching, audience validation, and role claim mapping.
+- [x] Keep HMAC verifier available only for development/test or explicitly named local smoke mode.
+- [x] Run `npm run test:server -- server/modules/auth/oidcVerifier.test.ts`.
 
 ### Task 2: Backend User Governance API
 
-- [ ] Write failing route/service tests for Admin create user, Admin role update, Admin deactivate user, non-Admin mutation rejection, and self-lockout rejection.
-- [ ] Add database migration for any missing durable user-governance fields.
-- [ ] Implement service methods with transaction boundaries and server-side role eligibility validation.
-- [ ] Add audit writes for every mutation.
-- [ ] Add API routes under the existing versioned API namespace.
-- [ ] Run focused server tests for `auth`, `users`, `policy`, and `audit`.
+- [x] Write failing route/service tests for Admin create user, Admin role update, Admin deactivate user, non-Admin mutation rejection, and self-lockout rejection.
+- [x] Add database migration for any missing durable user-governance fields.
+- [x] Implement service methods with transaction boundaries and server-side role eligibility validation.
+- [x] Add audit writes for every mutation.
+- [x] Add API routes under the existing versioned API namespace.
+- [x] Run focused server tests for `auth`, `users`, `policy`, and `audit`.
 
 ### Task 3: Frontend Auth Runtime
 
-- [ ] Write failing tests for token injection, refresh failure, logout, and unauthorized UI state.
-- [ ] Implement the selected frontend OIDC runtime boundary.
-- [ ] Ensure local mock mode and deterministic browser tests still work without a live Keycloak instance.
-- [ ] Ensure API-mode production builds do not silently fall back to static local bearer tokens.
-- [ ] Run `npm test -- src/infrastructure/auth src/infrastructure/http`.
+- [x] Write failing tests for token injection, refresh failure, logout, and unauthorized UI state.
+- [x] Implement the selected frontend OIDC runtime boundary.
+- [x] Ensure local mock mode and deterministic browser tests still work without a live Keycloak instance.
+- [x] Ensure API-mode production builds do not silently fall back to static local bearer tokens.
+- [x] Run `npm test -- src/infrastructure/auth src/infrastructure/http`.
 
 ### Task 4: User Governance UI And Acceptance
 
-- [ ] Update user-management UI to call backend APIs for create/update/deactivate/role changes.
-- [ ] Hide ineligible users from assignment controls and continue rejecting forced invalid assignments at the API boundary.
-- [ ] Update operation matrix for `PERM-USER-MGMT-001` assertion types to include `api`, `db`, and `audit`.
-- [ ] Add or update acceptance coverage for `AUTH-RUNTIME-001`, `PERM-GOV-001`, `PERM-MATRIX-001`, `PERM-MATRIX-002`, `PERM-USER-MGMT-001`, and `PARAM-ASSIGNEE-002`.
-- [ ] Run `npm run acceptance:coverage`, `npm run acceptance:operations`, and `npm run acceptance:browser`.
+- [x] Update user-management UI to call backend APIs for create/update/deactivate/role changes.
+- [x] Hide ineligible users from assignment controls and continue rejecting forced invalid assignments at the API boundary.
+- [x] Update operation matrix for `PERM-USER-MGMT-001` assertion types to include `api`, `db`, and `audit`.
+- [x] Add or update acceptance coverage for `AUTH-RUNTIME-001`, `PERM-GOV-001`, `PERM-MATRIX-001`, `PERM-MATRIX-002`, `PERM-USER-MGMT-001`, and `PARAM-ASSIGNEE-002`.
+- [x] Run `npm run acceptance:coverage`, `npm run acceptance:operations`, and `npm run acceptance:browser`.
 
 ### Task 5: Self-Hosted Keycloak Runbook
 
-- [ ] Add `docs/runbooks/identity-provider.md` with realm, client, redirect URI, role mapper, user provisioning, token lifetime, backup, and emergency admin recovery procedures.
-- [ ] Add self-hosted env variables for OIDC issuer, audience, client ID, and optional JWKS cache settings.
-- [ ] Document how to rotate signing keys without downtime.
-- [ ] Update Chinese security/runtime docs.
+- [x] Add `docs/runbooks/identity-provider.md` with realm, client, redirect URI, role mapper, user provisioning, token lifetime, backup, and emergency admin recovery procedures.
+- [x] Add self-hosted env variables for OIDC issuer, audience, and optional JWKS override settings.
+- [x] Document how to rotate signing keys without downtime.
+- [x] Update Chinese security/runtime docs.
 
 ### Task 6: Verification And Debt Closure
 
-- [ ] Run `npm run docs:check`.
-- [ ] Run `npm run contract:check`.
-- [ ] Run `npm run test:all`.
-- [ ] Run `npm run build`.
-- [ ] Run `npm run acceptance:coverage`.
-- [ ] Run `npm run acceptance:operations`.
-- [ ] Run `npm run acceptance:browser`.
-- [ ] Run `git diff --check`.
-- [ ] Update `docs/exec-plans/tech-debt-tracker.md`: close or narrow TD-020 and TD-021 only with evidence.
+- [x] Run `npm run docs:check`.
+- [x] Run `npm run contract:check`.
+- [x] Run `npm run test:all`.
+- [x] Run `npm run build`.
+- [x] Run `npm run acceptance:coverage`.
+- [x] Run `npm run acceptance:operations`.
+- [x] Run `npm run acceptance:browser`.
+- [x] Run `npm run acceptance:evidence`.
+- [x] Run `git diff --check`.
+- [x] Update `docs/exec-plans/tech-debt-tracker.md`: narrow TD-020 and TD-021 while keeping them open until target OIDC and full browser/evidence gates exist.
+
+## Verification Results
+
+Local non-HDC M6.2 implementation evidence was captured on 2026-06-02 from branch `codex/m6-2-identity-user-governance`:
+
+- `npm run docs:check`: passed.
+- `npm run contract:check`: passed.
+- `npm run test:all`: passed with 198 frontend test files / 1826 tests and 65 server test files / 551 tests.
+- `npm run build`: passed; the existing Vite chunk-size warning remains non-blocking.
+- `npm run acceptance:coverage`: passed with no missing required IDs.
+- `npm run acceptance:operations`: passed with no missing automated operation IDs.
+- `npm run acceptance:browser`: passed in `local-non-hdc` mode with 33 passed and 1 HDC-only skipped Playwright acceptance case.
+- `npm run acceptance:evidence`: passed; `PERM-USER-MGMT-001` includes `ui`, `api`, `db`, and `audit` evidence.
+- `git diff --check`: passed.
+
+Target-environment OIDC evidence is still required before TD-020 can close: real self-hosted issuer discovery/JWKS, real browser token acquisition/refresh/logout, `/api/v1/me` with target OIDC access tokens, issuer/audience/expiry negative checks, and redacted target smoke evidence.
 
 ## External Inputs Needed
 
