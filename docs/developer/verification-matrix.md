@@ -31,6 +31,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run restore:drill` | M6.3 restore target safety guard | Before running restore commands or changing restore env/script behavior. |
 | `npm run backup:drill` | M6.3 backup/restore evidence generation | After collecting PostgreSQL/object-store drill evidence in local or target environments. |
 | `npm run backup:check` | M6.3 backup/restore evidence shape, redaction, and failed-command gate | After `npm run backup:drill`, or when changing backup/restore evidence schema. |
+| JSON parse of `ops/self-hosted/observability/grafana/dashboards/*.json` | Grafana dashboard JSON is syntactically valid | After changing M6.5 dashboard exports. |
+| Alert/runbook text check | Every Prometheus alert has a `runbook_url` annotation | After changing `ops/self-hosted/observability/alerts.yml`. |
 
 `npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
 
@@ -94,6 +96,14 @@ Run:
 ```bash
 npm run docs:check
 git diff --check
+```
+
+For M6.5 observability-only config/docs changes, also run:
+
+```bash
+npm run selfhost:check
+node -e "const fs=require('fs'); for (const f of fs.readdirSync('ops/self-hosted/observability/grafana/dashboards')) JSON.parse(fs.readFileSync('ops/self-hosted/observability/grafana/dashboards/'+f,'utf8'));"
+node -e "const fs=require('fs'); const text=fs.readFileSync('ops/self-hosted/observability/alerts.yml','utf8'); const alerts=[...text.matchAll(/^      - alert:/gm)].length; const links=[...text.matchAll(/runbook_url:/g)].length; if (!alerts || alerts !== links) throw new Error('alerts='+alerts+' runbook_url='+links);"
 ```
 
 If documentation changes include the docs checker itself, also run:

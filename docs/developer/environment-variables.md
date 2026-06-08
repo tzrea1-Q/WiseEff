@@ -120,3 +120,14 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | Admin OIDC bearer token | Preferred self-hosted smoke token; M5 smoke token names are accepted only for compatibility. |
 
 M6.3 adds `ops/self-hosted/storage/object-store.env.example` for the S3-compatible storage profile. Run `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check` after filling isolated backup and restore targets.
+
+## Observability
+
+M6.5 observability config lives in `ops/self-hosted/observability/`. It does not require application secrets by itself, but the target deployment must choose a private metrics access pattern before pilot use.
+
+| Setting | Expected value | Notes |
+| --- | --- | --- |
+| Metrics endpoint | `http://api:8787/metrics` from private network | Prometheus should scrape the API container over the compose or operations network. |
+| Public `/metrics` exposure | disabled | If reverse-proxied, restrict by VPN, fixed IP allowlist, mTLS, or stronger equivalent control. |
+| Grafana datasource | Prometheus datasource selected during import | Dashboard JSON uses a `DS_PROMETHEUS` datasource variable. |
+| Alert runbook links | `docs/runbooks/observability-operations.md#...` | Every alert rule must keep a `runbook_url` annotation. |

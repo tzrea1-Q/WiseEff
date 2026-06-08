@@ -53,6 +53,7 @@ Rules:
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
 - `server/modules/agent/`: M4 Agent sessions, tools, approvals, and provider boundary.
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
+- `server/observability/`: correlation context, structured log helpers, metrics registry, and tracing boundary.
 - `server/migrations/`: SQL schema baseline.
 
 The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
@@ -84,7 +85,11 @@ M6.3 keeps object storage self-hosted by targeting an S3-compatible contract rat
 
 M6.4 adds Redis/BullMQ as the durable log-analysis dispatch transport. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and evidence. API processes enqueue `log-analysis` messages after the PostgreSQL job is committed; worker processes consume queue payloads by `jobId` and must claim the PostgreSQL job before writing progress or terminal state. Database polling mode remains available for local development and compensation.
 
-The M6.1-M6.4 baseline is deployment plumbing, identity/storage evidence scaffolding, and queue hardening, not full production hardening. Target OIDC evidence, target backup/restore evidence, target Redis/BullMQ queue evidence, observability, release rollback, and capacity gates remain M6 follow-up work.
+M6.5 adds a self-hosted observability baseline. The API exposes `GET /metrics` as Prometheus text, refreshes readiness, dependency, and worker queue gauges before rendering the scrape response, and records HTTP request counts and duration buckets through the shared HTTP adapter. The observability helpers keep correlation IDs, structured logs, metrics, and tracing boundaries in `server/observability/` without requiring a SaaS vendor.
+
+Prometheus, alert rules, and Grafana dashboard templates live in `ops/self-hosted/observability/`. `/metrics` is internal operations data and must be scraped only over a private network, VPN, reverse-proxy allowlist, mTLS, or a stronger equivalent control.
+
+The M6.1-M6.5 baseline is deployment plumbing, identity/storage evidence scaffolding, queue hardening, and local observability operations, not full production hardening. Target OIDC evidence, target backup/restore evidence, target Redis/BullMQ queue evidence, target Prometheus/Grafana/Alertmanager evidence, release rollback, and capacity gates remain M6 follow-up work.
 
 ## Deeper Docs
 

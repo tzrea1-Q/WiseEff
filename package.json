@@ -31,6 +31,7 @@
     "acceptance:visual": "playwright test --config playwright.quality.config.ts --project visual",
     "acceptance:responsive": "playwright test --config playwright.quality.config.ts --project responsive",
     "acceptance:quality": "tsx scripts/check-quality-gates.ts",
+    "observability:check": "tsx scripts/check-observability-config.ts",
     "backup:drill": "tsx scripts/run-backup-drill.ts",
     "restore:drill": "tsx scripts/run-restore-drill.ts",
     "backup:check": "tsx scripts/check-backup-drill.ts",

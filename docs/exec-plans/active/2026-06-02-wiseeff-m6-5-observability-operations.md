@@ -46,8 +46,8 @@ M6.5 excludes:
 
 - Every API request has a request ID and trace ID in logs and responses where appropriate.
 - Audit events can be correlated with request ID, user ID, operation ID, and trace ID.
-- Log-analysis jobs expose job ID, queue ID, run ID, retry count, and failure reason in logs/metrics.
-- Agent and device high-risk operations expose approval ID, session ID, target ID, and audit ID.
+- Log-analysis queue health exposes queued, processing, dead-letter, and oldest-queued-age metrics; per-run job duration and failure-reason metrics remain pending.
+- Agent provider readiness and Agent/debugging HTTP route outcomes are observable; per-approval, per-tool, per-device-operation, and audit-failure counters remain pending until the business services are instrumented.
 - Prometheus can scrape WiseEff metrics.
 - Grafana dashboards load from versioned local files.
 - Alerts are actionable and tied to runbooks.
@@ -94,52 +94,62 @@ Modify:
 
 ### Task 1: Observability Metadata Gate
 
-- [ ] Write failing tests in `scripts/check-observability-config.test.ts`.
-- [ ] Require Prometheus config, alert rules, at least three Grafana dashboards, and runbook links.
-- [ ] Require package scripts for observability config validation.
-- [ ] Require no secrets in dashboard/config files.
-- [ ] Run `npm test -- scripts/check-observability-config.test.ts` and confirm expected failure.
+- [x] Write failing tests in `scripts/check-observability-config.test.ts`.
+- [x] Require Prometheus config, alert rules, at least three Grafana dashboards, and runbook links.
+- [x] Require package scripts for observability config validation.
+- [x] Require no secrets in dashboard/config files.
+- [x] Run `npm test -- scripts/check-observability-config.test.ts` and confirm expected failure.
 
 ### Task 2: Structured Logs And Correlation
 
-- [ ] Write failing unit tests for request ID, trace ID, audit ID, job ID, and operation ID propagation.
-- [ ] Implement structured JSON logging helpers.
-- [ ] Ensure error responses include request IDs without leaking secrets.
-- [ ] Ensure audit writes can include correlation metadata.
-- [ ] Run focused server tests for observability and audit modules.
+- [x] Write failing unit tests for request ID, trace ID, audit ID, job ID, and operation ID propagation.
+- [x] Implement structured JSON logging helpers.
+- [x] Ensure error responses include request IDs without leaking secrets.
+- [x] Ensure audit writes can include correlation metadata.
+- [x] Run focused server tests for observability and audit modules.
 
 ### Task 3: Metrics Endpoint
 
-- [ ] Write failing tests for metrics registration and redaction.
+- [x] Write failing tests for metrics registration and redaction.
 - [ ] Add process, HTTP, database, object-store, queue, worker, Agent, and device metrics.
-- [ ] Add `/metrics` with production access guidance, such as private network only or reverse-proxy allowlist.
-- [ ] Add readiness checks that verify metrics registration does not break health endpoints.
-- [ ] Run focused metrics tests.
+  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, and worker queue gauges are implemented.
+  - Pending: per-Agent provider call counters in business paths, device gateway operation counters, audit write failure counters, and per-job duration/failure-reason metrics.
+- [x] Add `/metrics` with production access guidance, such as private network only or reverse-proxy allowlist.
+- [x] Add readiness checks that verify metrics registration does not break health endpoints.
+- [x] Run focused metrics tests.
 
 ### Task 4: OpenTelemetry Tracing
 
-- [ ] Add tracing setup that can be disabled in local tests and enabled in self-hosted runtime.
+- [x] Add tracing setup that can be disabled in local tests and enabled in self-hosted runtime.
 - [ ] Instrument API routes, database calls, queue processing, object-store probes, Agent provider calls, and device gateway calls where the interfaces already provide clean boundaries.
-- [ ] Ensure trace export failures do not break business requests.
-- [ ] Run focused tests for disabled/enabled tracer configuration and error isolation.
+  - Current evidence: a disabled/enabled tracing boundary exists and isolates exporter failures.
+  - Pending: route/database/object-store/queue/Agent/device spans are not yet wired into the business runtime.
+- [x] Ensure trace export failures do not break business requests.
+- [x] Run focused tests for disabled/enabled tracer configuration and error isolation.
 
 ### Task 5: Dashboards And Alerts
 
-- [ ] Add Prometheus scrape config for API, worker, Redis, PostgreSQL exporter if available, reverse proxy, and node exporter if included.
-- [ ] Add alert rules for API down, readiness blocked, elevated 5xx, high latency, queue backlog, dead-letter growth, object-store probe failure, database unavailable, Agent provider failure, and disk pressure.
-- [ ] Add Grafana dashboards as versioned JSON.
-- [ ] Link every alert to a runbook section.
-- [ ] Run `npm run observability:check`.
+- [x] Add Prometheus scrape config for API, worker, PostgreSQL exporter if available, reverse proxy, and node exporter if included.
+- [x] Add alert rules for API down, readiness not-ready, elevated 5xx, high latency, queue backlog, dead-letter presence, object-store probe failure, database unavailable, Agent provider readiness failure, and disk pressure.
+- [x] Add Grafana dashboards as versioned JSON.
+- [x] Link every alert to a runbook section.
+- [x] Run `npm run observability:check`.
 
 ### Task 6: Runbooks And Verification
 
-- [ ] Update monitoring and incident runbooks.
-- [ ] Add a smoke step that verifies Prometheus can scrape WiseEff metrics.
-- [ ] Run `npm run observability:check`.
+- [x] Update monitoring and incident runbooks.
+- [x] Add a smoke step that verifies Prometheus can scrape WiseEff metrics.
+- [x] Run `npm run observability:check`.
 - [ ] Run `npm run docs:check`.
 - [ ] Run `npm run test:all`.
 - [ ] Run `npm run build`.
 - [ ] Run `git diff --check`.
+
+## Current Evidence Status
+
+- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, and runbooks.
+- Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
+- Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 
 ## External Inputs Needed
 

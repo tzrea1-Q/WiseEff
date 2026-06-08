@@ -214,7 +214,7 @@ Runtime services:
 - `web`: built Vite frontend served by `npm run preview -- --host 0.0.0.0`.
 - `proxy`: Caddy TLS and reverse proxy for frontend, `/api/*`, and `/health/*`.
 
-This is an M6.1 deployment baseline only. OIDC, target identity evidence, durable queues, observability, release rollback, and capacity evidence are M6.2-M6.6. M6.3 adds the self-hosted object-store provider decision, compatibility probe, and backup/restore evidence gates, but target restore readiness still requires a real isolated restore drill.
+This started as an M6.1 deployment baseline. M6.2 adds OIDC identity and user-governance boundaries. M6.3 adds the self-hosted object-store provider decision, compatibility probe, and backup/restore evidence gates, but target restore readiness still requires a real isolated restore drill. M6.4 adds Redis/BullMQ durable queue wiring, but target queue readiness still requires live Redis evidence. M6.5 adds the first self-hosted observability baseline: `GET /metrics`, `npm run observability:check`, Prometheus scrape config, alert rules with runbook links, and Grafana dashboard templates. Release rollback, capacity evidence, and target Prometheus/Grafana/Alertmanager proof remain M6 follow-up work.
 
 ## M5 Live Agent Provider Boundary
 

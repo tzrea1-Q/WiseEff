@@ -88,6 +88,12 @@ M3.5 request correlation uses `X-Request-Id` as the HTTP request id. The server 
 
 M6.2 user-governance writes emit backend audit events for user creation, profile update, activation/deactivation, and role replacement. These mutations must stay transactionally coupled to durable state updates and must prevent the active Admin from removing its own final Admin capability.
 
+## Telemetry Security
+
+M6.5 observability data is operations evidence, not a public API. `/metrics` can expose route names, dependency status, queue counts, provider status, and high-risk operation counters, so production and pilot deployments must keep it private through private-network scraping, VPN, reverse-proxy allowlist, mTLS, or a stronger equivalent control.
+
+Telemetry must not include bearer tokens, provider keys, raw uploaded log content, raw parameter values, raw device write payloads, or credentials in labels, logs, traces, dashboards, alert annotations, or incident evidence. Structured log helpers redact common secret-bearing keys, and `npm run observability:check` scans observability config and dashboards for obvious secret leakage.
+
 ## Agent Safety
 
 Agent tools should be classified as:
