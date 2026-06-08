@@ -77,6 +77,10 @@ M6.1 adds a single-Linux-server self-hosted baseline under `ops/self-hosted/`. I
 
 M6.2 adds the OIDC-capable identity boundary and durable backend user-governance API surface. Target self-hosted deployments should use `AUTH_PROVIDER=oidc` with issuer, audience, and JWKS discovery. Self-hosted object-store provider selection, durable Redis/BullMQ queues, observability, release rollback, capacity gates, and target-environment OIDC evidence remain M6 follow-up work.
 
+M6.3 keeps object storage self-hosted by targeting an S3-compatible contract rather than a cloud account. The readiness seam now performs bucket and probe-object write/read/head/delete checks, and backup/restore drills generate redacted evidence for PostgreSQL, object storage, isolated restore targets, and conditional Redis status.
+
+The M6.1 baseline is deployment plumbing, not full production hardening. Target OIDC evidence, target backup/restore evidence, durable Redis/BullMQ queues, observability, release rollback, and capacity gates remain M6 follow-up work.
+
 ## Deeper Docs
 
 - Full system design: `docs/design-docs/full-stack-architecture.md`

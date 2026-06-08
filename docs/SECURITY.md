@@ -106,6 +106,14 @@ The live Agent provider adds a registry seam so the backend can reject unknown t
 
 Provider outages must not silently execute tools. A degraded assistant response is allowed only when the provider health check fails or the transport is unavailable, and the fallback path must skip tool execution entirely. Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
 
+## Backup And Object Storage Security
+
+- S3-compatible object storage credentials, signed URLs, database URLs with passwords, and bearer tokens must never be committed.
+- Backup/restore evidence may be committed only after redaction and only when it contains summaries, counts, object keys/prefixes, and command statuses rather than database dumps or object bytes.
+- Restore drills must use isolated database and object-store targets. Restoring into the live production database, live bucket, or live prefix is a safety violation.
+- `/health/ready` object-store failures must use safe categories and remediation hints rather than raw provider responses that can contain signed headers or credentials.
+- Provider lifecycle, encryption, replication, credential rotation, and backup/export procedures are operator responsibilities and must be recorded with target evidence.
+
 ## Device Safety
 
 Device access must go through a gateway boundary. Write requests need:

@@ -60,14 +60,38 @@ async function checkObjectStore(objectStore?: ObjectStoreHealthCheck): Promise<D
   }
 
   try {
-    return await objectStore.checkHealth();
+    const health = await objectStore.checkHealth();
+    return health.ok ? health : { ...health, message: sanitizeObjectStoreFailure(health.message) };
   } catch (error) {
     return {
       ok: false,
       status: "failed",
-      message: error instanceof Error ? error.message : "Object store readiness check failed."
+      message: sanitizeObjectStoreFailure(error instanceof Error ? error.message : undefined)
     };
   }
+}
+
+function sanitizeObjectStoreFailure(message: string | undefined) {
+  const value = message ?? "";
+  const lower = value.toLowerCase();
+
+  if (lower.includes("accessdenied") || lower.includes("access denied") || lower.includes("permission") || lower.includes("credential")) {
+    return "Object store readiness failed: credentials or access policy denied. Verify endpoint, bucket policy, access key, and secret rotation.";
+  }
+
+  if (lower.includes("tls") || lower.includes("certificate") || lower.includes("ssl")) {
+    return "Object store readiness failed: TLS validation failed. Verify the storage endpoint certificate chain and TLS policy.";
+  }
+
+  if (lower.includes("not found") || lower.includes("no such bucket") || lower.includes("bucket missing")) {
+    return "Object store readiness failed: bucket was not found. Verify bucket name, region, and provisioning.";
+  }
+
+  if (lower.includes("read-back mismatch") || lower.includes("checksum") || lower.includes("metadata")) {
+    return "Object store readiness failed: compatibility probe mismatch. Verify S3 metadata, checksum, read, write, and delete support.";
+  }
+
+  return "Object store readiness failed. Verify endpoint, bucket, credentials, TLS policy, and S3 compatibility.";
 }
 
 async function checkAgentProvider(agentProvider?: AgentProvider): Promise<DependencyHealth | undefined> {

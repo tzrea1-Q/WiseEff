@@ -302,6 +302,16 @@ M6.1 self-hosted runtime evidence is collected separately with `npm run selfhost
 
 M6.2 local identity evidence is collected with `npm run acceptance:browser` and `npm run acceptance:evidence`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
 
+M6.3 storage and backup evidence is collected with:
+
+```bash
+npm run restore:drill
+npm run backup:drill
+npm run backup:check
+```
+
+Local M6.3 evidence proves evidence shape, redaction, failed-command handling, and restore-target safety. Target acceptance requires a real restore drill against isolated PostgreSQL and object-store targets.
+
 ### Reviewing Operation Evidence
 
 After `npm run acceptance:browser`, open `docs/generated/acceptance-operation-evidence.md` and `docs/generated/acceptance-operation-evidence/index.json`. Each automated operation should show a role, route, assertion types, status, artifact path, runtime, trace/report location, and reproduction steps. For operations with `api` assertions, verify that the record includes compact request/response summaries with method, path, status, and request ID when available. For operations with `db` assertions, verify the table, predicate, observed state, and row count summary. For operations with `audit` assertions, verify event ID, kind, action, target ID, and request or trace correlation when available. Treat missing P0/P1 automated operation evidence, evidence records without review metadata, missing required API/DB/audit summaries, or unredacted secrets as blocking acceptance failures.
@@ -568,10 +578,12 @@ Checklist:
 
 - [ ] Database backup completed.
 - [ ] Object-store backup or snapshot completed.
-- [ ] Restore into a clean environment completed.
+- [ ] `npm run restore:drill` passed before restore commands ran.
+- [ ] Restore into a clean isolated environment completed.
 - [ ] Restored API and worker start successfully.
 - [ ] Restored environment passes health checks.
 - [ ] `npm run smoke:m5` passes, or non-HDC smoke passes with only the approved HDC blocker.
+- [ ] `npm run backup:drill` and `npm run backup:check` passed with redacted evidence.
 - [ ] `M5_BACKUP_RESTORE_DRILL_AT` is set only after restore validation passes.
 - [ ] Evidence is recorded in [M5 Pilot Acceptance Evidence](../generated/m5-pilot-acceptance.md).
 
@@ -699,5 +711,6 @@ As of 2026-05-30, the docs still identify these important gaps:
 - Deployment rollback rehearsal evidence is still required.
 - Frontend production-auth API mode needs bearer-token injection before production-auth UI E2E can fully close.
 - Cloud S3/OSS evidence is separate from local object-store evidence unless the acceptance explicitly approves local object storage for the target.
+- M6.3 local backup evidence is not target restore evidence unless it was generated from a real isolated target restore drill.
 
 Keep these caveats visible in the final acceptance record instead of smoothing them over. A clean No-Go with exact blockers is more useful than a vague Go.
