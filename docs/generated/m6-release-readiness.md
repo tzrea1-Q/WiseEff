@@ -1,9 +1,9 @@
 ## M6.6 Self-Hosted Release Gate Evidence
 
-- Date: 2026-06-02T17:53:06.321Z
+- Date: 2026-06-04T12:32:48.813Z
 - Status: `failed`
-- Branch: `codex/m6-6-release-rollback-capacity-gate`
-- Commit: `54925ef0238b373035d79387a2ec475524a34635`
+- Branch: `codex/m6-target-evidence-closure`
+- Commit: `97b2d2c840af17d7e1def8192a97ee08db6a423f`
 - Version: `v0.1.0`
 - Dirty worktree: `true`
 - Target environment: `local-self-hosted`
@@ -12,6 +12,8 @@
 - Synthetic acceptance mode: `target-non-hdc`
 - HDC status: `skipped_by_scope`
 - HDC evidence: `n/a`
+- Command gate scope: `local prerelease commands; not target evidence`
+- Target evidence scope: `dependency readiness requires real self-hosted target evidence`
 
 ### Migration Set
 
@@ -25,45 +27,54 @@
 - `0008_m4_agent.sql`
 - `0009_m5_job_dead_letters.sql`
 - `0010_m5_agent_provider_traces.sql`
+- `0011_m6_user_governance.sql`
 
 ### Evidence Paths
 
-- Backup evidence: `docs/generated/backup-restore-drill.md`
+- Backup evidence: `docs/generated/m6-backup-restore-evidence.md`
+- Identity evidence: `docs/generated/m6-identity-evidence.md`
 - Rollback plan: `docs/runbooks/release-rollback.md`
-- Rollback rehearsal: `pending`
+- Rollback rehearsal: `docs/generated/m6-rollback-rehearsal-evidence.md`
 - Target synthetic acceptance: `pending`
 - Capacity gate: `docs/generated/capacity-gate.md`
+- Queue evidence: `docs/generated/m6-queue-readiness-evidence.md`
+- Observability evidence: `docs/generated/m6-observability-evidence.md`
 
 ### Command Gates
 
 | Command | Status | Detail |
 | --- | --- | --- |
-| docs:check | pending | configured_not_run |
-| contract:check | pending | configured_not_run |
-| test:all | pending | configured_not_run |
-| build | pending | configured_not_run |
-| acceptance:coverage | pending | configured_not_run |
-| acceptance:operations | pending | configured_not_run |
-| acceptance:evidence | pending | configured_not_run |
-| selfhost:check | pending | configured_not_run |
-| git diff --check | pending | configured_not_run |
+| docs:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| contract:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| test:all | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| build | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| acceptance:coverage | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| acceptance:operations | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| acceptance:evidence | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| selfhost:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| identity:check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
+| git diff --check | pending | local_prerelease_command_configured_not_run_in_this_evidence |
 
 ### Dependency Gates
 
 | Dependency | Status |
 | --- | --- |
 | self-hosted config | pending |
-| backup/restore | pending |
+| backup/restore | passed |
+| identity readiness | pending |
+| rollback readiness | pending |
+| capacity readiness | pending |
+| target synthetic readiness | pending |
 | queue readiness | pending |
 | observability | pending |
 
 ### Blockers
 
 - Release worktree must be clean before producing final evidence.
+- Target environment must identify a configured target, staging, pilot, or self-hosted environment.
 
 ### Pending Evidence
 
-- Rollback rehearsal evidence is pending.
 - Target synthetic acceptance evidence is pending.
 - Command gate not run: docs:check.
 - Command gate not run: contract:check.
@@ -73,8 +84,12 @@
 - Command gate not run: acceptance:operations.
 - Command gate not run: acceptance:evidence.
 - Command gate not run: selfhost:check.
+- Command gate not run: identity:check.
 - Command gate not run: git diff --check.
 - Self-hosted config evidence is pending.
-- Backup/restore evidence is pending.
+- Identity readiness evidence is pending.
+- Rollback readiness evidence is pending.
+- Capacity readiness evidence is pending.
+- Target synthetic readiness evidence is pending.
 - Queue readiness evidence is pending.
 - Observability evidence is pending.

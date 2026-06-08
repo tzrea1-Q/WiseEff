@@ -16,6 +16,7 @@ export const requiredReleaseGateCommands = [
   "acceptance:operations",
   "acceptance:evidence",
   "selfhost:check",
+  "identity:check",
   "git diff --check"
 ] as const;
 
@@ -45,15 +46,22 @@ export type ReleaseGateInput = {
   };
   evidence: {
     backupEvidencePath: string;
+    identityEvidencePath: string;
     rollbackPlanPath: string;
     rollbackRehearsalEvidencePath: string;
     targetSyntheticEvidencePath: string;
     capacityEvidencePath: string;
+    queueEvidencePath: string;
+    observabilityEvidencePath: string;
   };
   commands: ReleaseGateCommandResult[];
   dependencies: {
     selfHostedConfig: GateStatus;
     backupRestore: GateStatus;
+    identityReadiness: GateStatus;
+    rollbackReadiness: GateStatus;
+    capacityReadiness: GateStatus;
+    targetSyntheticReadiness: GateStatus;
     queueReadiness: GateStatus;
     observability: GateStatus;
   };
@@ -74,13 +82,20 @@ type ReleaseGateCliOptions = {
   hdcStatus: HdcReleaseStatus;
   hdcEvidencePath: string | null;
   backupEvidencePath: string;
+  identityEvidencePath: string;
   rollbackPlanPath: string;
   rollbackRehearsalEvidencePath: string;
   targetSyntheticEvidencePath: string;
   capacityEvidencePath: string;
+  queueEvidencePath: string;
+  observabilityEvidencePath: string;
   output: string;
   runCommands: boolean;
   backupRestoreStatus: GateStatus | null;
+  identityReadinessStatus: GateStatus;
+  rollbackReadinessStatus: GateStatus;
+  capacityReadinessStatus: GateStatus;
+  targetSyntheticReadinessStatus: GateStatus;
   queueReadinessStatus: GateStatus;
   observabilityStatus: GateStatus;
 };
@@ -105,6 +120,8 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   }
   if (!input.metadata.targetEnvironment.trim()) {
     blockers.push("Target environment label is required.");
+  } else if (!isTargetEnvironment(input.metadata.targetEnvironment)) {
+    blockers.push("Target environment must identify a configured target, staging, pilot, or self-hosted environment.");
   }
   if (!input.metadata.artifactRef.trim()) {
     blockers.push("Release artifact reference is required.");
@@ -122,17 +139,38 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
   if (!input.evidence.backupEvidencePath.trim()) {
     blockers.push("Backup evidence path is required.");
   }
+  if (!input.evidence.identityEvidencePath.trim()) {
+    blockers.push("Identity evidence path is required.");
+  }
   if (!input.evidence.rollbackPlanPath.trim()) {
     blockers.push("Rollback plan path is required.");
   }
   if (!input.evidence.rollbackRehearsalEvidencePath.trim()) {
-    pending.push("Rollback rehearsal evidence is pending.");
+    if (input.dependencies.rollbackReadiness === "passed") {
+      blockers.push("Rollback evidence path is required when rollback readiness is passed.");
+    } else {
+      pending.push("Rollback rehearsal evidence is pending.");
+    }
   }
   if (!input.evidence.targetSyntheticEvidencePath.trim()) {
-    pending.push("Target synthetic acceptance evidence is pending.");
+    if (input.dependencies.targetSyntheticReadiness === "passed") {
+      blockers.push("Target synthetic evidence path is required when target synthetic readiness is passed.");
+    } else {
+      pending.push("Target synthetic acceptance evidence is pending.");
+    }
   }
   if (!input.evidence.capacityEvidencePath.trim()) {
-    pending.push("Capacity gate evidence is pending.");
+    if (input.dependencies.capacityReadiness === "passed") {
+      blockers.push("Capacity evidence path is required when capacity readiness is passed.");
+    } else {
+      pending.push("Capacity gate evidence is pending.");
+    }
+  }
+  if (input.dependencies.queueReadiness === "passed" && !input.evidence.queueEvidencePath.trim()) {
+    blockers.push("Queue evidence path is required when queue readiness is passed.");
+  }
+  if (input.dependencies.observability === "passed" && !input.evidence.observabilityEvidencePath.trim()) {
+    blockers.push("Observability evidence path is required when observability is passed.");
   }
 
   for (const requiredCommand of requiredReleaseGateCommands) {
@@ -148,6 +186,10 @@ export function evaluateReleaseGate(input: ReleaseGateInput): ReleaseGateResult 
 
   collectDependencyStatus(input.dependencies.selfHostedConfig, "Self-hosted config", blockers, pending);
   collectDependencyStatus(input.dependencies.backupRestore, "Backup/restore", blockers, pending);
+  collectDependencyStatus(input.dependencies.identityReadiness, "Identity readiness", blockers, pending);
+  collectDependencyStatus(input.dependencies.rollbackReadiness, "Rollback readiness", blockers, pending);
+  collectDependencyStatus(input.dependencies.capacityReadiness, "Capacity readiness", blockers, pending);
+  collectDependencyStatus(input.dependencies.targetSyntheticReadiness, "Target synthetic readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.queueReadiness, "Queue readiness", blockers, pending);
   collectDependencyStatus(input.dependencies.observability, "Observability", blockers, pending);
 
@@ -180,6 +222,8 @@ export function buildReleaseGateEvidence(args: {
     `- Synthetic acceptance mode: \`${metadata.syntheticAcceptanceMode}\``,
     `- HDC status: \`${metadata.hdc.status}\``,
     `- HDC evidence: \`${hdcEvidence}\``,
+    "- Command gate scope: `local prerelease commands; not target evidence`",
+    "- Target evidence scope: `dependency readiness requires real self-hosted target evidence`",
     "",
     "### Migration Set",
     "",
@@ -188,10 +232,13 @@ export function buildReleaseGateEvidence(args: {
     "### Evidence Paths",
     "",
     `- Backup evidence: \`${sanitize(args.input.evidence.backupEvidencePath)}\``,
+    `- Identity evidence: \`${sanitize(args.input.evidence.identityEvidencePath)}\``,
     `- Rollback plan: \`${sanitize(args.input.evidence.rollbackPlanPath)}\``,
     `- Rollback rehearsal: \`${sanitize(args.input.evidence.rollbackRehearsalEvidencePath || "pending")}\``,
     `- Target synthetic acceptance: \`${sanitize(args.input.evidence.targetSyntheticEvidencePath || "pending")}\``,
     `- Capacity gate: \`${sanitize(args.input.evidence.capacityEvidencePath || "pending")}\``,
+    `- Queue evidence: \`${sanitize(args.input.evidence.queueEvidencePath || "pending")}\``,
+    `- Observability evidence: \`${sanitize(args.input.evidence.observabilityEvidencePath || "pending")}\``,
     "",
     "### Command Gates",
     "",
@@ -207,6 +254,10 @@ export function buildReleaseGateEvidence(args: {
     "| --- | --- |",
     `| self-hosted config | ${args.input.dependencies.selfHostedConfig} |`,
     `| backup/restore | ${args.input.dependencies.backupRestore} |`,
+    `| identity readiness | ${args.input.dependencies.identityReadiness} |`,
+    `| rollback readiness | ${args.input.dependencies.rollbackReadiness} |`,
+    `| capacity readiness | ${args.input.dependencies.capacityReadiness} |`,
+    `| target synthetic readiness | ${args.input.dependencies.targetSyntheticReadiness} |`,
     `| queue readiness | ${args.input.dependencies.queueReadiness} |`,
     `| observability | ${args.input.dependencies.observability} |`,
     "",
@@ -260,15 +311,22 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
     },
     evidence: {
       backupEvidencePath: options.backupEvidencePath,
+      identityEvidencePath: options.identityEvidencePath,
       rollbackPlanPath: options.rollbackPlanPath,
       rollbackRehearsalEvidencePath: options.rollbackRehearsalEvidencePath,
       targetSyntheticEvidencePath: options.targetSyntheticEvidencePath,
-      capacityEvidencePath: options.capacityEvidencePath
+      capacityEvidencePath: options.capacityEvidencePath,
+      queueEvidencePath: options.queueEvidencePath,
+      observabilityEvidencePath: options.observabilityEvidencePath
     },
     commands,
     dependencies: {
       selfHostedConfig: commandStatus(commands, "selfhost:check"),
       backupRestore: options.backupRestoreStatus ?? pathExistsStatus(options.backupEvidencePath),
+      identityReadiness: options.identityReadinessStatus,
+      rollbackReadiness: options.rollbackReadinessStatus,
+      capacityReadiness: options.capacityReadinessStatus,
+      targetSyntheticReadiness: options.targetSyntheticReadinessStatus,
       queueReadiness: options.queueReadinessStatus,
       observability: options.observabilityStatus
     }
@@ -277,6 +335,11 @@ function buildReleaseGateInput(options: ReleaseGateCliOptions): ReleaseGateInput
 
 export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.env): ReleaseGateCliOptions {
   const getValue = (name: string, fallback: string) => {
+    const equalsPrefix = `${name}=`;
+    const equalsArg = args.find((arg) => arg.startsWith(equalsPrefix));
+    if (equalsArg) {
+      return equalsArg.slice(equalsPrefix.length);
+    }
     const index = args.indexOf(name);
     if (index === -1) {
       const envValue = env[`npm_config_${name.slice(2).replace(/-/g, "_")}`];
@@ -298,6 +361,13 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     throw new Error(`Unsupported HDC release status: ${hdcStatus}`);
   }
   const backupRestoreStatus = optionalGateStatus(getValue("--backup-restore", ""));
+  const identityReadinessStatus = requiredGateStatus(getValue("--identity-readiness", "pending"), "--identity-readiness");
+  const rollbackReadinessStatus = requiredGateStatus(getValue("--rollback-readiness", "pending"), "--rollback-readiness");
+  const capacityReadinessStatus = requiredGateStatus(getValue("--capacity-readiness", "pending"), "--capacity-readiness");
+  const targetSyntheticReadinessStatus = requiredGateStatus(
+    getValue("--target-synthetic-readiness", "pending"),
+    "--target-synthetic-readiness"
+  );
   const queueReadinessStatus = requiredGateStatus(getValue("--queue-readiness", "pending"), "--queue-readiness");
   const observabilityStatus = requiredGateStatus(getValue("--observability", "pending"), "--observability");
 
@@ -309,14 +379,21 @@ export function parseReleaseGateArgs(args: string[], env: RuntimeEnv = process.e
     syntheticAcceptanceMode,
     hdcStatus,
     hdcEvidencePath: getValue("--hdc-evidence", ""),
-    backupEvidencePath: getValue("--backup-evidence", "docs/generated/backup-restore-drill.md"),
+    backupEvidencePath: getValue("--backup-evidence", "docs/generated/m6-backup-restore-evidence.md"),
+    identityEvidencePath: getValue("--identity-evidence", "docs/generated/m6-identity-evidence.md"),
     rollbackPlanPath: getValue("--rollback-plan", "docs/runbooks/release-rollback.md"),
-    rollbackRehearsalEvidencePath: getValue("--rollback-evidence", ""),
+    rollbackRehearsalEvidencePath: getValue("--rollback-evidence", "docs/generated/m6-rollback-rehearsal-evidence.md"),
     targetSyntheticEvidencePath: getValue("--target-synthetic-evidence", ""),
     output: getValue("--output", positionalOutput || "docs/generated/m6-release-readiness.md"),
     capacityEvidencePath: getValue("--capacity-evidence", positionalCapacityEvidence || "docs/generated/capacity-gate.md"),
+    queueEvidencePath: getValue("--queue-evidence", "docs/generated/m6-queue-readiness-evidence.md"),
+    observabilityEvidencePath: getValue("--observability-evidence", "docs/generated/m6-observability-evidence.md"),
     runCommands: args.includes("--run-command-gates"),
     backupRestoreStatus,
+    identityReadinessStatus,
+    rollbackReadinessStatus,
+    capacityReadinessStatus,
+    targetSyntheticReadinessStatus,
     queueReadinessStatus,
     observabilityStatus
   };
@@ -370,7 +447,10 @@ export function buildConfiguredCommandResults(packageJson: { scripts?: Record<st
   return requiredReleaseGateCommands.map((name) => ({
     name,
     status: packageJson.scripts?.[name] || name === "git diff --check" ? "pending" : "failed",
-    detail: packageJson.scripts?.[name] || name === "git diff --check" ? "configured_not_run" : "missing package script"
+    detail:
+      packageJson.scripts?.[name] || name === "git diff --check"
+        ? "local_prerelease_command_configured_not_run_in_this_evidence"
+        : "missing package script"
   }));
 }
 
@@ -400,11 +480,6 @@ function pathExistsStatus(filePath: string): GateStatus {
     return "pending";
   }
   return existsSync(filePath) ? "passed" : "pending";
-}
-
-function scriptExists(name: string): boolean {
-  const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
-  return Boolean(packageJson.scripts?.[name]);
 }
 
 function collectMigrations(): string[] {
@@ -448,6 +523,39 @@ function sanitize(value: string) {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>")
     .replace(/(token|secret|key|password)=([^&\s]+)/gi, "$1=<redacted>")
     .replace(/(token|secret|key|password):([^@\s]+)/gi, "$1:<redacted>");
+}
+
+function isTargetEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    !isPlaceholderEnvironment(normalized) &&
+    !isLocalEnvironment(normalized) &&
+    (normalized.includes("target") ||
+      normalized.includes("staging") ||
+      normalized.includes("pilot") ||
+      normalized.includes("self-hosted"))
+  );
+}
+
+function isPlaceholderEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "pending" ||
+    normalized === "n/a" ||
+    normalized.includes("not-configured") ||
+    normalized.includes("not_configured")
+  );
+}
+
+function isLocalEnvironment(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === "local" ||
+    normalized.startsWith("local-") ||
+    normalized.includes("localhost") ||
+    normalized.includes("127.0.0.1") ||
+    normalized.includes("::1")
+  );
 }
 
 function markdownCell(value: string) {

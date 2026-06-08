@@ -110,3 +110,26 @@ If Admin access is lost:
 ## Evidence Gate
 
 TD-020 remains open until target-environment OIDC evidence exists. Required evidence includes OIDC discovery/JWKS validation, `/api/v1/me` with real target tokens, token-expiry rejection, wrong-audience or wrong-issuer rejection, Admin user-governance success, non-Admin rejection, and redacted browser/runtime evidence.
+
+When a real Keycloak or target IdP is not available, run the local implementation drill first:
+
+```bash
+npm run identity:local-oidc-drill
+```
+
+This starts a temporary local OIDC discovery/JWKS service, signs RS256 Admin and negative tokens, runs the WiseEff API in OIDC production-auth mode against the local PostgreSQL database, verifies `/api/v1/me`, and records browser token-provider refresh/logout proof in `docs/generated/m6-local-oidc-identity-evidence.md`. It is valid local implementation evidence, but it is not final target identity evidence and must not be used to close TD-020 or release readiness by itself.
+
+Prepare four target tokens before running the identity gate:
+
+- Admin access token for the WiseEff target.
+- Access token signed by an untrusted issuer or configured against a wrong issuer.
+- Access token with a wrong audience.
+- Expired access token.
+
+Then run:
+
+```bash
+npm run identity:check -- --issuer=https://<idp-host>/realms/wiseeff --api-base-url=https://<wiseeff-host> --audience=wiseeff-api --authorization="Bearer <admin-token>" --wrong-issuer-authorization="Bearer <wrong-issuer-token>" --wrong-audience-authorization="Bearer <wrong-audience-token>" --expired-authorization="Bearer <expired-token>" --browser-runtime=pending
+```
+
+Use `--browser-runtime=passed` only after browser token acquisition, refresh, and logout have been verified and archived separately. The command writes redacted evidence to `docs/generated/m6-identity-evidence.md`; this evidence proves the target OIDC gate only when it was run against the real self-hosted identity provider and API.

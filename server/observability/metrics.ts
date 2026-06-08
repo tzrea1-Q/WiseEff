@@ -16,6 +16,13 @@ type GaugeSample = {
   value: number;
 };
 
+export type LogAnalysisJobMetricStatus = "complete" | "retry" | "dead_lettered" | "failed";
+export type LogAnalysisJobMetricStage = "parse" | "pattern" | "rootcause" | "report";
+export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" | "stale_run" | "unknown";
+export type AgentToolMetricKind = "read" | "preparation" | "mutating";
+export type AgentApprovalMetricAction = "requested" | "approved" | "rejected";
+export type AgentToolMetricStatus = "succeeded" | "failed" | "rejected";
+
 const dynamicSegmentPattern =
   /\/(?:[a-z]+-)?[0-9a-f]{6,}(?=\/|$)|\/(?:request|session|operation|job|log|audit|approval|snapshot|target|run|op)-[^/]+/gi;
 const httpDurationBucketsSeconds = [0.05, 0.1, 0.25, 0.5, 0.8, 1, 2.5, 5, Number.POSITIVE_INFINITY] as const;
@@ -129,12 +136,51 @@ export function createMetricsRegistry(options: { serviceName: string }) {
         status: input.status
       }, input.durationMs);
     },
+    recordAgentApproval(input: { action: AgentApprovalMetricAction; tool: string; kind: AgentToolMetricKind; requiresApproval: boolean }) {
+      incrementCounter("wiseeff_agent_approvals_total", "WiseEff Agent approvals by action and tool class.", {
+        action: input.action,
+        tool: input.tool,
+        kind: input.kind,
+        requires_approval: input.requiresApproval
+      });
+    },
+    recordAgentToolResult(input: { tool: string; kind: AgentToolMetricKind; requiresApproval: boolean; status: AgentToolMetricStatus }) {
+      incrementCounter("wiseeff_agent_tool_results_total", "WiseEff Agent tool terminal results by tool class and status.", {
+        tool: input.tool,
+        kind: input.kind,
+        requires_approval: input.requiresApproval,
+        status: input.status
+      });
+    },
+    recordAuditWriteFailure(input: { kind: string; action: string; targetType: string }) {
+      incrementCounter("wiseeff_audit_write_failures_total", "WiseEff audit write failures by event shape.", {
+        kind: input.kind,
+        action: input.action,
+        target_type: input.targetType
+      });
+    },
     recordDeviceGatewayOperation(input: { mode: string; action: string; status: string }) {
       incrementCounter("wiseeff_device_gateway_operations_total", "WiseEff device gateway operations by mode, action, and status.", {
         mode: input.mode,
         action: input.action,
         status: input.status
       });
+    },
+    recordLogAnalysisJobResult(input: {
+      status: LogAnalysisJobMetricStatus;
+      stage: LogAnalysisJobMetricStage;
+      durationMs: number;
+      failureReason?: LogAnalysisJobFailureReason;
+    }) {
+      const labels = { stage: input.stage, status: input.status };
+      incrementCounter("wiseeff_log_analysis_job_duration_ms_sum", "Total WiseEff log-analysis job duration in milliseconds.", labels, input.durationMs);
+      incrementCounter("wiseeff_log_analysis_job_duration_ms_count", "Count of WiseEff log-analysis job duration samples.", labels);
+      if (input.failureReason) {
+        incrementCounter("wiseeff_log_analysis_job_failures_total", "WiseEff log-analysis terminal failures by reason and stage.", {
+          reason: input.failureReason,
+          stage: input.stage
+        });
+      }
     },
     renderPrometheus() {
       const allSamples = [...gauges.values(), ...counters.values()].sort((left, right) => left.name.localeCompare(right.name) || labelsKey(left.labels).localeCompare(labelsKey(right.labels)));

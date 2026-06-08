@@ -9,7 +9,11 @@ This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape 
 - Optional PostgreSQL, Caddy, and host metrics require exporter services on the same private network.
 - Grafana dashboards are versioned JSON files under `ops/self-hosted/observability/grafana/dashboards/`.
 - The WiseEff API exposes `/metrics` as Prometheus text and refreshes dependency, readiness, and worker queue gauges before rendering the scrape response.
-- `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files.
+- Log-analysis worker terminal metrics include duration samples by stage/status and failure counters by low-cardinality reason/stage. They intentionally omit job IDs, run IDs, raw uploaded content, and raw error messages.
+- Business-path counters currently include Agent provider calls, Agent approval decisions, Agent tool terminal results, Agent audit write failures, and device gateway operations for detect, read, write, and rollback actions.
+- Baseline trace spans currently include HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. They intentionally avoid raw prompts, uploaded content, device values, target refs, and concrete entity IDs.
+- `npm run observability:check` validates required scrape config, alert runbook links, dashboard JSON, package scripts, and obvious secret leakage in observability files. It writes config-only evidence to `docs/generated/m6-observability-config-evidence.md`.
+- `npm run observability:target-evidence` writes target-environment evidence to `docs/generated/m6-observability-evidence.md`.
 
 ## Metrics Exposure Policy
 
@@ -22,6 +26,8 @@ Production and pilot deployments must use one of these patterns:
 - Equivalent stronger control: mTLS or a private service mesh is acceptable when documented in the target deployment record.
 
 Do not expose `/metrics` to the public internet. Do not include authorization headers, bearer tokens, API keys, raw uploaded log content, raw parameter values, or raw device write payloads in metric labels.
+
+Trace exporters must follow the same rule. Route templates, provider/model identifiers, gateway action, mode, and status are acceptable. Raw prompts, assistant drafts, tool payloads, node paths, target refs, requested/previous/readback values, stdout/stderr, bearer tokens, and concrete user/session/device/snapshot IDs are not acceptable trace attributes.
 
 ## Files
 
@@ -63,9 +69,37 @@ During staging or pilot readiness, capture screenshots or exports for:
 
 - WiseEff Overview: API scrape status, readiness, request rate, latency, dependency readiness.
 - WiseEff Jobs: queued jobs, processing jobs, dead-letter count, backlog by queue, and oldest queued age.
-- WiseEff Security Operations: readiness not-ready, Agent provider readiness, Agent/debugging route request rates, and high-risk route error rates.
+- WiseEff Security Operations: readiness not-ready, Agent provider readiness, Agent approval decisions, Agent tool terminal results, Agent audit write failures, Agent/debugging route request rates, and high-risk route error rates.
 
 Attach relevant screenshots to the target-environment evidence record when they affect readiness.
+
+## Target Evidence Recording
+
+`npm run observability:check` validates local configuration, dashboard JSON, alert links, and secret hygiene. It writes config-only evidence to `docs/generated/m6-observability-config-evidence.md` and must not be treated as target readiness. Target readiness additionally requires a target-environment evidence record at `docs/generated/m6-observability-evidence.md` or an approved external record referenced by the release evidence.
+
+For `npm run m6:target-evidence` to accept M6.5, the target record must include these redacted result lines after the target has been exercised:
+
+```markdown
+- Status: `passed`
+- Prometheus target scrape: `passed`
+- Alertmanager routing: `passed`
+- Grafana dashboard import: `passed`
+```
+
+Do not write those lines as `passed` from static config review alone. They require:
+
+- Prometheus `up{job="wiseeff-api"}` equals `1` for the deployed target.
+- An Alertmanager route exercise or approved alert-routing proof reaches the configured receiver.
+- The Grafana dashboard import is visible in the target Grafana instance, with dashboard export or screenshot evidence attached to the release record.
+
+Use the target evidence writer after collecting those proofs:
+
+```bash
+npm run observability:check
+npm run observability:target-evidence -- --target-environment <label> --config-status passed --prometheus-target-scrape passed --alertmanager-routing passed --grafana-dashboard-import passed --prometheus-query 'up{job="wiseeff-api"} == 1' --alert-route-evidence <path-or-record> --grafana-evidence <path-or-record>
+```
+
+If any target proof is not available, keep the matching status as `pending` or `failed`. The generated `docs/generated/m6-observability-evidence.md` should then remain failed and `npm run m6:target-evidence` must continue to block M6.5 completion.
 
 ## Job And Worker Triage
 
@@ -81,6 +115,7 @@ Attach relevant screenshots to the target-environment evidence record when they 
 2. Capture request ID, audit ID, Agent session ID, tool call ID, approval ID, debugging session ID, device ID, and target ID when present.
 3. Redact user tokens, provider keys, raw log contents, raw parameter values, and raw device payloads from shared evidence.
 4. Pause high-risk writes if audit or rollback evidence is missing.
+5. Use `wiseeff_agent_provider_calls_total`, `wiseeff_agent_approvals_total`, `wiseeff_agent_tool_results_total`, `wiseeff_audit_write_failures_total`, and `wiseeff_device_gateway_operations_total` as supporting signals; they do not replace audit records, approval records, or device-lab evidence.
 
 ## Alert Response
 
@@ -141,14 +176,22 @@ Attach relevant screenshots to the target-environment evidence record when they 
 2. Capture provider mode, model, timeout, readiness message, and request ID.
 3. If the provider is unavailable during high-risk operations, pause Agent-assisted writes.
 
+### WiseEffAuditWriteFailure
+
+1. Treat the affected write as not fully trustworthy until the missing audit evidence is explained.
+2. Capture the request ID, event kind, action, target type, affected Agent session, tool call, approval, and user.
+3. Check database connectivity, audit table writes, transaction rollback behavior, and recent deployments.
+4. Pause high-risk Agent or device writes if audit writes continue to fail.
+5. Do not reconstruct audit rows manually without preserving the original failure evidence and operator decision record.
+
 ## Pending Deep Instrumentation
 
 The M6.5 baseline intentionally avoids pretending that every high-risk business operation already emits a dedicated counter. These signals require follow-up service instrumentation before they become hard alerts:
 
-- Per-Agent provider call failure counters and per-tool result counters.
-- Per-device gateway operation counters, including timeout, offline, stderr, readback mismatch, and rollback failure.
-- Audit write failure counters.
-- Per-job duration histograms and failure-reason metrics.
+- Per-tool execution spans.
+- Database, object-store, queue-processing, and per-job spans.
+- Fine-grained device gateway failure categories beyond operation/action/status labels, such as timeout, offline, stderr category, and target identity.
+- Target Prometheus scrape and Grafana proof for per-job terminal duration, failure-reason, Agent approval/tool-result, and audit write failure metrics.
 
 ### WiseEffHostDiskPressure
 

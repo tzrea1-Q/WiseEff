@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -55,10 +57,26 @@ function normalizeArray<T>(value: T | T[] | undefined) {
   return value === undefined ? undefined : Array.isArray(value) ? value : [value];
 }
 
-function serviceFrom(options: { db?: Database; debugGateway?: DebugDeviceGateway }) {
+function serviceFrom(options: {
+  db?: Database;
+  debugGateway?: DebugDeviceGateway;
+  debugGatewayMode?: "simulator" | "hdc" | string;
+  metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
+}) {
   const db = requireDb(options.db);
   const gateway = requireDebugGateway(options.debugGateway);
-  return { db, gateway, service: createDebuggingService({ db, gateway }) };
+  return {
+    db,
+    gateway,
+    service: createDebuggingService({
+      db,
+      gateway,
+      gatewayMode: options.debugGatewayMode,
+      metrics: options.metrics,
+      tracing: options.tracing
+    })
+  };
 }
 
 function writeResponse(result: unknown) {
@@ -80,6 +98,9 @@ export function registerDebuggingRoutes(
   options: {
     db?: Database;
     debugGateway?: DebugDeviceGateway;
+    debugGatewayMode?: "simulator" | "hdc" | string;
+    metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
+    tracing?: Pick<TracingBoundary, "withSpan">;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {

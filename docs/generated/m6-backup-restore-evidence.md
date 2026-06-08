@@ -17,7 +17,9 @@ Status: `passed`
 - Object checksum validated: `true`
 - Database table counts validated: `true`
 - Missing log objects: `0`
-- Queue: `conditional` (Redis durable queue is introduced in M6.4.)
+- Queue: `polling` / `conditional` (Redis durable queue is not enabled for this drill.)
+- Queue snapshot: `n/a`
+- Queue checkpoint validated: `false`
 
 ## Restore targets:
 

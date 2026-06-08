@@ -1,4 +1,6 @@
 import { loadServerEnv } from "../../config/env";
+import type { MetricsRegistry } from "../../observability/metrics";
+import { defaultTracingBoundary } from "../../observability/tracing";
 import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
@@ -29,6 +31,7 @@ type LogWorkerRuntimeOptions = {
   workerId?: string;
   leaseTtlMs?: number;
   intervalMs?: number;
+  metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
 };
 
 export function validateLogWorkerConfig(raw: RawWorkerEnv) {
@@ -65,7 +68,8 @@ export function createLogWorkerRuntime({
   env,
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
-  intervalMs = 1000
+  intervalMs = 1000,
+  metrics
 }: LogWorkerRuntimeOptions) {
   return {
     start() {
@@ -73,11 +77,11 @@ export function createLogWorkerRuntime({
         if (!env) {
           throw new Error("Durable log worker runtime requires Redis queue environment.");
         }
-        const runtime = createDurableRuntime({ env, db, objectStore, workerId });
+        const runtime = createDurableRuntime({ env, db, objectStore, workerId, metrics, tracing: defaultTracingBoundary });
         return () => runtime.close();
       }
 
-      return startLoop({ db, objectStore, workerId, leaseTtlMs }, intervalMs);
+      return startLoop({ db, objectStore, workerId, leaseTtlMs, metrics }, intervalMs);
     }
   };
 }
@@ -88,8 +92,8 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
   validateLogWorkerConfig(env);
 
   return createLogWorkerRuntime({
-    db: createPostgresDatabase(env.DATABASE_URL!),
-    objectStore: createObjectStoreFromEnv(env),
+    db: createPostgresDatabase(env.DATABASE_URL!, { tracing: defaultTracingBoundary }),
+    objectStore: createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }),
     queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
     env: {
       REDIS_URL: env.REDIS_URL ?? "",

@@ -190,15 +190,51 @@ export async function validateMarkdownLinks(root = process.cwd()): Promise<strin
   return errors;
 }
 
+export function validateM6ReleaseRunbookCommands(docPath: string, content: string): string[] {
+  const errors: string[] = [];
+  const normalizedPath = docPath.replace(/\\/g, "/");
+  const rollbackCommand = findCommandLine(content, "npm run rollback:rehearsal");
+  const capacityCommand = findCommandLine(content, "npm run capacity:gate");
+  const releaseGateCommand = findCommandLine(content, "npm run selfhost:release-gate");
+
+  if (!rollbackCommand.includes("--notes")) {
+    errors.push(`${normalizedPath} rollback rehearsal command is missing --notes.`);
+  }
+  if (!capacityCommand.includes("--k6-summary")) {
+    errors.push(`${normalizedPath} capacity gate command is missing --k6-summary.`);
+  }
+  if (!capacityCommand.includes("--metrics-snapshot")) {
+    errors.push(`${normalizedPath} capacity gate command is missing --metrics-snapshot.`);
+  }
+  if (!releaseGateCommand.includes("--backup-evidence")) {
+    errors.push(`${normalizedPath} self-hosted release gate command is missing --backup-evidence.`);
+  }
+
+  return errors;
+}
+
+export async function validateM6RunbookCommands(root = process.cwd()): Promise<string[]> {
+  const runbooks = ["docs/runbooks/release-rollback.md", "docs/runbooks/manual-acceptance.md"];
+  const checks = await Promise.all(
+    runbooks.map(async (runbookPath) => {
+      const content = await readFile(path.join(root, runbookPath), "utf8");
+      return validateM6ReleaseRunbookCommands(runbookPath, content);
+    })
+  );
+
+  return checks.flat();
+}
+
 export async function validateDocumentationRepository(root = process.cwd()): Promise<string[]> {
-  const [activePlanErrors, requiredDocErrors, envErrors, linkErrors] = await Promise.all([
+  const [activePlanErrors, requiredDocErrors, envErrors, linkErrors, m6RunbookErrors] = await Promise.all([
     validateActivePlans(root),
     validateRequiredRepositoryDocs(root),
     validateEnvExample(root),
-    validateMarkdownLinks(root)
+    validateMarkdownLinks(root),
+    validateM6RunbookCommands(root)
   ]);
 
-  return [...activePlanErrors, ...requiredDocErrors, ...envErrors, ...linkErrors];
+  return [...activePlanErrors, ...requiredDocErrors, ...envErrors, ...linkErrors, ...m6RunbookErrors];
 }
 
 async function collectMarkdownFiles(root: string): Promise<string[]> {
@@ -258,6 +294,10 @@ function collectLocalMarkdownTargets(content: string): string[] {
   }
 
   return targets;
+}
+
+function findCommandLine(content: string, command: string): string {
+  return content.split(/\r?\n/).find((line) => line.includes(command)) ?? "";
 }
 
 function isLocalMarkdownTarget(target: string): boolean {

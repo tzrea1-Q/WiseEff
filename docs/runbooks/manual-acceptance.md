@@ -177,11 +177,19 @@ Expected:
 For M6.6 self-hosted release candidates, also run the release and capacity metadata gates:
 
 ```bash
-npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+npm run m6:target-plan --target-env-file=<target-env-file>
+npm run identity:check
+npm run observability:check
+npm run observability:target-evidence -- --target-environment <label> --config-status passed --prometheus-target-scrape passed --alertmanager-routing passed --grafana-dashboard-import passed --prometheus-query 'up{job="wiseeff-api"} == 1' --alert-route-evidence <path-or-record> --grafana-evidence <path-or-record>
+npm run rollback:rehearsal -- --environment <label> --release-version <version> --candidate-artifact <artifact> --previous-artifact <previous-artifact> --approval-owner <owner> --maintenance-window <window> --stop-writes passed --queue-drain passed --artifact-rollback passed --database-restore passed --object-store-restore passed --post-rollback-smoke passed --backup-evidence docs/generated/m6-backup-restore-evidence.md --smoke-evidence <path-or-record> --notes <path-or-record>
+npm run capacity:gate -- --target-url https://<host> --environment <label> --k6-summary <path-or-record> --metrics-snapshot <path-or-record>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --backup-evidence docs/generated/m6-backup-restore-evidence.md --identity-readiness passed --rollback-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --capacity-readiness passed --capacity-evidence docs/generated/capacity-gate.md --target-synthetic-readiness passed --target-synthetic-evidence <path-or-record> --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
+npm run m6:target-evidence
 ```
 
-These commands may produce failed or pending evidence until a real target capacity run, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, and observability watch are attached.
+`npm run m6:target-plan --target-env-file=<target-env-file>` writes `docs/generated/m6-target-evidence-plan.md`, a redacted operator manifest for the target evidence run. It is useful even when it reports `blocked`, because the blockers name the target inputs that must be supplied before evidence collection. If the specified target env file is missing, the command does not fall back to local `.env` target inputs. It is not a completion gate and cannot substitute for target OIDC, target user-governance operation evidence, restore, queue, observability, rollback, capacity, or synthetic evidence.
+
+These commands may produce failed or pending evidence until real target OIDC identity evidence, a real target capacity run, rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, and observability watch are attached. `npm run m6:target-evidence` writes `docs/generated/m6-target-evidence-summary.md` and must remain failed while any M6.2-M6.6 target evidence is missing.
 
 ## Start The Local Review Runtime
 
@@ -309,7 +317,7 @@ M5.12 adds CI and target synthetic archiving for these gates. Pull requests and 
 
 M6.1 self-hosted runtime evidence is collected separately with `npm run selfhost:check` and `npm run selfhost:smoke -- --base-url <target-url>`. This proves the self-hosted services are reachable and production-shaped; it does not prove OIDC, durable queue, observability, rollback, capacity, or HDC readiness.
 
-M6.2 local identity evidence is collected with `npm run acceptance:browser` and `npm run acceptance:evidence`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
+M6.2 local identity evidence is collected with `npm run acceptance:browser`, `npm run acceptance:evidence`, and `npm run identity:local-oidc-drill`. The local OIDC drill writes `docs/generated/m6-local-oidc-identity-evidence.md` and uses a temporary issuer/JWKS service plus signed RS256 tokens to prove the WiseEff OIDC verifier, `/api/v1/me`, negative token checks, and browser token-provider refresh/logout boundary without needing Keycloak. Target identity evidence is collected with `npm run identity:check` and written to `docs/generated/m6-identity-evidence.md`. Local non-HDC runs may use the deterministic HMAC smoke token, but target self-hosted acceptance must use real OIDC access tokens and redacted evidence for discovery/JWKS, issuer/audience/expiry negative checks, browser token refresh/logout behavior, `/api/v1/me`, and Admin user-governance mutation audit.
 
 M6.3 storage and backup evidence is collected with:
 
@@ -321,7 +329,7 @@ npm run backup:check
 
 Local M6.3 evidence proves evidence shape, redaction, failed-command handling, and restore-target safety. Target acceptance requires a real restore drill against isolated PostgreSQL and object-store targets.
 
-M6.6 release evidence is collected with `npm run selfhost:release-gate`, `npm run capacity:gate`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence.
+M6.6 release evidence is collected with `npm run m6:target-plan --target-env-file=<target-env-file>`, `npm run selfhost:release-gate`, `npm run identity:check`, `npm run observability:check`, `npm run observability:target-evidence`, `npm run capacity:gate`, `npm run m6:target-evidence`, and [Self-Hosted Release And Rollback](release-rollback.md). A release candidate is not ready unless target OIDC identity evidence, target user-governance operation evidence, capacity metrics, target synthetic artifacts, rollback rehearsal, backup/restore, queue readiness, and observability snapshots are real target evidence. M6.2-M6.6 plans should remain in `docs/exec-plans/active/` until `npm run m6:target-evidence` passes and final verification has been recorded.
 
 ### Reviewing Operation Evidence
 
@@ -701,11 +709,14 @@ Mark **Go for non-HDC target acceptance** only if:
 Mark **Go for controlled self-hosted release candidate** only if:
 
 - `npm run selfhost:smoke` passes against the deployed target.
+- `npm run identity:check` passes against the target OIDC issuer and API, and the redacted identity evidence is attached.
 - `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime` passes or full-pilot mode passes with real HDC evidence.
 - `npm run capacity:gate` includes observed target metrics and meets thresholds.
 - Backup/restore evidence and rollback rehearsal evidence are attached.
-- Queue readiness and observability release-watch evidence are attached.
-- `npm run selfhost:release-gate` references the release version, commit, artifact, environment fingerprint, migration set, capacity evidence, and rollback evidence.
+- Queue readiness and observability release-watch evidence are attached and referenced by `--queue-evidence` and `--observability-evidence`.
+- Rollback, capacity, and target synthetic readiness are marked `passed` only when `--rollback-evidence`, `--capacity-evidence`, and `--target-synthetic-evidence` point to real target evidence.
+- `npm run selfhost:release-gate` references the release version, commit, artifact, environment fingerprint, migration set, identity evidence, capacity evidence, rollback evidence, target synthetic evidence, queue evidence, and observability evidence.
+- `npm run m6:target-evidence` passes and records that every M6.2-M6.6 phase has target evidence and is eligible to move to `docs/exec-plans/completed/`.
 
 Mark **Go for full pilot-ready** only if:
 
@@ -727,7 +738,7 @@ Mark **No-Go** if:
 - Debugging writes do not create snapshots or audit evidence.
 - Restore or rollback cannot be demonstrated.
 - Evidence is missing for a gate being claimed as complete.
-- M6.6 capacity, rollback, target synthetic, queue, or observability evidence is pending while the release is being claimed ready.
+- M6.6 identity, capacity, rollback, target synthetic, queue, or observability evidence is pending while the release is being claimed ready.
 
 ## Known Current Caveats
 

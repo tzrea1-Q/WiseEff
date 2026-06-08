@@ -46,8 +46,8 @@ M6.5 excludes:
 
 - Every API request has a request ID and trace ID in logs and responses where appropriate.
 - Audit events can be correlated with request ID, user ID, operation ID, and trace ID.
-- Log-analysis queue health exposes queued, processing, dead-letter, and oldest-queued-age metrics; per-run job duration and failure-reason metrics remain pending.
-- Agent provider readiness and Agent/debugging HTTP route outcomes are observable; per-approval, per-tool, per-device-operation, and audit-failure counters remain pending until the business services are instrumented.
+- Log-analysis queue health exposes queued, processing, dead-letter, oldest-queued-age, and local terminal job duration/failure-reason metrics.
+- Agent provider readiness, Agent provider calls, Agent approval decisions, Agent tool terminal results, Agent audit write failures, debugging HTTP route outcomes, and device gateway operations are observable through baseline counters.
 - Prometheus can scrape WiseEff metrics.
 - Grafana dashboards load from versioned local files.
 - Alerts are actionable and tied to runbooks.
@@ -111,9 +111,9 @@ Modify:
 ### Task 3: Metrics Endpoint
 
 - [x] Write failing tests for metrics registration and redaction.
-- [ ] Add process, HTTP, database, object-store, queue, worker, Agent, and device metrics.
-  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, and worker queue gauges are implemented.
-  - Pending: per-Agent provider call counters in business paths, device gateway operation counters, audit write failure counters, and per-job duration/failure-reason metrics.
+- [x] Add process, HTTP, database, object-store, queue, worker, Agent, and device baseline metrics.
+  - Current evidence: process/build info, HTTP request counts/duration buckets, database/object-store/Agent provider readiness, readiness status, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, Agent approval/tool-result counters, Agent audit write failure counters, and device gateway operation counters are implemented.
+  - Pending deep metrics: fine-grained device failure categories and target scrape history for release-blocking thresholds.
 - [x] Add `/metrics` with production access guidance, such as private network only or reverse-proxy allowlist.
 - [x] Add readiness checks that verify metrics registration does not break health endpoints.
 - [x] Run focused metrics tests.
@@ -121,9 +121,9 @@ Modify:
 ### Task 4: OpenTelemetry Tracing
 
 - [x] Add tracing setup that can be disabled in local tests and enabled in self-hosted runtime.
-- [ ] Instrument API routes, database calls, queue processing, object-store probes, Agent provider calls, and device gateway calls where the interfaces already provide clean boundaries.
-  - Current evidence: a disabled/enabled tracing boundary exists and isolates exporter failures.
-  - Pending: route/database/object-store/queue/Agent/device spans are not yet wired into the business runtime.
+- [x] Instrument API routes, database calls, queue processing, object-store probes, Agent provider calls, and device gateway calls where the interfaces already provide clean boundaries.
+  - Current evidence: the tracing boundary can be enabled or disabled and isolates exporter failures; HTTP `api.request` spans use low-cardinality route templates; Agent provider health/planning spans, Agent tool-execution spans, debugging gateway detect/read/write/rollback spans, shared PostgreSQL `db.query` spans, object-store `put`/`get`/`checkHealth` spans, durable queue processor spans, and log-analysis job-processing spans are wired into runtime entrypoints through injectable boundaries. Database spans record statement type, parameter count, row count when available, status, and error type without exporting SQL text, table names, bound values, or raw error messages. Object-store spans record only operation and storage mode, without exporting bucket names, endpoints, storage keys, file names, credentials, object bytes, or raw failure messages. Queue and job spans record only low-cardinality queue, trigger, status, and error type attributes without exporting Redis URLs, queue prefixes, job IDs, run IDs, organization IDs, project IDs, storage keys, file names, or raw failure messages. Agent tool-execution spans record only bounded tool name, tool kind, approval requirement, status, and error type without exporting session IDs, tool call IDs, approval IDs, user input, payload, project IDs, result summaries, citations, or raw error messages.
+  - Pending deep spans: none known at local code-boundary level; target-environment distributed tracing claims still require real target observability evidence.
 - [x] Ensure trace export failures do not break business requests.
 - [x] Run focused tests for disabled/enabled tracer configuration and error isolation.
 
@@ -140,14 +140,23 @@ Modify:
 - [x] Update monitoring and incident runbooks.
 - [x] Add a smoke step that verifies Prometheus can scrape WiseEff metrics.
 - [x] Run `npm run observability:check`.
-- [ ] Run `npm run docs:check`.
-- [ ] Run `npm run test:all`.
-- [ ] Run `npm run build`.
-- [ ] Run `git diff --check`.
+- [x] Run `npm run docs:check`.
+- [x] Run `npm run test:all`.
+- [x] Run `npm run build`.
+- [x] Run `git diff --check`.
 
 ## Current Evidence Status
 
-- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, and runbooks.
+- Local code/config evidence exists for the metrics endpoint, structured telemetry helpers, observability config gate, Prometheus config, alert runbook links, dashboard JSON, runbooks, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, device gateway operation counters, HTTP route-template spans, Agent provider spans, and debugging gateway spans.
+- Fresh local verification on 2026-06-04 passed with `npm run docs:check`, `npm test -- --run scripts/check-observability-config.test.ts server/observability/logger.test.ts server/observability/metrics.test.ts server/observability/tracing.test.ts server/observability/correlation.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts server/app.test.ts`, `npm run observability:check`, `npm run test:all`, `npm run build`, and `git diff --check`.
+- Later on 2026-06-04, `npm run observability:target-evidence` was added so target Prometheus scrape, Alertmanager routing, and Grafana dashboard import proof can be recorded separately from config-only evidence. `npm run observability:check` now writes `docs/generated/m6-observability-config-evidence.md`; `docs/generated/m6-observability-evidence.md` is reserved for target observability evidence and should remain failed/pending until the real target proofs are attached.
+- Later on 2026-06-04, a local TDD slice added log-analysis worker terminal metrics for complete, retry, dead-lettered, and stale-failed paths. The shared registry exposes `wiseeff_log_analysis_job_duration_ms_sum/count` by stage/status and `wiseeff_log_analysis_job_failures_total` by reason/stage, with tests proving raw job IDs, run IDs, and error messages are not used as labels. Fresh verification passed with `npm test -- --run server/observability/metrics.test.ts server/modules/logs/worker.test.ts server/app.test.ts server/modules/logs/workerRunner.test.ts server/modules/logs/logAnalysisQueueRuntime.test.ts scripts/check-observability-config.test.ts`, `npm run observability:check`, `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, and `git diff --check`. This is local code/config evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
+- Later on 2026-06-04, a local TDD slice added Agent approval/tool/audit-failure metrics. The shared registry exposes `wiseeff_agent_approvals_total`, `wiseeff_agent_tool_results_total`, and `wiseeff_audit_write_failures_total` with low-cardinality labels. The Agent orchestrator records approval requested/approved/rejected and tool succeeded/failed/rejected only after terminal audit or transaction success; audit write failure is recorded when an audit write throws and the original error is rethrown. The security operations dashboard, metric allow-list, alert rule, and runbooks now recognize these signals. This is local code/config evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
+- On 2026-06-05, a local TDD slice added shared database tracing at the PostgreSQL boundary and wired it into the API and log worker entrypoints. Focused tests prove `db.query` spans are emitted for successful queries, failed queries, and transaction control/query calls with low-cardinality attributes only; SQL text, table names, bound values, and raw error messages are not exported as span attributes. This is local code evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
+- On 2026-06-05, a local TDD slice added object-store tracing at the runtime factory boundary and wired it into the API and log worker entrypoints. Focused tests prove `object_store.operation` spans are emitted for `put`, `get`, and `checkHealth` with low-cardinality operation/mode attributes only; bucket names, endpoints, storage keys, file names, credentials, object bytes, and raw failure messages are not exported as span attributes. This is local code evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
+- On 2026-06-05, a local TDD slice added durable queue processor spans and log-analysis job-processing spans. Focused tests prove `log_analysis.queue.process` and `log_analysis.job` spans are emitted for durable queue and polling/queue job execution with low-cardinality queue/trigger/status/error-type attributes only; Redis URLs, queue prefixes, job IDs, run IDs, log IDs, organization IDs, project IDs, storage keys, file names, and raw failure messages are not exported as span attributes. This is local code evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
+- On 2026-06-05, a local TDD slice added Agent per-tool execution spans. Focused tests prove `agent.tool.execute` spans are emitted for direct read tools and approval-time preparation tools with bounded tool/kind/requires-approval/status attributes only; session IDs, tool call IDs, approval IDs, project IDs, request IDs, payload values, result summaries, citations, and raw failure messages are not exported as span attributes. This is local code evidence only; it does not prove target Prometheus scrape, Alertmanager routing, or Grafana import.
+- On 2026-06-05, `npm run observability:target-evidence` and the final `npm run m6:target-evidence` summary gate were tightened so target proof URLs for Prometheus, Alertmanager, and Grafana cannot point at `localhost`, `127.*`, `0.0.0.0`, or `::1`. Non-URL proof references such as redacted operator evidence paths or Prometheus query text remain valid. This prevents local dashboard or scrape links from being recorded as target observability proof.
 - Target-environment evidence is still pending: a real Prometheus instance has not scraped the deployed WiseEff API target, Alertmanager routing has not been exercised, and Grafana dashboard import/screenshots have not been captured.
 - Because target-environment observability evidence is pending, keep this plan in `docs/exec-plans/active/` until M6.6 or a target self-hosted environment run records that evidence.
 

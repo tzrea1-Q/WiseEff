@@ -54,6 +54,36 @@ function headerNameForMetadata(key: string) {
   return `x-amz-meta-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`;
 }
 
+function sha256Hex(value: string | Buffer) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function hmac(key: string | Buffer, value: string) {
+  return createHmac("sha256", key).update(value).digest();
+}
+
+function hmacHex(key: string | Buffer, value: string) {
+  return createHmac("sha256", key).update(value).digest("hex");
+}
+
+function normalizeHeaderValue(value: string) {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function canonicalUri(url: URL) {
+  return url.pathname
+    .split("/")
+    .map((segment) => encodeURIComponent(decodeURIComponent(segment)).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`))
+    .join("/");
+}
+
+function signingKey(secretAccessKey: string, date: string, region: string) {
+  const dateKey = hmac(`AWS4${secretAccessKey}`, date);
+  const dateRegionKey = hmac(dateKey, region);
+  const dateRegionServiceKey = hmac(dateRegionKey, "s3");
+  return hmac(dateRegionServiceKey, "aws4_request");
+}
+
 async function assertOk(response: Response) {
   if (response.ok) {
     return;
@@ -74,15 +104,15 @@ function signedHeaders(input: {
   contentType?: string;
   metadata?: Record<string, string>;
 }) {
-  const bodyHash = input.body ? createHash("sha256").update(input.body).digest("hex") : "";
+  const bodyHash = sha256Hex(input.body ?? "");
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const date = amzDate.slice(0, 8);
+  const region = input.region ?? "us-east-1";
   const credentialScope = `${amzDate.slice(0, 8)}/${input.region ?? "us-east-1"}/s3/aws4_request`;
-  const signature = createHmac("sha256", input.secretAccessKey)
-    .update([input.method, input.url, bodyHash, amzDate, credentialScope].join("\n"))
-    .digest("hex");
+  const parsedUrl = new URL(input.url);
   const headers: Record<string, string> = {
-    authorization: `AWS4-HMAC-SHA256 Credential=${input.accessKeyId}/${credentialScope}, SignedHeaders=host;x-amz-content-sha256;x-amz-date, Signature=${signature}`,
+    host: parsedUrl.host,
     "x-amz-content-sha256": bodyHash,
     "x-amz-date": amzDate
   };
@@ -94,6 +124,25 @@ function signedHeaders(input: {
   for (const [key, value] of Object.entries(input.metadata ?? {})) {
     headers[headerNameForMetadata(key)] = value;
   }
+
+  const signedHeaderNames = Object.keys(headers)
+    .map((name) => name.toLowerCase())
+    .sort();
+  const canonicalHeaders = signedHeaderNames.map((name) => `${name}:${normalizeHeaderValue(headers[name])}\n`).join("");
+  const signedHeaderList = signedHeaderNames.join(";");
+  const canonicalRequest = [
+    input.method,
+    canonicalUri(parsedUrl),
+    parsedUrl.searchParams.toString(),
+    canonicalHeaders,
+    signedHeaderList,
+    bodyHash
+  ].join("\n");
+  const stringToSign = ["AWS4-HMAC-SHA256", amzDate, credentialScope, sha256Hex(canonicalRequest)].join("\n");
+  const signature = hmacHex(signingKey(input.secretAccessKey, date, region), stringToSign);
+
+  headers.authorization = `AWS4-HMAC-SHA256 Credential=${input.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaderList}, Signature=${signature}`;
+  delete headers.host;
 
   return headers;
 }

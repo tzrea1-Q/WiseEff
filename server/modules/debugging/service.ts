@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 
+import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
@@ -45,6 +47,9 @@ type ServiceOptions = {
   db: Database;
   gateway: DebugDeviceGateway;
   createAuditEvent?: AuditWriter;
+  metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
+  gatewayMode?: "simulator" | "hdc" | string;
 };
 
 type ProjectQuery = {
@@ -217,6 +222,33 @@ export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
   const gateway = options.gateway;
   const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const gatewayMode = options.gatewayMode ?? "unknown";
+  const tracing = options.tracing;
+
+  function recordGatewayOperation(action: "detect" | "read" | "write" | "rollback", status: string) {
+    options.metrics?.recordDeviceGatewayOperation({
+      mode: gatewayMode,
+      action,
+      status
+    });
+  }
+
+  async function withGatewaySpan<T>(
+    action: "detect" | "read" | "write" | "rollback",
+    attributes: Record<string, string | number | boolean>,
+    fn: (spanAttributes: Record<string, string | number | boolean>) => Promise<T> | T
+  ) {
+    const spanAttributes = {
+      mode: gatewayMode,
+      action,
+      status: "running",
+      ...attributes
+    };
+    if (!tracing) {
+      return fn(spanAttributes);
+    }
+    return tracing.withSpan(`debug.gateway.${action}`, spanAttributes, () => fn(spanAttributes));
+  }
 
   return {
     async listDevices(auth: AuthContext, query: ProjectQuery = {}) {
@@ -238,7 +270,18 @@ export function createDebuggingService(options: ServiceOptions) {
         ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
       }
 
-      const result = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
+      const result = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId) }, async (spanAttributes) => {
+        try {
+          const gatewayResult = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
+          spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
+          return gatewayResult;
+        } catch (error) {
+          spanAttributes.status = "failed";
+          spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+          throw error;
+        }
+      });
+      recordGatewayOperation("detect", result.ok ? "succeeded" : "failed");
       if (!result.ok) {
         await db.transaction(async (tx) => {
           await insertDebugEvent(tx, {
@@ -391,7 +434,18 @@ export function createDebuggingService(options: ServiceOptions) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
 
-        const result = await gateway.readNode({ targetRef: target.targetRef, nodePath: input.nodePath });
+        const result = await withGatewaySpan("read", { hasParameterId: Boolean(input.parameterId) }, async (spanAttributes) => {
+          try {
+            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath: input.nodePath });
+            spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
+            return gatewayResult;
+          } catch (error) {
+            spanAttributes.status = "failed";
+            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+            throw error;
+          }
+        });
+        recordGatewayOperation("read", result.ok ? "succeeded" : "failed");
         const operation = await insertNodeOperation(tx, {
           organizationId,
           projectId: session.projectId,
@@ -448,7 +502,18 @@ export function createDebuggingService(options: ServiceOptions) {
         }
         await requireDeviceLease(tx, auth, session);
 
-        const previous = await gateway.readNode({ targetRef: target.targetRef, nodePath: parameter.nodePath });
+        const previous = await withGatewaySpan("read", { hasParameterId: true }, async (spanAttributes) => {
+          try {
+            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath: parameter.nodePath });
+            spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
+            return gatewayResult;
+          } catch (error) {
+            spanAttributes.status = "failed";
+            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+            throw error;
+          }
+        });
+        recordGatewayOperation("read", previous.ok ? "succeeded" : "failed");
         if (!previous.ok) {
           const operation = await insertNodeOperation(tx, {
             organizationId,
@@ -492,8 +557,19 @@ export function createDebuggingService(options: ServiceOptions) {
           entries: [{ parameterId: parameter.id, nodePath: parameter.nodePath, previousValue, targetValue: input.value }],
           createdByUserId: auth.user.id
         });
-        const result = await gateway.writeNode({ targetRef: target.targetRef, nodePath: parameter.nodePath, value: input.value, readBack: true });
+        const result = await withGatewaySpan("write", { requiresApproval: Boolean(input.approvalId) }, async (spanAttributes) => {
+          try {
+            const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath: parameter.nodePath, value: input.value, readBack: true });
+            spanAttributes.status = writeStatus(gatewayResult);
+            return gatewayResult;
+          } catch (error) {
+            spanAttributes.status = "failed";
+            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+            throw error;
+          }
+        });
         const status = writeStatus(result);
+        recordGatewayOperation("write", status);
         const operation = await insertNodeOperation(tx, {
           organizationId,
           projectId: session.projectId,
@@ -588,8 +664,19 @@ export function createDebuggingService(options: ServiceOptions) {
 
         const operations: NodeOperationRecord[] = [];
         for (const entry of snapshot.entries) {
-          const result = await gateway.writeNode({ targetRef: target.targetRef, nodePath: entry.nodePath, value: entry.previousValue, readBack: true });
+          const result = await withGatewaySpan("rollback", { entryCount: snapshot.entries.length }, async (spanAttributes) => {
+            try {
+              const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath: entry.nodePath, value: entry.previousValue, readBack: true });
+              spanAttributes.status = writeStatus(gatewayResult);
+              return gatewayResult;
+            } catch (error) {
+              spanAttributes.status = "failed";
+              spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+              throw error;
+            }
+          });
           const status = writeStatus(result);
+          recordGatewayOperation("rollback", status);
           operations.push(
             await insertNodeOperation(tx, {
               organizationId,

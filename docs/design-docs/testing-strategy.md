@@ -209,11 +209,11 @@ Local evidence proves the scripts and safety gates. Target readiness requires th
 M6.5 adds local observability configuration and runtime checks:
 
 ```bash
-npm test -- scripts/check-observability-config.test.ts server/observability/*.test.ts server/app.test.ts server/shared/http/router.test.ts
+npm test -- scripts/check-observability-config.test.ts server/observability/*.test.ts server/app.test.ts server/shared/http/router.test.ts server/modules/agent/orchestrator.test.ts server/modules/agent/routes.test.ts server/modules/debugging/service.test.ts server/modules/debugging/routes.test.ts
 npm run observability:check
 ```
 
-`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, structured log redaction, correlation metadata, and tracing export failure isolation. Target Prometheus scrape, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
+`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, device gateway operation counters, structured log redaction, correlation metadata, tracing export failure isolation, HTTP route-template spans, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. Target Prometheus scrape, trace collector export, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
 
 ## 9.5 M6.6 Release, Rollback, And Capacity Gates
 
@@ -221,13 +221,17 @@ M6.6 adds release-operation tests and evidence writers rather than new product w
 
 ```bash
 npm test -- scripts/run-self-hosted-release-gate.test.ts scripts/run-capacity-gate.test.ts
+npm run identity:check
+npm run rollback:rehearsal
 npm run capacity:gate -- --target-url <target-url>
 npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
 ```
 
 `capacity:gate` verifies target URL handling, threshold evaluation, auth-token redaction, k6 command construction, and evidence output. Without observed target metrics, it must stay failed or pending. After a real target run, operators can pass observed p95 latency, error rate, throughput, CPU, memory, database connections, queue backlog, and object-store probe status as CLI inputs.
 
-`selfhost:release-gate` verifies release metadata, command-gate wiring, backup/rollback/capacity/synthetic evidence paths, and explicit HDC scope. It can verify local script configuration, but release readiness requires target evidence from backup/restore, rollback rehearsal, queue drain/pause/resume, observability snapshots, capacity, and target synthetic acceptance.
+`rollback:rehearsal` records stop-writes, queue drain, artifact rollback, optional database/object-store restore, and post-rollback smoke status in `docs/generated/m6-rollback-rehearsal-evidence.md`. It proves evidence shape locally; it proves rollback readiness only when the steps were executed on a non-customer self-hosted target and linked from the release record.
+
+`selfhost:release-gate` verifies release metadata, command-gate wiring, identity/backup/rollback/capacity/synthetic/queue/observability evidence paths, dependency statuses, and explicit HDC scope. It can verify local script configuration, but release readiness requires target OIDC evidence from `npm run identity:check` plus target evidence from backup/restore, rollback rehearsal, queue drain/pause/resume, observability snapshots, capacity, and target synthetic acceptance. Local HMAC smoke or static bearer injection must not be treated as M6.2 identity readiness. Rollback, capacity, target synthetic, queue, and observability dependencies cannot be marked `passed` without the matching evidence path in the release record.
 
 ## 10. Documentation Governance
 

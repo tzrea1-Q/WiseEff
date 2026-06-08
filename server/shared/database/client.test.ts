@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import { createDatabase, type Queryable } from "./client";
 
 describe("createDatabase", () => {
@@ -61,5 +62,103 @@ describe("createDatabase", () => {
       { text: "insert into audit_events default values", values: [] },
       { text: "rollback", values: [] }
     ]);
+  });
+
+  it("exports low-cardinality database query spans without SQL text or values", async () => {
+    const spans: Parameters<TraceExporter>[0][] = [];
+    const queryable: Queryable = {
+      query: async <Row,>(text: string, values: unknown[] = []) => {
+        return { rows: [{ ok: true } as Row], rowCount: 1 };
+      }
+    };
+    const tracing = createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    });
+    const db = createDatabase(queryable, { tracing });
+
+    await db.query<{ ok: boolean }>("select * from audit_events where actor_user_id = $1", ["u-secret"]);
+
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "db.query",
+        attributes: {
+          service: "wiseeff-api",
+          statementType: "select",
+          parameterCount: 1,
+          status: "succeeded",
+          rowCount: 1
+        }
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("audit_events");
+    expect(JSON.stringify(spans)).not.toContain("u-secret");
+  });
+
+  it("exports failed database query spans while preserving the original error", async () => {
+    const spans: Parameters<TraceExporter>[0][] = [];
+    const queryable: Queryable = {
+      query: async () => {
+        throw new Error("database password leaked in error");
+      }
+    };
+    const tracing = createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    });
+    const db = createDatabase(queryable, { tracing });
+
+    await expect(db.query("delete from audit_events where actor_user_id = $1", ["u-secret"])).rejects.toThrow(
+      "database password leaked in error"
+    );
+
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "db.query",
+        attributes: {
+          service: "wiseeff-api",
+          statementType: "delete",
+          parameterCount: 1,
+          status: "failed",
+          errorType: "Error"
+        }
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("audit_events");
+    expect(JSON.stringify(spans)).not.toContain("u-secret");
+    expect(JSON.stringify(spans)).not.toContain("password");
+  });
+
+  it("exports separate spans for transaction control and transaction queries", async () => {
+    const spans: Parameters<TraceExporter>[0][] = [];
+    const queryable: Queryable = {
+      query: async <Row,>() => {
+        return { rows: [] as Row[], rowCount: null };
+      }
+    };
+    const tracing = createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    });
+    const db = createDatabase(queryable, { tracing });
+
+    await db.transaction(async (tx) => {
+      await tx.query("update parameter_values set value = $1 where id = $2", ["secret-value", "param-secret"]);
+    });
+
+    expect(spans.map((span) => span.attributes.statementType)).toEqual(["begin", "update", "commit"]);
+    expect(spans.every((span) => span.name === "db.query")).toBe(true);
+    expect(JSON.stringify(spans)).not.toContain("parameter_values");
+    expect(JSON.stringify(spans)).not.toContain("secret-value");
+    expect(JSON.stringify(spans)).not.toContain("param-secret");
   });
 });

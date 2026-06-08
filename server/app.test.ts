@@ -2,6 +2,7 @@ import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyO
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWiseEffServer } from "./app";
 import { createWiseEffServerFromEnv } from "./app";
+import { createMetricsRegistry } from "./observability/metrics";
 import type { Database, QueryResult } from "./shared/database/client";
 import { createHttpServer } from "./shared/http/server";
 import { requestJson } from "./test/testClient";
@@ -199,6 +200,20 @@ describe("WiseEff API", () => {
     expect(response.bodyText).toContain('wiseeff_object_store_ready 1');
     expect(response.bodyText).toContain('wiseeff_agent_provider_ready 1');
     expect(response.bodyText).toContain('wiseeff_queue_backlog{queue="log-analysis"} 3');
+  });
+
+  it("exposes externally recorded worker metrics from the shared registry", async () => {
+    const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
+    metrics.recordLogAnalysisJobResult({
+      status: "complete",
+      stage: "report",
+      durationMs: 42
+    });
+
+    const response = await requestJson(createWiseEffServer({ metrics }), "/metrics");
+
+    expect(response.status).toBe(200);
+    expect(response.bodyText).toContain('wiseeff_log_analysis_job_duration_ms_sum{stage="report",status="complete"} 42');
   });
 
   it("parses query strings with repeated params", async () => {

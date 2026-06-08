@@ -79,6 +79,49 @@ describe("capacity gate", () => {
     );
   });
 
+  it("does not accept local URLs as target capacity evidence", () => {
+    const result = evaluateCapacityGate({
+      ...baseInput,
+      metadata: {
+        ...baseInput.metadata,
+        targetUrl: "http://127.0.0.1:8787"
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain("Target URL must be a non-local http(s) URL for capacity evidence.");
+  });
+
+  it("does not accept local or placeholder environment labels as target capacity evidence", () => {
+    const result = evaluateCapacityGate({
+      ...baseInput,
+      metadata: {
+        ...baseInput.metadata,
+        environment: "local-self-hosted"
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toContain(
+      "Capacity environment must identify a configured target, staging, pilot, or self-hosted environment."
+    );
+  });
+
+  it("requires k6 summary and metrics snapshot artifact references", () => {
+    const result = evaluateCapacityGate({
+      ...baseInput,
+      artifacts: {
+        k6SummaryPath: "",
+        metricsSnapshotPath: ""
+      }
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.blockers).toEqual(
+      expect.arrayContaining(["k6 summary artifact path is required.", "metrics snapshot artifact path is required."])
+    );
+  });
+
   it("marks infrastructure metrics pending when they were not collected", () => {
     const result = evaluateCapacityGate({
       ...baseInput,

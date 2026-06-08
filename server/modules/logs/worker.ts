@@ -2,6 +2,8 @@ import { claimJobById, claimNextJob, failJob, getJobSnapshot, markJobDeadLettere
 import type { ClaimedLogAnalysisJobDto } from "../jobs/types";
 import type { Database } from "../../shared/database/client";
 import { decideRetry } from "../jobs/retryPolicy";
+import type { LogAnalysisJobFailureReason, MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import { createRuleBasedLogAnalyzer, type LogAnalysisAdapter } from "./analyzer";
 import type { ObjectStore } from "./objectStore";
 import { parseLogText } from "./parser";
@@ -22,6 +24,8 @@ export type ProcessLogWorkerOptions = {
   maxAttempts?: number;
   retryBaseDelayMs?: number;
   now?: () => Date;
+  metrics?: Pick<MetricsRegistry, "recordLogAnalysisJobResult">;
+  tracing?: Pick<TracingBoundary, "withSpan">;
 };
 
 export type ProcessLogWorkerByIdOptions = ProcessLogWorkerOptions & {
@@ -40,6 +44,27 @@ class JobLeaseLostError extends Error {
   constructor() {
     super("Log analysis job lease was lost before the worker write completed.");
   }
+}
+
+async function traceLogAnalysisJob(
+  tracing: Pick<TracingBoundary, "withSpan"> | undefined,
+  trigger: "polling" | "queue",
+  fn: () => Promise<ProcessLogWorkerResult>
+): Promise<ProcessLogWorkerResult> {
+  const attributes: Record<string, string | number | boolean> = { trigger };
+  const execute = async () => {
+    try {
+      const result = await fn();
+      attributes.status = result.status;
+      return result;
+    } catch (error) {
+      attributes.status = "failed";
+      attributes.errorType = error instanceof Error ? error.name : "unknown";
+      throw error;
+    }
+  };
+
+  return tracing ? tracing.withSpan("log_analysis.job", attributes, execute) : execute();
 }
 
 function assertActiveJobLease(updated: boolean) {
@@ -93,16 +118,31 @@ async function processClaimedLogAnalysisJob(
     workerId,
     maxAttempts,
     retryBaseDelayMs,
-    now
+    now,
+    metrics
   }: Required<Pick<ProcessLogWorkerOptions, "analyzer" | "workerId" | "maxAttempts" | "retryBaseDelayMs" | "now">> &
-    Pick<ProcessLogWorkerOptions, "db" | "objectStore">,
+    Pick<ProcessLogWorkerOptions, "db" | "objectStore" | "metrics">,
   job: ClaimedLogAnalysisJobDto
 ): Promise<ProcessLogWorkerResult> {
   const leaseOwner = job.leaseOwner ?? workerId;
+  const startedAtMs = now().getTime();
 
   const options = { db, objectStore, analyzer };
   const jobSnapshot = await getJobSnapshot(db, job.id);
   const snapshot = await getActiveLogWorkerRunSnapshot(db, job.id);
+  const recordMetric = (input: {
+    status: "complete" | "retry" | "dead_lettered" | "failed";
+    stage: LogStage;
+    failureReason?: LogAnalysisJobFailureReason;
+    endedAt?: Date;
+  }) => {
+    metrics?.recordLogAnalysisJobResult({
+      status: input.status,
+      stage: input.stage,
+      durationMs: Math.max(0, (input.endedAt ?? now()).getTime() - startedAtMs),
+      ...(input.failureReason ? { failureReason: input.failureReason } : {})
+    });
+  };
 
   if (!snapshot) {
     const staleReason = jobSnapshot
@@ -136,11 +176,13 @@ async function processClaimedLogAnalysisJob(
         error: staleReason
       });
     }
+    recordMetric({ status: "failed", stage: jobSnapshot?.currentStage ?? "parse", failureReason: "stale_run" });
     return { status: "processed" };
   }
 
   let currentStage: LogStage = "parse";
   let currentProgress = 0;
+  let currentFailureReason: LogAnalysisJobFailureReason = "unknown";
 
   try {
     await markProgress(options, {
@@ -155,11 +197,14 @@ async function processClaimedLogAnalysisJob(
     });
     currentProgress = 10;
 
+    currentFailureReason = "object_store_error";
     const bytes = await objectStore.get(snapshot.storageKey);
+    currentFailureReason = "parse_error";
     const parsed = parseLogText({ fileName: snapshot.fileName, content: bytes });
     if (!parsed.ok) {
       throw new Error(parsed.reason);
     }
+    currentFailureReason = "unknown";
 
     await markProgress(options, {
       organizationId: snapshot.organizationId,
@@ -259,13 +304,15 @@ async function processClaimedLogAnalysisJob(
     });
     if (!completed) return { status: "idle" };
 
+    recordMetric({ status: "complete", stage: "report" });
     return { status: "processed" };
   } catch (error) {
     if (error instanceof JobLeaseLostError) {
       return { status: "idle" };
     }
     const message = readableError(error);
-    const decision = decideRetry({ attemptCount: job.attemptCount, maxAttempts, baseDelayMs: retryBaseDelayMs, now: now() });
+    const endedAt = now();
+    const decision = decideRetry({ attemptCount: job.attemptCount, maxAttempts, baseDelayMs: retryBaseDelayMs, now: endedAt });
     if (decision.action === "retry") {
       const scheduled = await markJobRetryScheduled(db, {
         organizationId: snapshot.organizationId,
@@ -277,6 +324,7 @@ async function processClaimedLogAnalysisJob(
         leaseOwner
       });
       if (!scheduled) return { status: "idle" };
+      recordMetric({ status: "retry", stage: currentStage, failureReason: currentFailureReason, endedAt });
       return { status: "retry", reason: decision.reason };
     }
 
@@ -306,6 +354,7 @@ async function processClaimedLogAnalysisJob(
       currentStage,
       error: decision.reason
     });
+    recordMetric({ status: "dead_lettered", stage: currentStage, failureReason: currentFailureReason, endedAt });
     return { status: "dead-lettered", reason: decision.reason };
   }
 }
@@ -318,11 +367,14 @@ export async function processNextLogAnalysisJob({
   leaseTtlMs = 60_000,
   maxAttempts = 4,
   retryBaseDelayMs = 1000,
-  now = () => new Date()
+  now = () => new Date(),
+  metrics,
+  tracing
 }: ProcessLogWorkerOptions): Promise<"processed" | "idle"> {
   const job = await claimNextJob(db, { kind: "log-analysis", leaseOwner: workerId, leaseTtlMs });
   if (!job) return "idle";
-  const result = await processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now }, job);
+  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  const result = await traceLogAnalysisJob(tracing, "polling", process);
   return result.status === "idle" ? "idle" : "processed";
 }
 
@@ -335,11 +387,14 @@ export async function processLogAnalysisJobById({
   leaseTtlMs = 60_000,
   maxAttempts = 4,
   retryBaseDelayMs = 1000,
-  now = () => new Date()
+  now = () => new Date(),
+  metrics,
+  tracing
 }: ProcessLogWorkerByIdOptions): Promise<ProcessLogWorkerResult> {
   const job = await claimJobById(db, { kind: "log-analysis", jobId, leaseOwner: workerId, leaseTtlMs });
   if (!job) return { status: "idle" };
-  return processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now }, job);
+  const process = async () => processClaimedLogAnalysisJob({ db, objectStore, analyzer, workerId, maxAttempts, retryBaseDelayMs, now, metrics }, job);
+  return traceLogAnalysisJob(tracing, "queue", process);
 }
 
 export function startLogWorkerLoop(options: ProcessLogWorkerOptions, intervalMs = 1000): () => void {

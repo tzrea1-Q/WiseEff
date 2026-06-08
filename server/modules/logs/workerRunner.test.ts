@@ -93,6 +93,9 @@ describe("log worker runner", () => {
     vi.doMock("../../shared/database/client", () => ({
       createPostgresDatabase
     }));
+    vi.doMock("../../observability/tracing", () => ({
+      defaultTracingBoundary: { withSpan: vi.fn() }
+    }));
 
     const { createLogWorkerRuntimeFromEnv } = await import("./workerRunner");
 
@@ -120,7 +123,12 @@ describe("log worker runner", () => {
         OBJECT_STORAGE_BUCKET: "wiseeff-pilot",
         OBJECT_STORAGE_ACCESS_KEY_ID: "key",
         OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret"
-      })
+      }),
+      expect.objectContaining({ tracing: expect.any(Object) })
+    );
+    expect(createPostgresDatabase).toHaveBeenCalledWith(
+      "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      expect.objectContaining({ tracing: expect.any(Object) })
     );
   });
 
@@ -129,12 +137,13 @@ describe("log worker runner", () => {
     const startLoop = vi.fn(() => stop);
     const db = { query: vi.fn(), transaction: vi.fn() };
     const objectStore = { put: vi.fn(), get: vi.fn() };
+    const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
-    const runtime = createLogWorkerRuntime({ db, objectStore, startLoop, workerId: "worker-a", leaseTtlMs: 30000, intervalMs: 250 });
+    const runtime = createLogWorkerRuntime({ db, objectStore, startLoop, metrics, workerId: "worker-a", leaseTtlMs: 30000, intervalMs: 250 });
     const returnedStop = runtime.start();
 
     expect(returnedStop).toBe(stop);
-    expect(startLoop).toHaveBeenCalledWith({ db, objectStore, workerId: "worker-a", leaseTtlMs: 30000 }, 250);
+    expect(startLoop).toHaveBeenCalledWith({ db, objectStore, metrics, workerId: "worker-a", leaseTtlMs: 30000 }, 250);
   });
 
   it("starts a durable BullMQ runtime instead of polling when queue mode is durable", async () => {
@@ -153,10 +162,12 @@ describe("log worker runner", () => {
     const startLoop = vi.fn(() => vi.fn());
     const db = { query: vi.fn(), transaction: vi.fn() };
     const objectStore = { put: vi.fn(), get: vi.fn() };
+    const metrics = { recordLogAnalysisJobResult: vi.fn() };
 
     const runtime = createLogWorkerRuntime({
       db,
       objectStore,
+      metrics,
       startLoop,
       createDurableRuntime,
       queueMode: "durable",
@@ -181,6 +192,8 @@ describe("log worker runner", () => {
       },
       db,
       objectStore,
+      metrics,
+      tracing: expect.any(Object),
       workerId: "wiseeff-log-worker"
     });
     expect(startLoop).not.toHaveBeenCalled();

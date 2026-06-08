@@ -2,7 +2,7 @@
 
 Backup and restore evidence is required before calling a pilot or self-hosted target environment ready.
 
-M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. M6.4 adds Redis/BullMQ queue persistence checks when durable queue mode is enabled.
+M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. M6.4 adds Redis/BullMQ queue persistence checks: queue backup is conditional only when durable queue mode is not enabled. When `LOG_ANALYSIS_QUEUE_MODE=durable`, target evidence must capture Redis or BullMQ-equivalent persistence metadata.
 
 M6.6 also requires a pre-release backup before deploying a self-hosted release candidate. Link the backup artifact and restore rehearsal from [release-rollback.md](release-rollback.md) and the release record in `ops/self-hosted/releases/`.
 
@@ -56,6 +56,14 @@ Readiness failures should expose safe categories and remediation hints, not cred
 npm run restore:drill
 ```
 
+When explicitly loading an env file in PowerShell, WSL, or Node 22 based shells, prefer the WiseEff-specific alias:
+
+```bash
+npm run restore:drill --target-env-file=ops/self-hosted/.env
+```
+
+Avoid `source ops/self-hosted/.env` because dotenv values can contain spaces, including `Bearer <token>` authorization values.
+
 9. Restore PostgreSQL into `RESTORE_DATABASE_URL`.
 10. Restore object storage into `RESTORE_OBJECT_STORAGE_BUCKET` and `RESTORE_OBJECT_STORAGE_PREFIX`.
 11. Restore Redis persistence when durable queue mode is enabled.
@@ -81,6 +89,12 @@ npm run backup:drill
 npm run backup:check
 ```
 
+The backup drill accepts the same env-file alias:
+
+```bash
+npm run backup:drill --target-env-file=ops/self-hosted/.env
+```
+
 18. Record `M5_BACKUP_RESTORE_DRILL_AT` only after the real target restore drill passes.
 19. Update [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md) or the external release evidence record.
 
@@ -98,7 +112,7 @@ Local evidence must not be used to claim target restore readiness. Target readin
 - branch, commit, and environment label,
 - object-store endpoint, bucket, health prefix, backup target, restore target, object count, and checksum status,
 - database backup command, backup target, restore target, and table-count validation status,
-- queue status, which may be `conditional` until M6.4,
+- queue mode, status, and Redis persistence metadata when durable queue mode is enabled,
 - restore start and completion timestamps,
 - isolated restore target names,
 - sampled log reference count and missing object count,
@@ -126,12 +140,26 @@ When polling mode is used, queue evidence should be:
 
 ```json
 {
+  "mode": "polling",
   "status": "conditional",
   "reason": "LOG_ANALYSIS_QUEUE_MODE is not durable for this environment."
 }
 ```
 
-When durable queue mode is enabled, Redis/BullMQ-equivalent persistence must be restored or explicitly replaced by a documented queue-drain procedure, then validated with `npm run queue:check -- --base-url <target-url>`.
+When durable queue mode is enabled, `queue.status` cannot be `conditional`. Target evidence should include Redis persistence or BullMQ-equivalent queue state plus `queue:check` validation before the target drill is accepted:
+
+```json
+{
+  "mode": "durable",
+  "status": "captured",
+  "persistence": {
+    "snapshotTarget": "file:///backups/wiseeff/redis.rdb",
+    "checkpointValidated": true
+  }
+}
+```
+
+If the target intentionally avoids restoring queue persistence, the operator must document the queue-drain procedure and validate the post-restore queue state with `npm run queue:check -- --base-url <target-url>`.
 
 ## Failure Handling
 

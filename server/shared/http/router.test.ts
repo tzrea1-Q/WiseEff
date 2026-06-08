@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./errors";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import { createRouter, type RouteResponse } from "./router";
 import { createHttpServer, type MultipartBody, type RawBody } from "./server";
 
@@ -294,6 +295,81 @@ describe("createHttpServer", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/plain");
     expect(text).toBe("wiseeff_build_info 1\n");
+  });
+
+  it("exports request spans without changing HTTP responses", async () => {
+    const spans: Parameters<TraceExporter>[0][] = [];
+    const tracing = createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    });
+    const server = createHttpServer(
+      {
+        handle: async () => ({ status: 202, body: { ok: true } })
+      },
+      { tracing }
+    );
+
+    const { response, text } = await requestText(server, "/api/v1/health?verbose=true", {
+      headers: { "X-Request-Id": "req-trace-1" }
+    });
+
+    expect(response.status).toBe(202);
+    expect(JSON.parse(text)).toEqual({ ok: true });
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "api.request",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          method: "GET",
+          route: "/api/v1/health",
+          status: 202,
+          requestId: "req-trace-1"
+        })
+      })
+    ]);
+  });
+
+  it("exports request spans with route templates for dynamic routes", async () => {
+    const spans: Parameters<TraceExporter>[0][] = [];
+    const tracing = createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    });
+    const router = createRouter();
+    router.post("/api/v1/agent/sessions/:sessionId/messages", async () => ({
+      status: 200,
+      body: { ok: true }
+    }));
+    const server = createHttpServer(router, { tracing });
+
+    const { response, text } = await requestText(server, "/api/v1/agent/sessions/session-123/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Hello" })
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(text)).toEqual({ ok: true });
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "api.request",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          method: "POST",
+          route: "/api/v1/agent/sessions/:sessionId/messages",
+          status: 200
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("session-123");
+    expect(JSON.stringify(spans)).not.toContain("Hello");
   });
 
   it("sends SSE error events when iterators fail after streaming starts", async () => {

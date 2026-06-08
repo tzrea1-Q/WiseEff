@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 export const requiredObservabilityScripts = ["observability:check"] as const;
@@ -17,13 +18,22 @@ export const requiredObservabilityDashboardFiles = [
 const requiredPrometheusTokens = ["wiseeff-api", "/metrics", "wiseeff-worker", "node-exporter"] as const;
 const allowedWiseEffMetricNames = new Set([
   "wiseeff_agent_provider_ready",
+  "wiseeff_agent_provider_calls_total",
+  "wiseeff_agent_provider_duration_ms_sum",
+  "wiseeff_agent_approvals_total",
+  "wiseeff_agent_tool_results_total",
+  "wiseeff_audit_write_failures_total",
   "wiseeff_build_info",
   "wiseeff_database_ready",
   "wiseeff_dependency_health",
+  "wiseeff_device_gateway_operations_total",
   "wiseeff_http_request_duration_ms_count",
   "wiseeff_http_request_duration_ms_sum",
   "wiseeff_http_request_duration_seconds_bucket",
   "wiseeff_http_requests_total",
+  "wiseeff_log_analysis_job_duration_ms_count",
+  "wiseeff_log_analysis_job_duration_ms_sum",
+  "wiseeff_log_analysis_job_failures_total",
   "wiseeff_object_store_ready",
   "wiseeff_queue_backlog",
   "wiseeff_queue_dead_lettered",
@@ -67,6 +77,10 @@ export type ObservabilityConfigResult = {
   missingPrometheusTokens: string[];
   unknownMetricReferences: UnknownMetricReference[];
 };
+
+type RuntimeEnv = Record<string, string | undefined>;
+
+const defaultEvidenceOutput = "docs/generated/m6-observability-config-evidence.md";
 
 function hasRunbookUrl(ruleText: string) {
   return /runbook_url\s*:/i.test(ruleText);
@@ -197,7 +211,83 @@ export function runObservabilityConfigCheck() {
   return result;
 }
 
+export function parseObservabilityArgs(args: readonly string[], env: RuntimeEnv = process.env) {
+  const options = {
+    output: env.npm_config_output?.trim() || defaultEvidenceOutput
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    const next = args[index + 1];
+    if (arg.startsWith("--output=")) {
+      options.output = arg.slice("--output=".length);
+    } else if (arg === "--output" && next) {
+      options.output = next;
+      index += 1;
+    } else {
+      throw new Error(`Unknown or incomplete observability check argument: ${arg}`);
+    }
+  }
+
+  return options;
+}
+
+export function buildObservabilityEvidence(args: { date: string; result: ObservabilityConfigResult }): string {
+  const result = args.result;
+  const lines = [
+    "## M6.5 Observability Config Evidence",
+    "",
+    `- Date: ${args.date}`,
+    `- Status: \`${result.status}\``,
+    `- Missing scripts: ${listOrNone(result.missingScripts)}`,
+    `- Missing files: ${listOrNone(result.missingFiles)}`,
+    `- Missing dashboard files: ${listOrNone(result.missingDashboardFiles)}`,
+    `- Invalid dashboard files: ${listOrNone(result.invalidDashboardFiles)}`,
+    `- Alerts missing runbook URL: ${listOrNone(result.alertsMissingRunbookUrl)}`,
+    `- Missing Prometheus tokens: ${listOrNone(result.missingPrometheusTokens)}`,
+    "",
+    "### Forbidden Secret Matches",
+    "",
+    ...(result.forbiddenSecretMatches.length > 0
+      ? result.forbiddenSecretMatches.map((match) => `- ${sanitize(match.file)}: ${sanitize(match.pattern)}`)
+      : ["- none"]),
+    "",
+    "### Unknown Metric References",
+    "",
+    ...(result.unknownMetricReferences.length > 0
+      ? result.unknownMetricReferences.map((reference) => `- ${sanitize(reference.file)}: ${sanitize(reference.metric)}`)
+      : ["- none"]),
+    ""
+  ];
+
+  return lines.join("\n");
+}
+
+export function writeObservabilityEvidence(output: string, result: ObservabilityConfigResult) {
+  const evidence = buildObservabilityEvidence({
+    date: new Date().toISOString(),
+    result
+  });
+  mkdirSync(path.dirname(output), { recursive: true });
+  writeFileSync(output, evidence, "utf8");
+  return evidence;
+}
+
+function listOrNone(values: string[]) {
+  return values.length > 0 ? values.map(sanitize).join(", ") : "none";
+}
+
+function sanitize(value: string) {
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer <redacted>")
+    .replace(/(token|secret|key|password)=([^&\s]+)/gi, "$1=<redacted>")
+    .replace(/(token|secret|key|password):([^@\s]+)/gi, "$1:<redacted>")
+    .replace(/\bsk-[a-z0-9][a-z0-9_-]{6,}/gi, "sk-<redacted>");
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const options = parseObservabilityArgs(process.argv.slice(2));
   const result = runObservabilityConfigCheck();
+  writeObservabilityEvidence(options.output, result);
   process.exit(result.status === "passed" ? 0 : 1);
 }

@@ -5,7 +5,10 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 ## Preconditions
 
 - A release candidate has a version label, commit SHA, artifact reference, target environment label, and environment-file fingerprint.
-- `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, `npm run selfhost:check`, and `git diff --check` pass.
+- `npm run docs:check`, `npm run contract:check`, `npm run test:all`, `npm run build`, `npm run acceptance:coverage`, `npm run acceptance:operations`, `npm run acceptance:evidence`, `npm run selfhost:check`, `npm run identity:check`, and `git diff --check` pass.
+- `npm run m6:target-plan --target-env-file=<target-env-file>` has been run for the selected target. A `ready` manifest means the operator inputs are present; it does not replace any target evidence file. A missing explicit target env file does not fall back to local `.env` target inputs.
+- Production targets use `AUTH_PROVIDER=oidc`; local HMAC smoke tokens are not acceptable identity readiness evidence.
+- Target OIDC evidence is archived at `docs/generated/m6-identity-evidence.md` or an approved external record and proves discovery/JWKS, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser token acquisition/refresh/logout checks.
 - A backup is taken before deployment and can be restored into a clean target.
 - Queue pause/drain/resume behavior is documented for the target queue mode.
 - Monitoring is available during the release window.
@@ -28,13 +31,19 @@ This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-ho
 Run:
 
 ```bash
+npm run m6:target-plan --target-env-file=<target-env-file>
 npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://<host>
+npm run identity:check
 npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime
-npm run capacity:gate -- --target-url https://<host>
-npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+npm run observability:check
+npm run observability:target-evidence -- --target-environment <label> --config-status passed --prometheus-target-scrape passed --alertmanager-routing passed --grafana-dashboard-import passed --prometheus-query 'up{job="wiseeff-api"} == 1' --alert-route-evidence <path-or-record> --grafana-evidence <path-or-record>
+npm run rollback:rehearsal -- --environment <label> --release-version <version> --candidate-artifact <artifact> --previous-artifact <previous-artifact> --approval-owner <owner> --maintenance-window <window> --stop-writes passed --queue-drain passed --artifact-rollback passed --database-restore passed --object-store-restore passed --post-rollback-smoke passed --backup-evidence docs/generated/m6-backup-restore-evidence.md --smoke-evidence <path-or-record> --notes <path-or-record>
+npm run capacity:gate -- --target-url https://<host> --environment <label> --k6-summary <path-or-record> --metrics-snapshot <path-or-record>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256> --backup-evidence docs/generated/m6-backup-restore-evidence.md --identity-readiness passed --rollback-readiness passed --rollback-evidence docs/generated/m6-rollback-rehearsal-evidence.md --capacity-readiness passed --capacity-evidence docs/generated/capacity-gate.md --target-synthetic-readiness passed --target-synthetic-evidence <path-or-record> --queue-readiness passed --queue-evidence <path-or-record> --observability passed --observability-evidence <path-or-record>
+npm run m6:target-evidence
 ```
 
-Attach Playwright reports, operation evidence, capacity evidence, smoke output, metrics snapshots, and release readiness output to the release record.
+Attach the target evidence plan, Playwright reports, operation evidence, rollback rehearsal evidence, capacity evidence, smoke output, metrics snapshots, target evidence summary, and release readiness output to the release record.
 
 ## Rollback Decision Points
 
@@ -56,9 +65,9 @@ Trigger rollback when any of these occur during the release window:
 4. Redeploy the last known good API, web, and worker artifacts.
 5. If the candidate changed data, restore PostgreSQL and object-store state from the pre-release backup.
 6. Re-run `npm run selfhost:smoke` against the target.
-7. Confirm `/health/live`, `/health/ready`, `/api/v1/me`, and `/api/v1/operations/pilot-readiness`.
+7. Confirm `/health/live`, `/health/ready`, `/api/v1/me` with a target OIDC token, and `/api/v1/operations/pilot-readiness`.
 8. Resume workers only after queue and readiness checks are safe.
-9. Record rollback rehearsal evidence and update `docs/generated/m6-release-readiness.md` or the external release evidence store.
+9. Run `npm run rollback:rehearsal` with the actual step statuses, record `docs/generated/m6-rollback-rehearsal-evidence.md`, and update `docs/generated/m6-release-readiness.md` or the external release evidence store.
 
 ## Failure Classes
 
@@ -76,4 +85,6 @@ Irreversible migrations or data transformations cannot be described as rollback-
 
 ## Evidence Rule
 
-This runbook can be rehearsed only in a non-customer target environment. Local command output proves scripts and templates; it does not complete rollback rehearsal, target synthetic acceptance, capacity, HDC, or full-pilot readiness.
+This runbook can be rehearsed only in a non-customer target environment. Local command output proves scripts and templates; it does not complete target OIDC identity readiness, rollback rehearsal, target synthetic acceptance, capacity, HDC, or full-pilot readiness.
+
+When `rollback readiness`, `capacity readiness`, or `target synthetic readiness` is marked `passed`, the release gate must also link the matching evidence path through `--rollback-evidence`, `--capacity-evidence`, or `--target-synthetic-evidence`. A path alone is not enough; keep the readiness status `pending` or `failed` until the target evidence was produced in the intended environment.

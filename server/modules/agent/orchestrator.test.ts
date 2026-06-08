@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { developmentAuthContext } from "../auth/routes";
@@ -9,7 +10,7 @@ import { createDeterministicAgentProvider } from "./provider";
 import type { AgentProviderPlan } from "./provider";
 import type { AgentToolDefinition } from "./toolRegistry";
 import type { AgentToolName, AgentToolResult } from "./types";
-import { createHttpLiveAgentTransport, createLiveAgentProvider } from "./liveProvider";
+import { createHttpLiveAgentTransport, createLiveAgentProvider, LiveAgentProviderOutageError } from "./liveProvider";
 
 describe("deterministic agent provider", () => {
   it("selects parameter review and draft tools from parameter context", async () => {
@@ -378,6 +379,29 @@ function createPlan(toolRequests: AgentProviderPlan["toolRequests"]): AgentProvi
   };
 }
 
+function createAgentMetricsSpy() {
+  return {
+    recordAgentProviderCall: vi.fn(),
+    recordAgentApproval: vi.fn(),
+    recordAgentToolResult: vi.fn(),
+    recordAuditWriteFailure: vi.fn()
+  };
+}
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
+  };
+}
+
 describe("agent orchestrator", () => {
   it("startSession creates a session, system message, and audit event", async () => {
     const { db } = createMemoryDb();
@@ -486,6 +510,7 @@ describe("agent orchestrator", () => {
 
   it("approval-required tool requests create pending approvals without running the tool", async () => {
     const { db } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
@@ -493,6 +518,7 @@ describe("agent orchestrator", () => {
     const orchestrator = createAgentOrchestrator({
       db,
       toolRegistry: registry,
+      metrics,
       provider: createProvider(
         createPlan([
           {
@@ -519,10 +545,96 @@ describe("agent orchestrator", () => {
     expect(registry.run).not.toHaveBeenCalled();
     expect(turn.toolCalls[0]).toMatchObject({ status: "pending_approval", requiresApproval: true });
     expect(turn.approvals[0]).toMatchObject({ toolCallId: turn.toolCalls[0].id, status: "pending" });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "requested",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+  });
+
+  it("records provider call metrics for successful Agent turns", async () => {
+    const { db } = createMemoryDb();
+    const provider = createProvider(createPlan([]));
+    const metrics = createAgentMetricsSpy();
+    const orchestrator = createAgentOrchestrator({ db, provider, metrics });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Summarize"
+    });
+
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "deterministic",
+      status: "succeeded",
+      durationMs: expect.any(Number)
+    });
+  });
+
+  it("exports provider health and planning spans for successful Agent turns", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const provider = {
+      metadata: vi.fn(() => ({
+        provider: "live" as const,
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1"
+      })),
+      checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const })),
+      planTurn: vi.fn(async () => createPlan([]))
+    };
+    const orchestrator = createAgentOrchestrator({ db, provider, tracing });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Summarize"
+    });
+
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "agent.provider.health",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          provider: "live",
+          model: "pilot-model",
+          promptVersion: "m5-agent-v1",
+          status: "ready"
+        })
+      }),
+      expect.objectContaining({
+        name: "agent.provider.plan_turn",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          provider: "live",
+          model: "pilot-model",
+          promptVersion: "m5-agent-v1",
+          status: "succeeded",
+          toolRequestCount: 0
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("Summarize");
+    expect(JSON.stringify(spans)).not.toContain("req-message");
+    expect(JSON.stringify(spans)).not.toContain(start.session.id);
   });
 
   it("read-only tool requests record failure audit and rethrow execution failures", async () => {
     const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [
         createToolDefinition({ name: "parameter.summarizeReviewQueue", requiresApproval: false }),
@@ -538,6 +650,7 @@ describe("agent orchestrator", () => {
     const orchestrator = createAgentOrchestrator({
       db,
       toolRegistry: registry,
+      metrics,
       provider: createProvider(
         createPlan([
           {
@@ -572,16 +685,86 @@ describe("agent orchestrator", () => {
     expect(tables.toolCalls.map((tool) => tool.status)).toEqual(["succeeded", "failed"]);
     expect(tables.toolCalls[1].error_message).toBe("Audit warehouse unavailable");
     expect(tables.audits.at(-1)).toMatchObject({ action: "failed", trace_id: "req-turn" });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.summarizeReviewQueue",
+      kind: "read",
+      requiresApproval: false,
+      status: "succeeded"
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "audit.summarizeRecentEvents",
+      kind: "read",
+      requiresApproval: false,
+      status: "failed"
+    });
+    expect(JSON.stringify(metrics.recordAgentToolResult.mock.calls)).not.toContain("Audit warehouse unavailable");
+  });
+
+  it("exports low-cardinality direct tool execution spans without payload or identifiers", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.summarizeReviewQueue", requiresApproval: false })],
+      async () => ({ summary: "1 pending review item.", data: { pending: 1 }, citations: [] })
+    );
+    const orchestrator = createAgentOrchestrator({
+      db,
+      toolRegistry: registry,
+      tracing,
+      provider: createProvider(
+        createPlan([
+          {
+            name: "parameter.summarizeReviewQueue",
+            label: "Summarize review queue",
+            payload: { projectId: "aurora", secretFilter: "do-not-export" }
+          }
+        ])
+      )
+    });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start-secret",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-turn-secret",
+      sessionId: start.session.id,
+      message: "Summarize review queue"
+    });
+
+    expect(spans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "agent.tool.execute",
+          attributes: expect.objectContaining({
+            service: "wiseeff-api",
+            tool: "parameter.summarizeReviewQueue",
+            kind: "read",
+            requiresApproval: false,
+            status: "succeeded"
+          })
+        })
+      ])
+    );
+    expect(JSON.stringify(spans)).not.toContain(start.session.id);
+    expect(JSON.stringify(spans)).not.toContain("agent-tool");
+    expect(JSON.stringify(spans)).not.toContain("aurora");
+    expect(JSON.stringify(spans)).not.toContain("do-not-export");
+    expect(JSON.stringify(spans)).not.toContain("pending review");
+    expect(JSON.stringify(spans)).not.toContain("req-turn-secret");
   });
 
   it("sendMessage records degraded output and fallback reason when the live provider is unavailable", async () => {
     const { db, tables } = createMemoryDb();
     const provider = createOutageProvider("model health check failed");
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
-    const orchestrator = createAgentOrchestrator({ db, provider, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, provider, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -609,10 +792,53 @@ describe("agent orchestrator", () => {
       fallback_reason: "model health check failed",
       tool_call_ids: []
     });
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "live",
+      status: "health_unavailable",
+      durationMs: expect.any(Number)
+    });
+  });
+
+  it("records outage fallback metrics when live provider planning is unavailable", async () => {
+    const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
+    const provider = {
+      metadata: vi.fn(() => ({
+        provider: "live" as const,
+        model: "pilot-model",
+        promptVersion: "m5-agent-v1"
+      })),
+      checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const })),
+      planTurn: vi.fn(async () => {
+        throw new LiveAgentProviderOutageError("provider timed out");
+      })
+    };
+    const orchestrator = createAgentOrchestrator({ db, provider, metrics });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    const turn = await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-message",
+      sessionId: start.session.id,
+      message: "Summarize"
+    });
+
+    expect(turn.messages.at(-1)).toMatchObject({ content: expect.stringContaining("temporarily unavailable") });
+    expect(tables.traces[0]).toMatchObject({ fallback_reason: "provider timed out" });
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "live",
+      status: "outage_fallback",
+      durationMs: expect.any(Number)
+    });
   });
 
   it("does not fall back when the live provider response is malformed", async () => {
     const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const provider = createLiveAgentProvider({
       model: "pilot-model",
       promptVersion: "m5-agent-v1",
@@ -630,7 +856,7 @@ describe("agent orchestrator", () => {
         checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const }))
       }
     });
-    const orchestrator = createAgentOrchestrator({ db, provider });
+    const orchestrator = createAgentOrchestrator({ db, provider, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -648,6 +874,11 @@ describe("agent orchestrator", () => {
 
     expect(tables.messages.at(-1)?.content).not.toContain("temporarily unavailable");
     expect(tables.traces).toHaveLength(0);
+    expect(metrics.recordAgentProviderCall).toHaveBeenCalledWith({
+      provider: "live",
+      status: "failed",
+      durationMs: expect.any(Number)
+    });
   });
 
   it("does not fall back when the live provider returns a contract error response", async () => {
@@ -791,6 +1022,7 @@ describe("agent orchestrator", () => {
 
   it("approveToolCall re-checks registry execution, approves, succeeds the tool, and appends an assistant message", async () => {
     const { db } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({
@@ -799,7 +1031,7 @@ describe("agent orchestrator", () => {
         citations: [{ type: "parameter", id: "draft-1", label: "Parameter draft draft-1" }]
       })
     );
-    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -830,6 +1062,77 @@ describe("agent orchestrator", () => {
       role: "assistant",
       content: expect.stringContaining("Created one parameter draft")
     });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "approved",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true,
+      status: "succeeded"
+    });
+  });
+
+  it("exports low-cardinality approval-time tool execution spans without approval payload or result details", async () => {
+    const { db } = createMemoryDb();
+    const { spans, tracing } = createTraceRecorder();
+    const registry = createRegistry(
+      [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
+      async () => ({
+        summary: "Created one parameter draft for human review.",
+        data: { draftId: "draft-secret", projectId: "aurora" },
+        citations: [{ type: "parameter", id: "draft-secret", label: "Parameter draft draft-secret" }]
+      })
+    );
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, tracing });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start-secret",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+    const toolCall = await orchestrator.recordToolRequestForTest({
+      auth: developmentAuthContext,
+      requestId: "req-tool-secret",
+      sessionId: start.session.id,
+      request: {
+        name: "parameter.submitChangeDraft",
+        label: "Create parameter draft",
+        payload: { projectId: "aurora", reason: "secret reason" }
+      }
+    });
+
+    await orchestrator.approveToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-approve-secret",
+      approvalId: toolCall.approvalId ?? "",
+      reason: "Looks safe"
+    });
+
+    expect(spans).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "agent.tool.execute",
+          attributes: expect.objectContaining({
+            service: "wiseeff-api",
+            tool: "parameter.submitChangeDraft",
+            kind: "preparation",
+            requiresApproval: true,
+            status: "succeeded"
+          })
+        })
+      ])
+    );
+    expect(JSON.stringify(spans)).not.toContain(start.session.id);
+    expect(JSON.stringify(spans)).not.toContain(toolCall.id);
+    expect(JSON.stringify(spans)).not.toContain(toolCall.approvalId ?? "");
+    expect(JSON.stringify(spans)).not.toContain("aurora");
+    expect(JSON.stringify(spans)).not.toContain("secret reason");
+    expect(JSON.stringify(spans)).not.toContain("draft-secret");
+    expect(JSON.stringify(spans)).not.toContain("Created one parameter draft");
+    expect(JSON.stringify(spans)).not.toContain("req-approve-secret");
   });
 
   it("approveToolCall does not execute when the pending approval claim is stale", async () => {
@@ -916,13 +1219,14 @@ describe("agent orchestrator", () => {
 
   it("approveToolCall records a failed tool call and failure audit when execution fails after approval claim", async () => {
     const { db, tables } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => {
         throw new Error("Draft service unavailable");
       }
     );
-    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -951,11 +1255,25 @@ describe("agent orchestrator", () => {
     expect(tables.approvals[0].status).toBe("approved");
     expect(tables.toolCalls[0]).toMatchObject({ status: "failed", error_message: "Draft service unavailable" });
     expect(tables.audits.at(-1)).toMatchObject({ action: "approval-execution-failed", trace_id: "req-approve" });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "approved",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true,
+      status: "failed"
+    });
+    expect(JSON.stringify(metrics.recordAgentToolResult.mock.calls)).not.toContain("Draft service unavailable");
   });
 
   it("rolls back approval execution writes when the approval audit event cannot be recorded", async () => {
     const { db, tables } = createMemoryDb({ failAuditActions: ["approval-executed"] });
-    const orchestrator = createAgentOrchestrator({ db });
+    const metrics = createAgentMetricsSpy();
+    const orchestrator = createAgentOrchestrator({ db, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -986,15 +1304,21 @@ describe("agent orchestrator", () => {
     expect(tables.approvals[0]).toMatchObject({ status: "pending", decided_by_user_id: null });
     expect(tables.toolCalls[0]).toMatchObject({ status: "pending_approval", result: null });
     expect(tables.messages).toHaveLength(messageCount);
+    expect(metrics.recordAuditWriteFailure).toHaveBeenCalledWith({
+      kind: "agent-tool",
+      action: "approval-executed",
+      targetType: "agent_tool_call"
+    });
   });
 
   it("rejectToolCall marks approval and tool rejected, then appends an assistant message", async () => {
     const { db } = createMemoryDb();
+    const metrics = createAgentMetricsSpy();
     const registry = createRegistry(
       [createToolDefinition({ name: "parameter.submitChangeDraft", kind: "preparation", requiresApproval: true })],
       async () => ({ summary: "should not run", data: {}, citations: [] })
     );
-    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry });
+    const orchestrator = createAgentOrchestrator({ db, toolRegistry: registry, metrics });
     const start = await orchestrator.startSession({
       auth: developmentAuthContext,
       requestId: "req-start",
@@ -1024,6 +1348,18 @@ describe("agent orchestrator", () => {
     expect(turn.messages.at(-1)).toMatchObject({
       role: "assistant",
       content: expect.stringContaining("rejected")
+    });
+    expect(metrics.recordAgentApproval).toHaveBeenCalledWith({
+      action: "rejected",
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true
+    });
+    expect(metrics.recordAgentToolResult).toHaveBeenCalledWith({
+      tool: "parameter.submitChangeDraft",
+      kind: "preparation",
+      requiresApproval: true,
+      status: "rejected"
     });
   });
 

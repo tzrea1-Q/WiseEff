@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { MetricsRegistry } from "../../observability/metrics";
+import type { TracingBoundary } from "../../observability/tracing";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
@@ -68,12 +70,83 @@ export function createAgentOrchestrator(options: {
   toolRegistry?: ToolRegistry;
   provider?: AgentProvider;
   createAuditEvent?: typeof defaultCreateAuditEvent;
+  metrics?: Pick<
+    MetricsRegistry,
+    "recordAgentProviderCall" | "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure"
+  >;
+  tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = options.db;
   const provider = options.provider ?? createDeterministicAgentProvider();
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
+  const metrics = options.metrics;
+  const tracing = options.tracing;
   const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
   const toolRegistry = registryFor(db);
+
+  function recordProviderCall(input: { provider: string; status: string; startedAt: number }) {
+    metrics?.recordAgentProviderCall({
+      provider: input.provider,
+      status: input.status,
+      durationMs: Math.max(Date.now() - input.startedAt, 0)
+    });
+  }
+
+  function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
+    const definition = toolRegistry.require(toolCall.name);
+    return {
+      tool: definition.name,
+      kind: definition.kind,
+      requiresApproval: definition.requiresApproval
+    };
+  }
+
+  function recordAgentApprovalMetric(action: "requested" | "approved" | "rejected", toolCall: Pick<AgentToolCallDto, "name">) {
+    metrics?.recordAgentApproval({ action, ...toolMetricLabels(toolCall) });
+  }
+
+  function recordAgentToolResultMetric(
+    status: "succeeded" | "failed" | "rejected",
+    toolCall: Pick<AgentToolCallDto, "name">
+  ) {
+    metrics?.recordAgentToolResult({ status, ...toolMetricLabels(toolCall) });
+  }
+
+  async function withToolExecutionSpan<T>(
+    toolCall: Pick<AgentToolCallDto, "name">,
+    fn: () => Promise<T>
+  ) {
+    const labels = toolMetricLabels(toolCall);
+    const attributes: Record<string, string | number | boolean> = {
+      tool: labels.tool,
+      kind: labels.kind,
+      requiresApproval: labels.requiresApproval
+    };
+    const execute = async () => {
+      try {
+        const result = await fn();
+        attributes.status = "succeeded";
+        return result;
+      } catch (error) {
+        attributes.status = "failed";
+        attributes.errorType = error instanceof Error ? error.name : "unknown";
+        throw error;
+      }
+    };
+
+    return tracing ? tracing.withSpan("agent.tool.execute", attributes, execute) : execute();
+  }
+
+  async function withProviderSpan<T>(
+    name: string,
+    attributes: Record<string, string | number | boolean>,
+    fn: (spanAttributes: Record<string, string | number | boolean>) => Promise<T> | T
+  ) {
+    if (!tracing) {
+      return fn(attributes);
+    }
+    return tracing.withSpan(name, attributes, () => fn(attributes));
+  }
 
   async function audit(input: {
     context: AgentRequestContext;
@@ -85,21 +158,30 @@ export function createAgentOrchestrator(options: {
     metadata?: Record<string, unknown>;
     severity?: "High" | "Medium" | "Low";
   }, auditDb: Queryable = db) {
-    await createAuditEvent(auditDb, {
-      id: newId("audit"),
-      organizationId: input.context.auth.organization.id,
-      projectId: input.projectId ?? null,
-      actorUserId: input.context.auth.user.id,
-      actorType: "agent",
-      app: "wiseeff",
-      kind: input.kind,
-      action: input.action,
-      severity: input.severity ?? "Low",
-      targetType: input.targetType,
-      targetId: input.targetId,
-      metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) },
-      traceId: input.context.requestId
-    });
+    try {
+      await createAuditEvent(auditDb, {
+        id: newId("audit"),
+        organizationId: input.context.auth.organization.id,
+        projectId: input.projectId ?? null,
+        actorUserId: input.context.auth.user.id,
+        actorType: "agent",
+        app: "wiseeff",
+        kind: input.kind,
+        action: input.action,
+        severity: input.severity ?? "Low",
+        targetType: input.targetType,
+        targetId: input.targetId,
+        metadata: { initiatedByUserId: input.context.auth.user.id, ...(input.metadata ?? {}) },
+        traceId: input.context.requestId
+      });
+    } catch (error) {
+      metrics?.recordAuditWriteFailure({
+        kind: input.kind,
+        action: input.action,
+        targetType: input.targetType
+      });
+      throw error;
+    }
   }
 
   async function loadSessionOrThrow(context: AgentRequestContext, sessionId: string) {
@@ -186,6 +268,7 @@ export function createAgentOrchestrator(options: {
       targetId: toolCall.id,
       metadata: { sessionId, toolCallId: toolCall.id, approvalId, toolName: toolCall.name }
     });
+    recordAgentApprovalMetric("requested", toolCall);
   }
 
   async function executeToolCall(input: AgentRequestContext, toolCall: AgentToolCallDto, sessionId: string) {
@@ -201,7 +284,7 @@ export function createAgentOrchestrator(options: {
       throw staleTransition("Agent tool call could not be started.", { toolCallId: toolCall.id });
     }
     try {
-      const result = await toolRegistry.run(toolCall.name, executionContext, toolCall.payload);
+      const result = await withToolExecutionSpan(toolCall, () => toolRegistry.run(toolCall.name, executionContext, toolCall.payload));
       const succeeded = await updateAgentToolCall(db, input.auth.organization.id, toolCall.id, {
         status: "succeeded",
         result
@@ -218,6 +301,7 @@ export function createAgentOrchestrator(options: {
         targetId: toolCall.id,
         metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, summary: result.summary }
       });
+      recordAgentToolResultMetric("succeeded", toolCall);
       return result;
     } catch (error) {
       if (error instanceof ApiError && error.code === "CONFLICT") {
@@ -240,6 +324,7 @@ export function createAgentOrchestrator(options: {
         metadata: { sessionId, toolCallId: toolCall.id, toolName: toolCall.name, error: errorMessage(error) },
         severity: "Medium"
       });
+      recordAgentToolResultMetric("failed", toolCall);
       throw error;
     }
   }
@@ -296,8 +381,31 @@ export function createAgentOrchestrator(options: {
     });
 
     const providerMetadata = provider.metadata();
-    const providerHealth = provider.checkHealth ? await provider.checkHealth() : undefined;
+    const providerStartedAt = Date.now();
+    const providerHealth = provider.checkHealth
+      ? await withProviderSpan(
+          "agent.provider.health",
+          {
+            provider: providerMetadata.provider,
+            model: providerMetadata.model,
+            promptVersion: providerMetadata.promptVersion,
+            status: "checking"
+          },
+          async (spanAttributes) => {
+            try {
+              const health = await provider.checkHealth!();
+              spanAttributes.status = health.ok ? health.status : "health_unavailable";
+              return health;
+            } catch (error) {
+              spanAttributes.status = "failed";
+              spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+              throw error;
+            }
+          }
+        )
+      : undefined;
     if (providerHealth && !providerHealth.ok) {
+      recordProviderCall({ provider: providerMetadata.provider, status: "health_unavailable", startedAt: providerStartedAt });
       const fallbackReason = providerHealth.message ?? "Live Agent provider is unavailable.";
       const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
       await createAgentRunTrace(db, {
@@ -330,12 +438,35 @@ export function createAgentOrchestrator(options: {
 
     let plan;
     try {
-      plan = await provider.planTurn({ context: session.context, message: input.message });
+      plan = await withProviderSpan(
+        "agent.provider.plan_turn",
+        {
+          provider: providerMetadata.provider,
+          model: providerMetadata.model,
+          promptVersion: providerMetadata.promptVersion,
+          status: "planning"
+        },
+        async (spanAttributes) => {
+          try {
+            const nextPlan = await provider.planTurn({ context: session.context, message: input.message });
+            spanAttributes.status = "succeeded";
+            spanAttributes.toolRequestCount = nextPlan.toolRequests.length;
+            return nextPlan;
+          } catch (error) {
+            spanAttributes.status = error instanceof LiveAgentProviderOutageError ? "outage_fallback" : "failed";
+            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
+            throw error;
+          }
+        }
+      );
+      recordProviderCall({ provider: providerMetadata.provider, status: "succeeded", startedAt: providerStartedAt });
     } catch (error) {
       if (!(error instanceof LiveAgentProviderOutageError)) {
+        recordProviderCall({ provider: providerMetadata.provider, status: "failed", startedAt: providerStartedAt });
         throw error;
       }
 
+      recordProviderCall({ provider: providerMetadata.provider, status: "outage_fallback", startedAt: providerStartedAt });
       const fallbackReason = error.message;
       const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
       await createAgentRunTrace(db, {
@@ -448,7 +579,7 @@ export function createAgentOrchestrator(options: {
       const txToolRegistry = registryFor(tx);
       let result: AgentToolResult;
       try {
-        result = await txToolRegistry.run(toolCall.name, executionContext, toolCall.payload);
+        result = await withToolExecutionSpan(toolCall, () => txToolRegistry.run(toolCall.name, executionContext, toolCall.payload));
       } catch (error) {
         const failed = await updateAgentToolCall(tx, input.auth.organization.id, toolCall.id, {
           status: "failed",
@@ -505,6 +636,8 @@ export function createAgentOrchestrator(options: {
       }, tx);
       return null;
     });
+    recordAgentApprovalMetric("approved", toolCall);
+    recordAgentToolResultMetric(executionError ? "failed" : "succeeded", toolCall);
     if (executionError) {
       throw executionError;
     }
@@ -516,6 +649,10 @@ export function createAgentOrchestrator(options: {
     const approval = await getAgentApproval(db, input.auth.organization.id, input.approvalId);
     if (!approval || approval.status !== "pending") {
       throw new ApiError("NOT_FOUND", "Pending Agent approval was not found.", 404, { approvalId: input.approvalId });
+    }
+    const toolCall = await getAgentToolCall(db, input.auth.organization.id, approval.toolCallId);
+    if (!toolCall) {
+      throw new ApiError("NOT_FOUND", "Agent tool call was not found.", 404, { toolCallId: approval.toolCallId });
     }
 
     const rejected = await markAgentApprovalRejected(
@@ -557,6 +694,8 @@ export function createAgentOrchestrator(options: {
         reason: input.reason
       }
     });
+    recordAgentApprovalMetric("rejected", toolCall);
+    recordAgentToolResultMetric("rejected", toolCall);
 
     return assembleTurn(input, approval.sessionId);
   }

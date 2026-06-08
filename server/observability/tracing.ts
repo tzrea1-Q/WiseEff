@@ -49,6 +49,8 @@ export function createTracingBoundary(options: TracingBoundaryOptions) {
   };
 }
 
+export type TracingBoundary = ReturnType<typeof createTracingBoundary>;
+
 export const defaultTracingBoundary = createTracingBoundary({
   enabled: process.env.WISEEFF_OTEL_ENABLED === "true",
   serviceName: "wiseeff-api"

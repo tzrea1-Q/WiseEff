@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
@@ -73,6 +74,26 @@ function makeServer(options: { db?: Database; gateway?: DebugDeviceGateway; auth
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
   return createHttpServer(router);
+}
+
+function createDeviceMetricsSpy() {
+  return {
+    recordDeviceGatewayOperation: vi.fn()
+  };
+}
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
+  };
 }
 
 const timestamp = "2026-05-27T10:00:00.000Z";
@@ -203,6 +224,34 @@ describe("debugging routes", () => {
     expect(response.body).toEqual({ items: [device] });
     expect(serviceModule.createDebuggingService).toHaveBeenCalledWith({ db, gateway });
     expect(serviceMocks.listDevices).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora" });
+  });
+
+  it("passes metrics and gateway mode into the debugging service", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const metrics = createDeviceMetricsSpy();
+    const { tracing } = createTraceRecorder();
+    const router = createRouter();
+    serviceMocks.listDevices.mockResolvedValue([deviceRecord()]);
+    registerDebuggingRoutes(router, {
+      db,
+      debugGateway: gateway,
+      debugGatewayMode: "hdc",
+      metrics,
+      tracing,
+      getCurrentAuthContext: () => makeAuth()
+    });
+
+    const response = await requestJson(createHttpServer(router), "/api/v1/debugging/devices?projectId=aurora");
+
+    expect(response.status).toBe(200);
+    expect(serviceModule.createDebuggingService).toHaveBeenCalledWith({
+      db,
+      gateway,
+      gatewayMode: "hdc",
+      metrics,
+      tracing
+    });
   });
 
   it("POST /api/v1/debugging/targets/detect validates body and returns detected targets", async () => {

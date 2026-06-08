@@ -28,6 +28,10 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M5_SMOKE_AUTHORIZATION` | local admin bearer token | M5 smoke | Grants `admin:access` to pilot-readiness smoke. |
 | `WISEEFF_SMOKE_AUTHORIZATION` | local admin bearer token | M5 smoke | Alternate name accepted by smoke scripts. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | unset locally | self-hosted smoke | Preferred self-hosted Admin bearer token; use an OIDC access token in target environments. |
+| `M6_IDENTITY_AUTHORIZATION` | unset locally | M6.2 identity evidence | Admin OIDC bearer token used by `npm run identity:check` for `/api/v1/me`. |
+| `M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for issuer mismatch. |
+| `M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for audience mismatch. |
+| `M6_IDENTITY_EXPIRED_AUTHORIZATION` | unset locally | M6.2 identity evidence | Expired token expected to be rejected. |
 
 ## Object Store
 
@@ -112,12 +116,32 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `LOG_WORKER_ENABLED` | `false` in API, `true` in worker | Prevents the API container from running a duplicate in-process worker. |
 | `LOG_ANALYSIS_QUEUE_MODE` | `durable` | Uses Redis/BullMQ transport while PostgreSQL remains the source of truth. |
 | `REDIS_URL` | `redis://redis:6379` | Compose Redis service used by API and worker containers. |
+| `BACKUP_REDIS_SNAPSHOT_TARGET` | restore-drill snapshot path | Required by `npm run m6:target-plan` for final M6.3 target evidence when durable queue mode is in scope. |
+| `BACKUP_REDIS_CHECKPOINT_VALIDATED` | `true` after Redis checkpoint validation | Required by `npm run m6:target-plan`; target M6.3 evidence must prove durable queue persistence was captured. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
 | `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. |
 | `AUTH_OIDC_ISSUER` | operator-provided issuer | Must match the access-token `iss` claim. |
 | `AUTH_OIDC_AUDIENCE` | `wiseeff-api` or operator value | Must match the access-token `aud` claim. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | Admin OIDC bearer token | Preferred self-hosted smoke token; M5 smoke token names are accepted only for compatibility. |
+| `M6_IDENTITY_*` token variables | target OIDC test tokens | Used by `npm run identity:check`; keep unset locally unless a real self-hosted IdP/API target is available. |
+| `M6_IDENTITY_BROWSER_RUNTIME` | `passed` only after target browser proof | Required by `npm run m6:target-plan`; records target browser token acquisition, refresh, and logout proof. |
+| `M6_IDENTITY_USER_GOVERNANCE_EVIDENCE` | `passed` only after target operation evidence | Required by `npm run m6:target-plan`; records that target `PERM-USER-MGMT-001` operation evidence includes UI, API, DB, and audit proof. |
+| `M6_OBSERVABILITY_TARGET_ENVIRONMENT` | target/staging/pilot/self-hosted label | Required by `npm run observability:target-evidence` and `npm run m6:target-plan`. Must not be `local-*`. |
+| `M6_OBSERVABILITY_CONFIG_STATUS` | `passed` after `npm run observability:check` | Required before target observability evidence can be treated as executable. |
+| `M6_OBSERVABILITY_PROMETHEUS_TARGET_SCRAPE` | `passed` after target scrape proof | Required by `npm run observability:target-evidence`; keep pending until Prometheus has scraped the deployed target. |
+| `M6_OBSERVABILITY_ALERTMANAGER_ROUTING` | `passed` after alert route proof | Required by `npm run observability:target-evidence`; keep pending until alert routing has been exercised. |
+| `M6_OBSERVABILITY_GRAFANA_DASHBOARD_IMPORT` | `passed` after dashboard proof | Required by `npm run observability:target-evidence`; keep pending until dashboards are imported or screenshotted. |
+| `M6_OBSERVABILITY_PROMETHEUS_QUERY` | evidence reference or query URL | Redacted proof reference for Prometheus target scrape. |
+| `M6_OBSERVABILITY_ALERT_ROUTE_EVIDENCE` | evidence reference | Redacted proof reference for Alertmanager routing. |
+| `M6_OBSERVABILITY_GRAFANA_EVIDENCE` | evidence reference | Redacted proof reference for Grafana dashboard import. |
+| `WISEEFF_CAPACITY_TARGET_URL` | target API URL | Required by `npm run m6:target-plan` and `npm run capacity:gate`; must be non-local. |
+| `WISEEFF_CAPACITY_AUTHORIZATION` | target Admin bearer token | Required for target capacity smoke requests; redacted in generated evidence. |
+| `M6_TARGET_CAPACITY_OBSERVED_*` | observed target metrics | Plan-only inputs for p95 latency, error rate, throughput, CPU, memory, DB connections, and queue backlog collected from the target. |
+| `M6_TARGET_CAPACITY_OBJECT_STORE_PROBE` | `passed` after target probe | Required before the M6.6 target execution plan is ready. |
+| `M6_TARGET_ROLLBACK_*` | target rollback rehearsal inputs | Plan-only inputs that map to `npm run rollback:rehearsal -- ...`; include target environment, artifact refs, approval/window, passed step statuses, database/object-store restore statuses, backup evidence, smoke evidence, and notes. |
+| `M6_TARGET_SYNTHETIC_EVIDENCE_PATH` | target browser evidence path | Required evidence path after `npm run acceptance:browser -- --mode target-non-hdc --no-start-runtime`. |
+| `M6_TARGET_RELEASE_*` | target release gate inputs | Plan-only inputs that map to `npm run selfhost:release-gate -- ...`; include target environment, artifact, env fingerprint, passed readiness statuses, and capacity/queue/observability evidence paths. |
 
 M6.3 adds `ops/self-hosted/storage/object-store.env.example` for the S3-compatible storage profile. Run `npm run restore:drill`, `npm run backup:drill`, and `npm run backup:check` after filling isolated backup and restore targets.
 

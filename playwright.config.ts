@@ -2,10 +2,12 @@ import { defineConfig, devices } from "playwright/test";
 
 const baseURL = "http://127.0.0.1:5173";
 const apiURL = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
-const reuseExistingServer = !process.env.CI;
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "true";
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: ["quality/*.quality.spec.ts"],
+  snapshotPathTemplate: "{testDir}/{testFileDir}/{testFileName}-snapshots/{platform}/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
@@ -23,6 +25,7 @@ export default defineConfig({
       command: "npm run dev:api",
       env: {
         PORT: "8787",
+        AGENT_PROVIDER: "deterministic",
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiURL,
         DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",

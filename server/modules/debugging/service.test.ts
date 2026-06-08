@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
@@ -125,6 +126,26 @@ function createAuditSpy() {
   });
 
   return { createAuditEvent, events };
+}
+
+function createDeviceMetricsSpy() {
+  return {
+    recordDeviceGatewayOperation: vi.fn()
+  };
+}
+
+function createTraceRecorder() {
+  const spans: Parameters<TraceExporter>[0][] = [];
+  return {
+    spans,
+    tracing: createTracingBoundary({
+      enabled: true,
+      serviceName: "wiseeff-api",
+      exporter: (span) => {
+        spans.push(span);
+      }
+    })
+  };
 }
 
 const timestamp = "2026-05-27T10:00:00.000Z";
@@ -317,7 +338,9 @@ describe("debugging service", () => {
     ]);
     const gateway = makeGateway();
     const audit = createAuditSpy();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+    const metrics = createDeviceMetricsSpy();
+    const { spans, tracing } = createTraceRecorder();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
     await expect(service.detectTargets(makeAuth(["debugging:view"]), { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
@@ -336,14 +359,36 @@ describe("debugging service", () => {
       kind: "debug-target-detect",
       action: "detect"
     });
+    expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
+      mode: "simulator",
+      action: "detect",
+      status: "succeeded"
+    });
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "debug.gateway.detect",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          mode: "simulator",
+          action: "detect",
+          status: "succeeded",
+          hasDeviceFilter: true
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("device-1");
+    expect(JSON.stringify(spans)).not.toContain("simulator://aurora-1");
   });
 
   it("detectTargets commits a failed debug event when gateway detection fails", async () => {
     const { db, transactions } = createFakeDb([[deviceRow()], []]);
+    const metrics = createDeviceMetricsSpy();
     const service = createDebuggingService({
       db,
       gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: false, targets: [], error: "USB bridge unavailable." })) }),
-      createAuditEvent: createAuditSpy().createAuditEvent
+      createAuditEvent: createAuditSpy().createAuditEvent,
+      metrics,
+      gatewayMode: "hdc"
     });
 
     await expect(service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
@@ -352,6 +397,11 @@ describe("debugging service", () => {
 
     expect(transactions).toHaveLength(1);
     expect(transactions[0].some((call) => call.text.includes("insert into debugging_events"))).toBe(true);
+    expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
+      mode: "hdc",
+      action: "detect",
+      status: "failed"
+    });
   });
 
   it("createSession rejects offline or lost targets and persists an active session", async () => {
@@ -445,7 +495,9 @@ describe("debugging service", () => {
     ]);
     const gateway = makeGateway();
     const audit = createAuditSpy();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+    const metrics = createDeviceMetricsSpy();
+    const { spans, tracing } = createTraceRecorder();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
     await expect(service.readNode(makeAuth(["debugging:view"]), { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
@@ -460,6 +512,25 @@ describe("debugging service", () => {
     expect(operation).toMatchObject({ operationType: "read", status: "succeeded", readValue: "3000", verified: true });
     expect(txCalls.some((call) => call.text.includes("insert into node_operations"))).toBe(true);
     expect(audit.events[0]).toMatchObject({ kind: "debug-node-read", action: "read", targetType: "debug-node" });
+    expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
+      mode: "simulator",
+      action: "read",
+      status: "succeeded"
+    });
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "debug.gateway.read",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          mode: "simulator",
+          action: "read",
+          status: "succeeded",
+          hasParameterId: true
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("/sys/current");
+    expect(JSON.stringify(spans)).not.toContain("3000");
   });
 
   it("readNode rejects inactive sessions and WO parameters before gateway call", async () => {
@@ -756,10 +827,15 @@ describe("debugging service", () => {
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       []
     ]);
+    const metrics = createDeviceMetricsSpy();
+    const { spans, tracing } = createTraceRecorder();
     const service = createDebuggingService({
       db,
       gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }),
-      createAuditEvent: createAuditSpy().createAuditEvent
+      createAuditEvent: createAuditSpy().createAuditEvent,
+      metrics,
+      gatewayMode: "hdc",
+      tracing
     });
 
     const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
@@ -771,6 +847,40 @@ describe("debugging service", () => {
       verified: false,
       failureReason: "Write failed."
     });
+    expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
+      mode: "hdc",
+      action: "read",
+      status: "succeeded"
+    });
+    expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
+      mode: "hdc",
+      action: "write",
+      status: "failed"
+    });
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "debug.gateway.read",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          mode: "hdc",
+          action: "read",
+          status: "succeeded",
+          hasParameterId: true
+        })
+      }),
+      expect.objectContaining({
+        name: "debug.gateway.write",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          mode: "hdc",
+          action: "write",
+          status: "failed",
+          requiresApproval: false
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("3200");
+    expect(JSON.stringify(spans)).not.toContain("permission denied");
   });
 
   it("writeNode updates parameter current and target values after a verified write", async () => {
@@ -1049,7 +1159,9 @@ describe("debugging service", () => {
     ]);
     const gateway = makeGateway();
     const audit = createAuditSpy();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+    const metrics = createDeviceMetricsSpy();
+    const { spans, tracing } = createTraceRecorder();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
     const result = await service.rollbackSnapshot(rollbackAuth, {
       snapshotId: "snapshot-1",
@@ -1064,6 +1176,25 @@ describe("debugging service", () => {
     );
     expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.values.includes("snapshot-1"))).toBe(true);
     expect(audit.events[0]).toMatchObject({ kind: "debug-snapshot-rollback", action: "rollback", targetId: "snapshot-1" });
+    expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
+      mode: "simulator",
+      action: "rollback",
+      status: "succeeded"
+    });
+    expect(spans).toEqual([
+      expect.objectContaining({
+        name: "debug.gateway.rollback",
+        attributes: expect.objectContaining({
+          service: "wiseeff-api",
+          mode: "simulator",
+          action: "rollback",
+          status: "succeeded",
+          entryCount: 1
+        })
+      })
+    ]);
+    expect(JSON.stringify(spans)).not.toContain("/sys/current");
+    expect(JSON.stringify(spans)).not.toContain("3000");
   });
 
   it("rollbackSnapshot inserts a succeeded event after successful rollback", async () => {

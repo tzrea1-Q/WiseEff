@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildObservabilityEvidence,
   evaluateObservabilityConfig,
+  parseObservabilityArgs,
   requiredObservabilityDashboardFiles,
   requiredObservabilityFiles,
   requiredObservabilityScripts
@@ -57,7 +59,11 @@ const validDashboards = {
   }),
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-jobs.json": JSON.stringify({
     title: "WiseEff Jobs",
-    panels: [{ title: "Queue backlog", type: "timeseries" }]
+    panels: [
+      { title: "Queue backlog", type: "timeseries" },
+      { targets: [{ expr: "sum(rate(wiseeff_log_analysis_job_duration_ms_sum[5m])) / clamp_min(sum(rate(wiseeff_log_analysis_job_duration_ms_count[5m])), 0.001)" }] },
+      { targets: [{ expr: "sum(rate(wiseeff_log_analysis_job_failures_total[5m])) by (reason, stage)" }] }
+    ]
   }),
   "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
     title: "WiseEff Security Operations",
@@ -138,6 +144,35 @@ describe("M6.5 observability configuration metadata", () => {
     ]);
   });
 
+  it("allows Agent, device, and log-analysis terminal metrics produced by the M6.5 runtime", () => {
+    const result = evaluateObservabilityConfig({
+      packageJson: validPackageJson,
+      files: {
+        "ops/self-hosted/observability/prometheus.yml": validPrometheus,
+        "ops/self-hosted/observability/alerts.yml": `${validAlerts}
+      - alert: WiseEffAgentProviderCalls
+        expr: wiseeff_agent_provider_calls_total > 0
+        annotations:
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffagentprovidercalls
+`,
+        ...validDashboards,
+        "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
+          title: "WiseEff Security Operations",
+          panels: [
+            { targets: [{ expr: "wiseeff_agent_provider_duration_ms_sum" }] },
+            { targets: [{ expr: "wiseeff_agent_approvals_total" }] },
+            { targets: [{ expr: "wiseeff_agent_tool_results_total" }] },
+            { targets: [{ expr: "wiseeff_audit_write_failures_total" }] },
+            { targets: [{ expr: "wiseeff_device_gateway_operations_total" }] }
+          ]
+        })
+      }
+    });
+
+    expect(result.unknownMetricReferences).toEqual([]);
+    expect(result.status).toBe("passed");
+  });
+
   it("fails when required scripts, files, runbooks, dashboards, or metrics scrape targets are missing", () => {
     const result = evaluateObservabilityConfig({
       packageJson: { scripts: {} },
@@ -204,5 +239,37 @@ groups:
     });
 
     expect(result.forbiddenSecretMatches).toEqual([]);
+  });
+
+  it("parses output path for generated release evidence", () => {
+    expect(parseObservabilityArgs([], {})).toEqual({
+      output: "docs/generated/m6-observability-config-evidence.md"
+    });
+    expect(parseObservabilityArgs(["--output=docs/generated/observability.md"], {})).toEqual({
+      output: "docs/generated/observability.md"
+    });
+    expect(parseObservabilityArgs([], { npm_config_output: "docs/generated/npm-observability.md" })).toEqual({
+      output: "docs/generated/npm-observability.md"
+    });
+  });
+
+  it("builds redacted markdown evidence for release records", () => {
+    const evidence = buildObservabilityEvidence({
+      date: "2026-06-03T00:00:00.000Z",
+      result: evaluateObservabilityConfig({
+        packageJson: validPackageJson,
+        files: {
+          "ops/self-hosted/observability/prometheus.yml": validPrometheus,
+          "ops/self-hosted/observability/alerts.yml": validAlerts,
+          ...validDashboards
+        }
+      })
+    });
+
+    expect(evidence).toContain("## M6.5 Observability Config Evidence");
+    expect(evidence).toContain("- Status: `passed`");
+    expect(evidence).toContain("- Missing scripts: none");
+    expect(evidence).toContain("- Missing files: none");
+    expect(evidence).not.toContain("sk-live-value");
   });
 });
