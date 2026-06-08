@@ -1,0 +1,47 @@
+{
+  "providerDecision": {
+    "selectedProvider": "rustfs",
+    "decisionRecordPath": "ops/self-hosted/storage/provider-decision.md"
+  },
+  "environment": {
+    "label": "local-non-customer",
+    "branch": "codex/m6-3-self-hosted-storage-backup",
+    "commit": "54925ef0238b373035d79387a2ec475524a34635"
+  },
+  "objectStore": {
+    "endpoint": "https://storage.example.test",
+    "bucket": "wiseeff-prod",
+    "healthPrefix": ".health/",
+    "tlsPolicy": "required",
+    "pathStyle": true,
+    "backupTarget": "file:///var/backups/wiseeff/object-store/",
+    "restoreTarget": "s3://wiseeff-restore/m6-drill/",
+    "objectCount": 0,
+    "checksumValidated": true
+  },
+  "database": {
+    "backupCommand": "pg_dump --format=custom",
+    "backupTarget": "file:///var/backups/wiseeff/postgres/wiseeff.dump",
+    "restoreTarget": "postgres://wiseeff_restore@localhost:5432/wiseeff_restore",
+    "tableCountsValidated": true
+  },
+  "queue": {
+    "status": "conditional",
+    "reason": "Redis durable queue is introduced in M6.4."
+  },
+  "restore": {
+    "startedAt": "2026-06-02T14:49:32.035Z",
+    "completedAt": "2026-06-02T14:49:32.035Z",
+    "isolatedTargets": [
+      "postgres://wiseeff_restore@localhost:5432/wiseeff_restore",
+      "s3://wiseeff-restore/m6-drill/"
+    ],
+    "sampledLogReferences": 0,
+    "missingLogObjects": 0
+  },
+  "redaction": {
+    "checked": true,
+    "secretsRedacted": true
+  },
+  "commands": []
+}

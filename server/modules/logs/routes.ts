@@ -4,6 +4,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { ObjectStore } from "./objectStore";
+import type { LogAnalysisQueue } from "./logAnalysisQueue";
 import {
   archiveLogRecord,
   createLogFromFile,
@@ -67,6 +68,7 @@ export function registerLogRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStore;
+    logAnalysisQueue?: LogAnalysisQueue;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {
@@ -83,7 +85,7 @@ export function registerLogRoutes(
       bytes,
       analysisQuestion: body.analysisQuestion,
       relatedParameterId: body.relatedParameterId
-    }, { requestId: request.requestId });
+    }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
     return { status: 201, body: { fileObject: result.fileObject, log: result.log, job: result.job } };
   });
@@ -92,7 +94,7 @@ export function registerLogRoutes(
     const db = requireDb(options.db);
     const auth = await getAuth(options.getCurrentAuthContext, request);
     const body = parseWithSchema(createLogBodySchema, request.body);
-    const result = await createLogFromFile(db, auth, body, { requestId: request.requestId });
+    const result = await createLogFromFile(db, auth, body, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
     return { status: 201, body: result };
   });
@@ -136,7 +138,7 @@ export function registerLogRoutes(
     const result = await rerunLogAnalysis(db, auth, {
       logId: params.logId,
       analysisQuestion: body.analysisQuestion
-    }, { requestId: request.requestId });
+    }, { requestId: request.requestId, logAnalysisQueue: options.logAnalysisQueue });
 
     return { status: 200, body: result };
   });

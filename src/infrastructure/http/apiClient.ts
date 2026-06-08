@@ -13,6 +13,8 @@ export class WiseEffApiError extends Error {
 type ApiClientOptions = {
   baseUrl: string;
   authorization?: string;
+  getAuthorization?: () => string | undefined | Promise<string | undefined>;
+  onAuthorizationFailure?: (error: unknown) => void;
   fetchImpl?: typeof fetch;
 };
 
@@ -21,13 +23,30 @@ async function parseJson(response: Response) {
   return text ? JSON.parse(text) : null;
 }
 
-export function createApiClient({ baseUrl, authorization, fetchImpl = fetch }: ApiClientOptions) {
-  function headers(input: Record<string, string>) {
-    return authorization?.trim() ? { ...input, Authorization: authorization } : input;
+export function createApiClient({ baseUrl, authorization, getAuthorization, onAuthorizationFailure, fetchImpl = fetch }: ApiClientOptions) {
+  async function resolveAuthorization() {
+    if (!getAuthorization) {
+      return authorization;
+    }
+
+    try {
+      return await getAuthorization();
+    } catch (error) {
+      onAuthorizationFailure?.(error);
+      throw error;
+    }
+  }
+
+  async function headers(input: Record<string, string>) {
+    const resolvedAuthorization = await resolveAuthorization();
+    return resolvedAuthorization?.trim() ? { ...input, Authorization: resolvedAuthorization } : input;
   }
 
   async function request<T>(path: string, init: RequestInit): Promise<T> {
-    const response = await fetchImpl(`${baseUrl}${path}`, init);
+    const response = await fetchImpl(`${baseUrl}${path}`, {
+      ...init,
+      headers: await headers((init.headers ?? {}) as Record<string, string>)
+    });
     const body = await parseJson(response);
 
     if (!response.ok) {
@@ -42,24 +61,30 @@ export function createApiClient({ baseUrl, authorization, fetchImpl = fetch }: A
     get: <T>(path: string) =>
       request<T>(path, {
         method: "GET",
-        headers: headers({ Accept: "application/json" })
+        headers: { Accept: "application/json" }
       }),
     post: <T>(path: string, body: unknown) =>
       request<T>(path, {
         method: "POST",
-        headers: headers({ Accept: "application/json", "Content-Type": "application/json" }),
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
       }),
     put: <T>(path: string, body: unknown) =>
       request<T>(path, {
         method: "PUT",
-        headers: headers({ Accept: "application/json", "Content-Type": "application/json" }),
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }),
+    patch: <T>(path: string, body: unknown) =>
+      request<T>(path, {
+        method: "PATCH",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify(body)
       }),
     delete: <T>(path: string) =>
       request<T>(path, {
         method: "DELETE",
-        headers: headers({ Accept: "application/json" })
+        headers: { Accept: "application/json" }
       }),
     upload: <T>(path: string, file: File, fields: Record<string, string> = {}) => {
       const formData = new FormData();
@@ -70,7 +95,7 @@ export function createApiClient({ baseUrl, authorization, fetchImpl = fetch }: A
 
       return request<T>(path, {
         method: "POST",
-        headers: headers({ Accept: "application/json" }),
+        headers: { Accept: "application/json" },
         body: formData
       });
     }

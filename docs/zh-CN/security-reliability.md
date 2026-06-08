@@ -4,13 +4,17 @@
 
 ## Auth 和 RBAC
 
-开发模式可以使用 `x-wiseeff-user` 和 seed 用户，方便本地测试。production auth 使用 HMAC bearer token：
+开发模式可以使用 `x-wiseeff-user` 和 seed 用户，方便本地测试。M6.2 目标自托管 production auth 使用 OIDC bearer token：
 
 ```text
-Authorization: Bearer <base64url-json-payload>.<hmac-sha256-signature>
+AUTH_MODE=production
+AUTH_PROVIDER=oidc
+AUTH_OIDC_ISSUER=https://id.example.com/realms/wiseeff
+AUTH_OIDC_AUDIENCE=wiseeff-api
+Authorization: Bearer <oidc-access-token>
 ```
 
-production mode 不允许回退到 development user。签名 payload 至少需要 issuer、subject、organization，可携带 roles 和 permissions。
+production mode 不允许回退到 development user。OIDC token 必须通过 issuer、audience、expiration、not-before 和 signature 校验；token 只证明身份，最终 active 状态、角色和权限从 WiseEff PostgreSQL 用户/角色表读取。`wiseeff_roles` 可以作为兼容或 bootstrap 诊断 claim，但不是 M6.2 之后的生产授权源。HMAC bearer token 只保留给本地 smoke/test，不能作为目标环境 identity evidence。
 
 当前用户权限设计见 [user-permission-design.md](../security/user-permission-design.md)。平台角色包括 Guest、Hardware User、Software User、Hardware Committer、Software Committer 和 Admin。Hardware Committer、Software Committer、Software User 都包含 Hardware User 的操作权限；但操作权限继承不等于工作流槽位可分配性。硬件 MDE 只显示具体 Hardware Committer 用户，软件 MDE 只显示具体 Software Committer 用户，软件开发人只显示 Software User 或 Software Committer 用户。Guest、Admin 和普通/base 用户不应出现在具体 assignee 下拉框中，除非该槽位明确允许。
 
@@ -88,11 +92,14 @@ GET /api/v1/operations/pilot-readiness
 - database
 - object store
 - worker queue
+- durable queue transport
 - device gateway
 - Agent provider
 - backup/restore evidence
 
 任何 gate 不 ready 时，状态必须是 `blocked`，不能把本地 skip 当作 pilot-ready 证据。
+
+M6.4 中 `/health/ready` 在 durable queue 模式下还需要报告 `dependencies.durableQueue.transport` 和 `dependencies.durableQueue.database`。`transport` 代表 Redis/BullMQ 可用，`database` 代表 PostgreSQL job-state 可用。两者都 ready 才能把队列通道视为可用。
 
 ## Backup、restore 和 rollback
 
@@ -123,4 +130,4 @@ npm run selfhost:check
 npm run selfhost:smoke -- --base-url https://<host>
 ```
 
-`selfhost:smoke` 会探测 `/health/live`、`/health/ready`、`/api/v1/me` 和 `/api/v1/operations/pilot-readiness`，并写入脱敏 evidence。`--allow-only-blocked=deviceGateway` 只适用于非 HDC staging，且其他 readiness gate 必须真实完成，包括 backup/restore drill 后设置 `M5_BACKUP_RESTORE_DRILL_AT`。完整 pilot readiness 仍然需要真实 HDC、backup/restore、rollback、object store、worker、Agent provider 和 identity evidence。
+`selfhost:smoke` 会探测 `/health/live`、`/health/ready`、`/api/v1/me` 和 `/api/v1/operations/pilot-readiness`，并写入脱敏 evidence。`--allow-only-blocked=deviceGateway` 只适用于非 HDC staging，且其他 readiness gate 必须真实完成，包括 backup/restore drill 后设置 `M5_BACKUP_RESTORE_DRILL_AT`，以及 durable queue 模式下通过 `npm run queue:check -- --base-url <target-url>`。完整 pilot readiness 仍然需要真实 HDC、backup/restore、rollback、object store、worker、Redis/BullMQ queue、Agent provider 和 identity evidence。

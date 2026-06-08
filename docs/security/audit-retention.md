@@ -8,6 +8,7 @@ Audit records are product evidence. Missing audit is a product failure for produ
 - Log upload, upload failed, rerun, archive, unarchive, and feedback.
 - Debugging target detection, session creation, node read/write, and snapshot rollback.
 - Agent session, tool requested, approval requested, approval executed/rejected, and tool failure.
+- User governance create, profile update, activation/deactivation, and role replacement.
 
 ## Retention Guidance
 
@@ -16,6 +17,7 @@ For controlled pilot:
 - keep audit events for the full pilot period plus the agreed review window,
 - keep request ids and trace ids with each event,
 - keep high-risk write audit evidence with enough metadata to reconstruct action, actor, scope, and result,
+- keep backup/restore drill summaries with enough metadata to reconstruct provider, target environment, isolated restore targets, validation commands, and outcome,
 - avoid storing raw secrets or unnecessary customer payloads in audit metadata.
 
 ## Query Expectations

@@ -3,10 +3,13 @@ import type { Database } from "../../shared/database/client";
 import { createPostgresDatabase } from "../../shared/database/client";
 import { createObjectStoreFromEnv } from "../../objectStoreFactory";
 import type { ObjectStore } from "./objectStore";
+import { createLogAnalysisQueueRuntime, type LogAnalysisQueueRuntimeEnv } from "./logAnalysisQueueRuntime";
 import { startLogWorkerLoop, type ProcessLogWorkerOptions } from "./worker";
 
 type RawWorkerEnv = {
   DATABASE_URL?: string;
+  LOG_ANALYSIS_QUEUE_MODE?: "polling" | "durable";
+  REDIS_URL?: string;
   OBJECT_STORE_MODE?: "local" | "s3";
   OBJECT_STORE_ROOT?: string;
   OBJECT_STORAGE_ENDPOINT?: string;
@@ -20,6 +23,9 @@ type LogWorkerRuntimeOptions = {
   db: Database;
   objectStore: ObjectStore;
   startLoop?: (options: ProcessLogWorkerOptions, intervalMs?: number) => () => void;
+  createDurableRuntime?: typeof createLogAnalysisQueueRuntime;
+  queueMode?: "polling" | "durable";
+  env?: LogAnalysisQueueRuntimeEnv;
   workerId?: string;
   leaseTtlMs?: number;
   intervalMs?: number;
@@ -28,6 +34,9 @@ type LogWorkerRuntimeOptions = {
 export function validateLogWorkerConfig(raw: RawWorkerEnv) {
   if (!raw.DATABASE_URL?.trim()) {
     throw new Error("DATABASE_URL is required to start the log worker.");
+  }
+  if ((raw.LOG_ANALYSIS_QUEUE_MODE ?? "polling") === "durable" && !raw.REDIS_URL?.trim()) {
+    throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable.");
   }
 
   if ((raw.OBJECT_STORE_MODE ?? "local") === "s3") {
@@ -51,12 +60,23 @@ export function createLogWorkerRuntime({
   db,
   objectStore,
   startLoop = startLogWorkerLoop,
+  createDurableRuntime = createLogAnalysisQueueRuntime,
+  queueMode = "polling",
+  env,
   workerId = "wiseeff-log-worker",
   leaseTtlMs = 60_000,
   intervalMs = 1000
 }: LogWorkerRuntimeOptions) {
   return {
     start() {
+      if (queueMode === "durable") {
+        if (!env) {
+          throw new Error("Durable log worker runtime requires Redis queue environment.");
+        }
+        const runtime = createDurableRuntime({ env, db, objectStore, workerId });
+        return () => runtime.close();
+      }
+
       return startLoop({ db, objectStore, workerId, leaseTtlMs }, intervalMs);
     }
   };
@@ -69,7 +89,15 @@ export async function createLogWorkerRuntimeFromEnv(raw: NodeJS.ProcessEnv = pro
 
   return createLogWorkerRuntime({
     db: createPostgresDatabase(env.DATABASE_URL!),
-    objectStore: createObjectStoreFromEnv(env)
+    objectStore: createObjectStoreFromEnv(env),
+    queueMode: env.LOG_ANALYSIS_QUEUE_MODE,
+    env: {
+      REDIS_URL: env.REDIS_URL ?? "",
+      LOG_ANALYSIS_QUEUE_PREFIX: env.LOG_ANALYSIS_QUEUE_PREFIX,
+      LOG_ANALYSIS_QUEUE_ATTEMPTS: env.LOG_ANALYSIS_QUEUE_ATTEMPTS,
+      LOG_ANALYSIS_QUEUE_BACKOFF_MS: env.LOG_ANALYSIS_QUEUE_BACKOFF_MS,
+      LOG_ANALYSIS_QUEUE_CONCURRENCY: env.LOG_ANALYSIS_QUEUE_CONCURRENCY
+    }
   });
 }
 

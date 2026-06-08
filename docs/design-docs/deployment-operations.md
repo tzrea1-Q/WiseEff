@@ -164,10 +164,19 @@ Device Gateway 健康检查：
 - Production must set `NODE_ENV=production` and `OBJECT_STORE_MODE=s3`.
 - S3/OSS mode requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`; `OBJECT_STORAGE_REGION` is optional.
 - Uploaded log objects use organization-scoped keys with SHA-256 checksum prefixes. The adapter writes checksum, byte size, content type, retention class, and encryption-mode metadata.
-- `/health/ready` checks the configured bucket through the object-store health seam and returns a 503 with the provider error when the bucket, endpoint, or credentials are not usable.
-- The built-in HTTP transport issues HEAD/GET/PUT with WiseEff signing headers. It is an M5 runtime seam, not a full AWS SigV4 implementation or cloud-vendor SDK.
+- `/health/ready` checks the configured bucket through the object-store health seam. M6.3 extends this to bucket `HEAD`, probe object `PUT`, object `HEAD`, object `GET` checksum, and object `DELETE`.
+- The built-in HTTP transport issues S3-compatible path-style requests with AWS4-HMAC-SHA256-style headers. It remains provider-neutral and must pass the same compatibility probe for RustFS-compatible, MinIO-compatible, Ceph RGW, or equivalent self-hosted providers.
 - Pilot smoke should upload a supported log, confirm analysis can read it back, and verify `/health/ready` reports `dependencies.objectStore.status=ready`.
-- Cloud-provider SDK wiring, SigV4/provider-specific signing, bucket provisioning, lifecycle policy, KMS policy, replication, and credential rotation remain post-M5 deployment work unless the target environment has already provided them.
+- Bucket provisioning, lifecycle policy, at-rest encryption/KMS policy, replication, backup/export, and credential rotation remain operator deployment responsibilities.
+
+## M6.3 Self-Hosted Storage And Backup
+
+- Provider choice is recorded under `ops/self-hosted/storage/provider-decision.md`; the app targets S3-compatible behavior rather than a single vendor SDK.
+- `ops/self-hosted/storage/object-store.env.example` documents endpoint, bucket, TLS, path-style, health prefix, retention class, backup targets, and isolated restore targets.
+- `npm run restore:drill` validates restore target safety before restore commands run.
+- `npm run backup:drill` writes redacted JSON/Markdown evidence for provider, environment, PostgreSQL backup/restore, object-store backup/restore, checksum validation, sampled log references, and queue status.
+- `npm run backup:check` blocks missing fields, unsafe restore targets, failed command exit codes, checksum/table-count failures, missing object references, and unredacted secrets.
+- Redis backup/restore remains conditional until M6.4 adds the durable queue service.
 
 ## Device Gateway
 
@@ -205,7 +214,7 @@ Runtime services:
 - `web`: built Vite frontend served by `npm run preview -- --host 0.0.0.0`.
 - `proxy`: Caddy TLS and reverse proxy for frontend, `/api/*`, and `/health/*`.
 
-This started as an M6.1 deployment baseline. M6.5 now adds the first self-hosted observability baseline: `GET /metrics`, `npm run observability:check`, Prometheus scrape config, alert rules with runbook links, and Grafana dashboard templates. OIDC, self-hosted object-store backup evidence, durable queue target evidence, release rollback, capacity evidence, and target Prometheus/Grafana/Alertmanager proof remain M6.2-M6.6 work.
+This started as an M6.1 deployment baseline. M6.2 adds OIDC identity and user-governance boundaries. M6.3 adds the self-hosted object-store provider decision, compatibility probe, and backup/restore evidence gates, but target restore readiness still requires a real isolated restore drill. M6.4 adds Redis/BullMQ durable queue wiring, but target queue readiness still requires live Redis evidence. M6.5 adds the first self-hosted observability baseline: `GET /metrics`, `npm run observability:check`, Prometheus scrape config, alert rules with runbook links, and Grafana dashboard templates. Release rollback, capacity evidence, and target Prometheus/Grafana/Alertmanager proof remain M6 follow-up work.
 
 ## M5 Live Agent Provider Boundary
 

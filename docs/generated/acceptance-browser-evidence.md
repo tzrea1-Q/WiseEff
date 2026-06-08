@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-02T03:53:25.759Z
-- Branch: `codex/m5-2-remaining-evidence-closure`
-- Commit: `75fcd15b6d222c6ce4fa945763774a18f756e585`
+- Date: 2026-06-02T11:44:25.346Z
+- Branch: `codex/m6-2-identity-user-governance`
+- Commit: `f7c3bc3997c5e5829b2f36e0e773f7eeddbf566a`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `passed`

@@ -72,6 +72,7 @@ npm run test:server
 npm run test:all
 npm run build
 npm run selfhost:check
+npm run queue:check
 npm run observability:check
 ```
 

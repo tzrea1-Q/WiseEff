@@ -8,6 +8,8 @@
 
 **Tech Stack:** S3-compatible self-hosted object storage, PostgreSQL backup/restore, optional Redis persistence after M6.4, TypeScript smoke scripts, Docker Compose/self-hosted Linux runbooks, WiseEff object-store readiness checks.
 
+**Current status (2026-06-02):** Local implementation, documentation, evidence-shape checks, restore-target safety checks, and repository verification are complete in branch `codex/m6-3-self-hosted-storage-backup`. The generated M6 evidence is local non-customer example evidence only. This plan remains active and must not move to `docs/exec-plans/completed/` until a real non-customer or pilot target restore drill runs against isolated PostgreSQL and object-store restore targets.
+
 ---
 
 ## Reference Basis

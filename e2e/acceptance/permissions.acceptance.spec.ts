@@ -5,7 +5,7 @@ import { expect, test, type Page } from "playwright/test";
 import { withPgClient } from "./helpers/database";
 import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
-import { recordOperationEvidence } from "./helpers/operationEvidence";
+import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
 useBrowserDiagnostics(test);
 
@@ -14,6 +14,7 @@ const apiAuthorization =
   process.env.VITE_WISEEFF_API_AUTHORIZATION?.trim() ||
   process.env.M5_SMOKE_AUTHORIZATION?.trim() ||
   process.env.WISEEFF_SMOKE_AUTHORIZATION?.trim();
+const createdAcceptanceUserEmail = `chen.rui.acceptance.${Date.now()}@chargelab.cn`;
 
 function runNpmScript(script: string) {
   const invocation =
@@ -104,10 +105,79 @@ async function apiExposesPermissionAudit(page: Page, userName: string, roleId: s
 
   return body.items.some(
     (item) =>
-      item.kind === "user-role-change" &&
-      item.action.includes(userName) &&
-      (item.metadata?.newRole === roleId || item.action.includes(roleId))
+      item.kind === "user-role-replace" &&
+      item.targetId === userName &&
+      Array.isArray(item.metadata?.roles) &&
+      item.metadata.roles.some((role) => {
+        const item = role as { roleId?: unknown; role_id?: unknown };
+        return item.roleId === roleId || item.role_id === roleId;
+      })
   );
+}
+
+type GovernedUserApiItem = {
+  id: string;
+  name: string;
+  email: string;
+  isActive: boolean;
+  roles: Array<{ projectId: string | null; roleId: string }>;
+};
+
+type AuditApiItem = {
+  id?: string;
+  kind: string;
+  action: string;
+  targetId: string | null;
+  traceId?: string;
+  metadata?: Record<string, unknown>;
+};
+
+async function expectSuccessfulApiGet<T>(page: Page, route: string) {
+  const response = await page.request.get(apiRoute(route), {
+    headers: apiAuthorization ? { Authorization: apiAuthorization } : undefined
+  });
+  expect(response.ok()).toBe(true);
+  return { response, body: (await response.json()) as T };
+}
+
+async function userGovernanceDbSummary(input: { userId: string; email: string; roleId: string }) {
+  return withPgClient(async (client) => {
+    const result = await client.query<{ user_count: string; role_count: string; active: boolean | null }>(
+      `
+      select
+        (select count(*)::text from users where id = $1 and email = $2) as user_count,
+        (
+          select count(*)::text
+          from user_role_bindings
+          where user_id = $1 and role_id = $3
+        ) as role_count,
+        (select is_active from users where id = $1) as active
+      `,
+      [input.userId, input.email, input.roleId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "users,user_role_bindings",
+      predicate: `userId=${input.userId}; email=${input.email}; roleId=${input.roleId}`,
+      observed: `users=${row?.user_count ?? 0}; roles=${row?.role_count ?? 0}; active=${row?.active ?? "missing"}`,
+      rowCount: Number(row?.user_count ?? 0)
+    };
+  });
+}
+
+function userAuditSummaryFor(items: AuditApiItem[], match: { kind: string; targetId: string }) {
+  const item = items.find((candidate) => candidate.kind === match.kind && candidate.targetId === match.targetId);
+  expect(item).toBeTruthy();
+
+  return {
+    id: item?.id,
+    kind: item!.kind,
+    action: item!.action,
+    targetId: item!.targetId,
+    requestId: item?.traceId,
+    metadataSummary: Object.keys(item?.metadata ?? {}).sort().join(",")
+  };
 }
 
 test.describe("M5.4 manual flow H - permissions and user governance", () => {
@@ -138,12 +208,18 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     await wangRole.selectOption("software-committer");
     await expect(wangRole).toHaveValue("software-committer");
 
-    if (!(await apiExposesPermissionAudit(page, "Wang Jie", "software-committer"))) {
-      testInfo.annotations.push({
-        type: "product-gap",
-        description:
-          "User permission changes are local prototype state; /user-permissions has no visible audit timeline and the API audit endpoint does not expose this role change."
-      });
+    const auditVisible = await apiExposesPermissionAudit(page, "u-wang-jie", "software-committer");
+    if (!auditVisible && databaseUrl) {
+      const { body } = await expectSuccessfulApiGet<{ items: AuditApiItem[] }>(page, "/api/v1/audit-events");
+      expect(body.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            kind: "user-role-replace",
+            action: "replace-roles",
+            targetId: "u-wang-jie"
+          })
+        ])
+      );
     }
 
     await setPrototypeRole(page, "Hardware User");
@@ -181,25 +257,43 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
     const addUserDialog = page.getByRole("dialog", { name: "Add user" });
     await expect(addUserDialog).toBeVisible();
     await addUserDialog.getByLabel("Name").fill("Chen Rui");
-    await addUserDialog.getByLabel("Email").fill("chen.rui.acceptance@chargelab.cn");
+    await addUserDialog.getByLabel("Email").fill(createdAcceptanceUserEmail);
     await addUserDialog.getByLabel("Title").fill("Acceptance Test Engineer");
     await addUserDialog.getByLabel("Initial role").selectOption("software-user");
     await addUserDialog.getByRole("button", { name: "Create user" }).click();
     await expect(addUserDialog).not.toBeVisible();
 
-    const chenRow = table.getByRole("row").filter({ hasText: "Chen Rui" });
+    const chenRow = table.getByRole("row").filter({ hasText: createdAcceptanceUserEmail });
     await expect(chenRow).toBeVisible();
-    await expect(chenRow).toContainText("chen.rui.acceptance@chargelab.cn");
+    await expect(chenRow).toContainText(createdAcceptanceUserEmail);
     await expect(chenRow.getByRole("combobox", { name: "Role for Chen Rui" })).toHaveValue("software-user");
     await expect(chenRow.getByRole("button", { name: "Disable Chen Rui" })).toBeVisible();
 
-    if (!(await apiExposesPermissionAudit(page, "Chen Rui", "software-user"))) {
-      testInfo.annotations.push({
-        type: "product-gap",
-        description:
-          "PERM-USER-MGMT-001 proves local prototype UI mutation and route denial only; durable user-management mutation/audit API is not implemented or exposed."
-      });
-    }
+    const usersApi = await expectSuccessfulApiGet<{ items: GovernedUserApiItem[] }>(page, "/api/v1/users");
+    const createdUser = usersApi.body.items.find((user) => user.email === createdAcceptanceUserEmail);
+    expect(createdUser).toBeTruthy();
+    expect(createdUser).toMatchObject({
+      name: "Chen Rui",
+      email: createdAcceptanceUserEmail,
+      isActive: true
+    });
+    expect(createdUser?.roles).toEqual(expect.arrayContaining([expect.objectContaining({ roleId: "software-user" })]));
+
+    const auditApi = await expectSuccessfulApiGet<{ items: AuditApiItem[] }>(page, "/api/v1/audit-events");
+    expect(auditApi.body.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "user-create",
+          action: "create",
+          targetId: createdUser?.id
+        }),
+        expect.objectContaining({
+          kind: "user-role-replace",
+          action: "replace-roles",
+          targetId: "u-wang-jie"
+        })
+      ])
+    );
 
     await setPrototypeRole(page, "Software User");
     await expect(page.getByRole("heading", { name: "Permission denied" })).toBeVisible();
@@ -213,8 +307,37 @@ test.describe("M5.4 manual flow H - permissions and user governance", () => {
       status: "passed",
       page,
       testInfo,
+      api: [
+        summarizeApiResponse(usersApi.response, {
+          method: "GET",
+          path: "/api/v1/users",
+          responseSummary: `created user ${createdUser?.id} listed with software-user role`
+        }),
+        summarizeApiResponse(auditApi.response, {
+          method: "GET",
+          path: "/api/v1/audit-events",
+          responseSummary: "user-create and user-role-replace audit events visible"
+        })
+      ],
+      db: [
+        await userGovernanceDbSummary({
+          userId: createdUser!.id,
+          email: createdAcceptanceUserEmail,
+          roleId: "software-user"
+        })
+      ],
+      audit: [
+        userAuditSummaryFor(auditApi.body.items, {
+          kind: "user-create",
+          targetId: createdUser!.id
+        }),
+        userAuditSummaryFor(auditApi.body.items, {
+          kind: "user-role-replace",
+          targetId: "u-wang-jie"
+        })
+      ],
       notes:
-        "Admin changed a non-self user's role and created a local prototype user in the UI. Software User was denied access to /user-permissions. Durable backend user-management mutation/audit remains annotated as a product gap when no API audit evidence is visible."
+        "Admin changed a non-self user's role and created a backend-governed user through the UI. Software User was denied access to /user-permissions, and API, DB, and audit evidence confirmed durable user-governance writes."
     });
   });
 

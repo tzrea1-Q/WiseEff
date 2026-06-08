@@ -1,5 +1,4 @@
-import { createApiClient } from "./apiClient";
-import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "./runtimeMode";
+import { createDefaultApiClient } from "./defaultApiClient";
 
 export type AuthContextDto = {
   user: {
@@ -21,7 +20,7 @@ export type AuthContextDto = {
   permissions: string[];
 };
 
-export function createAuthClient(apiClient = createApiClient({ baseUrl: wiseEffApiBaseUrl, authorization: wiseEffApiAuthorization })) {
+export function createAuthClient(apiClient = createDefaultApiClient()) {
   return {
     getCurrentAuthContext: () => apiClient.get<AuthContextDto>("/api/v1/me")
   };

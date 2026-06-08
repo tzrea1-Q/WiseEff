@@ -475,4 +475,60 @@ describe("operations routes", () => {
       restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
     }
   });
+
+  it("uses durable queue health for the worker pilot gate when provided", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGateway: createDebugGateway(),
+        agentProvider: createReadyAgentProvider(),
+        durableQueue: {
+          ok: false,
+          status: "failed",
+          waiting: 0,
+          active: 0,
+          completed: 0,
+          failed: 0,
+          delayed: 0,
+          paused: false,
+          message: "Redis connection failed."
+        },
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          HDC_DEVICE_LAB_AVAILABLE: true,
+          HDC_SMOKE_PROJECT_ID: "aurora",
+          HDC_SMOKE_DEVICE_ID: "lab-device-1",
+          HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
+          HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
+          HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["worker"],
+        gates: {
+          worker: {
+            ok: false,
+            status: "failed",
+            message: "Redis connection failed."
+          }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
 });

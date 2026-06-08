@@ -3,7 +3,7 @@ import { buildOpenApiDocument } from "./openapi";
 import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
 
-type OpenApiMethod = "get" | "post" | "delete";
+type OpenApiMethod = "get" | "post" | "put" | "patch" | "delete";
 
 const criticalRouteIds = [
   "auth.me",
@@ -36,6 +36,36 @@ describe("M5 OpenAPI contract", () => {
     for (const route of routeManifest) {
       expect(schemaRegistry[route.id], route.id).toBeDefined();
     }
+  });
+
+  it("publishes user governance API routes as commercial-readiness contracts", () => {
+    expect(routeManifest).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "users.update", method: "PATCH", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" }),
+        expect.objectContaining({
+          id: "users.activation",
+          method: "PATCH",
+          path: "/api/v1/users/:userId/activation",
+          module: "users",
+          stability: "commercial-readiness"
+        }),
+        expect.objectContaining({
+          id: "users.replaceRoles",
+          method: "PUT",
+          path: "/api/v1/users/:userId/roles",
+          module: "users",
+          stability: "commercial-readiness"
+        })
+      ])
+    );
+
+    expect(schemaRegistry["users.create"]).toMatchObject({
+      requestBody: "CreateUserGovernanceRequest",
+      responseBody: "UserGovernanceResponse",
+      successStatus: 201
+    });
   });
 
   it("publishes critical commercial pilot paths", () => {

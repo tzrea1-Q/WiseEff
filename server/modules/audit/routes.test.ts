@@ -9,9 +9,34 @@ vi.mock("./repository", () => ({
   listAuditEvents: vi.fn()
 }));
 
-function makeDb(): Database {
+function makeDb(input: { userId?: string; organizationId?: string; email?: string; roleId?: string; isActive?: boolean } = {}): Database {
+  const userId = input.userId ?? "u-auditor";
+  const organizationId = input.organizationId ?? "org-prod";
+  const email = input.email ?? "auditor@example.com";
+  const query: Database["query"] = async <Row,>(text: string) => {
+    if (text.includes("users.id as user_id")) {
+      return {
+        rows: [
+          {
+            user_id: userId,
+            organization_id: organizationId,
+            organization_name: "Pilot Org",
+            name: "Auditor",
+            email,
+            title: "Auditor",
+            is_active: input.isActive ?? true,
+            project_id: "aurora",
+            role_id: input.roleId ?? "guest"
+          }
+        ] as Row[],
+        rowCount: 1
+      };
+    }
+    return { rows: [] as Row[], rowCount: 0 };
+  };
+
   return {
-    query: vi.fn(),
+    query,
     transaction: vi.fn()
   };
 }

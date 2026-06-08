@@ -14,16 +14,19 @@ describe("createObjectStoreFromEnv", () => {
       OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
       fetchImpl: async (input, init) => {
         requests.push({ input, init });
+        if (init?.method === "GET") {
+          return new Response("wiseeff-s3-health", { status: 200 });
+        }
         return new Response(null, { status: 200 });
       }
     });
 
     await expect(objectStore.checkHealth()).resolves.toEqual({ ok: true, status: "ready" });
-    expect(requests).toEqual([
-      {
-        input: "https://storage.example.com/wiseeff-pilot",
-        init: expect.objectContaining({ method: "HEAD" })
-      }
-    ]);
+    expect(requests.map((request) => request.init?.method)).toEqual(["HEAD", "PUT", "HEAD", "GET", "DELETE"]);
+    expect(String(requests[0].input)).toBe("https://storage.example.com/wiseeff-pilot");
+    expect(String(requests[1].input)).toMatch(/^https:\/\/storage\.example\.com\/wiseeff-pilot\/\.health\/.+\.txt$/);
+    expect(String(requests[2].input)).toBe(String(requests[1].input));
+    expect(String(requests[3].input)).toBe(String(requests[1].input));
+    expect(String(requests[4].input)).toBe(String(requests[1].input));
   });
 });

@@ -10,13 +10,13 @@ M0-M5 productization work has merged. 当前项目已经从前端原型推进到
 - API runtime 已接入参数、日志、调试、Agent、审计和运维端点。
 - TypeScript 模块化后端覆盖 auth、audit、parameters、logs、jobs、debugging、agent、contracts 和 operations。
 - PostgreSQL 迁移是 source of truth，`docs/generated/db-schema.md` 是人工维护的 schema 摘要。
-- OpenAPI artifact/check、生产 auth 边界、worker/object-store seam、HDC gateway seam、live Agent provider seam 和 M5 pilot-readiness gate 已落地。
+- OpenAPI artifact/check、生产 auth 边界、worker/object-store seam、Redis/BullMQ durable queue seam、HDC gateway seam、live Agent provider seam 和 M5 pilot-readiness gate 已落地。
 - GitHub PR #39 已合并，CI Build and test 通过。
 
 主要缺口：
 
 - local PostgreSQL-backed API-mode E2E 已通过；staging live API、staging PostgreSQL-backed E2E、HDC device-lab、backup/restore、rollback 和 live provider evidence 尚未记录。
-- 企业 SSO/OIDC、durable queue、云对象存储 SDK/IaC、OpenAPI generated client、监控告警和容量压测仍是后续生产化增强。
+- 企业 SSO/OIDC、云对象存储 SDK/IaC、OpenAPI generated client、监控告警和容量压测仍是后续生产化增强；durable queue 本地实现已进入 M6.4，但目标 Redis evidence 和容量调优仍待记录。
 - mock runtime 仍应保留用于 demos/tests，但不能作为生产业务数据源。
 
 ## 2. 开发原则
@@ -242,7 +242,7 @@ M6 is split into active execution plans so each phase can be implemented, verifi
 1. M6.1 Self-Hosted Runtime Baseline: Linux deployment, PostgreSQL, API/web/worker services, reverse proxy, TLS, and basic smoke evidence.
 2. M6.2 Identity & User Governance: self-hosted OIDC, Keycloak-compatible setup, backend user/role APIs, audit, and permission acceptance.
 3. M6.3 Self-Hosted Storage & Backup: S3-compatible object storage, PostgreSQL/object-store backup and restore, and Redis backup procedure once M6.4 lands.
-4. M6.4 Durable Queue: Redis/BullMQ or equivalent durable queue while PostgreSQL remains the source of truth for job state and audit.
+4. M6.4 Durable Queue: Redis/BullMQ durable queue is implemented locally for log-analysis dispatch while PostgreSQL remains the source of truth for job state and audit; target Redis evidence remains pending.
 5. M6.5 Observability & Operations: OpenTelemetry, Prometheus/Grafana, structured logs, alerts, and incident runbooks.
 6. M6.6 Release, Rollback & Capacity Gate: versioned release process, rollback rehearsal, capacity testing, and target synthetic acceptance.
 

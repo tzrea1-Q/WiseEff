@@ -1,6 +1,6 @@
 # Frontend
 
-WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backed prototype plus API mode for the M0-M5 productized backend surface.
+WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backed prototype plus API mode for the M0-M6.2 productized backend surface.
 
 ## Key Directories
 
@@ -25,6 +25,10 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 ```
 
 Production builds must not use mock runtime as a business data source.
+
+M6.2 OIDC runtime support uses an async authorization provider so API clients can request the current access token and handle refresh/logout failures without static bearer injection. `VITE_WISEEFF_API_AUTHORIZATION` remains a local static-token convenience and is rejected by production builds.
+
+`/user-permissions` uses the user-governance HTTP client in API mode for listing users, creating users, activation changes, profile updates, and role replacement. The API-mode page must hydrate its displayed users from `/api/v1/users` before operators make changes, so UI rows use backend governed ids instead of mock ids. UI permission checks remain UX only; backend `/api/v1/users` routes enforce `users:manage`, self-lockout protection, and audit.
 
 ## Parameter Repository
 
@@ -79,6 +83,12 @@ Runtime split:
 `UnifiedAgent` renders API assistant confidence as a percentage and shows citations from returned messages. Approval-required tool calls open the existing confirmation dialog and call `approveToolCall` or `rejectToolCall`; mutating tools remain backend-gated by approval state, authz, and audit.
 
 The M4 API smoke lives in `e2e/agent.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
+
+## Identity And User Governance
+
+M6.2 moves target production identity to OIDC while preserving the existing `AuthContext` shape returned by `/api/v1/me`. API-mode clients send `Authorization: Bearer <oidc-access-token>` through `createOidcAuthProvider` or the selected runtime handoff. Local HMAC smoke tokens are acceptable only for local development and deterministic tests.
+
+The user-governance client maps `/api/v1/users` responses into frontend `UserAccount` records and posts role bindings using the platform role ids: `guest`, `hardware-user`, `software-user`, `hardware-committer`, `software-committer`, and `admin`.
 
 ## M5 Pilot Gate
 
