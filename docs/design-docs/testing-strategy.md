@@ -215,6 +215,20 @@ npm run observability:check
 
 `observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, structured log redaction, correlation metadata, and tracing export failure isolation. Target Prometheus scrape, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
 
+## 9.5 M6.6 Release, Rollback, And Capacity Gates
+
+M6.6 adds release-operation tests and evidence writers rather than new product workflow tests:
+
+```bash
+npm test -- scripts/run-self-hosted-release-gate.test.ts scripts/run-capacity-gate.test.ts
+npm run capacity:gate -- --target-url <target-url>
+npm run selfhost:release-gate -- --target-environment <label> --artifact-ref <artifact> --env-fingerprint <sha256>
+```
+
+`capacity:gate` verifies target URL handling, threshold evaluation, auth-token redaction, k6 command construction, and evidence output. Without observed target metrics, it must stay failed or pending. After a real target run, operators can pass observed p95 latency, error rate, throughput, CPU, memory, database connections, queue backlog, and object-store probe status as CLI inputs.
+
+`selfhost:release-gate` verifies release metadata, command-gate wiring, backup/rollback/capacity/synthetic evidence paths, and explicit HDC scope. It can verify local script configuration, but release readiness requires target evidence from backup/restore, rollback rehearsal, queue drain/pause/resume, observability snapshots, capacity, and target synthetic acceptance.
+
 ## 10. Documentation Governance
 
 Documentation-impacting work must run `npm run docs:check` plus `git diff --check`. The docs check enforces that active implementation plans carry a documentation impact matrix and update gate.

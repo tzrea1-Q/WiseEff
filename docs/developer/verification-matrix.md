@@ -33,6 +33,8 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run backup:check` | M6.3 backup/restore evidence shape, redaction, and failed-command gate | After `npm run backup:drill`, or when changing backup/restore evidence schema. |
 | JSON parse of `ops/self-hosted/observability/grafana/dashboards/*.json` | Grafana dashboard JSON is syntactically valid | After changing M6.5 dashboard exports. |
 | Alert/runbook text check | Every Prometheus alert has a `runbook_url` annotation | After changing `ops/self-hosted/observability/alerts.yml`. |
+| `npm run capacity:gate` | M6.6 capacity threshold evidence shape and redacted capacity report | After changing capacity thresholds, capacity scripts, release evidence docs, or when recording a target capacity run. |
+| `npm run selfhost:release-gate` | M6.6 release-candidate metadata, command-gate, dependency, and evidence summary | Before accepting a self-hosted release candidate or after changing release/rollback/capacity scripts and docs. |
 
 `npm test` defaults `VITE_WISEEFF_RUNTIME_MODE` to `mock` so local `.env` API-mode settings do not leak into frontend unit tests. For an intentional API-mode unit test run, set `VITE_WISEEFF_RUNTIME_MODE=api` explicitly in the shell before invoking `npm test`.
 
@@ -55,6 +57,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M6.2 identity and user governance | `npm run acceptance:browser` plus `npm run acceptance:evidence` and focused auth/user tests | PostgreSQL, API-mode runtime, local smoke token or target OIDC token | Before accepting OIDC/auth runtime or backend user-governance changes. |
 | M6.3 self-hosted storage and backup | `npm run restore:drill`, `npm run backup:drill`, `npm run backup:check` | S3-compatible object store, PostgreSQL backup target, isolated restore database, isolated restore bucket/prefix | Before claiming backup/restore evidence for a self-hosted target. |
 | M6.4 durable queue | `npm run queue:check -- --base-url <target-url>` | Running API with `LOG_ANALYSIS_QUEUE_MODE=durable`, Redis/BullMQ, PostgreSQL job table | Before treating a self-hosted queue transport as ready. |
+| M6.6 release, rollback, and capacity | `npm run capacity:gate` plus `npm run selfhost:release-gate` | Deployed self-hosted target, backup/restore evidence, queue readiness, observability, target synthetic acceptance, rollback rehearsal, capacity metrics | Before treating a self-hosted release candidate as ready for a controlled commercial pilot. |
 
 ## UI Interaction Acceptance Rule
 
@@ -118,4 +121,6 @@ npm run test:server -- scripts/check-doc-governance.test.ts
 - `M5_SMOKE_ALLOW_NO_API=true` is a documented local skip, not pilot evidence.
 - HDC device-lab, backup/restore, rollback, live provider, and staging smoke evidence must be recorded in [../generated/m5-pilot-acceptance.md](../generated/m5-pilot-acceptance.md).
 - Do not mark TD-019 complete until target-environment evidence exists.
+- M6.6 release readiness must be recorded in [../generated/m6-release-readiness.md](../generated/m6-release-readiness.md) or an approved external release record. `npm run capacity:gate` without observed target metrics is a pending evidence artifact, not a capacity pass.
+- Rollback rehearsal, target synthetic acceptance, queue drain/pause/resume, observability release watch, and HDC evidence cannot be marked complete from local script output alone.
 - M6.3 local `docs/generated/m6-backup-restore-evidence.*` proves evidence shape, redaction, failed-command handling, and restore target safety. It proves target readiness only when produced from a real non-customer or pilot target restore drill.
