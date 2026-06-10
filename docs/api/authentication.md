@@ -1,5 +1,7 @@
 # API Authentication
 
+> Chinese: [Chinese](../zh-CN/api/authentication.md)
+
 WiseEff supports development auth for local tests, HMAC bearer tokens for local smoke profiles, and OIDC/JWKS bearer tokens for the M6.2 self-hosted identity path.
 
 ## Development Mode

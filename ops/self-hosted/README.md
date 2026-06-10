@@ -1,5 +1,7 @@
 # WiseEff Self-Hosted Runtime
 
+> Chinese: [Chinese](README.zh-CN.md)
+
 This directory contains the M6.1 single-Linux-server baseline. It is meant for a controlled self-hosted staging or pilot host, not broad production hardening by itself.
 
 M6.6 release-candidate procedures live in [releases/](releases/). Use them after the runtime is deployed and before claiming a self-hosted target is ready for a controlled commercial pilot.

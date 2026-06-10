@@ -1,5 +1,7 @@
 # Staging Deployment Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/staging-deployment.md)
+
 Use this runbook when deploying WiseEff to a staging environment that is intended to resemble production.
 
 ## Prerequisites

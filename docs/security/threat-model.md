@@ -1,5 +1,7 @@
 # Threat Model
 
+> Chinese: [Chinese](../zh-CN/security/threat-model.md)
+
 This threat model focuses on the current WiseEff productization baseline and the next controlled pilot stage.
 
 ## Assets

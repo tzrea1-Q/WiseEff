@@ -1,5 +1,7 @@
 # Data Classification
 
+> Chinese: [Chinese](../zh-CN/security/data-classification.md)
+
 WiseEff handles engineering workflow data. Treat data according to the highest-risk object it can affect.
 
 ## Classes

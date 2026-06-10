@@ -1,48 +1,28 @@
-# New User Onboarding
+# WiseEff New User Onboarding
 
-Date: 2026-05-25
+> Chinese: [Chinese](../zh-CN/product-specs/new-user-onboarding.md)
 
-## Goal
+This document captures first-session expectations for a new WiseEff user or developer evaluating the product.
 
-New WiseEff users should understand where to start, what their role permits, and how AI assistance fits into governed engineering workflows.
+## First Impression
 
-## Target Users
+Users should understand that WiseEff coordinates parameter management, log analysis, debugging, and Agent-assisted work inside governed engineering workflows.
 
-- Guest: explores read-only parameter and platform views.
-- Hardware User: submits parameter changes, uploads logs, and uses debugging tools.
-- Software User: submits software-side parameter changes and follows merge status.
-- Hardware Committer: reviews hardware-side parameter requests.
-- Software Committer: reviews software-side requests and helps close merge flow.
-- Admin: manages users, permissions, parameter governance, and audit.
+## First Developer Path
 
-## First-Session Flow
+A developer should be able to start from README, run local setup, choose mock or API runtime, understand where frontend ports and backend modules live, and pick verification commands from the developer docs.
 
-1. User lands on the WiseEff home page.
-2. User enters "我的工作台" to see available workspaces and role-relevant entry points.
-3. System shows navigation based on role capability.
-4. User opens a domain workspace:
-   - parameter workbench for parameter viewing and draft changes,
-   - log analysis for upload and evidence review,
-   - debugging for device or node operations.
-5. User opens the Agent panel for context-specific suggestions.
-6. Any write-like action asks for confirmation and, in productized flows, server-side permission and audit.
+## First Operator Path
 
-## Onboarding Requirements
+An operator should start from runbooks, understand readiness boundaries, run local/self-hosted checks, and avoid claiming target readiness until real evidence has been collected.
 
-- The active role must be visible and understandable.
-- Users should see only reachable workspaces or get a clear access-denied page with a fallback.
-- Empty states should explain what is missing and what action is available.
-- Agent suggestions must be contextual to the current page.
-- Agent actions that change state must not bypass confirmation.
+## Product Expectations
 
-## Prototype Status
+- Risky writes require human approval and audit.
+- Agent assistance is bounded by tools, permissions, and approvals.
+- Device writes require state checks, snapshots, readback, and audit.
+- Mock runtime is for demo/test use only.
 
-The current frontend supports role switching, permission-denied fallbacks, contextual Agent suggestions, and mock workflow actions. M0-M5 API mode adds governed backend seams for auth context, parameters, logs, debugging, Agent approvals, audit, and pilot readiness. Full onboarding persistence, invitations, SSO/OIDC, and production role assignment remain future productization work.
+## Success Criteria
 
-## Acceptance Checks
-
-- A Guest can navigate to read-only parameter pages and cannot submit changes.
-- A Hardware User can reach parameter, logs, and debugging workspaces.
-- A Committer can access review surfaces.
-- An Admin can access management pages.
-- Agent write actions require confirmation in the UI.
+New users should know which workflow to open, which role can perform each action, what evidence proves completion, and where to find deeper docs in either English or Chinese.

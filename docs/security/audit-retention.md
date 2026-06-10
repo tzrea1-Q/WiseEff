@@ -1,5 +1,7 @@
 # Audit Retention
 
+> Chinese: [Chinese](../zh-CN/security/audit-retention.md)
+
 Audit records are product evidence. Missing audit is a product failure for production writes.
 
 ## Current Audit Coverage

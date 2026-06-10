@@ -1,5 +1,7 @@
 # Reliability
 
+> Chinese: [Chinese](zh-CN/RELIABILITY.md)
+
 WiseEff reliability work should protect user trust in parameter changes, log analysis, device debugging, and Agent-assisted actions.
 
 ## Current Baseline

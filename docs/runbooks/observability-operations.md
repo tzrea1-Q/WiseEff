@@ -1,5 +1,7 @@
 # Observability Operations Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/observability-operations.md)
+
 This runbook covers the M6.5 self-hosted observability slice: Prometheus scrape configuration, alert rules, Grafana dashboards, and first-response procedures for WiseEff operations signals.
 
 ## Scope

@@ -1,5 +1,7 @@
 # Technical Debt Tracker
 
+> Chinese: [Chinese](../zh-CN/exec-plans/tech-debt-tracker.md)
+
 This tracker captures known work that should not live only in chat or TODO comments. Keep items short, linked, and actionable.
 
 ## Open

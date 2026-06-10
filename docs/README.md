@@ -1,5 +1,7 @@
 # WiseEff Knowledge Base
 
+> Chinese: [Chinese](zh-CN/README.md)
+
 Date: 2026-05-25
 
 This directory is the repository knowledge base. `AGENTS.md` and `ARCHITECTURE.md` are short maps; the durable product, architecture, design, quality, reliability, security, and execution knowledge lives here.

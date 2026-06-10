@@ -1,5 +1,7 @@
 # Environment Variables
 
+> Chinese: [Chinese](../zh-CN/developer/environment-variables.md)
+
 Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill only the live Agent provider URL, model, and API key if you are testing live provider behavior.
 
 ## Core Runtime

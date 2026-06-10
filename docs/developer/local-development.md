@@ -1,5 +1,7 @@
 # Local Development
 
+> Chinese: [Chinese](../zh-CN/developer/local-development.md)
+
 This guide gets WiseEff running locally for API-mode development and acceptance checks.
 
 ## Requirements

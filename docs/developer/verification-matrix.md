@@ -1,5 +1,7 @@
 # Verification Matrix
 
+> Chinese: [Chinese](../zh-CN/developer/verification-matrix.md)
+
 Use the narrowest command that proves the change while developing. Before finishing, broaden to the gate that matches the risk and touched surface.
 
 ## Common Commands

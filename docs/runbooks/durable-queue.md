@@ -1,5 +1,7 @@
 # Durable Queue Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/durable-queue.md)
+
 M6.4 adds Redis/BullMQ as the durable transport for log-analysis dispatch. PostgreSQL remains the source of truth for job state, leases, retries, dead-letter metadata, audit, and generated evidence.
 
 ## Runtime Shape

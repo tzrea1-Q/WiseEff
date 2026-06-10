@@ -1,5 +1,7 @@
 # Security
 
+> Chinese: [Chinese](zh-CN/SECURITY.md)
+
 WiseEff security centers on identity, authorization, audit, Agent tool governance, device safety, and data isolation.
 
 ## Non-Negotiables

@@ -1,5 +1,7 @@
 # Rollback Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/rollback.md)
+
 Rollback protects pilot users when a deployment or migration behaves unsafely.
 
 For M6.6 self-hosted release candidates, use [Self-Hosted Release And Rollback](release-rollback.md) as the release-window procedure. This page remains the generic rollback checklist.

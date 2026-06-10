@@ -1,6 +1,7 @@
 import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { developerFacingBilingualDocs } from "./bilingual-docs";
 
 export const activePlansDir = "docs/exec-plans/active";
 export const requiredSections = ["## Documentation Impact Matrix", "## Documentation Update Gate"];
@@ -190,6 +191,42 @@ export async function validateMarkdownLinks(root = process.cwd()): Promise<strin
   return errors;
 }
 
+export async function validateBilingualDeveloperDocs(root = process.cwd()): Promise<string[]> {
+  const errors: string[] = [];
+
+  await Promise.all(
+    developerFacingBilingualDocs
+      .filter((entry) => entry.status === "required")
+      .map(async (entry) => {
+        const enContent = await readOptionalFile(path.join(root, entry.en));
+        const zhContent = await readOptionalFile(path.join(root, entry.zh));
+
+        if (enContent === null) {
+          errors.push(`Missing English developer-facing doc: ${entry.en}.`);
+        }
+        if (zhContent === null) {
+          errors.push(`Missing Chinese developer-facing doc: ${entry.zh}.`);
+        }
+
+        if (enContent !== null && containsHanOutsideCodeBlocks(enContent)) {
+          errors.push(`${entry.en} contains Chinese prose; keep developer-facing languages in separate linked files.`);
+        }
+
+        if (enContent !== null && !containsLocalLinkTo(enContent, entry.en, entry.zh)) {
+          errors.push(`${entry.en} is missing a language link to ${entry.zh}.`);
+        }
+        if (zhContent !== null && !containsLocalLinkTo(zhContent, entry.zh, entry.en)) {
+          errors.push(`${entry.zh} is missing a language link to ${entry.en}.`);
+        }
+        if (zhContent !== null && containsMojibake(zhContent)) {
+          errors.push(`${entry.zh} appears to contain mojibake or placeholder question marks.`);
+        }
+      })
+  );
+
+  return errors;
+}
+
 export function validateM6ReleaseRunbookCommands(docPath: string, content: string): string[] {
   const errors: string[] = [];
   const normalizedPath = docPath.replace(/\\/g, "/");
@@ -226,15 +263,16 @@ export async function validateM6RunbookCommands(root = process.cwd()): Promise<s
 }
 
 export async function validateDocumentationRepository(root = process.cwd()): Promise<string[]> {
-  const [activePlanErrors, requiredDocErrors, envErrors, linkErrors, m6RunbookErrors] = await Promise.all([
+  const [activePlanErrors, requiredDocErrors, envErrors, linkErrors, bilingualErrors, m6RunbookErrors] = await Promise.all([
     validateActivePlans(root),
     validateRequiredRepositoryDocs(root),
     validateEnvExample(root),
     validateMarkdownLinks(root),
+    validateBilingualDeveloperDocs(root),
     validateM6RunbookCommands(root)
   ]);
 
-  return [...activePlanErrors, ...requiredDocErrors, ...envErrors, ...linkErrors, ...m6RunbookErrors];
+  return [...activePlanErrors, ...requiredDocErrors, ...envErrors, ...linkErrors, ...bilingualErrors, ...m6RunbookErrors];
 }
 
 async function collectMarkdownFiles(root: string): Promise<string[]> {
@@ -294,6 +332,54 @@ function collectLocalMarkdownTargets(content: string): string[] {
   }
 
   return targets;
+}
+
+async function readOptionalFile(filePath: string): Promise<string | null> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function containsLocalLinkTo(content: string, sourcePath: string, expectedPath: string): boolean {
+  const sourceDirectory = path.posix.dirname(sourcePath.replace(/\\/g, "/"));
+  const normalizedExpected = path.posix.normalize(expectedPath.replace(/\\/g, "/"));
+
+  return collectLocalMarkdownTargets(content).some((target) => {
+    const targetWithoutAnchor = target.split("#")[0].trim().replace(/^<|>$/g, "");
+
+    if (targetWithoutAnchor.length === 0) {
+      return false;
+    }
+
+    const normalizedTarget = path.posix.normalize(path.posix.join(sourceDirectory, targetWithoutAnchor.replace(/\\/g, "/")));
+    return normalizedTarget === normalizedExpected;
+  });
+}
+
+function containsHanOutsideCodeBlocks(content: string): boolean {
+  let inFence = false;
+
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+      inFence = !inFence;
+      continue;
+    }
+
+    if (!inFence && /\p{Script=Han}/u.test(line)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function containsMojibake(content: string): boolean {
+  const mojibakeMarkers = ["\u951b", "\u9286", "\u93c2", "\u6770", "\u7efe"];
+  return content.includes("\uFFFD") || /\?{3,}/.test(content) || mojibakeMarkers.some((marker) => content.includes(marker));
 }
 
 function findCommandLine(content: string, command: string): string {

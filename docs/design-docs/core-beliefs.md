@@ -1,5 +1,7 @@
 # WiseEff Core Beliefs
 
+> Chinese: [Chinese](../zh-CN/design-docs/core-beliefs.md)
+
 ## 1. Repository Knowledge Is The System Of Record
 
 WiseEff should be understandable from the repository itself. Product decisions, architecture boundaries, operating constraints, and plans belong in versioned docs, schemas, tests, and code.

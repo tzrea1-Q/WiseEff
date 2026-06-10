@@ -1,5 +1,7 @@
 # Identity Provider Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/identity-provider.md)
+
 This runbook covers the M6.2 self-hosted OIDC path. Keycloak is the reference provider, but the WiseEff API accepts any OIDC provider that exposes discovery metadata, JWKS signing keys, issuer validation, audience validation, and the WiseEff role claims described below.
 
 ## Operating Model

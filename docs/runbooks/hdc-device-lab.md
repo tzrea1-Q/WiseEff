@@ -1,5 +1,7 @@
 # HDC Device Lab Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/hdc-device-lab.md)
+
 Use this runbook to collect real-device evidence for the HDC gateway path.
 
 ## Required Inputs

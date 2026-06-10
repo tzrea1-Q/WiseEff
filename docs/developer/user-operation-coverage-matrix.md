@@ -1,5 +1,7 @@
 # User Operation Coverage Matrix
 
+> Chinese: [Chinese](../zh-CN/developer/user-operation-coverage-matrix.md)
+
 This file is generated from `e2e/acceptance/operationMatrix.ts`.
 
 | Operation ID | Priority | Area | Coverage | Route | Roles | Assertions | Specs |

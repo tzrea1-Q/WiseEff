@@ -1,5 +1,7 @@
 # Browser Acceptance Coverage Map
 
+> Chinese: [Chinese](../zh-CN/developer/browser-acceptance-coverage-map.md)
+
 This map is the source of truth for requirement-level browser acceptance coverage. Any plan or PR that changes user-facing UI/API interaction behavior must name the affected acceptance IDs below. If no ID exists for the changed behavior, add one before implementation.
 
 For operation-level coverage, also review [user-operation-coverage-matrix.md](user-operation-coverage-matrix.md). Requirement IDs explain the behavior that must be covered; operation IDs explain the concrete user action, role, route, assertion types, and automation status that prove it.

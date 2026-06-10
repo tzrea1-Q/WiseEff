@@ -1,5 +1,7 @@
 # Self-Hosted Releases
 
+> Chinese: [Chinese](README.zh-CN.md)
+
 This directory defines the WiseEff M6.6 release-candidate process for controlled self-hosted Linux environments.
 
 ## Release Candidate Record

@@ -1,5 +1,7 @@
 # User Permission Design
 
+> Chinese: [Chinese](../zh-CN/security/user-permission-design.md)
+
 Date: 2026-05-31
 
 This note defines the current WiseEff platform permission model for role behavior, workflow assignee slots, and frontend eligibility filtering.

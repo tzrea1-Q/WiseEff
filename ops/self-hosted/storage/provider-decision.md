@@ -1,5 +1,7 @@
 # Object Storage Provider Decision
 
+> Chinese: [Chinese](provider-decision.zh-CN.md)
+
 ## Decision
 
 WiseEff M6.3 standardizes on an S3-compatible API contract and keeps the concrete provider operator-managed. For a self-hosted commercial pilot, the default reference target is RustFS-compatible behavior because it is designed for S3-compatible self-hosting and can be deployed without a cloud object-storage account.

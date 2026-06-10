@@ -1,5 +1,7 @@
 # Product Specs Index
 
+> Chinese: [Chinese](../zh-CN/product-specs/index.md)
+
 Product specs define what WiseEff is, who it serves, what workflows matter, and what must be true for milestones to count as done.
 
 ## Current Specs

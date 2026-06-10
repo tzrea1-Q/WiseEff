@@ -1,5 +1,7 @@
 # 前端开发
 
+> English: [English](../FRONTEND.md)
+
 WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock runtime 和 API runtime：mock 用于演示和组件测试，API runtime 用于产品化路径和全链路验收。
 
 英文详细文档见 [FRONTEND.md](../FRONTEND.md)。

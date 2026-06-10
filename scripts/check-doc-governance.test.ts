@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   requiredEnvExampleKeys,
   requiredRepositoryDocs,
+  validateBilingualDeveloperDocs,
   validateM6ReleaseRunbookCommands,
   validateEnvExample,
   validateMarkdownLinks,
@@ -134,6 +135,47 @@ describe("validateMarkdownLinks", () => {
     await write(root, "docs/README.md", "# Docs");
 
     await expect(validateMarkdownLinks(root)).resolves.toEqual([]);
+  });
+});
+
+describe("validateBilingualDeveloperDocs", () => {
+  it("reports missing required companion documents", async () => {
+    const root = await createTempRoot();
+    await write(root, "AGENTS.md", "# Agents\n\n[中文](docs/zh-CN/root/AGENTS.md)\n");
+
+    const errors = await validateBilingualDeveloperDocs(root);
+
+    expect(errors).toContain("Missing Chinese developer-facing doc: docs/zh-CN/root/AGENTS.md.");
+  });
+
+  it("requires reciprocal language links", async () => {
+    const root = await createTempRoot();
+    await write(root, "AGENTS.md", "# Agents\n\n[中文](docs/zh-CN/root/AGENTS.md)\n");
+    await write(root, "docs/zh-CN/root/AGENTS.md", "# Agent 指南\n");
+
+    const errors = await validateBilingualDeveloperDocs(root);
+
+    expect(errors).toContain("docs/zh-CN/root/AGENTS.md is missing a language link to AGENTS.md.");
+  });
+
+  it("rejects Chinese prose in the English side of a developer-facing pair", async () => {
+    const root = await createTempRoot();
+    await write(root, "AGENTS.md", "# Agent 指南\n\n[Chinese version](docs/zh-CN/root/AGENTS.md)\n");
+    await write(root, "docs/zh-CN/root/AGENTS.md", "# Agent 指南\n\n[英文版](../../../AGENTS.md)\n");
+
+    const errors = await validateBilingualDeveloperDocs(root);
+
+    expect(errors).toContain("AGENTS.md contains Chinese prose; keep developer-facing languages in separate linked files.");
+  });
+
+  it("rejects mojibake in the Chinese side of a developer-facing pair", async () => {
+    const root = await createTempRoot();
+    await write(root, "AGENTS.md", "# Agent Guide\n\n[Chinese](docs/zh-CN/root/AGENTS.md)\n");
+    await write(root, "docs/zh-CN/root/AGENTS.md", "# \u951b\u5821\n\n[English](../../../AGENTS.md)\n");
+
+    const errors = await validateBilingualDeveloperDocs(root);
+
+    expect(errors).toContain("docs/zh-CN/root/AGENTS.md appears to contain mojibake or placeholder question marks.");
   });
 });
 

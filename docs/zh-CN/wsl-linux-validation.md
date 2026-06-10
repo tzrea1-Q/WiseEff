@@ -1,5 +1,7 @@
 # WSL Linux 验证说明
 
+> English: [English](../runbooks/wsl-linux-validation.md)
+
 这份文档说明：哪些 M6 自托管能力可以先在本机 WSL Linux lab 中验证，哪些必须放到真实 Linux 服务器上验收。
 
 ## 可以在 WSL 中验证

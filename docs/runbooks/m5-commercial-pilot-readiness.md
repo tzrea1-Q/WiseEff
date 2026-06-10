@@ -1,5 +1,7 @@
 # M5 Commercial Pilot Readiness Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/m5-commercial-pilot-readiness.md)
+
 Date: 2026-05-29
 
 This runbook describes the release gate for a controlled commercial pilot. It assumes the M0-M4 feature work is already merged and that pilot evidence is being collected in a staging or pilot environment.
