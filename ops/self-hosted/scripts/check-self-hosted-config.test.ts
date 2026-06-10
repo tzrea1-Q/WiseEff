@@ -61,7 +61,8 @@ volumes:
 `;
 
 const validDockerfile = `
-FROM node:22-alpine
+FROM node:22.21.1-alpine AS deps
+FROM node:22.21.1-alpine AS runtime
 ARG VITE_WISEEFF_RUNTIME_MODE=api
 ARG VITE_WISEEFF_API_BASE_URL
 ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE
@@ -109,10 +110,13 @@ RESTORE_OBJECT_STORAGE_PREFIX=
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
 AGENT_PROVIDER=live
-AGENT_API_FORMAT=openai
+AGENT_API_FORMAT=pi
+AGENT_PI_PROVIDER=minimax
 AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
+AGENT_API_TIMEOUT_MS=30000
+AGENT_PROMPT_VERSION=m7-pi-agent-v1
 LOG_WORKER_ENABLED=false
 LOG_ANALYSIS_QUEUE_MODE=durable
 REDIS_URL=redis://redis:6379
@@ -207,6 +211,9 @@ describe("self-hosted config metadata", () => {
         "AUTH_OIDC_JWKS_URI",
         "M6_SELFHOSTED_SMOKE_AUTHORIZATION",
         "LOG_WORKER_ENABLED",
+        "AGENT_PI_PROVIDER",
+        "AGENT_API_TIMEOUT_MS",
+        "AGENT_PROMPT_VERSION",
         "M5_BACKUP_RESTORE_DRILL_AT",
         "OBJECT_STORAGE_TLS_POLICY",
         "OBJECT_STORAGE_PATH_STYLE",
@@ -230,5 +237,24 @@ describe("self-hosted config metadata", () => {
       "ops/self-hosted/storage/provider-decision.md",
       "ops/self-hosted/storage/object-store.env.example"
     ]);
+  });
+
+  it("rejects self-hosted Node images below the Pi Agent provider runtime floor", () => {
+    const result = evaluateSelfHostedConfig({
+      packageJson: validPackageJson,
+      composeText: validCompose,
+      dockerfileText: validDockerfile.replaceAll("node:22.21.1-alpine", "node:22.18.0-alpine"),
+      dockerignoreText: validDockerignore,
+      envExampleText: validEnvExample,
+      caddyfileText: validCaddyfile,
+      existingFiles: new Set([
+        "ops/self-hosted/storage/README.md",
+        "ops/self-hosted/storage/provider-decision.md",
+        "ops/self-hosted/storage/object-store.env.example"
+      ])
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.missingDockerfileTokens).toContain("FROM node:>=22.19.0");
   });
 });

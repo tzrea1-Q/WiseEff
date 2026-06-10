@@ -23,6 +23,7 @@ export const requiredComposeTokens = [
 ] as const;
 
 export const requiredDockerfileTokens = [
+  "FROM node:>=22.19.0",
   "ARG VITE_WISEEFF_RUNTIME_MODE=api",
   "ARG VITE_WISEEFF_API_BASE_URL",
   "ENV VITE_WISEEFF_RUNTIME_MODE=$VITE_WISEEFF_RUNTIME_MODE",
@@ -65,9 +66,12 @@ export const requiredEnvKeys = [
   "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION",
   "AGENT_PROVIDER",
   "AGENT_API_FORMAT",
+  "AGENT_PI_PROVIDER",
   "AGENT_API_BASE_URL",
   "AGENT_MODEL",
   "AGENT_API_KEY",
+  "AGENT_API_TIMEOUT_MS",
+  "AGENT_PROMPT_VERSION",
   "LOG_WORKER_ENABLED",
   "LOG_ANALYSIS_QUEUE_MODE",
   "REDIS_URL",
@@ -129,7 +133,9 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const missingScripts = requiredSelfHostedScripts.filter((script) => !scripts[script]);
   const missingServices = requiredSelfHostedServices.filter((service) => !hasComposeService(composeText, service));
   const missingComposeTokens = requiredComposeTokens.filter((token) => !composeText.includes(normalize(token)));
-  const missingDockerfileTokens = requiredDockerfileTokens.filter((token) => !dockerfileText.includes(normalize(token)));
+  const missingDockerfileTokens = requiredDockerfileTokens.filter((token) =>
+    token === "FROM node:>=22.19.0" ? !hasRequiredNodeRuntime(dockerfileText) : !dockerfileText.includes(normalize(token))
+  );
   const missingDockerignoreTokens = requiredDockerignoreTokens.filter((token) => !dockerignoreText.includes(normalize(token)));
   const missingEnvKeys = requiredEnvKeys.filter((key) => !envKeys.has(key));
   const missingProxyTokens = requiredProxyTokens.filter((token) => !caddyfileText.includes(normalize(token)));
@@ -208,6 +214,30 @@ function hasComposeService(normalizedComposeText: string, service: string) {
 
 function normalize(value: string) {
   return value.replace(/\r\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+}
+
+function hasRequiredNodeRuntime(normalizedDockerfileText: string) {
+  const matches = [...normalizedDockerfileText.matchAll(/(?:^|\n)FROM node:(\d+)(?:\.(\d+))?(?:\.(\d+))?[-\w.]*\b/g)];
+  if (matches.length === 0) {
+    return false;
+  }
+
+  return matches.every((match) => {
+    const major = Number(match[1]);
+    const minor = match[2] === undefined ? undefined : Number(match[2]);
+    const patch = match[3] === undefined ? undefined : Number(match[3]);
+
+    if (!Number.isInteger(major) || major > 22) {
+      return Number.isInteger(major) && major > 22;
+    }
+    if (major < 22 || minor === undefined || patch === undefined) {
+      return false;
+    }
+    if (minor > 19) {
+      return true;
+    }
+    return minor === 19 && patch >= 0;
+  });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

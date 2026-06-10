@@ -91,6 +91,8 @@ describe("buildDevAllPlan", () => {
     const plan = buildDevAllPlan(
       {
         AGENT_PROVIDER: "live",
+        AGENT_API_FORMAT: "pi",
+        AGENT_PI_PROVIDER: "minimax",
         AGENT_API_BASE_URL: "",
         AGENT_MODEL: "",
         AGENT_API_KEY: ""
@@ -103,6 +105,28 @@ describe("buildDevAllPlan", () => {
     });
     expect(plan.services[0].env).toMatchObject({
       AGENT_PROVIDER: "deterministic"
+    });
+  });
+
+  it("keeps the Pi live Agent provider when model, key, and Pi provider are configured without a base URL", () => {
+    const plan = buildDevAllPlan(
+      {
+        AGENT_PROVIDER: "live",
+        AGENT_API_FORMAT: "pi",
+        AGENT_PI_PROVIDER: "minimax",
+        AGENT_API_BASE_URL: "",
+        AGENT_MODEL: "MiniMax-M2.7",
+        AGENT_API_KEY: "secret"
+      },
+      "linux"
+    );
+
+    expect(plan.services[0].env).toMatchObject({
+      AGENT_PROVIDER: "live",
+      AGENT_API_FORMAT: "pi",
+      AGENT_PI_PROVIDER: "minimax",
+      AGENT_MODEL: "MiniMax-M2.7",
+      AGENT_API_KEY: "secret"
     });
   });
 
