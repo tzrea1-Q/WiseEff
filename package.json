@@ -18,6 +18,8 @@
     "test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "test:m3-5": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "test:m4": "npm run test:all && npm run build && npm run test:e2e -- e2e/agent.api.spec.ts",
+    "agent:pi-eval": "vitest run --config vitest.server.config.ts server/modules/agent/piProvider.eval.test.ts",
+    "agent:pi-smoke": "tsx scripts/run-pi-agent-smoke.ts",
     "smoke:m5": "tsx scripts/run-m5-smoke.ts",
     "acceptance:preflight": "tsx -- scripts/run-acceptance-preflight.ts",
     "acceptance:e2e": "playwright test --config playwright.acceptance.config.ts",
@@ -58,6 +60,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "0.79.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@tailwindcss/vite": "^4.3.0",
     "@vitejs/plugin-react": "^5.1.1",

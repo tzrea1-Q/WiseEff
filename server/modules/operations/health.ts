@@ -1,5 +1,6 @@
 import type { Database } from "../../shared/database/client";
 import type { AgentProvider } from "../agent/provider";
+import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
@@ -9,6 +10,7 @@ export type DependencyHealth = {
   ok: boolean;
   status: "ready" | "missing" | "failed";
   message?: string;
+  details?: Record<string, string | number | boolean>;
 };
 
 export type OperationsHealthBody = {
@@ -104,18 +106,23 @@ async function checkAgentProvider(agentProvider?: AgentProvider): Promise<Depend
     return undefined;
   }
 
+  const evidence = sanitizeAgentProviderEvidence(agentProvider.metadata().evidence);
+  const details = evidence ? { ...evidence } : undefined;
+
   try {
     const result = await agentProvider.checkHealth();
     return {
       ok: result.ok,
       status: result.status,
-      message: result.message
+      message: result.message,
+      ...(details ? { details } : {})
     };
   } catch (error) {
     return {
       ok: false,
       status: "failed",
-      message: error instanceof Error ? error.message : "Agent provider readiness check failed."
+      message: error instanceof Error ? error.message : "Agent provider readiness check failed.",
+      ...(details ? { details } : {})
     };
   }
 }

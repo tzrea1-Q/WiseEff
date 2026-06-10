@@ -9,6 +9,7 @@ import type {
   AgentProviderUsage,
   AgentToolRequest
 } from "./provider";
+import { sanitizeAgentProviderEvidence, type AgentProviderFormat } from "./providerEvidence";
 
 export type LiveAgentTransportPlanResult = {
   content: string;
@@ -503,12 +504,19 @@ export function createLiveAgentProvider(options: {
   model: string;
   apiKey: string;
   promptVersion: string;
+  format?: Exclude<AgentProviderFormat, "deterministic" | "pi">;
   transport: LiveAgentTransport;
 }): AgentProvider {
   const metadata = {
     provider: "live",
     model: options.model,
-    promptVersion: options.promptVersion
+    promptVersion: options.promptVersion,
+    evidence: sanitizeAgentProviderEvidence({
+      provider: "live",
+      format: options.format ?? "wiseeff",
+      model: options.model,
+      promptVersion: options.promptVersion
+    })
   } as const;
 
   return {

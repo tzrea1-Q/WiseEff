@@ -2,6 +2,7 @@ export type PilotReadinessGateStatus = {
   ok: boolean;
   status: "ready" | "missing" | "failed" | "degraded" | "blocked";
   message?: string;
+  details?: Record<string, string | number | boolean>;
 };
 
 export type PilotReadinessGateKey =

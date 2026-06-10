@@ -88,8 +88,12 @@ export function buildDevAllPlan(env: RuntimeEnv = process.env, platform = proces
 }
 
 function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
+  const agentFormat = env.AGENT_API_FORMAT?.trim() || "wiseeff";
   const missingLiveAgentSettings =
-    env.AGENT_PROVIDER === "live" && (!env.AGENT_API_BASE_URL?.trim() || !env.AGENT_MODEL?.trim() || !env.AGENT_API_KEY?.trim());
+    env.AGENT_PROVIDER === "live" &&
+    (!env.AGENT_MODEL?.trim() ||
+      !env.AGENT_API_KEY?.trim() ||
+      (agentFormat === "pi" ? !env.AGENT_PI_PROVIDER?.trim() : !env.AGENT_API_BASE_URL?.trim()));
 
   return {
     DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",

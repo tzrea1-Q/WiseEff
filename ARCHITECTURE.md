@@ -4,7 +4,7 @@
 
 WiseEff is organized as a React frontend plus a TypeScript backend foundation. The product direction is a modular monolith API, PostgreSQL persistence, async workers, an isolated device gateway, and a governed Agent layer. The detailed architecture lives in `docs/design-docs/`; this file is the high-level map.
 
-Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, live Agent provider seam, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
+Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, live Agent provider seam with WiseEff HTTP, OpenAI-compatible, and Pi-backed formats, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
 
 ## Runtime Shape
 
@@ -59,6 +59,8 @@ Rules:
 - `server/migrations/`: SQL schema baseline.
 
 The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
+
+The live Agent provider boundary supports `AGENT_API_FORMAT=wiseeff`, `openai`, and `pi`. The Pi path uses `@earendil-works/pi-ai` only inside the backend provider adapter; WiseEff still owns tool execution, authorization, approval records, and audit. Pi Coding Agent CLI, Pi filesystem tools, Pi shell tools, and project-local `.pi` extensions are not part of the WiseEff product runtime.
 
 ## Data And Governance
 

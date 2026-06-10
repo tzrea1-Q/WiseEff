@@ -59,6 +59,31 @@ function createReadyAgentProvider() {
   };
 }
 
+function createReadyPiAgentProvider() {
+  return {
+    metadata: () => ({
+      provider: "live" as const,
+      model: "model-a",
+      promptVersion: "m7-pi-agent-v1",
+      evidence: {
+        provider: "live" as const,
+        format: "pi" as const,
+        piProvider: "minimax",
+        model: "model-a",
+        promptVersion: "m7-pi-agent-v1"
+      }
+    }),
+    planTurn: async () => ({
+      assistantDraft: { content: "Ready.", citations: [], confidence: 0.9 },
+      toolRequests: [],
+      provider: "live" as const,
+      model: "model-a",
+      promptVersion: "m7-pi-agent-v1"
+    }),
+    checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+  };
+}
+
 function createFailedAgentProvider(message = "Agent provider unavailable.") {
   return {
     metadata: () => ({ provider: "live" as const, model: "pilot", promptVersion: "m5" }),
@@ -208,6 +233,56 @@ describe("operations routes", () => {
           deviceGateway: { ok: true, status: "ready" },
           agentProvider: { ok: true, status: "ready" },
           backups: { ok: true, status: "ready" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("includes safe Pi provider evidence in the pilot-readiness agent gate", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGateway: createDebugGateway(),
+        agentProvider: createReadyPiAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          HDC_DEVICE_LAB_AVAILABLE: true,
+          HDC_SMOKE_PROJECT_ID: "aurora",
+          HDC_SMOKE_DEVICE_ID: "lab-device-1",
+          HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
+          HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
+          HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: true,
+        gates: {
+          agentProvider: {
+            ok: true,
+            status: "ready",
+            details: {
+              provider: "live",
+              format: "pi",
+              piProvider: "minimax",
+              model: "model-a",
+              promptVersion: "m7-pi-agent-v1"
+            }
+          }
         }
       });
     } finally {

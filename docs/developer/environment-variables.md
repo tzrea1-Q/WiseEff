@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/developer/environment-variables.md)
 
-Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill only the live Agent provider URL, model, and API key if you are testing live provider behavior.
+Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill only the live Agent model and API key if you are testing the default Pi-backed provider behavior. Fill `AGENT_API_BASE_URL` only when testing URL-backed `wiseeff` or `openai` provider formats.
 
 ## Core Runtime
 
@@ -78,8 +78,9 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `AGENT_PROVIDER` | `live` in `.env.example` | live provider path | Set `deterministic` for stable local tests without an API key. |
-| `AGENT_API_FORMAT` | `openai` | live provider path | OpenAI-compatible chat completion format. |
-| `AGENT_API_BASE_URL` | blank | live provider path | Fill locally; never commit secrets. |
+| `AGENT_API_FORMAT` | `pi` | live provider path | `pi` uses `@earendil-works/pi-ai`; `openai` and `wiseeff` use URL-backed legacy transports. |
+| `AGENT_PI_PROVIDER` | `minimax` | Pi live provider path | Pi provider id passed to `getModel`, for example `minimax`. Required only when `AGENT_API_FORMAT=pi`. |
+| `AGENT_API_BASE_URL` | blank | URL-backed live provider path | Required for `AGENT_API_FORMAT=openai` or `wiseeff`; not required for `pi`. Never commit secrets or private endpoints. |
 | `AGENT_MODEL` | blank | live provider path | Fill locally. |
 | `AGENT_API_KEY` | blank | live provider path | Secret. |
 | `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | Request timeout. |

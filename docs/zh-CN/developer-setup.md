@@ -14,13 +14,14 @@ npm run db:seed:m2
 npm run db:seed:m3
 ```
 
-`.env.example` ??????? PostgreSQL?local object store?simulator device gateway ? production-mode smoke auth??? OpenAI-compatible live Agent provider ??????????
+`.env.example` 准备了 PostgreSQL、local object store、simulator device gateway、production-mode smoke auth，以及默认的 Pi-backed live Agent provider。
 
 ```text
-AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
+
+默认 `AGENT_API_FORMAT=pi`、`AGENT_PI_PROVIDER=minimax`。只有测试 URL-backed `openai` 或 `wiseeff` provider 时才需要填写 `AGENT_API_BASE_URL`。
 
 ??????? live provider?????
 

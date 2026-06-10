@@ -70,6 +70,7 @@ Agent：
 
 - `UnifiedAgent` 根据当前 path、pageKey、project、role 和 auth context 创建 API session。
 - mutating tool 必须走后端 approval 和 audit。
+- Pi-backed live provider 只是后端 `AGENT_API_FORMAT=pi` 选项；`AgentGateway` 前端契约不变，不引入 Pi client、Pi filesystem/shell tools 或 streaming UI。
 
 ## 测试建议
 

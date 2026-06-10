@@ -109,13 +109,14 @@ npm ci
 copy .env.example .env
 ```
 
-如果要测试 live Agent，只填写以下留空项：
+如果要测试默认 Pi-backed live Agent，只填写以下留空项：
 
 ```text
-AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
+
+本地 profile 默认 `AGENT_API_FORMAT=pi` 和 `AGENT_PI_PROVIDER=minimax`；只有测试 URL-backed `wiseeff` 或 `openai` provider 时才需要填写 `AGENT_API_BASE_URL`。
 
 目标环境或 staging 验收需要准备：
 

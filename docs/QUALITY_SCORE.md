@@ -67,9 +67,9 @@ Remaining M3.5 risks: readiness checks still use local object storage rather tha
 
 ## M4 Coverage
 
-M4 is covered by Agent route, schema, orchestrator, tool registry, parameter/log/debugging/audit tool tests, frontend `AgentGateway` DTO/runtime tests, UnifiedAgent API-mode tests, and `e2e/agent.api.spec.ts`. Negative tests cover approval-required tool runs, stale approval state, inactive users, missing permissions, wrong-session approvals, validation failures, and approval execution failure audit correlation.
+M4 is covered by Agent route, schema, orchestrator, tool registry, parameter/log/debugging/audit tool tests, Pi provider adapter tests, offline `agent:pi-eval`, Pi smoke runner tests, provider evidence tests, readiness/metrics evidence tests, frontend `AgentGateway` DTO/runtime tests, UnifiedAgent API-mode tests, and `e2e/agent.api.spec.ts`. Negative tests cover approval-required tool runs, stale approval state, inactive users, missing permissions, wrong-session approvals, validation failures, unknown/malformed/ungrounded provider tool output, and approval execution failure audit correlation.
 
-Remaining M4 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; the standard UI E2E still uses deterministic provider mode; live OpenAI-compatible provider chat was validated locally only after increasing `AGENT_API_TIMEOUT_MS` beyond 5000 ms; generated OpenAPI clients, prompt safety evaluation, model latency/cost handling, and provider outage behavior remain deferred.
+Remaining M4 risks: local E2E depends on an external PostgreSQL `DATABASE_URL`; the standard UI E2E still uses deterministic provider mode; Pi-backed and OpenAI-compatible live provider quality still need target-environment evaluation with real credentials and live `agent:pi-smoke` evidence; generated OpenAPI clients, prompt safety evaluation, streaming UI, broader live-provider evals, queryable provider-format trace columns, and target provider outage drills remain deferred.
 
 ## M5 Coverage
 

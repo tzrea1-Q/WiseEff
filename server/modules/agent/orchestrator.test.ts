@@ -632,6 +632,92 @@ describe("agent orchestrator", () => {
     expect(JSON.stringify(spans)).not.toContain(start.session.id);
   });
 
+  it("keeps Pi-backed mutating tool requests behind WiseEff approval before side effects", async () => {
+    const { db, tables } = createMemoryDb();
+    const orchestrator = createAgentOrchestrator({
+      db,
+      provider: createProvider({
+        assistantDraft: {
+          content: "Pi planned a parameter draft for human approval.",
+          citations: [{ type: "parameter", id: "project-param-1", label: "Charge voltage" }],
+          confidence: 0.72
+        },
+        toolRequests: [
+          {
+            name: "parameter.submitChangeDraft",
+            label: "Submit change draft",
+            payload: {
+              projectId: "aurora",
+              parameterId: "project-param-1",
+              targetValue: "3100",
+              reason: "Operator requested a staged review draft."
+            }
+          }
+        ],
+        provider: "live",
+        model: "MiniMax-M2.7",
+        promptVersion: "m7-pi-agent-v1",
+        safety: { status: "safe", reasons: [] }
+      })
+    });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    const planned = await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-plan",
+      sessionId: start.session.id,
+      message: "Create a staged parameter draft"
+    });
+    const pendingToolCall = planned.toolCalls.find((toolCall) => toolCall.name === "parameter.submitChangeDraft");
+
+    expect(pendingToolCall).toMatchObject({ status: "pending_approval", requiresApproval: true });
+    expect(planned.approvals[0]).toMatchObject({ toolCallId: pendingToolCall?.id, status: "pending" });
+    expect(tables.parameterDrafts).toHaveLength(0);
+    await expect(
+      orchestrator.runToolCall({
+        auth: developmentAuthContext,
+        requestId: "req-run-before-approval",
+        toolCallId: pendingToolCall?.id ?? ""
+      })
+    ).rejects.toMatchObject({ code: "APPROVAL_REQUIRED", status: 409 });
+
+    await orchestrator.rejectToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-reject",
+      approvalId: planned.approvals[0].id,
+      reason: "Need clearer evidence"
+    });
+    expect(tables.parameterDrafts).toHaveLength(0);
+
+    const second = await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-plan-approve",
+      sessionId: start.session.id,
+      message: "Create a staged parameter draft with approval"
+    });
+    const approval = second.approvals.find((item) => item.status === "pending");
+
+    await orchestrator.approveToolCall({
+      auth: developmentAuthContext,
+      requestId: "req-approve",
+      approvalId: approval?.id ?? "",
+      reason: "Evidence is clear"
+    });
+
+    expect(tables.parameterDrafts).toHaveLength(1);
+    expect(tables.parameterDrafts[0]).toMatchObject({
+      project_id: "aurora",
+      project_parameter_value_id: "project-param-1",
+      target_value: "3100",
+      reason: "Operator requested a staged review draft."
+    });
+    expect(tables.audits.at(-1)).toMatchObject({ action: "approval-executed", trace_id: "req-approve" });
+  });
+
   it("read-only tool requests record failure audit and rethrow execution failures", async () => {
     const { db, tables } = createMemoryDb();
     const metrics = createAgentMetricsSpy();
@@ -834,6 +920,64 @@ describe("agent orchestrator", () => {
       status: "outage_fallback",
       durationMs: expect.any(Number)
     });
+  });
+
+  it("sendMessage records Pi-like provider evidence in existing trace fields without secrets", async () => {
+    const { db, tables } = createMemoryDb();
+    const provider = {
+      metadata: vi.fn(() => ({
+        provider: "live" as const,
+        model: "model-a",
+        promptVersion: "m7-pi-agent-v1",
+        evidence: {
+          provider: "live" as const,
+          format: "pi" as const,
+          piProvider: "minimax",
+          model: "model-a",
+          promptVersion: "m7-pi-agent-v1"
+        }
+      })),
+      checkHealth: vi.fn(async () => ({ ok: true as const, status: "ready" as const })),
+      planTurn: vi.fn(async () => ({
+        assistantDraft: { content: "Pi provider is ready.", citations: [], confidence: 0.86 },
+        toolRequests: [],
+        provider: "live" as const,
+        model: "model-a",
+        promptVersion: "m7-pi-agent-v1",
+        latencyMs: 42,
+        usage: { inputTokens: 11, outputTokens: 5, estimatedCostUsd: 0.001 },
+        safety: { status: "safe" as const, reasons: [] }
+      }))
+    };
+    const orchestrator = createAgentOrchestrator({ db, provider });
+    const start = await orchestrator.startSession({
+      auth: developmentAuthContext,
+      requestId: "req-start",
+      context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "hardware-user" }
+    });
+
+    await orchestrator.sendMessage({
+      auth: developmentAuthContext,
+      requestId: "req-pi-turn",
+      sessionId: start.session.id,
+      message: "Check Pi evidence"
+    });
+
+    expect(tables.traces).toHaveLength(1);
+    expect(tables.traces[0]).toMatchObject({
+      provider: "live",
+      model: "model-a",
+      prompt_version: "m7-pi-agent-v1",
+      trace_id: "req-pi-turn",
+      latency_ms: 42,
+      input_tokens: 11,
+      output_tokens: 5,
+      estimated_cost_usd: 0.001,
+      safety_status: "safe",
+      safety_reasons: "[]",
+      fallback_reason: null
+    });
+    expect(JSON.stringify(tables.traces[0])).not.toMatch(/secret|apiKey|rawProviderPayload/i);
   });
 
   it("does not fall back when the live provider response is malformed", async () => {

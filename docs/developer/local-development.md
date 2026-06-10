@@ -10,7 +10,7 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 - npm 11 or a compatible npm version.
 - Docker Desktop or Docker Engine for the one-command local PostgreSQL path.
 - PostgreSQL reachable from `DATABASE_URL` if you run the services manually.
-- Optional: a live OpenAI-compatible Agent provider if you are testing `AGENT_PROVIDER=live`.
+- Optional: a live Pi-backed Agent provider if you are testing `AGENT_PROVIDER=live`.
 
 ## First Setup
 
@@ -19,13 +19,14 @@ npm ci
 copy .env.example .env
 ```
 
-On PowerShell, edit `.env` and fill only these blank values for live Agent provider checks:
+On PowerShell, edit `.env` and fill only these blank values for the default Pi-backed live Agent provider checks:
 
 ```text
-AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
+
+The default live profile uses `AGENT_API_FORMAT=pi` and `AGENT_PI_PROVIDER=minimax`. Set `AGENT_API_FORMAT=openai` plus `AGENT_API_BASE_URL` only when checking the legacy OpenAI-compatible transport.
 
 If you are not testing live Agent provider behavior, set:
 
@@ -33,7 +34,7 @@ If you are not testing live Agent provider behavior, set:
 AGENT_PROVIDER=deterministic
 ```
 
-`npm run dev:all` also falls back to the deterministic Agent provider when `.env` keeps `AGENT_PROVIDER=live` but the live provider URL, model, or key is blank.
+`npm run dev:all` also falls back to the deterministic Agent provider when `.env` keeps `AGENT_PROVIDER=live` but the live provider model, key, or required URL-backed transport setting is blank.
 
 ## One-Command Local Stack
 

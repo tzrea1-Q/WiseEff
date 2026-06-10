@@ -100,6 +100,18 @@ M5.12 CI/synthetic rule: `.github/workflows/ci.yml` must keep a local non-HDC ac
 
 M6.2 identity rule: production `NODE_ENV=production` must use `AUTH_PROVIDER=oidc`. Local HMAC smoke is valid for deterministic local gates only. `npm run identity:local-oidc-drill` writes `docs/generated/m6-local-oidc-identity-evidence.md` with a temporary issuer/JWKS service, RS256 tokens, `/api/v1/me`, issuer/audience/expiry negative checks, and browser token-provider proof; this proves the implementation chain without requiring Keycloak. Target OIDC evidence must still be redacted and must prove discovery/JWKS, token expiry/issuer/audience negative checks, browser token acquisition/refresh/logout, `/api/v1/me`, WiseEff DB-backed active/role authorization, and Admin user-governance API/DB/audit evidence against the deployed IdP/API. `npm run identity:check` writes `docs/generated/m6-identity-evidence.md`; it cannot pass unless discovery, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser runtime evidence statuses are all recorded as passed. Final M6 completion also requires `docs/generated/acceptance-operation-evidence/index.json` to contain target, non-local `PERM-USER-MGMT-001` evidence with `ui`, `api`, `db`, and `audit` assertions, including a successful Admin user-governance mutation and a non-Admin 401/403 rejection on the user-governance API.
 
+Pi-backed Agent provider changes should run the focused provider gate before broader M4 verification:
+
+```bash
+npm run agent:pi-eval
+npm test -- scripts/run-pi-agent-smoke.test.ts
+npm run test:server -- server/modules/agent/piProvider.test.ts server/modules/agent/providerRegistry.test.ts server/modules/agent/orchestrator.test.ts
+npm run test:m4
+npm run build
+```
+
+The M4 browser smoke remains deterministic unless a test explicitly configures a live provider. Pi adapter tests prove backend provider mapping, safety rejection, registry wiring, and WiseEff approval/audit boundaries. `npm run agent:pi-smoke` is optional and live-key dependent; run it only in an environment intentionally configured with `AGENT_API_FORMAT=pi`, `AGENT_PI_PROVIDER`, `AGENT_MODEL`, and `AGENT_API_KEY`.
+
 ## Documentation-Only Changes
 
 Run:

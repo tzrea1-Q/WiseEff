@@ -1,4 +1,6 @@
 import type { AgentContext, AgentMessageDto, AgentToolName } from "./types";
+import type { AgentProviderEvidence } from "./providerEvidence";
+import { sanitizeAgentProviderEvidence } from "./providerEvidence";
 
 export type AgentToolRequest = {
   name: AgentToolName;
@@ -15,6 +17,7 @@ export type AgentProviderMetadata = {
   provider: "deterministic" | "live";
   model: string;
   promptVersion: string;
+  evidence?: AgentProviderEvidence;
 };
 
 export type AgentProviderUsage = {
@@ -61,7 +64,13 @@ export function createDeterministicAgentProvider(): AgentProvider {
   const metadata = {
     provider: "deterministic",
     model: "wiseeff-rules-m4",
-    promptVersion: "m4-agent-v1"
+    promptVersion: "m4-agent-v1",
+    evidence: sanitizeAgentProviderEvidence({
+      provider: "deterministic",
+      format: "deterministic",
+      model: "wiseeff-rules-m4",
+      promptVersion: "m4-agent-v1"
+    })
   } as const;
 
   return {
