@@ -4,6 +4,7 @@ import type { AuthContext } from "../auth/types";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { AgentProvider } from "../agent/provider";
+import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import type { DebugDeviceGateway } from "../debugging/gateway";
 import { buildLiveHealth, buildReadyHealth, type DurableQueueHealthCheck } from "./health";
 import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadiness";
@@ -149,12 +150,16 @@ async function agentProviderGate(options: { agentProvider?: AgentProvider; env: 
     };
   }
 
-  const providerMode = options.env.AGENT_PROVIDER ?? options.agentProvider.metadata().provider;
+  const metadata = options.agentProvider.metadata();
+  const evidence = sanitizeAgentProviderEvidence(metadata.evidence);
+  const details = evidence ? { ...evidence } : undefined;
+  const providerMode = options.env.AGENT_PROVIDER ?? metadata.provider;
   if (providerMode !== "live") {
     return {
       ok: false,
       status: "blocked",
-      message: "Deterministic agent provider mode is not acceptable for pilot readiness."
+      message: "Deterministic agent provider mode is not acceptable for pilot readiness.",
+      ...(details ? { details } : {})
     };
   }
 
@@ -170,7 +175,8 @@ async function agentProviderGate(options: { agentProvider?: AgentProvider; env: 
   return {
     ok: health.ok,
     status: health.status,
-    message: health.message ?? "Live agent provider health is available."
+    message: health.message ?? "Live agent provider health is available.",
+    ...(details ? { details } : {})
   };
 }
 

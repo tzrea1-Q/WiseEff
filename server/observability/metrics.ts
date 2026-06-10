@@ -1,3 +1,6 @@
+import type { AgentProviderEvidence } from "../modules/agent/providerEvidence";
+import { toMetricLabels } from "../modules/agent/providerEvidence";
+
 type LabelSet = Record<string, string | number | boolean>;
 
 type CounterSample = {
@@ -116,6 +119,18 @@ export function createMetricsRegistry(options: { serviceName: string }) {
       const metricName = dependencyMetricNames[input.dependency];
       if (metricName) {
         setGauge(metricName, `WiseEff ${input.dependency} readiness, 1 for ready and 0 for not ready.`, {}, input.ok ? 1 : 0);
+      }
+    },
+    setAgentProviderHealth(input: { ok: boolean; evidence?: AgentProviderEvidence }) {
+      setGauge("wiseeff_dependency_health", "WiseEff dependency health, 1 for healthy and 0 for unhealthy.", { dependency: "agentProvider" }, input.ok ? 1 : 0);
+      setGauge("wiseeff_agent_provider_ready", "WiseEff agentProvider readiness, 1 for ready and 0 for not ready.", {}, input.ok ? 1 : 0);
+      if (input.evidence) {
+        setGauge(
+          "wiseeff_agent_provider_ready",
+          "WiseEff agentProvider readiness, 1 for ready and 0 for not ready.",
+          toMetricLabels(input.evidence),
+          input.ok ? 1 : 0
+        );
       }
     },
     setQueueStats(input: { queue: string; queued: number; processing: number; deadLettered: number; oldestQueuedAgeMs: number | null }) {

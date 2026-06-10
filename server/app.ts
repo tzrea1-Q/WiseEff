@@ -12,6 +12,7 @@ import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
+import { sanitizeAgentProviderEvidence } from "./modules/agent/providerEvidence";
 import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary, type TracingBoundary } from "./observability/tracing";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
@@ -116,7 +117,10 @@ export function createWiseEffServer(
     metrics.setDependencyHealth({ dependency: "database", ok: readyHealth.body.dependencies.database.ok });
     metrics.setDependencyHealth({ dependency: "objectStore", ok: readyHealth.body.dependencies.objectStore.ok });
     if (readyHealth.body.dependencies.agentProvider) {
-      metrics.setDependencyHealth({ dependency: "agentProvider", ok: readyHealth.body.dependencies.agentProvider.ok });
+      metrics.setAgentProviderHealth({
+        ok: readyHealth.body.dependencies.agentProvider.ok,
+        evidence: sanitizeAgentProviderEvidence(readyHealth.body.dependencies.agentProvider.details)
+      });
     }
     if (readyHealth.body.dependencies.workerQueue) {
       metrics.setQueueStats({

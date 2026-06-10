@@ -216,6 +216,46 @@ describe("WiseEff API", () => {
     expect(response.bodyText).toContain('wiseeff_log_analysis_job_duration_ms_sum{stage="report",status="complete"} 42');
   });
 
+  it("renders labeled Pi Agent provider readiness metrics when evidence is available", async () => {
+    const response = await requestJson(
+      createWiseEffServer({
+        db: createObservabilityDb(),
+        objectStoreHealth: {
+          checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+        },
+        agentProvider: {
+          metadata: () => ({
+            provider: "live" as const,
+            model: "model-a",
+            promptVersion: "m7-pi-agent-v1",
+            evidence: {
+              provider: "live" as const,
+              format: "pi" as const,
+              piProvider: "minimax",
+              model: "model-a",
+              promptVersion: "m7-pi-agent-v1"
+            }
+          }),
+          planTurn: async () => ({
+            assistantDraft: { content: "ready", citations: [], confidence: 0.9 },
+            toolRequests: [],
+            provider: "live" as const,
+            model: "model-a",
+            promptVersion: "m7-pi-agent-v1"
+          }),
+          checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+        }
+      }),
+      "/metrics"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.bodyText).toContain("wiseeff_agent_provider_ready 1");
+    expect(response.bodyText).toContain('wiseeff_agent_provider_ready{provider="live",format="pi",piProvider="minimax"} 1');
+    expect(response.bodyText).not.toContain("model-a");
+    expect(response.bodyText).not.toContain("m7-pi-agent-v1");
+  });
+
   it("parses query strings with repeated params", async () => {
     const server = createHttpServer({
       handle: async (request) => ({

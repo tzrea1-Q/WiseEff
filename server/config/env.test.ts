@@ -39,6 +39,7 @@ describe("loadServerEnv", () => {
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
     expect(env.AGENT_PROVIDER).toBe("deterministic");
     expect(env.AGENT_API_FORMAT).toBe("wiseeff");
+    expect(env.AGENT_PI_PROVIDER).toBeUndefined();
     expect(env.AGENT_MODEL).toBeUndefined();
     expect(env.AGENT_API_KEY).toBeUndefined();
     expect(env.AGENT_API_BASE_URL).toBeUndefined();
@@ -99,12 +100,45 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_REGION).toBe("ap-southeast-1");
     expect(env.AGENT_PROVIDER).toBe("live");
     expect(env.AGENT_API_FORMAT).toBe("openai");
+    expect(env.AGENT_PI_PROVIDER).toBeUndefined();
     expect(env.AGENT_MODEL).toBe("pilot-model");
     expect(env.AGENT_API_KEY).toBe("secret");
     expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(false);
+  });
+
+  it("loads Pi-backed live agent provider settings without a base URL", () => {
+    const env = loadServerEnv({
+      ...productionOidcEnv,
+      DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+      AGENT_PROVIDER: "live",
+      AGENT_API_FORMAT: "pi",
+      AGENT_PI_PROVIDER: "minimax",
+      AGENT_MODEL: "MiniMax-M2.7",
+      AGENT_API_KEY: "secret",
+      AGENT_PROMPT_VERSION: "m7-pi-agent-v1"
+    });
+
+    expect(env.AGENT_API_FORMAT).toBe("pi");
+    expect(env.AGENT_PI_PROVIDER).toBe("minimax");
+    expect(env.AGENT_MODEL).toBe("MiniMax-M2.7");
+    expect(env.AGENT_API_BASE_URL).toBeUndefined();
+    expect(env.AGENT_PROMPT_VERSION).toBe("m7-pi-agent-v1");
+  });
+
+  it("requires a Pi provider id for Pi-backed live agent provider settings", () => {
+    expect(() =>
+      loadServerEnv({
+        ...productionOidcEnv,
+        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+        AGENT_PROVIDER: "live",
+        AGENT_API_FORMAT: "pi",
+        AGENT_MODEL: "MiniMax-M2.7",
+        AGENT_API_KEY: "secret"
+      })
+    ).toThrow("AGENT_PI_PROVIDER is required when AGENT_API_FORMAT=pi");
   });
 
   it("rejects production mock runtime", () => {
@@ -280,16 +314,17 @@ describe("loadServerEnv", () => {
     ).toThrow("AGENT_API_KEY is required when AGENT_PROVIDER=live");
   });
 
-  it("requires AGENT_API_BASE_URL when AGENT_PROVIDER is live", () => {
+  it("requires AGENT_API_BASE_URL for URL-backed live agent provider formats", () => {
     expect(() =>
       loadServerEnv({
         ...productionOidcEnv,
         DEBUG_DEVICE_GATEWAY_MODE: "hdc",
         AGENT_PROVIDER: "live",
+        AGENT_API_FORMAT: "openai",
         AGENT_MODEL: "pilot-model",
         AGENT_API_KEY: "secret"
       })
-    ).toThrow("AGENT_API_BASE_URL is required when AGENT_PROVIDER=live");
+    ).toThrow("AGENT_API_BASE_URL is required when AGENT_API_FORMAT=openai");
   });
 
   it("requires the HDC gateway in production unless simulator staging is explicitly allowed", () => {

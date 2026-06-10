@@ -28,7 +28,7 @@ function parseEnvExample(contents: string) {
 }
 
 describe(".env.example", () => {
-  it("prepares local dependencies and only leaves OpenAI-compatible LLM settings blank", async () => {
+  it("prepares local dependencies and only leaves live LLM settings blank", async () => {
     const rawExample = await readFile(envExamplePath, "utf8");
     const parsed = parseEnvExample(rawExample);
     const blankKeys = Object.entries(parsed)
@@ -53,9 +53,10 @@ describe(".env.example", () => {
       DEBUG_DEVICE_GATEWAY_MODE: "simulator",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
       AGENT_PROVIDER: "live",
-      AGENT_API_FORMAT: "openai",
+      AGENT_API_FORMAT: "pi",
+      AGENT_PI_PROVIDER: "minimax",
       AGENT_API_TIMEOUT_MS: "30000",
-      AGENT_PROMPT_VERSION: "m5-agent-v1",
+      AGENT_PROMPT_VERSION: "m7-pi-agent-v1",
       M5_CONTRACT_CHECK_PASSED: "true",
       M5_SMOKE_ALLOW_NO_API: "false"
     });
@@ -74,9 +75,8 @@ describe(".env.example", () => {
 
     const filled = {
       ...parsed,
-      AGENT_API_BASE_URL: "https://api.openai.com/v1",
-      AGENT_MODEL: "openai-compatible-model",
-      AGENT_API_KEY: "local-openai-compatible-api-key"
+      AGENT_MODEL: "MiniMax-M2.7",
+      AGENT_API_KEY: "local-pi-api-key"
     };
     const serverEnv = loadServerEnv(filled);
 

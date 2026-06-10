@@ -24,6 +24,28 @@ describe("Prometheus metrics registry", () => {
     expect(text).not.toMatch(/secret|password|token|authorization/i);
   });
 
+  it("records Agent provider readiness with low-cardinality evidence labels", () => {
+    const registry = createMetricsRegistry({ serviceName: "wiseeff-api" });
+
+    registry.setAgentProviderHealth({
+      ok: true,
+      evidence: {
+        provider: "live",
+        format: "pi",
+        piProvider: "minimax",
+        model: "model-a",
+        promptVersion: "m7-pi-agent-v1"
+      }
+    });
+
+    const text = registry.renderPrometheus();
+
+    expect(text).toContain("wiseeff_agent_provider_ready 1");
+    expect(text).toContain('wiseeff_agent_provider_ready{provider="live",format="pi",piProvider="minimax"} 1');
+    expect(text).not.toContain("model-a");
+    expect(text).not.toContain("m7-pi-agent-v1");
+  });
+
   it("sanitizes dynamic label values to keep metrics cardinality bounded", () => {
     const registry = createMetricsRegistry({ serviceName: "wiseeff-api" });
 
