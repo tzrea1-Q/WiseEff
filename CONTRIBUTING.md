@@ -1,5 +1,7 @@
 # Contributing
 
+> Chinese: [Chinese](docs/zh-CN/root/CONTRIBUTING.md)
+
 WiseEff changes should keep the product usable, testable, and auditable. Start with the repository maps, then use the focused developer docs for setup and verification.
 
 ## Start Here

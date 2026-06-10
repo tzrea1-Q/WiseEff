@@ -1,5 +1,7 @@
 # Security Docs
 
+> Chinese: [Chinese](../zh-CN/security/README.md)
+
 Security documentation describes how WiseEff protects identity, authorization, audit evidence, Agent tools, device writes, and operational secrets.
 
 ## Reading Order

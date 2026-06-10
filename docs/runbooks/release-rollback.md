@@ -1,5 +1,7 @@
 # Self-Hosted Release And Rollback Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/release-rollback.md)
+
 This runbook is the M6.6 procedure for releasing WiseEff to a controlled self-hosted Linux target and rehearsing rollback before a customer pilot.
 
 ## Preconditions

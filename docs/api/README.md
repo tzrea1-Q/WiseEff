@@ -1,5 +1,7 @@
 # API Docs
 
+> Chinese: [Chinese](../zh-CN/api/README.md)
+
 WiseEff API documentation starts here. The design contract remains in [../design-docs/api-contract.md](../design-docs/api-contract.md), and the generated OpenAPI artifact remains in [../generated/openapi.json](../generated/openapi.json).
 
 ## Reading Order

@@ -1,5 +1,7 @@
 # API Examples
 
+> Chinese: [Chinese](../zh-CN/api/examples.md)
+
 Examples assume:
 
 ```text

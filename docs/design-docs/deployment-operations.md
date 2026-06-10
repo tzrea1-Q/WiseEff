@@ -1,224 +1,25 @@
-# WiseEff 部署与运维设计
+# WiseEff Deployment And Operations Design
 
-日期：2026-05-25
+> Chinese: [Chinese](../zh-CN/design-docs/deployment-operations.md)
 
-## 1. 环境
+Date: 2026-05-25
 
-WiseEff 至少需要三个环境：
+## Environments
 
-| 环境 | 用途 | 特点 |
-| --- | --- | --- |
-| local | 开发 | 可使用 mock、测试数据库、设备模拟器 |
-| staging | 验收 | 接近生产配置，禁用前端业务 mock |
-| production | 生产 | 强制认证、真实数据库、监控告警、备份 |
+WiseEff expects local, staging, and production-like environments. Local can use mock/runtime shortcuts for development. Staging should be close to production and disable business mock data. Production-like deployments require real auth, database, object storage, worker, queue, monitoring, backups, and rollback evidence.
 
-## 2. 服务
+## Services
 
-部署单元：
+Deployment units include web, API, log worker, PostgreSQL, Redis/BullMQ, object storage, reverse proxy, observability stack, and optional HDC device gateway connectivity.
 
-- `web`：前端静态资源。
-- `api`：主业务 API。
-- `worker`：日志分析、导入、报表等异步任务。
-- `device-gateway`：设备通信网关。
-- `postgres`：主数据库。
-- `redis`：任务队列和短期缓存。
-- `object-storage`：日志文件、导出文件和附件。
+## Configuration
 
-## 3. 配置
+Configuration is injected through environment variables or a secure configuration system. Production-like modes must reject unsafe defaults such as mock runtime as business data, missing database, missing S3-compatible object storage, missing auth boundary, or unsafe Agent provider configuration.
 
-配置必须通过环境变量或安全配置系统注入：
+## CI/CD And Release
 
-- `APP_ENV`
-- `DATABASE_URL`
-- `REDIS_URL`
-- `OBJECT_STORAGE_ENDPOINT`
-- `OBJECT_STORAGE_BUCKET`
-- `OIDC_ISSUER`
-- `OIDC_CLIENT_ID`
-- `AGENT_PROVIDER`
-- `DEVICE_GATEWAY_URL`
-- `MOCK_RUNTIME_ENABLED`
+CI should install dependencies, run tests, check contracts, build artifacts, and run documentation governance. Release candidates add self-hosted config checks, backup evidence, rollback planning, target synthetic acceptance, capacity checks, and observability review.
 
-生产环境要求：
+## Health, Monitoring, And Evidence
 
-- `MOCK_RUNTIME_ENABLED=false`
-- 禁止使用开发密钥。
-- 禁止设备网关暴露公网。
-
-## 4. CI/CD
-
-CI 阶段：
-
-1. 安装依赖。
-2. 类型检查。
-3. 前端单元和组件测试。
-4. 后端单元和集成测试。
-5. API 契约检查。
-6. 构建 web/api/worker/device-gateway。
-7. 安全扫描和依赖审计。
-
-CD 阶段：
-
-1. 部署到 staging。
-2. 运行数据库迁移。
-3. 运行 smoke tests。
-4. 运行关键 E2E。
-5. 人工批准生产发布。
-6. 灰度或滚动发布 production。
-7. 发布后健康检查和告警观察。
-
-## 5. 数据库迁移
-
-规则：
-
-- 迁移必须可重复执行。
-- 破坏性迁移分两步：先兼容写入，再清理旧字段。
-- 迁移前自动备份。
-- 迁移失败必须阻止发布。
-- 每个迁移包含 rollback 或恢复说明。
-
-## 6. 健康检查
-
-API 健康检查：
-
-- `/health/live`：进程存活。
-- `/health/ready`：数据库、Redis、对象存储可用。
-
-Worker 健康检查：
-
-- 队列连接。
-- 消费延迟。
-- 失败任务数量。
-
-Device Gateway 健康检查：
-
-- 网关进程。
-- 模拟器连接。
-- 真实设备通道可选检查。
-
-## 7. 监控与告警
-
-需要监控：
-
-- API 请求量、错误率、延迟。
-- 数据库连接、慢查询、锁等待。
-- worker 队列长度、失败率、重试次数。
-- 日志分析耗时。
-- Agent 工具调用成功率和审批等待时间。
-- 设备读写成功率、超时和回读不一致。
-- 审计写入失败。
-
-必须告警：
-
-- API 5xx 持续升高。
-- 审计写入失败。
-- worker 积压超过阈值。
-- 数据库连接耗尽。
-- 设备网关不可用。
-- 生产环境 mock runtime 被启用。
-
-## 8. 备份与恢复
-
-备份对象：
-
-- PostgreSQL。
-- 对象存储日志文件和导出文件。
-- OpenAPI 合同和部署配置。
-
-恢复要求：
-
-- 至少每日自动备份。
-- 关键发布前额外备份。
-- 定期恢复演练。
-- 明确 RPO 和 RTO，MVP 建议先以 RPO 24 小时、RTO 4 小时为目标。
-
-## 9. 发布与回滚
-
-发布策略：
-
-- 前端静态资源可快速回滚到上一版本。
-- 后端采用滚动发布。
-- 数据库迁移向前兼容。
-- worker 发布前清空或暂停高风险任务。
-- 设备网关发布优先在模拟器验证。
-
-回滚触发：
-
-- 参数合入接口错误率异常。
-- 审计事件缺失。
-- 日志任务大量失败。
-- 设备写入异常。
-- 权限校验异常。
-## M5 Production Auth Boundary
-
-- Local and test environments may use `AUTH_MODE=development`, the seeded development user, and `x-wiseeff-user` for deterministic tests.
-- Production auth is implemented as a pilot HMAC verifier boundary, not final enterprise SSO/OIDC.
-- Production must set `NODE_ENV=production`, `AUTH_MODE=production`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`; short HMAC secrets are rejected outside tests.
-- The API verifies `Authorization: Bearer <payload>.<signature>` server-side before creating `AuthContext`. Signed claims must include issuer, subject, and organization, and may include roles and permissions.
-- `/api/v1/me` and business routes use the same auth resolver. Production requests without a valid bearer token fail with `UNAUTHENTICATED` instead of falling back to development auth.
-- High-risk writes still re-check permissions at execution time, including parameter review, log archive/rerun, debugging writes or rollback, and Agent approval-required tools.
-
-## M5 Object Storage Boundary
-
-- Local and test environments may use `OBJECT_STORE_MODE=local` with `OBJECT_STORE_ROOT=.wiseeff-object-store`.
-- Production must set `NODE_ENV=production` and `OBJECT_STORE_MODE=s3`.
-- S3/OSS mode requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`; `OBJECT_STORAGE_REGION` is optional.
-- Uploaded log objects use organization-scoped keys with SHA-256 checksum prefixes. The adapter writes checksum, byte size, content type, retention class, and encryption-mode metadata.
-- `/health/ready` checks the configured bucket through the object-store health seam. M6.3 extends this to bucket `HEAD`, probe object `PUT`, object `HEAD`, object `GET` checksum, and object `DELETE`.
-- The built-in HTTP transport issues S3-compatible path-style requests with AWS4-HMAC-SHA256-style headers. It remains provider-neutral and must pass the same compatibility probe for RustFS-compatible, MinIO-compatible, Ceph RGW, or equivalent self-hosted providers.
-- Pilot smoke should upload a supported log, confirm analysis can read it back, and verify `/health/ready` reports `dependencies.objectStore.status=ready`.
-- Bucket provisioning, lifecycle policy, at-rest encryption/KMS policy, replication, backup/export, and credential rotation remain operator deployment responsibilities.
-
-## M6.3 Self-Hosted Storage And Backup
-
-- Provider choice is recorded under `ops/self-hosted/storage/provider-decision.md`; the app targets S3-compatible behavior rather than a single vendor SDK.
-- `ops/self-hosted/storage/object-store.env.example` documents endpoint, bucket, TLS, path-style, health prefix, retention class, backup targets, and isolated restore targets.
-- `npm run restore:drill` validates restore target safety before restore commands run.
-- `npm run backup:drill` writes redacted JSON/Markdown evidence for provider, environment, PostgreSQL backup/restore, object-store backup/restore, checksum validation, sampled log references, and queue status.
-- `npm run backup:check` blocks missing fields, unsafe restore targets, failed command exit codes, checksum/table-count failures, missing object references, and unredacted secrets.
-- Redis backup/restore remains conditional until M6.4 adds the durable queue service.
-
-## Device Gateway
-
-- Local and CI debugging smoke defaults to `DEBUG_DEVICE_GATEWAY_MODE=simulator`, which uses the seeded Aurora simulator target.
-- Customer production must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`. Set `HDC_TIMEOUT_MS` to the pilot lab's command timeout budget; the default is `5000`.
-- `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` bypasses the production HDC requirement only for explicitly marked non-customer staging environments.
-- The HDC adapter executes `hdc` with command plus argv arrays and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
-- HDC and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence.
-- Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it also requires `DATABASE_URL`, `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, and `HDC_SMOKE_WRITE_VALUE`. Optional settings are `HDC_SMOKE_EXPECT_READ_PATTERN` and `HDC_SMOKE_USER_ID`.
-- The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.
-
-## M5 Release Operations
-
-- The pilot-ready release smoke is `npm run smoke:m5`. It checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API URL by default, and staging/prod pilot checks also need `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` or the readiness route will return 403. It only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs.
-- `GET /api/v1/operations/pilot-readiness` is admin-gated and should only return `status: "pilot_ready"` when contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence are all ready.
-- `npm run test:m5` is the intended full pilot gate. It still depends on PostgreSQL plus any external device-lab, backup/restore, and staging evidence that is not fully simulated in this repository.
-- Record the backup drill timestamp in `M5_BACKUP_RESTORE_DRILL_AT` and keep the rollback sequence documented in `docs/runbooks/m5-commercial-pilot-readiness.md`.
-- PR #39 merged M5 on 2026-05-29 and GitHub CI passed for the merged branch. This repository evidence does not replace staging live API, HDC device-lab, backup/restore, rollback, or live provider evidence.
-- Provider outages and device failures must leave audit/readiness evidence rather than silently passing.
-
-## M6.1 Self-Hosted Runtime Baseline
-
-The self-hosted baseline lives in `ops/self-hosted/` and is validated with:
-
-```bash
-npm run selfhost:check
-npm run selfhost:smoke -- --base-url https://<host>
-```
-
-Runtime services:
-
-- `postgres`: PostgreSQL source of truth with a persistent volume.
-- `api`: WiseEff API with `HOST=0.0.0.0`, `NODE_ENV=production`, and `LOG_WORKER_ENABLED=false`.
-- `worker`: dedicated `npm run worker:logs` process.
-- `web`: built Vite frontend served by `npm run preview -- --host 0.0.0.0`.
-- `proxy`: Caddy TLS and reverse proxy for frontend, `/api/*`, and `/health/*`.
-
-This started as an M6.1 deployment baseline. M6.2 adds OIDC identity and user-governance boundaries. M6.3 adds the self-hosted object-store provider decision, compatibility probe, and backup/restore evidence gates, but target restore readiness still requires a real isolated restore drill. M6.4 adds Redis/BullMQ durable queue wiring, but target queue readiness still requires live Redis evidence. M6.5 adds the first self-hosted observability baseline: `GET /metrics`, `npm run observability:check`, Prometheus scrape config, alert rules with runbook links, and Grafana dashboard templates. Release rollback, capacity evidence, and target Prometheus/Grafana/Alertmanager proof remain M6 follow-up work.
-
-## M5 Live Agent Provider Boundary
-
-- `AGENT_PROVIDER=live` requires `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_BASE_URL`.
-- `AGENT_API_FORMAT` defaults to `wiseeff`, which expects `/agent/health` and `/agent/plan-turn` under `AGENT_API_BASE_URL`.
-- Set `AGENT_API_FORMAT=openai` for OpenAI-compatible providers. That mode probes `/models` for health and sends planning requests to `/chat/completions`.
-- `.env.example` uses `AGENT_API_FORMAT=openai` for the local non-HDC staging profile and intentionally leaves only `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` blank.
+Operations endpoints report liveness, readiness, metrics, pilot readiness, and release readiness. Target-environment claims require target evidence; local skips only prove scripts and wiring.

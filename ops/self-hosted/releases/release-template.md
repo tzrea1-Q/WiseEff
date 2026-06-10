@@ -1,5 +1,7 @@
 # WiseEff Self-Hosted Release Evidence
 
+> Chinese: [Chinese](release-template.zh-CN.md)
+
 ## Candidate
 
 | Field | Value |
@@ -75,4 +77,4 @@ Pending evidence:
 
 Notes:
 
-- 
+-

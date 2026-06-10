@@ -1,5 +1,7 @@
 # WiseEff Agent Guide
 
+> Chinese: [Chinese](docs/zh-CN/root/AGENTS.md)
+
 This file is the short map for agents working in this repository. Keep it small. Put durable project knowledge in `docs/` and link to it from here.
 
 ## Working Principles
@@ -125,5 +127,6 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 - Keep `AGENTS.md` and `ARCHITECTURE.md` short and navigable.
 - When a decision becomes durable, add it to the closest doc instead of leaving it only in chat.
 - When a doc becomes stale, update it in the same change that makes it stale.
+- Developer-facing docs that humans are expected to read must be maintained as separate English and Chinese files linked to each other; do not mix Chinese and English prose in one document as the bilingual strategy.
 - Plans are first-class artifacts: active work belongs in `docs/exec-plans/active/`; completed plans belong in `docs/exec-plans/completed/`.
 - Future active implementation plans must include a Documentation Impact Matrix and Documentation Update Gate as defined in `docs/PLANS.md`; run `npm run docs:check` before marking a plan complete.

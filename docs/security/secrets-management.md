@@ -1,5 +1,7 @@
 # Secrets Management
 
+> Chinese: [Chinese](../zh-CN/security/secrets-management.md)
+
 Secrets should be supplied by local `.env` files or the target environment's secret manager.
 
 ## Never Commit

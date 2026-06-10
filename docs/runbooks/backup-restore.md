@@ -1,5 +1,7 @@
 # Backup And Restore Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/backup-restore.md)
+
 Backup and restore evidence is required before calling a pilot or self-hosted target environment ready.
 
 M6.3 standardizes WiseEff backup evidence around PostgreSQL plus S3-compatible object storage. M6.4 adds Redis/BullMQ queue persistence checks: queue backup is conditional only when durable queue mode is not enabled. When `LOG_ANALYSIS_QUEUE_MODE=durable`, target evidence must capture Redis or BullMQ-equivalent persistence metadata.

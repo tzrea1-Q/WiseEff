@@ -1,5 +1,7 @@
 # WiseEff Manual Acceptance Guide
 
+> Chinese: [Chinese](../zh-CN/runbooks/manual-acceptance.md)
+
 Date: 2026-05-30
 
 This guide is the manual acceptance checklist for a full WiseEff review. It is written for a human reviewer who needs to validate the product experience, API-mode integration, operational gates, and remaining pilot-readiness blockers.

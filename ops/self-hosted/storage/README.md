@@ -1,5 +1,7 @@
 # Self-Hosted Object Storage
 
+> Chinese: [Chinese](README.zh-CN.md)
+
 WiseEff M6.3 uses an S3-compatible object-store contract for uploaded logs and generated artifacts. The application is not tied to a cloud provider; operators provide a self-hosted endpoint that supports bucket HEAD, object PUT, object GET, object HEAD, object DELETE, metadata, content type, and checksum validation.
 
 ## Deployment Shape

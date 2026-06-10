@@ -1,5 +1,7 @@
 # Design Docs Index
 
+> Chinese: [Chinese](../zh-CN/design-docs/index.md)
+
 Design docs explain how WiseEff works and why major boundaries exist. Product requirements live in `../product-specs/`; execution plans live in `../exec-plans/`.
 
 Current baseline: M0-M5 productization work is merged. These docs should describe both implemented seams and remaining external pilot evidence, especially where production infrastructure still depends on staging/device-lab/cloud-provider setup.

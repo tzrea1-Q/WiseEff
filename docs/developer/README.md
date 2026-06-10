@@ -1,5 +1,7 @@
 # Developer Docs
 
+> Chinese: [Chinese](../zh-CN/developer/README.md)
+
 These docs are the daily development entry point for WiseEff. They are intentionally operational: a developer should be able to set up the workspace, understand runtime modes, choose verification commands, and know where deeper product or architecture documents live.
 
 ## Reading Order

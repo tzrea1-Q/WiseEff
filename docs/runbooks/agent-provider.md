@@ -1,5 +1,7 @@
 # Agent Provider Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/agent-provider.md)
+
 Use this runbook when validating a live Agent provider in staging or pilot.
 
 ## Required Configuration

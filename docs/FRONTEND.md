@@ -1,5 +1,7 @@
 # Frontend
 
+> Chinese: [Chinese](zh-CN/frontend.md)
+
 WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backed prototype plus API mode for the M0-M6.2 productized backend surface.
 
 ## Key Directories

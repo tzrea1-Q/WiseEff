@@ -1,5 +1,7 @@
 # Incident Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/incidents.md)
+
 Use this runbook when an alert or operator observation indicates degraded WiseEff pilot or staging operation.
 
 ## Severity
@@ -50,4 +52,3 @@ An incident can close only after:
 - Any paused writes/uploads/actions are either resumed or tracked as blocked.
 - Evidence is attached to the target-environment record when readiness or pilot status was affected.
 - Follow-up work is filed for missing metrics, noisy alerts, unclear docs, or manual-only recovery steps.
-

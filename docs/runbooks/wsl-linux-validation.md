@@ -1,5 +1,7 @@
 # WSL Linux Validation
 
+> Chinese: [Chinese](../zh-CN/wsl-linux-validation.md)
+
 This runbook records what can be validated from a local WSL Linux lab and what still requires a real self-hosted target server.
 
 ## Scope

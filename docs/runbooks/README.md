@@ -1,5 +1,7 @@
 # Runbooks
 
+> Chinese: [Chinese](../zh-CN/runbooks/README.md)
+
 Runbooks describe repeatable operational procedures. They complement the design docs: design explains the intended architecture; runbooks explain what an operator does during staging, pilot, incident, or evidence collection work.
 
 ## Runbook Index

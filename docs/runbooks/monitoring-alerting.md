@@ -1,5 +1,7 @@
 # Monitoring And Alerting Runbook
 
+> Chinese: [Chinese](../zh-CN/runbooks/monitoring-alerting.md)
+
 This runbook defines the minimum signals needed for controlled staging and pilot operation. M6.5 adds Prometheus, alert rules, and Grafana dashboard templates under `ops/self-hosted/observability/`; use [Observability Operations](observability-operations.md) for concrete scrape, dashboard, and alert-response steps.
 
 ## Required Signals

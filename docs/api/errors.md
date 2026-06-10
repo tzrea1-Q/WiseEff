@@ -1,5 +1,7 @@
 # API Errors
 
+> Chinese: [Chinese](../zh-CN/api/errors.md)
+
 WiseEff APIs return structured errors so frontend clients, smoke scripts, and operators can diagnose failures.
 
 ## Shape

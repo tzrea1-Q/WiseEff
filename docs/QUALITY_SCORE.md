@@ -1,5 +1,7 @@
 # Quality Score
 
+> Chinese: [Chinese](zh-CN/QUALITY_SCORE.md)
+
 Date: 2026-05-29
 
 This is a living quality dashboard for WiseEff. Update it when major features land, tests change materially, or a quality gap is closed.
