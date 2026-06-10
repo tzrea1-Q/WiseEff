@@ -16,7 +16,7 @@ This runbook defines the minimum signals needed for controlled staging and pilot
 | Object storage | readiness probe failures, write/read/delete failures |
 | Logs | analysis duration, failed unsupported formats, rerun counts |
 | Device gateway | timeout, stderr, offline, readback mismatch, rollback failure |
-| Agent provider | health status, fallback reason, latency, token usage, estimated cost, safety status |
+| Agent provider | health status, safe provider format/Pi provider id details, fallback reason, latency, token usage, estimated cost, safety status |
 | Audit | missing audit event for production writes |
 | Release capacity | p95 latency, error rate, throughput, CPU, memory, database connections, queue backlog, object-store probe |
 
@@ -42,7 +42,7 @@ Fine-grained device failure-category counters still require deeper service instr
 
 ## Metrics Access
 
-Metrics are private operations data. Prometheus should scrape `api:8787/metrics` from the self-hosted private network. If an operator exposes `/metrics` through a reverse proxy, the route must be restricted to an operations VPN or fixed allowlist. Do not expose `/metrics` publicly, and do not put bearer tokens, provider keys, raw uploaded logs, raw parameter values, or raw device write payloads in metric labels.
+Metrics are private operations data. Prometheus should scrape `api:8787/metrics` from the self-hosted private network. If an operator exposes `/metrics` through a reverse proxy, the route must be restricted to an operations VPN or fixed allowlist. Do not expose `/metrics` publicly, and do not put bearer tokens, provider keys, model ids with high cardinality, prompt versions, raw uploaded logs, raw parameter values, or raw device write payloads in metric labels. Agent provider labels may include only bounded fields such as provider mode, provider format, and Pi provider id.
 
 ## First Triage
 

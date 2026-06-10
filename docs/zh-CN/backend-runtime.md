@@ -31,7 +31,7 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 ## 环境变量
 
-本地开发推荐从 `.env.example` 复制为 `.env`，然后填写 OpenAI-compatible Agent 的 API 地址、模型和 key。
+本地开发推荐从 `.env.example` 复制为 `.env`，默认使用 Pi-backed live Agent provider。测试默认 Pi 路径时只需要填写模型和 key；只有测试 URL-backed `openai` 或 `wiseeff` provider 时才需要填写 `AGENT_API_BASE_URL`。
 
 关键变量：
 
@@ -44,7 +44,8 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 - `OBJECT_STORE_ROOT`：local object store 目录。
 - `DEBUG_DEVICE_GATEWAY_MODE`：`simulator` 或 `hdc`。
 - `AGENT_PROVIDER`：`deterministic` 或 `live`。
-- `AGENT_API_FORMAT`：`wiseeff` 或 `openai`。
+- `AGENT_API_FORMAT`：`pi`、`wiseeff` 或 `openai`。
+- `AGENT_PI_PROVIDER`：`AGENT_API_FORMAT=pi` 时的 Pi provider id，例如 `minimax`。
 - `WISEEFF_API_BASE_URL` / `VITE_WISEEFF_API_BASE_URL`：smoke 和前端 API base URL。
 - `LOG_ANALYSIS_QUEUE_MODE`：`polling` 或 `durable`。
 - `REDIS_URL`：durable queue 模式下的 Redis 连接。
@@ -144,7 +145,19 @@ HDC_SMOKE_WRITE_VALUE=...
 
 本地 deterministic provider 用于稳定测试。live provider 用于目标环境和真实 provider 证据。
 
-OpenAI-compatible live provider：
+Pi-backed live provider：
+
+```text
+AGENT_PROVIDER=live
+AGENT_API_FORMAT=pi
+AGENT_PI_PROVIDER=minimax
+AGENT_MODEL=...
+AGENT_API_KEY=...
+AGENT_API_TIMEOUT_MS=30000
+AGENT_PROMPT_VERSION=m7-pi-agent-v1
+```
+
+OpenAI-compatible live provider 仍保留为 URL-backed legacy path：
 
 ```text
 AGENT_PROVIDER=live
@@ -155,7 +168,19 @@ AGENT_API_KEY=...
 AGENT_API_TIMEOUT_MS=30000
 ```
 
+Pi 路径只使用后端 `@earendil-works/pi-ai` adapter；不加载 Pi Coding Agent CLI、filesystem tools、shell tools 或 `.pi` runtime extensions。工具执行仍由 WiseEff registry、approval、authz 和 audit 控制。
+
 `/health/ready` 会检查 provider health。真实 chat completion 还需要通过 Agent API 请求验证，并检查 trace 中的 provider、model、usage、safety 和 fallback 信息。
+
+Pi provider evidence commands：
+
+```bash
+npm run agent:pi-eval
+npm test -- scripts/run-pi-agent-smoke.test.ts
+npm run agent:pi-smoke
+```
+
+`agent:pi-eval` 是离线 adapter gate，不需要真实 key。`agent:pi-smoke` 只在已配置 live Pi key 时运行，使用 synthetic no-tool prompt，并要求 `toolRequests: 0`。`/health/ready` 和 `pilot-readiness` 的 Agent provider details 可以记录 provider format、Pi provider id、model 和 prompt version；`/metrics` 只使用低基数 label，例如 provider、format 和 Pi provider id。
 
 ## Self-hosted runtime / 自托管运行
 

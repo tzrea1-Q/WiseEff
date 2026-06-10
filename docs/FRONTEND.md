@@ -84,6 +84,8 @@ Runtime split:
 
 `UnifiedAgent` renders API assistant confidence as a percentage and shows citations from returned messages. Approval-required tool calls open the existing confirmation dialog and call `approveToolCall` or `rejectToolCall`; mutating tools remain backend-gated by approval state, authz, and audit.
 
+The frontend contract is unchanged by the Pi-backed live provider. `AGENT_API_FORMAT=pi` is selected on the backend, and `AgentGateway` continues to call the same `/api/v1/agent` endpoints without loading Pi client code, Pi tools, or streaming UI behavior.
+
 The M4 API smoke lives in `e2e/agent.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 
 ## Identity And User Governance

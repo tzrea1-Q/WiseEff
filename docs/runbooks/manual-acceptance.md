@@ -112,13 +112,14 @@ For local non-HDC acceptance:
 copy .env.example .env
 ```
 
-Then fill these blank live Agent values only if testing the live provider:
+Then fill these blank live Agent values only if testing the default Pi-backed live provider:
 
 ```text
-AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
+
+The local profile defaults to `AGENT_API_FORMAT=pi` and `AGENT_PI_PROVIDER=minimax`. Fill `AGENT_API_BASE_URL` only when using URL-backed `wiseeff` or `openai` formats.
 
 For staging or pilot acceptance, use the target environment's secret manager or local-only `.env.staging.local`. Never commit secrets.
 

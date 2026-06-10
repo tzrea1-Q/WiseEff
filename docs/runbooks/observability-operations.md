@@ -174,9 +174,11 @@ If any target proof is not available, keep the matching status as `pending` or `
 
 ### WiseEffAgentProviderFailure
 
-1. Check provider health and `AGENT_API_BASE_URL`.
-2. Capture provider mode, model, timeout, readiness message, and request ID.
-3. If the provider is unavailable during high-risk operations, pause Agent-assisted writes.
+1. Check provider health and the selected `AGENT_API_FORMAT`. Pi-backed providers use `AGENT_PI_PROVIDER`; URL-backed `wiseeff` and `openai` providers use `AGENT_API_BASE_URL`.
+2. Capture provider mode, provider format, Pi provider id when applicable, model, prompt version, timeout, readiness message, and request ID from `/health/ready` or pilot-readiness details.
+3. For Pi-backed providers, run `npm run agent:pi-eval` for offline adapter evidence and `npm run agent:pi-smoke` only when live credentials are intentionally configured.
+4. Compare `/metrics` with readiness JSON. `wiseeff_agent_provider_ready` should exist; Pi-backed providers may also expose low-cardinality labels for provider mode, format, and Pi provider id.
+5. If the provider is unavailable during high-risk operations, pause Agent-assisted writes.
 
 ### WiseEffAuditWriteFailure
 
