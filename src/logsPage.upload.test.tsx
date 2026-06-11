@@ -99,7 +99,7 @@ function renderApiLogs(repository = createLogRepository()) {
 
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
-  await waitFor(() => expect(document.body).toHaveTextContent("Connected to WiseEff debugging API"));
+  await waitFor(() => expect(document.body).toHaveTextContent("已连接雷泽调试 API"));
 }
 
 function openUploadDialog() {

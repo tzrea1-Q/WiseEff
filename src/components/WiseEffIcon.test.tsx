@@ -7,16 +7,17 @@ afterEach(() => {
 });
 
 describe("WiseEffIcon", () => {
-  it("renders the full elastic-path W mark with accessible title", () => {
+  it("renders the full thunder marsh mark with accessible title", () => {
     render(<WiseEffIcon title="WiseEff brand icon" />);
 
     const icon = screen.getByRole("img", { name: "WiseEff brand icon" });
 
     expect(icon).toHaveClass("wiseeff-icon");
     expect(icon).toHaveAttribute("viewBox", "0 0 260 260");
-    expect(icon.querySelector(".wiseeff-icon-spark")).toBeInTheDocument();
-    expect(icon.querySelector(".wiseeff-icon-node-primary")).toBeInTheDocument();
-    expect(icon.querySelector(".wiseeff-icon-node-secondary")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-bolt")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-primary")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-secondary")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-tertiary")).toBeInTheDocument();
   });
 
   it("uses unique gradient references for each full icon instance", () => {
@@ -30,31 +31,31 @@ describe("WiseEffIcon", () => {
     const firstIcon = screen.getByRole("img", { name: "First WiseEff icon" });
     const secondIcon = screen.getByRole("img", { name: "Second WiseEff icon" });
     const firstBgId = firstIcon.querySelector("linearGradient")?.getAttribute("id");
-    const firstPathId = firstIcon.querySelectorAll("linearGradient")[1]?.getAttribute("id");
+    const firstBoltId = firstIcon.querySelectorAll("linearGradient")[1]?.getAttribute("id");
     const secondBgId = secondIcon.querySelector("linearGradient")?.getAttribute("id");
-    const secondPathId = secondIcon.querySelectorAll("linearGradient")[1]?.getAttribute("id");
+    const secondBoltId = secondIcon.querySelectorAll("linearGradient")[1]?.getAttribute("id");
 
     expect(firstBgId).toBeTruthy();
-    expect(firstPathId).toBeTruthy();
+    expect(firstBoltId).toBeTruthy();
     expect(secondBgId).toBeTruthy();
-    expect(secondPathId).toBeTruthy();
+    expect(secondBoltId).toBeTruthy();
     expect(firstBgId).not.toBe(secondBgId);
-    expect(firstPathId).not.toBe(secondPathId);
+    expect(firstBoltId).not.toBe(secondBoltId);
     expect(firstIcon.querySelector(".wiseeff-icon-container")).toHaveAttribute("fill", `url(#${firstBgId})`);
-    expect(firstIcon.querySelector(".wiseeff-icon-path")).toHaveAttribute("stroke", `url(#${firstPathId})`);
+    expect(firstIcon.querySelector(".wiseeff-icon-bolt")).toHaveAttribute("fill", `url(#${firstBoltId})`);
     expect(secondIcon.querySelector(".wiseeff-icon-container")).toHaveAttribute("fill", `url(#${secondBgId})`);
-    expect(secondIcon.querySelector(".wiseeff-icon-path")).toHaveAttribute("stroke", `url(#${secondPathId})`);
+    expect(secondIcon.querySelector(".wiseeff-icon-bolt")).toHaveAttribute("fill", `url(#${secondBoltId})`);
   });
 
-  it("renders a compact favicon variant without the spark", () => {
+  it("renders a compact favicon variant with a simplified marsh wave", () => {
     render(<WiseEffIcon variant="favicon" title="WiseEff favicon icon" />);
 
     const icon = screen.getByRole("img", { name: "WiseEff favicon icon" });
 
     expect(icon).toHaveAttribute("viewBox", "0 0 40 40");
-    expect(icon.querySelector(".wiseeff-icon-spark")).not.toBeInTheDocument();
-    expect(icon.querySelector(".wiseeff-icon-node-secondary")).not.toBeInTheDocument();
-    expect(icon.querySelector(".wiseeff-icon-node-primary")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-bolt")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-primary")).toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-secondary")).not.toBeInTheDocument();
   });
 
   it("hides decorative icons from assistive technology", () => {
@@ -82,7 +83,8 @@ describe("WiseEffIcon", () => {
 
     expect(icon.querySelector(".wiseeff-icon-container")).toHaveAttribute("fill", "none");
     expect(icon.querySelector(".wiseeff-icon-container")).toHaveAttribute("stroke", "currentColor");
-    expect(icon.querySelector(".wiseeff-icon-path")).toHaveAttribute("stroke", "currentColor");
-    expect(icon.querySelector(".wiseeff-icon-spark")).not.toBeInTheDocument();
+    expect(icon.querySelector(".wiseeff-icon-bolt")).toHaveAttribute("fill", "currentColor");
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-primary")).toHaveAttribute("stroke", "currentColor");
+    expect(icon.querySelector(".wiseeff-icon-marsh-wave-tertiary")).not.toBeInTheDocument();
   });
 });

@@ -10,7 +10,7 @@ type WiseEffIconProps = Omit<SVGProps<SVGSVGElement>, "role"> & {
 
 export function WiseEffIcon({
   decorative = false,
-  title = "WiseEff icon",
+  title = "雷泽图标",
   variant = "full",
   className,
   ...props
@@ -18,7 +18,7 @@ export function WiseEffIcon({
   const classes = ["wiseeff-icon", `wiseeff-icon-${variant}`, className].filter(Boolean).join(" ");
   const gradientId = useId();
   const backgroundGradientId = `wiseeff-component-bg-${gradientId}`;
-  const pathGradientId = `wiseeff-component-path-${gradientId}`;
+  const boltGradientId = `wiseeff-component-bolt-${gradientId}`;
   const accessibilityProps = decorative
     ? { "aria-hidden": true }
     : {
@@ -32,14 +32,19 @@ export function WiseEffIcon({
         {!decorative ? <title>{title}</title> : null}
         <rect className="wiseeff-icon-container" width="40" height="40" rx="10" fill="#003D9B" />
         <path
-          className="wiseeff-icon-path"
-          d="M8 16C10 28 14 31 17 30C20 29 20 18 23 17C27 15 27 30 31 29C34 29 35 22 36 14"
+          className="wiseeff-icon-bolt"
+          d="M22.8 5.9L10.2 19.3H18L13.8 32.2L30.1 14.2H21.5L22.8 5.9Z"
+          fill="#FFFFFF"
+        />
+        <path
+          className="wiseeff-icon-marsh-wave-primary"
+          d="M8 28.1C12.3 25.7 16.6 25.7 20.9 28.1C24.7 30.2 28 30.3 32 28.7"
           fill="none"
           stroke="#FFFFFF"
-          strokeWidth="4.5"
+          strokeOpacity="0.58"
+          strokeWidth="2.6"
           strokeLinecap="round"
         />
-        <circle className="wiseeff-icon-node-primary" cx="23" cy="17" r="2.3" fill="#50DCFF" />
       </svg>
     );
   }
@@ -60,14 +65,26 @@ export function WiseEffIcon({
           strokeWidth="14"
         />
         <path
-          className="wiseeff-icon-path"
-          d="M59 112C70 164 82 188 102 184C119 181 118 127 138 118C161 108 156 181 176 180C197 179 204 136 208 94"
+          className="wiseeff-icon-bolt"
+          d="M148 43L83 127H122L100 194L184 91H139L148 43Z"
+          fill="currentColor"
+        />
+        <path
+          className="wiseeff-icon-marsh-wave-primary"
+          d="M73 176C96 163 119 163 142 176C160 186 177 188 196 180"
           fill="none"
           stroke="currentColor"
-          strokeWidth="22"
+          strokeWidth="9"
           strokeLinecap="round"
         />
-        <circle className="wiseeff-icon-node-primary" cx="138" cy="118" r="10" fill="currentColor" />
+        <path
+          className="wiseeff-icon-marsh-wave-secondary"
+          d="M69 199C96 184 124 184 151 199C169 208 185 210 201 203"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -77,14 +94,13 @@ export function WiseEffIcon({
       {!decorative ? <title>{title}</title> : null}
       <defs>
         <linearGradient id={backgroundGradientId} x1="24" y1="22" x2="236" y2="240" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#003D9B" />
-          <stop offset="0.56" stopColor="#0052CC" />
-          <stop offset="1" stopColor="#00687B" />
+          <stop stopColor="#002F87" />
+          <stop offset="0.5" stopColor="#0052CC" />
+          <stop offset="1" stopColor="#00978F" />
         </linearGradient>
-        <linearGradient id={pathGradientId} x1="60" y1="106" x2="202" y2="158" gradientUnits="userSpaceOnUse">
+        <linearGradient id={boltGradientId} x1="95" y1="42" x2="178" y2="193" gradientUnits="userSpaceOnUse">
           <stop stopColor="#FFFFFF" />
-          <stop offset="0.58" stopColor="#E9F9FF" />
-          <stop offset="1" stopColor="#50DCFF" />
+          <stop offset="1" stopColor="#57E4FF" />
         </linearGradient>
       </defs>
       <rect
@@ -97,28 +113,45 @@ export function WiseEffIcon({
         fill={`url(#${backgroundGradientId})`}
       />
       <path
-        className="wiseeff-icon-path"
-        d="M59 112C70 164 82 188 102 184C119 181 118 127 138 118C161 108 156 181 176 180C197 179 204 136 208 94"
-        fill="none"
-        stroke={`url(#${pathGradientId})`}
-        strokeWidth="22"
-        strokeLinecap="round"
+        className="wiseeff-icon-bolt"
+        d="M148 43L83 127H122L100 194L184 91H139L148 43Z"
+        fill={`url(#${boltGradientId})`}
       />
       <path
-        className="wiseeff-icon-path-highlight"
-        d="M59 112C70 164 82 188 102 184C119 181 118 127 138 118C161 108 156 181 176 180C197 179 204 136 208 94"
+        className="wiseeff-icon-bolt-highlight"
+        d="M148 43L83 127H122L100 194L184 91H139L148 43Z"
         fill="none"
         stroke="#FFFFFF"
-        strokeOpacity="0.24"
+        strokeOpacity="0.2"
         strokeWidth="7"
+        strokeLinejoin="round"
+      />
+      <path
+        className="wiseeff-icon-marsh-wave-primary"
+        d="M73 176C96 163 119 163 142 176C160 186 177 188 196 180"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeOpacity="0.5"
+        strokeWidth="9"
         strokeLinecap="round"
       />
-      <circle className="wiseeff-icon-node-primary" cx="138" cy="118" r="10" fill="#50DCFF" />
-      <circle className="wiseeff-icon-node-secondary" cx="176" cy="180" r="7" fill="#FFFFFF" />
       <path
-        className="wiseeff-icon-spark"
-        d="M184 58L190 73L205 79L190 85L184 100L178 85L163 79L178 73Z"
-        fill="#FFFFFF"
+        className="wiseeff-icon-marsh-wave-secondary"
+        d="M69 199C96 184 124 184 151 199C169 208 185 210 201 203"
+        fill="none"
+        stroke="#50DCFF"
+        strokeOpacity="0.86"
+        strokeWidth="8"
+        strokeLinecap="round"
+      />
+      <path
+        className="wiseeff-icon-marsh-wave-tertiary"
+        d="M91 219C113 211 135 211 157 220"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeOpacity="0.36"
+        strokeWidth="6"
+        strokeLinecap="round"
       />
     </svg>
   );

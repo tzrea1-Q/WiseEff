@@ -35,7 +35,7 @@ describe("WiseEff prototype configuration", () => {
   it("uses the latest WiseEff brand theme on the home page", () => {
     const homePage = getPageByPath("/");
 
-    expect(homePage.title).toBe("智效 WiseEff");
+    expect(homePage.title).toBe("雷泽");
     expect(homePage.subtitle).toBe("业务流程里的 AI 协同工作系统");
   });
 
