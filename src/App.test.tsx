@@ -212,13 +212,14 @@ describe("WiseEff app shell", () => {
     const favicon = readFileSync("public/favicon.svg", "utf8");
     const fullIcon = readFileSync("public/wiseeff-icon.svg", "utf8");
 
-    expect(favicon).toContain('aria-label="WiseEff favicon"');
+    expect(favicon).toContain('aria-label="雷泽 favicon"');
     expect(favicon).toContain("#003D9B");
     expect(favicon).toContain('stroke-linecap="round"');
     expect(favicon).not.toContain("wiseeff-icon-spark");
 
-    expect(fullIcon).toContain('aria-label="WiseEff elastic path W icon"');
-    expect(fullIcon).toContain("wiseeff-icon-spark");
+    expect(fullIcon).toContain('aria-label="雷泽闪电水泽图标"');
+    expect(fullIcon).toContain("wiseeff-icon-bolt");
+    expect(fullIcon).toContain("wiseeff-icon-marsh-wave-tertiary");
     expect(fullIcon).toContain("#50DCFF");
   });
 
@@ -228,13 +229,14 @@ describe("WiseEff app shell", () => {
     renderAppForCurrentPath();
 
     const homeRoot = document.querySelector(".linear-template-home");
-    expect(screen.getByRole("main", { name: "WiseEff homepage" })).toBeInTheDocument();
+    expect(screen.getByRole("main", { name: "雷泽首页" })).toBeInTheDocument();
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(homeRoot).toBeInTheDocument();
     expect(homeRoot).toHaveClass("light-homepage");
     expect(homeRoot).toHaveAttribute("data-theme", "light");
     expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon")).toBeInTheDocument();
-    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-spark")).toBeInTheDocument();
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-bolt")).toBeInTheDocument();
+    expect(homeRoot?.querySelector(".linear-logo-link .wiseeff-icon-marsh-wave-secondary")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "让业务流程更智能、更高效、更可控" })).toBeInTheDocument();
     expect(screen.queryByText("智能参数管理")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).not.toBeInTheDocument();
@@ -838,7 +840,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    expect(screen.getByRole("main", { name: "WiseEff homepage" }).closest(".main-content.home-content")).toBeInTheDocument();
+    expect(screen.getByRole("main", { name: "雷泽首页" }).closest(".main-content.home-content")).toBeInTheDocument();
   });
 
   it("provides two parameter-home workbench shortcuts plus the sub-app card entry", () => {
@@ -847,7 +849,7 @@ describe("WiseEff app shell", () => {
     renderAppForCurrentPath();
 
     const workbenchShortcut = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href="/parameter-home"]')).filter(
-      (link) => link.className.includes("linear-button") || link.getAttribute("aria-label") === "进入 WiseEff 工作台"
+      (link) => link.className.includes("linear-button") || link.getAttribute("aria-label") === "进入雷泽工作台"
     );
 
     expect(workbenchShortcut).toHaveLength(2);
@@ -922,7 +924,7 @@ describe("WiseEff app shell", () => {
     const workbenchBrand = document.querySelector(".brand-mark .wiseeff-icon");
     expect(workbenchBrand).toBeInTheDocument();
     expect(workbenchBrand).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByText("智效 WiseEff")).toBeInTheDocument();
+    expect(screen.getByText("雷泽")).toBeInTheDocument();
     expect(screen.getByText("Driven by AI")).toBeInTheDocument();
     expect(screen.queryByText("AI 驱动的企业业务效率平台")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
@@ -960,7 +962,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const homepage = screen.getByRole("main", { name: "WiseEff homepage" });
+    const homepage = screen.getByRole("main", { name: "雷泽首页" });
 
     expect(within(homepage).getByRole("heading", { name: "参数管理", level: 3 })).toBeInTheDocument();
     expect(within(homepage).getByRole("heading", { name: "调试平台", level: 3 })).toBeInTheDocument();
@@ -986,7 +988,7 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    expect(screen.getAllByRole("link", { name: /打开我的工作台|进入 WiseEff 工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
+    expect(screen.getAllByRole("link", { name: /打开我的工作台|进入雷泽工作台/ }).every((link) => link.getAttribute("href") === "/parameter-home")).toBe(true);
     expect(screen.getByRole("link", { name: "查看演示" })).toHaveAttribute("href", "#platform-flow");
     expect(document.body).not.toHaveTextContent("Linear is a better way");
     expect(document.body).not.toHaveTextContent("Powering the world's best product teams.");
@@ -1920,7 +1922,7 @@ describe("WiseEff app shell", () => {
         path: "/",
         present: [
           "让业务流程更智能、更高效、更可控",
-          "WiseEff 把参数管理、设备调试和日志分析连接成一条可审阅工作流",
+          "雷泽把参数管理、设备调试和日志分析连接成一条可审阅工作流",
           "参数管理",
           "日志分析",
           "调试平台"

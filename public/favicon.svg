@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="WiseEff favicon">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" role="img" aria-label="雷泽 favicon">
   <rect width="40" height="40" rx="10" fill="#003D9B" />
-  <path d="M8 16C10 28 14 31 17 30C20 29 20 18 23 17C27 15 27 30 31 29C34 29 35 22 36 14" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="round" />
-  <circle cx="23" cy="17" r="2.3" fill="#50DCFF" />
+  <path d="M22.8 5.9L10.2 19.3H18L13.8 32.2L30.1 14.2H21.5L22.8 5.9Z" fill="#FFFFFF" />
+  <path d="M8 28.1C12.3 25.7 16.6 25.7 20.9 28.1C24.7 30.2 28 30.3 32 28.7" fill="none" stroke="#FFFFFF" stroke-opacity="0.58" stroke-width="2.6" stroke-linecap="round" />
 </svg>

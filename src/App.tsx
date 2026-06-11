@@ -1938,10 +1938,10 @@ function AppShell({
           parameterRefreshResult.status === "rejected" ||
           (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
         ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽 API，已保留本地演示数据" });
         } else if (!parameterRuntimeConnectedRef.current) {
           parameterRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 参数 API" });
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
         }
         if (logRefreshResult.status === "rejected") {
           if (
@@ -1950,11 +1950,11 @@ function AppShell({
               (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
             )
           ) {
-            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载 WiseEff 日志 API，已保留本地演示数据" });
+            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
           }
         } else if (!logRuntimeConnectedRef.current) {
           logRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接 WiseEff 日志 API" });
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
         }
         if (debuggingRefreshResult.status === "rejected") {
           setDebuggingRuntimeReady(false);
@@ -1964,18 +1964,18 @@ function AppShell({
               (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
             )
           ) {
-            dispatch({ type: "ADD_NOTIFICATION", message: "Cannot load WiseEff debugging API; local demo data is retained." });
+            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
           }
         } else {
           setDebuggingRuntimeReady(true);
           if (!debuggingRuntimeConnectedRef.current) {
             debuggingRuntimeConnectedRef.current = true;
-            dispatch({ type: "ADD_NOTIFICATION", message: "Connected to WiseEff debugging API" });
+            dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
           }
         }
       })
       .catch(() => {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接 WiseEff API，已保留本地演示数据" });
+        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽 API，已保留本地演示数据" });
       });
 
     return () => {
@@ -1998,7 +1998,7 @@ function AppShell({
       })
       .catch(() => {
         if (!cancelled) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "Cannot load WiseEff users API; local demo users are retained." });
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽用户 API，已保留本地演示用户" });
         }
       });
 
@@ -2460,7 +2460,7 @@ function Sidebar({
           <WiseEffIcon decorative />
         </div>
         <div>
-          <div className="brand-title">智效 WiseEff</div>
+          <div className="brand-title">雷泽</div>
           <div className="brand-subtitle">Driven by AI</div>
         </div>
       </div>
@@ -3901,7 +3901,7 @@ function createEmptyLogRecord(projectId: string): LogRecord {
     capturedAt: "等待上传",
     updatedAt: "等待上传",
     updatedAtIso: nowIso,
-    submittedBy: "WiseEff",
+    submittedBy: "雷泽",
     archiveState: "active"
   };
 }
@@ -4349,7 +4349,7 @@ function UploadLogDialog({
         <div className="upload-dialog__header">
           <div>
             <h2 id="upload-dialog-title"><strong>上传日志</strong></h2>
-            <p>选择 .log、.txt 或 .json 文本日志，WiseEff 会模拟创建分析任务。</p>
+            <p>选择 .log、.txt 或 .json 文本日志，雷泽会模拟创建分析任务。</p>
           </div>
           <button className="icon-button" type="button" aria-label="关闭上传日志" onClick={onClose}>
             <X size={18} />

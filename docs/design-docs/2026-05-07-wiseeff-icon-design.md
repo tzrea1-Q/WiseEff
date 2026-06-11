@@ -132,7 +132,7 @@ Includes:
 When shown with text, pair the icon with the existing product name:
 
 - Primary wordmark: `WiseEff`
-- Optional Chinese name: `智效`
+- Optional Chinese name: `雷泽`
 - Optional descriptor: `AI 业务效率平台`
 
 The wordmark should use the project’s existing Inter/system UI stack and dark text color. Do not create a custom display font for this iteration.

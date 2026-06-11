@@ -45,7 +45,7 @@ export function LinearTemplateHome() {
   return (
     <div className="linear-template-home light-homepage" data-theme="light">
       <TemplateHeader />
-      <main className="linear-page-gradient" aria-label="WiseEff homepage">
+      <main className="linear-page-gradient" aria-label="雷泽首页">
         <section className="linear-hero-wrap">
           <Container>
             <Hero />
@@ -88,11 +88,11 @@ function TemplateHeader() {
   return (
     <header className="linear-header">
       <Container className="linear-header-inner">
-        <a className="linear-logo-link" href="#" aria-label="WiseEff home">
+        <a className="linear-logo-link" href="#" aria-label="雷泽首页">
           <LinearLogo />
-          <span>WiseEff</span>
+          <span>雷泽</span>
         </a>
-        <nav className={menuOpen ? "linear-nav open" : "linear-nav"} aria-label="WiseEff homepage navigation">
+        <nav className={menuOpen ? "linear-nav open" : "linear-nav"} aria-label="雷泽首页导航">
           <ul>
             {navItems.map((item) => (
               <li key={item.href}>
@@ -105,7 +105,7 @@ function TemplateHeader() {
           <a className="linear-login" href="#platform-flow">
             查看演示
           </a>
-          <a className="linear-button linear-button-small" href="/parameter-home" aria-label="打开 WiseEff 工作台">
+          <a className="linear-button linear-button-small" href="/parameter-home" aria-label="打开雷泽工作台">
             打开我的工作台
           </a>
         </div>
@@ -129,7 +129,7 @@ function Hero() {
     <div className="linear-hero">
       <h1 className="linear-fade-item delay-1">让业务流程更智能、更高效、更可控</h1>
       <p className="linear-hero-subtitle linear-fade-item delay-2">
-        WiseEff 把参数管理、设备调试和日志分析连接成一条可审阅工作流，
+        雷泽把参数管理、设备调试和日志分析连接成一条可审阅工作流，
         <br />
         让 Agent 辅助检索、分析和流转，关键变更始终保留人工确认、权限和审计。
       </p>
@@ -145,7 +145,7 @@ function TemplateFooter() {
         <div className="linear-footer-brand">
           <div>
             <LinearLogo />
-            <span>WiseEff · 工作流平台</span>
+            <span>雷泽 · 工作流平台</span>
           </div>
         </div>
         <div className="linear-footer-links">
@@ -155,7 +155,7 @@ function TemplateFooter() {
               <ul>
                 {column.links.map((link) => (
                   <li key={link.label}>
-                    <a href={link.href} aria-label={link.label === "进入工作台" ? "进入 WiseEff 工作台" : undefined}>
+                    <a href={link.href} aria-label={link.label === "进入工作台" ? "进入雷泽工作台" : undefined}>
                       {link.label}
                     </a>
                   </li>

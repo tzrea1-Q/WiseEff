@@ -61,7 +61,7 @@ export const navigationItems: PageConfig[] = [
     label: "首页",
     group: "平台总览",
     icon: Home,
-    title: "智效 WiseEff",
+    title: "雷泽",
     subtitle: "业务流程里的 AI 协同工作系统"
   },
   {
@@ -182,7 +182,7 @@ export function getPageByPath(path: string): PageConfig {
       group: "平台总览",
       icon: Settings2,
       title: "用户权限管理",
-      subtitle: "统一管理 WiseEff 平台用户、四档角色和访问权限"
+      subtitle: "统一管理雷泽平台用户、四档角色和访问权限"
     };
   }
 
