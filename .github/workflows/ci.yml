@@ -92,6 +92,8 @@ jobs:
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
       AGENT_PROVIDER: deterministic
       AGENT_API_FORMAT: wiseeff
+      AUTH_MODE: production
+      AUTH_PROVIDER: hmac
       M5_CONTRACT_CHECK_PASSED: "true"
       M5_SMOKE_ALLOW_NO_API: "false"
 
@@ -117,6 +119,8 @@ jobs:
           cp .env.example .env
           {
             echo "DATABASE_URL=${DATABASE_URL}"
+            echo "AUTH_MODE=production"
+            echo "AUTH_PROVIDER=hmac"
             echo "AGENT_PROVIDER=deterministic"
             echo "AGENT_API_FORMAT=wiseeff"
             echo "AGENT_API_BASE_URL=http://127.0.0.1:8787"

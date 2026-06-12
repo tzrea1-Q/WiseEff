@@ -30,8 +30,8 @@ function createAuthClient() {
       isActive: true
     },
     organization: { id: "org-api", name: "API Org" },
-    roles: [{ projectId: userState.activeProjectId, roleId: "user" }],
-    permissions: []
+    roles: [{ projectId: userState.activeProjectId, roleId: "hardware-user" }],
+    permissions: ["logs:upload"]
   };
 
   return {
@@ -169,8 +169,9 @@ describe("reducer · SIMULATE_LOG_UPLOAD", () => {
 });
 
 describe("LogsPage api upload wiring", () => {
-  it("does not restrict file input accept in api mode", () => {
-    renderApiLogs();
+  it("does not restrict file input accept in api mode", async () => {
+    const repository = renderApiLogs();
+    await waitForApiRuntime(repository);
 
     openUploadDialog();
 
@@ -178,9 +179,10 @@ describe("LogsPage api upload wiring", () => {
   });
 
   it("passes the selected File and question to the log repository", async () => {
-    vi.useFakeTimers();
     const repository = renderApiLogs();
     const file = new File(["line"], "runtime.log", { type: "text/plain" });
+    await waitForApiRuntime(repository);
+    vi.useFakeTimers();
 
     openUploadDialog();
     chooseFile(file);
@@ -195,7 +197,6 @@ describe("LogsPage api upload wiring", () => {
   });
 
   it("allows unsupported extensions to reach the runtime", async () => {
-    vi.useFakeTimers();
     const failedLog = {
       ...apiLog,
       id: "api-failed-log",
@@ -206,6 +207,8 @@ describe("LogsPage api upload wiring", () => {
     };
     const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockResolvedValue({ log: failedLog, job: null }) }));
     const file = new File(["bin"], "thermal.bin", { type: "application/octet-stream" });
+    await waitForApiRuntime(repository);
+    vi.useFakeTimers();
 
     openUploadDialog();
     chooseFile(file);
@@ -221,12 +224,13 @@ describe("LogsPage api upload wiring", () => {
   });
 
   it("disables the upload action while the runtime upload is pending", async () => {
-    vi.useFakeTimers();
     let resolveUpload: (value: { log: typeof apiLog; job: null }) => void = () => {};
     const uploadPromise = new Promise<{ log: typeof apiLog; job: null }>((resolve) => {
       resolveUpload = resolve;
     });
-    renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockReturnValue(uploadPromise) }));
+    const repository = renderApiLogs(createLogRepository({ uploadLog: vi.fn().mockReturnValue(uploadPromise) }));
+    await waitForApiRuntime(repository);
+    vi.useFakeTimers();
 
     openUploadDialog();
     chooseFile(new File(["line"], "pending.log", { type: "text/plain" }));
@@ -266,9 +270,9 @@ describe("LogsPage api upload wiring", () => {
     const repository = renderApiLogs(createLogRepository({ uploadLog }));
     const first = new File(["line"], "first.log", { type: "text/plain" });
     const second = new File(["line"], "second.log", { type: "text/plain" });
+    await waitForApiRuntime(repository);
 
     openUploadDialog();
-    await waitForApiRuntime(repository);
     await act(async () => {
       fireEvent.change(document.querySelector("input[type='file']") as HTMLInputElement, { target: { files: [first, second] } });
       await Promise.resolve();

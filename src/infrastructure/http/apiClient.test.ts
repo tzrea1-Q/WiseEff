@@ -50,6 +50,25 @@ describe("createApiClient", () => {
     });
   });
 
+  it("falls back to configured static authorization when the async provider has no token", async () => {
+    const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const getAuthorization = vi.fn(async () => undefined);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8787",
+      authorization: "Bearer smoke-token",
+      getAuthorization,
+      fetchImpl: fetchMock
+    });
+
+    await expect(client.get("/api/v1/me")).resolves.toEqual({ ok: true });
+
+    expect(getAuthorization).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:8787/api/v1/me", {
+      headers: { Accept: "application/json", Authorization: "Bearer smoke-token" },
+      method: "GET"
+    });
+  });
+
   it("notifies the auth runtime when token resolution fails", async () => {
     const fetchMock = createFetchMock(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const onAuthorizationFailure = vi.fn();

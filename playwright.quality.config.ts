@@ -9,14 +9,25 @@ const apiAuthorization =
   process.env.VITE_WISEEFF_API_AUTHORIZATION ??
   process.env.M5_SMOKE_AUTHORIZATION ??
   process.env.WISEEFF_SMOKE_AUTHORIZATION;
+const apiAuthProvider =
+  apiAuthorization && process.env.AUTH_PROVIDER !== "oidc" ? "hmac" : process.env.AUTH_PROVIDER ?? "local";
+const frontendPort = portFromUrl(baseURL, "5173");
+const apiPort = portFromUrl(apiURL, "8787");
 const reuseExistingServer = !process.env.CI;
 const skipWebServers = process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true";
 const webServers = [
   {
     command: "npm run dev:api",
     env: {
-      PORT: "8787",
+      PORT: apiPort,
       AGENT_PROVIDER: "deterministic",
+      AUTH_MODE: process.env.AUTH_MODE ?? "production",
+      AUTH_PROVIDER: apiAuthProvider,
+      ...(process.env.AUTH_TOKEN_ISSUER ? { AUTH_TOKEN_ISSUER: process.env.AUTH_TOKEN_ISSUER } : {}),
+      ...(process.env.AUTH_TOKEN_HMAC_SECRET ? { AUTH_TOKEN_HMAC_SECRET: process.env.AUTH_TOKEN_HMAC_SECRET } : {}),
+      ...(process.env.AUTH_OIDC_ISSUER ? { AUTH_OIDC_ISSUER: process.env.AUTH_OIDC_ISSUER } : {}),
+      ...(process.env.AUTH_OIDC_AUDIENCE ? { AUTH_OIDC_AUDIENCE: process.env.AUTH_OIDC_AUDIENCE } : {}),
+      ...(process.env.AUTH_OIDC_JWKS_URI ? { AUTH_OIDC_JWKS_URI: process.env.AUTH_OIDC_JWKS_URI } : {}),
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: apiURL,
       DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",
@@ -28,7 +39,7 @@ const webServers = [
     timeout: 60_000
   },
   {
-    command: "npm run dev",
+    command: `npm run dev -- --port ${frontendPort} --strictPort`,
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: apiURL,
@@ -39,6 +50,14 @@ const webServers = [
     timeout: 60_000
   }
 ];
+
+function portFromUrl(value: string, fallback: string) {
+  try {
+    return new URL(value).port || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export default defineConfig({
   testDir: "./e2e/quality",
