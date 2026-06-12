@@ -34,6 +34,20 @@ describe("browser acceptance diagnostics", () => {
     ).toEqual({ action: "ignore" });
   });
 
+  it("allows expected browser API failures by route pattern", () => {
+    expect(
+      classifyBrowserIssue(
+        {
+          type: "response",
+          url: "http://127.0.0.1:8787/api/v1/agent/sessions/agent-session-1/tool-calls/agent-tool-1/run",
+          method: "POST",
+          status: 409
+        },
+        [{ method: "POST", path: "/api/v1/agent/sessions/:sessionId/tool-calls/:toolCallId/run", status: 409 }]
+      )
+    ).toEqual({ action: "ignore" });
+  });
+
   it("ignores WiseEff requests aborted by normal page navigation", () => {
     expect(
       classifyBrowserIssue({
@@ -66,6 +80,16 @@ describe("browser acceptance diagnostics", () => {
     expect(classifyBrowserIssue({ type: "console", message: "Failed to load resource", level: "error" }).action).toBe(
       "fail"
     );
+  });
+
+  it("ignores transient browser network-change console noise while requestfailed remains authoritative", () => {
+    for (const message of [
+      "Failed to load resource: net::ERR_NETWORK_CHANGED",
+      "Failed to load resource: net::ERR_INTERNET_DISCONNECTED",
+      "Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED"
+    ]) {
+      expect(classifyBrowserIssue({ type: "console", message, level: "error" })).toEqual({ action: "ignore" });
+    }
   });
 
   it("ignores non-critical external responses", () => {

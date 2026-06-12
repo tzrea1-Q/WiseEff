@@ -15,6 +15,12 @@ function requireUserManager(auth: AuthContext) {
   }
 }
 
+function requireUserDirectoryReader(auth: AuthContext) {
+  if (!auth.user.isActive || (!auth.permissions.includes("users:manage") && !auth.permissions.includes("parameter:view"))) {
+    throw new ApiError("FORBIDDEN", "User directory permission is required.", 403, { permission: "parameter:view" });
+  }
+}
+
 function normalizeRoles(roles: ReplaceUserRolesInput["roles"]): RoleBinding[] {
   return roles.map((role) => {
     if (!roleIds.has(role.roleId)) {
@@ -82,7 +88,7 @@ async function auditUserMutation(
 }
 
 export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
-  requireUserManager(auth);
+  requireUserDirectoryReader(auth);
   return listUsers(db, auth.organization.id);
 }
 

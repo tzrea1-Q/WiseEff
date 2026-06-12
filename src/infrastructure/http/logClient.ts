@@ -204,10 +204,12 @@ export function createHttpLogAnalysisRepository(
       };
     },
     async archiveLog(logId: string) {
-      await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/archive`, {});
+      const response = await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/archive`, {});
+      return logRecordFromDto(response.item);
     },
     async unarchiveLog(logId: string) {
-      await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/unarchive`, {});
+      const response = await apiClient.post<ItemEnvelope<LogRecordDto>>(`${routeLogPath(logId)}/unarchive`, {});
+      return logRecordFromDto(response.item);
     },
     async submitFeedback(input: LogFeedbackInput) {
       await apiClient.post<OkEnvelope>(`${routeLogPath(input.logId)}/feedback`, feedbackBody(input));

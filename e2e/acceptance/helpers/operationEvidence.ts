@@ -73,6 +73,7 @@ export type RecordOperationEvidenceInput = {
 };
 
 const evidenceRoot = "test-results/acceptance/operation-evidence";
+const screenshotTimeoutMs = 5_000;
 
 export function operationEvidenceFileName(operationId: string, title: string) {
   const titleSlug = title
@@ -91,12 +92,31 @@ export async function recordOperationEvidence(input: RecordOperationEvidenceInpu
   const jsonPath = join(evidenceRoot, fileName);
   const artifacts = [...(input.artifacts ?? [])];
   const operation = operationForEvidence(input.operationId);
+  let screenshotFailureNote: string | undefined;
 
   if (input.page) {
     const screenshotPath = jsonPath.replace(/\.json$/, ".png");
-    await input.page.screenshot({ path: screenshotPath, fullPage: true });
-    artifacts.push(screenshotPath);
+    try {
+      await input.page.screenshot({ path: screenshotPath, fullPage: true, timeout: screenshotTimeoutMs });
+      artifacts.push(screenshotPath);
+    } catch (error) {
+      const screenshotErrorPath = jsonPath.replace(/\.json$/, ".screenshot-error.txt");
+      const errorSummary = redactSensitiveText(errorToMessage(error));
+      writeFileSync(
+        screenshotErrorPath,
+        [
+          `Screenshot capture failed within ${screenshotTimeoutMs}ms or before completion.`,
+          errorSummary,
+          ""
+        ].join("\n"),
+        "utf8"
+      );
+      artifacts.push(screenshotErrorPath);
+      screenshotFailureNote = `Screenshot capture failed; see ${screenshotErrorPath}. ${errorSummary}`;
+    }
   }
+
+  const notes = [input.notes, screenshotFailureNote].filter((note): note is string => Boolean(note?.trim())).join("\n");
 
   const record = {
     operationId: input.operationId,
@@ -105,7 +125,7 @@ export async function recordOperationEvidence(input: RecordOperationEvidenceInpu
     role: input.role ?? operation?.roles.join(", ") ?? "unknown",
     route: input.route ?? operation?.route ?? "unknown",
     assertions: input.assertions ?? operation?.assertions ?? [],
-    notes: input.notes ? redactSensitiveText(input.notes) : undefined,
+    notes: notes ? redactSensitiveText(notes) : undefined,
     artifacts,
     api: sanitizeApiSummaries(input.api),
     db: sanitizeDbSummaries(input.db),
@@ -157,6 +177,14 @@ function redactSensitiveText(value: string) {
     .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/g, "Bearer [redacted]");
 }
 
+function errorToMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.stack || error.message;
+  }
+
+  return String(error);
+}
+
 function operationForEvidence(operationId: string) {
   const parentId = operationId.split(":")[0];
   return acceptanceOperations.find((operation) => operation.id === parentId);
@@ -187,7 +215,8 @@ function defaultTraceSummary(): OperationEvidenceTraceSummary {
   return {
     mode: "retain-on-failure",
     path: "test-results/acceptance",
-    note: "Playwright acceptance traces are retained on failure; operation JSON and screenshots are always recorded."
+    note:
+      "Playwright acceptance traces are retained on failure; operation JSON is always recorded and screenshots are captured best-effort with a short timeout."
   };
 }
 

@@ -23,6 +23,14 @@ type UserGovernanceDto = {
 
 type ItemsEnvelope<T> = { items: T[] };
 type ItemEnvelope<T> = { item: T };
+const workflowRolePriority: PlatformRoleId[] = [
+  "hardware-committer",
+  "software-committer",
+  "software-user",
+  "hardware-user",
+  "admin",
+  "guest"
+];
 
 export type CreateGovernedUserInput = {
   name: string;
@@ -35,7 +43,7 @@ export type CreateGovernedUserInput = {
 export const createDefaultUserGovernanceApiClient = (options: DefaultApiClientOptions = {}) => createDefaultApiClient(options);
 
 function userFromDto(dto: UserGovernanceDto): UserAccount {
-  const primaryRole = dto.roles[0];
+  const primaryRole = choosePrimaryRole(dto.roles);
   return {
     id: dto.id,
     name: dto.name,
@@ -46,6 +54,18 @@ function userFromDto(dto: UserGovernanceDto): UserAccount {
     createdAt: dto.createdAt,
     lastActive: dto.lastActiveAt ?? "never"
   };
+}
+
+function choosePrimaryRole(roles: RoleBindingDto[]) {
+  return [...roles].sort((left, right) => {
+    const leftProjectPriority = left.projectId ? 0 : 1;
+    const rightProjectPriority = right.projectId ? 0 : 1;
+    if (leftProjectPriority !== rightProjectPriority) {
+      return leftProjectPriority - rightProjectPriority;
+    }
+
+    return workflowRolePriority.indexOf(left.roleId) - workflowRolePriority.indexOf(right.roleId);
+  })[0];
 }
 
 function roleBody(roleId: PlatformRoleId, projectId: string | null = null) {

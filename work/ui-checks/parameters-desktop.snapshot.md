@@ -1,0 +1,52 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - generic [ref=e14]:
+        - generic [ref=e15]: 雷泽
+        - generic [ref=e16]: Driven by AI
+    - navigation "主导航" [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e22]: 平台总览
+        - button "首页" [ref=e23]
+      - generic [ref=e25]:
+        - generic [ref=e26]: 参数管理
+        - button "我的工作台" [ref=e27]
+        - button "参数修改" [ref=e29]
+        - button "参数审阅" [ref=e70]
+        - button "管理后台" [ref=e72]
+      - generic [ref=e74]:
+        - generic [ref=e75]: 调试平台
+        - button "参数调试" [ref=e76]
+        - button "节点调试" [ref=e78]
+        - button "管理后台" [ref=e80]
+      - generic [ref=e82]:
+        - generic [ref=e83]: 日志分析
+        - button "看板" [ref=e84]
+        - button "智能分析" [ref=e86]
+        - button "管理后台" [ref=e88]
+    - generic [ref=e31]:
+      - button "问题反馈" [ref=e32]:
+        - img
+        - generic [ref=e33]
+      - button "Agent 能力" [disabled]:
+        - img
+        - generic: Agent 能力
+      - button "用户管理" [ref=e90]:
+        - img
+        - generic [ref=e91]: 用户管理
+  - generic [ref=e36]:
+    - banner [ref=e37]:
+      - generic [ref=e38]:
+        - generic [ref=e39]: 项目参数用户工作台
+        - generic [ref=e40]: 查看、筛选、对比并提交充电与电池参数修改请求
+      - generic [ref=e41]:
+        - toolbar "项目参数用户工作台页面操作" [ref=e42]
+        - combobox "项目" [ref=e47]
+        - button "通知" [ref=e48]
+        - button "Open user role switcher" [ref=e51] [cursor=pointer]
+    - main [ref=e61]:
+      - region "项目参数用户工作台" [ref=e98]:
+        - generic [ref=e100]
+  - button "打开 WiseAgent" [ref=e66]:
+    - img [ref=e67]

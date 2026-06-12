@@ -6,6 +6,8 @@ WiseEff is organized as a React frontend plus a TypeScript backend foundation. T
 
 Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, live Agent provider seam with WiseEff HTTP, OpenAI-compatible, and Pi-backed formats, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
 
+API-mode frontend behavior is strict: it starts from an empty API bootstrap state and renders route-level unavailable/retry states when auth or required domain hydration fails. It must not preserve mock runtime business data as a fallback. Mock data remains a demo/test adapter behind explicit mock runtime boundaries.
+
 ## Runtime Shape
 
 ```mermaid
@@ -41,6 +43,7 @@ Rules:
 - Domain rules should be pure and tested.
 - Mock and API implementations should satisfy the same port shape where practical.
 - Production behavior must not depend on mock runtime data.
+- API-mode route rendering should depend on typed auth/domain runtime status, not on seeded prototype state.
 
 ## Backend Boundaries
 

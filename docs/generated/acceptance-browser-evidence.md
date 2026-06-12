@@ -1,8 +1,8 @@
 ## Browser Acceptance Evidence
 
-- Date: 2026-06-02T19:16:28.149Z
-- Branch: `codex/m6-target-evidence-closure`
-- Commit: `06cb6915b3030fafc371c7365fa32468deef7232`
+- Date: 2026-06-12T01:44:37.755Z
+- Branch: `codex/leize-brand-refresh`
+- Commit: `62c4fa79250aa6f36220ae41257953661006f8d1`
 - Dirty worktree: `true`
 - Mode: `local-non-hdc`
 - Status: `passed`
@@ -37,19 +37,19 @@
 ### Requirement Coverage
 
 - Coverage status: `passed`
-- Covered required IDs: `21`
+- Covered required IDs: `22`
 - Missing required IDs: _none_
 - Unknown IDs: _none_
 
 ### Operation Evidence
 
 - Evidence status: `passed`
-- Covered operation IDs: `20`
+- Covered operation IDs: `21`
 - Missing operation IDs: _none_
 - Invalid evidence records: _none_
 - Validation errors: `0`
 - Validation error detail: _none_
-- Evidence records: `34`
+- Evidence records: `35`
 - Evidence index: docs/generated/acceptance-operation-evidence.md
 
 ### Artifact Paths

@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- 本轮前端质量重点是 API runtime strictness：`API-STRICT-001`、App/runtime 单测和 Playwright 验收覆盖了 API 失败时不能回落到本地演示业务数据。mock mode 仍用于演示和组件测试，但不再是 API mode 的业务 fallback。
 
 ## 同类中文文档
 

@@ -28,6 +28,14 @@ export function classifyBrowserIssue(
     return { action: "fail", reason: `Unexpected page error: ${issue.message}` };
   }
 
+  if (issue.type === "console" && issue.level === "error" && isExpectedResourceLoadConsoleError(issue.message, expectedApiFailures)) {
+    return { action: "ignore" };
+  }
+
+  if (issue.type === "console" && issue.level === "error" && isTransientBrowserNetworkConsoleError(issue.message)) {
+    return { action: "ignore" };
+  }
+
   if (issue.type === "console" && issue.level === "error") {
     return { action: "fail", reason: `Unexpected console error: ${issue.message}` };
   }
@@ -122,8 +130,19 @@ function isExpectedApiFailure(issue: Extract<BrowserIssue, { type: "response" }>
     (rule) =>
       rule.status === issue.status &&
       rule.method.toUpperCase() === method &&
-      rule.path === path
+      routePathMatches(rule.path, path)
   );
+}
+
+function isExpectedResourceLoadConsoleError(message: string, rules: ExpectedApiFailure[]) {
+  const statusMatch = /Failed to load resource: the server responded with a status of (\d+)/.exec(message);
+  const status = statusMatch ? Number(statusMatch[1]) : NaN;
+
+  return Number.isFinite(status) && rules.some((rule) => rule.status === status);
+}
+
+function isTransientBrowserNetworkConsoleError(message: string) {
+  return /^Failed to load resource: net::ERR_(NETWORK_CHANGED|INTERNET_DISCONNECTED|NETWORK_IO_SUSPENDED)$/.test(message);
 }
 
 function pathOf(url: string) {
@@ -132,4 +151,18 @@ function pathOf(url: string) {
   } catch {
     return url;
   }
+}
+
+function routePathMatches(expectedPath: string, actualPath: string) {
+  if (expectedPath === actualPath) {
+    return true;
+  }
+
+  const expectedParts = expectedPath.split("/");
+  const actualParts = actualPath.split("/");
+  if (expectedParts.length !== actualParts.length) {
+    return false;
+  }
+
+  return expectedParts.every((part, index) => part.startsWith(":") || part === actualParts[index]);
 }

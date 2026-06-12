@@ -5,6 +5,90 @@ import { initialState } from "./mockData";
 const adminState = { ...initialState, activeRoleId: "admin" };
 
 describe("parameter-admin reducer actions", () => {
+  it("projects API parameter hydration into the admin config draft library", () => {
+    const next = appReducer(
+      {
+        ...adminState,
+        activeProjectId: "",
+        configDraft: {
+          projects: [],
+          parameterLibrary: [],
+          debugParameters: []
+        },
+        parameters: []
+      },
+      {
+        type: "HYDRATE_PARAMETER_RUNTIME",
+        projects: [
+          { id: "aurora", name: "Aurora", code: "AUR" },
+          { id: "atlas", name: "Atlas", code: "ATL" }
+        ],
+        parameters: [
+          {
+            id: "aurora-fast-charge-current",
+            projectId: "aurora",
+            name: "fast_charge_current_limit_ma",
+            description: "Fast charge current",
+            explanation: "Limits fast charging current.",
+            configFormat: "JSON",
+            module: "Charging Policy",
+            currentValue: "3200",
+            recommendedValue: "3100",
+            range: "0 - 5000",
+            unit: "mA",
+            risk: "High",
+            updatedAt: "2026-06-11T00:00:00.000Z",
+            updatedAtTs: "2026-06-11T00:00:00.000Z",
+            history: []
+          },
+          {
+            id: "atlas-fast-charge-current",
+            projectId: "atlas",
+            name: "fast_charge_current_limit_ma",
+            description: "Fast charge current",
+            explanation: "Limits fast charging current.",
+            configFormat: "JSON",
+            module: "Charging Policy",
+            currentValue: "3000",
+            recommendedValue: "3100",
+            range: "0 - 5000",
+            unit: "mA",
+            risk: "High",
+            updatedAt: "2026-06-10T00:00:00.000Z",
+            updatedAtTs: "2026-06-10T00:00:00.000Z",
+            history: []
+          }
+        ],
+        changeRequests: [],
+        parameterSubmissionRounds: [],
+        parameterDrafts: []
+      }
+    );
+
+    expect(next.configDraft.projects).toEqual([
+      { id: "aurora", name: "Aurora", code: "AUR" },
+      { id: "atlas", name: "Atlas", code: "ATL" }
+    ]);
+    expect(next.configDraft.parameterLibrary).toEqual([
+      expect.objectContaining({
+        id: "fast-charge-current-limit-ma",
+        name: "fast_charge_current_limit_ma",
+        values: {
+          aurora: {
+            currentValue: "3200",
+            recommendedValue: "3100",
+            updatedAt: "2026-06-11T00:00:00.000Z"
+          },
+          atlas: {
+            currentValue: "3000",
+            recommendedValue: "3100",
+            updatedAt: "2026-06-10T00:00:00.000Z"
+          }
+        }
+      })
+    ]);
+  });
+
   it("assigns a user role and records audit metadata", () => {
     const next = appReducer(adminState, {
       type: "ASSIGN_USER_ROLE",

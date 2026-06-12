@@ -42,6 +42,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui"]
   },
   {
+    id: "API-STRICT-001",
+    priority: "P0",
+    area: "auth",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Simulate an API-mode required-domain outage and verify unavailable UI appears without demo business rows.",
+    coverage: "automated",
+    acceptanceIds: ["API-STRICT-001"],
+    specFiles: ["e2e/acceptance/auth-runtime.acceptance.spec.ts"],
+    assertions: ["ui", "api", "screenshot"]
+  },
+  {
     id: "PARAM-REASON-001",
     priority: "P0",
     area: "parameters",

@@ -98,8 +98,8 @@ function createAppLogAnalysisRepository(overrides: Partial<LogAnalysisRepository
     uploadLog: vi.fn(),
     getJob: vi.fn(),
     rerunLog: vi.fn(),
-    archiveLog: vi.fn(),
-    unarchiveLog: vi.fn(),
+    archiveLog: vi.fn().mockResolvedValue({ ...initialState.logs[0], archiveState: "archived" as const }),
+    unarchiveLog: vi.fn().mockResolvedValue({ ...initialState.logs[0], archiveState: "active" as const }),
     submitFeedback: vi.fn(),
     ...overrides
   };
@@ -200,6 +200,76 @@ function renderAppForCurrentPath() {
 }
 
 describe("WiseEff app shell", () => {
+  it("does not render demo data when API auth bootstrap fails", async () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(
+      <App
+        authClient={{ getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("auth unavailable")) }}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/API|无法连接|重试/);
+    expect(document.body).not.toHaveTextContent(/Aurora|Nebula|Atlas|aurora/);
+    expect(document.body).not.toHaveTextContent("已保留本地演示数据");
+  });
+
+  it("blocks parameter routes instead of preserving demo rows when parameter API refresh fails", async () => {
+    window.history.replaceState(null, "", "/parameters");
+    const repository = createAppParameterRepository({
+      listProjects: vi.fn().mockRejectedValue(new Error("parameter API unavailable"))
+    });
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        parameterRepository={repository}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/参数 API|重试|不可用/);
+    expect(document.body).not.toHaveTextContent(/Aurora|Nebula|Atlas|charging_thermal_trace/);
+    expect(document.body).not.toHaveTextContent("已保留本地演示数据");
+  });
+
+  it("blocks log routes instead of preserving demo logs when log API refresh fails", async () => {
+    window.history.replaceState(null, "", "/logs");
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        parameterRepository={createAppParameterRepository()}
+        logAnalysisRepository={createAppLogAnalysisRepository({
+          listLogs: vi.fn().mockRejectedValue(new Error("log API unavailable"))
+        })}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/日志 API|重试|不可用/);
+    expect(document.body).not.toHaveTextContent(/charging_thermal_trace|Aurora|已保留本地演示数据/);
+  });
+
+  it("blocks debugging routes instead of preserving mock node rows when debugging API refresh fails", async () => {
+    window.history.replaceState(null, "", "/node-debugging");
+
+    render(
+      <App
+        authClient={createResolvedAuthClient()}
+        parameterRepository={createAppParameterRepository()}
+        debuggingGateway={createAppDebuggingGateway({
+          listDevices: vi.fn().mockRejectedValue(new Error("debug API unavailable"))
+        })}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/调试 API|重试|不可用/);
+    expect(document.body).not.toHaveTextContent(/ChargeLab_X01|battery_pack_temp|Aurora|已保留本地演示数据/);
+  });
+
   it("declares the WiseEff favicon assets in the document shell", () => {
     const indexHtml = readFileSync("index.html", "utf8");
 
@@ -350,7 +420,7 @@ describe("WiseEff app shell", () => {
     expect(userGovernanceActions.listUsers).toHaveBeenCalledTimes(1);
   });
 
-  it("does not hydrate backend governed users on non-user-governance API pages", async () => {
+  it("hydrates backend governed users on parameter API pages for workflow assignee candidates", async () => {
     window.history.replaceState(null, "", "/parameters");
     const userGovernanceActions = createUserGovernanceActions({
       listUsers: vi.fn().mockResolvedValue([
@@ -392,7 +462,7 @@ describe("WiseEff app shell", () => {
     );
 
     expect(await screen.findAllByText("api_runtime_voltage_limit")).not.toHaveLength(0);
-    expect(userGovernanceActions.listUsers).not.toHaveBeenCalled();
+    await waitFor(() => expect(userGovernanceActions.listUsers).toHaveBeenCalledTimes(1));
   });
 
   it("does not rehydrate API auth context after local route changes", async () => {
@@ -454,6 +524,7 @@ describe("WiseEff app shell", () => {
         initialAppState={{ ...initialState, activeRoleId: "user" }}
         parameterRepository={parameterRepository}
         runtimeMode="api"
+        userGovernanceActions={createUserGovernanceActions()}
       />
     );
 
@@ -467,6 +538,7 @@ describe("WiseEff app shell", () => {
 
   it("passes the API Agent gateway into UnifiedAgent in api mode", async () => {
     window.history.replaceState(null, "", "/parameters");
+    const parameterRepository = createAppParameterRepository();
     const agentGateway = {
       startSession: vi.fn(async () => ({ id: "agent-session-1", context: { path: "/parameters", pageKey: "parameters" }, messages: [] })),
       sendMessage: vi.fn(),
@@ -475,11 +547,24 @@ describe("WiseEff app shell", () => {
       rejectToolCall: vi.fn()
     };
 
-    render(<App runtimeMode="api" agentGateway={agentGateway} authClient={createResolvedAuthClient()} />);
-    fireEvent.click(screen.getByRole("button", { name: "打开 WiseAgent" }));
+    render(
+      <App
+        runtimeMode="api"
+        agentGateway={agentGateway}
+        authClient={createResolvedAuthClient()}
+        parameterRepository={parameterRepository}
+        userGovernanceActions={createUserGovernanceActions()}
+      />
+    );
 
+    expect(await screen.findAllByText("api_runtime_voltage_limit")).not.toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "打开 WiseAgent" }));
     expect(await screen.findByText(/项目参数巡检 Agent/)).toBeInTheDocument();
-    expect(agentGateway.startSession).toHaveBeenCalled();
+    await waitFor(() =>
+      expect(agentGateway.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: initialState.activeProjectId })
+      )
+    );
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {
@@ -638,6 +723,7 @@ describe("WiseEff app shell", () => {
         initialAppState={{ ...initialState, activeRoleId: "hardware-committer" }}
         parameterRepository={parameterRepository}
         runtimeMode="api"
+        userGovernanceActions={createUserGovernanceActions()}
       />
     );
 
@@ -705,6 +791,57 @@ describe("WiseEff app shell", () => {
     expect(next.logs).toBe(state.logs);
     expect(next.debugParameters).toBe(state.debugParameters);
     expect(next.users).toBe(state.users);
+  });
+
+  it("selects the first API project when parameter hydration starts without an active project", () => {
+    const next = appReducer(
+      { ...initialState, activeProjectId: "" },
+      {
+        type: "HYDRATE_PARAMETER_RUNTIME",
+        projects: [apiProject],
+        parameters: [apiParameter],
+        changeRequests: [],
+        parameterSubmissionRounds: [],
+        parameterDrafts: []
+      }
+    );
+
+    expect(next.activeProjectId).toBe(apiProject.id);
+  });
+
+  it("updates log status from terminal API job progress", () => {
+    const processingLog = {
+      ...initialState.logs[0],
+      id: "api-log-processing",
+      status: "Processing" as const,
+      stage: "pattern" as const,
+      confidence: 35,
+      failureReason: undefined
+    };
+    const next = appReducer(
+      { ...initialState, logs: [processingLog] },
+      {
+        type: "LOG_JOB_PROGRESS",
+        job: {
+          id: "api-job-complete",
+          kind: "log-analysis",
+          logId: processingLog.id,
+          runId: "api-run-complete",
+          status: "complete",
+          progress: 100,
+          currentStage: "report",
+          error: null,
+          updatedAt: "2026-05-25T09:00:00.000Z"
+        }
+      }
+    );
+
+    expect(next.logs[0]).toEqual(expect.objectContaining({
+      status: "Complete",
+      stage: "report",
+      confidence: 100,
+      updatedAtIso: "2026-05-25T09:00:00.000Z"
+    }));
   });
 
   it("hydrates debugging runtime state and mirrors parameters into the config draft", () => {
@@ -1870,6 +2007,104 @@ describe("WiseEff app shell", () => {
     await waitFor(() => {
       expect(document.querySelector(".topbar-page-actions .button.primary")).toBeInTheDocument();
     });
+  });
+
+  it("hydrates API logs with the route project scope", async () => {
+    window.history.replaceState(null, "", "/logs?project=aurora");
+    const logAnalysisRepository = createAppLogAnalysisRepository();
+
+    render(
+      <App
+        runtimeMode="api"
+        authClient={createResolvedAuthClient()}
+        parameterRepository={createAppParameterRepository()}
+        logAnalysisRepository={logAnalysisRepository}
+        debuggingGateway={createAppDebuggingGateway()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(logAnalysisRepository.listLogs).toHaveBeenCalledWith({ projectId: "aurora" });
+    });
+  });
+
+  it("hydrates API log admin with the global archived log scope", async () => {
+    window.history.replaceState(null, "", "/log-admin");
+    const logAnalysisRepository = createAppLogAnalysisRepository();
+
+    render(
+      <App
+        initialAppState={{ ...adminState, activeProjectId: "aurora" }}
+        runtimeMode="api"
+        authClient={{
+          getCurrentAuthContext: vi.fn(async () => ({
+            user: {
+              id: "u-api-admin",
+              organizationId: "org-chargelab",
+              name: "API Admin",
+              email: "api-admin@chargelab.cn",
+              title: "API Platform Owner",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "logs:view"]
+          }))
+        }}
+        parameterRepository={createAppParameterRepository()}
+        logAnalysisRepository={logAnalysisRepository}
+        debuggingGateway={createAppDebuggingGateway()}
+        userGovernanceActions={createUserGovernanceActions()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(logAnalysisRepository.listLogs).toHaveBeenCalledWith({ includeArchived: true });
+    });
+    expect(logAnalysisRepository.listLogs).not.toHaveBeenCalledWith({ projectId: "aurora" });
+  });
+
+  it("uploads API logs with the route project instead of the hydrated default project", async () => {
+    window.history.replaceState(null, "", "/logs?project=aurora");
+    const uploadedLog = {
+      ...initialState.logs[0],
+      id: "api-route-upload",
+      projectId: "aurora",
+      fileName: "route-project.log",
+      status: "Processing" as const
+    };
+    const logAnalysisRepository = createAppLogAnalysisRepository({
+      uploadLog: vi.fn().mockResolvedValue({ log: uploadedLog, job: null })
+    });
+    const parameterRepository = createAppParameterRepository({
+      listProjects: vi.fn().mockResolvedValue([
+        { id: "atlas", name: "Atlas API Project", code: "ATL" },
+        { id: "aurora", name: "Aurora API Project", code: "AUR" }
+      ]),
+      listParameters: vi.fn().mockResolvedValue([])
+    });
+
+    render(
+      <App
+        runtimeMode="api"
+        authClient={createResolvedAuthClient()}
+        parameterRepository={parameterRepository}
+        logAnalysisRepository={logAnalysisRepository}
+        debuggingGateway={createAppDebuggingGateway()}
+      />
+    );
+
+    await screen.findByRole("button", { name: /上传新日志/ });
+    fireEvent.click(screen.getByRole("button", { name: /上传新日志/ }));
+    const file = new File(["hello"], "route-project.log", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("选择日志文件"), { target: { files: [file] } });
+    fireEvent.click(await screen.findByRole("button", { name: "确认上传" }));
+
+    await waitFor(() =>
+      expect(logAnalysisRepository.uploadLog).toHaveBeenCalledWith(
+        expect.objectContaining({ projectId: "aurora", file })
+      )
+    );
   });
 
   it("switches log analysis content from clickable history records", () => {

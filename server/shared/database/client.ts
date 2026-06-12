@@ -12,6 +12,7 @@ export type Queryable = {
 
 export type Database = Queryable & {
   transaction<T>(fn: (tx: Queryable) => Promise<T>): Promise<T>;
+  close?(): Promise<void>;
 };
 
 type DatabaseOptions = {
@@ -102,6 +103,7 @@ export function createPostgresDatabase(connectionString: string, options: Databa
       } finally {
         client.release();
       }
-    }
+    },
+    close: () => pool.end()
   };
 }

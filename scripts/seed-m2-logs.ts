@@ -374,9 +374,13 @@ async function main() {
   }
 
   const db = createPostgresDatabase(env.DATABASE_URL);
-  await seedM2Logs(db);
 
-  console.log("Seeded M2 log data.");
+  try {
+    await seedM2Logs(db);
+    console.log("Seeded M2 log data.");
+  } finally {
+    await db.close?.();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

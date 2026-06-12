@@ -34,6 +34,10 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 生产构建不能把 mock data 当业务数据源。组件测试和演示可以继续使用 mock。
 
+API runtime 现在从空的 API bootstrap state 启动，不再从 `src/mockData.ts` 读取业务初始数据。认证或当前路由必需的参数、日志、调试、用户 API hydrate 失败时，页面必须显示 API 不可用和重试状态，不能保留 Aurora、demo 日志、mock 调试节点或 mock 用户等本地演示数据。
+
+mock reducer action 只属于 mock runtime。API runtime 的参数、日志和调试操作必须走 HTTP repository/gateway；如果后端不可用，应暴露 API 失败状态，而不是回退到本地 reducer。
+
 ## 端口和实现
 
 前端页面不要直接拼业务写入逻辑，而是调用 application ports：

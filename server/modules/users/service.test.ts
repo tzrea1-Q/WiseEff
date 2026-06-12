@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
-import { createUser, deactivateUser, replaceUserRoles, updateUserProfile } from "./service";
+import { createUser, deactivateUser, listGovernedUsers, replaceUserRoles, updateUserProfile } from "./service";
 
 type QueryCall = {
   text: string;
@@ -102,6 +102,17 @@ describe("user governance service", () => {
 
     const insertCall = txCalls.find((call) => call.text.includes("insert into users"));
     expect(insertCall?.values[4]).toBe("User");
+  });
+
+  it("allows parameter viewers to read the user directory for workflow assignees", async () => {
+    const { db } = createDb((text) => (text.includes("select") ? [userRow()] : []));
+
+    await expect(listGovernedUsers(db, nonAdminAuth)).resolves.toEqual([
+      expect.objectContaining({
+        id: "u-target",
+        roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+      })
+    ]);
   });
 
   it("rejects non-admin user governance mutations", async () => {

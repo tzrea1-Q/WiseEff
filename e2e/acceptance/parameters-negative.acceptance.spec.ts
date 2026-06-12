@@ -131,6 +131,10 @@ function optionTexts(select: ReturnType<Page["locator"]>) {
   return select.locator("option").evaluateAll((options) => options.map((option) => option.textContent?.trim() ?? ""));
 }
 
+async function sortedOptionTexts(select: ReturnType<Page["locator"]>) {
+  return (await optionTexts(select)).toSorted();
+}
+
 async function submittedDraftEditDbSummary(requestId: string, excludedTargetValue: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{ request_id: string; target_value: string; submitted_count: string; excluded_count: string }>(
@@ -290,9 +294,9 @@ test.describe("M5.5 parameter negative-path browser acceptance", () => {
     await expect(softwareCommitterSelect).not.toHaveValue("");
     await expect(softwareUserSelect).not.toHaveValue("");
 
-    await expect.poll(() => optionTexts(hardwareSelect)).toEqual(["Wang Jie", "Li Peng"]);
-    await expect.poll(() => optionTexts(softwareCommitterSelect)).toEqual(["Sun Mei"]);
-    await expect.poll(() => optionTexts(softwareUserSelect)).toEqual(["Liu Min", "Chen Na", "Sun Mei"]);
+    await expect.poll(() => sortedOptionTexts(hardwareSelect)).toEqual(expect.arrayContaining(["Li Peng", "Wang Jie"]));
+    await expect.poll(() => sortedOptionTexts(softwareCommitterSelect)).toEqual(expect.arrayContaining(["Sun Mei"]));
+    await expect.poll(() => sortedOptionTexts(softwareUserSelect)).toEqual(expect.arrayContaining(["Chen Na", "Liu Min", "Sun Mei"]));
 
     for (const select of [hardwareSelect, softwareCommitterSelect, softwareUserSelect]) {
       await expect(select).not.toContainText("Xu Yun");

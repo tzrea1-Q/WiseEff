@@ -272,6 +272,9 @@ export function UnifiedAgent({
       addAgentUnavailableMessage();
       return Promise.resolve(null);
     }
+    if (!projectId) {
+      return Promise.resolve(null);
+    }
     if (sessionRef.current) {
       return Promise.resolve(sessionRef.current);
     }

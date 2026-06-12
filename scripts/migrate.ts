@@ -13,6 +13,10 @@ if (!env.DATABASE_URL) {
 }
 
 const db = createPostgresDatabase(env.DATABASE_URL);
-const applied = await applyMigrations(db, path.join(root, "server", "migrations"));
 
-console.log(`Applied ${applied.length} migration(s): ${applied.join(", ") || "none"}`);
+try {
+  const applied = await applyMigrations(db, path.join(root, "server", "migrations"));
+  console.log(`Applied ${applied.length} migration(s): ${applied.join(", ") || "none"}`);
+} finally {
+  await db.close?.();
+}

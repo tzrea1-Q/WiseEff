@@ -1,0 +1,53 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - img [ref=e7]
+      - generic [ref=e14]:
+        - generic [ref=e15]: 雷泽
+        - generic [ref=e16]: Driven by AI
+    - navigation "主导航" [ref=e20]:
+      - generic [ref=e21]:
+        - generic [ref=e22]: 平台总览
+        - button "首页" [ref=e23]
+      - generic [ref=e25]:
+        - generic [ref=e26]: 参数管理
+        - button "我的工作台" [ref=e27]
+        - button "参数修改" [ref=e29]
+        - button "参数审阅" [ref=e31]
+        - button "管理后台" [ref=e33]
+      - generic [ref=e35]:
+        - generic [ref=e36]: 调试平台
+        - button "参数调试" [ref=e37]
+        - button "节点调试" [ref=e39]
+        - button "管理后台" [ref=e41]
+      - generic [ref=e43]:
+        - generic [ref=e44]: 日志分析
+        - button "看板" [ref=e45]
+        - button "智能分析" [ref=e47]
+        - button "管理后台" [ref=e49]
+    - generic [ref=e51]:
+      - button "问题反馈" [ref=e52]:
+        - img
+        - generic [ref=e53]
+      - button "Agent 能力" [disabled]:
+        - img
+        - generic: Agent 能力
+      - button "用户管理" [ref=e56]:
+        - img
+        - generic [ref=e57]: 用户管理
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - generic [ref=e60]:
+        - generic [ref=e61]: 项目参数管理后台
+        - generic [ref=e62]: 电池与充电参数数据库、批量导入、权限和审计管理
+      - generic [ref=e63]:
+        - toolbar "项目参数管理后台页面操作" [ref=e64]
+        - button "通知" [ref=e69]
+        - button "Open user role switcher" [ref=e72] [cursor=pointer]
+    - main [ref=e82]:
+      - generic [ref=e117]:
+        - region "参数管理后台指标" [ref=e118]
+        - main [ref=e135]
+        - status [ref=e375]: API 模式下参数库修改通过导入批次或审阅流程写入。
+  - button "打开 WiseAgent" [ref=e87]:
+    - img [ref=e88]

@@ -28,6 +28,10 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 Production builds must not use mock runtime as a business data source.
 
+In API mode, the app now starts from an explicit empty API bootstrap state instead of `src/mockData.ts`. Authentication and route-required domains (`parameters`, `logs`, `debugging`, and `users`) move through typed runtime status. If auth or the current route's required API hydration fails, the route renders an API unavailable/retry state and must not show seeded demo projects, parameters, logs, devices, debug parameters, or users.
+
+Mock mode remains available for demos and component tests, but mock reducer actions are mock-only behavior. API-mode runtime actions must call HTTP repositories/gateways or surface an API failure without falling back to local reducer mutations.
+
 M6.2 OIDC runtime support uses an async authorization provider so API clients can request the current access token and handle refresh/logout failures without static bearer injection. `VITE_WISEEFF_API_AUTHORIZATION` remains a local static-token convenience and is rejected by production builds.
 
 `/user-permissions` uses the user-governance HTTP client in API mode for listing users, creating users, activation changes, profile updates, and role replacement. The API-mode page must hydrate its displayed users from `/api/v1/users` before operators make changes, so UI rows use backend governed ids instead of mock ids. UI permission checks remain UX only; backend `/api/v1/users` routes enforce `users:manage`, self-lockout protection, and audit.
@@ -39,6 +43,8 @@ M6.2 OIDC runtime support uses an async authorization provider so API clients ca
 In `mock` mode, `src/infrastructure/mock/mockParameterRepository.ts` preserves prototype behavior for demos and component tests. It can list projects and parameters, stash drafts, submit rounds, advance reviews, and apply import previews against the in-memory mock state.
 
 In `api` mode, `src/infrastructure/http/parameterClient.ts` maps `ParameterRepository` calls to `/api/v1` endpoints and DTO adapters. Parameter pages hydrate projects, parameters, drafts, change requests, and submission rounds from the backend, then refresh after write actions.
+
+If parameter hydration fails in API mode, parameter routes render the shared runtime unavailable state instead of preserving demo projects or rows from mock data.
 
 Page action flow:
 
@@ -56,6 +62,8 @@ In `mock` mode, uploads use the reducer's simulated log path: supported `.log`, 
 
 In `api` mode, `src/infrastructure/http/logClient.ts` maps the port to `/api/v1/log-files`, `/api/v1/logs`, `/api/v1/jobs`, archive/unarchive, rerun, and feedback endpoints. Uploads send base64 file content, hydrate the created `LogRecord`, poll the job until a terminal state, then refresh the completed report and evidence. Archive and feedback actions refresh active logs afterward, so default `/logs` excludes archived records.
 
+If log hydration fails in API mode, log routes render the shared runtime unavailable state instead of preserving demo log records.
+
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
 
 ## Debugging Gateway
@@ -69,6 +77,8 @@ Runtime split:
 - `api` mode uses `src/infrastructure/http/debuggingClient.ts` for devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
 
 The runtime coordinator hydrates devices and debugging parameters after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. A current residual gap is that snapshots created from `/node-debugging` writes are not yet promoted into `/debugging`'s `lastDebugSnapshot` rollback card; the M3 E2E therefore verifies rollback through the API if that UI affordance is disabled.
+
+API-mode debugging actions do not dispatch local `CONNECT_DEVICE`, `PUSH_DEBUG_VALUES`, or `ROLLBACK_LAST_SNAPSHOT` reducer actions. Missing gateway support, missing backend snapshot ids, or gateway failures surface as API failures.
 
 The M3 API smoke lives in `e2e/debugging.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m3`. Playwright starts the backend with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and the frontend with `VITE_WISEEFF_RUNTIME_MODE=api`.
 

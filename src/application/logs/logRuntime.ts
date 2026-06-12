@@ -248,7 +248,8 @@ export function createLogRuntimeActions({
       }
 
       await runApiMutation(async (api) => {
-        await api.archiveLog(logId);
+        const archivedLog = await api.archiveLog(logId);
+        dispatch({ type: "UPSERT_LOG_RECORD", log: archivedLog });
         await refresh();
       });
     },
@@ -259,7 +260,8 @@ export function createLogRuntimeActions({
       }
 
       await runApiMutation(async (api) => {
-        await api.unarchiveLog(logId);
+        const activeLog = await api.unarchiveLog(logId);
+        dispatch({ type: "UPSERT_LOG_RECORD", log: activeLog });
         await refresh();
       });
     },

@@ -46,7 +46,7 @@ export interface LogAnalysisRepository {
   getJob(jobId: string): Promise<LogJobSnapshot>;
   watchJob?(jobId: string, onEvent: (snapshot: LogJobSnapshot) => void): () => void;
   rerunLog(input: LogRerunInput): Promise<{ log: LogRecord; job: LogJobSnapshot }>;
-  archiveLog(logId: string): Promise<void>;
-  unarchiveLog(logId: string): Promise<void>;
+  archiveLog(logId: string): Promise<LogRecord>;
+  unarchiveLog(logId: string): Promise<LogRecord>;
   submitFeedback(input: LogFeedbackInput): Promise<void>;
 }

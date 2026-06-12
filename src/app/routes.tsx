@@ -18,6 +18,12 @@ import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
+import { RuntimeUnavailable } from "@/app/runtime/RuntimeUnavailable";
+import {
+  selectBlockingRuntimeStatus,
+  type ApiRuntimeStatus,
+  type RuntimeDomain
+} from "@/app/runtime/runtimeStatus";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { DebuggingPage } from "@/DebuggingPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
@@ -36,7 +42,7 @@ import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/ty
 
 const DebuggingPageWithRuntimeProps = DebuggingPage as (props: Pick<PageProps, "state" | "dispatch" | "debuggingActions" | "debuggingGateway">) => ReactNode;
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (
-  props: Pick<PageProps, "state" | "debuggingActions"> & { runtimeReady?: boolean }
+  props: Pick<PageProps, "state" | "debuggingActions" | "effectiveProjectId"> & { runtimeReady?: boolean }
 ) => ReactNode;
 
 export type ParameterPageActions = {
@@ -54,6 +60,7 @@ export type PageProps = {
   dispatch: Dispatch<AppAction>;
   onNavigate: (path: string) => void;
   search: string;
+  effectiveProjectId?: string;
   debuggingActions?: DebuggingRuntimeActions;
   debuggingGateway?: DebuggingGateway;
   debuggingRuntimeReady?: boolean;
@@ -62,6 +69,8 @@ export type PageProps = {
   userGovernanceActions?: UserGovernanceActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
   runtimeMode?: WiseEffRuntimeMode;
+  apiRuntimeStatus?: ApiRuntimeStatus;
+  onRetryRuntimeDomain?: (domain: RuntimeDomain) => void;
 };
 
 export type PageRouterProps = PageProps & {
@@ -90,6 +99,8 @@ export function PageRouter({
   userGovernanceActions,
   parameterHomeTimeWindow,
   runtimeMode,
+  apiRuntimeStatus,
+  onRetryRuntimeDomain,
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
@@ -106,6 +117,17 @@ export function PageRouter({
     state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
   const canEditParameters =
     canPerform(currentRoleId, "parameter.edit") && activeProjectInitializationStatus === "initialized";
+  const blockingRuntimeStatus =
+    runtimeMode === "api" && apiRuntimeStatus ? selectBlockingRuntimeStatus(page.key, apiRuntimeStatus) : null;
+
+  if (blockingRuntimeStatus) {
+    return (
+      <RuntimeUnavailable
+        blocking={blockingRuntimeStatus}
+        onRetry={onRetryRuntimeDomain ? () => onRetryRuntimeDomain(blockingRuntimeStatus.domain) : undefined}
+      />
+    );
+  }
 
   if (!canAccessPage(currentRoleId, page.key)) {
     const requiredRole = getRequiredRoleForPage(page.key);
@@ -165,7 +187,17 @@ export function PageRouter({
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":
-      return <LogsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} parameterActions={parameterActions} />;
+      return (
+        <LogsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          effectiveProjectId={searchProjectId || state.activeProjectId}
+          logActions={logActions}
+          parameterActions={parameterActions}
+        />
+      );
     case "log-admin":
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "debugging":
@@ -181,6 +213,7 @@ export function PageRouter({
       return (
         <NodeDebuggingPageWithRuntimeProps
           state={state}
+          effectiveProjectId={searchProjectId || state.activeProjectId}
           debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}
           runtimeReady={runtimeMode === "api" ? debuggingRuntimeReady : true}
         />

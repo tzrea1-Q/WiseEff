@@ -10,6 +10,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | --- | --- | --- | --- | --- |
 | `AUTH-RUNTIME-001` | A | Yes | API-mode browser runtime loads the current user with the same auth contract used by local development. | `e2e/acceptance/auth-runtime.acceptance.spec.ts` |
 | `SHELL-DIAG-001` | A | Yes | Core routes fail acceptance on unexpected console errors, page errors, request failures, or critical WiseEff API `4xx/5xx` responses. | `e2e/acceptance/shell-navigation.acceptance.spec.ts`; shared diagnostics helper |
+| `API-STRICT-001` | A | Yes | API mode renders an explicit unavailable/retry state and never falls back to local demo business data when auth or required API hydration fails. | `e2e/acceptance/auth-runtime.acceptance.spec.ts` |
 | `PARAM-REASON-001` | B | Yes | Parameter drafts cannot be submitted with an empty or blank reason. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-001` | B | Yes | Parameter submission defaults every workflow slot to an eligible active non-admin user. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-ASSIGNEE-002` | B | Yes | Workflow assignee dropdowns hide inactive, guest, admin-only, and role-ineligible users. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |

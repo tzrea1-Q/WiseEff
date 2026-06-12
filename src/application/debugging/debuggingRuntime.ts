@@ -286,9 +286,19 @@ export function createDebuggingRuntimeActions({
       });
     },
     async rollbackLastSnapshot() {
+      if (mode === "api") {
+        throw notifyFailure(dispatch, new Error("API snapshot id is required for rollback."));
+      }
+
       dispatch({ type: "ROLLBACK_LAST_SNAPSHOT" });
     },
     async connectDevice(deviceId) {
+      if (mode === "api") {
+        const device = getState().devices.find((item) => item.id === deviceId);
+        await this.detectAndStartSession(device?.projectId ?? deviceId);
+        return;
+      }
+
       dispatch({ type: "CONNECT_DEVICE", deviceId });
     }
   };

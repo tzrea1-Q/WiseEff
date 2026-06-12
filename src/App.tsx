@@ -33,6 +33,16 @@ import type {
 import { WiseEffIcon } from "./components/WiseEffIcon";
 import { ProjectParameterInitializationWizard } from "./ProjectParameterInitializationWizard";
 import { PageRouter, type PageProps } from "@/app/routes";
+import { createApiBootstrapState } from "@/app/runtime/apiBootstrapState";
+import {
+  createInitialApiRuntimeStatus,
+  markRuntimeDomainReady,
+  markRuntimeDomainUnavailable,
+  resetRuntimeDomainForRetry,
+  runtimeUnavailableMessage,
+  type ApiRuntimeStatus,
+  type RuntimeDomain
+} from "@/app/runtime/runtimeStatus";
 import {
   createDebuggingRuntimeActions,
   type DebuggingRuntimeActions,
@@ -50,7 +60,7 @@ import {
   type HydrateLogRuntimeAction,
   type LogRuntimeActions
 } from "@/application/logs/logRuntime";
-import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
+import type { LogAnalysisRepository, LogJobSnapshot, LogListQuery } from "@/application/ports/LogAnalysisRepository";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
 import {
   createParameterRuntimeActions,
@@ -126,6 +136,10 @@ import {
   updateProjectParameter,
   updateProjectParameterMetadata,
   type PowerManagementRisk
+} from "./powerManagementConfig";
+import type {
+  PowerManagementParameterTemplate,
+  PowerManagementProjectId
 } from "./powerManagementConfig";
 import { Button } from "@/components/ui/button";
 import {
@@ -515,6 +529,22 @@ function canSubmitParameterChangesForProject(state: PrototypeState, projectId: s
   return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
 }
 
+function logRefreshRequestForPage(
+  pageKey: PageConfig["key"],
+  effectiveProjectId: string
+): { query?: LogListQuery } | null {
+  switch (pageKey) {
+    case "logs":
+      return { query: effectiveProjectId ? { projectId: effectiveProjectId } : undefined };
+    case "log-admin":
+      return { query: { includeArchived: true } };
+    case "log-dashboard":
+      return {};
+    default:
+      return null;
+  }
+}
+
 function buildDraftSubmissionRounds(
   drafts: ParameterDraftDto[] | undefined,
   parameters: ParameterRecord[],
@@ -556,6 +586,52 @@ function buildDraftSubmissionRounds(
   });
 }
 
+function apiParameterLibraryFromRecords(parameters: ParameterRecord[]): PowerManagementParameterTemplate[] {
+  const templates = new Map<string, PowerManagementParameterTemplate>();
+
+  for (const parameter of parameters) {
+    const templateId = parameter.name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || parameter.id;
+    const existing = templates.get(templateId);
+    const nextValue = {
+      currentValue: parameter.currentValue,
+      recommendedValue: parameter.recommendedValue,
+      updatedAt: parameter.updatedAt
+    };
+
+    if (existing) {
+      templates.set(templateId, {
+        ...existing,
+        values: {
+          ...existing.values,
+          [parameter.projectId as PowerManagementProjectId]: nextValue
+        }
+      });
+      continue;
+    }
+
+    templates.set(templateId, {
+      id: templateId,
+      name: parameter.name,
+      description: parameter.description,
+      explanation: parameter.explanation,
+      configFormat: parameter.configFormat,
+      module: parameter.module,
+      range: parameter.range,
+      unit: parameter.unit,
+      risk: parameter.risk,
+      values: {
+        [parameter.projectId as PowerManagementProjectId]: nextValue
+      }
+    });
+  }
+
+  return Array.from(templates.values());
+}
+
 export function reducer(state: PrototypeState, action: AppAction): PrototypeState {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const auditActor = currentUser?.name ?? "system";
@@ -592,14 +668,21 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         action.projects,
         currentUser?.name ?? "API draft"
       );
+      const apiProjectIds = new Set(action.projects.map((project) => project.id));
+      const activeProjectId =
+        state.activeProjectId && apiProjectIds.has(state.activeProjectId)
+          ? state.activeProjectId
+          : action.projects[0]?.id ?? state.activeProjectId;
       return {
         ...state,
+        activeProjectId,
         parameters: action.parameters,
         changeRequests: action.changeRequests,
         parameterSubmissionRounds: [...draftSubmissionRounds, ...action.parameterSubmissionRounds],
         configDraft: {
           ...state.configDraft,
-          projects: action.projects.map((project) => ({ ...project }))
+          projects: action.projects.map((project) => ({ ...project })),
+          parameterLibrary: apiParameterLibraryFromRecords(action.parameters)
         }
       };
     }
@@ -1120,7 +1203,11 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           log.id === action.job.logId
             ? {
                 ...log,
-                stage: action.job.currentStage
+                stage: action.job.currentStage,
+                status: action.job.status === "complete" ? "Complete" : action.job.status === "failed" ? "Failed" : "Processing",
+                confidence: Math.max(log.confidence, action.job.progress),
+                failureReason: action.job.status === "failed" ? action.job.error ?? log.failureReason : log.failureReason,
+                updatedAtIso: action.job.updatedAt
               }
             : log
         )
@@ -1774,23 +1861,32 @@ type AppProps = {
   userGovernanceActions?: UserGovernanceActions;
 };
 
+const apiBootstrapState = createApiBootstrapState();
+
 function App({
   agentGateway,
   authClient,
   debuggingGateway,
-  initialAppState = initialState,
+  initialAppState,
   logAnalysisRepository,
   parameterRepository,
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
+  const hasInjectedInitialAppState = Boolean(initialAppState);
+  const resolvedInitialAppState = initialAppState ?? (runtimeMode === "api" ? apiBootstrapState : initialState);
+  const initialApiRuntimeStatus = hasInjectedInitialAppState
+    ? createInitialApiRuntimeStatus("idle")
+    : createInitialApiRuntimeStatus();
+
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
         agentGateway={agentGateway}
         authClient={authClient}
         debuggingGateway={debuggingGateway}
-        initialAppState={initialAppState}
+        initialAppState={resolvedInitialAppState}
+        initialApiRuntimeStatus={initialApiRuntimeStatus}
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
         parameterRepository={parameterRepository}
@@ -1805,6 +1901,7 @@ function AppShell({
   agentGateway,
   authClient,
   debuggingGateway,
+  initialApiRuntimeStatus,
   initialAppState,
   logAnalysisRepository,
   parameterRepository,
@@ -1814,6 +1911,7 @@ function AppShell({
   agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
   debuggingGateway?: DebuggingGateway;
+  initialApiRuntimeStatus: ApiRuntimeStatus;
   initialAppState: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
@@ -1828,6 +1926,8 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
+  const [apiRuntimeStatus, setApiRuntimeStatus] = useState<ApiRuntimeStatus>(initialApiRuntimeStatus);
+  const [runtimeRetryNonce, setRuntimeRetryNonce] = useState(0);
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
@@ -1835,6 +1935,8 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const urlProjectId = new URLSearchParams(search).get("project") || "";
+  const effectiveProjectId = urlProjectId || state.activeProjectId;
   const agentGatewayClient = useMemo(
     () => agentGateway ?? (runtimeMode === "api" ? createHttpAgentGateway() : undefined),
     [agentGateway, runtimeMode]
@@ -1896,6 +1998,22 @@ function AppShell({
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
+  const markApiDomainReady = useCallback((domain: RuntimeDomain) => {
+    setApiRuntimeStatus((status) => markRuntimeDomainReady(status, domain));
+  }, []);
+  const markApiDomainUnavailable = useCallback((domain: RuntimeDomain, message?: string) => {
+    setApiRuntimeStatus((status) => markRuntimeDomainUnavailable(status, domain, message ?? runtimeUnavailableMessage(domain)));
+  }, []);
+  const retryApiRuntimeDomain = useCallback((domain: RuntimeDomain) => {
+    setApiRuntimeStatus((status) => {
+      if (domain !== "auth") {
+        return resetRuntimeDomainForRetry(status, domain);
+      }
+
+      return createInitialApiRuntimeStatus();
+    });
+    setRuntimeRetryNonce((nonce) => nonce + 1);
+  }, []);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1928,84 +2046,120 @@ function AppShell({
             lastActive: "just now"
           }
         });
-        const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
+        markApiDomainReady("auth");
+        const [parameterRefreshResult, debuggingRefreshResult, usersRefreshResult] = await Promise.allSettled([
           parameterActions.refresh({ notifyOnFailure: false }),
-          logActions.refresh(),
-          debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
+          debuggingActions.refresh({ projectId: stateRef.current.activeProjectId }),
+          userGovernanceActionsClient?.listUsers()
         ]);
         if (cancelled) return;
         if (
           parameterRefreshResult.status === "rejected" ||
           (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
         ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽 API，已保留本地演示数据" });
+          markApiDomainUnavailable("parameters");
         } else if (!parameterRuntimeConnectedRef.current) {
+          markApiDomainReady("parameters");
           parameterRuntimeConnectedRef.current = true;
           dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
-        }
-        if (logRefreshResult.status === "rejected") {
-          if (
-            !(
-              logRefreshResult.reason instanceof Error &&
-              (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-            )
-          ) {
-            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
-          }
-        } else if (!logRuntimeConnectedRef.current) {
-          logRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
+        } else {
+          markApiDomainReady("parameters");
         }
         if (debuggingRefreshResult.status === "rejected") {
           setDebuggingRuntimeReady(false);
+          markApiDomainUnavailable("debugging");
           if (
             !(
               debuggingRefreshResult.reason instanceof Error &&
               (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
             )
           ) {
-            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
+            dispatch({ type: "ADD_NOTIFICATION", message: runtimeUnavailableMessage("debugging") });
           }
         } else {
           setDebuggingRuntimeReady(true);
+          markApiDomainReady("debugging");
           if (!debuggingRuntimeConnectedRef.current) {
             debuggingRuntimeConnectedRef.current = true;
             dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
           }
         }
+        if (usersRefreshResult.status === "rejected") {
+          markApiDomainUnavailable("users");
+          dispatch({ type: "ADD_NOTIFICATION", message: runtimeUnavailableMessage("users") });
+        } else if (usersRefreshResult.value) {
+          dispatch({ type: "HYDRATE_USERS", users: usersRefreshResult.value });
+          markApiDomainReady("users");
+        } else {
+          markApiDomainReady("users");
+        }
       })
       .catch(() => {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽 API，已保留本地演示数据" });
+        markApiDomainUnavailable("auth");
+        dispatch({ type: "ADD_NOTIFICATION", message: runtimeUnavailableMessage("auth") });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [authClient, debuggingActions, logActions, parameterActions, runtimeMode]);
+  }, [
+    authClient,
+    debuggingActions,
+    markApiDomainReady,
+    markApiDomainUnavailable,
+    parameterActions,
+    runtimeMode,
+    runtimeRetryNonce,
+    userGovernanceActionsClient
+  ]);
 
   useEffect(() => {
-    if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
+    if (runtimeMode !== "api" || apiRuntimeStatus.auth.state !== "ready") {
+      return;
+    }
+
+    const refreshRequest = logRefreshRequestForPage(page.key, effectiveProjectId);
+    if (!refreshRequest) {
       return;
     }
 
     let cancelled = false;
-    userGovernanceActionsClient
-      .listUsers()
-      .then((users) => {
-        if (!cancelled) {
-          dispatch({ type: "HYDRATE_USERS", users });
+    logActions
+      .refresh(refreshRequest.query)
+      .then(() => {
+        if (cancelled) return;
+        markApiDomainReady("logs");
+        if (!logRuntimeConnectedRef.current) {
+          logRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
         }
       })
-      .catch(() => {
-        if (!cancelled) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽用户 API，已保留本地演示用户" });
+      .catch((error) => {
+        if (cancelled) return;
+        markApiDomainUnavailable("logs");
+        if (
+          !(
+            error instanceof Error &&
+            (error as { alreadyNotified?: unknown }).alreadyNotified === true
+          )
+        ) {
+          dispatch({ type: "ADD_NOTIFICATION", message: runtimeUnavailableMessage("logs") });
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentRoleId, page.key, runtimeMode, userGovernanceActionsClient]);
+  }, [
+    apiRuntimeStatus.auth.state,
+    effectiveProjectId,
+    logActions,
+    markApiDomainReady,
+    markApiDomainUnavailable,
+    page.key,
+    runtimeMode,
+    runtimeRetryNonce
+  ]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -2073,7 +2227,10 @@ function AppShell({
                 parameterActions={parameterActions}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
+                apiRuntimeStatus={apiRuntimeStatus}
+                onRetryRuntimeDomain={retryApiRuntimeDomain}
                 search={search}
+                effectiveProjectId={effectiveProjectId}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
@@ -2098,7 +2255,10 @@ function AppShell({
                 parameterActions={parameterActions}
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
+                apiRuntimeStatus={apiRuntimeStatus}
+                onRetryRuntimeDomain={retryApiRuntimeDomain}
                 search={search}
+                effectiveProjectId={effectiveProjectId}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
@@ -2115,7 +2275,7 @@ function AppShell({
         <UnifiedAgent
           path={path}
           pageKey={page.key}
-          projectId={state.activeProjectId}
+          projectId={effectiveProjectId}
           roleId={currentRoleId}
           runtimeMode={runtimeMode}
           gateway={agentGatewayClient}
@@ -3906,8 +4066,12 @@ function createEmptyLogRecord(projectId: string): LogRecord {
   };
 }
 
-function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
-  const [selectedLogId, setSelectedLogId] = useState(state.logs[0]?.id ?? "");
+function LogsPage({ state, dispatch, onNavigate, logActions, effectiveProjectId }: PageProps) {
+  const visibleLogs = useMemo(
+    () => state.logs.filter((log) => !state.archivedLogIds.includes(log.id)),
+    [state.archivedLogIds, state.logs]
+  );
+  const [selectedLogId, setSelectedLogId] = useState(visibleLogs[0]?.id ?? "");
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ fileName: string; previousLogIds: Set<string> } | null>(null);
   const [feedbackLogId, setFeedbackLogId] = useState<string | null>(null);
@@ -3921,8 +4085,9 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [liveMessage, setLiveMessage] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const prevLogCount = useRef(state.logs.length);
-  const emptyLogRecord = useMemo(() => createEmptyLogRecord(state.activeProjectId), [state.activeProjectId]);
-  const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
+  const activeProjectId = effectiveProjectId || state.activeProjectId;
+  const emptyLogRecord = useMemo(() => createEmptyLogRecord(activeProjectId), [activeProjectId]);
+  const selectedLog = visibleLogs.find((log) => log.id === selectedLogId) ?? visibleLogs[0];
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLog ?? emptyLogRecord;
   const evidenceByLine = useMemo(() => {
@@ -3951,11 +4116,17 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   }, [activeLog.rawLines, searchQuery]);
 
   useEffect(() => {
-    if (state.logs.length > prevLogCount.current) {
-      setSelectedLogId(state.logs[0].id);
+    if (visibleLogs.length > prevLogCount.current) {
+      setSelectedLogId(visibleLogs[0].id);
     }
-    prevLogCount.current = state.logs.length;
-  }, [state.logs]);
+    prevLogCount.current = visibleLogs.length;
+  }, [visibleLogs]);
+
+  useEffect(() => {
+    if (selectedLogId && !visibleLogs.some((log) => log.id === selectedLogId)) {
+      setSelectedLogId(visibleLogs[0]?.id ?? "");
+    }
+  }, [selectedLogId, visibleLogs]);
 
   useEffect(() => {
     setSearchQuery("");
@@ -4120,13 +4291,13 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ projectId: state.activeProjectId, file, analysisQuestion: question });
+        await logActions.upload({ projectId: activeProjectId, file, analysisQuestion: question });
       } catch (error) {
         setPendingUpload(null);
         throw error;
       }
     },
-    [dispatch, logActions, state.activeProjectId, state.logs]
+    [activeProjectId, dispatch, logActions, state.logs]
   );
   const handleRetryLog = useCallback(() => {
     if (!logActions) {
@@ -4186,7 +4357,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       <LogsAuxPanel
         activeLog={activeLog}
         auxTab={auxTab}
-        logs={state.logs}
+        logs={visibleLogs}
         onSelectLog={setSelectedLogId}
         onTabChange={setAuxTab}
       />

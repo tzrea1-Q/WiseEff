@@ -270,11 +270,14 @@ describe("createHttpLogAnalysisRepository", () => {
   });
 
   it("archives, unarchives, and submits feedback to expected endpoints", async () => {
-    const fetchMock = createFetchMock({ ok: true });
+    const archivedDto: LogRecordDto = { ...baseLogDto, archiveState: "archived" };
+    const activeDto: LogRecordDto = { ...baseLogDto, archiveState: "active" };
+    const responses = [{ item: archivedDto }, { item: activeDto }, { ok: true }];
+    const fetchMock = vi.fn<typeof fetch>(async () => jsonResponse(responses.shift()));
     const repository = createRepository(fetchMock);
 
-    await repository.archiveLog("log-1");
-    await repository.unarchiveLog("log-1");
+    await expect(repository.archiveLog("log-1")).resolves.toMatchObject({ id: "log-1", archiveState: "archived" });
+    await expect(repository.unarchiveLog("log-1")).resolves.toMatchObject({ id: "log-1", archiveState: "active" });
     await repository.submitFeedback({ logId: "log-1", rating: "helpful", note: "Matched the event." });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([

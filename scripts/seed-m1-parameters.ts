@@ -290,9 +290,13 @@ async function main() {
   const db = createPostgresDatabase(env.DATABASE_URL);
   const configPath = path.join(root, "src", "config", "power-management.json");
   const config = parsePowerManagementConfig(configPath, await readFile(configPath, "utf8"));
-  await seedM1Parameters(db, config);
 
-  console.log("Seeded M1 parameter data.");
+  try {
+    await seedM1Parameters(db, config);
+    console.log("Seeded M1 parameter data.");
+  } finally {
+    await db.close?.();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

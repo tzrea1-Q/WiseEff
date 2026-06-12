@@ -1,0 +1,44 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - img [ref=e7]
+    - navigation "主导航" [ref=e20]:
+      - button [ref=e372]:
+        - img
+      - generic [ref=e25]:
+        - button [ref=e373]
+        - button [ref=e374]
+        - button [ref=e375]
+        - button [ref=e376]
+      - generic [ref=e35]:
+        - button [ref=e377]
+        - button [ref=e378]
+        - button [ref=e379]
+      - generic [ref=e43]:
+        - button [ref=e380]
+        - button [ref=e381]
+        - button [ref=e382]
+    - generic [ref=e51]:
+      - button "问题反馈" [ref=e52]:
+        - img
+      - button [disabled]:
+        - img
+      - button [ref=e383]:
+        - img
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - generic [ref=e61]: 项目参数管理后台
+      - toolbar "项目参数管理后台页面操作" [ref=e64]:
+        - button "新建项目" [ref=e65] [cursor=pointer]
+        - button "12 处未导出，点击查看变更摘要" [ref=e69] [cursor=pointer]
+        - button "批量参数导入" [ref=e72] [cursor=pointer]
+        - button "保存到 JSON 文件" [ref=e76] [cursor=pointer]
+        - button "导出 JSON" [ref=e81] [cursor=pointer]
+        - button "权限" [ref=e86] [cursor=pointer]
+        - button "审计" [ref=e90] [cursor=pointer]
+    - main [ref=e108]:
+      - generic [ref=e109]:
+        - region "参数管理后台指标" [ref=e110]
+        - main [ref=e127]
+        - status [ref=e367]: API 模式下参数库修改通过导入批次或审阅流程写入。
+  - button "打开 WiseAgent" [ref=e368]:
+    - img [ref=e369]

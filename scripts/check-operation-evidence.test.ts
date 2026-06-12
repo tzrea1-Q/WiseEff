@@ -62,6 +62,45 @@ describe("operation evidence helper", () => {
     }
   });
 
+  it("still records JSON evidence when screenshot capture fails", async () => {
+    const fileName = operationEvidenceFileName("API-STRICT-001", "records screenshot failure");
+    const filePath = join("test-results/acceptance/operation-evidence", fileName);
+    const artifactPath = filePath.replace(/\.json$/, ".screenshot-error.txt");
+
+    try {
+      const result = await recordOperationEvidence({
+        operationId: "API-STRICT-001",
+        title: "records screenshot failure",
+        status: "passed",
+        notes: "UI asserted unavailable state.",
+        page: {
+          screenshot: async () => {
+            throw new Error("waiting for fonts to load timed out");
+          }
+        } as never,
+        api: [
+          {
+            method: "GET",
+            path: "/api/v1/projects",
+            status: 503,
+            requestId: "req-screenshot-timeout",
+            responseSummary: "required domain outage"
+          }
+        ]
+      });
+
+      expect(result.path).toBe(filePath);
+      expect(result.record.artifacts).toEqual([artifactPath]);
+      expect(result.record.notes).toContain("UI asserted unavailable state.");
+      expect(result.record.notes).toContain("Screenshot capture failed");
+      expect(readFileSync(filePath, "utf8")).toContain("API-STRICT-001");
+      expect(readFileSync(artifactPath, "utf8")).toContain("waiting for fonts to load timed out");
+    } finally {
+      rmSync(filePath, { force: true });
+      rmSync(artifactPath, { force: true });
+    }
+  });
+
   it("summarizes API responses with request IDs and redacted response text", () => {
     const summary = summarizeApiResponse(
       {

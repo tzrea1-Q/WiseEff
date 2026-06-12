@@ -270,9 +270,13 @@ async function main() {
   }
 
   const db = createPostgresDatabase(env.DATABASE_URL);
-  await seedM3Debugging(db);
 
-  console.log("Seeded M3 debugging data.");
+  try {
+    await seedM3Debugging(db);
+    console.log("Seeded M3 debugging data.");
+  } finally {
+    await db.close?.();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

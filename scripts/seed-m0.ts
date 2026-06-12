@@ -145,8 +145,14 @@ async function main() {
     throw new Error("DATABASE_URL is required to seed M0 data.");
   }
 
-  await seedM0Foundation(createPostgresDatabase(env.DATABASE_URL));
-  console.log("Seeded M0 WiseEff data.");
+  const db = createPostgresDatabase(env.DATABASE_URL);
+
+  try {
+    await seedM0Foundation(db);
+    console.log("Seeded M0 WiseEff data.");
+  } finally {
+    await db.close?.();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

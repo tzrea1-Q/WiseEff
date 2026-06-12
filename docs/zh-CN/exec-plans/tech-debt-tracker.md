@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：planning。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- `TD-001` 已收窄：mock mode 仍保留给演示和测试，但 API mode 现在由空 bootstrap state、runtime status 和 `API-STRICT-001` 约束，失败时不能回落到本地演示业务数据。
 
 ## 同类中文文档
 

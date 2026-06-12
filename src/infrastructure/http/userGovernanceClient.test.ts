@@ -39,6 +39,35 @@ describe("createUserGovernanceClient", () => {
     });
   });
 
+  it("maps project workflow role bindings ahead of global admin for assignee candidates", async () => {
+    const fetchMock = createFetchMock({
+      items: [
+        {
+          id: "u-reviewer",
+          organizationId: "org-chargelab",
+          name: "Workflow Reviewer",
+          email: "reviewer@chargelab.cn",
+          title: "Reviewer",
+          isActive: true,
+          createdAt: "2026-06-02T00:00:00.000Z",
+          lastActiveAt: null,
+          roles: [
+            { projectId: null, roleId: "admin" },
+            { projectId: "aurora", roleId: "hardware-committer" }
+          ]
+        }
+      ]
+    });
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(client.listUsers()).resolves.toEqual([
+      expect.objectContaining({
+        id: "u-reviewer",
+        roleId: "hardware-committer"
+      })
+    ]);
+  });
+
   it("creates users through the backend with a durable role binding", async () => {
     const fetchMock = createFetchMock({ item: { id: "u-new", roles: [{ projectId: "aurora", roleId: "hardware-user" }] } }, 201);
     const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));

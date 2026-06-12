@@ -1,0 +1,39 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - img [ref=e7]
+    - navigation "主导航" [ref=e20]:
+      - button [ref=e173]:
+        - img
+      - generic [ref=e25]:
+        - button [ref=e174]
+        - button [ref=e175]
+        - button [ref=e176]
+        - button [ref=e177]
+      - generic [ref=e35]:
+        - button [ref=e178]
+        - button [ref=e179]
+        - button [ref=e180]
+      - generic [ref=e43]:
+        - button [ref=e181]
+        - button [ref=e182]
+        - button [ref=e183]
+    - generic [ref=e51]:
+      - button "问题反馈" [ref=e52]:
+        - img
+      - button [disabled]:
+        - img
+      - button [ref=e184]:
+        - img
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - generic [ref=e61]: 日志分析管理后台
+      - toolbar "日志分析管理后台页面操作" [ref=e64]:
+        - group "时间窗口" [ref=e65]
+        - button "导出报表" [ref=e69]
+        - button "同步日志" [ref=e70]
+    - main [ref=e84]:
+      - generic [ref=e87]:
+        - heading "日志分析记录" [level=2] [ref=e89]
+        - generic [ref=e90]
+  - button "打开 WiseAgent" [ref=e169]:
+    - img [ref=e170]

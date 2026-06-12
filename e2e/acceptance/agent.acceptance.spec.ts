@@ -7,7 +7,15 @@ import { apiRoute } from "./helpers/runtime";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
 
-useBrowserDiagnostics(test);
+useBrowserDiagnostics(test, {
+  expectedApiFailures: [
+    {
+      method: "POST",
+      path: "/api/v1/agent/sessions/:sessionId/tool-calls/:toolCallId/run",
+      status: 409
+    }
+  ]
+});
 
 const databaseUrl = process.env.DATABASE_URL;
 const apiAuthorization =
@@ -262,7 +270,8 @@ test.describe("M5.4 manual flow G - Agent collaboration loop", () => {
       apiRoute(`/api/v1/agent/sessions/${sessionId}/tool-calls/${pendingToolCall?.id}/run`),
       {
         headers: apiAuthorization ? { Authorization: apiAuthorization } : undefined,
-        data: { payload: {} }
+        data: { payload: {} },
+        timeout: 10_000
       }
     );
     const directRunBody = (await directRunResponse.json()) as {

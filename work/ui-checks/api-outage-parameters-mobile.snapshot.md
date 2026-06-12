@@ -1,0 +1,40 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - img [ref=e7]
+    - navigation "主导航" [ref=e17]:
+      - button [ref=e19]:
+        - img
+      - generic [ref=e20]:
+        - button [ref=e21]
+        - button [ref=e22]
+        - button [ref=e23]
+        - button [ref=e24]
+      - generic [ref=e25]:
+        - button [ref=e26]
+        - button [ref=e27]
+        - button [ref=e28]
+      - generic [ref=e29]:
+        - button [ref=e30]
+        - button [ref=e31]
+        - button [ref=e32]
+    - generic [ref=e33]:
+      - button "问题反馈" [ref=e34]:
+        - img
+      - button [disabled]:
+        - img
+      - button [ref=e35]:
+        - img
+  - generic [ref=e36]:
+    - banner [ref=e37]:
+      - generic [ref=e39]: 项目参数用户工作台
+      - generic [ref=e40]:
+        - toolbar "项目参数用户工作台页面操作" [ref=e41]
+        - combobox "项目" [ref=e46]
+    - main [ref=e47]:
+      - alert [ref=e48]:
+        - text: API runtime
+        - heading "参数 API 不可用" [level=2] [ref=e49]
+        - paragraph [ref=e50]: 参数 API 暂不可用。请稍后重试。
+        - button "重试" [ref=e51]
+  - button "打开 WiseAgent" [ref=e52]:
+    - img [ref=e53]

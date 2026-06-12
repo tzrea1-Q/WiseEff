@@ -122,6 +122,10 @@ describe("createParameterRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_PARAMETER_SUBMISSION_ROUND" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "STASH_PARAMETER_SUBMISSION_ROUND" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADVANCE_REVIEW" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "REJECT_REVIEW" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "IMPORT_PARAMETERS" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
   });
 

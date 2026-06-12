@@ -121,6 +121,36 @@ describe("/node-debugging", () => {
     expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
   });
 
+  it("waits for an API project id before auto-detecting a debugging session", async () => {
+    const debuggingActions = createDebuggingActions();
+    const { rerender } = render(
+      <NodeDebuggingPage
+        state={{ ...userState, activeProjectId: "" }}
+        debuggingActions={debuggingActions}
+      />
+    );
+
+    expect(debuggingActions.detectAndStartSession).not.toHaveBeenCalled();
+
+    rerender(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId));
+  });
+
+  it("uses the route project id for API auto-detect when it differs from active state", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(
+      <NodeDebuggingPage
+        state={{ ...userState, activeProjectId: "atlas" }}
+        effectiveProjectId="aurora"
+        debuggingActions={debuggingActions}
+      />
+    );
+
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith("aurora"));
+    expect(debuggingActions.detectAndStartSession).not.toHaveBeenCalledWith("atlas");
+  });
+
   it("uses API gateway actions to read initial readable node rows", async () => {
     const debuggingActions = createDebuggingActions();
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);

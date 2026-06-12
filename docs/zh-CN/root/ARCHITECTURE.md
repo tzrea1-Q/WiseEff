@@ -16,6 +16,7 @@
 - 先确认该文档属于哪个决策面：core。
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- API runtime 是严格路径：前端从空 API bootstrap state 启动，认证或必需业务 API hydrate 失败时显示不可用/重试状态，不能把 mock runtime 的业务数据作为 fallback。mock runtime 仅用于演示和测试。
 
 ## 同类中文文档
 

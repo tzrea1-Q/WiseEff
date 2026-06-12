@@ -257,10 +257,12 @@ function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
 export function NodeDebuggingPage({
   state,
   debuggingActions,
+  effectiveProjectId,
   runtimeReady = true
 }: {
   state: PrototypeState;
   debuggingActions?: DebuggingRuntimeActions;
+  effectiveProjectId?: string;
   runtimeReady?: boolean;
 }) {
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
@@ -469,12 +471,16 @@ export function NodeDebuggingPage({
     if (!runtimeReady) {
       return;
     }
+    const projectId = effectiveProjectId || state.activeProjectId;
+    if (debuggingActions && !projectId) {
+      return;
+    }
 
     setDetecting(true);
     setDetectDiagnosticError("");
     try {
       if (debuggingActions) {
-        const result = await debuggingActions.detectAndStartSession(state.activeProjectId) as DetectResultWithOperation;
+        const result = await debuggingActions.detectAndStartSession(projectId) as DetectResultWithOperation;
         const { session, target: detectedTarget } = result;
         setActiveSessionId(session.id);
         setActiveTargetId(detectedTarget.id);
@@ -534,9 +540,10 @@ export function NodeDebuggingPage({
   useEffect(() => {
     if (didAutoDetectRef.current) return;
     if (!runtimeReady) return;
+    if (debuggingActions && !(effectiveProjectId || state.activeProjectId)) return;
     didAutoDetectRef.current = true;
     void detect();
-  }, [runtimeReady]);
+  }, [debuggingActions, effectiveProjectId, runtimeReady, state.activeProjectId]);
 
   const writeRow = async (row: RuntimeRow) => {
     if ((!target && !activeSessionId) || !canWrite(row)) return;

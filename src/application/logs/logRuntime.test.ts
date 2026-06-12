@@ -58,8 +58,8 @@ function createRepository(overrides: Partial<LogAnalysisRepository> = {}): LogAn
     uploadLog: vi.fn().mockResolvedValue({ log: apiLog, job: queuedJob }),
     getJob: vi.fn().mockResolvedValue(completeJob),
     rerunLog: vi.fn().mockResolvedValue({ log: apiLog, job: queuedJob }),
-    archiveLog: vi.fn().mockResolvedValue(undefined),
-    unarchiveLog: vi.fn().mockResolvedValue(undefined),
+    archiveLog: vi.fn().mockResolvedValue({ ...apiLog, archiveState: "archived" as const }),
+    unarchiveLog: vi.fn().mockResolvedValue({ ...apiLog, archiveState: "active" as const }),
     submitFeedback: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
@@ -203,6 +203,8 @@ describe("createLogRuntimeActions", () => {
     const dispatch = vi.fn();
     const repository = createRepository();
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
+    const archivedLog = { ...apiLog, archiveState: "archived" as const };
+    const activeLog = { ...apiLog, archiveState: "active" as const };
 
     await actions.archive(apiLog.id);
     await actions.unarchive(apiLog.id);
@@ -212,6 +214,8 @@ describe("createLogRuntimeActions", () => {
     expect(repository.unarchiveLog).toHaveBeenCalledWith(apiLog.id);
     expect(repository.submitFeedback).toHaveBeenCalledWith({ logId: apiLog.id, rating: "helpful", note: "Useful" });
     expect(repository.listLogs).toHaveBeenCalledTimes(3);
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: archivedLog });
+    expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_LOG_RECORD", log: activeLog });
     expect(dispatch).toHaveBeenCalledWith({ type: "HYDRATE_LOG_RUNTIME", logs: [apiLog] });
   });
 
@@ -226,6 +230,10 @@ describe("createLogRuntimeActions", () => {
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "SIMULATE_LOG_UPLOAD" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_REANALYZE_LOG" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_ARCHIVE_LOG" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "LOG_ADMIN_UNARCHIVE_LOG" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "UPSERT_LOG_RECORD" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_LOG_RUNTIME" }));
   });
@@ -240,7 +248,11 @@ describe("createLogRuntimeActions", () => {
     await expect(actions.archive(apiLog.id)).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(repository.archiveLog).toHaveBeenCalledWith(apiLog.id);
-    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "UPSERT_LOG_RECORD",
+      log: { ...apiLog, archiveState: "archived" as const }
+    });
+    expect(dispatch.mock.calls.filter(([action]) => action.type === "ADD_NOTIFICATION")).toHaveLength(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
 

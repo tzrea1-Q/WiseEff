@@ -21,6 +21,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "API-STRICT-001",
+    workflow: "A",
+    title: "API mode never falls back to local demo business data when auth or required API hydration fails.",
+    required: true
+  },
+  {
     id: "PARAM-REASON-001",
     workflow: "B",
     title: "Parameter drafts cannot be submitted with an empty or blank reason.",

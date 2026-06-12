@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createTracingBoundary, type TraceExporter } from "../../observability/tracing";
-import { createDatabase, type Queryable } from "./client";
+import { createDatabase, createPostgresDatabase, type Queryable } from "./client";
 
 describe("createDatabase", () => {
   it("delegates queries to the provided query function", async () => {
@@ -160,5 +160,14 @@ describe("createDatabase", () => {
     expect(JSON.stringify(spans)).not.toContain("parameter_values");
     expect(JSON.stringify(spans)).not.toContain("secret-value");
     expect(JSON.stringify(spans)).not.toContain("param-secret");
+  });
+});
+
+describe("createPostgresDatabase", () => {
+  it("exposes close for CLI scripts to release the Postgres pool", async () => {
+    const db = createPostgresDatabase("postgres://user:pass@127.0.0.1:5432/db");
+
+    expect(db.close).toEqual(expect.any(Function));
+    await expect(db.close?.()).resolves.toBeUndefined();
   });
 });

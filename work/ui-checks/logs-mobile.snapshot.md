@@ -1,0 +1,40 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - img [ref=e7]
+    - navigation "主导航" [ref=e20]:
+      - button [ref=e264]:
+        - img
+      - generic [ref=e25]:
+        - button [ref=e265]
+        - button [ref=e266]
+        - button [ref=e267]
+        - button [ref=e268]
+      - generic [ref=e35]:
+        - button [ref=e269]
+        - button [ref=e270]
+        - button [ref=e271]
+      - generic [ref=e43]:
+        - button [ref=e272]
+        - button [ref=e273]
+        - button [ref=e274]
+    - generic [ref=e51]:
+      - button "问题反馈" [ref=e52]:
+        - img
+      - button [disabled]:
+        - img
+      - button [ref=e275]:
+        - img
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - generic [ref=e61]: 日志智能分析
+      - toolbar "日志智能分析页面操作" [ref=e64]:
+        - button "首页" [ref=e65] [cursor=pointer]
+        - button "上传新日志" [ref=e66] [cursor=pointer]
+    - main [ref=e83]:
+      - generic [ref=e84]:
+        - status "日志切换状态" [ref=e85]: 已切换到 charging-foldback.log，已完成，置信度 0.85%
+        - generic [ref=e86]
+        - complementary "历史日志记录" [ref=e240]
+        - status [ref=e259]: 已连接雷泽日志 API
+  - button "打开 WiseAgent" [ref=e260]:
+    - img [ref=e261]

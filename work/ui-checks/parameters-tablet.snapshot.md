@@ -1,0 +1,37 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - img [ref=e7]
+    - navigation "主导航" [ref=e20]:
+      - button [ref=e474]:
+        - img
+      - generic [ref=e25]:
+        - button [ref=e475]
+        - button [ref=e476]
+        - button [ref=e477]
+        - button [ref=e478]
+      - generic [ref=e35]:
+        - button [ref=e479]
+        - button [ref=e480]
+        - button [ref=e481]
+      - generic [ref=e43]:
+        - button [ref=e482]
+        - button [ref=e483]
+        - button [ref=e484]
+    - generic [ref=e51]:
+      - button "问题反馈" [ref=e52]:
+        - img
+      - button [disabled]:
+        - img
+      - button [ref=e485]:
+        - img
+  - generic [ref=e58]:
+    - banner [ref=e59]:
+      - generic [ref=e61]: 项目参数用户工作台
+      - generic [ref=e63]:
+        - toolbar "项目参数用户工作台页面操作" [ref=e64]
+        - combobox "项目" [ref=e75]
+    - main [ref=e89]:
+      - region "项目参数用户工作台" [ref=e90]:
+        - generic [ref=e92]
+  - button "打开 WiseAgent" [ref=e470]:
+    - img [ref=e471]

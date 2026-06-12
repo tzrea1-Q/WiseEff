@@ -91,6 +91,56 @@ describe("UnifiedAgent permission boundaries", () => {
     });
   });
 
+  it("waits for an API project id before starting a session", async () => {
+    const gateway = {
+      startSession: vi.fn(async () => apiSession),
+      sendMessage: vi.fn(),
+      runAction: vi.fn(),
+      approveToolCall: vi.fn(),
+      rejectToolCall: vi.fn()
+    };
+    const { rerender } = render(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId=""
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "打开 WiseAgent" }));
+
+    expect(gateway.startSession).not.toHaveBeenCalled();
+
+    rerender(
+      <UnifiedAgent
+        path="/parameters"
+        pageKey="parameters"
+        projectId="aurora"
+        roleId="hardware-user"
+        runtimeMode="api"
+        gateway={gateway}
+        plan={parameterPlan}
+        state={{ ...createPrototypeState(), activeRoleId: "user" }}
+        dispatch={vi.fn()}
+      />
+    );
+    fireEvent.change(screen.getByPlaceholderText("询问 WiseAgent..."), { target: { value: "Summarize review queue" } });
+    fireEvent.submit(screen.getByPlaceholderText("询问 WiseAgent...").closest("form")!);
+
+    await waitFor(() => expect(gateway.startSession).toHaveBeenCalledWith({
+      path: "/parameters",
+      pageKey: "parameters",
+      projectId: "aurora",
+      roleId: "hardware-user"
+    }));
+  });
+
   it("renders API citations and confidence after sending a prompt", async () => {
     const gateway = {
       startSession: vi.fn(async () => apiSession),

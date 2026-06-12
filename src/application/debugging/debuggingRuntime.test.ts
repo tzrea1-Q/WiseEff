@@ -363,6 +363,19 @@ describe("createDebuggingRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "UPSERT_DEBUG_NODE_OPERATION", operation: readOperation });
   });
 
+  it("does not dispatch local connect or rollback actions in API mode", async () => {
+    const dispatch = vi.fn();
+    const gateway = createGateway();
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+
+    await actions.connectDevice(apiDevice.id);
+    await expect(actions.rollbackLastSnapshot()).rejects.toThrow(debuggingRuntimeFailureNotification);
+
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: apiDevice.id });
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "CONNECT_DEVICE" }));
+    expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ROLLBACK_LAST_SNAPSHOT" }));
+  });
+
   it("notifies on failed gateway calls without optimistic success dispatches", async () => {
     const dispatch = vi.fn();
     const gateway = createGateway();

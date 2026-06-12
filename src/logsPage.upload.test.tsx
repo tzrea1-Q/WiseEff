@@ -7,6 +7,7 @@ import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
+import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
@@ -65,8 +66,8 @@ function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): Lo
     uploadLog: vi.fn().mockResolvedValue({ log: apiLog, job: null }),
     getJob: vi.fn(),
     rerunLog: vi.fn(),
-    archiveLog: vi.fn().mockResolvedValue(undefined),
-    unarchiveLog: vi.fn().mockResolvedValue(undefined),
+    archiveLog: vi.fn().mockResolvedValue({ ...apiLog, archiveState: "archived" as const }),
+    unarchiveLog: vi.fn().mockResolvedValue({ ...apiLog, archiveState: "active" as const }),
     submitFeedback: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
@@ -82,6 +83,15 @@ function createDebuggingGateway(): DebuggingGateway {
   };
 }
 
+function createUserGovernanceActions(): UserGovernanceActions {
+  return {
+    listUsers: vi.fn().mockResolvedValue(userState.users),
+    createUser: vi.fn(),
+    assignUserRole: vi.fn(),
+    setUserActive: vi.fn()
+  };
+}
+
 function renderApiLogs(repository = createLogRepository()) {
   window.history.replaceState(null, "", "/logs");
   render(
@@ -92,6 +102,7 @@ function renderApiLogs(repository = createLogRepository()) {
       logAnalysisRepository={repository}
       parameterRepository={createParameterRepository()}
       runtimeMode="api"
+      userGovernanceActions={createUserGovernanceActions()}
     />
   );
   return repository;
@@ -99,7 +110,7 @@ function renderApiLogs(repository = createLogRepository()) {
 
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
-  await waitFor(() => expect(document.body).toHaveTextContent("已连接雷泽调试 API"));
+  await waitFor(() => expect(document.body).toHaveTextContent("已连接雷泽日志 API"));
 }
 
 function openUploadDialog() {
@@ -169,6 +180,37 @@ describe("reducer · SIMULATE_LOG_UPLOAD", () => {
 });
 
 describe("LogsPage api upload wiring", () => {
+  it("hides archived API logs from the workbench history and default selection", () => {
+    const archivedLog = {
+      ...initialState.logs[0],
+      id: "api-archived-log",
+      fileName: "archived-api.log",
+      archiveState: "archived" as const
+    };
+    const activeLog = {
+      ...initialState.logs[1],
+      id: "api-active-log",
+      fileName: "active-api.log",
+      archiveState: "active" as const
+    };
+
+    window.history.replaceState(null, "", "/logs");
+    render(
+      <App
+        initialAppState={{
+          ...userState,
+          logs: [archivedLog, activeLog],
+          archivedLogIds: [archivedLog.id]
+        }}
+      />
+    );
+
+    const history = screen.getByRole("complementary", { name: "历史日志记录" });
+    expect(within(history).queryByRole("button", { name: /archived-api\.log/ })).not.toBeInTheDocument();
+    expect(within(history).getByRole("button", { name: /active-api\.log/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("log-live-region")).toHaveTextContent("active-api.log");
+  });
+
   it("does not restrict file input accept in api mode", () => {
     renderApiLogs();
 

@@ -7,6 +7,7 @@ import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { AuthContextDto } from "@/infrastructure/http/authClient";
+import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
@@ -76,8 +77,8 @@ function createLogRepository(overrides: Partial<LogAnalysisRepository> = {}): Lo
     uploadLog: vi.fn(),
     getJob: vi.fn().mockResolvedValue({ ...queuedJob, status: "complete", progress: 100, currentStage: "report" }),
     rerunLog: vi.fn().mockResolvedValue({ log: processingRerunLog, job: queuedJob }),
-    archiveLog: vi.fn().mockResolvedValue(undefined),
-    unarchiveLog: vi.fn().mockResolvedValue(undefined),
+    archiveLog: vi.fn().mockResolvedValue({ ...processingRerunLog, archiveState: "archived" as const }),
+    unarchiveLog: vi.fn().mockResolvedValue({ ...processingRerunLog, archiveState: "active" as const }),
     submitFeedback: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
@@ -93,6 +94,15 @@ function createDebuggingGateway(): DebuggingGateway {
   };
 }
 
+function createUserGovernanceActions(): UserGovernanceActions {
+  return {
+    listUsers: vi.fn().mockResolvedValue(userState.users),
+    createUser: vi.fn(),
+    assignUserRole: vi.fn(),
+    setUserActive: vi.fn()
+  };
+}
+
 function renderApiLogs(repository = createLogRepository()) {
   window.history.replaceState(null, "", "/logs");
   render(
@@ -103,6 +113,7 @@ function renderApiLogs(repository = createLogRepository()) {
       logAnalysisRepository={repository}
       parameterRepository={createParameterRepository()}
       runtimeMode="api"
+      userGovernanceActions={createUserGovernanceActions()}
     />
   );
   return repository;
@@ -110,7 +121,7 @@ function renderApiLogs(repository = createLogRepository()) {
 
 async function waitForApiRuntime(repository: LogAnalysisRepository) {
   await waitFor(() => expect(repository.listLogs).toHaveBeenCalled());
-  await waitFor(() => expect(document.body).toHaveTextContent("已连接雷泽调试 API"));
+  await waitFor(() => expect(document.body).toHaveTextContent("已连接雷泽日志 API"));
 }
 
 afterEach(() => {
