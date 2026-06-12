@@ -141,6 +141,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  localStorage.removeItem("wiseeff.sidebar.collapsed");
   window.history.replaceState(null, "", "/");
 });
 
@@ -2130,6 +2131,29 @@ describe("WiseEff app shell", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
     expect(screen.getByText("反馈已记录，内测团队会结合页面路径和问题类型跟进。")).toBeInTheDocument();
+  });
+
+  it("toggles and remembers the app sidebar collapsed state", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    const { unmount } = renderAppForCurrentPath();
+
+    const sidebar = screen.getByRole("complementary", { name: "主导航侧边栏" });
+    expect(sidebar).toHaveClass("sidebar-expanded");
+    expect(screen.getByText("雷泽")).toBeInTheDocument();
+
+    const collapseButton = screen.getByRole("button", { name: "收起侧边栏" });
+    fireEvent.click(collapseButton);
+
+    expect(sidebar).toHaveClass("sidebar-collapsed");
+    expect(localStorage.getItem("wiseeff.sidebar.collapsed")).toBe("true");
+    expect(screen.getByRole("button", { name: "展开侧边栏" })).toBeInTheDocument();
+
+    unmount();
+    renderAppForCurrentPath();
+
+    expect(screen.getByRole("complementary", { name: "主导航侧边栏" })).toHaveClass("sidebar-collapsed");
+    expect(localStorage.getItem("wiseeff.sidebar.collapsed")).toBe("true");
   });
 
   it("keeps the feedback dialog wide enough for form and screenshot capture columns", () => {
