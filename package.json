@@ -53,6 +53,7 @@
     "contract:check": "tsx scripts/check-openapi-contract.ts",
     "docs:check": "tsx scripts/check-doc-governance.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "reset:quality-runtime": "tsx scripts/reset-quality-runtime.ts",
     "db:seed:m0": "tsx scripts/seed-m0.ts",
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",
     "db:seed:m2": "tsx scripts/seed-m2-logs.ts",
