@@ -8,7 +8,8 @@ type AuthRow = {
   organization_id: string;
   organization_name: string;
   name: string;
-  email: string;
+  email: string | null;
+  username: string | null;
   title: string;
   is_active: boolean;
   project_id: string | null;
@@ -22,6 +23,7 @@ const authContextSelect = `
       organizations.name as organization_name,
       users.name,
       users.email,
+      user_password_credentials.username,
       users.title,
       users.is_active,
       user_role_bindings.project_id,
@@ -29,6 +31,7 @@ const authContextSelect = `
     from users
     join organizations on organizations.id = users.organization_id
     join user_role_bindings on user_role_bindings.user_id = users.id
+    left join user_password_credentials on user_password_credentials.user_id = users.id
 `;
 
 function authContextFromRows(rows: AuthRow[]) {
@@ -48,7 +51,8 @@ function authContextFromRows(rows: AuthRow[]) {
       id: first.user_id,
       organizationId: first.organization_id,
       name: first.name,
-      email: first.email,
+      ...(first.email ? { email: first.email } : {}),
+      ...(first.username ? { username: first.username } : {}),
       title: first.title,
       isActive: first.is_active
     },

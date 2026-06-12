@@ -21,7 +21,7 @@ copy .env.example .env
 npm run dev:all
 ```
 
-`npm run dev:all` starts Docker PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, simulator device gateway, production-mode smoke auth defaults, and the Pi-backed live Agent provider format. If live Agent model/key values are blank, local startup falls back to the deterministic Agent provider.
+`npm run dev:all` starts Docker PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, simulator device gateway, production-mode local account auth defaults, optional HMAC smoke inputs, and the Pi-backed live Agent provider format. If live Agent model/key values are blank, local startup falls back to the deterministic Agent provider.
 
 Development services bind to `127.0.0.1`. Vite usually prints this URL after startup:
 

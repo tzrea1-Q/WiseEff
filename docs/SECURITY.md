@@ -18,6 +18,7 @@ WiseEff security centers on identity, authorization, audit, Agent tool governanc
 - Page/action permission helpers live in `src/app/permissions.ts`.
 - M0 backend auth context lives in `server/modules/auth/`.
 - M6.2 production auth uses `AUTH_MODE=production` with `AUTH_PROVIDER=oidc` for OIDC discovery/JWKS validation, then resolves the effective `AuthContext` from WiseEff PostgreSQL user and role tables.
+- WiseEff local account auth uses `AUTH_PROVIDER=local`, salted `scrypt` password hashes, hashed opaque session tokens, and the same database-backed `AuthContext` resolution as `/api/v1/me`.
 - The M5 HMAC verifier remains available for local smoke/test profiles only; it is not target-environment identity evidence.
 - Backend user governance lives under `/api/v1/users` and requires `users:manage`, durable role updates, self-lockout prevention, and audit evidence.
 - M0 audit boundary lives in `server/modules/audit/`.
@@ -38,9 +39,11 @@ Current frontend permissions include:
 
 When adding backend business routes, map frontend capabilities to server-side authorization checks and include negative tests for forbidden users.
 
-Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`. Target self-hosted identity should use `AUTH_PROVIDER=oidc` with `AUTH_OIDC_ISSUER` and `AUTH_OIDC_AUDIENCE`; the verifier checks OIDC access tokens through discovery/JWKS and then reloads effective active state, role bindings, and permissions from WiseEff PostgreSQL. Local HMAC smoke uses `AUTH_PROVIDER=hmac`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. Production routes must not fall back to the development user or trust token role claims as final authorization.
+Development auth is limited to local development and tests. `x-wiseeff-user` and the seeded development user are convenience inputs only when `AUTH_MODE=development`; production startup requires `AUTH_MODE=production`. Target self-hosted identity should use `AUTH_PROVIDER=oidc` with `AUTH_OIDC_ISSUER` and `AUTH_OIDC_AUDIENCE`; the verifier checks OIDC access tokens through discovery/JWKS and then reloads effective active state, role bindings, and permissions from WiseEff PostgreSQL. WiseEff-owned local accounts use `AUTH_PROVIDER=local`; the API resolves `we_local_*` bearer session tokens from PostgreSQL and still reloads active state, role bindings, and permissions. Local HMAC smoke uses `AUTH_PROVIDER=hmac`, `AUTH_TOKEN_ISSUER`, and `AUTH_TOKEN_HMAC_SECRET`. Production routes must not fall back to the development user or trust token role claims as final authorization.
 
 OIDC tokens must include identity and organization claims. `wiseeff_roles` may be emitted for compatibility or bootstrap diagnostics, but production authorization is database-backed. Email-based account linking is allowed only when the OIDC token includes `email_verified=true`; otherwise WiseEff matches by stable `sub` only. Role ids outside the documented platform role set, wrong issuer, wrong audience, expired tokens, not-yet-valid tokens, unsigned tokens, and invalid signatures are unauthenticated failures.
+
+Local account registration creates a username-based account with the selected organization and an allowed self-service platform role. Admin self-registration is rejected server-side. Hardware/Software Committer registration requests grant only the matching base User role until an Admin approves the pending request through user governance. Email verification is not supported yet, so registration must not be treated as proof of email-domain ownership or invitation acceptance. Local account passwords are stored only as salted `scrypt` hashes, and `auth_sessions` stores only SHA-256 hashes of opaque session tokens. Browser local account tokens are kept in `localStorage` for the current productized local-account flow; deployments that require SSO, MFA, refresh-token rotation, or stronger browser session isolation should use OIDC or a hardened reverse-proxy/session integration.
 
 For M1 parameter management:
 
@@ -88,7 +91,9 @@ M3 debugging emits backend audit events for target detection, session creation, 
 
 M3.5 request correlation uses `X-Request-Id` as the HTTP request id. The server reflects a client-provided id or generates one, includes it in error responses, and passes it through M1 parameter, M2 log, and M3 debugging write services as audit `traceId`. Direct service calls without an HTTP request still generate a trace id.
 
-M6.2 user-governance writes emit backend audit events for user creation, profile update, activation/deactivation, and role replacement. These mutations must stay transactionally coupled to durable state updates and must prevent the active Admin from removing its own final Admin capability.
+M6.2 user-governance writes emit backend audit events for user creation, profile update, activation/deactivation, role replacement, and local registration role-request approval/rejection. These mutations must stay transactionally coupled to durable state updates and must prevent the active Admin from removing its own final Admin capability.
+
+Local account auth writes backend audit events for registration, login, logout, and current-user profile updates. Logout must revoke the active session token server-side, and profile updates must not allow the current-user route to change email, roles, activation state, or organization.
 
 ## Telemetry Security
 

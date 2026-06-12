@@ -4,7 +4,20 @@ import { ApiError } from "../../shared/http/errors";
 import { createAuditEvent } from "../audit/repository";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext, BackendRoleId, RoleBinding } from "../auth/types";
-import { countActiveAdmins, getUserById, insertUser, listUsers, replaceRoleBindings, updateUser, updateUserActive } from "./repository";
+import {
+  countActiveAdmins,
+  decideRegistrationRoleRequest,
+  getPendingRegistrationRoleRequestByIdForAdmin,
+  getPendingRegistrationRoleRequestById,
+  getUserById,
+  listAllPendingRegistrationRoleRequests,
+  insertUser,
+  listPendingRegistrationRoleRequests,
+  listUsers,
+  replaceRoleBindings,
+  updateUser,
+  updateUserActive
+} from "./repository";
 import type { CreateUserInput, ReplaceUserRolesInput, UpdateUserActiveInput, UpdateUserProfileInput } from "./types";
 
 const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
@@ -77,6 +90,34 @@ async function auditUserMutation(
     targetType: "user",
     targetId: input.userId,
     metadata: input.metadata,
+    traceId: context.requestId ?? randomUUID()
+  });
+}
+
+async function auditRegistrationRoleRequestDecision(
+  db: Queryable,
+  auth: AuthContext,
+  input: {
+    action: "approve" | "reject";
+    requestId: string;
+    userId: string;
+    metadata: Record<string, unknown>;
+  },
+  context: AuditCorrelationContext = {}
+) {
+  await createAuditEvent(db, {
+    id: randomUUID(),
+    organizationId: auth.organization.id,
+    projectId: null,
+    actorUserId: auth.user.id,
+    actorType: "user",
+    app: "user-governance",
+    kind: "registration-role-request",
+    action: input.action,
+    severity: "High",
+    targetType: "user",
+    targetId: input.userId,
+    metadata: { requestId: input.requestId, ...input.metadata },
     traceId: context.requestId ?? randomUUID()
   });
 }
@@ -193,5 +234,101 @@ export async function replaceUserRoles(
     }, context);
 
     return { ...user, roles };
+  });
+}
+
+export async function listRegistrationRoleRequests(db: Queryable, auth: AuthContext) {
+  requireUserManager(auth);
+  return hasAdminRole(auth.roles) ? listAllPendingRegistrationRoleRequests(db) : listPendingRegistrationRoleRequests(db, auth.organization.id);
+}
+
+export async function approveRegistrationRoleRequest(
+  db: Database,
+  auth: AuthContext,
+  requestId: string,
+  context: AuditCorrelationContext = {}
+) {
+  requireUserManager(auth);
+
+  return db.transaction(async (tx) => {
+    const request = hasAdminRole(auth.roles)
+      ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
+      : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
+    if (!request) {
+      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", 404, { requestId });
+    }
+
+    if (!(await getUserById(tx, { organizationId: request.organizationId, userId: request.userId }))) {
+      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId: request.userId });
+    }
+
+    await replaceRoleBindings(tx, {
+      organizationId: request.organizationId,
+      userId: request.userId,
+      roles: [{ projectId: null, roleId: request.requestedRoleId }]
+    });
+    const decided = await decideRegistrationRoleRequest(tx, {
+      organizationId: request.organizationId,
+      requestId,
+      status: "approved",
+      decidedByUserId: auth.user.id,
+      decidedAt: new Date().toISOString()
+    });
+    if (!decided) {
+      throw new ApiError("CONFLICT", "Registration role request was already decided.", 409, { requestId });
+    }
+    await auditRegistrationRoleRequestDecision(tx, auth, {
+      action: "approve",
+      requestId,
+      userId: request.userId,
+      metadata: {
+        username: request.username,
+        previousRoleId: request.currentRoleId,
+        requestedRoleId: request.requestedRoleId
+      }
+    }, context);
+
+    return decided;
+  });
+}
+
+export async function rejectRegistrationRoleRequest(
+  db: Database,
+  auth: AuthContext,
+  requestId: string,
+  context: AuditCorrelationContext = {}
+) {
+  requireUserManager(auth);
+
+  return db.transaction(async (tx) => {
+    const request = hasAdminRole(auth.roles)
+      ? await getPendingRegistrationRoleRequestByIdForAdmin(tx, requestId)
+      : await getPendingRegistrationRoleRequestById(tx, { organizationId: auth.organization.id, requestId });
+    if (!request) {
+      throw new ApiError("NOT_FOUND", "Pending registration role request was not found.", 404, { requestId });
+    }
+
+    const decided = await decideRegistrationRoleRequest(tx, {
+      organizationId: request.organizationId,
+      requestId,
+      status: "rejected",
+      decidedByUserId: auth.user.id,
+      decidedAt: new Date().toISOString()
+    });
+    if (!decided) {
+      throw new ApiError("CONFLICT", "Registration role request was already decided.", 409, { requestId });
+    }
+    await auditRegistrationRoleRequestDecision(tx, auth, {
+      action: "reject",
+      requestId,
+      userId: request.userId,
+      metadata: {
+        username: request.username,
+        currentRoleId: request.currentRoleId,
+        requestedRoleId: request.requestedRoleId
+      }
+    }, context);
+
+    return decided;
   });
 }

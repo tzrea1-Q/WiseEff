@@ -28,8 +28,9 @@ export type AuthenticatedUser = {
   id: string;
   organizationId: string;
   name: string;
-  email: string;
+  email?: string;
   emailVerified?: boolean;
+  username?: string;
   title: string;
   isActive: boolean;
 };

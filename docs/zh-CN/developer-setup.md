@@ -14,7 +14,7 @@ npm run db:seed:m2
 npm run db:seed:m3
 ```
 
-`.env.example` 准备了 PostgreSQL、local object store、simulator device gateway、production-mode smoke auth，以及默认的 Pi-backed live Agent provider。
+`.env.example` 准备了 PostgreSQL、local object store、simulator device gateway、production-mode local account auth、可选 HMAC smoke 输入，以及默认的 Pi-backed live Agent provider。
 
 ```text
 AGENT_MODEL=

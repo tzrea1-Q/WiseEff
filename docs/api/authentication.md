@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/api/authentication.md)
 
-WiseEff supports development auth for local tests, HMAC bearer tokens for local smoke profiles, and OIDC/JWKS bearer tokens for the M6.2 self-hosted identity path.
+WiseEff supports development auth for local tests, HMAC bearer tokens for local smoke profiles, WiseEff local accounts, and OIDC/JWKS bearer tokens for the M6.2 self-hosted identity path.
 
 ## Development Mode
 
@@ -52,6 +52,42 @@ Access tokens must include `sub` and organization claims. The trusted OIDC token
 ```
 
 Allowed role ids are `guest`, `hardware-user`, `software-user`, `hardware-committer`, `software-committer`, and `admin`. Unsupported role ids are rejected.
+
+## Production Mode With Local Accounts
+
+WiseEff-owned local accounts are selected with:
+
+```text
+AUTH_MODE=production
+AUTH_PROVIDER=local
+```
+
+This provider stores credentials and sessions in PostgreSQL. It adds the following first-party account lifecycle routes:
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/v1/auth/register` | Register a local account with a selected organization and allowed self-service platform role. |
+| `POST /api/v1/auth/login` | Exchange username and password for a local session token. |
+| `POST /api/v1/auth/logout` | Revoke the current local session token. |
+| `GET /api/v1/me` | Return the authenticated `AuthContext`. |
+| `PATCH /api/v1/me/profile` | Update the current user's name and title. |
+| `GET /api/v1/users/registration-role-requests` | Let Admins list pending local committer registration requests. |
+| `POST /api/v1/users/registration-role-requests/:requestId/approve` | Let Admins approve a pending committer role request. |
+| `POST /api/v1/users/registration-role-requests/:requestId/reject` | Let Admins reject a pending committer role request. |
+
+Registration accepts `organization`, `name`, `username`, `roleId`, and `password`. The self-service organization choices are the localized hardware department and software department values. Self-service registration never accepts `admin`. Requests for `hardware-committer` or `software-committer` create the account with the matching base User role and a pending Admin approval request; the committer role is granted only after Admin approval. Local accounts do not store or return email addresses; username is the local login identifier. Email verification is not implemented yet, so registration must not be treated as verified-domain onboarding or invitation acceptance.
+
+Passwords are stored as salted `scrypt` hashes in `user_password_credentials`. Session tokens are returned once to the caller as opaque `we_local_*` bearer tokens; only SHA-256 token hashes are persisted in `auth_sessions`. Sessions expire after the service TTL and logout sets `revoked_at`. Every register, login, logout, and profile update writes an audit event.
+
+Requests after login use:
+
+```text
+Authorization: Bearer <we_local_session_token>
+```
+
+Local session resolution still reloads active state, roles, and permissions from WiseEff PostgreSQL through the same `/api/v1/me` auth context shape. Deactivated users and users without valid role bindings cannot continue by presenting an old token.
+
+Local accounts are useful for self-managed evaluations and deployments that do not yet integrate an external IdP. Target enterprise deployments that require SSO, MFA, identity lifecycle federation, and browser token refresh should continue to use `AUTH_PROVIDER=oidc`.
 
 ## Local HMAC Smoke Mode
 

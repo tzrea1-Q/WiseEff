@@ -4,7 +4,7 @@ export type UserGovernanceDto = {
   id: string;
   organizationId: string;
   name: string;
-  email: string;
+  email: string | null;
   title: string;
   isActive: boolean;
   createdAt: string;
@@ -31,4 +31,20 @@ export type UpdateUserActiveInput = {
 
 export type ReplaceUserRolesInput = {
   roles: Array<{ projectId?: string | null; roleId: BackendRoleId }>;
+};
+
+export type RegistrationRoleRequestStatus = "pending" | "approved" | "rejected";
+
+export type RegistrationRoleRequestDto = {
+  id: string;
+  organizationId: string;
+  userId: string;
+  userName: string;
+  username: string | null;
+  currentRoleId: BackendRoleId;
+  requestedRoleId: BackendRoleId;
+  status: RegistrationRoleRequestStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
 };

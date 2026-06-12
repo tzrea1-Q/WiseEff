@@ -12,6 +12,7 @@ export type AuthContextResolver = (request: Pick<RouteRequest, "headers">) => Pr
 export type AuthContextResolverOptions = {
   mode: AuthMode;
   verifier?: TokenVerifier;
+  localAuthResolver?: (authorization: string | string[] | undefined) => Promise<AuthContext>;
   db?: Queryable;
   developmentAuthContext?: AuthContext;
   getDevelopmentAuthContext?: (request: Pick<RouteRequest, "headers">) => Promise<AuthContext> | AuthContext;
@@ -19,6 +20,19 @@ export type AuthContextResolverOptions = {
 
 export function createAuthContextResolver(options: AuthContextResolverOptions): AuthContextResolver {
   if (options.mode === "production") {
+    if (options.localAuthResolver) {
+      return async (request) => {
+        try {
+          return await options.localAuthResolver!(request.headers.authorization);
+        } catch (error) {
+          if (error instanceof ApiError) {
+            throw error;
+          }
+          throw new ApiError("UNAUTHENTICATED", error instanceof Error ? error.message : "Authentication failed.", 401);
+        }
+      };
+    }
+
     if (!options.verifier) {
       throw new Error("Production auth verifier is required when AUTH_MODE=production.");
     }

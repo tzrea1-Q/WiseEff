@@ -5,7 +5,7 @@ const rawEnvSchema = z.object({
   HOST: z.string().min(1).default("127.0.0.1"),
   PORT: z.coerce.number().int().positive().default(8787),
   AUTH_MODE: z.enum(["development", "production"]).default("development"),
-  AUTH_PROVIDER: z.enum(["hmac", "oidc"]).default("hmac"),
+  AUTH_PROVIDER: z.enum(["hmac", "oidc", "local"]).default("local"),
   AUTH_TOKEN_ISSUER: z.string().optional(),
   AUTH_TOKEN_HMAC_SECRET: z.string().optional(),
   AUTH_OIDC_ISSUER: z.string().optional(),
@@ -77,8 +77,8 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   if (env.NODE_ENV === "production" && env.AUTH_MODE !== "production") {
     throw new Error("AUTH_MODE=production is required when NODE_ENV=production");
   }
-  if (env.NODE_ENV === "production" && env.AUTH_PROVIDER !== "oidc") {
-    throw new Error("AUTH_PROVIDER=oidc is required when NODE_ENV=production");
+  if (env.NODE_ENV === "production" && env.AUTH_PROVIDER !== "oidc" && env.AUTH_PROVIDER !== "local") {
+    throw new Error("AUTH_PROVIDER=oidc or AUTH_PROVIDER=local is required when NODE_ENV=production");
   }
   if (
     env.NODE_ENV === "production" &&

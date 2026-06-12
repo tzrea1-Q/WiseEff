@@ -12,13 +12,38 @@ export type RouteManifestEntry = {
 };
 
 export const routeManifest = [
+  { id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" },
+  { id: "auth.login", method: "POST", path: "/api/v1/auth/login", module: "auth", stability: "commercial-readiness" },
+  { id: "auth.logout", method: "POST", path: "/api/v1/auth/logout", module: "auth", stability: "commercial-readiness" },
   { id: "auth.me", method: "GET", path: "/api/v1/me", module: "auth", stability: "mvp" },
+  { id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" },
 
   { id: "audit.createEvent", method: "POST", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
   { id: "audit.listEvents", method: "GET", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
 
   { id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   { id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
+  {
+    id: "users.listRegistrationRoleRequests",
+    method: "GET",
+    path: "/api/v1/users/registration-role-requests",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.approveRegistrationRoleRequest",
+    method: "POST",
+    path: "/api/v1/users/registration-role-requests/:requestId/approve",
+    module: "users",
+    stability: "commercial-readiness"
+  },
+  {
+    id: "users.rejectRegistrationRoleRequest",
+    method: "POST",
+    path: "/api/v1/users/registration-role-requests/:requestId/reject",
+    module: "users",
+    stability: "commercial-readiness"
+  },
   { id: "users.update", method: "PATCH", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" },
   {
     id: "users.activation",

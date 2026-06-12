@@ -31,7 +31,7 @@ blank. Fill `AGENT_MODEL` and `AGENT_API_KEY` only in `.env` for the default Pi-
 
 Pi Agent smoke and readiness evidence must redact `AGENT_API_KEY`, Authorization headers, raw prompts, raw provider payloads, and customer data. It is acceptable to record safe metadata such as provider format, Pi provider id, model id, prompt version, readiness status, token counts, estimated cost, latency, trace id, and approval id.
 
-Local `.env.example` also includes a deterministic HMAC smoke token so developers can run local non-HDC acceptance without Keycloak. Target self-hosted environments must use `AUTH_PROVIDER=oidc` with operator-managed issuer/audience values and must keep real OIDC tokens out of committed evidence.
+Local `.env.example` defaults to WiseEff local accounts and also includes a deterministic HMAC smoke token for explicit local non-HDC acceptance runs without Keycloak. Target self-hosted environments that require SSO/MFA should use `AUTH_PROVIDER=oidc` with operator-managed issuer/audience values and must keep real OIDC tokens out of committed evidence.
 
 ## Rotation
 

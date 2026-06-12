@@ -1,4 +1,4 @@
-import { useMemo, useState, type Dispatch, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/App";
@@ -20,6 +20,23 @@ export type UserGovernanceActions = {
   createUser(input: { name: string; email: string; title: string; roleId: PlatformRoleId }): Promise<User | void>;
   assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
+  listRegistrationRoleRequests?(): Promise<RegistrationRoleRequest[]>;
+  approveRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
+  rejectRegistrationRoleRequest?(requestId: string): Promise<RegistrationRoleRequest | void>;
+};
+
+export type RegistrationRoleRequest = {
+  id: string;
+  organizationId: string;
+  userId: string;
+  userName: string;
+  username: string | null;
+  currentRoleId: PlatformRoleId;
+  requestedRoleId: PlatformRoleId;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
 };
 
 const statusOptions = [
@@ -72,6 +89,10 @@ function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
   return user.lastActive;
 }
 
+function userAccountIdentifier(user: User) {
+  return user.email ?? user.username ?? "No account identifier";
+}
+
 export function UserPermissionsPage({ state, dispatch, search: _search, userGovernanceActions }: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
@@ -83,6 +104,9 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   const [title, setTitle] = useState("");
   const [addUserError, setAddUserError] = useState("");
   const [initialRoleId, setInitialRoleId] = useState<PlatformRoleId>("hardware-user");
+  const [registrationRoleRequests, setRegistrationRoleRequests] = useState<RegistrationRoleRequest[]>([]);
+  const [registrationRoleRequestError, setRegistrationRoleRequestError] = useState("");
+  const [decidingRequestId, setDecidingRequestId] = useState("");
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = useMemo(
@@ -90,7 +114,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       state.users.filter((user) => {
         const matchesQuery =
           normalizedQuery.length === 0 ||
-          [user.name, user.email, user.title].some((value) => value.toLowerCase().includes(normalizedQuery));
+          [user.name, user.email, user.username, user.title].some((value) => (value ?? "").toLowerCase().includes(normalizedQuery));
         const normalizedRoleId = migrateLegacyRoleId(user.roleId);
         const matchesRole = roleFilter === "all" || normalizedRoleId === roleFilter;
         const matchesStatus =
@@ -136,6 +160,57 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         {renderColumnFilter(key, label)}
       </div>
     );
+  }
+
+  useEffect(() => {
+    if (!userGovernanceActions?.listRegistrationRoleRequests) {
+      setRegistrationRoleRequests([]);
+      return;
+    }
+
+    let cancelled = false;
+    userGovernanceActions
+      .listRegistrationRoleRequests()
+      .then((items) => {
+        if (!cancelled) {
+          setRegistrationRoleRequests(items.filter((item) => item.status === "pending"));
+          setRegistrationRoleRequestError("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setRegistrationRoleRequestError(error instanceof Error ? error.message : "Load registration role requests failed.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userGovernanceActions]);
+
+  async function decideRegistrationRoleRequest(request: RegistrationRoleRequest, decision: "approve" | "reject") {
+    setRegistrationRoleRequestError("");
+    setDecidingRequestId(request.id);
+
+    try {
+      if (decision === "approve") {
+        if (!userGovernanceActions?.approveRegistrationRoleRequest) {
+          throw new Error("Registration role approval is not enabled.");
+        }
+        await userGovernanceActions.approveRegistrationRoleRequest(request.id);
+        dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
+      } else {
+        if (!userGovernanceActions?.rejectRegistrationRoleRequest) {
+          throw new Error("Registration role rejection is not enabled.");
+        }
+        await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
+      }
+      setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
+    } catch (error) {
+      setRegistrationRoleRequestError(error instanceof Error ? error.message : "Registration role request decision failed.");
+    } finally {
+      setDecidingRequestId("");
+    }
   }
 
   async function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
@@ -219,6 +294,56 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         </label>
       </div>
 
+      <section className="user-permissions-approval-queue" aria-label="Registration role requests">
+        <div className="user-permissions-approval-queue__header">
+          <div>
+            <span className="eyebrow">Registration</span>
+            <h3>Role requests</h3>
+          </div>
+          <span className="user-permissions-approval-count">{registrationRoleRequests.length} pending</span>
+        </div>
+        {registrationRoleRequestError ? (
+          <p role="alert" className="user-permissions-modal-error">{registrationRoleRequestError}</p>
+        ) : null}
+        {registrationRoleRequests.length > 0 ? (
+          <div className="user-permissions-approval-list">
+            {registrationRoleRequests.map((request) => (
+              <article className="user-permissions-approval-item" key={request.id}>
+                <div className="user-permissions-approval-user">
+                  <strong>{request.userName}</strong>
+                  <span>{request.username ?? request.userId}</span>
+                </div>
+                <div className="user-permissions-approval-role-change">
+                  <span>{roleNameOf(request.currentRoleId)}</span>
+                  <span aria-hidden="true">→</span>
+                  <span>{roleNameOf(request.requestedRoleId)}</span>
+                </div>
+                <div className="user-permissions-approval-actions">
+                  <button
+                    className="button primary"
+                    type="button"
+                    disabled={decidingRequestId === request.id}
+                    onClick={() => void decideRegistrationRoleRequest(request, "approve")}
+                  >
+                    Approve {request.userName}
+                  </button>
+                  <button
+                    className="button"
+                    type="button"
+                    disabled={decidingRequestId === request.id}
+                    onClick={() => void decideRegistrationRoleRequest(request, "reject")}
+                  >
+                    Reject {request.userName}
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="user-permissions-approval-empty">No pending role requests.</p>
+        )}
+      </section>
+
       <div className="user-permissions-grid">
         <div className="user-permissions-table-card">
           <table aria-label="Platform users">
@@ -240,7 +365,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                   <tr key={user.id}>
                     <td>
                       <strong>{user.name}</strong>
-                      <div>{user.email}</div>
+                      <div>{userAccountIdentifier(user)}</div>
                     </td>
                     <td>{user.title}</td>
                     <td className="user-permissions-role-cell">

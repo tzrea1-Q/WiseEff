@@ -28,7 +28,7 @@ export function requireDebugAdmin(auth: AuthContext) {
 }
 
 export function getAllowedDebugProjectIds(auth: AuthContext) {
-  if (auth.roles.some((role) => role.roleId === "admin" && role.projectId === null)) {
+  if (auth.roles.some((role) => role.projectId === null)) {
     return null;
   }
 

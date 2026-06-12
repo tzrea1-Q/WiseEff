@@ -123,6 +123,24 @@ function createResolvedAuthClient() {
   };
 }
 
+function createResolvedAdminAuthClient() {
+  return {
+    getCurrentAuthContext: vi.fn(async () => ({
+      user: {
+        id: "u-api-admin",
+        organizationId: "org-chargelab",
+        name: "API Admin",
+        email: "api-admin@chargelab.cn",
+        title: "API Platform Owner",
+        isActive: true
+      },
+      organization: { id: "org-chargelab", name: "ChargeLab" },
+      roles: [{ projectId: null, roleId: "admin" }],
+      permissions: ["admin:access", "users:manage"]
+    }))
+  };
+}
+
 type TestUserGovernanceActions = UserGovernanceActions & {
   listUsers: ReturnType<typeof vi.fn>;
 };
@@ -272,6 +290,156 @@ describe("WiseEff app shell", () => {
 
     expect(await screen.findByText("API Admin")).toBeInTheDocument();
     expect(screen.getByText("Admin")).toBeInTheDocument();
+  });
+
+  it("shows local login when API auth context is unauthenticated and enters the app after login", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Session is not active.")),
+      login: vi.fn(async () => ({
+        token: "we_local_test",
+        expiresAt: "2026-06-19T00:00:00.000Z",
+        auth: {
+          user: {
+            id: "u-local",
+            organizationId: "org-local",
+            name: "Local Admin",
+            username: "local.admin",
+            title: "Owner",
+            isActive: true
+          },
+          organization: { id: "org-local", name: "Local Org" },
+          roles: [{ projectId: null, roleId: "admin" }],
+          permissions: ["admin:access", "users:manage"]
+        }
+      }))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "local.admin" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(await screen.findByText("Local Admin")).toBeInTheDocument();
+    expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
+  });
+
+  it("registers a local account from the auth screen", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      register: vi.fn(async () => ({
+        token: "we_local_registered",
+        expiresAt: "2026-06-19T00:00:00.000Z",
+        auth: {
+          user: {
+            id: "u-new-admin",
+            organizationId: "org-new",
+            name: "New Admin",
+            username: "new.admin",
+            title: "software-committer",
+            isActive: true
+          },
+          organization: { id: "org-new", name: "软件部" },
+          roles: [{ projectId: null, roleId: "software-user" }],
+          permissions: ["parameter:edit"]
+        }
+      }))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
+    changeSelectValue(screen.getByRole("combobox", { name: "组织" }), "软件部");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "New Admin" } });
+    changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software Committer");
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.admin" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
+
+    expect(await screen.findByText("New Admin")).toBeInTheDocument();
+    expect(await screen.findByText("Software User")).toBeInTheDocument();
+    expect(authClient.register).toHaveBeenCalledWith({
+      organization: "软件部",
+      name: "New Admin",
+      username: "new.admin",
+      roleId: "software-committer",
+      password: "strong-password"
+    });
+  });
+
+  it("does not offer Admin as a self-service registration role", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      register: vi.fn()
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
+    const roleSelector = screen.getByRole("combobox", { name: "角色" });
+    if (!(roleSelector instanceof HTMLSelectElement)) {
+      fireEvent.click(roleSelector);
+    }
+    const roleLabels =
+      roleSelector instanceof HTMLSelectElement
+        ? Array.from(roleSelector.options).map((option) => option.textContent)
+        : screen.getAllByRole("option").map((option) => option.textContent);
+
+    expect(roleLabels).toContain("Hardware Committer");
+    expect(roleLabels).toContain("Software Committer");
+    expect(roleLabels).not.toContain("Admin");
+  });
+
+  it("updates the current profile and logs out from the topbar menu", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const authClient = {
+      getCurrentAuthContext: vi.fn(async () => ({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "API Admin",
+          email: "api-admin@chargelab.cn",
+          title: "API Platform Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access", "users:manage"]
+      })),
+      updateCurrentUserProfile: vi.fn(async () => ({
+        user: {
+          id: "u-api-admin",
+          organizationId: "org-chargelab",
+          name: "Renamed Admin",
+          email: "api-admin@chargelab.cn",
+          title: "Owner",
+          isActive: true
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        roles: [{ projectId: null, roleId: "admin" }],
+        permissions: ["admin:access", "users:manage"]
+      })),
+      logout: vi.fn(async () => undefined)
+    };
+
+    render(<App authClient={authClient} initialAppState={adminState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
+
+	    fireEvent.click(await screen.findByRole("button", { name: "Open user role switcher" }));
+	    fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+	    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Renamed Admin" } });
+	    fireEvent.change(screen.getByLabelText("显示称谓"), { target: { value: "Owner" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findAllByText("Renamed Admin")).not.toHaveLength(0);
+    expect(authClient.updateCurrentUserProfile).toHaveBeenCalledWith({ name: "Renamed Admin", title: "Owner" });
+
+    fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
+    expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
+    expect(authClient.logout).toHaveBeenCalledTimes(1);
   });
 
   it("routes user governance page mutations through injected API-mode actions", async () => {
@@ -477,7 +645,7 @@ describe("WiseEff app shell", () => {
     };
 
     render(<App runtimeMode="api" agentGateway={agentGateway} authClient={createResolvedAuthClient()} />);
-    fireEvent.click(screen.getByRole("button", { name: "打开 WiseAgent" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开 WiseAgent" }));
 
     expect(await screen.findByText(/项目参数巡检 Agent/)).toBeInTheDocument();
     expect(agentGateway.startSession).toHaveBeenCalled();
@@ -537,7 +705,7 @@ describe("WiseEff app shell", () => {
 
     render(
       <App
-        authClient={createResolvedAuthClient()}
+        authClient={createResolvedAdminAuthClient()}
         debuggingGateway={debuggingGateway}
         initialAppState={userState}
         parameterRepository={createAppParameterRepository()}
@@ -1861,7 +2029,7 @@ describe("WiseEff app shell", () => {
       <App
         initialAppState={{ ...userState, activeProjectId: "aurora", logs: [], archivedLogIds: [] }}
         runtimeMode="api"
-        authClient={createResolvedAuthClient()}
+        authClient={createResolvedAdminAuthClient()}
         parameterRepository={createAppParameterRepository()}
         logAnalysisRepository={createAppLogAnalysisRepository()}
         debuggingGateway={createAppDebuggingGateway()}
@@ -2388,7 +2556,7 @@ describe("WiseEff app shell", () => {
     );
   });
 
-  it("does not save parameter admin config directly in injected API mode", () => {
+  it("does not save parameter admin config directly in injected API mode", async () => {
     window.history.replaceState(null, "", "/parameter-admin");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -2396,9 +2564,16 @@ describe("WiseEff app shell", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App initialAppState={adminState} runtimeMode="api" parameterRepository={createAppParameterRepository()} />);
+    render(
+      <App
+        authClient={createResolvedAdminAuthClient()}
+        initialAppState={adminState}
+        runtimeMode="api"
+        parameterRepository={createAppParameterRepository()}
+      />
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
+    fireEvent.click(await screen.findByRole("button", { name: "保存到 JSON 文件" }));
 
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);
     expect(document.body).toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
@@ -2495,9 +2670,16 @@ describe("WiseEff app shell", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App initialAppState={adminState} runtimeMode="api" parameterRepository={createAppParameterRepository()} />);
+    render(
+      <App
+        authClient={createResolvedAdminAuthClient()}
+        initialAppState={adminState}
+        runtimeMode="api"
+        parameterRepository={createAppParameterRepository()}
+      />
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /配置源预览/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
 
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);

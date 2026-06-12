@@ -6,7 +6,9 @@ import { schemaRegistry } from "./schemaRegistry";
 type OpenApiMethod = "get" | "post" | "put" | "patch" | "delete";
 
 const criticalRouteIds = [
+  "auth.login",
   "auth.me",
+  "auth.updateProfile",
   "parameters.reviewChangeRequest",
   "logs.upload",
   "jobs.get",
@@ -17,7 +19,9 @@ const criticalRouteIds = [
 ] as const;
 
 const criticalPathsByRouteId: Record<(typeof criticalRouteIds)[number], string> = {
+  "auth.login": "/api/v1/auth/login",
   "auth.me": "/api/v1/me",
+  "auth.updateProfile": "/api/v1/me/profile",
   "parameters.reviewChangeRequest": "/api/v1/parameter-change-requests/{requestId}/review",
   "logs.upload": "/api/v1/logs",
   "jobs.get": "/api/v1/jobs/{jobId}",
@@ -43,6 +47,27 @@ describe("M5 OpenAPI contract", () => {
       expect.arrayContaining([
         expect.objectContaining({ id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" }),
         expect.objectContaining({ id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" }),
+        expect.objectContaining({
+          id: "users.listRegistrationRoleRequests",
+          method: "GET",
+          path: "/api/v1/users/registration-role-requests",
+          module: "users",
+          stability: "commercial-readiness"
+        }),
+        expect.objectContaining({
+          id: "users.approveRegistrationRoleRequest",
+          method: "POST",
+          path: "/api/v1/users/registration-role-requests/:requestId/approve",
+          module: "users",
+          stability: "commercial-readiness"
+        }),
+        expect.objectContaining({
+          id: "users.rejectRegistrationRoleRequest",
+          method: "POST",
+          path: "/api/v1/users/registration-role-requests/:requestId/reject",
+          module: "users",
+          stability: "commercial-readiness"
+        }),
         expect.objectContaining({ id: "users.update", method: "PATCH", path: "/api/v1/users/:userId", module: "users", stability: "commercial-readiness" }),
         expect.objectContaining({
           id: "users.activation",
@@ -64,6 +89,27 @@ describe("M5 OpenAPI contract", () => {
     expect(schemaRegistry["users.create"]).toMatchObject({
       requestBody: "CreateUserGovernanceRequest",
       responseBody: "UserGovernanceResponse",
+      successStatus: 201
+    });
+    expect(schemaRegistry["users.approveRegistrationRoleRequest"]).toMatchObject({
+      responseBody: "RegistrationRoleRequestResponse",
+      additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+    });
+  });
+
+  it("publishes local account lifecycle API routes as commercial-readiness contracts", () => {
+    expect(routeManifest).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "auth.register", method: "POST", path: "/api/v1/auth/register", module: "auth", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "auth.login", method: "POST", path: "/api/v1/auth/login", module: "auth", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "auth.logout", method: "POST", path: "/api/v1/auth/logout", module: "auth", stability: "commercial-readiness" }),
+        expect.objectContaining({ id: "auth.updateProfile", method: "PATCH", path: "/api/v1/me/profile", module: "auth", stability: "commercial-readiness" })
+      ])
+    );
+
+    expect(schemaRegistry["auth.register"]).toMatchObject({
+      requestBody: "RegisterLocalAccountRequest",
+      responseBody: "AuthSessionResponse",
       successStatus: 201
     });
   });
@@ -95,6 +141,7 @@ describe("M5 OpenAPI contract", () => {
     const document = buildOpenApiDocument();
     const createdRoutes = [
       { path: "/api/v1/audit-events", method: "post" },
+      { path: "/api/v1/auth/register", method: "post" },
       { path: "/api/v1/parameter-drafts", method: "post" },
       { path: "/api/v1/parameter-submission-rounds", method: "post" },
       { path: "/api/v1/parameter-import-batches", method: "post" },

@@ -74,6 +74,7 @@ import type {
 } from "@/domain/parameters/types";
 import {
   migrateLegacyRoleId,
+  platformRoles,
   roleCanBeAssignedToWorkflowSlot,
   roleSupportsWorkflowSlot,
   type PlatformRoleId
@@ -164,7 +165,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge as UiBadge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { createAuthClient, type AuthContextDto } from "@/infrastructure/http/authClient";
+import {
+  clearLocalAuthToken,
+  createAuthClient,
+  type AuthContextDto,
+  type AuthSessionDto,
+  type LoginLocalAccountInput,
+  type RegisterLocalAccountInput,
+  type UpdateCurrentUserProfileInput
+} from "@/infrastructure/http/authClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
@@ -172,9 +181,28 @@ import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
+  register?(input: RegisterLocalAccountInput): Promise<AuthSessionDto>;
+  login?(input: LoginLocalAccountInput): Promise<AuthSessionDto>;
+  logout?(): Promise<void>;
+  updateCurrentUserProfile?(input: UpdateCurrentUserProfileInput): Promise<AuthContextDto>;
 };
 
+type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated";
+
+function authProbeErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return ["Authorization bearer token is required.", "Session is not active.", "User is not authenticated."].includes(message) ? "" : message;
+}
+
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "wiseeff.sidebar.collapsed";
+const localAuthOrganizations = ["硬件部", "软件部"] as const;
+const selfRegistrationRoleIds = new Set<PlatformRoleId>([
+  "guest",
+  "hardware-user",
+  "software-user",
+  "hardware-committer",
+  "software-committer"
+]);
 
 function readSidebarCollapsedPreference() {
   try {
@@ -475,6 +503,10 @@ function classNames(...values: Array<string | false | null | undefined>) {
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function userAccountIdentifier(user: User) {
+  return user.username ?? user.email ?? "No account identifier";
 }
 
 function canManageUsers(state: PrototypeState) {
@@ -1484,7 +1516,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 
       const email = action.email.trim().toLowerCase();
       const name = action.name.trim();
-      if (!name || !isValidEmail(email) || state.users.some((user) => user.email.toLowerCase() === email)) {
+      if (!name || !isValidEmail(email) || state.users.some((user) => user.email?.toLowerCase() === email)) {
         return state;
       }
 
@@ -1848,6 +1880,8 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
+  const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
+  const [apiAuthError, setApiAuthError] = useState("");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
@@ -1914,6 +1948,76 @@ function AppShell({
     (props: PageProps) => <LogsPage {...props} logActions={runtimeMode === "api" ? props.logActions : undefined} />,
     [runtimeMode]
   );
+
+  const hydrateAuthContext = useCallback((context: AuthContextDto) => {
+    const primaryRole = context.roles[0]?.roleId ?? "guest";
+    dispatch({
+      type: "HYDRATE_AUTH_CONTEXT",
+      roleId: primaryRole,
+      user: {
+        id: context.user.id,
+        name: context.user.name,
+        ...(context.user.email ? { email: context.user.email } : {}),
+        ...(context.user.username ? { username: context.user.username } : {}),
+        title: context.user.title,
+        roleId: migrateLegacyRoleId(primaryRole),
+        isActive: context.user.isActive,
+        createdAt: new Date().toISOString(),
+        lastActive: "just now"
+      }
+    });
+  }, []);
+
+  const refreshApiRuntimeData = useCallback(
+    async (cancelledRef?: { current: boolean }) => {
+      const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
+        parameterActions.refresh({ notifyOnFailure: false }),
+        logActions.refresh(),
+        debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
+      ]);
+      if (cancelledRef?.current) return;
+      if (
+        parameterRefreshResult.status === "rejected" ||
+        (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
+      ) {
+        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽参数 API，已保留本地演示数据" });
+      } else if (!parameterRuntimeConnectedRef.current) {
+        parameterRuntimeConnectedRef.current = true;
+        dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
+      }
+      if (logRefreshResult.status === "rejected") {
+        if (
+          !(
+            logRefreshResult.reason instanceof Error &&
+            (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
+          )
+        ) {
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
+        }
+      } else if (!logRuntimeConnectedRef.current) {
+        logRuntimeConnectedRef.current = true;
+        dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
+      }
+      if (debuggingRefreshResult.status === "rejected") {
+        setDebuggingRuntimeReady(false);
+        if (
+          !(
+            debuggingRefreshResult.reason instanceof Error &&
+            (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
+          )
+        ) {
+          dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
+        }
+      } else {
+        setDebuggingRuntimeReady(true);
+        if (!debuggingRuntimeConnectedRef.current) {
+          debuggingRuntimeConnectedRef.current = true;
+          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
+        }
+      }
+    },
+    [debuggingActions, logActions, parameterActions]
+  );
   const parameterRuntimeConnectedRef = useRef(false);
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
@@ -1931,82 +2035,29 @@ function AppShell({
       return;
     }
 
-    let cancelled = false;
+    const cancelledRef = { current: false };
     const client = authClient ?? createAuthClient();
 
     client
       .getCurrentAuthContext()
       .then(async (context) => {
-        if (cancelled) return;
-        const primaryRole = context.roles[0]?.roleId ?? "guest";
-        dispatch({
-          type: "HYDRATE_AUTH_CONTEXT",
-          roleId: primaryRole,
-          user: {
-            id: context.user.id,
-            name: context.user.name,
-            email: context.user.email,
-            title: context.user.title,
-            roleId: migrateLegacyRoleId(primaryRole),
-            isActive: context.user.isActive,
-            createdAt: new Date().toISOString(),
-            lastActive: "just now"
-          }
-        });
-        const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
-          parameterActions.refresh({ notifyOnFailure: false }),
-          logActions.refresh(),
-          debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
-        ]);
-        if (cancelled) return;
-        if (
-          parameterRefreshResult.status === "rejected" ||
-          (parameterRefreshResult.value && "notification" in parameterRefreshResult.value)
-        ) {
-          dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽 API，已保留本地演示数据" });
-        } else if (!parameterRuntimeConnectedRef.current) {
-          parameterRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽参数 API" });
-        }
-        if (logRefreshResult.status === "rejected") {
-          if (
-            !(
-              logRefreshResult.reason instanceof Error &&
-              (logRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-            )
-          ) {
-            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽日志 API，已保留本地演示数据" });
-          }
-        } else if (!logRuntimeConnectedRef.current) {
-          logRuntimeConnectedRef.current = true;
-          dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
-        }
-        if (debuggingRefreshResult.status === "rejected") {
-          setDebuggingRuntimeReady(false);
-          if (
-            !(
-              debuggingRefreshResult.reason instanceof Error &&
-              (debuggingRefreshResult.reason as { alreadyNotified?: unknown }).alreadyNotified === true
-            )
-          ) {
-            dispatch({ type: "ADD_NOTIFICATION", message: "无法加载雷泽调试 API，已保留本地演示数据" });
-          }
-        } else {
-          setDebuggingRuntimeReady(true);
-          if (!debuggingRuntimeConnectedRef.current) {
-            debuggingRuntimeConnectedRef.current = true;
-            dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽调试 API" });
-          }
-        }
+        if (cancelledRef.current) return;
+        hydrateAuthContext(context);
+        setApiAuthStatus("authenticated");
+        setApiAuthError("");
+        await refreshApiRuntimeData(cancelledRef);
       })
-      .catch(() => {
-        dispatch({ type: "ADD_NOTIFICATION", message: "无法连接雷泽 API，已保留本地演示数据" });
+      .catch((error) => {
+        if (cancelledRef.current) return;
+        clearLocalAuthToken();
+        setApiAuthStatus("unauthenticated");
+        setApiAuthError(authProbeErrorMessage(error));
       });
 
     return () => {
-      cancelled = true;
+      cancelledRef.current = true;
     };
-  }, [authClient, debuggingActions, logActions, parameterActions, runtimeMode]);
+  }, [authClient, hydrateAuthContext, refreshApiRuntimeData, runtimeMode]);
 
   useEffect(() => {
     if (runtimeMode !== "api" || page.key !== "user-permissions" || !userGovernanceActionsClient || !canPerform(currentRoleId, "users.manage")) {
@@ -2069,11 +2120,55 @@ function AppShell({
     setSidebarCollapsed((collapsed) => !collapsed);
   }, []);
 
+  const handleAuthSession = useCallback(
+    async (session: AuthSessionDto) => {
+      hydrateAuthContext(session.auth);
+      setApiAuthStatus("authenticated");
+      setApiAuthError("");
+      await refreshApiRuntimeData();
+      dispatch({ type: "ADD_NOTIFICATION", message: "已登录雷泽账号" });
+    },
+    [hydrateAuthContext, refreshApiRuntimeData]
+  );
+
+  const handleLogout = useCallback(async () => {
+    const client = authClient ?? createAuthClient();
+    await client.logout?.();
+    clearLocalAuthToken();
+    setApiAuthStatus("unauthenticated");
+    setApiAuthError("");
+    dispatch({ type: "ADD_NOTIFICATION", message: "已退出登录" });
+  }, [authClient]);
+
+  const handleUpdateCurrentUserProfile = useCallback(
+    async (input: UpdateCurrentUserProfileInput) => {
+      const client = authClient ?? createAuthClient();
+      if (!client.updateCurrentUserProfile) {
+        throw new Error("当前认证方式不支持资料更新。");
+      }
+      const context = await client.updateCurrentUserProfile(input);
+      hydrateAuthContext(context);
+      dispatch({ type: "ADD_NOTIFICATION", message: "个人资料已更新" });
+    },
+    [authClient, hydrateAuthContext]
+  );
+
   const appShellClassName = isPlatformHome
     ? "app-shell home-shell"
     : sidebarCollapsed
       ? "app-shell sidebar-is-collapsed"
       : "app-shell";
+
+  if (runtimeMode === "api" && apiAuthStatus !== "authenticated") {
+    return (
+      <ApiAuthPage
+        authClient={authClient ?? createAuthClient()}
+        error={apiAuthError}
+        status={apiAuthStatus}
+        onAuthenticated={handleAuthSession}
+      />
+    );
+  }
 
   return (
     <div className={appShellClassName}>
@@ -2098,6 +2193,8 @@ function AppShell({
             parameterHomeTimeWindow={parameterHomeTimeWindow}
             onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
             onNewProject={() => setProjectInitOpen(true)}
+            onLogout={handleLogout}
+            onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
           />
         ) : null}
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
@@ -2794,7 +2891,9 @@ function TopBar({
   pageActions,
   parameterHomeTimeWindow,
   onParameterHomeTimeWindowChange,
-  onNewProject
+  onNewProject,
+  onLogout,
+  onUpdateCurrentUserProfile
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
@@ -2805,8 +2904,11 @@ function TopBar({
   parameterHomeTimeWindow: HomepageTimeWindow;
   onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
   onNewProject: () => void;
+  onLogout?: () => Promise<void> | void;
+  onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
 }) {
   const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const showProjectInitAction = page.key.startsWith("parameter");
   const showProjectSelector =
     page.group === "参数管理" &&
@@ -2891,7 +2993,7 @@ function TopBar({
             <div className="topbar-user-menu" aria-label="User role switcher">
               <div className="topbar-user-menu__identity">
                 <strong>{currentUser?.name ?? "Prototype user"}</strong>
-                <span>{currentUser?.email ?? "No user selected"}</span>
+                <span>{currentUser ? userAccountIdentifier(currentUser) : "No user selected"}</span>
               </div>
               <label className="topbar-user-menu__field">
                 Role
@@ -2907,11 +3009,219 @@ function TopBar({
                   ))}
                 </select>
               </label>
+              <div className="topbar-user-menu__actions">
+                <button type="button" className="button" onClick={() => setProfileOpen(true)}>
+                  个人资料
+                </button>
+                {onLogout ? (
+                  <button type="button" className="button ghost" onClick={() => void onLogout()}>
+                    退出登录
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </div>
       </div>
+      {profileOpen && currentUser && onUpdateCurrentUserProfile ? (
+        <ProfileDialog
+          user={currentUser}
+          onCancel={() => setProfileOpen(false)}
+          onSave={async (input) => {
+            await onUpdateCurrentUserProfile(input);
+            setProfileOpen(false);
+          }}
+        />
+      ) : null}
     </header>
+  );
+}
+
+function ApiAuthPage({
+  authClient,
+  error,
+  status,
+  onAuthenticated
+}: {
+  authClient: WiseEffAuthClient;
+  error: string;
+  status: ApiAuthStatus;
+  onAuthenticated: (session: AuthSessionDto) => Promise<void>;
+}) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [organization, setOrganization] = useState<(typeof localAuthOrganizations)[number]>("硬件部");
+  const [name, setName] = useState("");
+  const [roleId, setRoleId] = useState<PlatformRoleId>("hardware-user");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [formError, setFormError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const organizationOptions = useMemo(
+    () => localAuthOrganizations.map((value) => ({ value, label: value })),
+    []
+  );
+  const roleOptions = useMemo(
+    () => platformRoles.filter((role) => selfRegistrationRoleIds.has(role.id)).map((role) => ({ value: role.id, label: role.name })),
+    []
+  );
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    setSubmitting(true);
+
+    try {
+      if (mode === "login") {
+        if (!authClient.login) {
+          throw new Error("本地账号登录未启用。");
+        }
+        await onAuthenticated(await authClient.login({ username, password }));
+      } else {
+        if (!authClient.register) {
+          throw new Error("本地账号注册未启用。");
+        }
+        await onAuthenticated(
+          await authClient.register({
+            organization,
+            name,
+            username,
+            roleId,
+            password
+          })
+        );
+      }
+    } catch (submitError) {
+      setFormError(submitError instanceof Error ? submitError.message : "认证请求失败。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <main className="auth-screen" aria-labelledby="auth-title">
+      <section className="auth-panel">
+        <div className="auth-brand">
+          <WiseEffIcon className="auth-brand-icon" title="雷泽" />
+          <div>
+            <span className="eyebrow">WiseEff</span>
+            <h1 id="auth-title">{mode === "login" ? "登录雷泽" : "注册雷泽"}</h1>
+          </div>
+        </div>
+
+        <div className="auth-mode-tabs" role="tablist" aria-label="认证方式">
+          <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => setMode("login")}>
+            登录
+          </button>
+          <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => setMode("register")}>
+            注册
+          </button>
+        </div>
+
+        <form className="auth-form" onSubmit={submit}>
+          {mode === "register" ? (
+            <>
+              <label>
+                <span>组织</span>
+                <SelectControl
+                  id="local-auth-organization"
+                  value={organization}
+                  onValueChange={setOrganization}
+                  options={organizationOptions}
+                  ariaLabel="组织"
+                  className="auth-select-control"
+                />
+              </label>
+              <label>
+                <span>姓名</span>
+                <input value={name} onChange={(event) => setName(event.target.value)} required />
+              </label>
+              <label>
+                <span>角色</span>
+                <SelectControl
+                  id="local-auth-role"
+                  value={roleId}
+                  onValueChange={setRoleId}
+                  options={roleOptions}
+                  ariaLabel="角色"
+                  className="auth-select-control"
+                />
+              </label>
+            </>
+          ) : null}
+          <label>
+            <span>用户名</span>
+            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
+          </label>
+          <label>
+            <span>密码</span>
+            <input type="password" value={password} minLength={8} onChange={(event) => setPassword(event.target.value)} required />
+          </label>
+          {formError || (status === "unauthenticated" && error) ? (
+            <p role="alert" className="auth-error">{formError || error}</p>
+          ) : null}
+          <button className="button primary auth-submit" type="submit" disabled={submitting}>
+            {submitting ? "处理中" : mode === "login" ? "登录" : "注册"}
+          </button>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function ProfileDialog({
+  user,
+  onCancel,
+  onSave
+}: {
+  user: User;
+  onCancel: () => void;
+  onSave: (input: UpdateCurrentUserProfileInput) => Promise<void>;
+}) {
+  const [name, setName] = useState(user.name);
+  const [title, setTitle] = useState(user.title);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      await onSave({ name, title });
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "保存失败。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="modal-backdrop profile-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title">
+      <form className="profile-dialog" onSubmit={submit}>
+        <header>
+          <span className="eyebrow">Account</span>
+          <h2 id="profile-dialog-title">个人资料</h2>
+          <p>{userAccountIdentifier(user)}</p>
+        </header>
+        <label>
+          <span>姓名</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} required />
+        </label>
+        <label>
+          <span>显示称谓</span>
+          <input value={title} onChange={(event) => setTitle(event.target.value)} required />
+        </label>
+        {error ? <p role="alert" className="auth-error">{error}</p> : null}
+        <footer>
+          <button type="button" className="button" onClick={onCancel}>
+            取消
+          </button>
+          <button type="submit" className="button primary" disabled={submitting}>
+            保存
+          </button>
+        </footer>
+      </form>
+    </div>
   );
 }
 

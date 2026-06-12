@@ -39,6 +39,29 @@ describe("createUserGovernanceClient", () => {
     });
   });
 
+  it("does not synthesize email when a backend user has no email", async () => {
+    const fetchMock = createFetchMock({
+      items: [
+        {
+          id: "u-local",
+          organizationId: "org-local",
+          name: "Local User",
+          email: null,
+          title: "Owner",
+          isActive: true,
+          createdAt: "2026-06-02T00:00:00.000Z",
+          lastActiveAt: null,
+          roles: [{ projectId: null, roleId: "admin" }]
+        }
+      ]
+    });
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    const users = await client.listUsers();
+
+    expect(users[0].email).toBeUndefined();
+  });
+
   it("creates users through the backend with a durable role binding", async () => {
     const fetchMock = createFetchMock({ item: { id: "u-new", roles: [{ projectId: "aurora", roleId: "hardware-user" }] } }, 201);
     const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
@@ -79,6 +102,105 @@ describe("createUserGovernanceClient", () => {
       body: JSON.stringify({ isActive: false }),
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       method: "PATCH"
+    });
+  });
+
+  it("lists and decides pending registration role requests", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "registration-role-request-1",
+                organizationId: "org-chargelab",
+                userId: "u-candidate",
+                userName: "Committer Candidate",
+                username: "committer.candidate",
+                currentRoleId: "software-user",
+                requestedRoleId: "software-committer",
+                status: "pending",
+                createdAt: "2026-06-12T00:00:00.000Z",
+                decidedAt: null,
+                decidedByUserId: null
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            item: {
+              id: "registration-role-request-1",
+              organizationId: "org-chargelab",
+              userId: "u-candidate",
+              userName: "Committer Candidate",
+              username: "committer.candidate",
+              currentRoleId: "software-user",
+              requestedRoleId: "software-committer",
+              status: "approved",
+              createdAt: "2026-06-12T00:00:00.000Z",
+              decidedAt: "2026-06-12T00:01:00.000Z",
+              decidedByUserId: "u-admin"
+            }
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            item: {
+              id: "registration-role-request-1",
+              organizationId: "org-chargelab",
+              userId: "u-candidate",
+              userName: "Committer Candidate",
+              username: "committer.candidate",
+              currentRoleId: "software-user",
+              requestedRoleId: "software-committer",
+              status: "rejected",
+              createdAt: "2026-06-12T00:00:00.000Z",
+              decidedAt: "2026-06-12T00:01:00.000Z",
+              decidedByUserId: "u-admin"
+            }
+          }),
+          { status: 200 }
+        )
+      );
+    const client = createUserGovernanceClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    await expect(client.listRegistrationRoleRequests()).resolves.toEqual([
+      expect.objectContaining({
+        id: "registration-role-request-1",
+        requestedRoleId: "software-committer",
+        status: "pending"
+      })
+    ]);
+    await expect(client.approveRegistrationRoleRequest("registration-role-request-1")).resolves.toMatchObject({
+      id: "registration-role-request-1",
+      status: "approved"
+    });
+    await expect(client.rejectRegistrationRoleRequest("registration-role-request-1")).resolves.toMatchObject({
+      id: "registration-role-request-1",
+      status: "rejected"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/registration-role-requests", {
+      headers: { Accept: "application/json" },
+      method: "GET"
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/registration-role-requests/registration-role-request-1/approve", {
+      body: JSON.stringify({}),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "POST"
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/users/registration-role-requests/registration-role-request-1/reject", {
+      body: JSON.stringify({}),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "POST"
     });
   });
 

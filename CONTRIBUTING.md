@@ -23,7 +23,7 @@ npm run db:seed:m2
 npm run db:seed:m3
 ```
 
-Fill `AGENT_MODEL` and `AGENT_API_KEY` in `.env` before testing the default Pi-backed live Agent provider path. The default `.env.example` profile otherwise prepares local PostgreSQL, local object storage, simulator device gateway, production-mode smoke auth defaults, and `AGENT_API_FORMAT=pi` with `AGENT_PI_PROVIDER=minimax`. Add `AGENT_API_BASE_URL` only when testing the URL-backed `wiseeff` or `openai` live provider formats.
+Fill `AGENT_MODEL` and `AGENT_API_KEY` in `.env` before testing the default Pi-backed live Agent provider path. The default `.env.example` profile otherwise prepares local PostgreSQL, local object storage, simulator device gateway, production-mode local account auth defaults, optional HMAC smoke inputs, and `AGENT_API_FORMAT=pi` with `AGENT_PI_PROVIDER=minimax`. Add `AGENT_API_BASE_URL` only when testing the URL-backed `wiseeff` or `openai` live provider formats.
 
 ## Development Rules
 

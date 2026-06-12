@@ -21,9 +21,9 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `AUTH_MODE` | `production` in `.env.example` | production-mode smoke | Use `development` only for local development-user flows. |
-| `AUTH_PROVIDER` | `hmac` in local `.env.example`; `oidc` in self-hosted example | production auth | Use `oidc` for target self-hosted identity; keep `hmac` for local smoke/test only. |
-| `AUTH_TOKEN_ISSUER` | `wiseeff-local` | local HMAC smoke | Must match signed local smoke token issuer. |
-| `AUTH_TOKEN_HMAC_SECRET` | local sample secret | local HMAC smoke | Use only for local smoke/test profiles. |
+| `AUTH_PROVIDER` | `local` in local `.env.example`; `oidc` in self-hosted example | production auth | `local` is the default local account/session provider, `oidc` is for target self-hosted SSO, and `hmac` is for explicit local smoke/test only. |
+| `AUTH_TOKEN_ISSUER` | `wiseeff-local` | optional local HMAC smoke | Must match signed local smoke token issuer when `AUTH_PROVIDER=hmac`. |
+| `AUTH_TOKEN_HMAC_SECRET` | local sample secret | optional local HMAC smoke | Use only for local smoke/test profiles. |
 | `AUTH_OIDC_ISSUER` | unset locally | self-hosted OIDC | OIDC issuer URL, for example `https://id.example.com/realms/wiseeff`. |
 | `AUTH_OIDC_AUDIENCE` | unset locally | self-hosted OIDC | Expected access-token audience, for example `wiseeff-api`. |
 | `AUTH_OIDC_JWKS_URI` | unset locally | self-hosted OIDC override | Optional JWKS endpoint when discovery should not be used. |
@@ -34,6 +34,8 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M6_IDENTITY_WRONG_ISSUER_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for issuer mismatch. |
 | `M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for audience mismatch. |
 | `M6_IDENTITY_EXPIRED_AUTHORIZATION` | unset locally | M6.2 identity evidence | Expired token expected to be rejected. |
+
+To exercise the productized local login/register UI, keep the default `AUTH_MODE=production` and `AUTH_PROVIDER=local`, run database migrations so `user_password_credentials` and `auth_sessions` exist, then start the API and API-mode frontend. Local accounts do not require `AUTH_TOKEN_*` or `AUTH_OIDC_*` values. Registration uses username, a fixed organization choice, and the selected platform role; email verification is intentionally not available yet.
 
 ## Object Store
 
@@ -123,7 +125,7 @@ M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches th
 | `BACKUP_REDIS_CHECKPOINT_VALIDATED` | `true` after Redis checkpoint validation | Required by `npm run m6:target-plan`; target M6.3 evidence must prove durable queue persistence was captured. |
 | `WISEEFF_SITE_HOST` | operator-provided DNS | Used by Caddy and frontend API base URL. |
 | `WISEEFF_TLS_EMAIL` | operator-provided email | Used by Caddy ACME/TLS. |
-| `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. |
+| `AUTH_PROVIDER` | `oidc` | Target self-hosted production identity provider. Use `local` only for a self-managed deployment that intentionally uses WiseEff local accounts instead of external SSO. |
 | `AUTH_OIDC_ISSUER` | operator-provided issuer | Must match the access-token `iss` claim. |
 | `AUTH_OIDC_AUDIENCE` | `wiseeff-api` or operator value | Must match the access-token `aud` claim. |
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | Admin OIDC bearer token | Preferred self-hosted smoke token; M5 smoke token names are accepted only for compatibility. |

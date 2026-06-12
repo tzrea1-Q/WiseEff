@@ -13,12 +13,26 @@ type UserGovernanceDto = {
   id: string;
   organizationId: string;
   name: string;
-  email: string;
+  email: string | null;
   title: string;
   isActive: boolean;
   createdAt: string;
   lastActiveAt: string | null;
   roles: RoleBindingDto[];
+};
+
+export type RegistrationRoleRequestDto = {
+  id: string;
+  organizationId: string;
+  userId: string;
+  userName: string;
+  username: string | null;
+  currentRoleId: PlatformRoleId;
+  requestedRoleId: PlatformRoleId;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+  decidedAt: string | null;
+  decidedByUserId: string | null;
 };
 
 type ItemsEnvelope<T> = { items: T[] };
@@ -39,7 +53,7 @@ function userFromDto(dto: UserGovernanceDto): UserAccount {
   return {
     id: dto.id,
     name: dto.name,
-    email: dto.email,
+    ...(dto.email ? { email: dto.email } : {}),
     title: dto.title,
     roleId: primaryRole?.roleId ?? "guest",
     isActive: dto.isActive,
@@ -83,6 +97,24 @@ export function createUserGovernanceClient(
         isActive
       });
       return userFromDto(response.item);
+    },
+    async listRegistrationRoleRequests() {
+      const response = await apiClient.get<ItemsEnvelope<RegistrationRoleRequestDto>>("/api/v1/users/registration-role-requests");
+      return response.items;
+    },
+    async approveRegistrationRoleRequest(requestId: string) {
+      const response = await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(
+        `/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/approve`,
+        {}
+      );
+      return response.item;
+    },
+    async rejectRegistrationRoleRequest(requestId: string) {
+      const response = await apiClient.post<ItemEnvelope<RegistrationRoleRequestDto>>(
+        `/api/v1/users/registration-role-requests/${encodeURIComponent(requestId)}/reject`,
+        {}
+      );
+      return response.item;
     }
   };
 }

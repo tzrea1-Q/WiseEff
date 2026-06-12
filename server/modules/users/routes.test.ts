@@ -148,4 +148,90 @@ describe("user governance routes", () => {
     expect(response.status).toBe(409);
     expect(response.body.error.message).toBe("Active Admin cannot disable itself.");
   });
+
+  it("lets Admin list and decide pending registration role requests", async () => {
+    const { calls, db } = makeDb((text, values) => {
+      if (text.includes("update local_registration_role_requests")) {
+        const status = values[2] === "approved" ? "approved" : "rejected";
+        return [
+          {
+            id: "registration-role-request-1",
+            organization_id: "org-chargelab",
+            user_id: "u-candidate",
+            user_name: "Committer Candidate",
+            username: "committer.candidate",
+            current_role_id: "hardware-user",
+            requested_role_id: "hardware-committer",
+            status,
+            created_at: "2026-06-12T00:00:00.000Z",
+            decided_at: "2026-06-12T00:01:00.000Z",
+            decided_by_user_id: "u-admin"
+          }
+        ];
+      }
+      if (text.includes("from local_registration_role_requests")) {
+        return [
+          {
+            id: "registration-role-request-1",
+            organization_id: "org-chargelab",
+            user_id: "u-candidate",
+            user_name: "Committer Candidate",
+            username: "committer.candidate",
+            current_role_id: "hardware-user",
+            requested_role_id: "hardware-committer",
+            status: "pending",
+            created_at: "2026-06-12T00:00:00.000Z",
+            decided_at: null,
+            decided_by_user_id: null
+          }
+        ];
+      }
+      if (text.includes("returning") || text.includes("select")) {
+        return [userRow({ id: "u-candidate", roles: [{ projectId: null, roleId: "hardware-committer" }] })];
+      }
+      return [];
+    });
+    const server = createWiseEffServer({
+      db,
+      auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+    });
+
+    const list = await requestJson<{ items: Array<{ id: string; requestedRoleId: string; username: string }> }>(
+      server,
+      "/api/v1/users/registration-role-requests",
+      {
+        headers: { Authorization: "Bearer admin" }
+      }
+    );
+    const approve = await requestJson<{ item: { id: string; status: string; requestedRoleId: string } }>(
+      server,
+      "/api/v1/users/registration-role-requests/registration-role-request-1/approve",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer admin" },
+        body: JSON.stringify({})
+      }
+    );
+    const reject = await requestJson<{ item: { id: string; status: string } }>(
+      server,
+      "/api/v1/users/registration-role-requests/registration-role-request-1/reject",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer admin" },
+        body: JSON.stringify({})
+      }
+    );
+
+    expect(list.status).toBe(200);
+    expect(list.body.items[0]).toMatchObject({
+      id: "registration-role-request-1",
+      requestedRoleId: "hardware-committer",
+      username: "committer.candidate"
+    });
+    expect(approve.status).toBe(200);
+    expect(approve.body.item).toMatchObject({ id: "registration-role-request-1", status: "approved" });
+    expect(reject.status).toBe(200);
+    expect(reject.body.item).toMatchObject({ id: "registration-role-request-1", status: "rejected" });
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+  });
 });
