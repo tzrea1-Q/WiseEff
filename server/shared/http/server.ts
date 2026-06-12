@@ -6,6 +6,7 @@ import { ApiError, serializeApiError } from "./errors";
 import type { HttpMethod, RouteRequest, RouteResponse } from "./router";
 
 const allowedCorsOrigins = new Set(["http://127.0.0.1:5173", "http://localhost:5173"]);
+const allowedLocalFrontendPorts = { min: 5173, max: 5199 };
 const corsMethods = "GET,POST,PUT,PATCH,DELETE,OPTIONS";
 const defaultCorsHeaders = "accept,content-type,x-request-id,x-wiseeff-user";
 
@@ -174,7 +175,7 @@ async function sendSse(response: ServerResponse, events: AsyncIterable<{ event: 
 
 function setCorsHeaders(request: IncomingMessage, response: ServerResponse) {
   const origin = request.headers.origin;
-  if (!origin || Array.isArray(origin) || !allowedCorsOrigins.has(origin)) {
+  if (!origin || Array.isArray(origin) || !isAllowedCorsOrigin(origin)) {
     return;
   }
 
@@ -187,6 +188,26 @@ function setCorsHeaders(request: IncomingMessage, response: ServerResponse) {
   );
   response.setHeader("Access-Control-Max-Age", "600");
   response.setHeader("Vary", "Origin, Access-Control-Request-Headers");
+}
+
+function isAllowedCorsOrigin(origin: string) {
+  if (allowedCorsOrigins.has(origin)) {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+    const port = Number(url.port);
+    return (
+      url.protocol === "http:" &&
+      (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]") &&
+      Number.isInteger(port) &&
+      port >= allowedLocalFrontendPorts.min &&
+      port <= allowedLocalFrontendPorts.max
+    );
+  } catch {
+    return false;
+  }
 }
 
 function getErrorStatus(error: unknown) {

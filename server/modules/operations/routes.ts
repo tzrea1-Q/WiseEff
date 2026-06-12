@@ -11,6 +11,7 @@ import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadi
 
 export type PilotReadinessEnv = {
   NODE_ENV?: "development" | "test" | "production";
+  AUTH_PROVIDER?: "hmac" | "oidc" | "local";
   DEBUG_DEVICE_GATEWAY_MODE?: "simulator" | "hdc";
   DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION?: boolean;
   HDC_DEVICE_LAB_AVAILABLE?: boolean;

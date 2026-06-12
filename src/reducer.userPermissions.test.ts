@@ -53,12 +53,14 @@ describe("shared user permission reducer actions", () => {
 
   it("blocks duplicate or invalid email addresses", () => {
     const state = { ...createPrototypeState(), activeRoleId: "admin" };
+    const existingEmail = state.users[0].email;
+    expect(existingEmail).toBeDefined();
 
     expect(
       appReducer(state, {
         type: "ADD_USER",
         name: "Duplicate",
-        email: state.users[0].email,
+        email: existingEmail!,
         title: "Duplicate",
         roleId: "hardware-user"
       })

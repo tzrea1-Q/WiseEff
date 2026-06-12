@@ -3,11 +3,24 @@ import type { AuthContext } from "../auth/types";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
-import { createUser, deactivateUser, listGovernedUsers, replaceUserRoles, updateUserProfile } from "./service";
+import {
+  approveRegistrationRoleRequest,
+  createUser,
+  deactivateUser,
+  listGovernedUsers,
+  listRegistrationRoleRequests,
+  rejectRegistrationRoleRequest,
+  replaceUserRoles,
+  updateUserProfile
+} from "./service";
 import { createUserBodySchema, replaceUserRolesBodySchema, updateUserActiveBodySchema, updateUserBodySchema } from "./schemas";
 
 const userIdParamsSchema = z.object({
   userId: z.string().min(1)
+});
+
+const registrationRoleRequestParamsSchema = z.object({
+  requestId: z.string().min(1)
 });
 
 function requireDb(db: Database | undefined) {
@@ -46,6 +59,32 @@ export function registerUserRoutes(
     const item = await createUser(db, auth, body, { requestId: request.requestId });
 
     return { status: 201, body: { item } };
+  });
+
+  router.get("/api/v1/users/registration-role-requests", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const items = await listRegistrationRoleRequests(db, auth);
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/users/registration-role-requests/:requestId/approve", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
+    const item = await approveRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/users/registration-role-requests/:requestId/reject", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(registrationRoleRequestParamsSchema, request.params);
+    const item = await rejectRegistrationRoleRequest(db, auth, params.requestId, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
   });
 
   router.patch("/api/v1/users/:userId", async (request) => {

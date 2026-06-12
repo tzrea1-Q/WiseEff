@@ -413,17 +413,31 @@ describe("/debugging runtime wiring", () => {
 });
 
 describe("/debugging-admin API mode", () => {
-  it("renders DebuggingAdmin as read-only with helper text in API mode", () => {
+  it("renders DebuggingAdmin as read-only with helper text in API mode", async () => {
     window.history.replaceState(null, "", "/debugging-admin");
     render(
       <App
-        authClient={{ getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("offline")) }}
+        authClient={{
+          getCurrentAuthContext: vi.fn().mockResolvedValue({
+            user: {
+              id: "admin-api",
+              organizationId: "org-api",
+              name: "API Admin",
+              username: "api.admin",
+              title: "Admin",
+              isActive: true
+            },
+            organization: { id: "org-api", name: "API Org" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access"]
+          })
+        }}
         initialAppState={adminState}
         runtimeMode="api"
       />
     );
 
-    expect(screen.getByText("API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。")).toBeInTheDocument();
+    expect(await screen.findByText("API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+/ })).toBeDisabled();
     const deleteButtons = document.querySelectorAll<HTMLButtonElement>(".debug-admin-row-delete");
     expect(deleteButtons.length).toBeGreaterThan(0);

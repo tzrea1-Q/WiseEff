@@ -296,6 +296,33 @@ describe("WiseEff API", () => {
     expect(response.headers.get("access-control-allow-headers")).toContain("content-type");
   });
 
+  it("allows alternate local Vite ports without allowing arbitrary origins", async () => {
+    const server = createHttpServer({
+      handle: async () => ({
+        status: 200,
+        body: { ok: true }
+      })
+    });
+
+    const localResponse = await requestJson(server, "/api/v1/me", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://127.0.0.1:5174",
+        "Access-Control-Request-Method": "GET"
+      }
+    });
+    const remoteResponse = await requestJson(server, "/api/v1/me", {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://example.com",
+        "Access-Control-Request-Method": "GET"
+      }
+    });
+
+    expect(localResponse.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:5174");
+    expect(remoteResponse.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
   it("uses request auth context for integrated parameter routes", async () => {
     const { calls, db } = createAuthBoundaryDb();
 

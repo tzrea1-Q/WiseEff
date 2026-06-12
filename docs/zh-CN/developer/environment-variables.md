@@ -2,26 +2,85 @@
 
 > English: [English](../../developer/environment-variables.md)
 
-这是日常开发文档，帮助开发者完成本地启动、环境配置、验证选择和验收覆盖判断。
+使用 `.env.example` 作为本地 non-HDC staging profile。复制为 `.env` 后，通常只需要填写 live Agent 的 model 和 API key。若测试 URL-backed `wiseeff` 或 `openai` provider，再填写 `AGENT_API_BASE_URL`。
 
-## 使用方式
+## 核心运行时
 
-- 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
-- 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
-- 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
-- 若中文页与源码、测试或英文页冲突，以源码、测试和当前英文页为准，并在同一变更中修正中文页。
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `NODE_ENV` | `development` | API 启动 | `production` 会启用更严格的配置检查。 |
+| `HOST` | `127.0.0.1` | API 启动 | 自托管容器通常设为 `0.0.0.0`，便于反向代理访问。 |
+| `PORT` | `8787` | API 启动 | API mode 前端默认访问 `127.0.0.1:8787`。 |
+| `DATABASE_URL` | 本地 PostgreSQL URL | migrations、seeds、API mode、E2E | PostgreSQL 是产品化数据源。 |
+| `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
+| `VITE_WISEEFF_RUNTIME_MODE` | `.env.example` 中为 `api` | 前端 runtime | 前端-only demo/test 可设为 `mock`。 |
+| `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |
 
-## 关键阅读点
+## 认证
 
-- 先确认该文档属于哪个决策面：developer。
-- 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `AUTH_MODE` | `.env.example` 中为 `production` | production-mode smoke | 只有本地开发用户流才使用 `development`。 |
+| `AUTH_PROVIDER` | 本地 `.env.example` 为 `local`，自托管示例为 `oidc` | 生产认证 | `local` 是默认本地账号和 session provider，`oidc` 用于目标自托管 SSO，`hmac` 仅用于显式本地 smoke/test。 |
+| `AUTH_TOKEN_ISSUER` | `wiseeff-local` | 可选本地 HMAC smoke | `AUTH_PROVIDER=hmac` 时必须与签名 token 的 issuer 一致。 |
+| `AUTH_TOKEN_HMAC_SECRET` | 本地示例 secret | 可选本地 HMAC smoke | 只用于本地 smoke/test profile。 |
+| `AUTH_OIDC_ISSUER` | 本地未设置 | 自托管 OIDC | 例如 `https://id.example.com/realms/wiseeff`。 |
+| `AUTH_OIDC_AUDIENCE` | 本地未设置 | 自托管 OIDC | 例如 `wiseeff-api`。 |
+| `AUTH_OIDC_JWKS_URI` | 本地未设置 | 自托管 OIDC override | discovery 不可用或需要固定 JWKS endpoint 时设置。 |
+| `M5_SMOKE_AUTHORIZATION` | 本地 Admin bearer token | M5 smoke | 用于 pilot-readiness smoke 的 `admin:access` token。 |
+| `WISEEFF_SMOKE_AUTHORIZATION` | 本地 Admin bearer token | M5 smoke | smoke 脚本接受的备用变量名。 |
+| `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | 本地未设置 | 自托管 smoke | 目标环境优先使用 Admin OIDC bearer token。 |
+| `M6_IDENTITY_*` | 本地未设置 | M6.2 身份证据 | 目标 OIDC 正向和负向 token evidence。 |
 
-## 同类中文文档
+若要验证产品化的本地登录/注册 UI，保持默认 `AUTH_MODE=production` 和 `AUTH_PROVIDER=local`，先运行数据库迁移，确保存在 `user_password_credentials` 和 `auth_sessions`，再启动 API 和 API-mode 前端。本地账号不需要 `AUTH_TOKEN_*` 或 `AUTH_OIDC_*`。注册使用用户名、固定组织选项和所选平台角色；当前暂不支持邮箱验证。
 
-- [docs/zh-CN/developer/README.md](README.md)
-- [docs/zh-CN/developer/local-development.md](local-development.md)
-- [docs/zh-CN/developer/environment-variables.md](environment-variables.md)
-- [docs/zh-CN/developer/verification-matrix.md](verification-matrix.md)
-- [docs/zh-CN/developer/user-operation-coverage-matrix.md](user-operation-coverage-matrix.md)
-- [docs/zh-CN/developer/browser-acceptance-coverage-map.md](browser-acceptance-coverage-map.md)
+## 对象存储
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `OBJECT_STORE_MODE` | `local` | 日志上传、readiness | 生产要求 `s3`。 |
+| `OBJECT_STORE_ROOT` | `.wiseeff-object-store` | 本地对象存储 | 已被 Git 忽略。 |
+| `OBJECT_STORAGE_ENDPOINT` | 空或注释 | S3/OSS mode | 目标环境值。 |
+| `OBJECT_STORAGE_BUCKET` | 空或注释 | S3/OSS mode | 目标环境 bucket。 |
+| `OBJECT_STORAGE_ACCESS_KEY_ID` | 空或注释 | S3/OSS mode | secret。 |
+| `OBJECT_STORAGE_SECRET_ACCESS_KEY` | 空或注释 | S3/OSS mode | secret。 |
+| `OBJECT_STORAGE_TLS_POLICY` | 自托管 profile 为 `required` | M6.3 evidence | 目标证据必须使用 TLS，除非记录明确的本地实验例外。 |
+| `OBJECT_STORAGE_PATH_STYLE` | `true` | S3-compatible self-hosting | 自托管 provider 不支持 virtual-host bucket 时使用 path-style。 |
+
+## 设备调试
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | 调试 runtime | 真实 device-lab evidence 使用 `hdc`。 |
+| `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION` | `.env.example` 为 `true` | non-customer staging simulator mode | 不可用于 customer production signoff。 |
+| `HDC_TIMEOUT_MS` | `5000` | HDC adapter | 命令超时预算。 |
+| `HDC_DEVICE_LAB_AVAILABLE` | 未设置 | HDC smoke | 仅在具备真实目标值时设置。 |
+
+## Agent Provider
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `AGENT_PROVIDER` | `.env.example` 为 `live` | live provider path | 无 API key 的稳定本地测试可设 `deterministic`。 |
+| `AGENT_API_FORMAT` | `pi` | live provider path | `pi` 使用 `@earendil-works/pi-ai`；`openai` 和 `wiseeff` 使用 URL-backed legacy transport。 |
+| `AGENT_PI_PROVIDER` | `minimax` | Pi live provider | 传给 `getModel` 的 Pi provider id。 |
+| `AGENT_API_BASE_URL` | 空 | URL-backed live provider | `AGENT_API_FORMAT=openai` 或 `wiseeff` 时必填；`pi` 不需要。 |
+| `AGENT_MODEL` | 空 | live provider path | 本地填写。 |
+| `AGENT_API_KEY` | 空 | live provider path | secret。 |
+| `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | 请求超时。 |
+| `AGENT_PROMPT_VERSION` | `m7-pi-agent-v1` | traces | 写入 provider trace metadata。 |
+
+## 队列和 Worker
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `LOG_WORKER_ENABLED` | `true` | 日志 worker 启动 | 自托管 API 容器设为 `false`，worker 容器运行 `npm run worker:logs`。 |
+| `LOG_ANALYSIS_QUEUE_MODE` | `polling` | 日志 worker dispatch | 自托管 Redis/BullMQ 使用 `durable`。 |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | durable queue mode | `LOG_ANALYSIS_QUEUE_MODE=durable` 时必填。 |
+| `LOG_ANALYSIS_QUEUE_PREFIX` | `wiseeff` | BullMQ namespace | Redis 共享时应按环境区分。 |
+| `LOG_ANALYSIS_QUEUE_ATTEMPTS` | `4` | retry/dead-letter policy | 与 PostgreSQL job retry 状态对齐。 |
+
+## 自托管运行时
+
+M6.1 在 `ops/self-hosted/.env.example` 提供 Linux 部署 profile。M6.2 默认目标身份 provider 为 OIDC；如果部署明确选择 WiseEff 本地账号，可以把 `AUTH_PROVIDER` 设为 `local`，但需要接受没有外部 SSO/MFA 联邦的边界。`AUTH_PROVIDER=hmac` 仍只适合本地 smoke/test，不是目标环境身份验收证据。
+
+目标环境不要提交真实 bearer token、API key、数据库密码或对象存储 secret。所有 target-ready、pilot-ready、release-ready 结论都必须引用真实目标证据，而不是本地 skip 或示例值。

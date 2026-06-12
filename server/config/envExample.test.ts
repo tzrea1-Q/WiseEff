@@ -42,6 +42,7 @@ describe(".env.example", () => {
       PORT: "8787",
       DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
       AUTH_MODE: "production",
+      AUTH_PROVIDER: "local",
       AUTH_TOKEN_ISSUER: "wiseeff-local",
       WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
       VITE_WISEEFF_RUNTIME_MODE: "api",

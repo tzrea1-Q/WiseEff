@@ -2,6 +2,7 @@ import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerAgentRoutes } from "./modules/agent/routes";
 import type { AgentProvider } from "./modules/agent/provider";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
+import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
 import { createOidcVerifier } from "./modules/auth/oidcVerifier";
@@ -25,6 +26,8 @@ import type { Database } from "./shared/database/client";
 import type { ServerEnv } from "./config/env";
 import type { JsonWebKey } from "node:crypto";
 
+type LocalAuthService = ReturnType<typeof createLocalAuthService>;
+
 async function getCurrentAuthContext(options: { db?: Database }, request: RouteRequest) {
   const userId = request.headers["x-wiseeff-user"]?.toString() ?? developmentAuthContext.user.id;
   return options.db ? getAuthContext(options.db, userId) : developmentAuthContext;
@@ -41,6 +44,7 @@ export function createWiseEffServer(
     durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
+    localAuthService?: LocalAuthService;
     tracing?: Pick<TracingBoundary, "withSpan">;
     metrics?: MetricsRegistry;
   } = {}
@@ -48,10 +52,12 @@ export function createWiseEffServer(
   const router = createRouter();
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
+  const localAuthService = options.localAuthService ?? (options.env?.AUTH_PROVIDER === "local" && options.db ? createLocalAuthService(options.db) : undefined);
   const authResolver = createAuthContextResolver({
     mode: options.auth?.mode ?? "development",
     verifier: options.auth?.verifier,
     db: options.db,
+    localAuthResolver: localAuthService?.resolveSession,
     developmentAuthContext,
     getDevelopmentAuthContext: (request) => getCurrentAuthContext(options, request as RouteRequest)
   });
@@ -66,7 +72,7 @@ export function createWiseEffServer(
     getCurrentAuthContext: authResolver
   });
 
-  registerAuthRoutes(router, { getCurrentAuthContext: authResolver });
+  registerAuthRoutes(router, { getCurrentAuthContext: authResolver, localAuthService });
   registerAuditRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver
@@ -156,7 +162,10 @@ export function createWiseEffServerFromEnv(
     metrics?: MetricsRegistry;
   }
 ) {
-  const verifier = options.env.AUTH_MODE === "production" ? options.authVerifierFactory?.(options.env) ?? createVerifierFromEnv(options.env) : undefined;
+  const verifier =
+    options.env.AUTH_MODE === "production" && options.env.AUTH_PROVIDER !== "local"
+      ? options.authVerifierFactory?.(options.env) ?? createVerifierFromEnv(options.env)
+      : undefined;
   return createWiseEffServer({
     ...options,
     auth: { mode: options.env.AUTH_MODE, verifier }
@@ -164,6 +173,10 @@ export function createWiseEffServerFromEnv(
 }
 
 function createVerifierFromEnv(env: ServerEnv): TokenVerifier {
+  if (env.AUTH_PROVIDER === "local") {
+    throw new Error("Local auth sessions are resolved through the database.");
+  }
+
   if (env.AUTH_PROVIDER === "hmac") {
     return createTokenVerifier({ issuer: env.AUTH_TOKEN_ISSUER!, secret: env.AUTH_TOKEN_HMAC_SECRET! });
   }

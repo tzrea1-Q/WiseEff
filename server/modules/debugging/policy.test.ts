@@ -61,6 +61,16 @@ describe("debugging policy", () => {
     expect(() => requireDebugProjectAccess(auth, "other-project")).not.toThrow();
   });
 
+  it("allows project access for an organization-wide user role", () => {
+    const auth = {
+      ...baseAuth,
+      roles: [{ projectId: null, roleId: "software-user" as const }]
+    };
+
+    expect(canAccessDebugProject(auth, "aurora")).toBe(true);
+    expect(() => requireDebugProjectAccess(auth, "aurora")).not.toThrow();
+  });
+
   it("allows project access for a role on the same project", () => {
     expect(canAccessDebugProject(baseAuth, "aurora")).toBe(true);
     expect(() => requireDebugProjectAccess(baseAuth, "aurora")).not.toThrow();

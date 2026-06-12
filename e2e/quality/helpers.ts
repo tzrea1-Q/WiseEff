@@ -11,7 +11,7 @@ export function seedQualityRuntime() {
     return;
   }
 
-  for (const script of ["db:migrate", "db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3"]) {
+  for (const script of ["db:migrate", "reset:quality-runtime", "db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3"]) {
     runNpmScript(script);
   }
   qualitySeeded = true;

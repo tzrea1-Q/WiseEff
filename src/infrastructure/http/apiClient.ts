@@ -30,7 +30,7 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
     }
 
     try {
-      return await getAuthorization();
+      return (await getAuthorization()) || authorization;
     } catch (error) {
       onAuthorizationFailure?.(error);
       throw error;

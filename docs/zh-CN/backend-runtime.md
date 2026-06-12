@@ -37,8 +37,8 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 - `DATABASE_URL`：PostgreSQL 连接。
 - `AUTH_MODE`：`development` 或 `production`。
-- `AUTH_PROVIDER`：本地 smoke 使用 `hmac`，目标自托管环境使用 `oidc`。
-- `AUTH_TOKEN_ISSUER` / `AUTH_TOKEN_HMAC_SECRET`：仅用于本地 HMAC smoke/test。
+- `AUTH_PROVIDER`：默认本地账号使用 `local`，目标自托管 SSO 使用 `oidc`，显式本地 smoke/test 可使用 `hmac`。
+- `AUTH_TOKEN_ISSUER` / `AUTH_TOKEN_HMAC_SECRET`：仅用于 `AUTH_PROVIDER=hmac` 的本地 HMAC smoke/test。
 - `AUTH_OIDC_ISSUER` / `AUTH_OIDC_AUDIENCE` / `AUTH_OIDC_JWKS_URI`：M6.2 OIDC issuer、audience 和可选 JWKS 覆盖。
 - `OBJECT_STORE_MODE`：`local` 或 `s3`。
 - `OBJECT_STORE_ROOT`：local object store 目录。

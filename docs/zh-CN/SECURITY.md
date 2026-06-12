@@ -2,28 +2,77 @@
 
 > English: [English](../SECURITY.md)
 
-这是核心入口文档，帮助开发者理解仓库地图、运行模式、治理规则和下一步阅读路径。
+WiseEff 安全边界围绕身份、授权、审计、Agent tool governance、设备安全和数据隔离展开。
 
-## 使用方式
+## 不可谈判项
 
-- 本页和英文版是相互链接的独立文档；不要在同一篇文档里混写中文和英文正文。
-- 命令、路径、环境变量、API 路径、角色名、状态名和脚本名称保持英文原样，避免复制时出错。
-- 修改相关功能时，请同时更新英文版和中文版；如果只更新一侧，`npm run docs:check` 应阻止完成。
-- 若中文页与源码、测试或英文页冲突，以源码、测试和当前英文页为准，并在同一变更中修正中文页。
+- 前端权限检查只是 UX；后端写入必须执行权限校验。
+- 生产写入必须产生审计证据。
+- Agent 模型输出不能直接修改生产状态。
+- 设备写入必须经过权限、校验、确认、快照和审计。
+- 生产不能把 mock runtime 当业务数据源。
 
-## 关键阅读点
+## 当前认证基线
 
-- 先确认该文档属于哪个决策面：core。
-- 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
-- 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
+- `AUTH_MODE=development` 只用于本地开发和测试，`x-wiseeff-user` 不是生产身份边界。
+- `AUTH_PROVIDER=oidc` 是目标自托管生产身份推荐路径。API 通过 discovery/JWKS 校验 OIDC token，再从 WiseEff PostgreSQL 加载有效用户、角色和权限。
+- `AUTH_PROVIDER=local` 是 WiseEff 自有本地账号路径。密码只保存 salted `scrypt` 哈希；`auth_sessions` 只保存不透明 session token 的 SHA-256 哈希；`/api/v1/me` 仍从 PostgreSQL 重新加载激活状态、角色和权限。
+- `AUTH_PROVIDER=hmac` 只用于本地 smoke/test，不是目标环境身份验收证据。
+- 生产路由不能回退到 development user，也不能把 token role claim 当作最终授权来源。
 
-## 同类中文文档
+OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_verified=true` 时，WiseEff 才允许用 email 作为迁移期 fallback 绑定；否则只按稳定 `sub` 匹配。错误 issuer、错误 audience、过期 token、not-yet-valid token、无签名 token、签名错误或不支持的角色 id 都应被拒绝。
 
-- [docs/zh-CN/root/AGENTS.md](root/AGENTS.md)
-- [docs/zh-CN/root/README.md](root/README.md)
-- [docs/zh-CN/root/CONTRIBUTING.md](root/CONTRIBUTING.md)
-- [docs/zh-CN/root/ARCHITECTURE.md](root/ARCHITECTURE.md)
-- [docs/zh-CN/README.md](README.md)
-- [docs/zh-CN/frontend.md](frontend.md)
-- [docs/zh-CN/PLANS.md](PLANS.md)
-- [docs/zh-CN/QUALITY_SCORE.md](QUALITY_SCORE.md)
+本地账号注册会按所选组织和允许自助选择的平台角色创建基于用户名的账号。服务端会拒绝 Admin 自助注册；Hardware/Software Committer 注册申请只会先授予对应基础 User 角色，必须由 Admin 在用户治理后台审批后才授予 Committer 权限。当前暂不支持邮箱验证，因此注册不能被当作邮箱域名归属证明或邀请接受流程。浏览器本地账号 token 当前保存在 `localStorage` 的 `wiseeff.localAuthToken`；需要 SSO、MFA、refresh-token rotation 或更强浏览器会话隔离的部署应使用 OIDC 或经过加固的反向代理/session 集成。
+
+## 权限模型
+
+当前前端权限包括：
+
+- `parameter:view`
+- `parameter:edit`
+- `debugging:use`
+- `logs:upload`
+- `parameter:review`
+- `admin:access`
+- `users:manage`
+
+新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
+
+参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。调试节点写入必须具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
+
+## 审计要求
+
+审计记录应包含 actor、target、action、severity、metadata、trace/request id、timestamp，以及项目或组织 scope。
+
+必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、设备读写、Agent tool、管理员变更和导出。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
+
+## Agent 安全
+
+Agent tool 分为：
+
+- Read-only：权限检查后可自动运行。
+- Preparation：可创建草稿或预览，但不提交生产状态。
+- Mutating：必须创建 approval record，等待人工批准后执行。
+
+批准时必须重新检查权限和业务状态。Provider 故障不能静默执行工具；降级回答允许存在，但必须跳过 tool execution 并留下可审计证据。
+
+## 设备安全
+
+设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。
+
+Simulator-backed path 只用于本地验证。真实 pilot readiness 需要 HDC/device-lab 目标证据：不能有前端直接设备写入，不能无 lease 和 snapshot 写入，不能无确认 rollback，也不能绕过审计。
+
+## Secret 和备份安全
+
+- S3-compatible 对象存储凭据、signed URL、带密码的数据库 URL、bearer token、Agent API key 都不能提交。
+- 备份/恢复证据只能提交脱敏后的摘要、计数、对象 key/prefix 和命令状态，不能提交数据库 dump 或对象内容。
+- Restore drill 必须使用隔离数据库和对象存储目标。恢复到 live production database、live bucket 或 live prefix 是安全违规。
+- `/metrics` 是运维证据，不是公开 API；pilot/production 必须通过私有网络、VPN、allowlist、mTLS 或更强控制保护。
+
+## 参考
+
+- [docs/design-docs/security-governance.md](design-docs/security-governance.md)
+- [docs/design-docs/domain-model.md](design-docs/domain-model.md)
+- [docs/design-docs/api-contract.md](design-docs/api-contract.md)
+- [docs/security/README.md](security/README.md)
+- [docs/runbooks/identity-provider.md](runbooks/identity-provider.md)

@@ -3,7 +3,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { UserPermissionsPage, type UserGovernanceActions } from "./UserPermissionsPage";
+import { UserPermissionsPage, type RegistrationRoleRequest, type UserGovernanceActions } from "./UserPermissionsPage";
 import { createPrototypeState } from "./mockData";
 import type { PlatformRoleId } from "./domain/users/types";
 
@@ -49,6 +49,23 @@ function readCssBlock(selector: string) {
   const blockEnd = css.indexOf("}", blockStart);
 
   return css.slice(blockStart + 1, blockEnd);
+}
+
+function registrationRoleRequest(overrides: Partial<RegistrationRoleRequest> = {}): RegistrationRoleRequest {
+  return {
+    id: "registration-role-request-1",
+    organizationId: "org-chargelab",
+    userId: "u-candidate",
+    userName: "Committer Candidate",
+    username: "committer.candidate",
+    currentRoleId: "software-user",
+    requestedRoleId: "software-committer",
+    status: "pending",
+    createdAt: "2026-06-12T00:00:00.000Z",
+    decidedAt: null,
+    decidedByUserId: null,
+    ...overrides
+  };
 }
 
 describe("UserPermissionsPage", () => {
@@ -278,6 +295,56 @@ describe("UserPermissionsPage", () => {
       userId: "u-liu-min",
       isActive: false
     });
+  });
+
+  it("renders pending registration role requests and dispatches approval decisions", async () => {
+    const userGovernanceActions: UserGovernanceActions = {
+      listUsers: vi.fn(async () => []),
+      createUser: vi.fn(async () => undefined),
+      assignUserRole: vi.fn(async () => undefined),
+      setUserActive: vi.fn(async () => undefined),
+      listRegistrationRoleRequests: vi.fn(async () => [
+        registrationRoleRequest(),
+        registrationRoleRequest({
+          id: "registration-role-request-2",
+          userId: "u-candidate-2",
+          userName: "Reject Candidate",
+          username: "reject.candidate",
+          currentRoleId: "hardware-user",
+          requestedRoleId: "hardware-committer"
+        })
+      ]),
+      approveRegistrationRoleRequest: vi.fn(async () => registrationRoleRequest({
+        status: "approved",
+        decidedAt: "2026-06-12T00:01:00.000Z",
+        decidedByUserId: "u-admin"
+      })),
+      rejectRegistrationRoleRequest: vi.fn(async () => registrationRoleRequest({
+        id: "registration-role-request-2",
+        userId: "u-candidate-2",
+        userName: "Reject Candidate",
+        username: "reject.candidate",
+        currentRoleId: "hardware-user",
+        requestedRoleId: "hardware-committer",
+        status: "rejected",
+        decidedAt: "2026-06-12T00:01:00.000Z",
+        decidedByUserId: "u-admin"
+      }))
+    };
+    renderPageWithActions(userGovernanceActions);
+
+    const queue = await screen.findByRole("region", { name: "Registration role requests" });
+    expect(within(queue).getByText("Committer Candidate")).toBeInTheDocument();
+    expect(within(queue).getByText("committer.candidate")).toBeInTheDocument();
+    expect(within(queue).getByText("Software User")).toBeInTheDocument();
+    expect(within(queue).getByText("Software Committer")).toBeInTheDocument();
+    expect(within(queue).getByText("Reject Candidate")).toBeInTheDocument();
+
+    await userEvent.click(within(queue).getByRole("button", { name: "Approve Committer Candidate" }));
+    expect(userGovernanceActions.approveRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-1");
+
+    await userEvent.click(within(queue).getByRole("button", { name: "Reject Reject Candidate" }));
+    expect(userGovernanceActions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-2");
   });
 
   it("uses compact table styling for row role selectors", () => {

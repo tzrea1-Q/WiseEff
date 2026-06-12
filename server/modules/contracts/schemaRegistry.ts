@@ -10,7 +10,35 @@ export type ContractSchemaRef = {
 };
 
 export const schemaRegistry: Record<string, ContractSchemaRef> = {
+  "auth.register": {
+    summary: "Register a local WiseEff account",
+    tags: ["auth"],
+    requestBody: "RegisterLocalAccountRequest",
+    responseBody: "AuthSessionResponse",
+    successStatus: 201,
+    additionalResponses: { "409": "ErrorResponse" }
+  },
+  "auth.login": {
+    summary: "Log in with a local WiseEff account",
+    tags: ["auth"],
+    requestBody: "LoginLocalAccountRequest",
+    responseBody: "AuthSessionResponse",
+    additionalResponses: { "401": "ErrorResponse", "403": "ErrorResponse" }
+  },
+  "auth.logout": {
+    summary: "Log out the current local account session",
+    tags: ["auth"],
+    responseBody: "LogoutResponse",
+    additionalResponses: { "401": "ErrorResponse" }
+  },
   "auth.me": { summary: "Get current user context", tags: ["auth"], responseBody: "MeResponse" },
+  "auth.updateProfile": {
+    summary: "Update the current user profile",
+    tags: ["auth"],
+    requestBody: "UpdateCurrentUserProfileRequest",
+    responseBody: "MeResponse",
+    additionalResponses: { "401": "ErrorResponse" }
+  },
 
   "audit.createEvent": {
     summary: "Create audit event",
@@ -34,6 +62,24 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "UserGovernanceResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.listRegistrationRoleRequests": {
+    summary: "List pending local registration role requests",
+    tags: ["users"],
+    responseBody: "RegistrationRoleRequestListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "users.approveRegistrationRoleRequest": {
+    summary: "Approve a pending local registration role request",
+    tags: ["users"],
+    responseBody: "RegistrationRoleRequestResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "users.rejectRegistrationRoleRequest": {
+    summary: "Reject a pending local registration role request",
+    tags: ["users"],
+    responseBody: "RegistrationRoleRequestResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
   },
   "users.update": {
     summary: "Update governed user profile",

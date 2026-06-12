@@ -23,7 +23,7 @@ describe("loadServerEnv", () => {
     expect(env.HOST).toBe("127.0.0.1");
     expect(env.PORT).toBe(8787);
     expect(env.AUTH_MODE).toBe("development");
-    expect(env.AUTH_PROVIDER).toBe("hmac");
+    expect(env.AUTH_PROVIDER).toBe("local");
     expect(env.AUTH_TOKEN_ISSUER).toBeUndefined();
     expect(env.AUTH_TOKEN_HMAC_SECRET).toBeUndefined();
     expect(env.MOCK_RUNTIME_ENABLED).toBe(false);
@@ -235,6 +235,29 @@ describe("loadServerEnv", () => {
     expect(env.AUTH_OIDC_JWKS_URI).toBe("https://id.example.com/realms/wiseeff/protocol/openid-connect/certs");
   });
 
+  it("loads local account provider settings for production auth", () => {
+    const env = loadServerEnv({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
+      OBJECT_STORE_MODE: "s3",
+      OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
+      OBJECT_STORAGE_BUCKET: "wiseeff-prod",
+      OBJECT_STORAGE_ACCESS_KEY_ID: "key",
+      OBJECT_STORAGE_SECRET_ACCESS_KEY: "secret",
+      AUTH_MODE: "production",
+      AUTH_PROVIDER: "local",
+      DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+      AGENT_PROVIDER: "live",
+      AGENT_MODEL: "pilot-model",
+      AGENT_API_KEY: "secret",
+      AGENT_API_BASE_URL: "https://agent.example.com"
+    });
+
+    expect(env.AUTH_PROVIDER).toBe("local");
+    expect(env.AUTH_OIDC_ISSUER).toBeUndefined();
+    expect(env.AUTH_TOKEN_HMAC_SECRET).toBeUndefined();
+  });
+
   it("rejects HMAC as the production identity provider", () => {
     expect(() =>
       loadServerEnv({
@@ -255,7 +278,7 @@ describe("loadServerEnv", () => {
         AGENT_API_KEY: "secret",
         AGENT_API_BASE_URL: "https://agent.example.com"
       })
-    ).toThrow("AUTH_PROVIDER=oidc is required when NODE_ENV=production");
+    ).toThrow("AUTH_PROVIDER=oidc or AUTH_PROVIDER=local is required when NODE_ENV=production");
   });
 
   it("requires OIDC issuer and audience when production auth uses OIDC", () => {

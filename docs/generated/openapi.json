@@ -5,6 +5,119 @@
     "version": "m5"
   },
   "paths": {
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "auth.register",
+        "summary": "Register a local WiseEff account",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterLocalAccountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "auth.login",
+        "summary": "Log in with a local WiseEff account",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginLocalAccountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "auth.logout",
+        "summary": "Log out the current local account session",
+        "tags": [
+          "auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogoutResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/me": {
       "get": {
         "operationId": "auth.me",
@@ -24,6 +137,46 @@
             }
           },
           "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/me/profile": {
+      "patch": {
+        "operationId": "auth.updateProfile",
+        "summary": "Update the current user profile",
+        "tags": [
+          "auth"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCurrentUserProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "401": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -154,6 +307,128 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/users/registration-role-requests": {
+      "get": {
+        "operationId": "users.listRegistrationRoleRequests",
+        "summary": "List pending local registration role requests",
+        "tags": [
+          "users"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationRoleRequestListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/users/registration-role-requests/{requestId}/approve": {
+      "post": {
+        "operationId": "users.approveRegistrationRoleRequest",
+        "summary": "Approve a pending local registration role request",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationRoleRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/users/registration-role-requests/{requestId}/reject": {
+      "post": {
+        "operationId": "users.rejectRegistrationRoleRequest",
+        "summary": "Reject a pending local registration role request",
+        "tags": [
+          "users"
+        ],
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationRoleRequestResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "409": {
@@ -1929,9 +2204,29 @@
           }
         }
       },
+      "RegisterLocalAccountRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "RegisterLocalAccountRequest"
+      },
+      "AuthSessionResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "AuthSessionResponse"
+      },
+      "LoginLocalAccountRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "LoginLocalAccountRequest"
+      },
+      "LogoutResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "LogoutResponse"
+      },
       "MeResponse": {
         "type": "object",
         "x-wiseeff-schema": "MeResponse"
+      },
+      "UpdateCurrentUserProfileRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateCurrentUserProfileRequest"
       },
       "CreateAuditEventRequest": {
         "type": "object",
@@ -1956,6 +2251,14 @@
       "UserGovernanceResponse": {
         "type": "object",
         "x-wiseeff-schema": "UserGovernanceResponse"
+      },
+      "RegistrationRoleRequestListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "RegistrationRoleRequestListResponse"
+      },
+      "RegistrationRoleRequestResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "RegistrationRoleRequestResponse"
       },
       "UpdateUserGovernanceRequest": {
         "type": "object",

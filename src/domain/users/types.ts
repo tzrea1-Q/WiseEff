@@ -31,7 +31,8 @@ export type PlatformRole = {
 export type UserAccount = {
   id: string;
   name: string;
-  email: string;
+  email?: string;
+  username?: string;
   title: string;
   roleId: PlatformRoleId;
   isActive: boolean;

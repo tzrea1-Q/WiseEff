@@ -41,8 +41,8 @@ function createAuthClient() {
       isActive: true
     },
     organization: { id: "org-api", name: "API Org" },
-    roles: [{ projectId: userState.activeProjectId, roleId: "user" }],
-    permissions: []
+    roles: [{ projectId: userState.activeProjectId, roleId: "hardware-user" }],
+    permissions: ["logs:upload"]
   };
 
   return {
@@ -119,8 +119,9 @@ afterEach(() => {
 });
 
 describe("LogsPage api rerun wiring", () => {
-  it("Complete log api rerun action calls repository rerunLog", () => {
+  it("Complete log api rerun action calls repository rerunLog", async () => {
     const repository = renderApiLogs();
+    await waitForApiRuntime(repository);
 
     const history = document.querySelector(".logs-aux-panel") as HTMLElement;
     fireEvent.click(within(history).getByRole("button", { name: /usb_pd_negotiation/ }));
