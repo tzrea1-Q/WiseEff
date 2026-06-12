@@ -13,6 +13,8 @@ import {
   Info,
   ListChecks,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   RotateCcw,
   Search,
   Sparkles,
@@ -171,6 +173,24 @@ import type { UserGovernanceActions } from "@/UserPermissionsPage";
 type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
 };
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "wiseeff.sidebar.collapsed";
+
+function readSidebarCollapsedPreference() {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writeSidebarCollapsedPreference(isCollapsed: boolean) {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isCollapsed));
+  } catch {
+    // Keep the toggle usable when storage is unavailable.
+  }
+}
 
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
@@ -1828,6 +1848,7 @@ function AppShell({
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   const page = getPageByPath(path);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
@@ -1900,6 +1921,10 @@ function AppShell({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    writeSidebarCollapsedPreference(sidebarCollapsed);
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (runtimeMode !== "api") {
@@ -2040,9 +2065,27 @@ function AppShell({
     setSearch(url.search);
   }, []);
 
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((collapsed) => !collapsed);
+  }, []);
+
+  const appShellClassName = isPlatformHome
+    ? "app-shell home-shell"
+    : sidebarCollapsed
+      ? "app-shell sidebar-is-collapsed"
+      : "app-shell";
+
   return (
-    <div className={isPlatformHome ? "app-shell home-shell" : "app-shell"}>
-      {!isPlatformHome ? <Sidebar activePath={page.path} currentRoleId={currentRoleId} onNavigate={navigate} /> : null}
+    <div className={appShellClassName}>
+      {!isPlatformHome ? (
+        <Sidebar
+          activePath={page.path}
+          currentRoleId={currentRoleId}
+          isCollapsed={sidebarCollapsed}
+          onNavigate={navigate}
+          onToggleCollapsed={toggleSidebarCollapsed}
+        />
+      ) : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
         {!isPlatformHome ? (
           <TopBar
@@ -2439,11 +2482,15 @@ function LogDashboardPage({ state, onNavigate }: { state: PrototypeState; onNavi
 function Sidebar({
   activePath,
   currentRoleId,
-  onNavigate
+  isCollapsed,
+  onNavigate,
+  onToggleCollapsed
 }: {
   activePath: string;
   currentRoleId: string;
+  isCollapsed: boolean;
   onNavigate: (path: string) => void;
+  onToggleCollapsed: () => void;
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
@@ -2452,17 +2499,35 @@ function Sidebar({
     acc[item.group] = [...(acc[item.group] ?? []), item];
     return acc;
   }, {});
+  const ToggleIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
+  const toggleLabel = isCollapsed ? "展开侧边栏" : "收起侧边栏";
 
   return (
-    <aside className="sidebar">
+    <aside aria-label="主导航侧边栏" className={isCollapsed ? "sidebar sidebar-collapsed" : "sidebar sidebar-expanded"}>
       <div className="brand-block">
         <div className="brand-mark">
           <WiseEffIcon decorative />
         </div>
-        <div>
+        <div className="brand-copy">
           <div className="brand-title">雷泽</div>
           <div className="brand-subtitle">Driven by AI</div>
         </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              aria-expanded={!isCollapsed}
+              aria-label={toggleLabel}
+              className="sidebar-toggle"
+              size="icon"
+              type="button"
+              variant="ghost"
+              onClick={onToggleCollapsed}
+            >
+              <ToggleIcon size={18} />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{toggleLabel}</TooltipContent>
+        </Tooltip>
       </div>
       <ScrollArea className="nav-scroll">
         <nav aria-label="主导航">
@@ -2472,16 +2537,21 @@ function Sidebar({
               {items.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <Button
-                    className={item.path === activePath ? "nav-item active" : "nav-item"}
-                    key={item.path}
-                    type="button"
-                    variant="ghost"
-                    onClick={() => onNavigate(item.path)}
-                  >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </Button>
+                  <Tooltip key={item.path}>
+                    <TooltipTrigger asChild>
+                      <Button
+                        aria-label={item.label}
+                        className={item.path === activePath ? "nav-item active" : "nav-item"}
+                        type="button"
+                        variant="ghost"
+                        onClick={() => onNavigate(item.path)}
+                      >
+                        <Icon size={18} />
+                        <span>{item.label}</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">{item.label}</TooltipContent>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -2508,6 +2578,7 @@ function Sidebar({
             const Icon = item.icon;
             const button = (
               <Button
+                aria-label={item.label}
                 className={item.path === activePath ? "nav-item compact active" : "nav-item compact"}
                 disabled={!item.path}
                 type="button"

@@ -427,4 +427,15 @@ describe("ParametersTable", () => {
     expect(styles).toContain("display: grid");
     expect(styles).not.toMatch(/@media \(max-width: 900px\)[\s\S]*?\.parameters-table-grid\s*\{[^}]*min-width:\s*980px/);
   });
+
+  it("keeps mobile card table values readable beside their labels", () => {
+    const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
+
+    expect(styles).toMatch(/\.parameters-table-grid tbody tr\s*\{[^}]*min-width:\s*0;/s);
+    expect(styles).toMatch(/\.parameters-table-grid td\s*\{[^}]*grid-template-columns:\s*minmax\(76px,\s*0\.32fr\)\s*minmax\(0,\s*1fr\);/s);
+    expect(styles).toMatch(/\.parameters-table-grid tbody td\s*\{[^}]*width:\s*auto;/s);
+    expect(styles).toMatch(/\.parameters-table-grid tbody td:nth-child\(n\)\s*\{[^}]*width:\s*auto;[^}]*left:\s*auto;/s);
+    expect(styles).toMatch(/\.parameters-table-grid td\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(/\.parameters-table-grid td\s*\{[^}]*word-break:\s*normal;/s);
+  });
 });
