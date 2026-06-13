@@ -2,6 +2,7 @@ import { createPrivateKey, createPublicKey, generateKeyPairSync, sign, type KeyO
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWiseEffServer } from "./app";
 import { createWiseEffServerFromEnv } from "./app";
+import { loadServerEnv } from "./config/env";
 import { createMetricsRegistry } from "./observability/metrics";
 import type { Database, QueryResult } from "./shared/database/client";
 import { createHttpServer } from "./shared/http/server";
@@ -144,6 +145,153 @@ function createProductionIdentityDb(input: {
   };
 
   return { calls, db };
+}
+
+function createDevelopmentLocalAuthDb() {
+  const organizations = new Map<string, { id: string; name: string }>([["org-chargelab", { id: "org-chargelab", name: "ChargeLab" }]]);
+  const users = new Map<string, { id: string; organizationId: string; name: string; email: string | null; title: string; isActive: boolean }>();
+  const credentials = new Map<string, { username: string; passwordHash: string }>();
+  const roles = new Map<string, Array<{ projectId: string | null; roleId: string }>>();
+  const sessions = new Map<string, { id: string; userId: string; organizationId: string; tokenHash: string; expiresAt: string; revokedAt: string | null }>();
+  const projects = [{ id: "aurora", name: "Aurora", code: "AUR", organizationId: "org-chargelab" }];
+  const parameters = [
+    {
+      id: "ppv-1",
+      project_id: "aurora",
+      organizationId: "org-chargelab",
+      name: "Charge Limit",
+      description: "Limit charging current",
+      explanation: "Protects charge hardware",
+      config_format: "json",
+      module: "BMS",
+      default_range: "0-100",
+      unit: "A",
+      risk: "High",
+      current_value: "80",
+      recommended_value: "75",
+      updated_at: "2026-06-12T00:00:00.000Z"
+    }
+  ];
+
+  const db: Database = {
+    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      const normalized = text.replace(/\s+/g, " ").trim();
+
+      if (normalized.startsWith("select user_id as id from user_password_credentials")) {
+        const username = String(values[0]).toLowerCase();
+        const credential = Array.from(credentials.entries()).find(([, item]) => item.username.toLowerCase() === username);
+        return { rows: (credential ? [{ id: credential[0] }] : []) as Row[], rowCount: credential ? 1 : 0 };
+      }
+
+      if (normalized.startsWith("insert into organizations")) {
+        organizations.set(values[0] as string, { id: values[0] as string, name: values[1] as string });
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.startsWith("insert into users")) {
+        users.set(values[0] as string, {
+          id: values[0] as string,
+          organizationId: values[1] as string,
+          name: values[2] as string,
+          email: null,
+          title: values[3] as string,
+          isActive: true
+        });
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.startsWith("insert into user_password_credentials")) {
+        credentials.set(values[0] as string, { username: values[1] as string, passwordHash: values[2] as string });
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.startsWith("insert into user_role_bindings")) {
+        roles.set(values[1] as string, [{ projectId: null, roleId: values[3] as string }]);
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.startsWith("insert into auth_sessions")) {
+        sessions.set(values[3] as string, {
+          id: values[0] as string,
+          userId: values[1] as string,
+          organizationId: values[2] as string,
+          tokenHash: values[3] as string,
+          expiresAt: values[4] as string,
+          revokedAt: null
+        });
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.startsWith("insert into audit_events")) {
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.includes("from auth_sessions")) {
+        const session = sessions.get(values[0] as string);
+        return {
+          rows: (session
+            ? [{
+                id: session.id,
+                user_id: session.userId,
+                organization_id: session.organizationId,
+                expires_at: session.expiresAt,
+                revoked_at: session.revokedAt
+              }]
+            : []) as Row[],
+          rowCount: session ? 1 : 0
+        };
+      }
+
+      if (normalized.startsWith("update auth_sessions set last_used_at")) {
+        return { rows: [], rowCount: 1 };
+      }
+
+      if (normalized.includes("users.id as user_id")) {
+        const user = users.get(values[0] as string);
+        if (!user) {
+          return { rows: [], rowCount: 0 };
+        }
+        const organization = organizations.get(user.organizationId);
+        return {
+          rows: (roles.get(user.id) ?? []).map((role) => ({
+            user_id: user.id,
+            organization_id: user.organizationId,
+            organization_name: organization?.name ?? user.organizationId,
+            name: user.name,
+            email: user.email,
+            username: credentials.get(user.id)?.username ?? null,
+            title: user.title,
+            is_active: user.isActive,
+            project_id: role.projectId,
+            role_id: role.roleId
+          })) as Row[],
+          rowCount: roles.get(user.id)?.length ?? 0
+        };
+      }
+
+      if (normalized.startsWith("select id, name, code from projects")) {
+        const organizationId = values[0] as string;
+        const rows = projects
+          .filter((project) => project.organizationId === organizationId)
+          .map(({ organizationId: _organizationId, ...project }) => project);
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+
+      if (normalized.includes("from project_parameter_values ppv")) {
+        const organizationId = values[0] as string;
+        const projectId = values.find((value) => value === "aurora") as string | undefined;
+        const rows = parameters
+          .filter((parameter) => parameter.organizationId === organizationId && (!projectId || parameter.project_id === projectId))
+          .map(({ organizationId: _organizationId, ...parameter }) => parameter);
+        return { rows: rows as Row[], rowCount: rows.length };
+      }
+
+      return { rows: [], rowCount: 0 };
+    },
+    transaction: async (fn) => fn(db)
+  };
+
+  return db;
 }
 
 afterEach(() => {
@@ -462,6 +610,75 @@ describe("WiseEff API", () => {
 
     expect(response.status).toBe(403);
     expect(response.body.error).toMatchObject({ code: "FORBIDDEN", message: "User is inactive." });
+  });
+
+  it("registers development local accounts into ChargeLab demo data through environment wiring", async () => {
+    const db = createDevelopmentLocalAuthDb();
+    const server = () =>
+      createWiseEffServerFromEnv({
+        db,
+        env: loadServerEnv({
+          NODE_ENV: "development",
+          AUTH_MODE: "production",
+          AUTH_PROVIDER: "local"
+        })
+      });
+
+    const registered = await requestJson<{ token: string; auth: { organization: { id: string; name: string } } }>(
+      server(),
+      "/api/v1/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          organization: "硬件部",
+          name: "Demo Hardware User",
+          username: "demo.hardware",
+          roleId: "hardware-user",
+          password: "strong-password"
+        })
+      }
+    );
+    expect(registered.status).toBe(201);
+    expect(registered.body.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
+
+    const projects = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/projects", {
+      headers: { Authorization: `Bearer ${registered.body.token}` }
+    });
+    const parameters = await requestJson<{ items: Array<{ id: string }> }>(server(), "/api/v1/parameters?projectId=aurora", {
+      headers: { Authorization: `Bearer ${registered.body.token}` }
+    });
+
+    expect(projects.status).toBe(200);
+    expect(projects.body.items.map((item) => item.id)).toEqual(["aurora"]);
+    expect(parameters.status).toBe(200);
+    expect(parameters.body.items).toHaveLength(1);
+  });
+
+  it("keeps non-development local account registration in the selected department organization", async () => {
+    const registered = await requestJson<{ auth: { organization: { id: string; name: string } } }>(
+      createWiseEffServerFromEnv({
+        db: createDevelopmentLocalAuthDb(),
+        env: loadServerEnv({
+          NODE_ENV: "test",
+          AUTH_MODE: "production",
+          AUTH_PROVIDER: "local"
+        })
+      }),
+      "/api/v1/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          organization: "硬件部",
+          name: "Non Dev Hardware User",
+          username: "nondev.hardware",
+          roleId: "hardware-user",
+          password: "strong-password"
+        })
+      }
+    );
+
+    expect(registered.status).toBe(201);
+    expect(registered.body.auth.organization).toEqual({ id: "org-hardware-department", name: "硬件部" });
   });
 
   it("rejects production routes without bearer auth instead of falling back to development auth", async () => {

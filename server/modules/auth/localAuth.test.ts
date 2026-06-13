@@ -181,12 +181,35 @@ describe("local auth service", () => {
 
     expect(result.auth.user.username).toBe("pilot.admin");
     expect(result.auth.user.email).toBeUndefined();
+    expect(result.auth.organization.id).toBe("org-hardware-department");
     expect(result.auth.organization.name).toBe("硬件部");
     expect(result.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
     expect(result.auth.permissions).toContain("parameter:edit");
     expect(result.auth.permissions).not.toContain("users:manage");
     expect(result.session.token).toMatch(/^we_local_/);
     expect(calls.find((call) => call.text.includes("insert into users"))?.text).not.toContain("email");
+  });
+
+  it("can override the registration organization for local development demos", async () => {
+    const { db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, {
+      now: () => new Date("2026-06-12T00:00:00.000Z"),
+      registrationOrganizationResolver: () => ({ id: "org-chargelab", name: "ChargeLab" })
+    });
+
+    const result = await service.register(
+      {
+        organization: "硬件部",
+        name: "Demo User",
+        username: "demo.user",
+        roleId: "hardware-user",
+        password: "strong-password"
+      },
+      { requestId: "request-1" }
+    );
+
+    expect(result.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
+    expect(result.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
   });
 
   it("reuses the stable organization id for the selected local registration organization", async () => {

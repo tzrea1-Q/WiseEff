@@ -33,6 +33,23 @@ async function getCurrentAuthContext(options: { db?: Database }, request: RouteR
   return options.db ? getAuthContext(options.db, userId) : developmentAuthContext;
 }
 
+function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv) {
+  if (env?.AUTH_PROVIDER !== "local") {
+    return undefined;
+  }
+
+  return createLocalAuthService(db, {
+    ...(env.NODE_ENV === "development"
+      ? {
+          registrationOrganizationResolver: () => ({
+            id: developmentAuthContext.organization.id,
+            name: developmentAuthContext.organization.name
+          })
+        }
+      : {})
+  });
+}
+
 export function createWiseEffServer(
   options: {
     db?: Database;
@@ -52,7 +69,7 @@ export function createWiseEffServer(
   const router = createRouter();
   const metrics = options.metrics ?? createMetricsRegistry({ serviceName: "wiseeff-api" });
   const tracing = options.tracing ?? defaultTracingBoundary;
-  const localAuthService = options.localAuthService ?? (options.env?.AUTH_PROVIDER === "local" && options.db ? createLocalAuthService(options.db) : undefined);
+  const localAuthService = options.localAuthService ?? (options.db ? createEnvLocalAuthService(options.db, options.env) : undefined);
   const authResolver = createAuthContextResolver({
     mode: options.auth?.mode ?? "development",
     verifier: options.auth?.verifier,
