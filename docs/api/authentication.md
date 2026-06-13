@@ -77,6 +77,8 @@ This provider stores credentials and sessions in PostgreSQL. It adds the followi
 
 Registration accepts `organization`, `name`, `username`, `roleId`, and `password`. The self-service organization choices are the localized hardware department and software department values. Self-service registration never accepts `admin`. Requests for `hardware-committer` or `software-committer` create the account with the matching base User role and a pending Admin approval request; the committer role is granted only after Admin approval. Local accounts do not store or return email addresses; username is the local login identifier. Email verification is not implemented yet, so registration must not be treated as verified-domain onboarding or invitation acceptance.
 
+In the local development profile (`NODE_ENV=development`, `AUTH_MODE=production`, `AUTH_PROVIDER=local`), self-registered accounts are intentionally attached to the seeded `org-chargelab` / `ChargeLab` demo organization so they can see the seeded parameter, log, and debugging data. Non-development local-account deployments keep the selected department organization ids (`org-hardware-department` or `org-software-department`) for tenant isolation.
+
 Passwords are stored as salted `scrypt` hashes in `user_password_credentials`. Session tokens are returned once to the caller as opaque `we_local_*` bearer tokens; only SHA-256 token hashes are persisted in `auth_sessions`. Sessions expire after the service TTL and logout sets `revoked_at`. Every register, login, logout, and profile update writes an audit event.
 
 Requests after login use:

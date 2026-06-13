@@ -169,6 +169,20 @@ describe("/debugging 单栏骨架", () => {
     expect(screen.getByRole("button", { name: /下发调试值/ })).toBeInTheDocument();
   });
 
+  it("没有可用调试设备时显示空态而不是白屏", () => {
+    renderDebuggingPage({
+      state: {
+        ...userState,
+        devices: [],
+        debugParameters: [],
+        debugEvents: []
+      }
+    });
+
+    expect(screen.getByRole("region", { name: "调试设备空态" })).toHaveTextContent("暂无可用调试设备");
+    expect(screen.queryByRole("region", { name: "调试会话摘要" })).not.toBeInTheDocument();
+  });
+
   it("将风险和状态筛选合并到表头，搜索框仍独立存在", () => {
     window.history.replaceState(null, "", "/debugging");
     render(<App initialAppState={userState} />);

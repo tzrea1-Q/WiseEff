@@ -77,6 +77,8 @@ AUTH_PROVIDER=local
 
 注册请求包含 `organization`、`name`、`username`、`roleId` 和 `password`。自助注册组织选项为 `硬件部` 和 `软件部`。自助注册永远不接受 `admin`；申请 `hardware-committer` 或 `software-committer` 时，账号会先获得对应基础 User 角色，并创建待 Admin 审批的角色申请，只有审批通过后才授予 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
 
+在本地开发 profile（`NODE_ENV=development`、`AUTH_MODE=production`、`AUTH_PROVIDER=local`）下，自助注册账号会刻意加入已 seed 的 `org-chargelab` / `ChargeLab` 演示组织，从而能看到本地种子参数、日志和调试数据。非开发的本地账号部署仍使用所选部门组织 id（`org-hardware-department` 或 `org-software-department`），以保留租户隔离语义。
+
 密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。会话 token 只在响应中返回一次，格式为不透明的 `we_local_*` bearer token；数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出和资料更新都会写审计事件。
 
 登录后的请求使用：

@@ -35,7 +35,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `M6_IDENTITY_WRONG_AUDIENCE_AUTHORIZATION` | unset locally | M6.2 identity evidence | Token expected to be rejected for audience mismatch. |
 | `M6_IDENTITY_EXPIRED_AUTHORIZATION` | unset locally | M6.2 identity evidence | Expired token expected to be rejected. |
 
-To exercise the productized local login/register UI, keep the default `AUTH_MODE=production` and `AUTH_PROVIDER=local`, run database migrations so `user_password_credentials` and `auth_sessions` exist, then start the API and API-mode frontend. Local accounts do not require `AUTH_TOKEN_*` or `AUTH_OIDC_*` values. Registration uses username, a fixed organization choice, and the selected platform role; email verification is intentionally not available yet.
+To exercise the productized local login/register UI, keep the default `AUTH_MODE=production` and `AUTH_PROVIDER=local`, run database migrations so `user_password_credentials` and `auth_sessions` exist, then start the API and API-mode frontend. Local accounts do not require `AUTH_TOKEN_*` or `AUTH_OIDC_*` values. Registration uses username, a fixed organization choice, and the selected platform role; email verification is intentionally not available yet. With the local development default `NODE_ENV=development`, self-registered accounts join the seeded `org-chargelab` / `ChargeLab` demo organization so seeded data is visible after login. Set `NODE_ENV` to a non-development value only when you want local accounts to remain isolated in their selected department organizations.
 
 ## Object Store
 

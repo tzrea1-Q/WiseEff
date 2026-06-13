@@ -39,6 +39,7 @@ type SessionRow = {
 export type LocalAuthServiceOptions = {
   now?: () => Date;
   sessionTtlMs?: number;
+  registrationOrganizationResolver?: (organizationName: string) => { id: string; name: string };
 };
 
 export type RegisterLocalAccountInput = {
@@ -60,6 +61,13 @@ export type UpdateCurrentUserProfileInput = {
   name?: string;
   title?: string;
 };
+
+export function defaultLocalRegistrationOrganizationResolver(organizationName: string) {
+  return {
+    id: localRegistrationOrganizationIds[organizationName],
+    name: organizationName
+  };
+}
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
@@ -201,6 +209,8 @@ async function findUserForLogin(db: Queryable, username: string) {
 export function createLocalAuthService(db: Database, options: LocalAuthServiceOptions = {}) {
   const now = options.now ?? (() => new Date());
   const sessionTtlMs = options.sessionTtlMs ?? defaultSessionTtlMs;
+  const resolveRegistrationOrganization =
+    options.registrationOrganizationResolver ?? defaultLocalRegistrationOrganizationResolver;
 
   return {
     async register(input: RegisterLocalAccountInput, context: { requestId: string }) {
@@ -236,7 +246,8 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           throw new ApiError("CONFLICT", "Username is already registered.", 409, { username });
         }
 
-        const organizationId = localRegistrationOrganizationIds[organizationName];
+        const registrationOrganization = resolveRegistrationOrganization(organizationName);
+        const organizationId = registrationOrganization.id;
         const userId = `u-${randomUUID()}`;
         await tx.query(
           `
@@ -244,7 +255,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           values ($1, $2)
           on conflict (id) do update set name = excluded.name
           `,
-          [organizationId, organizationName]
+          [organizationId, registrationOrganization.name]
         );
         await tx.query(
           `

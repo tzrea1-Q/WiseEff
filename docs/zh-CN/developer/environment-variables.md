@@ -32,7 +32,7 @@
 | `M6_SELFHOSTED_SMOKE_AUTHORIZATION` | 本地未设置 | 自托管 smoke | 目标环境优先使用 Admin OIDC bearer token。 |
 | `M6_IDENTITY_*` | 本地未设置 | M6.2 身份证据 | 目标 OIDC 正向和负向 token evidence。 |
 
-若要验证产品化的本地登录/注册 UI，保持默认 `AUTH_MODE=production` 和 `AUTH_PROVIDER=local`，先运行数据库迁移，确保存在 `user_password_credentials` 和 `auth_sessions`，再启动 API 和 API-mode 前端。本地账号不需要 `AUTH_TOKEN_*` 或 `AUTH_OIDC_*`。注册使用用户名、固定组织选项和所选平台角色；当前暂不支持邮箱验证。
+若要验证产品化的本地登录/注册 UI，保持默认 `AUTH_MODE=production` 和 `AUTH_PROVIDER=local`，先运行数据库迁移，确保存在 `user_password_credentials` 和 `auth_sessions`，再启动 API 和 API-mode 前端。本地账号不需要 `AUTH_TOKEN_*` 或 `AUTH_OIDC_*`。注册使用用户名、固定组织选项和所选平台角色；当前暂不支持邮箱验证。本地开发默认 `NODE_ENV=development` 时，自助注册账号会加入已 seed 的 `org-chargelab` / `ChargeLab` 演示组织，登录后可以看到本地种子数据。只有在需要验证部门组织隔离时，才把 `NODE_ENV` 设为非 development 值。
 
 ## 对象存储
 

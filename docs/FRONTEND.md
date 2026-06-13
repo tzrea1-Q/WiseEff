@@ -117,6 +117,18 @@ M5 extends that baseline with the release smoke and pilot acceptance artifact. D
 - Preserve mock mode when adding API mode unless the task explicitly removes a prototype path.
 - Prefer existing component patterns and tests before adding new primitives.
 
+## Button And Action Styling
+
+Buttons must look and behave like buttons. Do not rely on a bare `.button` class, raw `<button>` browser defaults, or text-only styling for actions that mutate state, submit forms, close dialogs, navigate workflows, or open menus. Use the existing button component or an established local variant; if a scoped button variant is needed, define the full visual contract in that scope:
+
+- layout: `inline-flex`, centered content, stable `min-height`, and stable `min-width` or icon-only square dimensions;
+- surface: explicit `background`, `border`, `border-radius`, text color, and disabled opacity/cursor;
+- hierarchy: clear primary, secondary/subtle, destructive, or ghost treatment instead of two equal-looking text labels;
+- interaction: hover and focus-visible states, with focus rings that remain visible on light and dimmed modal backdrops;
+- responsive behavior: buttons must not collapse to bare text, overlap siblings, overflow their container, or change layout unexpectedly across desktop, tablet, and mobile widths.
+
+Dialog footers, table row actions, topbar actions, card actions, and toast actions are common regression points. When changing them, add a focused DOM assertion for the intended button variant or class and run browser verification that captures the relevant state. The browser check should explicitly confirm that primary and secondary actions have visible surface styling, stable dimensions, and no horizontal overflow. Text-only actions are acceptable only for low-emphasis links or inline affordances, and should use a link/text-action class rather than masquerading as a button.
+
 ## Testing
 
 Use targeted tests while editing:

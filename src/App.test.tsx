@@ -428,15 +428,21 @@ describe("WiseEff app shell", () => {
 
     render(<App authClient={authClient} initialAppState={adminState} parameterRepository={createAppParameterRepository()} runtimeMode="api" />);
 
-	    fireEvent.click(await screen.findByRole("button", { name: "Open user role switcher" }));
-	    fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
-	    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Renamed Admin" } });
-	    fireEvent.change(screen.getByLabelText("显示称谓"), { target: { value: "Owner" } });
+    fireEvent.click(await screen.findByRole("button", { name: "打开用户菜单" }));
+    fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+    const dialog = screen.getByRole("dialog", { name: "个人资料" });
+    expect(screen.queryByLabelText("用户菜单")).not.toBeInTheDocument();
+    expect(dialog.closest(".topbar")).toBeNull();
+    expect(screen.getByRole("button", { name: "取消" })).toHaveClass("profile-dialog__button--secondary");
+    expect(screen.getByRole("button", { name: "保存" })).toHaveClass("profile-dialog__button--primary");
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Renamed Admin" } });
+    fireEvent.change(screen.getByLabelText("显示称谓"), { target: { value: "Owner" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findAllByText("Renamed Admin")).not.toHaveLength(0);
     expect(authClient.updateCurrentUserProfile).toHaveBeenCalledWith({ name: "Renamed Admin", title: "Owner" });
 
+    fireEvent.click(screen.getByRole("button", { name: "打开用户菜单" }));
     fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     expect(authClient.logout).toHaveBeenCalledTimes(1);
@@ -1112,7 +1118,7 @@ describe("WiseEff app shell", () => {
     expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
   });
 
-  it("switches the prototype role from the topbar user menu", () => {
+  it("does not allow switching roles from the topbar user menu", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
     render(<App initialAppState={{ ...initialState, activeRoleId: "guest" }} />);
@@ -1120,10 +1126,11 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    fireEvent.click(within(topbar).getByRole("button", { name: "Open user role switcher" }));
-    changeSelectValue(within(topbar).getByRole("combobox", { name: "Prototype role" }), "Admin");
+    fireEvent.click(within(topbar).getByRole("button", { name: "打开用户菜单" }));
 
-    expect(screen.queryByRole("heading", { name: "Permission denied" })).not.toBeInTheDocument();
+    expect(within(topbar).queryByRole("combobox", { name: "Prototype role" })).not.toBeInTheDocument();
+    expect(within(topbar).getByLabelText("当前用户角色")).toHaveTextContent("Guest");
+    expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
   });
 
   it("exposes the three sub-app entries on the homepage main region", () => {

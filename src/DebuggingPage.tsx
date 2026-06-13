@@ -65,9 +65,9 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
   const pendingRuntimeActionsRef = useRef<Set<RuntimeActionName>>(new Set());
   const runtimeRequestSeqRef = useRef<Record<RuntimeActionName, number>>({ connect: 0, push: 0, rollback: 0 });
 
-  const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0];
+  const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0] ?? null;
   const debugParameters = state.debugParameters;
-  const connected = activeDevice.status === "已连接";
+  const connected = activeDevice?.status === "已连接";
 
   useEffect(() => {
     const id = window.setInterval(() => setNowTick(new Date()), 30_000);
@@ -261,30 +261,45 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
   useTopBarActions(
     <div className="device-pill">
       <span className={connected ? "live-dot" : "idle-dot"} />
-      {connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`}
-      <button
-        className="link-button"
-        type="button"
-        onClick={() => {
-          if (debuggingActions) {
-            void runRuntimeAction(
-              "connect",
-              async () => {
-                await debuggingActions.detectAndStartSession(state.activeProjectId);
-              },
-              "Debug connection failed"
-            );
-            return;
-          }
-          dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id });
-        }}
-        disabled={pendingRuntimeActions.has("connect")}
-      >
-        连接
-      </button>
+      {activeDevice ? (connected ? `已连接：${activeDevice.name}` : `未连接：${activeDevice.name}`) : "未发现可用设备"}
+      {activeDevice ? (
+        <button
+          className="link-button"
+          type="button"
+          onClick={() => {
+            if (debuggingActions) {
+              void runRuntimeAction(
+                "connect",
+                async () => {
+                  await debuggingActions.detectAndStartSession(state.activeProjectId);
+                },
+                "Debug connection failed"
+              );
+              return;
+            }
+            dispatch({ type: "CONNECT_DEVICE", deviceId: activeDevice.id });
+          }}
+          disabled={pendingRuntimeActions.has("connect")}
+        >
+          连接
+        </button>
+      ) : null}
     </div>,
-    [activeDevice.id, activeDevice.name, connected, debuggingActions, pendingRuntimeActions, state.activeProjectId]
+    [activeDevice?.id, activeDevice?.name, connected, debuggingActions, pendingRuntimeActions, state.activeProjectId]
   );
+
+  if (!activeDevice) {
+    return (
+      <div className="workbench-page debugging-page">
+        <div className="workbench-one-col">
+          <section className="debugging-empty-state" aria-label="调试设备空态">
+            <strong>暂无可用调试设备</strong>
+            <p>当前账号所在组织还没有设备或调试参数数据。请使用已预置项目数据的验收账号，或由管理员完成项目与设备初始化后再进入调试平台。</p>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="workbench-page debugging-page">
