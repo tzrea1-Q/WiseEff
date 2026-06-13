@@ -23,6 +23,7 @@ import {
   UserRound,
   X
 } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   ChangeEvent,
@@ -2997,7 +2998,14 @@ function TopBar({
                 <strong>{currentRole?.name ?? "Guest"}</strong>
               </div>
               <div className="topbar-user-menu__actions">
-                <button type="button" className="button" onClick={() => setProfileOpen(true)}>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    setProfileOpen(true);
+                  }}
+                >
                   个人资料
                 </button>
                 {onLogout ? (
@@ -3182,7 +3190,7 @@ function ProfileDialog({
     }
   }
 
-  return (
+  return createPortal(
     <div className="modal-backdrop profile-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="profile-dialog-title">
       <form className="profile-dialog" onSubmit={submit}>
         <header>
@@ -3208,7 +3216,8 @@ function ProfileDialog({
           </button>
         </footer>
       </form>
-    </div>
+    </div>,
+    document.body
   );
 }
 

@@ -430,6 +430,9 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "打开用户菜单" }));
     fireEvent.click(screen.getByRole("button", { name: "个人资料" }));
+    const dialog = screen.getByRole("dialog", { name: "个人资料" });
+    expect(screen.queryByLabelText("用户菜单")).not.toBeInTheDocument();
+    expect(dialog.closest(".topbar")).toBeNull();
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Renamed Admin" } });
     fireEvent.change(screen.getByLabelText("显示称谓"), { target: { value: "Owner" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -437,6 +440,7 @@ describe("WiseEff app shell", () => {
     expect(await screen.findAllByText("Renamed Admin")).not.toHaveLength(0);
     expect(authClient.updateCurrentUserProfile).toHaveBeenCalledWith({ name: "Renamed Admin", title: "Owner" });
 
+    fireEvent.click(screen.getByRole("button", { name: "打开用户菜单" }));
     fireEvent.click(screen.getByRole("button", { name: "退出登录" }));
     expect(await screen.findByRole("heading", { name: "登录雷泽" })).toBeInTheDocument();
     expect(authClient.logout).toHaveBeenCalledTimes(1);
