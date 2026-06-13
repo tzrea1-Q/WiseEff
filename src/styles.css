@@ -735,15 +735,17 @@ body {
   font-weight: 700;
 }
 
-.topbar-user-menu__field select {
-  width: 100%;
-  height: 34px;
+.topbar-user-menu__role strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
   padding: 0 10px;
   color: #1f2937;
   background: #f8fafc;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
-  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
 }
 
 .topbar-user-menu__actions {

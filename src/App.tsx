@@ -222,7 +222,6 @@ function writeSidebarCollapsedPreference(isCollapsed: boolean) {
 
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
-  | { type: "SET_ROLE"; roleId: string }
   | {
       type: "HYDRATE_AUTH_CONTEXT";
       user: User;
@@ -616,8 +615,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
   switch (action.type) {
     case "SET_PROJECT":
       return { ...state, activeProjectId: action.projectId };
-    case "SET_ROLE":
-      return { ...state, activeRoleId: action.roleId };
     case "HYDRATE_AUTH_CONTEXT": {
       const existingUsers = state.users.filter((user) => user.id !== action.user.id);
       return {
@@ -2907,7 +2904,7 @@ function TopBar({
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
 }) {
-  const [roleSwitcherOpen, setRoleSwitcherOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const showProjectInitAction = page.key.startsWith("parameter");
   const showProjectSelector =
@@ -2973,12 +2970,12 @@ function TopBar({
         </Button>
         <div className="topbar-user-switcher">
           <button
-            aria-expanded={roleSwitcherOpen}
+            aria-expanded={userMenuOpen}
             aria-haspopup="dialog"
-            aria-label="Open user role switcher"
+            aria-label="打开用户菜单"
             className="topbar-user-trigger"
             type="button"
-            onClick={() => setRoleSwitcherOpen((open) => !open)}
+            onClick={() => setUserMenuOpen((open) => !open)}
           >
             <span className="avatar topbar-user-avatar" aria-hidden="true">
               <UserRound size={17} />
@@ -2989,26 +2986,16 @@ function TopBar({
             </span>
             <ChevronDown size={14} />
           </button>
-          {roleSwitcherOpen ? (
-            <div className="topbar-user-menu" aria-label="User role switcher">
+          {userMenuOpen ? (
+            <div className="topbar-user-menu" aria-label="用户菜单">
               <div className="topbar-user-menu__identity">
                 <strong>{currentUser?.name ?? "Prototype user"}</strong>
                 <span>{currentUser ? userAccountIdentifier(currentUser) : "No user selected"}</span>
               </div>
-              <label className="topbar-user-menu__field">
-                Role
-                <select
-                  aria-label="Prototype role"
-                  value={currentRoleId}
-                  onChange={(event) => dispatch({ type: "SET_ROLE", roleId: event.target.value })}
-                >
-                  {roles.map((role) => (
-                    <option key={role.id} value={role.id}>
-                      {role.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="topbar-user-menu__field topbar-user-menu__role" aria-label="当前用户角色">
+                <span>Role</span>
+                <strong>{currentRole?.name ?? "Guest"}</strong>
+              </div>
               <div className="topbar-user-menu__actions">
                 <button type="button" className="button" onClick={() => setProfileOpen(true)}>
                   个人资料
