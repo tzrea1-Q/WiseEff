@@ -3208,10 +3208,10 @@ function ProfileDialog({
         </label>
         {error ? <p role="alert" className="auth-error">{error}</p> : null}
         <footer>
-          <button type="button" className="button" onClick={onCancel}>
+          <button type="button" className="button profile-dialog__button profile-dialog__button--secondary" onClick={onCancel}>
             取消
           </button>
-          <button type="submit" className="button primary" disabled={submitting}>
+          <button type="submit" className="button primary profile-dialog__button profile-dialog__button--primary" disabled={submitting}>
             保存
           </button>
         </footer>

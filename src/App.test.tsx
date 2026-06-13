@@ -433,6 +433,8 @@ describe("WiseEff app shell", () => {
     const dialog = screen.getByRole("dialog", { name: "个人资料" });
     expect(screen.queryByLabelText("用户菜单")).not.toBeInTheDocument();
     expect(dialog.closest(".topbar")).toBeNull();
+    expect(screen.getByRole("button", { name: "取消" })).toHaveClass("profile-dialog__button--secondary");
+    expect(screen.getByRole("button", { name: "保存" })).toHaveClass("profile-dialog__button--primary");
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Renamed Admin" } });
     fireEvent.change(screen.getByLabelText("显示称谓"), { target: { value: "Owner" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
