@@ -96,6 +96,8 @@ function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
       (agentFormat === "pi" ? !env.AGENT_PI_PROVIDER?.trim() : !env.AGENT_API_BASE_URL?.trim()));
 
   return {
+    AUTH_MODE: "production",
+    AUTH_PROVIDER: "local",
     DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
     OBJECT_STORE_MODE: "local",
     OBJECT_STORE_ROOT: ".wiseeff-object-store",

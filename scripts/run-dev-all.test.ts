@@ -87,6 +87,38 @@ describe("buildDevAllPlan", () => {
     });
   });
 
+  it("defaults one-command local startup to local account auth", () => {
+    const plan = buildDevAllPlan({}, "linux");
+
+    expect(plan.prepare[2].env).toMatchObject({
+      AUTH_MODE: "production",
+      AUTH_PROVIDER: "local"
+    });
+    expect(plan.services[0].env).toMatchObject({
+      AUTH_MODE: "production",
+      AUTH_PROVIDER: "local"
+    });
+  });
+
+  it("preserves explicit auth provider settings for smoke or identity checks", () => {
+    const plan = buildDevAllPlan(
+      {
+        AUTH_MODE: "production",
+        AUTH_PROVIDER: "hmac",
+        AUTH_TOKEN_ISSUER: "wiseeff-local",
+        AUTH_TOKEN_HMAC_SECRET: "wiseeff-local-hmac-secret-32-chars-minimum"
+      },
+      "linux"
+    );
+
+    expect(plan.services[0].env).toMatchObject({
+      AUTH_MODE: "production",
+      AUTH_PROVIDER: "hmac",
+      AUTH_TOKEN_ISSUER: "wiseeff-local",
+      AUTH_TOKEN_HMAC_SECRET: "wiseeff-local-hmac-secret-32-chars-minimum"
+    });
+  });
+
   it("uses the deterministic Agent provider for one-command local startup when live settings are blank", () => {
     const plan = buildDevAllPlan(
       {
