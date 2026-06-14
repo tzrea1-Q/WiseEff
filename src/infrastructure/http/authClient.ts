@@ -27,6 +27,16 @@ export type AuthSessionDto = {
   expiresAt: string;
 };
 
+export type PendingRegistrationDto = {
+  status: "pending_approval";
+  user: AuthContextDto["user"];
+  organization: AuthContextDto["organization"];
+  requestedRoleId: string;
+  assignedRoleId: string;
+};
+
+export type RegisterLocalAccountResponseDto = AuthSessionDto | PendingRegistrationDto;
+
 export type RegisterLocalAccountInput = {
   organization: string;
   name: string;
@@ -73,8 +83,10 @@ export function createAuthClient(apiClient = createDefaultApiClient()) {
   return {
     getCurrentAuthContext: () => apiClient.get<AuthContextDto>("/api/v1/me"),
     async register(input: RegisterLocalAccountInput) {
-      const response = await apiClient.post<AuthSessionDto>("/api/v1/auth/register", input);
-      writeLocalAuthToken(response.token);
+      const response = await apiClient.post<RegisterLocalAccountResponseDto>("/api/v1/auth/register", input);
+      if ("token" in response) {
+        writeLocalAuthToken(response.token);
+      }
       return response;
     },
     async login(input: LoginLocalAccountInput) {

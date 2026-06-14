@@ -27,6 +27,7 @@ function createLocalRouteDb() {
   let roleId = "admin";
   let tokenHash = "";
   let revokedAt: string | null = null;
+  const pendingRoleRequestUserIds = new Set<string>();
 
   async function query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
     calls.push({ text, values });
@@ -50,6 +51,7 @@ function createLocalRouteDb() {
       user.name = values[2] as string;
       user.email = null;
       user.title = values[3] as string;
+      user.isActive = values[4] as boolean;
       return { rows: [], rowCount: 1 };
     }
     if (normalized.startsWith("insert into user_password_credentials")) {
@@ -60,6 +62,14 @@ function createLocalRouteDb() {
     if (normalized.startsWith("insert into user_role_bindings")) {
       roleId = values[3] as string;
       return { rows: [], rowCount: 1 };
+    }
+    if (normalized.startsWith("insert into local_registration_role_requests")) {
+      pendingRoleRequestUserIds.add(values[2] as string);
+      return { rows: [], rowCount: 1 };
+    }
+    if (normalized.startsWith("select true as exists from local_registration_role_requests")) {
+      const exists = pendingRoleRequestUserIds.has(values[0] as string);
+      return { rows: (exists ? [{ exists: true }] : []) as Row[], rowCount: exists ? 1 : 0 };
     }
     if (normalized.startsWith("insert into auth_sessions")) {
       tokenHash = values[3] as string;
@@ -255,5 +265,52 @@ describe("GET /api/v1/me", () => {
     expect(register.body.error.code).toBe("VALIDATION_FAILED");
     expect(login.status).toBe(400);
     expect(login.body.error.code).toBe("VALIDATION_FAILED");
+  });
+
+  it("returns a pending approval result without a token for committer registration", async () => {
+    const { calls, db } = createLocalRouteDb();
+    const localAuthService = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
+    const serverOptions = {
+      db,
+      env: { AUTH_PROVIDER: "local" as const },
+      auth: { mode: "production" as const },
+      localAuthService
+    };
+
+    const registered = await requestJson<{
+      status: string;
+      user: { username: string; isActive: boolean };
+      requestedRoleId: string;
+      assignedRoleId: string;
+      token?: string;
+      auth?: unknown;
+    }>(createWiseEffServer(serverOptions), "/api/v1/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        organization: "硬件部",
+        name: "Committer Candidate",
+        username: "committer.candidate",
+        roleId: "hardware-committer",
+        password: "strong-password"
+      })
+    });
+
+    expect(registered.status).toBe(202);
+    expect(registered.body).toMatchObject({
+      status: "pending_approval",
+      user: { username: "committer.candidate", isActive: false },
+      requestedRoleId: "hardware-committer",
+      assignedRoleId: "hardware-user"
+    });
+    expect(registered.body.token).toBeUndefined();
+    expect(registered.body.auth).toBeUndefined();
+    expect(calls.some((call) => call.text.includes("insert into auth_sessions"))).toBe(false);
+
+    const login = await requestJson<{ error: { code: string; message: string } }>(createWiseEffServer(serverOptions), "/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username: "committer.candidate", password: "strong-password" })
+    });
+    expect(login.status).toBe(403);
+    expect(login.body.error.message).toBe("User is pending Admin approval.");
   });
 });

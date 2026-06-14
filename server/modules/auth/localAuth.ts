@@ -52,6 +52,35 @@ export type RegisterLocalAccountInput = {
   password: string;
 };
 
+export type LocalAuthSessionResult = {
+  status: "authenticated";
+  auth: AuthContext;
+  session: {
+    token: string;
+    expiresAt: string;
+  };
+};
+
+export type PendingLocalRegistrationResult = {
+  status: "pending_approval";
+  user: {
+    id: string;
+    organizationId: string;
+    name: string;
+    username: string;
+    title: string;
+    isActive: false;
+  };
+  organization: {
+    id: string;
+    name: string;
+  };
+  requestedRoleId: BackendRoleId;
+  assignedRoleId: BackendRoleId;
+};
+
+export type RegisterLocalAccountResult = LocalAuthSessionResult | PendingLocalRegistrationResult;
+
 export type LoginLocalAccountInput = {
   username: string;
   password: string;
@@ -206,6 +235,21 @@ async function findUserForLogin(db: Queryable, username: string) {
   return result.rows[0] ?? null;
 }
 
+async function hasPendingRegistrationRoleRequest(db: Queryable, userId: string) {
+  const result = await db.query<{ exists: boolean }>(
+    `
+    select true as exists
+    from local_registration_role_requests
+    where user_id = $1
+      and status = 'pending'
+    limit 1
+    `,
+    [userId]
+  );
+
+  return result.rows.length > 0;
+}
+
 export function createLocalAuthService(db: Database, options: LocalAuthServiceOptions = {}) {
   const now = options.now ?? (() => new Date());
   const sessionTtlMs = options.sessionTtlMs ?? defaultSessionTtlMs;
@@ -221,6 +265,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
       const requestedRoleId = input.roleId ?? defaultSelfRegistrationRoleId;
       const roleId = assignedRoleForRegistration(requestedRoleId);
       const title = input.title?.trim() || roleId;
+      const approvalRequired = approvalRequiredRoleIds.has(requestedRoleId);
       requirePasswordPolicy(input.password);
       if (!organizationName || !name) {
         throw new ApiError("VALIDATION_FAILED", "Organization and user name are required.", 400);
@@ -260,9 +305,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
         await tx.query(
           `
           insert into users (id, organization_id, name, title, is_active, last_active_at)
-          values ($1, $2, $3, $4, true, $5)
+          values ($1, $2, $3, $4, $5, $6)
           `,
-          [userId, organizationId, name, title, now().toISOString()]
+          [userId, organizationId, name, title, !approvalRequired, approvalRequired ? null : now().toISOString()]
         );
         await tx.query("insert into user_password_credentials (user_id, username, password_hash) values ($1, $2, $3)", [
           userId,
@@ -276,7 +321,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           `,
           [randomUUID(), userId, organizationId, roleId]
         );
-        if (approvalRequiredRoleIds.has(requestedRoleId)) {
+        if (approvalRequired) {
           await tx.query(
             `
             insert into local_registration_role_requests (
@@ -291,7 +336,6 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
             [`registration-role-request-${randomUUID()}`, organizationId, userId, roleId, requestedRoleId]
           );
         }
-        const session = await createSession(tx, { userId, organizationId, now: now(), ttlMs: sessionTtlMs });
         await auditAuthEvent(tx, {
           organizationId,
           userId,
@@ -301,12 +345,30 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
             roleId,
             requestedRoleId,
             organization: organizationName,
-            approvalRequired: approvalRequiredRoleIds.has(requestedRoleId)
+            approvalRequired
           },
           traceId: context.requestId
         });
 
-        return { auth: await getAuthContext(tx, userId), session };
+        if (approvalRequired) {
+          return {
+            status: "pending_approval",
+            user: {
+              id: userId,
+              organizationId,
+              name,
+              username,
+              title,
+              isActive: false
+            },
+            organization: registrationOrganization,
+            requestedRoleId,
+            assignedRoleId: roleId
+          } satisfies PendingLocalRegistrationResult;
+        }
+
+        const session = await createSession(tx, { userId, organizationId, now: now(), ttlMs: sessionTtlMs });
+        return { status: "authenticated", auth: await getAuthContext(tx, userId), session } satisfies LocalAuthSessionResult;
       });
     },
 
@@ -318,6 +380,9 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
         throw new ApiError("UNAUTHENTICATED", "Username or password is incorrect.", 401);
       }
       if (!user.is_active) {
+        if (await hasPendingRegistrationRoleRequest(db, user.id)) {
+          throw new ApiError("FORBIDDEN", "User is pending Admin approval.", 403);
+        }
         throw new ApiError("FORBIDDEN", "User is inactive.", 403);
       }
 
@@ -335,7 +400,7 @@ export function createLocalAuthService(db: Database, options: LocalAuthServiceOp
           traceId: context.requestId
         });
 
-        return { auth: await getAuthContext(tx, user.id), session };
+        return { status: "authenticated", auth: await getAuthContext(tx, user.id), session } satisfies LocalAuthSessionResult;
       });
     },
 

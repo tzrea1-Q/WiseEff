@@ -195,7 +195,7 @@ function createDevelopmentLocalAuthDb() {
           name: values[2] as string,
           email: null,
           title: values[3] as string,
-          isActive: true
+          isActive: values[4] as boolean
         });
         return { rows: [], rowCount: 1 };
       }

@@ -66,7 +66,7 @@ AUTH_PROVIDER=local
 
 | 路由 | 用途 |
 | --- | --- |
-| `POST /api/v1/auth/register` | 使用所选组织和允许自助选择的平台角色注册本地账号。 |
+| `POST /api/v1/auth/register` | 使用所选组织和允许自助选择的平台角色注册本地账号。非 Committer 角色返回带 session 的 `201`；Committer 申请返回无 token 的 `202 pending_approval`。 |
 | `POST /api/v1/auth/login` | 使用用户名和 password 换取本地会话 token。 |
 | `POST /api/v1/auth/logout` | 撤销当前本地会话 token。 |
 | `GET /api/v1/me` | 返回已认证用户的 `AuthContext`。 |
@@ -75,11 +75,11 @@ AUTH_PROVIDER=local
 | `POST /api/v1/users/registration-role-requests/:requestId/approve` | 让 Admin 批准待审批的 Committer 角色申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/reject` | 让 Admin 拒绝待审批的 Committer 角色申请。 |
 
-注册请求包含 `organization`、`name`、`username`、`roleId` 和 `password`。自助注册组织选项为 `硬件部` 和 `软件部`。自助注册永远不接受 `admin`；申请 `hardware-committer` 或 `software-committer` 时，账号会先获得对应基础 User 角色，并创建待 Admin 审批的角色申请，只有审批通过后才授予 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
+注册请求包含 `organization`、`name`、`username`、`roleId` 和 `password`。自助注册组织选项为 `硬件部` 和 `软件部`。自助注册永远不接受 `admin`；申请 `hardware-committer` 或 `software-committer` 时，账号会以 inactive 状态创建，先写入对应基础 User 角色，并创建待 Admin 审批的角色申请。该路径不会创建 session token，密码登录也会在审批前被拒绝；只有审批通过后才激活账号并授予申请的 Committer 角色。本地账号不再保存或返回 email 地址，用户名就是本地登录标识。当前暂时不支持邮箱验证，因此注册不能被当作已验证域名 onboarding 或邀请接受流程。
 
 在本地开发 profile（`NODE_ENV=development`、`AUTH_MODE=production`、`AUTH_PROVIDER=local`）下，自助注册账号会刻意加入已 seed 的 `org-chargelab` / `ChargeLab` 演示组织，从而能看到本地种子参数、日志和调试数据。非开发的本地账号部署仍使用所选部门组织 id（`org-hardware-department` 或 `org-software-department`），以保留租户隔离语义。
 
-密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。会话 token 只在响应中返回一次，格式为不透明的 `we_local_*` bearer token；数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出和资料更新都会写审计事件。
+密码只以 salted `scrypt` 哈希保存在 `user_password_credentials`。只有登录成功或非 Committer 注册成功才会在响应中返回一次不透明的 `we_local_*` bearer token；待审批 Committer 注册不会写入 `auth_sessions`。数据库 `auth_sessions` 只保存 SHA-256 token 哈希。会话会按服务 TTL 过期，退出登录会写入 `revoked_at`。注册、登录、退出和资料更新都会写审计事件。
 
 登录后的请求使用：
 

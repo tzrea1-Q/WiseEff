@@ -267,6 +267,10 @@ export async function approveRegistrationRoleRequest(
       userId: request.userId,
       roles: [{ projectId: null, roleId: request.requestedRoleId }]
     });
+    const activated = await updateUserActive(tx, { organizationId: request.organizationId, userId: request.userId, isActive: true });
+    if (!activated) {
+      throw new ApiError("NOT_FOUND", "User was not found.", 404, { userId: request.userId });
+    }
     const decided = await decideRegistrationRoleRequest(tx, {
       organizationId: request.organizationId,
       requestId,

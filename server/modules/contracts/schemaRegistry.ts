@@ -6,6 +6,7 @@ export type ContractSchemaRef = {
   requestBody?: string;
   responseBody: string;
   successStatus?: 200 | 201;
+  additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
 };
 
@@ -16,6 +17,7 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "RegisterLocalAccountRequest",
     responseBody: "AuthSessionResponse",
     successStatus: 201,
+    additionalSuccessResponses: { "202": "PendingRegistrationResponse" },
     additionalResponses: { "409": "ErrorResponse" }
   },
   "auth.login": {

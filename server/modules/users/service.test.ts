@@ -213,7 +213,7 @@ describe("user governance service", () => {
     expect(calls.find((call) => call.text.includes("from local_registration_role_requests"))?.values).toEqual([]);
   });
 
-  it("approves a pending local registration role request by assigning the requested committer role", async () => {
+  it("approves a pending local registration role request by activating the user and assigning the requested committer role", async () => {
     const { db, txCalls } = createDb((text) => {
       if (text.includes("from local_registration_role_requests")) {
         return [
@@ -260,6 +260,11 @@ describe("user governance service", () => {
     expect(result.status).toBe("approved");
     expect(txCalls.find((call) => call.text.includes("delete from user_role_bindings"))?.values[0]).toBe("org-software-department");
     expect(txCalls.find((call) => call.text.includes("insert into user_role_bindings"))?.values[4]).toBe("software-committer");
+    expect(txCalls.find((call) => call.text.includes("update users") && call.text.includes("set is_active"))?.values).toEqual([
+      "org-software-department",
+      "u-candidate",
+      true
+    ]);
     expect(txCalls.find((call) => call.text.includes("update local_registration_role_requests"))?.values[0]).toBe("org-software-department");
     expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
   });

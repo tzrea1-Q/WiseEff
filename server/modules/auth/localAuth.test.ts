@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Database, QueryResult, Queryable } from "../../shared/database/client";
-import { createLocalAuthService } from "./localAuth";
+import { createLocalAuthService, type RegisterLocalAccountResult } from "./localAuth";
 
 type QueryCall = {
   text: string;
@@ -14,6 +14,7 @@ function createMemoryLocalAuthDb() {
   const credentials = new Map<string, { username: string; passwordHash: string }>();
   const roles = new Map<string, Array<{ projectId: string | null; roleId: string }>>();
   const sessions = new Map<string, { id: string; userId: string; organizationId: string; tokenHash: string; expiresAt: string; revokedAt: string | null }>();
+  const pendingRoleRequestUserIds = new Set<string>();
 
   async function query<Row>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> {
     calls.push({ text, values });
@@ -37,7 +38,7 @@ function createMemoryLocalAuthDb() {
         name: values[2] as string,
         email: null,
         title: values[3] as string,
-        isActive: true
+        isActive: values[4] as boolean
       });
       return { rows: [], rowCount: 1 };
     }
@@ -53,7 +54,13 @@ function createMemoryLocalAuthDb() {
     }
 
     if (normalized.startsWith("insert into local_registration_role_requests")) {
+      pendingRoleRequestUserIds.add(values[2] as string);
       return { rows: [], rowCount: 1 };
+    }
+
+    if (normalized.startsWith("select true as exists from local_registration_role_requests")) {
+      const exists = pendingRoleRequestUserIds.has(values[0] as string);
+      return { rows: (exists ? [{ exists: true }] : []) as Row[], rowCount: exists ? 1 : 0 };
     }
 
     if (normalized.startsWith("insert into auth_sessions")) {
@@ -163,12 +170,20 @@ function createMemoryLocalAuthDb() {
   return { calls, db };
 }
 
+function expectAuthenticatedRegistration(result: RegisterLocalAccountResult) {
+  expect(result.status).toBe("authenticated");
+  if (result.status !== "authenticated") {
+    throw new Error("Expected authenticated local registration.");
+  }
+  return result;
+}
+
 describe("local auth service", () => {
   it("registers a local account with the selected organization, username, and role", async () => {
     const { calls, db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
-    const result = await service.register(
+    const result = expectAuthenticatedRegistration(await service.register(
       {
         organization: "硬件部",
         name: "Pilot Admin",
@@ -177,7 +192,7 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-1" }
-    );
+    ));
 
     expect(result.auth.user.username).toBe("pilot.admin");
     expect(result.auth.user.email).toBeUndefined();
@@ -197,7 +212,7 @@ describe("local auth service", () => {
       registrationOrganizationResolver: () => ({ id: "org-chargelab", name: "ChargeLab" })
     });
 
-    const result = await service.register(
+    const result = expectAuthenticatedRegistration(await service.register(
       {
         organization: "硬件部",
         name: "Demo User",
@@ -206,7 +221,7 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-1" }
-    );
+    ));
 
     expect(result.auth.organization).toEqual({ id: "org-chargelab", name: "ChargeLab" });
     expect(result.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
@@ -216,7 +231,7 @@ describe("local auth service", () => {
     const { db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
-    const first = await service.register(
+    const first = expectAuthenticatedRegistration(await service.register(
       {
         organization: "硬件部",
         name: "Hardware One",
@@ -225,8 +240,8 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-1" }
-    );
-    const second = await service.register(
+    ));
+    const second = expectAuthenticatedRegistration(await service.register(
       {
         organization: "硬件部",
         name: "Hardware Two",
@@ -235,7 +250,7 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-2" }
-    );
+    ));
 
     expect(first.auth.organization.id).toBe("org-hardware-department");
     expect(second.auth.organization.id).toBe("org-hardware-department");
@@ -260,7 +275,7 @@ describe("local auth service", () => {
     ).rejects.toThrow("Admin registration is not allowed.");
   });
 
-  it("creates a pending role request and grants only the matching base role for committer registration", async () => {
+  it("creates a pending inactive role request without a session for committer registration", async () => {
     const { calls, db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
@@ -275,17 +290,42 @@ describe("local auth service", () => {
       { requestId: "request-1" }
     );
 
-    expect(result.auth.roles).toEqual([{ projectId: null, roleId: "software-user" }]);
-    expect(result.auth.permissions).not.toContain("parameter:review");
+    expect(result.status).toBe("pending_approval");
+    expect(result.assignedRoleId).toBe("software-user");
+    expect(result.requestedRoleId).toBe("software-committer");
+    expect(result.session).toBeUndefined();
+    expect("auth" in result).toBe(false);
     expect(calls.some((call) => call.text.includes("insert into local_registration_role_requests"))).toBe(true);
     expect(calls.find((call) => call.text.includes("insert into user_role_bindings"))?.values[3]).toBe("software-user");
+    expect(calls.find((call) => call.text.includes("insert into users"))?.values).toContain(false);
+    expect(calls.some((call) => call.text.includes("insert into auth_sessions"))).toBe(false);
+  });
+
+  it("blocks login for a pending committer registration until Admin approval activates it", async () => {
+    const { db } = createMemoryLocalAuthDb();
+    const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
+
+    await service.register(
+      {
+        organization: "软件部",
+        name: "Committer Candidate",
+        username: "committer.candidate",
+        roleId: "software-committer",
+        password: "strong-password"
+      },
+      { requestId: "request-1" }
+    );
+
+    await expect(
+      service.login({ username: "committer.candidate", password: "strong-password" }, { requestId: "request-2" })
+    ).rejects.toThrow("User is pending Admin approval.");
   });
 
   it("defaults registration to a non-admin base user role", async () => {
     const { db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
 
-    const result = await service.register(
+    const result = expectAuthenticatedRegistration(await service.register(
       {
         organization: "硬件部",
         name: "Default User",
@@ -293,7 +333,7 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-1" }
-    );
+    ));
 
     expect(result.auth.roles).toEqual([{ projectId: null, roleId: "hardware-user" }]);
     expect(result.auth.permissions).not.toContain("users:manage");
@@ -322,7 +362,7 @@ describe("local auth service", () => {
   it("revokes sessions on logout", async () => {
     const { db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
-    const registered = await service.register(
+    const registered = expectAuthenticatedRegistration(await service.register(
       {
         organization: "软件部",
         name: "Pilot Admin",
@@ -330,7 +370,7 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-1" }
-    );
+    ));
 
     await service.logout(`Bearer ${registered.session.token}`, registered.auth, { requestId: "request-2" });
 
@@ -340,7 +380,7 @@ describe("local auth service", () => {
   it("updates the current user profile without adding email or changing roles", async () => {
     const { db } = createMemoryLocalAuthDb();
     const service = createLocalAuthService(db, { now: () => new Date("2026-06-12T00:00:00.000Z") });
-    const registered = await service.register(
+    const registered = expectAuthenticatedRegistration(await service.register(
       {
         organization: "软件部",
         name: "Pilot Admin",
@@ -348,7 +388,7 @@ describe("local auth service", () => {
         password: "strong-password"
       },
       { requestId: "request-1" }
-    );
+    ));
 
     const updated = await service.updateCurrentUserProfile(registered.auth, { name: "Renamed Admin", title: "Owner" }, { requestId: "request-2" });
 

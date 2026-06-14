@@ -92,6 +92,9 @@ function buildSchemaPlaceholders() {
       schemas[schema.requestBody] = { type: "object", "x-wiseeff-schema": schema.requestBody };
     }
     schemas[schema.responseBody] = { type: "object", "x-wiseeff-schema": schema.responseBody };
+    for (const responseBody of Object.values(schema.additionalSuccessResponses ?? {})) {
+      schemas[responseBody] = { type: "object", "x-wiseeff-schema": responseBody };
+    }
   }
 
   return schemas;
@@ -127,6 +130,14 @@ export function buildOpenApiDocument(): OpenApiDocument {
           description: "Successful response.",
           content: jsonContent(schema.responseBody)
         },
+        ...(schema.additionalSuccessResponses
+          ? Object.fromEntries(
+              Object.entries(schema.additionalSuccessResponses).map(([status, schemaName]) => [
+                status,
+                { description: "Successful response.", content: jsonContent(schemaName) }
+              ])
+            )
+          : {}),
         ...(schema.additionalResponses
           ? Object.fromEntries(
               Object.entries(schema.additionalResponses).map(([status, schemaName]) => [

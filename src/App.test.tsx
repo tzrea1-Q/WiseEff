@@ -326,7 +326,7 @@ describe("WiseEff app shell", () => {
     expect(authClient.login).toHaveBeenCalledWith({ username: "local.admin", password: "strong-password" });
   });
 
-  it("registers a local account from the auth screen", async () => {
+  it("registers a local user account from the auth screen", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
       getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
@@ -339,7 +339,7 @@ describe("WiseEff app shell", () => {
             organizationId: "org-new",
             name: "New Admin",
             username: "new.admin",
-            title: "software-committer",
+            title: "software-user",
             isActive: true
           },
           organization: { id: "org-new", name: "软件部" },
@@ -354,7 +354,7 @@ describe("WiseEff app shell", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
     changeSelectValue(screen.getByRole("combobox", { name: "组织" }), "软件部");
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "New Admin" } });
-    changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software Committer");
+    changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Software User");
     fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.admin" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
     fireEvent.click(screen.getByRole("button", { name: "注册" }));
@@ -365,7 +365,53 @@ describe("WiseEff app shell", () => {
       organization: "软件部",
       name: "New Admin",
       username: "new.admin",
-      roleId: "software-committer",
+      roleId: "software-user",
+      password: "strong-password"
+    });
+  });
+
+  it("keeps committer self-registration on the auth screen while approval is pending", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+    const parameterRepository = createAppParameterRepository();
+    const authClient = {
+      getCurrentAuthContext: vi.fn().mockRejectedValue(new Error("Authorization bearer token is required.")),
+      register: vi.fn(async () => ({
+        status: "pending_approval" as const,
+        user: {
+          id: "u-new-committer",
+          organizationId: "org-chargelab",
+          name: "New Committer",
+          username: "new.committer",
+          title: "hardware-user",
+          isActive: false
+        },
+        organization: { id: "org-chargelab", name: "ChargeLab" },
+        requestedRoleId: "hardware-committer",
+        assignedRoleId: "hardware-user"
+      }))
+    };
+
+    render(<App authClient={authClient} initialAppState={initialState} parameterRepository={parameterRepository} runtimeMode="api" />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: "注册" }));
+    fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "New Committer" } });
+    changeSelectValue(screen.getByRole("combobox", { name: "角色" }), "Hardware Committer");
+    fireEvent.change(screen.getByLabelText("用户名"), { target: { value: "new.committer" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "strong-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "注册" }));
+
+    const pendingNotice = (await screen.findByRole("heading", { name: "注册申请已提交" })).closest("section");
+    expect(pendingNotice).not.toBeNull();
+    expect(within(pendingNotice as HTMLElement).getAllByText(/Hardware Committer/).length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "注册雷泽" })).toBeInTheDocument();
+    expect(screen.queryByText("New Committer")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开用户菜单" })).not.toBeInTheDocument();
+    expect(parameterRepository.listProjects).not.toHaveBeenCalled();
+    expect(authClient.register).toHaveBeenCalledWith({
+      organization: "硬件部",
+      name: "New Committer",
+      username: "new.committer",
+      roleId: "hardware-committer",
       password: "strong-password"
     });
   });

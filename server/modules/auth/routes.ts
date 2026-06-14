@@ -3,7 +3,7 @@ import type { AuthContext } from "./types";
 import type { AuthContextResolver } from "./contextFactory";
 import { ApiError } from "../../shared/http/errors";
 import { z } from "zod";
-import type { createLocalAuthService } from "./localAuth";
+import type { createLocalAuthService, LocalAuthSessionResult } from "./localAuth";
 
 const platformRoleIdSchema = z.enum(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
 
@@ -60,13 +60,6 @@ const updateProfileBodySchema = z.object({
 });
 
 type LocalAuthService = ReturnType<typeof createLocalAuthService>;
-type AuthSessionResult = {
-  auth: AuthContext;
-  session: {
-    token: string;
-    expiresAt: string;
-  };
-};
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message: string) {
   const parsed = schema.safeParse(value);
@@ -76,7 +69,7 @@ function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message: strin
   return parsed.data;
 }
 
-function sessionResponse(result: AuthSessionResult) {
+function sessionResponse(result: LocalAuthSessionResult) {
   return {
     auth: result.auth,
     token: result.session.token,
@@ -98,6 +91,12 @@ export function registerAuthRoutes(
     }
     const body = parseWithSchema(registerBodySchema, request.body, "Invalid registration input.");
     const result = await options.localAuthService.register(body, { requestId: request.requestId });
+    if (result.status === "pending_approval") {
+      return {
+        status: 202,
+        body: result
+      };
+    }
     return {
       status: 201,
       body: sessionResponse(result)

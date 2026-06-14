@@ -33,6 +33,16 @@
               }
             }
           },
+          "202": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingRegistrationResponse"
+                }
+              }
+            }
+          },
           "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
@@ -2211,6 +2221,10 @@
       "AuthSessionResponse": {
         "type": "object",
         "x-wiseeff-schema": "AuthSessionResponse"
+      },
+      "PendingRegistrationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "PendingRegistrationResponse"
       },
       "LoginLocalAccountRequest": {
         "type": "object",

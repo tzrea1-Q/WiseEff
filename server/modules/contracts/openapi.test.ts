@@ -110,7 +110,8 @@ describe("M5 OpenAPI contract", () => {
     expect(schemaRegistry["auth.register"]).toMatchObject({
       requestBody: "RegisterLocalAccountRequest",
       responseBody: "AuthSessionResponse",
-      successStatus: 201
+      successStatus: 201,
+      additionalSuccessResponses: { "202": "PendingRegistrationResponse" }
     });
   });
 
@@ -167,6 +168,15 @@ describe("M5 OpenAPI contract", () => {
       expect(responses?.["200"], route.path).toBeDefined();
       expect(responses?.["201"], route.path).toBeUndefined();
     }
+
+    expect(document.paths["/api/v1/auth/register"]?.post?.responses["202"]).toMatchObject({
+      description: "Successful response.",
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/PendingRegistrationResponse" }
+        }
+      }
+    });
   });
 
   it("documents pilot readiness auth failures with a 403 response", () => {
