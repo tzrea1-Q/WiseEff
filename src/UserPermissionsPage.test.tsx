@@ -73,7 +73,7 @@ describe("UserPermissionsPage", () => {
     renderPage();
     const capabilities = screen.getByLabelText("角色权限说明");
 
-    expect(screen.getByRole("heading", { name: "User permissions" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "User permissions" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Guest" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Hardware Committer" })).toBeInTheDocument();
     expect(within(capabilities).getByRole("heading", { name: "Software Committer" })).toBeInTheDocument();
@@ -124,16 +124,16 @@ describe("UserPermissionsPage", () => {
     expect(within(fields[2] as HTMLElement).getByText("Status")).toHaveClass("user-permissions-filter-label");
   });
 
-  it("keeps the page title grouped away from the add user action", () => {
+  it("keeps the repeated page title copy out of the user management body", () => {
     renderPage();
 
-    const summaryCopy = document.querySelector(".user-permissions-summary__copy") as HTMLElement;
+    const page = document.querySelector(".user-permissions-page") as HTMLElement;
     const addUserButton = screen.getByRole("button", { name: "Add user" });
 
-    expect(summaryCopy).toContainElement(screen.getByRole("heading", { name: "User permissions" }));
-    expect(summaryCopy).toContainElement(screen.getByText("8 platform users across 6 roles."));
+    expect(page).not.toHaveTextContent("Access control");
+    expect(page).not.toHaveTextContent("8 platform users across 6 roles.");
+    expect(page.querySelector(".user-permissions-summary__copy")).not.toBeInTheDocument();
     expect(addUserButton).toHaveClass("user-permissions-primary-action");
-    expect(summaryCopy).not.toContainElement(addUserButton);
   });
 
   it("dispatches ADD_USER from the add user dialog", async () => {

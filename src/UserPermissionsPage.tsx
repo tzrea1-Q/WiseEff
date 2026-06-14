@@ -253,13 +253,8 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   }
 
   return (
-    <section className="user-permissions-page" aria-labelledby="user-permissions-title">
+    <section className="user-permissions-page" aria-label="User permissions">
       <div className="user-permissions-summary">
-        <div className="user-permissions-summary__copy">
-          <span className="eyebrow">Access control</span>
-          <h2 id="user-permissions-title">User permissions</h2>
-          <p>{state.users.length} platform users across {platformRoles.length} roles.</p>
-        </div>
         <button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
           <UserPlus size={16} aria-hidden="true" />
           <span>Add user</span>
