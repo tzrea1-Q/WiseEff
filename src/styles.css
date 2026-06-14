@@ -776,9 +776,14 @@ body {
 }
 
 .auth-screen {
-  min-height: 100vh;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 28px;
   background:
     linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(237, 242, 247, 0.95)),

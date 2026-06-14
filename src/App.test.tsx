@@ -440,6 +440,16 @@ describe("WiseEff app shell", () => {
     expect(roleLabels).not.toContain("Admin");
   });
 
+  it("keeps the auth screen scrollable when registration content exceeds the viewport", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const authScreenCss = readCssBlock(css, ".auth-screen");
+
+    expect(authScreenCss).toContain("height: 100vh;");
+    expect(authScreenCss).toContain("overflow-y: auto;");
+    expect(authScreenCss).toContain("-webkit-overflow-scrolling: touch;");
+    expect(authScreenCss).toContain("align-items: start;");
+  });
+
   it("updates the current profile and logs out from the topbar menu", async () => {
     window.history.replaceState(null, "", "/parameter-home");
     const authClient = {
