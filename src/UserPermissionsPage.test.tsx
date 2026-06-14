@@ -323,7 +323,7 @@ describe("UserPermissionsPage", () => {
     const row = screen.getByText("Liu Min").closest("tr")!;
 
     await userEvent.selectOptions(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
-    await userEvent.click(within(row).getByRole("button", { name: "停用 Liu Min" }));
+    await userEvent.click(within(row).getByRole("button", { name: "停用" }));
 
     expect(dispatch).toHaveBeenCalledWith({
       type: "ASSIGN_USER_ROLE",
@@ -348,7 +348,7 @@ describe("UserPermissionsPage", () => {
     const row = screen.getByText("Liu Min").closest("tr")!;
 
     await userEvent.selectOptions(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
-    await userEvent.click(within(row).getByRole("button", { name: "停用 Liu Min" }));
+    await userEvent.click(within(row).getByRole("button", { name: "停用" }));
 
     expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer");
     expect(userGovernanceActions.setUserActive).toHaveBeenCalledWith("u-liu-min", false);
@@ -431,6 +431,17 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByRole("columnheader", { name: "角色" })).toHaveClass("user-permissions-role-header");
     expect(roleCell).toHaveClass("user-permissions-role-cell");
     expect(roleSelect).toHaveClass("user-permissions-role-select");
+  });
+
+  it("shows activation actions without repeating the user name", () => {
+    renderPage();
+    const activeUserRow = screen.getByText("Liu Min").closest("tr")!;
+    const disabledUserRow = screen.getByText("Tao Lin").closest("tr")!;
+
+    expect(within(activeUserRow).getByRole("button", { name: "停用" })).toBeInTheDocument();
+    expect(within(disabledUserRow).getByRole("button", { name: "启用" })).toBeInTheDocument();
+    expect(within(activeUserRow).queryByRole("button", { name: "停用 Liu Min" })).not.toBeInTheDocument();
+    expect(within(disabledUserRow).queryByRole("button", { name: "启用 Tao Lin" })).not.toBeInTheDocument();
   });
 
   it("supports header filters on every user table data column", async () => {

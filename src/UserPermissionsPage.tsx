@@ -486,7 +486,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                           });
                         }}
                       >
-                        {user.isActive ? `停用 ${user.name}` : `启用 ${user.name}`}
+                        {user.isActive ? "停用" : "启用"}
                       </button>
                     </td>
                     <td>{user.lastActive}</td>
