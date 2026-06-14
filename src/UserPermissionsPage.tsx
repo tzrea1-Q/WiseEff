@@ -40,20 +40,34 @@ export type RegistrationRoleRequest = {
 };
 
 const statusOptions = [
-  { value: "all", label: "All statuses" },
-  { value: "active", label: "Active" },
-  { value: "disabled", label: "Disabled" }
+  { value: "all", label: "全部状态" },
+  { value: "active", label: "启用" },
+  { value: "disabled", label: "停用" }
 ] as const;
 
 type StatusFilter = (typeof statusOptions)[number]["value"];
+
+const statusLabels: Record<Exclude<StatusFilter, "all">, string> = {
+  active: "启用",
+  disabled: "停用"
+};
+
+const roleLabels: Record<PlatformRoleId, string> = {
+  guest: "访客",
+  "hardware-user": "硬件用户",
+  "software-user": "软件用户",
+  "hardware-committer": "硬件提交人",
+  "software-committer": "软件提交人",
+  admin: "管理员"
+};
 
 const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   guest: "仅可查看参数页面。",
   "hardware-user": "硬件侧可查看并提交参数修改，使用参数调试和日志分析。",
   "software-user": "软件侧可查看并提交参数修改，使用参数调试和日志分析。",
-  "hardware-committer": "包含硬件 User 权限，并可执行硬件侧参数检视。",
-  "software-committer": "包含硬件 User 权限，并可执行软件侧参数检视。",
-  admin: "包含全部 Committer 权限，并可访问各应用后台和用户管理。"
+  "hardware-committer": "包含硬件用户权限，并可执行硬件侧参数检视。",
+  "software-committer": "包含软件用户权限，并可执行软件侧参数检视。",
+  admin: "包含全部提交人权限，并可访问各应用后台和用户管理。"
 };
 
 const permissionLabels: Record<PermissionKey, string> = {
@@ -74,9 +88,13 @@ type RoleHintState = {
   y: number;
 };
 
-function roleNameOf(roleId: PlatformRoleId) {
+function roleLabelOf(roleId: PlatformRoleId) {
   const normalizedRoleId = migrateLegacyRoleId(roleId);
-  return platformRoles.find((role) => role.id === normalizedRoleId)?.name ?? normalizedRoleId;
+  return roleLabels[normalizedRoleId] ?? normalizedRoleId;
+}
+
+function statusLabelOf(isActive: boolean) {
+  return isActive ? statusLabels.active : statusLabels.disabled;
 }
 
 function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
@@ -87,24 +105,27 @@ function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
     return user.title;
   }
   if (key === "role") {
-    return roleNameOf(user.roleId);
+    return roleLabelOf(user.roleId);
   }
   if (key === "status") {
-    return user.isActive ? "Active" : "Disabled";
+    return statusLabelOf(user.isActive);
   }
   return user.lastActive;
 }
 
 function userAccountIdentifier(user: User) {
-  return user.email ?? user.username ?? "No account identifier";
+  return user.email ?? user.username ?? "无账号标识";
 }
 
 function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; position: RoleHintState }) {
-  const role = platformRoles.find((item) => item.id === roleId);
+  const normalizedRoleId = migrateLegacyRoleId(roleId);
+  const role = platformRoles.find((item) => item.id === normalizedRoleId);
 
   if (!role) {
     return null;
   }
+
+  const roleLabel = roleLabelOf(role.id);
 
   const style = {
     "--role-tooltip-x": `${position.x}px`,
@@ -112,8 +133,8 @@ function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; p
   } as CSSProperties;
 
   return (
-    <div className="user-permissions-role-tooltip" role="tooltip" aria-label={`${role.name} role permissions`} style={style}>
-      <h3>{role.name}</h3>
+    <div className="user-permissions-role-tooltip" role="tooltip" aria-label={`${roleLabel}角色权限`} style={style}>
+      <h3>{roleLabel}</h3>
       <p>{roleCapabilityDescriptions[role.id]}</p>
       <ul>
         {role.permissions.map((permission) => (
@@ -231,7 +252,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       })
       .catch((error) => {
         if (!cancelled) {
-          setRegistrationRoleRequestError(error instanceof Error ? error.message : "Load registration role requests failed.");
+          setRegistrationRoleRequestError(error instanceof Error ? error.message : "加载注册角色申请失败。");
         }
       });
 
@@ -247,19 +268,19 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
     try {
       if (decision === "approve") {
         if (!userGovernanceActions?.approveRegistrationRoleRequest) {
-          throw new Error("Registration role approval is not enabled.");
+          throw new Error("注册角色申请审批尚未启用。");
         }
         await userGovernanceActions.approveRegistrationRoleRequest(request.id);
         dispatch({ type: "ASSIGN_USER_ROLE", userId: request.userId, roleId: request.requestedRoleId });
       } else {
         if (!userGovernanceActions?.rejectRegistrationRoleRequest) {
-          throw new Error("Registration role rejection is not enabled.");
+          throw new Error("注册角色申请拒绝尚未启用。");
         }
         await userGovernanceActions.rejectRegistrationRoleRequest(request.id);
       }
       setRegistrationRoleRequests((items) => items.filter((item) => item.id !== request.id));
     } catch (error) {
-      setRegistrationRoleRequestError(error instanceof Error ? error.message : "Registration role request decision failed.");
+      setRegistrationRoleRequestError(error instanceof Error ? error.message : "注册角色申请处理失败。");
     } finally {
       setDecidingRequestId("");
     }
@@ -272,7 +293,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
     const trimmedTitle = title.trim();
 
     if (!trimmedName || !trimmedEmail) {
-      setAddUserError("Name and email are required.");
+      setAddUserError("姓名和邮箱不能为空。");
       return;
     }
 
@@ -292,7 +313,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         roleId: createdUser?.roleId ?? initialRoleId
       });
     } catch (error) {
-      setAddUserError(error instanceof Error ? error.message : "Create user failed.");
+      setAddUserError(error instanceof Error ? error.message : "创建用户失败。");
       return;
     }
 
@@ -305,32 +326,32 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   }
 
   return (
-    <section className="user-permissions-page" aria-label="User permissions">
+    <section className="user-permissions-page" aria-label="用户权限">
       <div className="user-permissions-summary">
         <button className="button primary user-permissions-primary-action" type="button" onClick={() => setAddUserOpen(true)}>
           <UserPlus size={16} aria-hidden="true" />
-          <span>Add user</span>
+          <span>添加用户</span>
         </button>
       </div>
 
-      <div className="user-permissions-filters" role="search" aria-label="User filters">
+      <div className="user-permissions-filters" role="search" aria-label="用户筛选">
         <label className="user-permissions-filter-field user-permissions-filter-field--search">
-          <span className="user-permissions-filter-label">Search</span>
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search users" />
+          <span className="user-permissions-filter-label">搜索</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索用户" />
         </label>
         <label className="user-permissions-filter-field">
-          <span className="user-permissions-filter-label">Role</span>
+          <span className="user-permissions-filter-label">角色</span>
           <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value as PlatformRoleId | "all")}>
-            <option value="all">All roles</option>
+            <option value="all">全部角色</option>
             {platformRoles.map((role) => (
               <option key={role.id} value={role.id}>
-                {role.name}
+                {roleLabelOf(role.id)}
               </option>
             ))}
           </select>
         </label>
         <label className="user-permissions-filter-field">
-          <span className="user-permissions-filter-label">Status</span>
+          <span className="user-permissions-filter-label">状态</span>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
             {statusOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -341,13 +362,13 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         </label>
       </div>
 
-      <section className="user-permissions-approval-queue" aria-label="Registration role requests">
+      <section className="user-permissions-approval-queue" aria-label="注册角色申请">
         <div className="user-permissions-approval-queue__header">
           <div>
-            <span className="eyebrow">Registration</span>
-            <h3>Role requests</h3>
+            <span className="eyebrow">注册申请</span>
+            <h3>角色申请</h3>
           </div>
-          <span className="user-permissions-approval-count">{registrationRoleRequests.length} pending</span>
+          <span className="user-permissions-approval-count">{registrationRoleRequests.length} 条待处理</span>
         </div>
         {registrationRoleRequestError ? (
           <p role="alert" className="user-permissions-modal-error">{registrationRoleRequestError}</p>
@@ -361,9 +382,9 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                   <span>{request.username ?? request.userId}</span>
                 </div>
                 <div className="user-permissions-approval-role-change">
-                  <span>{roleNameOf(request.currentRoleId)}</span>
+                  <span>{roleLabelOf(request.currentRoleId)}</span>
                   <span aria-hidden="true">→</span>
-                  <span>{roleNameOf(request.requestedRoleId)}</span>
+                  <span>{roleLabelOf(request.requestedRoleId)}</span>
                 </div>
                 <div className="user-permissions-approval-actions">
                   <button
@@ -372,7 +393,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                     disabled={decidingRequestId === request.id}
                     onClick={() => void decideRegistrationRoleRequest(request, "approve")}
                   >
-                    Approve
+                    通过
                   </button>
                   <button
                     className="button"
@@ -380,27 +401,28 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                     disabled={decidingRequestId === request.id}
                     onClick={() => void decideRegistrationRoleRequest(request, "reject")}
                   >
-                    Reject
+                    拒绝
                   </button>
                 </div>
               </article>
             ))}
           </div>
         ) : (
-          <p className="user-permissions-approval-empty">No pending role requests.</p>
+          <p className="user-permissions-approval-empty">暂无待处理角色申请。</p>
         )}
       </section>
 
       <div className="user-permissions-grid">
         <div className="user-permissions-table-card">
-          <table aria-label="Platform users">
+          <table aria-label="平台用户">
+            <caption className="sr-only">平台用户</caption>
             <thead>
               <tr>
-                <th scope="col">{renderHeader("user", "User")}</th>
-                <th scope="col">{renderHeader("title", "Title")}</th>
-                <th scope="col" className="user-permissions-role-header">{renderHeader("role", "Role")}</th>
-                <th scope="col">{renderHeader("status", "Status")}</th>
-                <th scope="col">{renderHeader("lastActive", "Last active")}</th>
+                <th scope="col">{renderHeader("user", "用户")}</th>
+                <th scope="col">{renderHeader("title", "职务")}</th>
+                <th scope="col" className="user-permissions-role-header">{renderHeader("role", "角色")}</th>
+                <th scope="col">{renderHeader("status", "状态")}</th>
+                <th scope="col">{renderHeader("lastActive", "最近活跃")}</th>
               </tr>
             </thead>
             <tbody>
@@ -423,7 +445,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                       <div className="user-permissions-role-control">
                         <select
                           className="user-permissions-role-select"
-                          aria-label={`Role for ${user.name}`}
+                          aria-label={`调整 ${user.name} 的角色`}
                           value={normalizedRoleId}
                           disabled={isCurrentUser}
                           onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
@@ -440,7 +462,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                         >
                           {platformRoles.map((role) => (
                             <option key={role.id} value={role.id}>
-                              {role.name}
+                              {roleLabelOf(role.id)}
                             </option>
                           ))}
                         </select>
@@ -464,7 +486,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                           });
                         }}
                       >
-                        {user.isActive ? `Disable ${user.name}` : `Enable ${user.name}`}
+                        {user.isActive ? `停用 ${user.name}` : `启用 ${user.name}`}
                       </button>
                     </td>
                     <td>{user.lastActive}</td>
@@ -479,10 +501,10 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
       {addUserOpen && (
         <div role="dialog" aria-modal="true" aria-labelledby="add-user-title" className="user-permissions-modal">
           <form className="user-permissions-modal-card" onSubmit={handleAddUserSubmit}>
-            <h3 id="add-user-title">Add user</h3>
+            <h3 id="add-user-title">添加用户</h3>
             <div className="user-permissions-modal-fields">
               <label className="user-permissions-modal-field">
-                <span>Name</span>
+                <span>姓名</span>
                 <input
                   className="user-permissions-modal-control"
                   value={name}
@@ -494,7 +516,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                 />
               </label>
               <label className="user-permissions-modal-field">
-                <span>Email</span>
+                <span>邮箱</span>
                 <input
                   className="user-permissions-modal-control"
                   type="email"
@@ -507,11 +529,11 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                 />
               </label>
               <label className="user-permissions-modal-field">
-                <span>Title</span>
+                <span>职务</span>
                 <input className="user-permissions-modal-control" value={title} onChange={(event) => setTitle(event.target.value)} />
               </label>
               <label className="user-permissions-modal-field">
-                <span>Initial role</span>
+                <span>初始角色</span>
                 <select
                   className="user-permissions-modal-control"
                   value={initialRoleId}
@@ -519,7 +541,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                 >
                   {platformRoles.map((role) => (
                     <option key={role.id} value={role.id}>
-                      {role.name}
+                      {roleLabelOf(role.id)}
                     </option>
                   ))}
                 </select>
@@ -532,10 +554,10 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                 type="button"
                 onClick={() => setAddUserOpen(false)}
               >
-                Cancel
+                取消
               </button>
               <button className="button primary user-permissions-modal-action user-permissions-modal-action--primary" type="submit">
-                Create user
+                创建用户
               </button>
             </div>
           </form>
