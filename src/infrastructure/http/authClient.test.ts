@@ -98,4 +98,32 @@ describe("createAuthClient", () => {
 
     expect(localStorage.getItem(LOCAL_AUTH_TOKEN_STORAGE_KEY)).toBe("we_local_registered");
   });
+
+  it("does not persist a local token when committer registration is pending approval", async () => {
+    localStorage.removeItem(LOCAL_AUTH_TOKEN_STORAGE_KEY);
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          status: "pending_approval",
+          user: { id: "u-local", organizationId: "org-local", name: "Local Committer", username: "local.committer", title: "hardware-user", isActive: false },
+          organization: { id: "org-local", name: "Local Org" },
+          requestedRoleId: "hardware-committer",
+          assignedRoleId: "hardware-user"
+        }),
+        { status: 202 }
+      )
+    );
+    const authClient = createAuthClient(createApiClient({ baseUrl: "", fetchImpl: fetchMock }));
+
+    const result = await authClient.register({
+      organization: "硬件部",
+      name: "Local Committer",
+      username: "local.committer",
+      roleId: "hardware-committer",
+      password: "strong-password"
+    });
+
+    expect("status" in result ? result.status : undefined).toBe("pending_approval");
+    expect(localStorage.getItem(LOCAL_AUTH_TOKEN_STORAGE_KEY)).toBeNull();
+  });
 });

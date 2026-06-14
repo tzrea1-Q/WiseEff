@@ -892,6 +892,60 @@ body {
   font-weight: 700;
 }
 
+.auth-pending-notice {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  color: #0f172a;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+}
+
+.auth-pending-notice h2 {
+  margin: -4px 0 0;
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.auth-pending-notice p {
+  margin: 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.55;
+}
+
+.auth-pending-notice dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.auth-pending-notice dl div {
+  min-width: 0;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(147, 197, 253, 0.7);
+  border-radius: 8px;
+}
+
+.auth-pending-notice dt {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.auth-pending-notice dd {
+  margin: 4px 0 0;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .auth-submit {
   display: inline-flex;
   align-items: center;

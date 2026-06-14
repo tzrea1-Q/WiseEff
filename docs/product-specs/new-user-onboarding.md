@@ -8,7 +8,7 @@ This document captures first-session expectations for a new WiseEff user or deve
 
 Users should understand that WiseEff coordinates parameter management, log analysis, debugging, and Agent-assisted work inside governed engineering workflows.
 
-In API mode, unauthenticated users first see the WiseEff auth screen. Local account login and registration are productized for self-managed evaluation flows: registration uses a username, fixed localized hardware/software department organization choices, and an allowed self-service platform role. Admin is not available for self-registration. Committer requests create a pending Admin approval request and grant only the matching base User role until approved. Email verification is intentionally not supported yet, so this path is not verified-domain onboarding or invitation acceptance.
+In API mode, unauthenticated users first see the WiseEff auth screen. Local account login and registration are productized for self-managed evaluation flows: registration uses a username, fixed localized hardware/software department organization choices, and an allowed self-service platform role. Admin is not available for self-registration. Committer requests create an inactive account and a pending Admin approval request; they do not sign the user in or grant a session until approval activates the account and assigns the requested Committer role. Email verification is intentionally not supported yet, so this path is not verified-domain onboarding or invitation acceptance.
 
 ## First Developer Path
 
@@ -25,7 +25,7 @@ An operator should start from runbooks, understand readiness boundaries, run loc
 - Device writes require state checks, snapshots, readback, and audit.
 - Mock runtime is for demo/test use only.
 - The local account lifecycle covers username-based register, login, logout, current-user lookup, and current-user profile editing.
-- Admin self-registration is blocked, and local Committer registration requires Admin approval from user governance.
+- Admin self-registration is blocked, and local Committer registration stays unauthenticated until Admin approval from user governance.
 - Invitations, email verification, and external SSO onboarding remain separate productization work.
 
 ## Success Criteria

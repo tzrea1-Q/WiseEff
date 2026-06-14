@@ -66,7 +66,7 @@ This provider stores credentials and sessions in PostgreSQL. It adds the followi
 
 | Route | Purpose |
 | --- | --- |
-| `POST /api/v1/auth/register` | Register a local account with a selected organization and allowed self-service platform role. |
+| `POST /api/v1/auth/register` | Register a local account with a selected organization and allowed self-service platform role. Returns `201` with a session for non-committer roles, or `202 pending_approval` without a token for Committer requests. |
 | `POST /api/v1/auth/login` | Exchange username and password for a local session token. |
 | `POST /api/v1/auth/logout` | Revoke the current local session token. |
 | `GET /api/v1/me` | Return the authenticated `AuthContext`. |
@@ -75,11 +75,11 @@ This provider stores credentials and sessions in PostgreSQL. It adds the followi
 | `POST /api/v1/users/registration-role-requests/:requestId/approve` | Let Admins approve a pending committer role request. |
 | `POST /api/v1/users/registration-role-requests/:requestId/reject` | Let Admins reject a pending committer role request. |
 
-Registration accepts `organization`, `name`, `username`, `roleId`, and `password`. The self-service organization choices are the localized hardware department and software department values. Self-service registration never accepts `admin`. Requests for `hardware-committer` or `software-committer` create the account with the matching base User role and a pending Admin approval request; the committer role is granted only after Admin approval. Local accounts do not store or return email addresses; username is the local login identifier. Email verification is not implemented yet, so registration must not be treated as verified-domain onboarding or invitation acceptance.
+Registration accepts `organization`, `name`, `username`, `roleId`, and `password`. The self-service organization choices are the localized hardware department and software department values. Self-service registration never accepts `admin`. Requests for `hardware-committer` or `software-committer` create an inactive account with the matching base User role plus a pending Admin approval request. They do not create a session token, and password login is blocked until Admin approval activates the user and grants the requested Committer role. Local accounts do not store or return email addresses; username is the local login identifier. Email verification is not implemented yet, so registration must not be treated as verified-domain onboarding or invitation acceptance.
 
 In the local development profile (`NODE_ENV=development`, `AUTH_MODE=production`, `AUTH_PROVIDER=local`), self-registered accounts are intentionally attached to the seeded `org-chargelab` / `ChargeLab` demo organization so they can see the seeded parameter, log, and debugging data. Non-development local-account deployments keep the selected department organization ids (`org-hardware-department` or `org-software-department`) for tenant isolation.
 
-Passwords are stored as salted `scrypt` hashes in `user_password_credentials`. Session tokens are returned once to the caller as opaque `we_local_*` bearer tokens; only SHA-256 token hashes are persisted in `auth_sessions`. Sessions expire after the service TTL and logout sets `revoked_at`. Every register, login, logout, and profile update writes an audit event.
+Passwords are stored as salted `scrypt` hashes in `user_password_credentials`. Session tokens are returned once to the caller as opaque `we_local_*` bearer tokens only for successful login or non-committer registration; pending Committer registration never writes an `auth_sessions` row. Only SHA-256 token hashes are persisted in `auth_sessions`. Sessions expire after the service TTL and logout sets `revoked_at`. Every register, login, logout, and profile update writes an audit event.
 
 Requests after login use:
 

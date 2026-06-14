@@ -172,7 +172,9 @@ import {
   type AuthContextDto,
   type AuthSessionDto,
   type LoginLocalAccountInput,
+  type PendingRegistrationDto,
   type RegisterLocalAccountInput,
+  type RegisterLocalAccountResponseDto,
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
@@ -182,13 +184,17 @@ import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 type WiseEffAuthClient = {
   getCurrentAuthContext(): Promise<AuthContextDto>;
-  register?(input: RegisterLocalAccountInput): Promise<AuthSessionDto>;
+  register?(input: RegisterLocalAccountInput): Promise<RegisterLocalAccountResponseDto>;
   login?(input: LoginLocalAccountInput): Promise<AuthSessionDto>;
   logout?(): Promise<void>;
   updateCurrentUserProfile?(input: UpdateCurrentUserProfileInput): Promise<AuthContextDto>;
 };
 
 type ApiAuthStatus = "checking" | "authenticated" | "unauthenticated";
+
+function isPendingRegistrationResponse(response: RegisterLocalAccountResponseDto): response is PendingRegistrationDto {
+  return "status" in response && response.status === "pending_approval";
+}
 
 function authProbeErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : "";
@@ -3050,6 +3056,7 @@ function ApiAuthPage({
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [formError, setFormError] = useState("");
+  const [pendingRegistration, setPendingRegistration] = useState<PendingRegistrationDto | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const organizationOptions = useMemo(
     () => localAuthOrganizations.map((value) => ({ value, label: value })),
@@ -3059,10 +3066,17 @@ function ApiAuthPage({
     () => platformRoles.filter((role) => selfRegistrationRoleIds.has(role.id)).map((role) => ({ value: role.id, label: role.name })),
     []
   );
+  const pendingRequestedRoleName = pendingRegistration
+    ? (platformRoles.find((role) => role.id === pendingRegistration.requestedRoleId)?.name ?? pendingRegistration.requestedRoleId)
+    : "";
+  const pendingAssignedRoleName = pendingRegistration
+    ? (platformRoles.find((role) => role.id === pendingRegistration.assignedRoleId)?.name ?? pendingRegistration.assignedRoleId)
+    : "";
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
+    setPendingRegistration(null);
     setSubmitting(true);
 
     try {
@@ -3075,15 +3089,19 @@ function ApiAuthPage({
         if (!authClient.register) {
           throw new Error("本地账号注册未启用。");
         }
-        await onAuthenticated(
-          await authClient.register({
-            organization,
-            name,
-            username,
-            roleId,
-            password
-          })
-        );
+        const response = await authClient.register({
+          organization,
+          name,
+          username,
+          roleId,
+          password
+        });
+        if (isPendingRegistrationResponse(response)) {
+          setPendingRegistration(response);
+          setPassword("");
+          return;
+        }
+        await onAuthenticated(response);
       }
     } catch (submitError) {
       setFormError(submitError instanceof Error ? submitError.message : "认证请求失败。");
@@ -3111,6 +3129,27 @@ function ApiAuthPage({
             注册
           </button>
         </div>
+
+        {pendingRegistration ? (
+          <section className="auth-pending-notice" aria-labelledby="auth-pending-title">
+            <p className="eyebrow">Pending Approval</p>
+            <h2 id="auth-pending-title">注册申请已提交</h2>
+            <p>
+              {pendingRegistration.user.username} 已提交 {pendingRequestedRoleName} 申请。管理员批准前账号不会登录到工作台，
+              批准后可使用当前用户名和密码登录。
+            </p>
+            <dl>
+              <div>
+                <dt>申请角色</dt>
+                <dd>{pendingRequestedRoleName}</dd>
+              </div>
+              <div>
+                <dt>基础角色</dt>
+                <dd>{pendingAssignedRoleName}</dd>
+              </div>
+            </dl>
+          </section>
+        ) : null}
 
         <form className="auth-form" onSubmit={submit}>
           {mode === "register" ? (
