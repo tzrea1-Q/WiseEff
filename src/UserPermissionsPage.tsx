@@ -372,7 +372,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                     disabled={decidingRequestId === request.id}
                     onClick={() => void decideRegistrationRoleRequest(request, "approve")}
                   >
-                    Approve {request.userName}
+                    Approve
                   </button>
                   <button
                     className="button"
@@ -380,7 +380,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                     disabled={decidingRequestId === request.id}
                     onClick={() => void decideRegistrationRoleRequest(request, "reject")}
                   >
-                    Reject {request.userName}
+                    Reject
                   </button>
                 </div>
               </article>

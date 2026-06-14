@@ -376,10 +376,18 @@ describe("UserPermissionsPage", () => {
     expect(within(queue).getByText("Software Committer")).toBeInTheDocument();
     expect(within(queue).getByText("Reject Candidate")).toBeInTheDocument();
 
-    await userEvent.click(within(queue).getByRole("button", { name: "Approve Committer Candidate" }));
+    const approveRequest = within(queue).getByText("Committer Candidate").closest("article")!;
+    const rejectRequest = within(queue).getByText("Reject Candidate").closest("article")!;
+
+    expect(within(approveRequest).getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    expect(within(approveRequest).getByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(within(approveRequest).queryByRole("button", { name: "Approve Committer Candidate" })).not.toBeInTheDocument();
+    expect(within(rejectRequest).queryByRole("button", { name: "Reject Reject Candidate" })).not.toBeInTheDocument();
+
+    await userEvent.click(within(approveRequest).getByRole("button", { name: "Approve" }));
     expect(userGovernanceActions.approveRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-1");
 
-    await userEvent.click(within(queue).getByRole("button", { name: "Reject Reject Candidate" }));
+    await userEvent.click(within(rejectRequest).getByRole("button", { name: "Reject" }));
     expect(userGovernanceActions.rejectRegistrationRoleRequest).toHaveBeenCalledWith("registration-role-request-2");
   });
 
