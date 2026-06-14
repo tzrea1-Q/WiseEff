@@ -394,6 +394,18 @@ describe("UserPermissionsPage", () => {
     expect(roleSelectStyles).toContain("width: 180px;");
   });
 
+  it("gives user management action buttons visible chrome instead of text-only controls", () => {
+    const baseButtonStyles = readCssBlock(".user-permissions-page .button");
+    const primaryButtonStyles = readCssBlock(".user-permissions-page .button.primary");
+
+    expect(baseButtonStyles).toContain("display: inline-flex;");
+    expect(baseButtonStyles).toContain("background: #fff;");
+    expect(baseButtonStyles).toContain("border: 1px solid #d7dfec;");
+    expect(baseButtonStyles).toContain("border-radius: 8px;");
+    expect(primaryButtonStyles).toContain("background: var(--app-primary);");
+    expect(primaryButtonStyles).toContain("border-color: var(--app-primary);");
+  });
+
   it("renders and filters legacy role ids under their migrated platform role", async () => {
     const base = createPrototypeState();
     const state = {

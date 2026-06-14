@@ -3951,6 +3951,58 @@ td small {
   min-width: 0;
 }
 
+.user-permissions-page .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #d7dfec;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.user-permissions-page .button:hover:not(:disabled) {
+  color: #0f172a;
+  background: #f8fafc;
+  border-color: #b8c5dc;
+}
+
+.user-permissions-page .button.primary {
+  color: #fff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
+  box-shadow: 0 10px 22px rgba(0, 61, 155, 0.18);
+}
+
+.user-permissions-page .button.primary:hover:not(:disabled) {
+  color: #fff;
+  background: #004bb8;
+  border-color: #004bb8;
+}
+
+.user-permissions-page .button:focus-visible {
+  outline: 2px solid rgba(0, 93, 224, 0.2);
+  outline-offset: 2px;
+}
+
+.user-permissions-page .button:disabled {
+  color: #64748b;
+  background: #eef3fb;
+  border-color: #dbe4f2;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
 .user-permissions-primary-action {
   display: inline-flex;
   align-items: center;
