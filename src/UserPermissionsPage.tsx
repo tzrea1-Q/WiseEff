@@ -54,10 +54,10 @@ const statusLabels: Record<Exclude<StatusFilter, "all">, string> = {
 
 const roleLabels: Record<PlatformRoleId, string> = {
   guest: "访客",
-  "hardware-user": "硬件用户",
-  "software-user": "软件用户",
-  "hardware-committer": "硬件提交人",
-  "software-committer": "软件提交人",
+  "hardware-user": "硬件开发",
+  "software-user": "软件开发",
+  "hardware-committer": "硬件MDE",
+  "software-committer": "软件MDE",
   admin: "管理员"
 };
 
@@ -65,8 +65,8 @@ const roleCapabilityDescriptions: Record<PlatformRoleId, string> = {
   guest: "仅可查看参数页面。",
   "hardware-user": "硬件侧可查看并提交参数修改，使用参数调试和日志分析。",
   "software-user": "软件侧可查看并提交参数修改，使用参数调试和日志分析。",
-  "hardware-committer": "包含硬件用户权限，并可执行硬件侧参数检视。",
-  "software-committer": "包含软件用户权限，并可执行软件侧参数检视。",
+  "hardware-committer": "包含硬件开发权限，并可执行硬件侧参数检视。",
+  "software-committer": "包含软件开发权限，并可执行软件侧参数检视。",
   admin: "包含全部提交人权限，并可访问各应用后台和用户管理。"
 };
 

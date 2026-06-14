@@ -100,15 +100,15 @@ describe("UserPermissionsPage", () => {
 
     await userEvent.hover(roleCell);
 
-    const tooltip = screen.getByRole("tooltip", { name: "软件用户角色权限" });
-    expect(within(tooltip).getByRole("heading", { name: "软件用户" })).toBeInTheDocument();
+    const tooltip = screen.getByRole("tooltip", { name: "软件开发角色权限" });
+    expect(within(tooltip).getByRole("heading", { name: "软件开发" })).toBeInTheDocument();
     expect(within(tooltip).getByText("软件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
     expect(within(tooltip).getByText("查看参数")).toBeInTheDocument();
     expect(within(tooltip).getByText("修改参数")).toBeInTheDocument();
     expect(within(tooltip).getByText("使用调试平台")).toBeInTheDocument();
     expect(within(tooltip).getByText("上传日志智能分析")).toBeInTheDocument();
     expect(within(tooltip).queryByText("parameter:view")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "硬件用户" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "硬件开发" })).not.toBeInTheDocument();
 
     await userEvent.unhover(roleCell);
 
@@ -122,9 +122,9 @@ describe("UserPermissionsPage", () => {
 
     await userEvent.click(roleSelect);
 
-    const tooltip = screen.getByRole("tooltip", { name: "硬件提交人角色权限" });
-    expect(within(tooltip).getByRole("heading", { name: "硬件提交人" })).toBeInTheDocument();
-    expect(within(tooltip).getByText("包含硬件用户权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
+    const tooltip = screen.getByRole("tooltip", { name: "硬件MDE角色权限" });
+    expect(within(tooltip).getByRole("heading", { name: "硬件MDE" })).toBeInTheDocument();
+    expect(within(tooltip).getByText("包含硬件开发权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
     expect(within(tooltip).getByText("审阅参数提交")).toBeInTheDocument();
 
     roleSelect.blur();
@@ -169,12 +169,20 @@ describe("UserPermissionsPage", () => {
     expect(page).toHaveTextContent("搜索");
     expect(page).toHaveTextContent("角色申请");
     expect(page).toHaveTextContent("平台用户");
+    expect(page).toHaveTextContent("硬件开发");
+    expect(page).toHaveTextContent("软件开发");
+    expect(page).toHaveTextContent("硬件MDE");
+    expect(page).toHaveTextContent("软件MDE");
     expect(page).not.toHaveTextContent("Add user");
     expect(page).not.toHaveTextContent("Search users");
     expect(page).not.toHaveTextContent("All roles");
     expect(page).not.toHaveTextContent("All statuses");
     expect(page).not.toHaveTextContent("Role requests");
     expect(page).not.toHaveTextContent("No pending role requests");
+    expect(page).not.toHaveTextContent("硬件用户");
+    expect(page).not.toHaveTextContent("软件用户");
+    expect(page).not.toHaveTextContent("硬件提交人");
+    expect(page).not.toHaveTextContent("软件提交人");
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
 
@@ -395,8 +403,8 @@ describe("UserPermissionsPage", () => {
     const queue = await screen.findByRole("region", { name: "注册角色申请" });
     expect(within(queue).getByText("Committer Candidate")).toBeInTheDocument();
     expect(within(queue).getByText("committer.candidate")).toBeInTheDocument();
-    expect(within(queue).getByText("软件用户")).toBeInTheDocument();
-    expect(within(queue).getByText("软件提交人")).toBeInTheDocument();
+    expect(within(queue).getByText("软件开发")).toBeInTheDocument();
+    expect(within(queue).getByText("软件MDE")).toBeInTheDocument();
     expect(within(queue).getByText("Reject Candidate")).toBeInTheDocument();
 
     const approveRequest = within(queue).getByText("Committer Candidate").closest("article")!;
