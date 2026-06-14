@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type Dispatch, type FormEvent } from "react";
 import { UserPlus } from "lucide-react";
 
 import type { AppAction } from "@/App";
@@ -68,6 +68,12 @@ const permissionLabels: Record<PermissionKey, string> = {
 
 type UserColumnFilterKey = "user" | "title" | "role" | "status" | "lastActive";
 
+type RoleHintState = {
+  userId: string;
+  x: number;
+  y: number;
+};
+
 function roleNameOf(roleId: PlatformRoleId) {
   const normalizedRoleId = migrateLegacyRoleId(roleId);
   return platformRoles.find((role) => role.id === normalizedRoleId)?.name ?? normalizedRoleId;
@@ -93,6 +99,31 @@ function userAccountIdentifier(user: User) {
   return user.email ?? user.username ?? "No account identifier";
 }
 
+function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; position: RoleHintState }) {
+  const role = platformRoles.find((item) => item.id === roleId);
+
+  if (!role) {
+    return null;
+  }
+
+  const style = {
+    "--role-tooltip-x": `${position.x}px`,
+    "--role-tooltip-y": `${position.y}px`
+  } as CSSProperties;
+
+  return (
+    <div className="user-permissions-role-tooltip" role="tooltip" aria-label={`${role.name} role permissions`} style={style}>
+      <h3>{role.name}</h3>
+      <p>{roleCapabilityDescriptions[role.id]}</p>
+      <ul>
+        {role.permissions.map((permission) => (
+          <li key={permission}>{permissionLabels[permission]}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function UserPermissionsPage({ state, dispatch, search: _search, userGovernanceActions }: UserPermissionsPageProps) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<PlatformRoleId | "all">("all");
@@ -107,6 +138,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   const [registrationRoleRequests, setRegistrationRoleRequests] = useState<RegistrationRoleRequest[]>([]);
   const [registrationRoleRequestError, setRegistrationRoleRequestError] = useState("");
   const [decidingRequestId, setDecidingRequestId] = useState("");
+  const [activeRoleHint, setActiveRoleHint] = useState<RoleHintState | null>(null);
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredUsers = useMemo(
@@ -160,6 +192,26 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
         {renderColumnFilter(key, label)}
       </div>
     );
+  }
+
+  function showRoleHint(userId: string, target: HTMLElement) {
+    const rect = target.getBoundingClientRect();
+    const tooltipWidth = 280;
+    const tooltipHeight = 204;
+    const margin = 16;
+    const opensBeside = window.innerWidth >= 900 && rect.right + 12 + tooltipWidth <= window.innerWidth - margin;
+    const x = opensBeside
+      ? rect.right + 12
+      : Math.max(margin, Math.min(rect.left, window.innerWidth - tooltipWidth - margin));
+    const y = opensBeside
+      ? Math.max(margin, Math.min(rect.top, window.innerHeight - tooltipHeight - margin))
+      : Math.max(margin, Math.min(rect.bottom + 10, window.innerHeight - tooltipHeight - margin));
+
+    setActiveRoleHint({ userId, x, y });
+  }
+
+  function hideRoleHint(userId: string) {
+    setActiveRoleHint((current) => (current?.userId === userId ? null : current));
   }
 
   useEffect(() => {
@@ -363,28 +415,39 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                       <div>{userAccountIdentifier(user)}</div>
                     </td>
                     <td>{user.title}</td>
-                    <td className="user-permissions-role-cell">
-                      <select
-                        className="user-permissions-role-select"
-                        aria-label={`Role for ${user.name}`}
-                        value={normalizedRoleId}
-                        disabled={isCurrentUser}
-                        onChange={async (event) => {
-                          const roleId = event.target.value as PlatformRoleId;
-                          await userGovernanceActions?.assignUserRole(user.id, roleId);
-                          dispatch({
-                            type: "ASSIGN_USER_ROLE",
-                            userId: user.id,
-                            roleId
-                          });
-                        }}
-                      >
-                        {platformRoles.map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                      </select>
+                    <td
+                      className="user-permissions-role-cell"
+                      onMouseEnter={(event) => showRoleHint(user.id, event.currentTarget)}
+                      onMouseLeave={() => hideRoleHint(user.id)}
+                    >
+                      <div className="user-permissions-role-control">
+                        <select
+                          className="user-permissions-role-select"
+                          aria-label={`Role for ${user.name}`}
+                          value={normalizedRoleId}
+                          disabled={isCurrentUser}
+                          onFocus={(event) => showRoleHint(user.id, event.currentTarget)}
+                          onBlur={() => hideRoleHint(user.id)}
+                          onChange={async (event) => {
+                            const roleId = event.target.value as PlatformRoleId;
+                            await userGovernanceActions?.assignUserRole(user.id, roleId);
+                            dispatch({
+                              type: "ASSIGN_USER_ROLE",
+                              userId: user.id,
+                              roleId
+                            });
+                          }}
+                        >
+                          {platformRoles.map((role) => (
+                            <option key={role.id} value={role.id}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </select>
+                        {activeRoleHint?.userId === user.id ? (
+                          <RoleCapabilityTooltip roleId={normalizedRoleId} position={activeRoleHint} />
+                        ) : null}
+                      </div>
                     </td>
                     <td>
                       <button
@@ -411,20 +474,6 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
             </tbody>
           </table>
         </div>
-
-        <aside className="user-permissions-capabilities" aria-label="角色权限说明">
-          {platformRoles.map((role) => (
-            <section key={role.id}>
-              <h3>{role.name}</h3>
-              <p>{roleCapabilityDescriptions[role.id]}</p>
-              <ul>
-                {role.permissions.map((permission) => (
-                  <li key={permission}>{permissionLabels[permission]}</li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </aside>
       </div>
 
       {addUserOpen && (

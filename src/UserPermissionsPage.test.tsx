@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -51,6 +51,17 @@ function readCssBlock(selector: string) {
   return css.slice(blockStart + 1, blockEnd);
 }
 
+function readLastCssBlock(selector: string) {
+  const css = readFileSync("src/styles.css", "utf8");
+  const selectorIndex = css.lastIndexOf(`${selector} {`);
+  expect(selectorIndex).toBeGreaterThanOrEqual(0);
+
+  const blockStart = css.indexOf("{", selectorIndex);
+  const blockEnd = css.indexOf("}", blockStart);
+
+  return css.slice(blockStart + 1, blockEnd);
+}
+
 function registrationRoleRequest(overrides: Partial<RegistrationRoleRequest> = {}): RegistrationRoleRequest {
   return {
     id: "registration-role-request-1",
@@ -71,29 +82,54 @@ function registrationRoleRequest(overrides: Partial<RegistrationRoleRequest> = {
 describe("UserPermissionsPage", () => {
   it("renders user permissions, role names, and platform users", () => {
     renderPage();
-    const capabilities = screen.getByLabelText("角色权限说明");
 
     expect(screen.getByRole("region", { name: "User permissions" })).toBeInTheDocument();
-    expect(within(capabilities).getByRole("heading", { name: "Guest" })).toBeInTheDocument();
-    expect(within(capabilities).getByRole("heading", { name: "Hardware Committer" })).toBeInTheDocument();
-    expect(within(capabilities).getByRole("heading", { name: "Software Committer" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("角色权限说明")).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Role for Xu Yun" })).toHaveValue("admin");
+    expect(screen.getByRole("combobox", { name: "Role for Wang Jie" })).toHaveValue("hardware-committer");
+    expect(screen.getByRole("combobox", { name: "Role for Sun Mei" })).toHaveValue("software-committer");
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
-  it("explains role capabilities in Chinese without exposing raw permission keys", () => {
+  it("shows role capabilities only while a role cell is hovered", async () => {
     renderPage();
-    const capabilities = screen.getByLabelText("角色权限说明");
+    const row = screen.getByText("Liu Min").closest("tr")!;
+    const roleCell = within(row).getByRole("combobox", { name: "Role for Liu Min" }).closest("td")!;
 
-    expect(within(capabilities).getByText("仅可查看参数页面。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("硬件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("软件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("包含硬件 User 权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("包含硬件 User 权限，并可执行软件侧参数检视。")).toBeInTheDocument();
-    expect(within(capabilities).getByText("包含全部 Committer 权限，并可访问各应用后台和用户管理。")).toBeInTheDocument();
-    expect(within(capabilities).getAllByText("查看参数").length).toBeGreaterThan(0);
-    expect(within(capabilities).getByText("管理用户权限")).toBeInTheDocument();
-    expect(within(capabilities).queryByText("parameter:view")).not.toBeInTheDocument();
-    expect(within(capabilities).queryByText("users:manage")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    await userEvent.hover(roleCell);
+
+    const tooltip = screen.getByRole("tooltip", { name: "Software User role permissions" });
+    expect(within(tooltip).getByRole("heading", { name: "Software User" })).toBeInTheDocument();
+    expect(within(tooltip).getByText("软件侧可查看并提交参数修改，使用参数调试和日志分析。")).toBeInTheDocument();
+    expect(within(tooltip).getByText("查看参数")).toBeInTheDocument();
+    expect(within(tooltip).getByText("修改参数")).toBeInTheDocument();
+    expect(within(tooltip).getByText("使用调试平台")).toBeInTheDocument();
+    expect(within(tooltip).getByText("上传日志智能分析")).toBeInTheDocument();
+    expect(within(tooltip).queryByText("parameter:view")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Hardware User" })).not.toBeInTheDocument();
+
+    await userEvent.unhover(roleCell);
+
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+
+  it("shows role capabilities when a role selector receives keyboard focus", async () => {
+    renderPage();
+    const row = screen.getByText("Wang Jie").closest("tr")!;
+    const roleSelect = within(row).getByRole("combobox", { name: "Role for Wang Jie" });
+
+    await userEvent.click(roleSelect);
+
+    const tooltip = screen.getByRole("tooltip", { name: "Hardware Committer role permissions" });
+    expect(within(tooltip).getByRole("heading", { name: "Hardware Committer" })).toBeInTheDocument();
+    expect(within(tooltip).getByText("包含硬件 User 权限，并可执行硬件侧参数检视。")).toBeInTheDocument();
+    expect(within(tooltip).getByText("审阅参数提交")).toBeInTheDocument();
+
+    roleSelect.blur();
+
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
   });
 
   it("ignores unrelated URL search params when filtering users", () => {
@@ -388,10 +424,14 @@ describe("UserPermissionsPage", () => {
   it("keeps role selectors wide enough for split committer role names", () => {
     const roleCellStyles = readCssBlock(".user-permissions-role-cell");
     const roleSelectStyles = readCssBlock(".user-permissions-role-select");
+    const roleTooltipStyles = readLastCssBlock(".user-permissions-role-tooltip");
 
     expect(roleCellStyles).toContain("width: 204px;");
     expect(roleSelectStyles).toContain("min-width: 180px;");
     expect(roleSelectStyles).toContain("width: 180px;");
+    expect(roleTooltipStyles).toContain("position: fixed;");
+    expect(roleTooltipStyles).toContain("max-height: calc(100vh - 32px);");
+    expect(roleTooltipStyles).toContain("overflow: auto;");
   });
 
   it("gives user management action buttons visible chrome instead of text-only controls", () => {
