@@ -72,6 +72,22 @@ function CodeValue({
   );
 }
 
+function HistoryEntryItem({ entry }: { entry: ParameterHistoryEntry }) {
+  const isComplex = isComplexParameterValue(entry.value);
+
+  return (
+    <li className="parameter-detail-history__item" data-complex={isComplex || undefined}>
+      <span className="parameter-detail-history__version">{entry.version}</span>
+      <span className="parameter-detail-history__value">
+        {isComplex ? <code tabIndex={0}>{entry.value || "-"}</code> : <span>{entry.value || "-"}</span>}
+      </span>
+      <small className="parameter-detail-history__meta">
+        {entry.changedAt} / {entry.changedBy}
+      </small>
+    </li>
+  );
+}
+
 const moduleLabels: Record<string, string> = {
   "Charging Policy": "充电策略",
   "Battery Safety": "电池安全",
@@ -558,13 +574,7 @@ export function ParameterDetailDialog({
                 </div>
                 <ul>
                   {parameter.history.slice(0, 3).map((entry) => (
-                    <li key={`${entry.version}-${entry.changedAt}`}>
-                      <span>{entry.version}</span>
-                      <span>{entry.value}</span>
-                      <small>
-                        {entry.changedAt} / {entry.changedBy}
-                      </small>
-                    </li>
+                    <HistoryEntryItem entry={entry} key={`${entry.version}-${entry.changedAt}`} />
                   ))}
                 </ul>
               </div>
