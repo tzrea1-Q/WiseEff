@@ -2184,6 +2184,86 @@ describe("WiseEff app shell", () => {
     expect(dialog.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("3200 mA");
   });
 
+  it("summarizes complex parameter changes in the review table instead of flattening config values", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const complexParameter = initialState.parameters.find((parameter) => parameter.name === "dts_fast_charge_profile_matrix");
+    expect(complexParameter).toBeDefined();
+    const complexTargetValue = complexParameter!.currentValue.replace('"burst"', '"boost"');
+    const complexRequest = {
+      ...initialState.changeRequests[0],
+      id: "PRQ-complex-table",
+      submissionRoundId: "PRS-complex-table",
+      projectId: complexParameter!.projectId,
+      parameterId: complexParameter!.id,
+      module: complexParameter!.module,
+      title: complexParameter!.name,
+      currentValue: complexParameter!.currentValue,
+      targetValue: complexTargetValue,
+      submitter: "Xu Yun",
+      status: "硬件Committer检视" as const
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          changeRequests: [complexRequest, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    const row = screen.getByRole("row", { name: /dts_fast_charge_profile_matrix/ });
+    const changeButton = within(row).getByRole("button", { name: "查看 dts_fast_charge_profile_matrix 提交详情" });
+    const summary = changeButton.querySelector(".parameter-value-summary");
+
+    expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent("复杂配置");
+    expect(summary).toHaveTextContent("fast-charge-profile-matrix");
+    expect(summary).toHaveTextContent("4 行 · 当前与目标不同");
+    expect(summary?.getAttribute("title") ?? "").not.toContain('"burst"');
+    expect(summary?.getAttribute("title") ?? "").not.toContain('"boost"');
+    expect(changeButton).not.toHaveTextContent('"burst"');
+    expect(changeButton).not.toHaveTextContent('"boost"');
+  });
+
+  it("keeps scalar review changes with trailing whitespace in the simple value layout", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const scalarParameter = initialState.parameters.find((parameter) => parameter.name === "battery_health_reserve_pct");
+    expect(scalarParameter).toBeDefined();
+    const scalarRequest = {
+      ...initialState.changeRequests[0],
+      id: "PRQ-scalar-whitespace",
+      submissionRoundId: "PRS-scalar-whitespace",
+      projectId: scalarParameter!.projectId,
+      parameterId: scalarParameter!.id,
+      module: scalarParameter!.module,
+      title: scalarParameter!.name,
+      currentValue: "15",
+      targetValue: "13\n",
+      submitter: "Xu Yun",
+      status: "硬件Committer检视" as const
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          changeRequests: [scalarRequest, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    const row = screen.getByRole("row", { name: /battery_health_reserve_pct/ });
+    const changeButton = within(row).getByRole("button", { name: "查看 battery_health_reserve_pct 提交详情" });
+
+    expect(changeButton.querySelector(".parameter-value-summary")).not.toBeInTheDocument();
+    expect(changeButton.querySelector(".value-change__values")).toHaveTextContent("15");
+    expect(changeButton.querySelector(".value-change__values")).toHaveTextContent("13");
+    expect(changeButton).not.toHaveTextContent("复杂配置");
+  });
+
   it("renders mixed simple and complex review submission details with the history diff layout", () => {
     window.history.replaceState(null, "", "/parameter-review");
     const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "soc_estimation_smoothing");

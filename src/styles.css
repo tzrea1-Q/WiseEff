@@ -2595,6 +2595,12 @@ td small {
   outline: none;
 }
 
+.review-change-value-summary {
+  min-width: 170px;
+  max-width: 280px;
+  text-align: left;
+}
+
 .strike {
   color: var(--app-muted);
   text-decoration: line-through;

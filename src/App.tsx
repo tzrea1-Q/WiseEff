@@ -3354,7 +3354,8 @@ export function getContextQuery(search: string) {
 }
 
 function isComplexSubmissionHistoryValue(value: string) {
-  return value.includes("\n") || value.length > 80;
+  const normalizedValue = value.trim();
+  return normalizedValue.includes("\n") || normalizedValue.length > 80;
 }
 
 function isComplexSubmissionHistoryItem(item: ParameterSubmissionItem) {
@@ -3370,6 +3371,13 @@ function formatSubmissionHistoryValue(value: string, unit: string, isComplexItem
     return value || "-";
   }
   return `${value || "-"} ${unit}`.trim();
+}
+
+function getSubmissionValueSummary(value: string) {
+  const firstLine = value.split(/\r?\n/)[0]?.trim() ?? "";
+  const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
+  const lineCount = value.split(/\r?\n/).filter((line) => line.trim()).length;
+  return { propertyName, lineCount };
 }
 
 type SubmissionHistoryDiffLineKind = "equal" | "remove" | "add";
@@ -3482,6 +3490,31 @@ function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) 
       <SubmissionHistoryDiff baseValue={currentDisplayValue} targetValue={targetDisplayValue} />
       <p>{item.reason}</p>
     </article>
+  );
+}
+
+function ReviewChangeValueSummary({ request }: { request: ChangeRequest }) {
+  if (isComplexSubmissionHistoryValue(request.currentValue) || isComplexSubmissionHistoryValue(request.targetValue)) {
+    const valueSummary = getSubmissionValueSummary(request.currentValue || request.targetValue);
+    const differenceLabel = request.currentValue === request.targetValue ? "当前与目标一致" : "当前与目标不同";
+    return (
+      <span
+        className="parameter-value-summary review-change-value-summary"
+        title={`${valueSummary.propertyName} · ${valueSummary.lineCount} 行 · ${differenceLabel}`}
+      >
+        <span>复杂配置</span>
+        <strong>{valueSummary.propertyName}</strong>
+        <small>{valueSummary.lineCount} 行 · {differenceLabel}</small>
+      </span>
+    );
+  }
+
+  return (
+    <span className="value-change__values">
+      <span className="strike">{request.currentValue.trim() || "-"}</span>
+      <ArrowRight size={14} />
+      <strong>{request.targetValue.trim() || "-"}</strong>
+    </span>
   );
 }
 
@@ -4053,11 +4086,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                         }}
                       >
                         <span className="value-change__title">{request.title}</span>
-                        <span className="value-change__values">
-                          <span className="strike">{request.currentValue}</span>
-                          <ArrowRight size={14} />
-                          <strong>{request.targetValue}</strong>
-                        </span>
+                        <ReviewChangeValueSummary request={request} />
                       </button>
                     </TableCell>
                     <TableCell>
