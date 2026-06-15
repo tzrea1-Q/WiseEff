@@ -173,6 +173,60 @@ describe("ParameterDetailDialog", () => {
     expect(within(comparisonSection).queryByText("复杂配置")).not.toBeInTheDocument();
   });
 
+  it("renders complex recent history values as block code entries", () => {
+    const historyValue = `battery-thermal-derate-curve = <
+  0 38 3800 4350
+  1 42 3200 4320
+  2 45 2600 4280
+>;`;
+    const complexHistoryParameter = parameter("aurora", historyValue, {
+      id: "aurora-battery-thermal-derate-curve",
+      name: "battery_thermal_derate_curve",
+      description: "DTS cell-array battery thermal derate curve.",
+      explanation: "Uses a device-tree numeric cell array wrapped with angle brackets.",
+      configFormat: `DTS: ${historyValue}`,
+      recommendedValue: historyValue,
+      range: "0 - 1",
+      unit: "curve",
+      risk: "Low",
+      history: [
+        {
+          version: "v5.2",
+          value: historyValue,
+          changedAt: "2026-06-14T12:27:58.378Z",
+          changedBy: "Wang Jie"
+        }
+      ]
+    });
+
+    render(
+      <ParameterDetailDialog
+        parameter={complexHistoryParameter}
+        parameters={[complexHistoryParameter]}
+        projects={projects}
+        currentProjectId="aurora"
+        targetProjectId="nebula"
+        canEdit
+        alreadyInDraft={false}
+        onTargetProjectChange={vi.fn()}
+        onAddToDraft={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: /battery_thermal_derate_curve/ });
+    const historySection = within(dialog).getByText("近期历史").closest(".parameter-detail-history") as HTMLElement;
+    const historyItem = historySection.querySelector(".parameter-detail-history__item[data-complex='true']") as HTMLElement;
+
+    expect(historyItem).toBeInTheDocument();
+    expect(historyItem.querySelector(".parameter-detail-history__value code")).toHaveTextContent(
+      "battery-thermal-derate-curve = <"
+    );
+    expect(historyItem.querySelector(".parameter-detail-history__meta")).toHaveTextContent(
+      "2026-06-14T12:27:58.378Z / Wang Jie"
+    );
+  });
+
   it("changes the emphasized target project", () => {
     const onTargetProjectChange = vi.fn();
     render(
