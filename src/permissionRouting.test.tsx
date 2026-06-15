@@ -1,10 +1,19 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { canAccessPage } from "./app/permissions";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
 
 const guestState = { ...initialState, activeRoleId: "guest" };
+
+function readCssBlock(css: string, selector: string) {
+  const start = css.indexOf(`${selector} {`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = css.indexOf("\n}", start);
+  expect(end).toBeGreaterThan(start);
+  return css.slice(start, end);
+}
 
 afterEach(() => {
   cleanup();
@@ -35,7 +44,7 @@ describe("permission-aware routing", () => {
     fireEvent.click(settingsEntry);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "User permissions" })).toBeInTheDocument();
+      expect(screen.getByText("用户权限管理")).toBeInTheDocument();
     });
   });
 
@@ -101,6 +110,20 @@ describe("permission-aware routing", () => {
     render(<App initialAppState={guestState} />);
 
     expect(document.querySelector(".permission-denied-page")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Back to accessible workspace" })).toHaveClass("permission-denied-action");
+  });
+
+  it("keeps the permission denied action from rendering as text-only", () => {
+    const css = readFileSync("src/styles.css", "utf8");
+    const actionStyles = readCssBlock(css, ".permission-denied-page .permission-denied-action");
+    const primaryStyles = readCssBlock(css, ".permission-denied-page .permission-denied-action.primary");
+
+    expect(actionStyles).toContain("display: inline-flex;");
+    expect(actionStyles).toContain("border: 1px solid");
+    expect(actionStyles).toContain("border-radius: 8px;");
+    expect(primaryStyles).toContain("background: var(--app-primary);");
+    expect(primaryStyles).toContain("color: #fff;");
+    expect(primaryStyles).toContain("box-shadow:");
   });
 });
 

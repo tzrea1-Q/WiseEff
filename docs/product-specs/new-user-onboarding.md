@@ -31,3 +31,10 @@ An operator should start from runbooks, understand readiness boundaries, run loc
 ## Success Criteria
 
 New users should know which workflow to open, which role can perform each action, what evidence proves completion, and where to find deeper docs in either English or Chinese.
+
+## Local Account Acceptance Notes
+
+| ID | Scenario | Actor | Steps | Expected result |
+| --- | --- | --- | --- | --- |
+| PM-02 | Register a Committer role that requires approval | New user | Register as `hardware-committer` or `software-committer`. | The API creates an inactive account with the matching base User role recorded and a pending Admin approval request. The auth screen shows a pending-approval result state without the editable registration form. The user does not receive a session token and cannot log in before approval. |
+| PM-03 | Approve a Committer registration request | Admin | Open `/user-permissions` and approve the pending Committer request. | The account is activated, the requested Committer role is granted, and the user can log in or refresh to access Committer review capabilities. |
