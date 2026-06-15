@@ -299,7 +299,8 @@ describe("ParametersTable", () => {
     expect(onViewRow).toHaveBeenCalledWith("p1");
     expect(onFocusRow).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "编辑 fast_charge_current_limit_ma" })).not.toBeInTheDocument();
-    expect(screen.getAllByText("Read only")).toHaveLength(3);
+    expect(screen.queryByText("Read only")).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /查看 / })).toHaveLength(3);
   });
 
   it("selects only filtered visible modified rows from the header checkbox", () => {

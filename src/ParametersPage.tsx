@@ -703,9 +703,11 @@ export function ParametersPage({
       <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(filteredParameters, activeProject.code)}>
         导出 Excel
       </button>
-      <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
-        历史提交
-      </button>
+      {effectiveCanEdit ? (
+        <button className="button subtle" type="button" onClick={() => onNavigate("/parameter-submissions")}>
+          历史提交
+        </button>
+      ) : null}
       <button className="button primary" type="button" onClick={handleAiAuditClick}>
         <Sparkles size={16} />
         AI 巡检
@@ -727,7 +729,6 @@ export function ParametersPage({
             onViewHighRisk={viewHighRiskFromInsight}
             onAddToDraft={addInsightItemsToDraft}
             canAddToDraft={effectiveCanEdit}
-            addToDraftDisabledReason={draftActionDisabledReason}
             onDismiss={dismissInsightForToday}
           />
         ) : null}
@@ -735,11 +736,6 @@ export function ParametersPage({
           <div className="permission-inline-note" role="status">
             <strong>初始化待审阅</strong>
             <span>该项目可查看，初始化通过前暂不可提交普通参数变更。</span>
-          </div>
-        ) : !canEdit ? (
-          <div className="permission-inline-note" role="status">
-            <strong>只读访问</strong>
-            <span>需要 User 角色才能编辑、暂存或提交参数变更。</span>
           </div>
         ) : null}
         <div className="workbench-one-col parameters-workbench-main">

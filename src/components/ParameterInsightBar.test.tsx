@@ -101,13 +101,12 @@ describe("ParameterInsightBar", () => {
         onViewHighRisk={vi.fn()}
         onAddToDraft={onAddToDraft}
         canAddToDraft={false}
-        addToDraftDisabledReason="需要 User 角色才能编辑、暂存或提交参数变更。"
         onDismiss={vi.fn()}
       />
     );
 
     expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
-    expect(screen.getByText("需要 User 角色才能编辑、暂存或提交参数变更。")).toBeInTheDocument();
+    expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
     expect(onAddToDraft).not.toHaveBeenCalled();
   });
 

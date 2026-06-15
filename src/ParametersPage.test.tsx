@@ -28,7 +28,8 @@ describe("ParametersPage read-only access", () => {
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("只读访问")).toBeVisible();
+    expect(screen.queryByText("只读访问")).not.toBeInTheDocument();
+    expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
     expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
     expect(container.querySelector(".parameters-bottom-actions")).not.toBeInTheDocument();
   });
@@ -50,8 +51,30 @@ describe("ParametersPage read-only access", () => {
     );
 
     expect(screen.queryByRole("button", { name: /草稿/ })).not.toBeInTheDocument();
-    expect(screen.getAllByText("需要 User 角色才能编辑、暂存或提交参数变更。").length)
-      .toBeGreaterThan(0);
+    expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
+  });
+
+  it("hides workflow-only topbar actions for Guest", () => {
+    const dispatch = vi.fn();
+    const onNavigate = vi.fn();
+    const guestState = { ...initialState, activeRoleId: "guest" };
+    const { container } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={guestState}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    const topbar = container.querySelector(".topbar");
+    expect(topbar).not.toBeNull();
+    expect(within(topbar as HTMLElement).getByRole("button", { name: "导出 Excel" })).toBeInTheDocument();
+    expect(within(topbar as HTMLElement).queryByRole("button", { name: "历史提交" })).not.toBeInTheDocument();
+    expect(within(topbar as HTMLElement).getByRole("button", { name: "AI 巡检" })).toBeInTheDocument();
   });
 
   it("does not retain a log-linked draft created while read-only after editing becomes available", async () => {
@@ -70,7 +93,7 @@ describe("ParametersPage read-only access", () => {
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("只读访问")).toBeVisible();
+    expect(screen.queryByText("只读访问")).not.toBeInTheDocument();
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
 
     rerender(
@@ -121,7 +144,7 @@ describe("ParametersPage read-only access", () => {
       </TopBarActionsHarness>
     );
 
-    expect(screen.getByText("只读访问")).toBeVisible();
+    expect(screen.queryByText("只读访问")).not.toBeInTheDocument();
     expect(container.querySelector(".workbench-sheet")).not.toBeInTheDocument();
     expect(container.querySelector(".edit-row-button")).not.toBeInTheDocument();
 
@@ -409,7 +432,7 @@ describe("ParametersPage parameter detail modal", () => {
     const insight = screen.getByRole("status", { name: "Agent 参数洞察" });
 
     expect(dialog.querySelector(".parameter-detail-disabled-reason")).toHaveTextContent("初始化通过前暂不可提交普通参数变更。");
-    expect(within(insight).getByText("初始化通过前暂不可提交普通参数变更。")).toBeInTheDocument();
+    expect(within(insight).queryByText("初始化通过前暂不可提交普通参数变更。")).not.toBeInTheDocument();
     expect(screen.getByText("该项目可查看，初始化通过前暂不可提交普通参数变更。")).toBeInTheDocument();
     expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
   });
@@ -527,6 +550,26 @@ describe("ParametersPage draft edge cases", () => {
     const primaryActions = Array.from(topbar!.querySelectorAll<HTMLButtonElement>(".button.primary"));
     expect(primaryActions).toHaveLength(1);
     expect(primaryActions[0]).toHaveAccessibleName("AI 巡检");
+  });
+
+  it("keeps the Guest Agent insight compact without readonly helper copy", () => {
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={{ ...initialState, activeRoleId: "guest" }}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          canEdit={false}
+        />
+      </TopBarActionsHarness>
+    );
+
+    const insight = screen.getByRole("status", { name: "Agent 参数洞察" });
+    expect(within(insight).getByRole("button", { name: "查看高风险" })).toBeInTheDocument();
+    expect(within(insight).getByRole("button", { name: "今天先不看" })).toBeInTheDocument();
+    expect(within(insight).queryByRole("button", { name: "一键加入草稿" })).not.toBeInTheDocument();
+    expect(within(insight).queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
   });
 
   it("reopens the Agent insight when AI audit is clicked after dismissal", () => {

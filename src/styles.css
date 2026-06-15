@@ -3958,20 +3958,6 @@ td small {
   line-height: 1.45;
 }
 
-.permission-muted-action {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 5px 10px;
-  color: var(--app-muted);
-  background: #f8fafc;
-  border: 1px solid #dfe5f3;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
 .user-permissions-summary {
   display: flex;
   align-items: center;
