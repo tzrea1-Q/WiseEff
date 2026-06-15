@@ -1,5 +1,5 @@
 import { Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Badge,
@@ -116,6 +116,7 @@ export function ParametersPage({
   const [drafts, setDrafts] = useState<Record<string, { targetValue: string; reason: string }>>({});
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
+  const previousUserIdRef = useRef(state.currentUserId);
   const todayKey = new Date().toISOString().slice(0, 10);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
   const insightStorageKey = `parameter-workbench-insight:${resolvedProjectId}:${todayKey}`;
@@ -385,6 +386,20 @@ export function ParametersPage({
       return nextDrafts;
     });
   }, [activeParameterById, effectiveCanEdit, contextQuery.logId, contextQuery.parameterId, projectParameters, resolvedProjectId, selected, state.logs]);
+
+  useEffect(() => {
+    if (previousUserIdRef.current === state.currentUserId) {
+      return;
+    }
+
+    previousUserIdRef.current = state.currentUserId;
+    setSelectedIds(new Set());
+    setDrafts({});
+    setSheetOpen(false);
+    setConfirmOpen(false);
+    setSubmittingRound(false);
+    setStashingRound(false);
+  }, [state.currentUserId]);
 
   useEffect(() => {
     if (effectiveCanEdit) {

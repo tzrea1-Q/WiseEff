@@ -981,6 +981,53 @@ describe("WiseEff app shell", () => {
     expect(next.users).toBe(state.users);
   });
 
+  it("clears cached API parameter drafts when hydrating a different authenticated user", () => {
+    const apiDraft = {
+      id: "api-draft-1",
+      projectId: apiProject.id,
+      parameterId: apiParameter.id,
+      targetValue: "4200",
+      reason: "Previous user draft",
+      updatedAt: "2026-05-25T08:30:00.000Z"
+    };
+    const draftRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "draft-api-draft-1",
+      status: "已暂存" as const
+    };
+    const submittedRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "api-runtime-round",
+      status: "硬件Committer检视" as const
+    };
+    const state = {
+      ...initialState,
+      currentUserId: "u-zhao-heng",
+      activeRoleId: "hardware-user",
+      parameterDrafts: [apiDraft],
+      parameterSubmissionRounds: [draftRound, submittedRound]
+    };
+    const next = appReducer(state, {
+      type: "HYDRATE_AUTH_CONTEXT",
+      user: {
+        id: "u-liu-min",
+        name: "Liu Min",
+        email: "liu@chargelab.cn",
+        username: "liu.min",
+        title: "Software Engineer",
+        roleId: "software-user",
+        isActive: true,
+        createdAt: "2025-02-03T08:04:00.000Z",
+        lastActive: "just now"
+      },
+      roleId: "software-user"
+    });
+
+    expect(next.currentUserId).toBe("u-liu-min");
+    expect(next.parameterDrafts).toEqual([]);
+    expect(next.parameterSubmissionRounds).toEqual([submittedRound]);
+  });
+
   it("hydrates debugging runtime state and mirrors parameters into the config draft", () => {
     const state = {
       ...adminState,
