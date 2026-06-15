@@ -404,9 +404,17 @@ describe("WiseEff app shell", () => {
     expect(pendingNotice).not.toBeNull();
     expect(within(pendingNotice as HTMLElement).getAllByText(/Hardware Committer/).length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "注册雷泽" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("组织")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("姓名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("角色")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("用户名")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "注册" })).not.toBeInTheDocument();
     expect(screen.queryByText("New Committer")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开用户菜单" })).not.toBeInTheDocument();
     expect(parameterRepository.listProjects).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("tab", { name: "登录" }));
+    expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
     expect(authClient.register).toHaveBeenCalledWith({
       organization: "硬件部",
       name: "New Committer",

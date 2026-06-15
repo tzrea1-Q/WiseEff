@@ -3069,6 +3069,12 @@ function ApiAuthPage({
     ? (platformRoles.find((role) => role.id === pendingRegistration.assignedRoleId)?.name ?? pendingRegistration.assignedRoleId)
     : "";
 
+  function changeMode(nextMode: "login" | "register") {
+    setMode(nextMode);
+    setFormError("");
+    setPendingRegistration(null);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError("");
@@ -3118,10 +3124,10 @@ function ApiAuthPage({
         </div>
 
         <div className="auth-mode-tabs" role="tablist" aria-label="认证方式">
-          <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => setMode("login")}>
+          <button type="button" role="tab" aria-selected={mode === "login"} onClick={() => changeMode("login")}>
             登录
           </button>
-          <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => setMode("register")}>
+          <button type="button" role="tab" aria-selected={mode === "register"} onClick={() => changeMode("register")}>
             注册
           </button>
         </div>
@@ -3147,52 +3153,54 @@ function ApiAuthPage({
           </section>
         ) : null}
 
-        <form className="auth-form" onSubmit={submit}>
-          {mode === "register" ? (
-            <>
-              <label>
-                <span>组织</span>
-                <SelectControl
-                  id="local-auth-organization"
-                  value={organization}
-                  onValueChange={setOrganization}
-                  options={organizationOptions}
-                  ariaLabel="组织"
-                  className="auth-select-control"
-                />
-              </label>
-              <label>
-                <span>姓名</span>
-                <input value={name} onChange={(event) => setName(event.target.value)} required />
-              </label>
-              <label>
-                <span>角色</span>
-                <SelectControl
-                  id="local-auth-role"
-                  value={roleId}
-                  onValueChange={setRoleId}
-                  options={roleOptions}
-                  ariaLabel="角色"
-                  className="auth-select-control"
-                />
-              </label>
-            </>
-          ) : null}
-          <label>
-            <span>用户名</span>
-            <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
-          </label>
-          <label>
-            <span>密码</span>
-            <input type="password" value={password} minLength={8} onChange={(event) => setPassword(event.target.value)} required />
-          </label>
-          {formError || (status === "unauthenticated" && error) ? (
-            <p role="alert" className="auth-error">{formError || error}</p>
-          ) : null}
-          <button className="button primary auth-submit" type="submit" disabled={submitting}>
-            {submitting ? "处理中" : mode === "login" ? "登录" : "注册"}
-          </button>
-        </form>
+        {!pendingRegistration ? (
+          <form className="auth-form" onSubmit={submit}>
+            {mode === "register" ? (
+              <>
+                <label>
+                  <span>组织</span>
+                  <SelectControl
+                    id="local-auth-organization"
+                    value={organization}
+                    onValueChange={setOrganization}
+                    options={organizationOptions}
+                    ariaLabel="组织"
+                    className="auth-select-control"
+                  />
+                </label>
+                <label>
+                  <span>姓名</span>
+                  <input value={name} onChange={(event) => setName(event.target.value)} required />
+                </label>
+                <label>
+                  <span>角色</span>
+                  <SelectControl
+                    id="local-auth-role"
+                    value={roleId}
+                    onValueChange={setRoleId}
+                    options={roleOptions}
+                    ariaLabel="角色"
+                    className="auth-select-control"
+                  />
+                </label>
+              </>
+            ) : null}
+            <label>
+              <span>用户名</span>
+              <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />
+            </label>
+            <label>
+              <span>密码</span>
+              <input type="password" value={password} minLength={8} onChange={(event) => setPassword(event.target.value)} required />
+            </label>
+            {formError || (status === "unauthenticated" && error) ? (
+              <p role="alert" className="auth-error">{formError || error}</p>
+            ) : null}
+            <button className="button primary auth-submit" type="submit" disabled={submitting}>
+              {submitting ? "处理中" : mode === "login" ? "登录" : "注册"}
+            </button>
+          </form>
+        ) : null}
       </section>
     </main>
   );
