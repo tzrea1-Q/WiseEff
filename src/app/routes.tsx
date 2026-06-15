@@ -115,7 +115,11 @@ export function PageRouter({
         <h2>Permission denied</h2>
         <p>Current role: {getRequiredRoleLabel(currentRoleId)}</p>
         <p>Required role: {getRequiredRoleLabel(requiredRole)}</p>
-        <button className="button primary" type="button" onClick={() => onNavigate(getAccessibleFallbackPath(currentRoleId))}>
+        <button
+          className="button primary permission-denied-action"
+          type="button"
+          onClick={() => onNavigate(getAccessibleFallbackPath(currentRoleId))}
+        >
           Back to accessible workspace
         </button>
       </section>

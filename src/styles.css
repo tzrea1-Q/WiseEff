@@ -3900,6 +3900,41 @@ td small {
   line-height: 1.55;
 }
 
+.permission-denied-page .permission-denied-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #d7dfec;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.permission-denied-page .permission-denied-action.primary {
+  color: #fff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
+  box-shadow: 0 10px 22px rgba(0, 61, 155, 0.18);
+}
+
+.permission-denied-page .permission-denied-action.primary:hover:not(:disabled) {
+  color: #fff;
+  background: #004bb8;
+  border-color: #004bb8;
+}
+
+.permission-denied-page .permission-denied-action:focus-visible {
+  outline: 2px solid rgba(0, 93, 224, 0.2);
+  outline-offset: 2px;
+}
+
 .permission-inline-note {
   display: flex;
   align-items: flex-start;
