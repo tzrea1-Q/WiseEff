@@ -826,6 +826,59 @@ describe("ParametersPage · 提交契约", () => {
     expect(within(modifiedSection).getByRole("button", { name: "提交本轮 (1 项)" })).toBeEnabled();
   });
 
+  it("clears current-round drafts when the signed-in user changes while the page stays mounted", async () => {
+    const draftParameter = initialState.parameters[0];
+    const softwareUser = initialState.users.find((user) => user.id === "u-liu-min");
+    expect(softwareUser).toBeDefined();
+    const hardwareUserState = {
+      ...initialState,
+      currentUserId: "u-zhao-heng",
+      activeRoleId: "hardware-user"
+    };
+    const softwareUserState = {
+      ...initialState,
+      currentUserId: softwareUser!.id,
+      activeRoleId: "software-user",
+      parameterDrafts: []
+    };
+    const { rerender } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={hardwareUserState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          parameterActions={createParameterActions()}
+        />
+      </TopBarActionsHarness>
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.change(screen.getByLabelText("修改原因"), {
+      target: { value: "hardware user local draft" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "提交参数" }));
+    expect(screen.getByRole("region", { name: "本轮已修改参数区" })).toBeInTheDocument();
+
+    rerender(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={softwareUserState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          parameterActions={createParameterActions()}
+        />
+      </TopBarActionsHarness>
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "本轮已修改参数区" })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("region", { name: "检索参数表" })).toHaveTextContent(draftParameter.name);
+    expect(screen.queryByText("hardware user local draft")).not.toBeInTheDocument();
+  });
+
   it("clicking submit calls parameterActions.submitChanges", async () => {
     const dispatch = vi.fn();
     const parameterActions = createParameterActions();

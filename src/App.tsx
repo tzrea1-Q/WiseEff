@@ -620,11 +620,16 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       return { ...state, activeProjectId: action.projectId };
     case "HYDRATE_AUTH_CONTEXT": {
       const existingUsers = state.users.filter((user) => user.id !== action.user.id);
+      const isDifferentUser = action.user.id !== state.currentUserId;
       return {
         ...state,
         users: [action.user, ...existingUsers],
         currentUserId: action.user.id,
-        activeRoleId: action.roleId
+        activeRoleId: action.roleId,
+        parameterDrafts: isDifferentUser ? [] : state.parameterDrafts,
+        parameterSubmissionRounds: isDifferentUser
+          ? state.parameterSubmissionRounds.filter((round) => round.status !== "已暂存")
+          : state.parameterSubmissionRounds
       };
     }
     case "HYDRATE_USERS": {
