@@ -70,8 +70,8 @@ AUTH_PROVIDER=local
 | `POST /api/v1/auth/login` | 使用用户名和 password 换取本地会话 token。 |
 | `POST /api/v1/auth/logout` | 撤销当前本地会话 token。 |
 | `GET /api/v1/me` | 返回已认证用户的 `AuthContext`。 |
-| `PATCH /api/v1/me/profile` | 更新当前用户的姓名和显示称谓。 |
-| `POST /api/v1/users` | 让 Admin 在当前组织中创建已启用的本地账号，并设置用户名、初始密码、显示称谓和角色绑定。 |
+| `PATCH /api/v1/me/profile` | 更新当前用户的姓名和职务。 |
+| `POST /api/v1/users` | 让 Admin 在当前组织中创建已启用的本地账号，并设置用户名、初始密码、职务和角色绑定。 |
 | `GET /api/v1/users/registration-role-requests` | 让 Admin 查看待审批的本地 Committer 注册申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/approve` | 让 Admin 批准待审批的 Committer 角色申请。 |
 | `POST /api/v1/users/registration-role-requests/:requestId/reject` | 让 Admin 拒绝待审批的 Committer 角色申请。 |

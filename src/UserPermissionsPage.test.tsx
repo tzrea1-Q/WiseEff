@@ -197,6 +197,7 @@ describe("UserPermissionsPage", () => {
     const dialog = screen.getByRole("dialog", { name: "添加用户" });
     expect(dialog).toHaveTextContent("创建用户");
     expect(dialog).not.toHaveTextContent("Create user");
+    expect(dialog).not.toHaveTextContent("显示称谓");
   });
 
   it("keeps the repeated page title copy out of the user management body", () => {
@@ -217,7 +218,7 @@ describe("UserPermissionsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
     await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("显示称谓"), "Validation Engineer");
+    await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
     await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
     await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.selectOptions(screen.getByLabelText("初始角色"), "hardware-user");
@@ -253,7 +254,7 @@ describe("UserPermissionsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
     await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("显示称谓"), "Validation Engineer");
+    await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
     await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
     await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.selectOptions(screen.getByLabelText("初始角色"), "hardware-user");
@@ -301,7 +302,7 @@ describe("UserPermissionsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "   ");
     await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
-    await userEvent.type(screen.getByLabelText("显示称谓"), "Validation Engineer");
+    await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
     await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
     await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
@@ -339,7 +340,7 @@ describe("UserPermissionsPage", () => {
     expect(fields).toBeInTheDocument();
     expect(screen.getByLabelText("姓名").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("用户名").closest("label")).toHaveClass("user-permissions-modal-field");
-    expect(screen.getByLabelText("显示称谓").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("职务").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("初始密码").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("确认密码").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("初始角色").closest("label")).toHaveClass("user-permissions-modal-field");

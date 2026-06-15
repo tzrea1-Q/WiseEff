@@ -539,7 +539,7 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                 />
               </label>
               <label className="user-permissions-modal-field">
-                <span>显示称谓</span>
+                <span>职务</span>
                 <input className="user-permissions-modal-control" value={title} onChange={(event) => setTitle(event.target.value)} />
               </label>
               <label className="user-permissions-modal-field">

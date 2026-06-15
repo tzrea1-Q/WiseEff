@@ -3238,7 +3238,7 @@ function ProfileDialog({
           <input value={name} onChange={(event) => setName(event.target.value)} required />
         </label>
         <label>
-          <span>显示称谓</span>
+          <span>职务</span>
           <input value={title} onChange={(event) => setTitle(event.target.value)} required />
         </label>
         {error ? <p role="alert" className="auth-error">{error}</p> : null}

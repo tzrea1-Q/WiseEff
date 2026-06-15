@@ -13,7 +13,7 @@
 ## Files
 
 - Modify: `src/UserPermissionsPage.tsx`
-  - Replace Add User modal fields with `姓名`, `用户名`, optional `显示称谓`, `初始密码`, `确认密码`, `初始角色`.
+  - Replace Add User modal fields with `姓名`, `用户名`, optional `职务`, `初始密码`, `确认密码`, `初始角色`.
   - Dispatch created users with `username` and no required `email`.
 - Modify: `src/App.tsx`
   - Change the `ADD_USER` reducer action from required email to required username.
@@ -72,7 +72,7 @@ Replace the current Add User dispatch/API modal expectations so the dialog conta
 ```text
 姓名
 用户名
-显示称谓
+职务
 初始密码
 确认密码
 初始角色
@@ -377,7 +377,7 @@ Render:
 ```text
 姓名
 用户名
-显示称谓
+职务
 初始密码
 确认密码
 初始角色
@@ -553,7 +553,7 @@ Expected: no blank page, no visible overlay, no clipped modal controls, no relev
 
 ## Final Implementation Notes
 
-- Implemented `/user-permissions` Admin Add User as local account creation with `name`, `username`, optional display title, initial password, and initial role.
+- Implemented `/user-permissions` Admin Add User as local account creation with `name`, `username`, optional job title, initial password, and initial role.
 - `POST /api/v1/users` now creates the user row, salted `scrypt` password credential, role binding, and audit event in one transaction, and rejects legacy email-only payloads.
 - Admin-created users are active immediately in the current Admin organization; response/audit metadata does not include plaintext passwords or password hashes.
 - Reviewed product, architecture, security, testing, acceptance coverage, operation matrix, and API reference docs listed above. The durable behavior change required updates only to frontend/API docs and generated OpenAPI; broader docs already describe local accounts, user governance, `users:manage`, audit, and browser evidence gates.
