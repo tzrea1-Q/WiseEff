@@ -257,7 +257,6 @@ function ParameterHistoryDiffDialog({
                     {current.changedAt} / {current.changedBy}
                   </span>
                 </div>
-                {current.requestId ? <em>{current.requestId}</em> : null}
               </div>
               <DiffCodeBlock
                 baseValue={formatHistoryValue(previous.value, unit)}

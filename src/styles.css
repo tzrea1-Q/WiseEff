@@ -2551,6 +2551,7 @@ td small {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  max-width: 100%;
   color: var(--app-primary);
   font-weight: 800;
   white-space: nowrap;
@@ -2563,6 +2564,21 @@ td small {
 .value-change strong {
   display: inline;
   color: inherit;
+}
+
+.value-change__title {
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 700;
+  text-overflow: ellipsis;
+}
+
+.value-change__values {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
 }
 
 .value-change-button {
@@ -3490,11 +3506,16 @@ td small {
 }
 
 .review-table-wrap {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .review-table-wrap [data-slot="table-container"] {
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+.review-table-wrap table {
+  min-width: 860px;
 }
 
 .review-table-wrap thead {

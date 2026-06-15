@@ -286,7 +286,7 @@ describe("ParameterDetailDialog", () => {
     expect(historyDialog.querySelectorAll(".parameter-history-diff-card")).toHaveLength(2);
     expect(historyDialog.querySelector(".parameter-diff-code-row[data-kind='remove'] code")).toHaveTextContent("3800 mA");
     expect(historyDialog.querySelector(".parameter-diff-code-row[data-kind='add'] code")).toHaveTextContent("3750 mA");
-    expect(within(historyDialog).getByText("PRQ-1002")).toBeInTheDocument();
+    expect(within(historyDialog).queryByText("PRQ-1002")).not.toBeInTheDocument();
 
     fireEvent.click(within(historyDialog).getByRole("button", { name: "关闭历史差异" }));
 
