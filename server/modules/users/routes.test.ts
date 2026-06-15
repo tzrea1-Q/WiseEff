@@ -78,10 +78,42 @@ function makeDb(rowsForQuery: (text: string, values: unknown[]) => unknown[] = (
 }
 
 describe("user governance routes", () => {
-  it("lets Admin create a durable user with audit evidence", async () => {
-    const { calls, db } = makeDb((text) => (text.includes("returning") || text.includes("select") ? [userRow()] : []));
+  it("lets Admin create a local account user with credentials and audit evidence", async () => {
+    const { calls, db } = makeDb((text) => {
+      if (text.includes("from user_password_credentials")) return [];
+      return text.includes("returning") || text.includes("select") ? [userRow({ email: null })] : [];
+    });
 
-    const response = await requestJson<{ item: { email: string; roles: Array<{ roleId: string }> } }>(
+    const response = await requestJson<{ item: { email: string | null; username: string | null; roles: Array<{ roleId: string }> } }>(
+      createWiseEffServer({
+        db,
+        auth: { mode: "production", verifier: { verify: async () => adminAuth } }
+      }),
+      "/api/v1/users",
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer admin" },
+        body: JSON.stringify({
+          name: "Target User",
+          username: "target.user",
+          password: "WiseEff@2026",
+          title: "Engineer",
+          roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body.item.email).toBeNull();
+    expect(response.body.item.username).toBe("target.user");
+    expect(calls.some((call) => call.text.includes("insert into user_password_credentials"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+  });
+
+  it("rejects legacy email-only user creation payloads", async () => {
+    const { db } = makeDb();
+
+    const response = await requestJson<{ error: { code: string } }>(
       createWiseEffServer({
         db,
         auth: { mode: "production", verifier: { verify: async () => adminAuth } }
@@ -99,9 +131,8 @@ describe("user governance routes", () => {
       }
     );
 
-    expect(response.status).toBe(201);
-    expect(response.body.item.email).toBe("target@example.com");
-    expect(calls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_FAILED");
   });
 
   it("rejects non-Admin user mutations at the API boundary", async () => {
@@ -118,7 +149,8 @@ describe("user governance routes", () => {
         headers: { Authorization: "Bearer user" },
         body: JSON.stringify({
           name: "Target User",
-          email: "target@example.com",
+          username: "target.user",
+          password: "WiseEff@2026",
           title: "Engineer",
           roles: [{ projectId: "aurora", roleId: "hardware-user" }]
         })

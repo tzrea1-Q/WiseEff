@@ -14,6 +14,7 @@ type UserGovernanceDto = {
   organizationId: string;
   name: string;
   email: string | null;
+  username?: string | null;
   title: string;
   isActive: boolean;
   createdAt: string;
@@ -40,8 +41,9 @@ type ItemEnvelope<T> = { item: T };
 
 export type CreateGovernedUserInput = {
   name: string;
-  email: string;
+  username: string;
   title: string;
+  password: string;
   roleId: PlatformRoleId;
   projectId?: string | null;
 };
@@ -54,6 +56,7 @@ function userFromDto(dto: UserGovernanceDto): UserAccount {
     id: dto.id,
     name: dto.name,
     ...(dto.email ? { email: dto.email } : {}),
+    ...(dto.username ? { username: dto.username } : {}),
     title: dto.title,
     roleId: primaryRole?.roleId ?? "guest",
     isActive: dto.isActive,
@@ -79,8 +82,9 @@ export function createUserGovernanceClient(
     async createUser(input: CreateGovernedUserInput) {
       const response = await apiClient.post<ItemEnvelope<UserGovernanceDto>>("/api/v1/users", {
         name: input.name,
-        email: input.email,
+        username: input.username,
         title: input.title,
+        password: input.password,
         roles: [{ projectId: input.projectId ?? null, roleId: input.roleId }]
       });
       return userFromDto(response.item);

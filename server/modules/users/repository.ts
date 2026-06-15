@@ -8,6 +8,7 @@ type UserGovernanceRow = {
   organization_id: string;
   name: string;
   email: string | null;
+  username: string | null;
   title: string;
   is_active: boolean;
   created_at: string;
@@ -45,7 +46,8 @@ function toDto(row: UserGovernanceRow): UserGovernanceDto {
     id: row.id,
     organizationId: row.organization_id,
     name: row.name,
-    email: row.email,
+    email: row.email ?? null,
+    username: row.username ?? null,
     title: row.title,
     isActive: row.is_active,
     createdAt: row.created_at,
@@ -76,6 +78,7 @@ const userWithRolesSelect = `
     users.organization_id,
     users.name,
     users.email,
+    user_password_credentials.username,
     users.title,
     users.is_active,
     users.created_at::text as created_at,
@@ -89,6 +92,7 @@ const userWithRolesSelect = `
     ) as roles
   from users
   left join user_role_bindings on user_role_bindings.user_id = users.id
+  left join user_password_credentials on user_password_credentials.user_id = users.id
 `;
 
 export async function listUsers(db: Queryable, organizationId: string) {
@@ -96,7 +100,7 @@ export async function listUsers(db: Queryable, organizationId: string) {
     `
     ${userWithRolesSelect}
     where users.organization_id = $1
-    group by users.id
+    group by users.id, user_password_credentials.username
     order by users.name
     `,
     [organizationId]
@@ -110,7 +114,7 @@ export async function getUserById(db: Queryable, input: { organizationId: string
     `
     ${userWithRolesSelect}
     where users.organization_id = $1 and users.id = $2
-    group by users.id
+    group by users.id, user_password_credentials.username
     `,
     [input.organizationId, input.userId]
   );
@@ -118,17 +122,39 @@ export async function getUserById(db: Queryable, input: { organizationId: string
   return result.rows[0] ? toDto(result.rows[0]) : null;
 }
 
-export async function insertUser(db: Queryable, input: CreateUserInput & { id: string; organizationId: string }) {
+export async function insertUser(db: Queryable, input: Pick<CreateUserInput, "name" | "title"> & { id: string; organizationId: string }) {
   const result = await db.query<UserGovernanceRow>(
     `
-    insert into users (id, organization_id, name, email, title, is_active)
-    values ($1, $2, $3, $4, $5, true)
+    insert into users (id, organization_id, name, title, is_active)
+    values ($1, $2, $3, $4, true)
     returning id, organization_id, name, email, title, is_active, created_at::text as created_at, last_active_at::text as last_active_at
     `,
-    [input.id, input.organizationId, input.name, input.email, input.title]
+    [input.id, input.organizationId, input.name, input.title]
   );
 
   return toDto({ ...result.rows[0], roles: [] });
+}
+
+export async function findPasswordCredentialByUsername(db: Queryable, username: string) {
+  const result = await db.query<{ id: string }>(
+    `
+    select user_id as id
+    from user_password_credentials
+    where lower(username) = lower($1)
+    limit 1
+    `,
+    [username]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function insertPasswordCredential(db: Queryable, input: { userId: string; username: string; passwordHash: string }) {
+  await db.query("insert into user_password_credentials (user_id, username, password_hash) values ($1, $2, $3)", [
+    input.userId,
+    input.username,
+    input.passwordHash
+  ]);
 }
 
 export async function updateUser(db: Queryable, input: { organizationId: string; userId: string; name?: string; email?: string; title?: string }) {
@@ -151,7 +177,7 @@ export async function updateUser(db: Queryable, input: { organizationId: string;
     ]
   );
 
-  return toDto({ ...result.rows[0], roles: current.roles });
+  return toDto({ ...result.rows[0], username: current.username, roles: current.roles });
 }
 
 export async function updateUserActive(db: Queryable, input: { organizationId: string; userId: string; isActive: boolean }) {
@@ -168,7 +194,7 @@ export async function updateUserActive(db: Queryable, input: { organizationId: s
     [input.organizationId, input.userId, input.isActive]
   );
 
-  return toDto({ ...result.rows[0], roles: current.roles });
+  return toDto({ ...result.rows[0], username: current.username, roles: current.roles });
 }
 
 export async function replaceRoleBindings(db: Queryable, input: { organizationId: string; userId: string; roles: RoleBinding[] }) {

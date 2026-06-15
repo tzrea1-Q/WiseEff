@@ -491,8 +491,9 @@ describe("WiseEff app shell", () => {
     expect(dialog.closest(".topbar")).toBeNull();
     expect(screen.getByRole("button", { name: "取消" })).toHaveClass("profile-dialog__button--secondary");
     expect(screen.getByRole("button", { name: "保存" })).toHaveClass("profile-dialog__button--primary");
+    expect(dialog).not.toHaveTextContent("显示称谓");
     fireEvent.change(screen.getByLabelText("姓名"), { target: { value: "Renamed Admin" } });
-    fireEvent.change(screen.getByLabelText("显示称谓"), { target: { value: "Owner" } });
+    fireEvent.change(screen.getByLabelText("职务"), { target: { value: "Owner" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findAllByText("Renamed Admin")).not.toHaveLength(0);
@@ -532,7 +533,7 @@ describe("WiseEff app shell", () => {
     );
 
     const row = await screen.findByText("Liu Min").then((cell) => cell.closest("tr")!);
-    changeSelectValue(within(row).getByRole("combobox", { name: "Role for Liu Min" }), "software-committer");
+    changeSelectValue(within(row).getByRole("combobox", { name: "调整 Liu Min 的角色" }), "software-committer");
     await waitFor(() => expect(userGovernanceActions.assignUserRole).toHaveBeenCalledWith("u-liu-min", "software-committer"));
   });
 

@@ -58,9 +58,9 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     additionalResponses: { "403": "ErrorResponse" }
   },
   "users.create": {
-    summary: "Create governed user",
+    summary: "Create local account user",
     tags: ["users"],
-    requestBody: "CreateUserGovernanceRequest",
+    requestBody: "CreateLocalAccountUserRequest",
     responseBody: "UserGovernanceResponse",
     successStatus: 201,
     additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }

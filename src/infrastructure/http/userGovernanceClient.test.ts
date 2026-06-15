@@ -68,8 +68,9 @@ describe("createUserGovernanceClient", () => {
 
     await client.createUser({
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "Validation Engineer",
+      password: "WiseEff@2026",
       roleId: "hardware-user",
       projectId: "aurora"
     });
@@ -77,8 +78,9 @@ describe("createUserGovernanceClient", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/users", {
       body: JSON.stringify({
         name: "Demo Engineer",
-        email: "demo@chargelab.cn",
+        username: "demo.engineer",
         title: "Validation Engineer",
+        password: "WiseEff@2026",
         roles: [{ projectId: "aurora", roleId: "hardware-user" }]
       }),
       headers: { Accept: "application/json", "Content-Type": "application/json" },

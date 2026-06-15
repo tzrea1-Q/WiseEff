@@ -91,6 +91,14 @@ describe("UserPermissionsPage", () => {
     expect(screen.getByText("Xu Yun")).toBeInTheDocument();
   });
 
+  it("prefers local usernames over legacy email identifiers in the user table", () => {
+    renderPage();
+    const row = screen.getByText("Xu Yun").closest("tr")!;
+
+    expect(within(row).getByText("xu.yun")).toBeInTheDocument();
+    expect(within(row).queryByText("xu@chargelab.cn")).not.toBeInTheDocument();
+  });
+
   it("shows role capabilities only while a role cell is hovered", async () => {
     renderPage();
     const row = screen.getByText("Liu Min").closest("tr")!;
@@ -189,6 +197,7 @@ describe("UserPermissionsPage", () => {
     const dialog = screen.getByRole("dialog", { name: "添加用户" });
     expect(dialog).toHaveTextContent("创建用户");
     expect(dialog).not.toHaveTextContent("Create user");
+    expect(dialog).not.toHaveTextContent("显示称谓");
   });
 
   it("keeps the repeated page title copy out of the user management body", () => {
@@ -208,15 +217,17 @@ describe("UserPermissionsPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("邮箱"), "demo@chargelab.cn");
+    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
     await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
+    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
+    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.selectOptions(screen.getByLabelText("初始角色"), "hardware-user");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
     expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "Validation Engineer",
       roleId: "hardware-user"
     });
@@ -228,7 +239,7 @@ describe("UserPermissionsPage", () => {
       createUser: vi.fn(async () => ({
         id: "u-demo-engineer",
         name: "Demo Engineer Canonical",
-        email: "demo+canonical@chargelab.cn",
+        username: "demo.engineer",
         title: "User",
         roleId: "hardware-user" as const,
         isActive: true,
@@ -242,22 +253,25 @@ describe("UserPermissionsPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("邮箱"), "demo@chargelab.cn");
+    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
     await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
+    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
+    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.selectOptions(screen.getByLabelText("初始角色"), "hardware-user");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
     expect(userGovernanceActions.createUser).toHaveBeenCalledWith({
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "Validation Engineer",
+      password: "WiseEff@2026",
       roleId: "hardware-user"
     });
     expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
       id: "u-demo-engineer",
       name: "Demo Engineer Canonical",
-      email: "demo+canonical@chargelab.cn",
+      username: "demo.engineer",
       title: "User",
       roleId: "hardware-user"
     });
@@ -268,30 +282,49 @@ describe("UserPermissionsPage", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
-    await userEvent.type(screen.getByLabelText("邮箱"), "demo@chargelab.cn");
+    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
+    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
+    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
     expect(dispatch).toHaveBeenCalledWith({
       type: "ADD_USER",
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "",
       roleId: "hardware-user"
     });
   });
 
-  it("keeps the add user dialog open when trimmed name or email is empty", async () => {
+  it("keeps the add user dialog open when required account fields are empty", async () => {
     const { dispatch } = renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
     await userEvent.type(screen.getByLabelText("姓名"), "   ");
-    await userEvent.type(screen.getByLabelText("邮箱"), "demo@chargelab.cn");
+    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
     await userEvent.type(screen.getByLabelText("职务"), "Validation Engineer");
+    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
+    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2026");
     await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
 
     expect(dispatch).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog", { name: "添加用户" })).toBeInTheDocument();
-    expect(screen.getByText("姓名和邮箱不能为空。")).toBeInTheDocument();
+    expect(screen.getByText("姓名、用户名和初始密码不能为空。")).toBeInTheDocument();
+  });
+
+  it("keeps the add user dialog open when password confirmation differs", async () => {
+    const { dispatch } = renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: "添加用户" }));
+    await userEvent.type(screen.getByLabelText("姓名"), "Demo Engineer");
+    await userEvent.type(screen.getByLabelText("用户名"), "demo.engineer");
+    await userEvent.type(screen.getByLabelText("初始密码"), "WiseEff@2026");
+    await userEvent.type(screen.getByLabelText("确认密码"), "WiseEff@2027");
+    await userEvent.click(screen.getByRole("button", { name: "创建用户" }));
+
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "添加用户" })).toBeInTheDocument();
+    expect(screen.getByText("两次输入的密码不一致。")).toBeInTheDocument();
   });
 
   it("renders the add user dialog with structured form styling", async () => {
@@ -306,11 +339,17 @@ describe("UserPermissionsPage", () => {
     expect(form).toHaveClass("user-permissions-modal-card");
     expect(fields).toBeInTheDocument();
     expect(screen.getByLabelText("姓名").closest("label")).toHaveClass("user-permissions-modal-field");
-    expect(screen.getByLabelText("邮箱").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("用户名").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("职务").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("初始密码").closest("label")).toHaveClass("user-permissions-modal-field");
+    expect(screen.getByLabelText("确认密码").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("初始角色").closest("label")).toHaveClass("user-permissions-modal-field");
     expect(screen.getByLabelText("姓名")).toHaveClass("user-permissions-modal-control");
+    expect(screen.getByLabelText("用户名")).toHaveClass("user-permissions-modal-control");
+    expect(screen.getByLabelText("初始密码")).toHaveClass("user-permissions-modal-control");
+    expect(screen.getByLabelText("确认密码")).toHaveClass("user-permissions-modal-control");
     expect(screen.getByLabelText("初始角色")).toHaveClass("user-permissions-modal-control");
+    expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
     expect(dialog.querySelector(".user-permissions-modal-actions")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消" })).toHaveClass("user-permissions-modal-action");
     expect(screen.getByRole("button", { name: "取消" })).toHaveClass("user-permissions-modal-action--secondary");

@@ -299,7 +299,7 @@ export type AppAction =
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
   | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: PlatformRoleId }
   | { type: "TOGGLE_USER_ACTIVE"; userId: string; isActive: boolean }
-  | { type: "ADD_USER"; id?: string; name: string; email: string; title: string; roleId: PlatformRoleId }
+  | { type: "ADD_USER"; id?: string; name: string; username: string; title: string; roleId: PlatformRoleId }
   | { type: "HYDRATE_USERS"; users: User[] }
   | { type: "MARK_EXPORTED"; snapshotName: string; timestamp: string }
   | { type: "DISMISS_INSIGHT"; insightId: string }
@@ -505,10 +505,6 @@ function pickAvatarTone(index: number): LogAdminUserAvatarTone {
 
 function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
-}
-
-function isValidEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function userAccountIdentifier(user: User) {
@@ -1518,9 +1514,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
 
-      const email = action.email.trim().toLowerCase();
+      const username = action.username.trim().toLowerCase();
       const name = action.name.trim();
-      if (!name || !isValidEmail(email) || state.users.some((user) => user.email?.toLowerCase() === email)) {
+      if (!name || username.length < 3 || state.users.some((user) => user.username?.toLowerCase() === username)) {
         return state;
       }
 
@@ -1533,7 +1529,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const newUser: User = {
         id: action.id?.trim() || `user-${state.users.length + 1}`,
         name,
-        email,
+        username,
         title: action.title.trim() || "Platform user",
         roleId,
         isActive: true,
@@ -3242,7 +3238,7 @@ function ProfileDialog({
           <input value={name} onChange={(event) => setName(event.target.value)} required />
         </label>
         <label>
-          <span>显示称谓</span>
+          <span>职务</span>
           <input value={title} onChange={(event) => setTitle(event.target.value)} required />
         </label>
         {error ? <p role="alert" className="auth-error">{error}</p> : null}

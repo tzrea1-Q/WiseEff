@@ -87,7 +87,7 @@ describe("M5 OpenAPI contract", () => {
     );
 
     expect(schemaRegistry["users.create"]).toMatchObject({
-      requestBody: "CreateUserGovernanceRequest",
+      requestBody: "CreateLocalAccountUserRequest",
       responseBody: "UserGovernanceResponse",
       successStatus: 201
     });
