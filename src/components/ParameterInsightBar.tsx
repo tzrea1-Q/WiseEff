@@ -8,7 +8,6 @@ export function ParameterInsightBar({
   onViewHighRisk,
   onAddToDraft,
   canAddToDraft = true,
-  addToDraftDisabledReason,
   onDismiss
 }: {
   snapshot: ParameterWorkbenchInsightSnapshot;
@@ -17,7 +16,6 @@ export function ParameterInsightBar({
   onViewHighRisk: () => void;
   onAddToDraft: () => void;
   canAddToDraft?: boolean;
-  addToDraftDisabledReason?: string;
   onDismiss: () => void;
 }) {
   if (snapshot.driftedCount === 0) {
@@ -56,10 +54,9 @@ export function ParameterInsightBar({
             <button className="button primary" type="button" onClick={onAddToDraft}>
               一键加入草稿
             </button>
-          ) : addToDraftDisabledReason ? (
-            <span className="permission-inline-reason">{addToDraftDisabledReason}</span>
           ) : null}
-          <button className="link-button" type="button" onClick={onDismiss}>
+          <button className="button subtle" type="button" onClick={onDismiss}>
+            <X size={14} aria-hidden="true" />
             今天先不看
           </button>
         </div>

@@ -1969,11 +1969,15 @@ function AppShell({
   }, []);
 
   const refreshApiRuntimeData = useCallback(
-    async (cancelledRef?: { current: boolean }) => {
+    async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
+      const runtimeRoleId = migrateLegacyRoleId(roleId);
+      const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
+        ? debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
+        : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
         logActions.refresh(),
-        debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
+        debuggingRefresh
       ]);
       if (cancelledRef?.current) return;
       if (
@@ -1998,7 +2002,9 @@ function AppShell({
         logRuntimeConnectedRef.current = true;
         dispatch({ type: "ADD_NOTIFICATION", message: "已连接雷泽日志 API" });
       }
-      if (debuggingRefreshResult.status === "rejected") {
+      if (!canPerform(runtimeRoleId, "debugging.use")) {
+        setDebuggingRuntimeReady(true);
+      } else if (debuggingRefreshResult.status === "rejected") {
         setDebuggingRuntimeReady(false);
         if (
           !(
@@ -2042,10 +2048,11 @@ function AppShell({
       .getCurrentAuthContext()
       .then(async (context) => {
         if (cancelledRef.current) return;
+        const primaryRoleId = context.roles[0]?.roleId ?? "guest";
         hydrateAuthContext(context);
         setApiAuthStatus("authenticated");
         setApiAuthError("");
-        await refreshApiRuntimeData(cancelledRef);
+        await refreshApiRuntimeData(cancelledRef, primaryRoleId);
       })
       .catch((error) => {
         if (cancelledRef.current) return;
@@ -2122,10 +2129,11 @@ function AppShell({
 
   const handleAuthSession = useCallback(
     async (session: AuthSessionDto) => {
+      const primaryRoleId = session.auth.roles[0]?.roleId ?? "guest";
       hydrateAuthContext(session.auth);
       setApiAuthStatus("authenticated");
       setApiAuthError("");
-      await refreshApiRuntimeData();
+      await refreshApiRuntimeData(undefined, primaryRoleId);
       dispatch({ type: "ADD_NOTIFICATION", message: "已登录雷泽账号" });
     },
     [hydrateAuthContext, refreshApiRuntimeData]
@@ -2909,7 +2917,9 @@ function TopBar({
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const showProjectInitAction = page.key.startsWith("parameter");
+  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const canCreateProject = canPerform(currentRoleId, "parameter.edit");
+  const showProjectInitAction = page.key.startsWith("parameter") && canCreateProject;
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
@@ -2917,7 +2927,6 @@ function TopBar({
     page.key !== "parameter-review" &&
     page.key !== "parameter-admin";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
-  const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
   const selectedProjectId =

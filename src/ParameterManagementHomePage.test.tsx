@@ -219,6 +219,18 @@ describe("ParameterManagementHomePage", () => {
     expect(within(panel).queryByText("统计所选窗口内参数与审阅请求的变更密度。")).not.toBeInTheDocument();
   });
 
+  it("hides review and admin hotspot actions for Guest", () => {
+    render(<ParameterManagementHomePage state={{ ...initialState, activeRoleId: "guest" }} onNavigate={vi.fn()} />);
+
+    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
+    const panel = within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ });
+
+    expect(within(panel).queryByRole("button", { name: /创建高风险专项审阅/ })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /进入审阅队列/ })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: /打开参数定义库/ })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: /查看 .*推荐值对比/ })).toBeInTheDocument();
+  });
+
   it("removes the hero time window panel from the parameter homepage", () => {
     render(<ParameterManagementHomePage state={initialState} onNavigate={vi.fn()} />);
 

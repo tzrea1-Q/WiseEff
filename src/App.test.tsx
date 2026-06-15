@@ -755,6 +755,39 @@ describe("WiseEff app shell", () => {
     await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
   });
 
+  it("skips debugging runtime hydration for roles without debugging access", async () => {
+    window.history.replaceState(null, "", "/parameters");
+    const debuggingGateway = createAppDebuggingGateway();
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-guest",
+              organizationId: "org-chargelab",
+              name: "API Guest",
+              email: "api-guest@chargelab.cn",
+              title: "External Viewer",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "guest" }],
+            permissions: ["parameter:view"]
+          })
+        }}
+        debuggingGateway={debuggingGateway}
+        initialAppState={{ ...initialState, activeRoleId: "guest" }}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByText("API Guest")).toBeInTheDocument();
+    await waitFor(() => expect(debuggingGateway.listDevices).not.toHaveBeenCalled());
+    expect(debuggingGateway.listParameters).not.toHaveBeenCalled();
+  });
+
   it("does not read mock node parameters before API debugging hydration on node debugging routes", async () => {
     window.history.replaceState(null, "", "/node-debugging");
     const debuggingGateway = createAppDebuggingGateway({
@@ -1181,6 +1214,17 @@ describe("WiseEff app shell", () => {
 
     expect(screen.getByRole("dialog", { name: "新项目参数初始化" })).toBeInTheDocument();
     expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
+  });
+
+  it("hides project initialization from Guest parameter routes", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App initialAppState={{ ...initialState, activeRoleId: "guest" }} />);
+
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+    expect(topbar).toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "新项目参数初始化" })).not.toBeInTheDocument();
   });
 
   it("does not allow switching roles from the topbar user menu", () => {

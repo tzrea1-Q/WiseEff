@@ -10,6 +10,8 @@ import { useTopBarActions } from "./components/layout";
 import { computeEyebrow, generateHotspotActions } from "./hotspotPresentation";
 import { useIsAccordionMode } from "./components/hotspots/useIsAccordionMode";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { canAccessPage } from "@/app/permissions";
+import { getPageByPath } from "@/appConfig";
 
 type ParameterManagementHomePageProps = {
   state: PrototypeState;
@@ -354,6 +356,7 @@ export function HotspotLeaderboard({
                     dimensionCeiling={dimensionCeiling}
                     sectionId={sectionId}
                     variant="accordion"
+                    roleId={state.activeRoleId}
                     onNavigate={onNavigate}
                   />
                 ) : null}
@@ -368,6 +371,7 @@ export function HotspotLeaderboard({
           dimensionCeiling={dimensionCeiling}
           sectionId={sectionId}
           variant="desktop"
+          roleId={state.activeRoleId}
           onNavigate={onNavigate}
         />
       ) : null}
@@ -488,12 +492,14 @@ function HotspotDetailPanel({
   dimensionCeiling,
   sectionId,
   variant,
+  roleId,
   onNavigate
 }: {
   hotspot: ParameterHotspot;
   dimensionCeiling: number;
   sectionId: string;
   variant: "desktop" | "accordion";
+  roleId: string;
   onNavigate: (path: string) => void;
 }) {
   const titleId = `${sectionId}-panel-title`;
@@ -543,23 +549,35 @@ function HotspotDetailPanel({
         </ul>
       </section>
       <section className="hotspot-panel-actions">
-        <RecommendedActions hotspot={hotspot} onNavigate={onNavigate} />
+        <RecommendedActions hotspot={hotspot} roleId={roleId} onNavigate={onNavigate} />
       </section>
     </aside>
   );
 }
 
-function RecommendedActions({ hotspot, onNavigate }: { hotspot: ParameterHotspot; onNavigate: (path: string) => void }) {
+function RecommendedActions({ hotspot, roleId, onNavigate }: { hotspot: ParameterHotspot; roleId: string; onNavigate: (path: string) => void }) {
   const actions = generateHotspotActions(hotspot);
+  const visibleActions = [actions.primary, actions.secondary].flatMap((action) => {
+    if (!action) {
+      return [];
+    }
+    const page = getPageByPath(action.path.split("?")[0]);
+    return canAccessPage(roleId, page.key) ? [action] : [];
+  });
+  const [primaryAction, secondaryAction] = visibleActions;
+
+  if (!primaryAction) {
+    return null;
+  }
 
   return (
     <div className="hotspot-actions">
-      <button type="button" className="action-btn action-btn--primary" onClick={() => onNavigate(actions.primary.path)}>
-        {actions.primary.label} <ArrowRight size={14} aria-hidden="true" />
+      <button type="button" className="action-btn action-btn--primary" onClick={() => onNavigate(primaryAction.path)}>
+        {primaryAction.label} <ArrowRight size={14} aria-hidden="true" />
       </button>
-      {actions.secondary ? (
-        <button type="button" className="action-btn action-btn--secondary" onClick={() => onNavigate(actions.secondary?.path ?? "")}>
-          {actions.secondary.label}
+      {secondaryAction ? (
+        <button type="button" className="action-btn action-btn--secondary" onClick={() => onNavigate(secondaryAction.path)}>
+          {secondaryAction.label}
         </button>
       ) : null}
     </div>
