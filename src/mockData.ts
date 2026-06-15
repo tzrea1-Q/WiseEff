@@ -14,6 +14,7 @@ import type {
   ProjectParameterInitializationDraft,
   ProjectParameterInitializationReview
 } from "@/domain/parameters/types";
+import type { ParameterDraftDto } from "@/application/ports/ParameterRepository";
 import type { PlatformRole, UserAccount } from "@/domain/users/types";
 import { migrateLegacyRoleId, platformRoles } from "@/domain/users/types";
 
@@ -326,6 +327,7 @@ export type PrototypeState = {
   configDraft: PowerManagementConfig;
   parameters: ParameterRecord[];
   changeRequests: ChangeRequest[];
+  parameterDrafts: ParameterDraftDto[];
   aiFeedback: AIFeedbackEntry[];
   parameterSubmissionRounds: ParameterSubmissionRound[];
   parameterInitializationDrafts: ProjectParameterInitializationDraft[];
@@ -824,6 +826,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     configDraft: clonePowerManagementConfig(configDraft),
     parameters: runtime.parameters,
     changeRequests: buildReviewMockRequests(),
+    parameterDrafts: [],
     aiFeedback: [],
     parameterInitializationDrafts: [],
     parameterInitializationReviews: [],

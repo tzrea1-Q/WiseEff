@@ -139,6 +139,19 @@ export function ParametersPage({
     () => new Set(projectParameters.map((parameter) => parameter.id)),
     [projectParameters]
   );
+  const restoredDrafts = useMemo(
+    () =>
+      state.parameterDrafts
+        .filter((draft) => draft.projectId === resolvedProjectId && activeParameterIds.has(draft.parameterId))
+        .reduce<Record<string, { targetValue: string; reason: string }>>((items, draft) => {
+          items[draft.parameterId] = {
+            targetValue: draft.targetValue,
+            reason: draft.reason
+          };
+          return items;
+        }, {}),
+    [activeParameterIds, resolvedProjectId, state.parameterDrafts]
+  );
   const [selectedId, setSelectedId] = useState<string>(firstProjectParameterId);
   const [focusedId, setFocusedId] = useState<string | null>(firstProjectParameterId || null);
   const moduleOptions = useMemo(
@@ -382,6 +395,36 @@ export function ParametersPage({
     setSheetOpen(false);
     setConfirmOpen(false);
   }, [effectiveCanEdit]);
+
+  useEffect(() => {
+    if (!effectiveCanEdit) {
+      return;
+    }
+    const restoredIds = Object.keys(restoredDrafts);
+    if (restoredIds.length === 0) {
+      return;
+    }
+
+    setDrafts((items) => {
+      const nextDrafts = { ...items };
+      let changed = false;
+
+      restoredIds.forEach((parameterId) => {
+        if (nextDrafts[parameterId]) {
+          return;
+        }
+        nextDrafts[parameterId] = restoredDrafts[parameterId];
+        changed = true;
+      });
+
+      return changed ? nextDrafts : items;
+    });
+    setSelectedIds((ids) => {
+      const nextIds = new Set(ids);
+      restoredIds.forEach((parameterId) => nextIds.add(parameterId));
+      return nextIds.size === ids.size ? ids : nextIds;
+    });
+  }, [effectiveCanEdit, restoredDrafts]);
 
   useEffect(() => {
     if (!selected) {

@@ -787,6 +787,45 @@ describe("ParametersPage draft edge cases", () => {
 });
 
 describe("ParametersPage · 提交契约", () => {
+  it("restores API-mode stashed drafts into the current-round modified table after refresh", () => {
+    const restoredParameter = initialState.parameters[0];
+    const restoredState = {
+      ...initialState,
+      parameterDrafts: [
+        {
+          id: "api-draft-1",
+          projectId: initialState.activeProjectId,
+          parameterId: restoredParameter.id,
+          targetValue: "3300",
+          reason: "刷新后继续提交",
+          updatedAt: "2026-06-15T08:00:00.000Z"
+        }
+      ]
+    };
+
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={restoredState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          parameterActions={createParameterActions()}
+        />
+      </TopBarActionsHarness>
+    );
+
+    const modifiedSection = screen.getByRole("region", { name: "本轮已修改参数区" });
+    const modifiedTable = within(modifiedSection).getByRole("region", { name: "本轮已修改参数表" });
+    const searchTable = screen.getByRole("region", { name: "检索参数表" });
+
+    expect(within(modifiedTable).getByText(restoredParameter.name)).toBeInTheDocument();
+    expect(within(modifiedTable).getByText("3300")).toBeInTheDocument();
+    expect(within(searchTable).queryByText(restoredParameter.name)).not.toBeInTheDocument();
+    expect(within(modifiedSection).getByRole("button", { name: "暂存本轮 (1 项)" })).toBeEnabled();
+    expect(within(modifiedSection).getByRole("button", { name: "提交本轮 (1 项)" })).toBeEnabled();
+  });
+
   it("clicking submit calls parameterActions.submitChanges", async () => {
     const dispatch = vi.fn();
     const parameterActions = createParameterActions();

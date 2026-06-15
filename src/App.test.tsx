@@ -950,6 +950,7 @@ describe("WiseEff app shell", () => {
 
     expect(next.parameters).toEqual([apiParameter]);
     expect(next.changeRequests).toEqual([]);
+    expect(next.parameterDrafts).toEqual([apiDraft]);
     expect(next.parameterSubmissionRounds).toEqual([
       expect.objectContaining({
         id: "draft-api-draft-1",
