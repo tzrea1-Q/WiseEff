@@ -74,51 +74,87 @@ function userRow(overrides: Record<string, unknown> = {}) {
 
 describe("user governance service", () => {
   it("creates a user, assigns roles, and writes audit in one transaction", async () => {
-    const { db, txCalls } = createDb((text) => (text.includes("returning") || text.includes("select") ? [userRow()] : []));
+    const { db, txCalls } = createDb((text) => {
+      if (text.includes("from user_password_credentials")) return [];
+      return text.includes("returning") || text.includes("select") ? [userRow({ email: null })] : [];
+    });
 
     const result = await createUser(
       db,
       adminAuth,
       {
         name: "Target User",
-        email: "target@example.com",
+        username: "target.user",
+        password: "WiseEff@2026",
         title: "Engineer",
         roles: [{ projectId: "aurora", roleId: "hardware-user" }]
       },
       { requestId: "request-1" }
     );
 
-    expect(result.email).toBe("target@example.com");
+    expect(result.email).toBeNull();
+    expect(result.username).toBe("target.user");
     expect(txCalls.some((call) => call.text.includes("insert into users"))).toBe(true);
+    const credentialInsert = txCalls.find((call) => call.text.includes("insert into user_password_credentials"));
+    expect(credentialInsert).toBeDefined();
+    expect(credentialInsert?.values[1]).toBe("target.user");
+    expect(credentialInsert?.values[2]).toEqual(expect.stringMatching(/^scrypt\$/));
+    expect(credentialInsert?.values[2]).not.toBe("WiseEff@2026");
     expect(txCalls.some((call) => call.text.includes("insert into user_role_bindings"))).toBe(true);
-    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(true);
+    const auditInsert = txCalls.find((call) => call.text.includes("insert into audit_events"));
+    expect(auditInsert).toBeDefined();
+    expect(JSON.stringify(auditInsert?.values)).toContain("target.user");
+    expect(JSON.stringify(auditInsert?.values)).not.toContain("WiseEff@2026");
   });
 
   it("defaults missing user titles to User before durable insert", async () => {
-    const { db, txCalls } = createDb((text) => (text.includes("returning") || text.includes("select") ? [userRow({ title: "User" })] : []));
+    const { db, txCalls } = createDb((text) => {
+      if (text.includes("from user_password_credentials")) return [];
+      return text.includes("returning") || text.includes("select") ? [userRow({ title: "User" })] : [];
+    });
 
     await createUser(
       db,
       adminAuth,
       {
         name: "Target User",
-        email: "target@example.com",
+        username: "target.user",
+        password: "WiseEff@2026",
         roles: [{ projectId: "aurora", roleId: "hardware-user" }]
       },
       { requestId: "request-1" }
     );
 
     const insertCall = txCalls.find((call) => call.text.includes("insert into users"));
-    expect(insertCall?.values[4]).toBe("User");
+    expect(insertCall?.values[3]).toBe("User");
   });
 
   it("rejects non-admin user governance mutations", async () => {
     const { db, txCalls } = createDb();
 
     await expect(
-      createUser(db, nonAdminAuth, { name: "Target", email: "target@example.com", title: "Engineer", roles: [] })
+      createUser(db, nonAdminAuth, { name: "Target", username: "target.user", password: "WiseEff@2026", title: "Engineer", roles: [] })
     ).rejects.toThrow("User management permission is required.");
     expect(txCalls).toHaveLength(0);
+  });
+
+  it("rejects duplicate local usernames before creating a user", async () => {
+    const { db, txCalls } = createDb((text) => (text.includes("from user_password_credentials") ? [{ id: "u-existing" }] : []));
+
+    await expect(
+      createUser(
+        db,
+        adminAuth,
+        {
+          name: "Target User",
+          username: "target.user",
+          password: "WiseEff@2026",
+          roles: [{ projectId: null, roleId: "hardware-user" }]
+        },
+        { requestId: "request-1" }
+      )
+    ).rejects.toThrow("Username is already registered.");
+    expect(txCalls.some((call) => call.text.includes("insert into users"))).toBe(false);
   });
 
   it("prevents the active admin from disabling itself", async () => {

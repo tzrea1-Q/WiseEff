@@ -40,29 +40,33 @@ describe("parameter-admin reducer actions", () => {
     expect(next.auditEvents[0].kind).toBe("user-toggle");
   });
 
-  it("adds users and rejects duplicate emails", () => {
-    const added = appReducer(adminState, {
+  it("adds users and rejects duplicate usernames", () => {
+    const stateWithUsername = {
+      ...adminState,
+      users: [{ ...adminState.users[0], username: "xu.yun" }, ...adminState.users.slice(1)]
+    };
+    const added = appReducer(stateWithUsername, {
       type: "ADD_USER",
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "Prototype User",
       roleId: "hardware-user"
     });
 
-    expect(added.users).toHaveLength(adminState.users.length + 1);
+    expect(added.users).toHaveLength(stateWithUsername.users.length + 1);
     expect(added.users.at(-1)?.name).toBe("Demo Engineer");
     expect(added.auditEvents[0].kind).toBe("user-add");
     expect(added.auditEvents[0].userId).toBe(added.users.at(-1)?.id);
 
-    const duplicate = appReducer(adminState, {
+    const duplicate = appReducer(stateWithUsername, {
       type: "ADD_USER",
       name: "Fake",
-      email: "xu@chargelab.cn",
+      username: "xu.yun",
       title: "Fake",
       roleId: "guest"
     });
 
-    expect(duplicate).toBe(adminState);
+    expect(duplicate).toBe(stateWithUsername);
   });
 
   it("marks exports by snapshotting the current draft and writing audit metadata", () => {

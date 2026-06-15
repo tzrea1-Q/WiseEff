@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, scrypt } from "node:crypto";
+import { promisify } from "node:util";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { createAuditEvent } from "../audit/repository";
@@ -10,8 +11,10 @@ import {
   getPendingRegistrationRoleRequestByIdForAdmin,
   getPendingRegistrationRoleRequestById,
   getUserById,
+  findPasswordCredentialByUsername,
   listAllPendingRegistrationRoleRequests,
   insertUser,
+  insertPasswordCredential,
   listPendingRegistrationRoleRequests,
   listUsers,
   replaceRoleBindings,
@@ -21,6 +24,8 @@ import {
 import type { CreateUserInput, ReplaceUserRolesInput, UpdateUserActiveInput, UpdateUserProfileInput } from "./types";
 
 const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
+const scryptAsync = promisify(scrypt);
+const passwordHashPrefix = "scrypt";
 
 function requireUserManager(auth: AuthContext) {
   if (!auth.user.isActive || !auth.permissions.includes("users:manage")) {
@@ -36,6 +41,34 @@ function normalizeRoles(roles: ReplaceUserRolesInput["roles"]): RoleBinding[] {
 
     return { projectId: role.projectId ?? null, roleId: role.roleId };
   });
+}
+
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function requireUsername(username: string) {
+  if (!username) {
+    throw new ApiError("VALIDATION_FAILED", "Username is required.", 400);
+  }
+  if (username.length < 3 || username.length > 64) {
+    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.", 400);
+  }
+  if (!/^[a-z0-9._-]+$/.test(username)) {
+    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.", 400);
+  }
+}
+
+function requirePasswordPolicy(password: string) {
+  if (password.length < 8) {
+    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.", 400);
+  }
+}
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("base64url");
+  const derived = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${passwordHashPrefix}$${salt}$${derived.toString("base64url")}`;
 }
 
 function hasAdminRole(roles: RoleBinding[]) {
@@ -130,25 +163,40 @@ export async function listGovernedUsers(db: Queryable, auth: AuthContext) {
 export async function createUser(db: Database, auth: AuthContext, input: CreateUserInput, context: AuditCorrelationContext = {}) {
   requireUserManager(auth);
   const roles = normalizeRoles(input.roles);
+  const name = input.name.trim();
+  const username = normalizeUsername(input.username);
+  requireUsername(username);
+  requirePasswordPolicy(input.password);
+  if (!name) {
+    throw new ApiError("VALIDATION_FAILED", "User name is required.", 400);
+  }
 
   return db.transaction(async (tx) => {
+    const existingCredential = await findPasswordCredentialByUsername(tx, username);
+    if (existingCredential) {
+      throw new ApiError("CONFLICT", "Username is already registered.", 409, { username });
+    }
+
     const user = await insertUser(tx, {
       id: `u-${randomUUID()}`,
       organizationId: auth.organization.id,
-      name: input.name.trim(),
-      email: input.email.trim().toLowerCase(),
-      title: input.title?.trim() || "User",
-      roles
+      name,
+      title: input.title?.trim() || "User"
+    });
+    await insertPasswordCredential(tx, {
+      userId: user.id,
+      username,
+      passwordHash: await hashPassword(input.password)
     });
     await replaceRoleBindings(tx, { organizationId: auth.organization.id, userId: user.id, roles });
     await auditUserMutation(tx, auth, {
       kind: "user-create",
       action: "create",
       userId: user.id,
-      metadata: { email: user.email, roles }
+      metadata: { username, roles }
     }, context);
 
-    return { ...user, roles };
+    return { ...user, username, roles };
   });
 }
 

@@ -8,7 +8,7 @@ describe("shared user permission reducer actions", () => {
     const next = appReducer(state, {
       type: "ADD_USER",
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "Validation Engineer",
       roleId: "hardware-user"
     });
@@ -16,7 +16,7 @@ describe("shared user permission reducer actions", () => {
     expect(next.users).toHaveLength(state.users.length + 1);
     expect(next.users.at(-1)).toMatchObject({
       name: "Demo Engineer",
-      email: "demo@chargelab.cn",
+      username: "demo.engineer",
       title: "Validation Engineer",
       roleId: "hardware-user",
       isActive: true
@@ -29,13 +29,13 @@ describe("shared user permission reducer actions", () => {
     const next = appReducer(state, {
       type: "ADD_USER",
       name: "Admin Principal",
-      email: "admin-principal@chargelab.cn",
+      username: "admin.principal",
       title: "Validation Engineer",
       roleId: "hardware-user"
     });
 
     expect(next.users).toHaveLength(state.users.length + 1);
-    expect(next.users.at(-1)?.email).toBe("admin-principal@chargelab.cn");
+    expect(next.users.at(-1)?.username).toBe("admin.principal");
   });
 
   it("blocks a current Guest account even when the active persona is Admin", () => {
@@ -43,7 +43,7 @@ describe("shared user permission reducer actions", () => {
     const next = appReducer(state, {
       type: "ADD_USER",
       name: "Guest Principal",
-      email: "guest-principal@chargelab.cn",
+      username: "guest.principal",
       title: "Validation Engineer",
       roleId: "hardware-user"
     });
@@ -51,16 +51,20 @@ describe("shared user permission reducer actions", () => {
     expect(next).toBe(state);
   });
 
-  it("blocks duplicate or invalid email addresses", () => {
-    const state = { ...createPrototypeState(), activeRoleId: "admin" };
-    const existingEmail = state.users[0].email;
-    expect(existingEmail).toBeDefined();
+  it("blocks duplicate or invalid usernames", () => {
+    const baseState = createPrototypeState();
+    const state = {
+      ...baseState,
+      activeRoleId: "admin",
+      users: [{ ...baseState.users[0], username: "xu.yun" }, ...baseState.users.slice(1)]
+    };
+    const existingUsername = state.users[0].username!;
 
     expect(
       appReducer(state, {
         type: "ADD_USER",
         name: "Duplicate",
-        email: existingEmail!,
+        username: existingUsername,
         title: "Duplicate",
         roleId: "hardware-user"
       })
@@ -70,7 +74,7 @@ describe("shared user permission reducer actions", () => {
       appReducer(state, {
         type: "ADD_USER",
         name: "Invalid",
-        email: "invalid-email",
+        username: "no",
         title: "Invalid",
         roleId: "hardware-user"
       })

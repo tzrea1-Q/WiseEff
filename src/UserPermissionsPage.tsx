@@ -17,7 +17,7 @@ type UserPermissionsPageProps = {
 
 export type UserGovernanceActions = {
   listUsers(): Promise<User[]>;
-  createUser(input: { name: string; email: string; title: string; roleId: PlatformRoleId }): Promise<User | void>;
+  createUser(input: { name: string; username: string; title: string; password: string; roleId: PlatformRoleId }): Promise<User | void>;
   assignUserRole(userId: string, roleId: PlatformRoleId): Promise<User | void>;
   setUserActive(userId: string, isActive: boolean): Promise<User | void>;
   listRegistrationRoleRequests?(): Promise<RegistrationRoleRequest[]>;
@@ -114,7 +114,7 @@ function userColumnFilterValue(user: User, key: UserColumnFilterKey) {
 }
 
 function userAccountIdentifier(user: User) {
-  return user.email ?? user.username ?? "无账号标识";
+  return user.username ?? user.email ?? "无账号标识";
 }
 
 function RoleCapabilityTooltip({ roleId, position }: { roleId: PlatformRoleId; position: RoleHintState }) {
@@ -152,8 +152,10 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   const [columnFilters, setColumnFilters] = useState<HeaderFilterState>({});
   const [addUserOpen, setAddUserOpen] = useState(false);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [title, setTitle] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [addUserError, setAddUserError] = useState("");
   const [initialRoleId, setInitialRoleId] = useState<PlatformRoleId>("hardware-user");
   const [registrationRoleRequests, setRegistrationRoleRequests] = useState<RegistrationRoleRequest[]>([]);
@@ -289,26 +291,32 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
   async function handleAddUserSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
+    const trimmedUsername = username.trim();
     const trimmedTitle = title.trim();
 
-    if (!trimmedName || !trimmedEmail) {
-      setAddUserError("姓名和邮箱不能为空。");
+    if (!trimmedName || !trimmedUsername || !password) {
+      setAddUserError("姓名、用户名和初始密码不能为空。");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setAddUserError("两次输入的密码不一致。");
       return;
     }
 
     try {
       const createdUser = await userGovernanceActions?.createUser({
         name: trimmedName,
-        email: trimmedEmail,
+        username: trimmedUsername,
         title: trimmedTitle,
+        password,
         roleId: initialRoleId
       });
       dispatch({
         type: "ADD_USER",
         id: createdUser?.id,
         name: createdUser?.name ?? trimmedName,
-        email: createdUser?.email ?? trimmedEmail,
+        username: createdUser?.username ?? trimmedUsername,
         title: createdUser?.title ?? trimmedTitle,
         roleId: createdUser?.roleId ?? initialRoleId
       });
@@ -319,8 +327,10 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
 
     setAddUserOpen(false);
     setName("");
-    setEmail("");
+    setUsername("");
     setTitle("");
+    setPassword("");
+    setConfirmPassword("");
     setAddUserError("");
     setInitialRoleId("hardware-user");
   }
@@ -516,21 +526,51 @@ export function UserPermissionsPage({ state, dispatch, search: _search, userGove
                 />
               </label>
               <label className="user-permissions-modal-field">
-                <span>邮箱</span>
+                <span>用户名</span>
                 <input
                   className="user-permissions-modal-control"
-                  type="email"
-                  value={email}
+                  value={username}
                   onChange={(event) => {
-                    setEmail(event.target.value);
+                    setUsername(event.target.value);
                     setAddUserError("");
                   }}
+                  autoComplete="username"
                   required
                 />
               </label>
               <label className="user-permissions-modal-field">
-                <span>职务</span>
+                <span>显示称谓</span>
                 <input className="user-permissions-modal-control" value={title} onChange={(event) => setTitle(event.target.value)} />
+              </label>
+              <label className="user-permissions-modal-field">
+                <span>初始密码</span>
+                <input
+                  className="user-permissions-modal-control"
+                  type="password"
+                  value={password}
+                  minLength={8}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setAddUserError("");
+                  }}
+                  autoComplete="new-password"
+                  required
+                />
+              </label>
+              <label className="user-permissions-modal-field">
+                <span>确认密码</span>
+                <input
+                  className="user-permissions-modal-control"
+                  type="password"
+                  value={confirmPassword}
+                  minLength={8}
+                  onChange={(event) => {
+                    setConfirmPassword(event.target.value);
+                    setAddUserError("");
+                  }}
+                  autoComplete="new-password"
+                  required
+                />
               </label>
               <label className="user-permissions-modal-field">
                 <span>初始角色</span>

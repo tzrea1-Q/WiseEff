@@ -9,8 +9,9 @@ export const roleBindingSchema = z.object({
 
 export const createUserBodySchema = z.object({
   name: z.string().min(1),
-  email: z.string().email(),
-  title: z.string().default("User"),
+  username: z.string().min(3).max(64),
+  password: z.string().min(8),
+  title: z.string().optional(),
   roles: z.array(roleBindingSchema).min(1)
 });
 

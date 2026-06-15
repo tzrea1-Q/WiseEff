@@ -373,14 +373,14 @@ export const projects: Project[] = bundledPowerManagementConfig.projects.map((pr
 export const roles: Role[] = [...platformRoles];
 
 export const users: User[] = [
-  { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", title: "Platform Owner", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z", lastActive: "just now" },
-  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", title: "Hardware Engineer", roleId: "hardware-user", isActive: true, createdAt: "2025-01-14T03:12:00.000Z", lastActive: "2h ago" },
-  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", title: "Software Engineer", roleId: "software-user", isActive: true, createdAt: "2025-02-03T08:04:00.000Z", lastActive: "today 09:12" },
-  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", title: "Hardware Reviewer", roleId: "hardware-committer", isActive: true, createdAt: "2024-12-20T12:00:00.000Z", lastActive: "yesterday" },
-  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", title: "Software Integrator", roleId: "software-user", isActive: true, createdAt: "2025-03-10T10:00:00.000Z", lastActive: "today 10:00" },
-  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", title: "Hardware Committer", roleId: "hardware-committer", isActive: true, createdAt: "2025-03-22T11:00:00.000Z", lastActive: "3d ago" },
-  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", title: "Software Reviewer", roleId: "software-committer", isActive: true, createdAt: "2025-04-01T09:00:00.000Z", lastActive: "5h ago" },
-  { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", title: "External Viewer", roleId: "guest", isActive: false, createdAt: "2025-04-15T14:00:00.000Z", lastActive: "disabled" }
+  { id: "u-xu-yun", name: "Xu Yun", email: "xu@chargelab.cn", username: "xu.yun", title: "Platform Owner", roleId: "admin", isActive: true, createdAt: "2024-11-02T09:30:00.000Z", lastActive: "just now" },
+  { id: "u-zhao-heng", name: "Zhao Heng", email: "zhao@chargelab.cn", username: "zhao.heng", title: "Hardware Engineer", roleId: "hardware-user", isActive: true, createdAt: "2025-01-14T03:12:00.000Z", lastActive: "2h ago" },
+  { id: "u-liu-min", name: "Liu Min", email: "liu@chargelab.cn", username: "liu.min", title: "Software Engineer", roleId: "software-user", isActive: true, createdAt: "2025-02-03T08:04:00.000Z", lastActive: "today 09:12" },
+  { id: "u-wang-jie", name: "Wang Jie", email: "wang@chargelab.cn", username: "wang.jie", title: "Hardware Reviewer", roleId: "hardware-committer", isActive: true, createdAt: "2024-12-20T12:00:00.000Z", lastActive: "yesterday" },
+  { id: "u-chen-na", name: "Chen Na", email: "chen@chargelab.cn", username: "chen.na", title: "Software Integrator", roleId: "software-user", isActive: true, createdAt: "2025-03-10T10:00:00.000Z", lastActive: "today 10:00" },
+  { id: "u-li-peng", name: "Li Peng", email: "lipeng@chargelab.cn", username: "li.peng", title: "Hardware Committer", roleId: "hardware-committer", isActive: true, createdAt: "2025-03-22T11:00:00.000Z", lastActive: "3d ago" },
+  { id: "u-sun-mei", name: "Sun Mei", email: "sun@chargelab.cn", username: "sun.mei", title: "Software Reviewer", roleId: "software-committer", isActive: true, createdAt: "2025-04-01T09:00:00.000Z", lastActive: "5h ago" },
+  { id: "u-tao-lin", name: "Tao Lin", email: "tao@chargelab.cn", username: "tao.lin", title: "External Viewer", roleId: "guest", isActive: false, createdAt: "2025-04-15T14:00:00.000Z", lastActive: "disabled" }
 ];
 
 function recentIso(minutesAgo: number): string {

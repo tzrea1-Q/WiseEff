@@ -5,6 +5,7 @@ export type UserGovernanceDto = {
   organizationId: string;
   name: string;
   email: string | null;
+  username: string | null;
   title: string;
   isActive: boolean;
   createdAt: string;
@@ -14,7 +15,8 @@ export type UserGovernanceDto = {
 
 export type CreateUserInput = {
   name: string;
-  email: string;
+  username: string;
+  password: string;
   title?: string;
   roles: Array<{ projectId?: string | null; roleId: BackendRoleId }>;
 };

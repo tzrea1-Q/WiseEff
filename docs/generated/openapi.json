@@ -288,7 +288,7 @@
       },
       "post": {
         "operationId": "users.create",
-        "summary": "Create governed user",
+        "summary": "Create local account user",
         "tags": [
           "users"
         ],
@@ -297,7 +297,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateUserGovernanceRequest"
+                "$ref": "#/components/schemas/CreateLocalAccountUserRequest"
               }
             }
           }
@@ -2258,9 +2258,9 @@
         "type": "object",
         "x-wiseeff-schema": "UserGovernanceListResponse"
       },
-      "CreateUserGovernanceRequest": {
+      "CreateLocalAccountUserRequest": {
         "type": "object",
-        "x-wiseeff-schema": "CreateUserGovernanceRequest"
+        "x-wiseeff-schema": "CreateLocalAccountUserRequest"
       },
       "UserGovernanceResponse": {
         "type": "object",
