@@ -136,6 +136,17 @@ function getModuleToneIndex(module: string) {
   return Array.from(module).reduce((total, char) => total + char.charCodeAt(0), 0) % 8;
 }
 
+function formatUpdatedAtForTable(updatedAt: string) {
+  const timestamp = Date.parse(updatedAt);
+  if (!Number.isFinite(timestamp)) {
+    return updatedAt;
+  }
+
+  const date = new Date(timestamp);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function sortValue(row: ParameterRecord, key: SortKey) {
   if (key === "range") {
     return `${row.range} ${row.unit}`.trim();
@@ -387,6 +398,7 @@ export function ParametersTable({
               const isStashed = stashedIds ? stashedIds.has(row.id) : false;
               const hasComplexValue = isComplexParameterValue(row.currentValue) || isComplexParameterValue(row.recommendedValue);
               const valueSummary = getParameterValueSummary(row.currentValue || row.recommendedValue);
+              const displayedUpdatedAt = formatUpdatedAtForTable(row.updatedAt);
               return (
               <tr
                 key={row.id}
@@ -452,7 +464,7 @@ export function ParametersTable({
                   <small>{row.unit}</small>
                 </td>
                 <td data-label="重要性">{row.risk}</td>
-                <td data-label="更新时间">{row.updatedAt}</td>
+                <td data-label="更新时间" title={displayedUpdatedAt === row.updatedAt ? undefined : row.updatedAt}>{displayedUpdatedAt}</td>
                 <td data-label="操作">
                   <div className="parameters-table-row-actions">
                   {onViewRow ? (

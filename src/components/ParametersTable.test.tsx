@@ -225,6 +225,22 @@ describe("ParametersTable", () => {
     expect(visibleParameterNames()[0]).toContain("soc_estimation_smoothing");
   });
 
+  it("formats API ISO update timestamps for the table column", () => {
+    setup({
+      rows: [
+        {
+          ...rows[0],
+          id: "p-api-time",
+          updatedAt: "2026-06-14T12:27:58.378Z",
+          updatedAtTs: "2026-06-14T12:27:58.378Z"
+        }
+      ]
+    });
+
+    expect(screen.getByText("06-14 20:27")).toBeInTheDocument();
+    expect(screen.queryByText("2026-06-14T12:27:58.378Z")).not.toBeInTheDocument();
+  });
+
   it("selects one row without focusing the row", () => {
     const { onFocusRow, onSelectedIdsChange } = setup({ modifiedIds: new Set(["p1", "p2", "p3"]) });
 
