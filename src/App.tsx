@@ -648,6 +648,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...state,
         parameters: action.parameters,
         changeRequests: action.changeRequests,
+        parameterDrafts: action.parameterDrafts ?? [],
         parameterSubmissionRounds: [...draftSubmissionRounds, ...action.parameterSubmissionRounds],
         configDraft: {
           ...state.configDraft,
