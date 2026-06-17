@@ -943,6 +943,43 @@
         }
       }
     },
+    "/api/v1/parameter-submission-rounds/{roundId}/withdraw": {
+      "post": {
+        "operationId": "parameters.withdrawSubmissionRound",
+        "summary": "Withdraw parameter submission round",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterSubmissionRoundResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameter-change-requests": {
       "get": {
         "operationId": "parameters.listChangeRequests",

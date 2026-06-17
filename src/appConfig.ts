@@ -7,6 +7,7 @@ import {
   Gauge,
   Home,
   LucideIcon,
+  ScrollText,
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
@@ -28,7 +29,8 @@ export type PageKey =
   | "debugging"
   | "node-debugging"
   | "debugging-admin"
-  | "user-permissions";
+  | "user-permissions"
+  | "audit";
 
 export type PageConfig = {
   key: PageKey;
@@ -158,6 +160,7 @@ export const navigationItems: PageConfig[] = [
 
 export const utilityItems: Array<{ label: string; icon: LucideIcon; path?: string }> = [
   { label: "Agent 能力", icon: Bot },
+  { label: "审计中心", icon: ScrollText, path: "/audit" },
   { label: "用户管理", icon: Settings2, path: "/user-permissions" }
 ];
 
@@ -183,6 +186,18 @@ export function getPageByPath(path: string): PageConfig {
       icon: Settings2,
       title: "用户权限管理",
       subtitle: "统一管理雷泽平台用户、四档角色和访问权限"
+    };
+  }
+
+  if (path === "/audit") {
+    return {
+      key: "audit",
+      path: "/audit",
+      label: "审计中心",
+      group: "平台总览",
+      icon: ScrollText,
+      title: "审计中心",
+      subtitle: "跨模块检索参数、日志、调试、Agent 与用户治理操作证据"
     };
   }
 
@@ -238,7 +253,8 @@ export function createAgentPlan(path: string): AgentPlan {
         prompts: ["总结审阅队列", "生成审阅意见", "检查高风险变更"],
         actions: [
           { id: "summarize-review", label: "生成审阅摘要", requiresConfirm: false },
-          { id: "advance-review", label: "推进当前流程", requiresConfirm: true, requiredPermission: "parameter.review" }
+          { id: "advance-review", label: "推进当前流程", requiresConfirm: true, requiredPermission: "parameter.review" },
+          { id: "merge-review", label: "确认参数合入", requiresConfirm: true, requiredPermission: "parameter.merge" }
         ]
       };
     case "logs":

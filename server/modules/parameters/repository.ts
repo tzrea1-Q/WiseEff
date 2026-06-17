@@ -1025,6 +1025,104 @@ export async function listSubmissionRounds(
     items: itemsByRound.get(round.id) ?? []
   }));
 }
+
+export async function getSubmissionRoundById(
+  db: Queryable,
+  query: { organizationId: string; roundId: string }
+) {
+  const result = await db.query<SubmissionRoundRow>(
+    `
+    select psr.id, psr.project_id, projects.name as project_name, users.name as submitter,
+      psr.status, psr.summary, psr.created_at
+    from parameter_submission_rounds psr
+    inner join projects on projects.id = psr.project_id
+    inner join users on users.id = psr.submitter_user_id
+    where psr.organization_id = $1
+      and psr.id = $2
+    `,
+    [query.organizationId, query.roundId]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  const round = toSubmissionRoundDto(row);
+  const itemsByRound = await listSubmissionItemsByRoundIds(db, {
+    organizationId: query.organizationId,
+    roundIds: [round.id]
+  });
+  const assigneesByRound = await listWorkflowAssigneesByRoundIds(db, {
+    organizationId: query.organizationId,
+    roundIds: [round.id]
+  });
+
+  return {
+    ...round,
+    workflowAssignees: assigneesByRound.get(round.id),
+    items: itemsByRound.get(round.id) ?? []
+  };
+}
+
+export async function getSubmissionRoundSubmitterUserId(
+  db: Queryable,
+  query: { organizationId: string; roundId: string }
+) {
+  const result = await db.query<{ submitter_user_id: string; status: ParameterSubmissionRoundStatus }>(
+    `
+    select submitter_user_id, status
+    from parameter_submission_rounds
+    where organization_id = $1
+      and id = $2
+    `,
+    [query.organizationId, query.roundId]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function withdrawOpenChangeRequestsForRound(
+  db: Queryable,
+  input: { organizationId: string; roundId: string; note: string }
+) {
+  await db.query(
+    `
+    update parameter_change_requests
+    set status = 'rejected',
+      reject_reason = $3,
+      assigned_to_user_id = null,
+      updated_at = now()
+    where organization_id = $1
+      and submission_round_id = $2
+      and status not in ('merged', 'rejected', 'withdrawn')
+    `,
+    [input.organizationId, input.roundId, input.note]
+  );
+}
+
+export async function updateSubmissionRoundStatus(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    roundId: string;
+    status: ParameterSubmissionRoundStatus;
+    summary?: string;
+  }
+) {
+  await db.query(
+    `
+    update parameter_submission_rounds
+    set status = $3,
+      summary = coalesce($4, summary),
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    `,
+    [input.organizationId, input.roundId, input.status, input.summary ?? null]
+  );
+}
+
 export async function listChangeRequests(
   db: Queryable,
   query: { organizationId: string; projectId?: string; status?: ParameterChangeRequestStatus[]; assignedTo?: string }
@@ -1187,6 +1285,78 @@ export async function listReviewDecisions(
   );
 
   return result.rows.map(toReviewDecisionDto);
+}
+
+export async function listReviewDecisionsForRequestIds(
+  db: Queryable,
+  query: { organizationId: string; requestIds: string[] }
+) {
+  if (query.requestIds.length === 0) {
+    return [] as ReviewDecisionDto[];
+  }
+
+  const result = await db.query<ReviewDecisionRow>(
+    `
+    select id, request_id, reviewer_user_id, decision, from_status, to_status, note, created_at
+    from parameter_review_decisions
+    where organization_id = $1
+      and request_id = any($2::text[])
+    order by created_at asc, id asc
+    `,
+    [query.organizationId, query.requestIds]
+  );
+
+  return result.rows.map(toReviewDecisionDto);
+}
+
+export async function listChangeRequestWorkflowStateByIds(
+  db: Queryable,
+  query: { organizationId: string; requestIds: string[] }
+) {
+  if (query.requestIds.length === 0) {
+    return [] as Array<{ id: string; status: ParameterChangeRequestStatus; assignedTo?: string }>;
+  }
+
+  const result = await db.query<{
+    id: string;
+    status: ParameterChangeRequestStatus;
+    assigned_to_user_id: string | null;
+  }>(
+    `
+    select id, status, assigned_to_user_id
+    from parameter_change_requests
+    where organization_id = $1
+      and id = any($2::text[])
+    `,
+    [query.organizationId, query.requestIds]
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    assignedTo: row.assigned_to_user_id ?? undefined
+  }));
+}
+
+export async function listUserNamesByIds(
+  db: Queryable,
+  query: { organizationId: string; userIds: string[] }
+) {
+  if (query.userIds.length === 0) {
+    return new Map<string, string>();
+  }
+
+  const result = await db.query<{ id: string; name: string }>(
+    `
+    select id, name
+    from users
+    where organization_id = $1
+      and id = any($2::text[])
+    `,
+    [query.organizationId, query.userIds]
+  );
+
+  return new Map(result.rows.map((row) => [row.id, row.name]));
 }
 
 export async function insertReviewDecision(

@@ -35,8 +35,8 @@ describe("normalized workspace headers", () => {
     const topbarActions = within(topbar).getByRole("toolbar", { name: "项目参数管理后台页面操作" });
 
     expect(within(topbar).getByRole("button", { name: "批量参数导入" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { level: 1, name: "项目参数管理后台" })).not.toBeInTheDocument();
-    expect(within(topbarActions).getByRole("button", { name: "保存到 JSON 文件" })).toBeInTheDocument();
+    expect(within(topbarActions).queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
+    expect(within(topbarActions).queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
     const permissionsButton = within(topbarActions).getByRole("button", { name: "权限" });
     expect(permissionsButton).toBeInTheDocument();
     expect(permissionsButton).toHaveAttribute("data-route", "/user-permissions");
@@ -50,12 +50,11 @@ describe("normalized workspace headers", () => {
 
     const parameterAdminTopbar = document.querySelector(".topbar") as HTMLElement;
     const legacyPrimary = within(parameterAdminTopbar).getByRole("button", { name: "批量参数导入" });
-    const legacySecondary = within(parameterAdminTopbar).getByRole("button", { name: "保存到 JSON 文件" });
-    const exportMenu = parameterAdminTopbar.querySelector(".export-menu");
+    const auditButton = within(parameterAdminTopbar).getByRole("button", { name: "审计" });
 
     expect(legacyPrimary).toHaveClass("button", "primary");
-    expect(legacySecondary).toHaveClass("button", "subtle");
-    expect(exportMenu).toBeInTheDocument();
+    expect(auditButton).toHaveClass("button", "ghost");
+    expect(parameterAdminTopbar.querySelector(".export-menu")).not.toBeInTheDocument();
 
     cleanup();
     window.history.replaceState(null, "", "/debugging-admin");

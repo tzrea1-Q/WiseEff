@@ -78,6 +78,10 @@ export const applyImportBatchBodySchema = z.object({
   selectedItemIds: z.array(nonEmptyString).optional()
 });
 
+export const paramsWithRoundIdSchema = z.object({
+  roundId: nonEmptyString
+});
+
 export type ListParametersQuery = z.infer<typeof listParametersQuerySchema>;
 export type SaveDraftBody = z.infer<typeof saveDraftBodySchema>;
 export type SubmitRoundBody = z.infer<typeof submitRoundBodySchema>;

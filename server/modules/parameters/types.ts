@@ -126,7 +126,18 @@ export type ParameterSubmissionRoundDto = {
   status: ParameterSubmissionRoundStatus;
   summary: string;
   workflowAssignees?: ParameterWorkflowAssigneesDto;
+  workflowTrail?: SubmissionWorkflowStageDetailDto[];
   items: ParameterSubmissionItemDto[];
+};
+
+export type SubmissionWorkflowStageDetailDto = {
+  key: "hardware_review" | "software_review" | "software_merge";
+  stepIndex: number;
+  label: string;
+  assigneeName: string;
+  executorName?: string;
+  executorLabel: "执行人" | "当前处理";
+  state: "pending" | "active" | "completed" | "skipped";
 };
 
 export type ParameterImportSummaryDto = {

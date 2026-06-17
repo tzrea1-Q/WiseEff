@@ -343,11 +343,17 @@ describe("parameter routes", () => {
     expect(service.reviewChange).not.toHaveBeenCalled();
   });
 
-  it("review route rejects auth without parameter review permission before service work", async () => {
+  it("review route rejects auth without parameter review or merge permission before service work", async () => {
     const db = makeDb();
 
     const response = await requestJson<{ error: { code: string; message: string } }>(
-      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "parameter:edit"] }) }),
+      makeServer({
+        db,
+        auth: makeAuth({
+          permissions: ["parameter:view", "parameter:edit"],
+          roles: [{ projectId: "aurora", roleId: "hardware-user" }]
+        })
+      }),
       "/api/v1/parameter-change-requests/request-1/review",
       {
         method: "POST",
@@ -358,8 +364,28 @@ describe("parameter routes", () => {
     expect(response.status).toBe(403);
     expect(response.body.error).toMatchObject({
       code: "FORBIDDEN",
-      message: "Parameter review permission is required."
+      message: "Parameter review or merge permission is required."
     });
     expect(service.reviewChange).not.toHaveBeenCalled();
+  });
+
+  it("review route allows software-user merge role before service work", async () => {
+    const db = makeDb();
+    service.reviewChange.mockResolvedValue({
+      id: "request-1",
+      status: "merged"
+    });
+
+    const response = await requestJson(
+      makeServer({ db }),
+      "/api/v1/parameter-change-requests/request-1/review",
+      {
+        method: "POST",
+        body: JSON.stringify({ decision: "advance", expectedVersion: 7 })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(service.reviewChange).toHaveBeenCalled();
   });
 });

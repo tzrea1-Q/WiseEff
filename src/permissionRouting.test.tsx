@@ -130,6 +130,7 @@ describe("permission-aware routing", () => {
 describe("permission route matrix", () => {
   it("keeps User out of review and admin pages", () => {
     expect(canAccessPage("user", "parameter-review")).toBe(false);
+    expect(canAccessPage("software-user", "parameter-review")).toBe(true);
     expect(canAccessPage("user", "parameter-admin")).toBe(false);
     expect(canAccessPage("user", "log-admin")).toBe(false);
     expect(canAccessPage("user", "debugging-admin")).toBe(false);

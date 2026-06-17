@@ -109,6 +109,7 @@ type ParameterRuntimeDispatchAction =
     }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
   | { type: "DISCARD_STASHED_PARAMETER_DRAFTS"; projectId: string; parameterIds: string[] }
+  | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string }
   | { type: "IMPORT_PARAMETERS" }
@@ -119,6 +120,7 @@ export type ParameterRuntimeActions = {
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
+  withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
@@ -252,6 +254,14 @@ export function createParameterRuntimeActions({
         const draftsToDelete = drafts.filter((draft) => parameterIds.has(draft.parameterId));
         await Promise.all(draftsToDelete.map((draft) => api.deleteDraft(draft.id)));
       });
+    },
+    async withdrawSubmissionRound(roundId) {
+      if (runtimeMode !== "api") {
+        dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId });
+        return undefined;
+      }
+
+      return runApiMutation((api) => api.withdrawSubmissionRound(roundId));
     },
     async reviewChange(input) {
       if (runtimeMode !== "api") {

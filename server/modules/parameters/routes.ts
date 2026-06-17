@@ -19,17 +19,19 @@ import {
   listSubmissionRounds,
   reviewChange,
   saveDraft,
-  submitParameterChanges
+  submitParameterChanges,
+  withdrawSubmissionRound
 } from "./service";
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
   listParametersQuerySchema,
+  paramsWithRoundIdSchema,
   reviewChangeBodySchema,
   saveDraftBodySchema,
   submitRoundBodySchema
 } from "./schemas";
-import { canReviewParameters, canViewParameters } from "./policy";
+import { canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
 import { parameterChangeRequestStatuses, parameterSubmissionRoundStatuses } from "./status";
 
 const paramsWithProjectIdSchema = z.object({
@@ -90,9 +92,9 @@ function requireCanView(auth: AuthContext) {
   }
 }
 
-function requireCanReview(auth: AuthContext) {
-  if (!canReviewParameters(auth)) {
-    throw new ApiError("FORBIDDEN", "Parameter review permission is required.", 403);
+function requireCanReviewOrMerge(auth: AuthContext) {
+  if (!canReviewParameters(auth) && !canMergeParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter review or merge permission is required.", 403);
   }
 }
 
@@ -238,6 +240,15 @@ export function registerParameterRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.post("/api/v1/parameter-submission-rounds/:roundId/withdraw", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(paramsWithRoundIdSchema, request.params);
+    const item = await withdrawSubmissionRound(db, auth, params.roundId, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
   router.get("/api/v1/parameter-change-requests", async (request) => {
     const db = requireDb(options.db);
     const auth = await options.getCurrentAuthContext(request);
@@ -255,7 +266,7 @@ export function registerParameterRoutes(
     const auth = await options.getCurrentAuthContext(request);
     const params = parseWithSchema(paramsWithRequestIdSchema, request.params);
     const body = parseWithSchema(reviewChangeBodySchema, withRouteField(request.body, "requestId", params.requestId));
-    requireCanReview(auth);
+    requireCanReviewOrMerge(auth);
     const item = await reviewChange(db, auth, body, { requestId: request.requestId });
 
     return { status: 200, body: { item } };

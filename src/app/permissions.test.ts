@@ -23,9 +23,11 @@ describe("app permission policy", () => {
       expect(canAccessPage(roleId, "logs")).toBe(true);
       expect(canAccessPage(roleId, "debugging")).toBe(true);
       expect(canAccessPage(roleId, "node-debugging")).toBe(true);
-      expect(canAccessPage(roleId, "parameter-review")).toBe(false);
       expect(canAccessPage(roleId, "parameter-admin")).toBe(false);
     }
+
+    expect(canAccessPage("hardware-user", "parameter-review")).toBe(false);
+    expect(canAccessPage("software-user", "parameter-review")).toBe(true);
   });
 
   it("allows hardware and software Committer roles to review but not access admin backends", () => {
@@ -41,6 +43,8 @@ describe("app permission policy", () => {
     expect(canAccessPage("admin", "debugging-admin")).toBe(true);
     expect(canAccessPage("admin", "log-admin")).toBe(true);
     expect(canAccessPage("admin", "user-permissions")).toBe(true);
+    expect(canAccessPage("admin", "audit")).toBe(true);
+    expect(canAccessPage("hardware-user", "audit")).toBe(false);
   });
 
   it("checks key action permissions", () => {
@@ -49,6 +53,7 @@ describe("app permission policy", () => {
     expect(canPerform("software-user", "parameter.edit")).toBe(true);
     expect(canPerform("hardware-user", "parameter.review")).toBe(false);
     expect(canPerform("software-user", "parameter.review")).toBe(false);
+    expect(canPerform("software-user", "parameter.merge")).toBe(true);
     expect(canPerform("hardware-committer", "parameter.review")).toBe(true);
     expect(canPerform("software-committer", "parameter.review")).toBe(true);
     expect(canPerform("admin", "parameter.review")).toBe(true);

@@ -39,6 +39,7 @@ function createRepository(overrides: Partial<ParameterRepository> = {}): Paramet
     listChangeRequests: vi.fn().mockResolvedValue([apiChangeRequest]),
     listSubmissionRounds: vi.fn().mockResolvedValue([apiRound]),
     submitParameterChanges: vi.fn().mockResolvedValue(apiRound),
+    withdrawSubmissionRound: vi.fn().mockResolvedValue({ ...apiRound, status: "已撤回" }),
     reviewChange: vi.fn().mockResolvedValue(apiChangeRequest),
     createImportPreview: vi.fn().mockResolvedValue(apiPreviewBatch),
     applyImportBatch: vi.fn().mockResolvedValue({
@@ -189,6 +190,19 @@ describe("createParameterRuntimeActions", () => {
       projectId: "aurora",
       parameterIds: [apiParameter.id]
     });
+  });
+
+  it("withdraws submission rounds through the API and refreshes runtime state", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      withdrawSubmissionRound: vi.fn().mockResolvedValue({ ...apiRound, status: "已撤回" })
+    });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+
+    await actions.withdrawSubmissionRound("api-round-1");
+
+    expect(repository.withdrawSubmissionRound).toHaveBeenCalledWith("api-round-1");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
   });
 
   it("refresh loads projects, parameters, change requests, submission rounds, and drafts", async () => {

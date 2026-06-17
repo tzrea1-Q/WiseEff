@@ -27,3 +27,4 @@
 - [docs/zh-CN/design-docs/testing-strategy.md](testing-strategy.md)
 - [docs/zh-CN/design-docs/deployment-operations.md](deployment-operations.md)
 - [docs/zh-CN/design-docs/security-governance.md](security-governance.md)
+- [docs/zh-CN/design-docs/2026-06-17-audit-center-design.md](2026-06-17-audit-center-design.md)

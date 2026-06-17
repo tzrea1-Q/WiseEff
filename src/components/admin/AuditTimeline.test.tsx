@@ -1,16 +1,70 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import type { AuditEvent } from "@/mockData";
+import { describe, expect, it, vi } from "vitest";
+import type { AuditEventView } from "@/domain/audit/types";
 import { AuditTimeline } from "./AuditTimeline";
 
-const events: AuditEvent[] = [
-  { id: "a1", app: "log-admin", actor: "Jane Smith", action: "授予 Mike Kruger 为 Editor", time: "2 小时前", severity: "Low" },
-  { id: "a2", app: "logs", actor: "WiseAgent", action: "生成充电温升根因证据链", time: "18 分钟前", severity: "Medium" },
-  { id: "a3", app: "logs", actor: "WiseAgent", action: "检出 thermal_snapshot.bin 解析失败", time: "昨天 09:31", severity: "High" },
-  { id: "a4", app: "log-admin", actor: "Ana Lin", action: "导出报表", time: "3 小时前", severity: "Low" },
-  { id: "a5", app: "log-admin", actor: "Rui Peng", action: "重新分析 log-stuck-01", time: "昨天 14:02", severity: "Medium" },
-  { id: "a6", app: "log-admin", actor: "Jane Smith", action: "新增用户 Xiao Wang", time: "前天", severity: "Medium" }
+const events: AuditEventView[] = [
+  {
+    id: "a1",
+    app: "log-admin",
+    kind: "user-role-change",
+    actor: "Jane Smith",
+    actorType: "user",
+    action: "授予 Mike Kruger 为 Editor",
+    timeLabel: "2 小时前",
+    severity: "Low"
+  },
+  {
+    id: "a2",
+    app: "logs",
+    kind: "agent-action",
+    actor: "WiseAgent",
+    actorType: "agent",
+    action: "生成充电温升根因证据链",
+    timeLabel: "18 分钟前",
+    severity: "Medium"
+  },
+  {
+    id: "a3",
+    app: "logs",
+    kind: "log-upload-failed",
+    actor: "WiseAgent",
+    actorType: "agent",
+    action: "检出 thermal_snapshot.bin 解析失败",
+    timeLabel: "昨天 09:31",
+    severity: "High"
+  },
+  {
+    id: "a4",
+    app: "log-admin",
+    kind: "export",
+    actor: "Ana Lin",
+    actorType: "user",
+    action: "导出报表",
+    timeLabel: "3 小时前",
+    severity: "Low"
+  },
+  {
+    id: "a5",
+    app: "log-admin",
+    kind: "log-rerun",
+    actor: "Rui Peng",
+    actorType: "user",
+    action: "重新分析 log-stuck-01",
+    timeLabel: "昨天 14:02",
+    severity: "Medium"
+  },
+  {
+    id: "a6",
+    app: "log-admin",
+    kind: "user-add",
+    actor: "Jane Smith",
+    actorType: "user",
+    action: "新增用户 Xiao Wang",
+    timeLabel: "前天",
+    severity: "Medium"
+  }
 ];
 
 describe("AuditTimeline", () => {
@@ -53,5 +107,14 @@ describe("AuditTimeline", () => {
     render(<AuditTimeline events={events.slice(0, 2)} />);
 
     expect(screen.queryByRole("button", { name: /展开更多/ })).not.toBeInTheDocument();
+  });
+
+  it("calls onSelect when an item is clicked", async () => {
+    const onSelect = vi.fn();
+    render(<AuditTimeline events={events.slice(0, 2)} onSelect={onSelect} selectedId="a1" />);
+
+    await userEvent.click(screen.getByRole("button", { name: /授予 Mike Kruger/ }));
+
+    expect(onSelect).toHaveBeenCalledWith("a1");
   });
 });

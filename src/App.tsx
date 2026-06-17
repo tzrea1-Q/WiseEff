@@ -88,6 +88,21 @@ import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
 import { deriveSubmissionTimeline } from "./parameterSubmissionTimeline";
+import { SubmissionWorkflowTimeline } from "./components/SubmissionWorkflowTimeline";
+import {
+  buildSubmissionWorkflowTrail,
+  requestStatusToBackend
+} from "@/domain/parameters/submissionWorkflowTrail";
+import {
+  canWithdrawSubmissionRound,
+  formatSubmissionTimestamp,
+  isActiveSubmissionRound
+} from "@/domain/parameters/submissionRound";
+import {
+  canActOnReviewRequest,
+  isReviewHistoryForRole,
+  splitChangeRequestsForReviewQueue
+} from "@/domain/parameters/reviewQueue";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
 import {
   AuditEvent,
@@ -669,6 +684,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         changeRequests: action.changeRequests,
         parameterDrafts: action.parameterDrafts ?? [],
         parameterSubmissionRounds: [...draftSubmissionRounds, ...action.parameterSubmissionRounds],
+        parameterReviewDecisions: [],
         configDraft: {
           ...state.configDraft,
           projects: action.projects.map((project) => ({ ...project }))
@@ -988,6 +1004,8 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const target = state.changeRequests.find((request) => request.id === action.requestId);
       if (!target || !canAdvanceReviewRequest(activeRoleId, target)) return state;
       const nextStep = getNextReviewStep(target);
+      const fromStatus = requestStatusToBackend(target.status);
+      const toStatus = requestStatusToBackend(nextStep.status);
       return {
         ...state,
         changeRequests: state.changeRequests.map((request) =>
@@ -1002,6 +1020,21 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
             : request
         ),
         parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, nextStep.status),
+        parameterReviewDecisions:
+          fromStatus && toStatus
+            ? [
+                ...state.parameterReviewDecisions,
+                {
+                  id: `prd-${action.requestId}-${state.parameterReviewDecisions.length + 1}`,
+                  requestId: action.requestId,
+                  reviewerUserId: state.currentUserId,
+                  decision: "advance",
+                  fromStatus,
+                  toStatus,
+                  createdAt: new Date().toISOString()
+                }
+              ]
+            : state.parameterReviewDecisions,
         notifications: [
           `${target.title} 已推进到下一流程节点${action.fastTrack ? "（快速通道）" : ""}`,
           ...state.notifications
@@ -3559,15 +3592,45 @@ function shouldShowSubmissionRoundSummary(round: ParameterSubmissionRound) {
   return !/本轮提交包含\s*\d+\s*个参数/.test(summary);
 }
 
-function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
+function ParameterSubmissionsPage({ state, dispatch, onNavigate, parameterActions }: PageProps) {
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const submitterAliases = new Set(
     currentUser ? getUserDisplayAliases(currentUser) : [activeRoleLabel(state.activeRoleId), "平台用户"]
   );
   const myRounds = state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
+  const [withdrawingRound, setWithdrawingRound] = useState(false);
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
   const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
+  const workflowStages = useMemo(() => {
+    if (!selectedRound) {
+      return [];
+    }
+
+    if (selectedRound.workflowTrail?.length) {
+      return selectedRound.workflowTrail;
+    }
+
+    const requestIds = selectedRound.items.map((item) => item.requestId);
+    const roundChangeRequests = state.changeRequests.filter((request) => requestIds.includes(request.id));
+    const roundDecisions = state.parameterReviewDecisions.filter((decision) => requestIds.includes(decision.requestId));
+
+    return buildSubmissionWorkflowTrail({
+      activeIndex: timelineView.activeIndex,
+      workflowAssignees: selectedRound.workflowAssignees,
+      requestIds,
+      changeRequests: roundChangeRequests,
+      reviewDecisions: roundDecisions,
+      resolveUserName: (userId) => getUserName(state.users, userId)
+    });
+  }, [
+    selectedRound,
+    state.changeRequests,
+    state.parameterReviewDecisions,
+    state.users,
+    timelineView.activeIndex
+  ]);
+  const activeRoundCount = myRounds.filter((round) => isActiveSubmissionRound(round.status)).length;
 
   useEffect(() => {
     if (!myRounds.some((round) => round.id === selectedRoundId)) {
@@ -3582,11 +3645,32 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
     [onNavigate]
   );
 
+  const withdrawSelectedRound = async () => {
+    if (!selectedRound || !canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound) {
+      return;
+    }
+
+    setWithdrawingRound(true);
+    try {
+      if (parameterActions) {
+        const result = await parameterActions.withdrawSubmissionRound(selectedRound.id);
+        if (result && "notification" in result && !result.alreadyNotified) {
+          dispatch({ type: "ADD_NOTIFICATION", message: result.notification });
+        }
+        return;
+      }
+
+      dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId: selectedRound.id });
+    } finally {
+      setWithdrawingRound(false);
+    }
+  };
+
   return (
     <div className="submission-history-page">
       <section className="comparison-summary submission-history-summary">
         <MetricCard title="我的提交轮次" value={`${myRounds.length}`} trend="按轮次归档" tone="blue" />
-        <MetricCard title="待审阅轮次" value={`${myRounds.filter((round) => round.status === "待审阅").length}`} trend="可撤回或等待处理" tone="teal" />
+        <MetricCard title="进行中轮次" value={`${activeRoundCount}`} trend="可撤回或等待审阅" tone="teal" />
         <MetricCard title="参数项总数" value={`${myRounds.reduce((total, round) => total + round.items.length, 0)}`} trend="包含单参数和多参数提交" tone="purple" />
       </section>
       <section className="submission-history-layout">
@@ -3602,7 +3686,9 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
               onClick={() => setSelectedRoundId(round.id)}
             >
               <strong>{round.projectName}</strong>
-              <span>{formatWorkflowDisplayText(round.status)} · {round.items.length} 项 · {round.createdAt}</span>
+              <span>
+                {formatWorkflowDisplayText(round.status)} · {round.items.length} 项 · {formatSubmissionTimestamp(round.createdAt)}
+              </span>
             </Button>
           ))}
           {myRounds.length === 0 ? <EmptyState text="当前还没有你的历史提交。" /> : null}
@@ -3618,8 +3704,11 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
                   </div>
                   <StatusBadge status={selectedRound.status} />
                 </div>
-                <p>本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在 {selectedRound.createdAt} 提交。</p>
-                <Timeline className="submission-timeline" steps={[...timelineView.steps]} activeIndex={timelineView.activeIndex} />
+                <p>
+                  本轮提交包含 {selectedRound.items.length} 个参数，由 {selectedRound.submitter} 在{" "}
+                  {formatSubmissionTimestamp(selectedRound.createdAt)} 提交。
+                </p>
+                <SubmissionWorkflowTimeline activeIndex={timelineView.activeIndex} workflowStages={workflowStages} />
               </div>
               <div className="submission-diff-list history-diff-list">
                 {selectedRound.items.map((item) => <SubmissionHistoryDiffCard item={item} key={item.requestId} />)}
@@ -3629,8 +3718,8 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
                   className="full"
                   type="button"
                   variant="destructive"
-                  disabled={selectedRound.status !== "待审阅"}
-                  onClick={() => dispatch({ type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND", roundId: selectedRound.id })}
+                  disabled={!canWithdrawSubmissionRound(selectedRound.status) || withdrawingRound}
+                  onClick={withdrawSelectedRound}
                 >
                   <RotateCcw size={16} />
                   撤回本轮提交
@@ -3682,29 +3771,37 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
   const [filterProjects, setFilterProjects] = useState<string[]>([]);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const contextQuery = useMemo(() => getContextQuery(search), [search]);
-  const pendingRequests = useMemo(() => state.changeRequests.filter((request) => request.status !== "已合入"), [state.changeRequests]);
-  const mergedRequests = useMemo(() => state.changeRequests.filter((request) => request.status === "已合入"), [state.changeRequests]);
+  const reviewerRoleId = migrateLegacyRoleId(state.activeRoleId);
+  const canReviewInitialization = canPerform(reviewerRoleId, "parameter.review");
+  const { pending: pendingRequests, history: historyRequests } = useMemo(
+    () => splitChangeRequestsForReviewQueue(reviewerRoleId, state.changeRequests),
+    [reviewerRoleId, state.changeRequests]
+  );
   const pendingInitializationRows = useMemo(
     () =>
-      state.parameterInitializationReviews
-        .filter((review) => review.status === "pending")
-        .flatMap((review): ParameterInitializationReviewRow[] => {
-          const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
-          return draft ? [{ kind: "initialization", review, draft }] : [];
-        }),
-    [state.parameterInitializationDrafts, state.parameterInitializationReviews]
+      canReviewInitialization
+        ? state.parameterInitializationReviews
+            .filter((review) => review.status === "pending")
+            .flatMap((review): ParameterInitializationReviewRow[] => {
+              const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
+              return draft ? [{ kind: "initialization", review, draft }] : [];
+            })
+        : [],
+    [canReviewInitialization, state.parameterInitializationDrafts, state.parameterInitializationReviews]
   );
   const historyInitializationRows = useMemo(
     () =>
-      state.parameterInitializationReviews
-        .filter((review) => review.status !== "pending")
-        .flatMap((review): ParameterInitializationReviewRow[] => {
-          const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
-          return draft ? [{ kind: "initialization", review, draft }] : [];
-        }),
-    [state.parameterInitializationDrafts, state.parameterInitializationReviews]
+      canReviewInitialization
+        ? state.parameterInitializationReviews
+            .filter((review) => review.status !== "pending")
+            .flatMap((review): ParameterInitializationReviewRow[] => {
+              const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
+              return draft ? [{ kind: "initialization", review, draft }] : [];
+            })
+        : [],
+    [canReviewInitialization, state.parameterInitializationDrafts, state.parameterInitializationReviews]
   );
-  const visibleRequests = reviewMode === "history" ? mergedRequests : pendingRequests;
+  const visibleRequests = reviewMode === "history" ? historyRequests : pendingRequests;
   const visibleInitializationRows = reviewMode === "history" ? historyInitializationRows : pendingInitializationRows;
 
   const unfilteredReviewRows = useMemo<ParameterReviewRow[]>(
@@ -3854,10 +3951,25 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
     });
 
     if (matchingRequest) {
-      setReviewMode(matchingRequest.status === "已合入" ? "history" : "pending");
+      setReviewMode(
+        matchingRequest.status === "已合入" || isReviewHistoryForRole(reviewerRoleId, matchingRequest)
+          ? "history"
+          : "pending"
+      );
       setSelectedId(matchingRequest.id);
     }
-  }, [contextQuery.module, contextQuery.projectId, state.changeRequests, state.parameters]);
+  }, [contextQuery.module, contextQuery.projectId, reviewerRoleId, state.changeRequests, state.parameters]);
+
+  useEffect(() => {
+    if (!selectedId || reviewMode !== "pending") {
+      return;
+    }
+
+    const request = state.changeRequests.find((item) => item.id === selectedId);
+    if (request && isReviewHistoryForRole(reviewerRoleId, request)) {
+      setReviewMode("history");
+    }
+  }, [reviewMode, reviewerRoleId, selectedId, state.changeRequests]);
 
   useEffect(() => {
     if (reviewRows.length && !reviewRows.some((row) => (row.kind === "initialization" ? row.review.id : row.request.id) === selectedId)) {
@@ -3918,8 +4030,12 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
     setFilterProjects([]);
     setFilterStatuses([]);
     setDetailOpen(false);
+    setSelectedId("");
   };
-  const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项已合入` : `${reviewRows.length} 项操作`;
+  const reviewMeta = reviewMode === "history" ? `${reviewRows.length} 项历史审阅` : `${reviewRows.length} 项待处理`;
+  const canActOnSelectedReview = selected ? canActOnReviewRequest(reviewerRoleId, selected) : false;
+  const canRejectSelectedReview = canPerform(reviewerRoleId, "parameter.review");
+  const reviewPageTitle = canPerform(reviewerRoleId, "parameter.review") ? "参数管理员工作台" : "参数合入工作台";
   const selectedWorkflowItems: VerticalTimelineItem[] = selected
     ? (() => {
         const workflowItems: VerticalTimelineItem[] = [
@@ -3968,7 +4084,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
 
   return (
     <WorkbenchLayout
-      title="参数管理员工作台"
+      title={reviewPageTitle}
       hideHeader
     >
       <section className="review-queue">
@@ -3978,7 +4094,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
               <div className="review-view-tabs" role="tablist" aria-label="审阅视角">
                 {[
                   { mode: "pending" as const, label: "待审阅", count: pendingRequests.length + pendingInitializationRows.length },
-                  { mode: "history" as const, label: "历史提交", count: mergedRequests.length + historyInitializationRows.length }
+                  { mode: "history" as const, label: "历史审阅", count: historyRequests.length + historyInitializationRows.length }
                 ].map((item) => (
                   <button
                     className={reviewMode === item.mode ? "active" : ""}
@@ -4226,19 +4342,25 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
               <SectionLabel icon={<History size={16} />} label="变更历史" />
               <VerticalTimeline items={selectedWorkflowItems} />
             </div>
-            <div className="action-panel">
-              <Button className="full" type="button" onClick={advanceSelected}>
-                <CheckCircle2 size={17} />
-                推进流程
-              </Button>
-              <Button className="full" type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
-                <CircleOff size={17} />
-                打回修改
-              </Button>
-            </div>
+            {reviewMode === "pending" && canActOnSelectedReview ? (
+              <div className="action-panel">
+                <Button className="full" type="button" onClick={advanceSelected}>
+                  <CheckCircle2 size={17} />
+                  {canPerform(reviewerRoleId, "parameter.merge") && !canPerform(reviewerRoleId, "parameter.review")
+                    ? "确认合入"
+                    : "推进流程"}
+                </Button>
+                {canRejectSelectedReview ? (
+                  <Button className="full" type="button" variant="destructive" onClick={() => setRejectOpen(true)}>
+                    <CircleOff size={17} />
+                    打回修改
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
           </>
         ) : (
-          <EmptyState text={reviewMode === "history" ? "当前没有历史提交。" : "当前没有待审阅请求。"} />
+          <EmptyState text={reviewMode === "history" ? "当前没有历史审阅。" : "当前没有待审阅请求。"} />
         )}
       </aside>
       {rejectOpen && (selected || selectedInitialization) ? (
@@ -5818,27 +5940,6 @@ function PanelHeader({ title, meta }: { title: ReactNode; meta?: string }) {
     <div className="panel-header">
       <strong>{title}</strong>
       {meta ? <span>{meta}</span> : null}
-    </div>
-  );
-}
-
-function Timeline({
-  steps,
-  activeIndex,
-  className
-}: {
-  steps: string[];
-  activeIndex: number;
-  className?: string;
-}) {
-  return (
-    <div className={["timeline", className].filter(Boolean).join(" ")}>
-      {steps.map((step, index) => (
-        <div className={index <= activeIndex ? "done" : ""} key={step}>
-          <span>{index < activeIndex ? <Check size={14} /> : index + 1}</span>
-          <small>{formatWorkflowDisplayText(step)}</small>
-        </div>
-      ))}
     </div>
   );
 }

@@ -138,6 +138,13 @@ export function createHttpParameterRepository(apiClient: ApiClient = createDefau
       const response = await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>("/api/v1/parameter-submission-rounds", input);
       return submissionRoundFromDto(response.item);
     },
+    async withdrawSubmissionRound(roundId: string) {
+      const response = await apiClient.post<ItemEnvelope<ParameterSubmissionRoundDto>>(
+        `/api/v1/parameter-submission-rounds/${encodeURIComponent(roundId)}/withdraw`,
+        {}
+      );
+      return submissionRoundFromDto(response.item);
+    },
     async reviewChange(input: ReviewParameterChangeInput) {
       const response = await apiClient.post<ItemEnvelope<ChangeRequestDto>>(
         `/api/v1/parameter-change-requests/${encodeURIComponent(input.requestId)}/review`,

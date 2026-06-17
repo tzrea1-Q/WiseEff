@@ -26,7 +26,8 @@ export function ProjectValueMatrix({
         <span>每个项目独立取值</span>
       </div>
       <p>所有项目共用同一条参数定义，只在这里维护各项目的实际值。</p>
-      <div className="pvm-table">
+      <div className="pvm-scroll">
+        <div className="pvm-table">
         <div className="pvm-header">
           <span>项目</span>
           <span>当前值</span>
@@ -76,6 +77,7 @@ export function ProjectValueMatrix({
             </div>
           );
         })}
+        </div>
       </div>
     </section>
   );

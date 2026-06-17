@@ -131,6 +131,7 @@ describe("parameter-admin agent plan", () => {
     const expectedPermissions = new Map([
       ["draft-parameter-change", "parameter.edit"],
       ["advance-review", "parameter.review"],
+      ["merge-review", "parameter.merge"],
       ["connect-device", "debugging.use"],
       ["push-debug-value", "debugging.use"],
       ["scan-orphans", "admin.access"],

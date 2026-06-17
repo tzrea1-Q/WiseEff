@@ -1,25 +1,22 @@
-import { FileText, History, Info, ShieldCheck, Upload } from "lucide-react";
+import { History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
 import type { ParameterImportBatchDto, ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
+import { ParameterAuditDialog } from "./components/admin/ParameterAuditDialog";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
-import { DirtyIndicator } from "./components/DirtyIndicator";
-import { ExportDiffDialog, type ExportDiff } from "./components/ExportDiffDialog";
-import { ExportMenu } from "./components/ExportMenu";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { ParameterDefinitionForm } from "./components/ParameterDefinitionForm";
 import { ParameterLibraryList } from "./components/ParameterLibraryList";
 import { ProjectValueMatrix } from "./components/ProjectValueMatrix";
 import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
-import { useBeforeUnload } from "./hooks/useBeforeUnload";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
-import { getCoverage, selectDirtyCount } from "./parameterAdminAnalytics";
-import { serializePowerManagementConfig, type PowerManagementParameterTemplate } from "./powerManagementConfig";
+import { getCoverage } from "./parameterAdminAnalytics";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { isParameterAdminAuditApp } from "@/domain/audit/mapAuditEventView";
 
 function isEligibleImportItem(item: ParameterImportBatchDto["items"][number]) {
   return item.classification === "added" || item.classification === "updated";
@@ -31,8 +28,7 @@ function getImportClassificationLabel(item: ParameterImportBatchDto["items"][num
 
 export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions, runtimeMode }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
-  const [pendingExportMode, setPendingExportMode] = useState<"download" | "copy" | "preview" | null>(null);
+  const [auditDialogOpen, setAuditDialogOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -42,19 +38,18 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   const [selectedImportItemIds, setSelectedImportItemIds] = useState<string[]>([]);
   const [importPending, setImportPending] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
-  const [saving, setSaving] = useState(false);
   const isApiMode = (runtimeMode ?? wiseEffRuntimeMode) === "api";
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
   const selectedParameter =
     state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
-  const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
   const library = state.configDraft.parameterLibrary;
   const projects = state.configDraft.projects;
-  const dirtyCount = selectDirtyCount(state);
-  const exportDiff = useMemo(() => computeExportDiff(state.lastExportedSnapshot, library), [library, state.lastExportedSnapshot]);
+  const parameterAdminAuditEvents = useMemo(
+    () => state.auditEvents.filter((event) => isParameterAdminAuditApp(event.app)),
+    [state.auditEvents]
+  );
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
   const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
   const highRiskOrphans = library.filter((parameter) => parameter.risk === "High" && getCoverage(parameter, projects) === "orphan");
@@ -85,73 +80,13 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         ]
       : [];
 
-  useBeforeUnload(dirtyCount > 0, "有未导出的参数变更，确定离开吗？");
-
-  const triggerExport = (mode: "download" | "copy") => {
-    const timestamp = new Date().toISOString();
-    const snapshotName = `power-management-${timestamp.replace(/[:.]/g, "").slice(0, 15)}.json`;
-    if (mode === "download") {
-      const blob = new Blob([configJson], { type: "application/json;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = snapshotName;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    } else {
-      void navigator.clipboard?.writeText(configJson);
+  useEffect(() => {
+    if (rawSearch.includes("audit=open")) {
+      setAuditDialogOpen(true);
     }
-    dispatch({ type: "MARK_EXPORTED", snapshotName, timestamp });
-  };
+  }, [rawSearch]);
 
-  const openExportFlow = (mode: "download" | "copy" | "preview") => {
-    if (mode === "preview" || dirtyCount > 0) {
-      setPendingExportMode(mode);
-      setExportDialogOpen(true);
-      return;
-    }
-    triggerExport(mode);
-  };
-
-  const closeExportDialog = () => {
-    setExportDialogOpen(false);
-    setPendingExportMode(null);
-  };
-
-  const confirmExportDialog = () => {
-    const mode = pendingExportMode;
-    closeExportDialog();
-    if (mode === "download" || mode === "copy") {
-      triggerExport(mode);
-    }
-  };
-
-  const saveConfig = async () => {
-    if (isApiMode) {
-      setSyncMessage("API 模式下参数库修改通过导入批次或审阅流程写入。");
-      return;
-    }
-    setSaving(true);
-    try {
-      const response = await fetch("/api/power-management-config", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: configJson
-      });
-      if (!response.ok) {
-        throw new Error("保存失败");
-      }
-      setSyncMessage("已写入 src/config/power-management.json，刷新项目后会读取最新配置。");
-    } catch {
-      setSyncMessage("写入失败：当前环境不支持本地保存时，请导出 JSON 后手动替换。");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const openAuditDialog = () => setAuditDialogOpen(true);
 
   const kpiItems: KpiItem[] = [
     { id: "shared", label: "共享参数", value: library.length },
@@ -168,7 +103,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       label: "今日变更",
       value: todayChanges,
       interactive: todayChanges > 0,
-      onClick: () => updateSearch({ audit: "open" })
+      onClick: openAuditDialog
     },
     {
       id: "orphan",
@@ -183,7 +118,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       label: "最近导入",
       value: lastImport ? formatRelativeTime(lastImport.time) : "—",
       interactive: Boolean(lastImport),
-      onClick: () => updateSearch({ audit: "open" })
+      onClick: openAuditDialog
     }
   ];
 
@@ -322,39 +257,24 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
 
   useTopBarActions(
     <>
-      <DirtyIndicator count={dirtyCount} onInspect={() => openExportFlow("preview")} />
       <button className="button primary" type="button" onClick={openImportDialog}>
         <Upload size={16} />
         批量参数导入
       </button>
-      <button className="button subtle" type="button" onClick={saveConfig} disabled={saving} title={syncMessage}>
-        <FileText size={16} />
-        {saving ? "保存中" : "保存到 JSON 文件"}
-      </button>
-      <ExportMenu
-        onCopy={() => openExportFlow("copy")}
-        onDownload={() => openExportFlow("download")}
-        onViewDiff={() => openExportFlow("preview")}
-      />
       <button className="button subtle" type="button" data-route="/user-permissions" onClick={() => onNavigate("/user-permissions")}>
         <ShieldCheck size={16} />
         权限
       </button>
-      <button
-        className="button ghost"
-        type="button"
-        aria-pressed={search.audit === "open"}
-        onClick={() => updateSearch({ audit: search.audit === "open" ? undefined : "open" })}
-      >
+      <button className="button ghost" type="button" aria-pressed={auditDialogOpen} onClick={openAuditDialog}>
         <History size={16} />
         审计
       </button>
     </>,
-    [dirtyCount, onNavigate, saving, search.audit, syncMessage, importText, importSourceName, importPreview, selectedImportItemIds, importPending, parameterActions]
+    [auditDialogOpen, onNavigate]
   );
 
   return (
-    <div className="param-admin-shell" data-audit={search.audit === "open" ? "open" : "closed"}>
+    <div className="param-admin-shell">
       <KpiStrip items={kpiItems} />
       <AgentInsightBar
         dismissedIds={state.insightDismissedIds}
@@ -429,15 +349,16 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
             <EmptyState text="请选择一个项目参数。" />
           )}
         </section>
-
-        <aside className="audit-column" hidden={search.audit !== "open"} aria-label="审计抽屉">
-          <div className="audit-drawer-placeholder">
-            <PanelHeader title="审计抽屉" meta="m2 完整视图" />
-            <p>审计事件筛选、批次展开和反向跳转将在下一阶段接入。</p>
-          </div>
-        </aside>
       </main>
-      <ExportDiffDialog diff={exportDiff} open={exportDialogOpen} onCancel={closeExportDialog} onConfirm={confirmExportDialog} />
+      {auditDialogOpen ? (
+        <ParameterAuditDialog
+          mockEvents={parameterAdminAuditEvents}
+          projectId={state.activeProjectId}
+          isApiMode={isApiMode}
+          onClose={() => setAuditDialogOpen(false)}
+          onNavigate={onNavigate}
+        />
+      ) : null}
       <DeleteParameterDialog
         open={Boolean(deleteTarget)}
         parameterName={deleteTarget?.name ?? ""}
@@ -686,39 +607,6 @@ function normalizeRisk(value: unknown): ParameterImportSourceItem["risk"] | null
   return null;
 }
 
-function computeExportDiff(lastExportedSnapshot: string, library: readonly PowerManagementParameterTemplate[]): ExportDiff {
-  let lastLibrary: PowerManagementParameterTemplate[] = [];
-  try {
-    const parsed = JSON.parse(lastExportedSnapshot) as { parameterLibrary?: PowerManagementParameterTemplate[] };
-    lastLibrary = Array.isArray(parsed.parameterLibrary) ? parsed.parameterLibrary : [];
-  } catch {
-    lastLibrary = [];
-  }
-
-  const currentById = new Map(library.map((parameter) => [parameter.id, parameter]));
-  const lastById = new Map(lastLibrary.map((parameter) => [parameter.id, parameter]));
-  const affectedParameters: ExportDiff["affectedParameters"] = [];
-
-  for (const id of new Set([...currentById.keys(), ...lastById.keys()])) {
-    const current = currentById.get(id);
-    const last = lastById.get(id);
-    if (current && !last) {
-      affectedParameters.push({ name: current.name, kind: "added" });
-    } else if (!current && last) {
-      affectedParameters.push({ name: last.name, kind: "deleted" });
-    } else if (current && last && JSON.stringify(current) !== JSON.stringify(last)) {
-      affectedParameters.push({ name: current.name, kind: "updated" });
-    }
-  }
-
-  return {
-    added: affectedParameters.filter((parameter) => parameter.kind === "added").length,
-    updated: affectedParameters.filter((parameter) => parameter.kind === "updated").length,
-    deleted: affectedParameters.filter((parameter) => parameter.kind === "deleted").length,
-    affectedParameters
-  };
-}
-
 function parseParamAdminSearch(raw: string): ParamAdminSearch {
   const params = new URLSearchParams(raw);
   const risk = params.get("risk");
@@ -732,7 +620,7 @@ function parseParamAdminSearch(raw: string): ParamAdminSearch {
     coverage: coverage === "full" || coverage === "partial" || coverage === "orphan" ? coverage : ("all" as const),
     sort: params.get("sort") ?? "updatedAt-desc",
     id: params.get("id") ?? undefined,
-    audit: params.get("audit") === "open" ? ("open" as const) : undefined,
+    audit: undefined,
     import: undefined,
     permissions: undefined
   };
@@ -758,15 +646,6 @@ function formatRelativeTime(iso: string) {
     return `${hours} 小时前`;
   }
   return `${Math.round(hours / 24)} 天前`;
-}
-
-function PanelHeader({ title, meta }: { title: string; meta?: string }) {
-  return (
-    <div className="panel-header">
-      <strong>{title}</strong>
-      {meta ? <span>{meta}</span> : null}
-    </div>
-  );
 }
 
 function EmptyState({ text }: { text: string }) {
