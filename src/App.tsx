@@ -265,6 +265,7 @@ export type AppAction =
       };
     }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
+  | { type: "DISCARD_STASHED_PARAMETER_DRAFTS"; projectId: string; parameterIds: string[] }
   | { type: "WITHDRAW_PARAMETER_SUBMISSION_ROUND"; roundId: string }
   | { type: "ADVANCE_REVIEW"; requestId: string; fastTrack?: boolean; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string; fastTrack?: boolean }
@@ -936,6 +937,38 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           ...state.parameterSubmissionRounds
         ],
         notifications: [`已暂存本轮，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
+      };
+    }
+    case "DISCARD_STASHED_PARAMETER_DRAFTS": {
+      if (!canPerform(activeRoleId, "parameter.edit")) return state;
+      const parameterIds = new Set(action.parameterIds);
+      if (parameterIds.size === 0) {
+        return state;
+      }
+
+      return {
+        ...state,
+        parameterDrafts: state.parameterDrafts.filter(
+          (draft) => !(draft.projectId === action.projectId && parameterIds.has(draft.parameterId))
+        ),
+        parameterSubmissionRounds: state.parameterSubmissionRounds.flatMap((round) => {
+          if (round.status !== "已暂存" || round.projectId !== action.projectId) {
+            return [round];
+          }
+
+          const remainingItems = round.items.filter((item) => !parameterIds.has(item.parameterId));
+          if (remainingItems.length === 0) {
+            return [];
+          }
+
+          return [
+            {
+              ...round,
+              items: remainingItems,
+              summary: `本轮暂存包含 ${remainingItems.length} 个参数修改。`
+            }
+          ];
+        })
       };
     }
     case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":

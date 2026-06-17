@@ -105,6 +105,11 @@ export type ApplyParameterImportBatchInput = {
   expectedVersion?: number;
 };
 
+export type DiscardParameterDraftsInput = {
+  projectId: string;
+  parameterIds: string[];
+};
+
 export interface ParameterRepository {
   listProjects(): Promise<ProjectSummary[]>;
   listParameters(query?: ParameterListQuery): Promise<ParameterRecord[]>;

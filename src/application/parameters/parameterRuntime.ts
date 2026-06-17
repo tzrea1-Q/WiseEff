@@ -1,5 +1,6 @@
 import type {
   ApplyParameterImportBatchInput,
+  DiscardParameterDraftsInput,
   ParameterDraftDto,
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
@@ -15,8 +16,56 @@ import type {
   ParameterSubmissionRound
 } from "@/domain/parameters/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 export const parameterRuntimeFailureNotification = "参数操作未完成，请稍后重试。";
+
+const closedChangeRequestStatuses = new Set<ChangeRequest["status"]>(["已合入", "已打回"]);
+
+export function isOpenChangeRequest(request: Pick<ChangeRequest, "status">): boolean {
+  return !closedChangeRequestStatuses.has(request.status);
+}
+
+export function findOpenChangeRequestForParameter(
+  changeRequests: ChangeRequest[],
+  projectId: string,
+  parameterId: string
+): ChangeRequest | undefined {
+  return changeRequests.find(
+    (request) =>
+      request.parameterId === parameterId &&
+      (request.projectId === undefined || request.projectId === projectId) &&
+      isOpenChangeRequest(request)
+  );
+}
+
+export function formatOpenChangeRequestBlockerMessage(parameterName: string): string {
+  return `参数「${parameterName}」已有进行中的变更请求，请先在「参数审阅」中处理后再提交。`;
+}
+
+export function formatParameterRuntimeError(error: unknown): string {
+  if (error instanceof WiseEffApiError) {
+    if (error.code === "CONFLICT") {
+      const parameterId = typeof error.details.parameterId === "string" ? error.details.parameterId : undefined;
+      if (parameterId && error.message.toLowerCase().includes("open change request")) {
+        return formatOpenChangeRequestBlockerMessage(parameterId);
+      }
+      if (error.message) {
+        return error.message;
+      }
+    }
+    if (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN") {
+      return "当前账号无权执行此操作，请重新登录或切换角色。";
+    }
+    if (error.code === "VALIDATION_FAILED" && error.message) {
+      return error.message;
+    }
+    if (error.message) {
+      return error.message;
+    }
+  }
+  return parameterRuntimeFailureNotification;
+}
 
 export type ParameterRuntimeSnapshot = {
   projects: ProjectSummary[];
@@ -59,6 +108,7 @@ type ParameterRuntimeDispatchAction =
       };
     }
   | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
+  | { type: "DISCARD_STASHED_PARAMETER_DRAFTS"; projectId: string; parameterIds: string[] }
   | { type: "ADVANCE_REVIEW"; requestId: string; note?: string }
   | { type: "REJECT_REVIEW"; requestId: string; reason: string }
   | { type: "IMPORT_PARAMETERS" }
@@ -68,6 +118,7 @@ export type ParameterRuntimeActions = {
   getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
+  discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
@@ -83,13 +134,14 @@ type ParameterRuntimeOptions = {
 
 function notifyFailure(
   dispatch: ParameterRuntimeOptions["dispatch"],
-  options: ParameterRuntimeRefreshOptions = {}
+  options: ParameterRuntimeRefreshOptions = {},
+  message: string = parameterRuntimeFailureNotification
 ): ParameterRuntimeActionFailure {
   if (options.notifyOnFailure !== false) {
-    dispatch({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
-    return { notification: parameterRuntimeFailureNotification, alreadyNotified: true };
+    dispatch({ type: "ADD_NOTIFICATION", message });
+    return { notification: message, alreadyNotified: true };
   }
-  return { notification: parameterRuntimeFailureNotification };
+  return { notification: message };
 }
 
 function requireRepository(repository?: ParameterRepository): ParameterRepository {
@@ -123,8 +175,8 @@ export function createParameterRuntimeActions({
 
       dispatch({ type: "HYDRATE_PARAMETER_RUNTIME", ...snapshot });
       return snapshot;
-    } catch {
-      return notifyFailure(dispatch, options);
+    } catch (error) {
+      return notifyFailure(dispatch, options, formatParameterRuntimeError(error));
     }
   };
 
@@ -134,8 +186,8 @@ export function createParameterRuntimeActions({
       await mutation(api);
       const result = await refresh();
       return result && "notification" in result ? result : undefined;
-    } catch {
-      return notifyFailure(dispatch);
+    } catch (error) {
+      return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
     }
   };
 
@@ -147,9 +199,10 @@ export function createParameterRuntimeActions({
 
       try {
         return await requireRepository(repository).getParameter(parameterId);
-      } catch {
-        notifyFailure(dispatch);
-        throw new Error(parameterRuntimeFailureNotification);
+      } catch (error) {
+        const message = formatParameterRuntimeError(error);
+        notifyFailure(dispatch, {}, message);
+        throw new Error(message);
       }
     },
     async submitChanges(input) {
@@ -181,6 +234,23 @@ export function createParameterRuntimeActions({
             });
           })
         );
+      });
+    },
+    async discardDrafts(input) {
+      if (runtimeMode !== "api") {
+        dispatch({ type: "DISCARD_STASHED_PARAMETER_DRAFTS", ...input });
+        return undefined;
+      }
+
+      if (input.parameterIds.length === 0) {
+        return undefined;
+      }
+
+      return runApiMutation(async (api) => {
+        const drafts = await api.listDrafts(input.projectId);
+        const parameterIds = new Set(input.parameterIds);
+        const draftsToDelete = drafts.filter((draft) => parameterIds.has(draft.parameterId));
+        await Promise.all(draftsToDelete.map((draft) => api.deleteDraft(draft.id)));
       });
     },
     async reviewChange(input) {
@@ -223,8 +293,8 @@ export function createParameterRuntimeActions({
         const preview = await requireRepository(repository).createImportPreview(input);
         const result = await refresh();
         return result && "notification" in result ? result : preview;
-      } catch {
-        return notifyFailure(dispatch);
+      } catch (error) {
+        return notifyFailure(dispatch, {}, formatParameterRuntimeError(error));
       }
     },
     async applyImportBatch(input) {

@@ -2,6 +2,7 @@ import type { Dispatch, ReactNode } from "react";
 
 import type {
   ApplyParameterImportBatchInput,
+  DiscardParameterDraftsInput,
   ParameterImportBatchDto,
   ParameterImportPreviewInput,
   ReviewParameterChangeInput,
@@ -43,6 +44,7 @@ export type ParameterPageActions = {
   getParameter(parameterId: string): Promise<ParameterRecord>;
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
+  discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;

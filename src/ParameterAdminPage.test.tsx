@@ -35,6 +35,7 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
     getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
+    discardDrafts: vi.fn().mockResolvedValue(undefined),
     reviewChange: vi.fn().mockResolvedValue(undefined),
     createImportPreview: vi.fn().mockResolvedValue({
       id: "api-import-batch",

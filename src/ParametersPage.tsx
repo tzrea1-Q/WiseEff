@@ -19,6 +19,10 @@ import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchIns
 import { useTopBarActions } from "./components/layout";
 import type { ParameterPageActions } from "./app/routes";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
+import {
+  findOpenChangeRequestForParameter,
+  formatOpenChangeRequestBlockerMessage
+} from "./application/parameters/parameterRuntime";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -40,7 +44,8 @@ type ParametersPageAction =
         softwareUserId: string;
       };
     }
-  | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] };
+  | { type: "STASH_PARAMETER_SUBMISSION_ROUND"; items: ParameterDraftItem[] }
+  | { type: "DISCARD_STASHED_PARAMETER_DRAFTS"; projectId: string; parameterIds: string[] };
 
 type ParametersPageProps = {
   state: PrototypeState;
@@ -285,17 +290,41 @@ export function ParametersPage({
   const stashedIds = useMemo(
     () => {
       const ids = new Set<string>();
+      state.parameterDrafts
+        .filter((draft) => draft.projectId === resolvedProjectId)
+        .forEach((draft) => ids.add(draft.parameterId));
       state.parameterSubmissionRounds
         .filter((round) => round.status === "已暂存" && round.projectId === resolvedProjectId)
         .forEach((round) => round.items.forEach((item) => ids.add(item.parameterId)));
       return ids;
     },
-    [state.parameterSubmissionRounds, resolvedProjectId]
+    [resolvedProjectId, state.parameterDrafts, state.parameterSubmissionRounds]
   );
   const validPendingSubmissionItems = useMemo(
     () => pendingSubmissionItems.filter((item) => item.targetValue.trim() && item.reason.trim()),
     [pendingSubmissionItems]
   );
+  const openChangeRequestBlockers = useMemo(
+    () =>
+      pendingSubmissionItems
+        .map((item) => {
+          const openRequest = findOpenChangeRequestForParameter(state.changeRequests, resolvedProjectId, item.parameterId);
+          return openRequest ? { parameter: item.parameter, request: openRequest } : null;
+        })
+        .filter((item): item is { parameter: ParameterRecord; request: (typeof state.changeRequests)[number] } => Boolean(item)),
+    [pendingSubmissionItems, resolvedProjectId, state.changeRequests]
+  );
+  const notifyOpenChangeRequestBlockers = () => {
+    const blocker = openChangeRequestBlockers[0];
+    if (!blocker) {
+      return false;
+    }
+    dispatch({
+      type: "ADD_NOTIFICATION",
+      message: formatOpenChangeRequestBlockerMessage(blocker.parameter.name)
+    });
+    return true;
+  };
   const validDraftItems = useMemo(
     () => draftItems.filter((item) => item.targetValue.trim() && item.reason.trim()),
     [draftItems]
@@ -582,12 +611,45 @@ export function ParametersPage({
       }
       return remainingItems;
     });
+    void discardPersistedDrafts([parameterId]);
   };
 
   const clearAllDrafts = () => {
+    const parameterIds = Object.keys(drafts);
     setSelectedIds(new Set());
     setDrafts({});
     setSheetOpen(false);
+    void discardPersistedDrafts(parameterIds);
+  };
+
+  const discardPersistedDrafts = async (parameterIds: string[]) => {
+    if (parameterIds.length === 0) {
+      return;
+    }
+
+    const persistedParameterIds = parameterIds.filter(
+      (parameterId) =>
+        stashedIds.has(parameterId) ||
+        state.parameterDrafts.some((draft) => draft.projectId === resolvedProjectId && draft.parameterId === parameterId)
+    );
+    if (persistedParameterIds.length === 0) {
+      return;
+    }
+
+    if (parameterActions) {
+      const result = await parameterActions.discardDrafts({
+        projectId: resolvedProjectId,
+        parameterIds: persistedParameterIds
+      });
+      notifyActionFailure(result);
+      return;
+    }
+
+    dispatch({
+      type: "DISCARD_STASHED_PARAMETER_DRAFTS",
+      projectId: resolvedProjectId,
+      parameterIds: persistedParameterIds
+    });
   };
 
   const openSubmitPreview = () => {
@@ -595,6 +657,9 @@ export function ParametersPage({
       return;
     }
     if (!allSelectedDraftsAreSubmittable) {
+      return;
+    }
+    if (notifyOpenChangeRequestBlockers()) {
       return;
     }
     setConfirmOpen(true);
@@ -629,6 +694,9 @@ export function ParametersPage({
       return;
     }
     if (!allSelectedDraftsAreSubmittable) {
+      return;
+    }
+    if (notifyOpenChangeRequestBlockers()) {
       return;
     }
     const itemsToSubmit = pendingSubmissionItems.map(({ parameter: _parameter, ...item }) => item);
