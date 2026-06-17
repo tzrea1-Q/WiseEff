@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AuditEventDetail } from "./AuditEventDetail";
-import { AuditRelatedTimeline } from "./AuditRelatedTimeline";
+import { AuditEventDetailDialog } from "./AuditEventDetailDialog";
 import { AuditTimeline } from "./AuditTimeline";
 import { auditAppGroups } from "@/domain/audit/auditApps";
 import type { AuditQueryState } from "@/hooks/useAuditEvents";
@@ -14,12 +13,6 @@ export type AuditWorkspaceProps = {
   query: AuditQueryState;
   onQueryChange?: (patch: Partial<AuditQueryState>) => void;
   projects?: Array<{ id: string; name: string; code?: string }>;
-  variant?: "dialog" | "page";
-  title?: string;
-  eyebrow?: string;
-  description?: string;
-  footerActions?: React.ReactNode;
-  onOpenAuditCenter?: () => void;
 };
 
 export function AuditWorkspace({
@@ -27,16 +20,10 @@ export function AuditWorkspace({
   isApiMode,
   query,
   onQueryChange,
-  projects = [],
-  variant = "page",
-  title = "审计记录",
-  eyebrow = "组织审计中心",
-  description = "检索参数、日志、调试、Agent 与用户治理等跨模块操作证据。",
-  footerActions,
-  onOpenAuditCenter
+  projects = []
 }: AuditWorkspaceProps) {
   const [localSearch, setLocalSearch] = useState(query.search);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailEventId, setDetailEventId] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalSearch(query.search);
@@ -52,8 +39,8 @@ export function AuditWorkspace({
     mockEvents,
     query: effectiveQuery
   });
-  const selectedEvent = events.find((event) => event.id === selectedId) ?? events[0] ?? null;
-  const { relatedEvents, loading: relatedLoading } = useAuditTraceEvents(selectedEvent?.traceId, isApiMode, mockEvents);
+  const detailEvent = events.find((event) => event.id === detailEventId) ?? null;
+  const { relatedEvents, loading: relatedLoading } = useAuditTraceEvents(detailEvent?.traceId, isApiMode, mockEvents);
 
   const commitSearch = () => {
     if (localSearch !== query.search) {
@@ -61,34 +48,26 @@ export function AuditWorkspace({
     }
   };
 
-  useEffect(() => {
-    if (events.length === 0) {
-      setSelectedId(null);
-      return;
-    }
-    if (!selectedId || !events.some((event) => event.id === selectedId)) {
-      setSelectedId(events[0].id);
-    }
-  }, [events, selectedId]);
+  const closeDetail = () => setDetailEventId(null);
 
-  const body = (
-    <>
+  return (
+    <section className="audit-center-page" aria-label="组织审计中心">
       <div className="audit-workspace-toolbar">
-        <input
-          className="param-admin-audit-search"
-          type="search"
-          placeholder="搜索操作、操作人或类型"
-          value={localSearch}
-          onChange={(event) => setLocalSearch(event.target.value)}
-          onBlur={commitSearch}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              commitSearch();
-            }
-          }}
-          aria-label="搜索审计记录"
-        />
         <div className="audit-workspace-filter-row">
+          <input
+            className="audit-workspace-search"
+            type="search"
+            placeholder="搜索操作、操作人或类型"
+            value={localSearch}
+            onChange={(event) => setLocalSearch(event.target.value)}
+            onBlur={commitSearch}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                commitSearch();
+              }
+            }}
+            aria-label="搜索审计记录"
+          />
           <label className="audit-workspace-select-wrap">
             <span>模块</span>
             <select
@@ -156,78 +135,40 @@ export function AuditWorkspace({
       {loading ? <p className="param-admin-audit-status">正在加载审计记录…</p> : null}
       {error ? <p className="param-admin-audit-status param-admin-audit-status-error">{error}</p> : null}
 
-      <div className="param-admin-audit-body audit-workspace-body">
+      <div className="audit-workspace-list">
         <AuditTimeline
           events={events}
-          selectedId={selectedEvent?.id ?? null}
-          onSelect={setSelectedId}
-          initialVisible={variant === "page" ? 20 : 12}
-          className="param-admin-audit-timeline"
+          selectedId={detailEventId}
+          onSelect={setDetailEventId}
+          initialVisible={20}
         />
-        <div className="audit-workspace-detail-stack">
-          <AuditEventDetail event={selectedEvent} className="param-admin-audit-detail" />
-          <AuditRelatedTimeline
-            events={relatedEvents}
-            activeEventId={selectedEvent?.id ?? null}
-            loading={relatedLoading}
-            onSelect={setSelectedId}
-          />
-          {selectedEvent?.traceId && onQueryChange ? (
-            <button
-              type="button"
-              className="button subtle audit-workspace-trace-link"
-              onClick={() => onQueryChange({ traceId: selectedEvent.traceId })}
-            >
-              按 Trace 筛选列表
-            </button>
-          ) : null}
-        </div>
       </div>
 
-      <div className={cn("audit-workspace-footer", variant === "dialog" && "dialog-actions")}>
+      <div className="audit-workspace-footer">
         <span className="param-admin-audit-count">{events.length} 条记录</span>
         {hasMore ? (
           <button type="button" className="button subtle" disabled={loadingMore} onClick={() => void loadMore()}>
             {loadingMore ? "加载中…" : "加载更多"}
           </button>
         ) : null}
-        {onOpenAuditCenter ? (
-          <button type="button" className="button subtle" onClick={onOpenAuditCenter}>
-            打开审计中心
-          </button>
-        ) : null}
-        {footerActions}
       </div>
-    </>
-  );
 
-  if (variant === "dialog") {
-    return (
-      <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="参数管理审计">
-        <div className="submission-dialog param-admin-audit-dialog">
-          <div className="submission-dialog-head">
-            <div>
-              <span className="eyebrow">{eyebrow}</span>
-              <h2>{title}</h2>
-              <p>{description}</p>
-            </div>
-          </div>
-          {body}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <section className="audit-center-page" aria-label="组织审计中心">
-      <header className="audit-center-head">
-        <div>
-          <span className="eyebrow">{eyebrow}</span>
-          <h1>{title}</h1>
-          <p>{description}</p>
-        </div>
-      </header>
-      {body}
+      {detailEvent ? (
+        <AuditEventDetailDialog
+          event={detailEvent}
+          relatedEvents={relatedEvents}
+          relatedLoading={relatedLoading}
+          onClose={closeDetail}
+          onSelectRelated={setDetailEventId}
+          onFilterTrace={
+            onQueryChange
+              ? (traceId) => {
+                  onQueryChange({ traceId });
+                }
+              : undefined
+          }
+        />
+      ) : null}
     </section>
   );
 }

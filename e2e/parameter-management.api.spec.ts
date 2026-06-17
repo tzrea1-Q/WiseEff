@@ -193,7 +193,8 @@ test("M1 parameter management loop persists a merged parameter change and audit 
   await expect(mergedRow.locator(".parameter-value-diff > span").first()).toHaveText(targetValue);
 
   await page.goto("/parameter-admin?audit=open");
-  await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit/);
+  await expect(page.getByLabelText("搜索审计记录")).toBeVisible();
   const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
   expect(auditResponse.ok()).toBe(true);
   const auditBody = (await auditResponse.json()) as {

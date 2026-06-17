@@ -18,12 +18,12 @@ describe("AuditCenterPage", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { name: "审计中心" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1, name: "审计中心" })).not.toBeInTheDocument();
     expect(screen.getByLabelText("模块筛选")).toBeInTheDocument();
     expect(screen.getAllByText("更新 fast_charge_current_limit_ma 推荐值").length).toBeGreaterThan(0);
   });
 
-  it("shows trace related events for mock data", () => {
+  it("opens audit detail dialog when an event is selected", async () => {
     render(
       <AuditCenterPage
         state={initialState}
@@ -37,7 +37,10 @@ describe("AuditCenterPage", () => {
     expect(timeline).toBeTruthy();
     fireEvent.click(within(timeline!).getByRole("button", { name: /导入 8 条混合参数草稿/ }));
 
-    expect(screen.getByText("同一 Trace 链路")).toBeInTheDocument();
-    expect(within(screen.getByLabelText("Trace 关联事件")).getByText(/更新 fast_charge_current_limit_ma/)).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "审计事件详情" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("同一 Trace 链路")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Trace 关联事件")).toBeInTheDocument();
+    expect(within(dialog).getByText(/更新 fast_charge_current_limit_ma/)).toBeInTheDocument();
   });
 });

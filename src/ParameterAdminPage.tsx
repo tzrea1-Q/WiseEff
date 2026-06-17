@@ -1,9 +1,8 @@
 import { History, Info, ShieldCheck, Upload } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
 import type { ParameterImportBatchDto, ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
-import { ParameterAuditDialog } from "./components/admin/ParameterAuditDialog";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
@@ -16,7 +15,14 @@ import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage } from "./parameterAdminAnalytics";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import { isParameterAdminAuditApp } from "@/domain/audit/mapAuditEventView";
+
+function buildParameterAuditCenterPath(projectId: string) {
+  const params = new URLSearchParams({ app: "parameter" });
+  if (projectId) {
+    params.set("projectId", projectId);
+  }
+  return `/audit?${params.toString()}`;
+}
 
 function isEligibleImportItem(item: ParameterImportBatchDto["items"][number]) {
   return item.classification === "added" || item.classification === "updated";
@@ -28,7 +34,6 @@ function getImportClassificationLabel(item: ParameterImportBatchDto["items"][num
 
 export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions, runtimeMode }: PageProps) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
-  const [auditDialogOpen, setAuditDialogOpen] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -46,10 +51,6 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
     state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
   const library = state.configDraft.parameterLibrary;
   const projects = state.configDraft.projects;
-  const parameterAdminAuditEvents = useMemo(
-    () => state.auditEvents.filter((event) => isParameterAdminAuditApp(event.app)),
-    [state.auditEvents]
-  );
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
   const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
   const highRiskOrphans = library.filter((parameter) => parameter.risk === "High" && getCoverage(parameter, projects) === "orphan");
@@ -80,13 +81,14 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         ]
       : [];
 
+  const auditCenterPath = buildParameterAuditCenterPath(state.activeProjectId);
+  const openAuditCenter = () => onNavigate(auditCenterPath);
+
   useEffect(() => {
     if (rawSearch.includes("audit=open")) {
-      setAuditDialogOpen(true);
+      onNavigate(auditCenterPath);
     }
-  }, [rawSearch]);
-
-  const openAuditDialog = () => setAuditDialogOpen(true);
+  }, [rawSearch, auditCenterPath, onNavigate]);
 
   const kpiItems: KpiItem[] = [
     { id: "shared", label: "共享参数", value: library.length },
@@ -103,7 +105,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       label: "今日变更",
       value: todayChanges,
       interactive: todayChanges > 0,
-      onClick: openAuditDialog
+      onClick: openAuditCenter
     },
     {
       id: "orphan",
@@ -118,7 +120,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       label: "最近导入",
       value: lastImport ? formatRelativeTime(lastImport.time) : "—",
       interactive: Boolean(lastImport),
-      onClick: openAuditDialog
+      onClick: openAuditCenter
     }
   ];
 
@@ -265,12 +267,12 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         <ShieldCheck size={16} />
         权限
       </button>
-      <button className="button ghost" type="button" aria-pressed={auditDialogOpen} onClick={openAuditDialog}>
+      <button className="button ghost" type="button" onClick={openAuditCenter}>
         <History size={16} />
         审计
       </button>
     </>,
-    [auditDialogOpen, onNavigate]
+    [onNavigate, state.activeProjectId]
   );
 
   return (
@@ -350,15 +352,6 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
           )}
         </section>
       </main>
-      {auditDialogOpen ? (
-        <ParameterAuditDialog
-          mockEvents={parameterAdminAuditEvents}
-          projectId={state.activeProjectId}
-          isApiMode={isApiMode}
-          onClose={() => setAuditDialogOpen(false)}
-          onNavigate={onNavigate}
-        />
-      ) : null}
       <DeleteParameterDialog
         open={Boolean(deleteTarget)}
         parameterName={deleteTarget?.name ?? ""}

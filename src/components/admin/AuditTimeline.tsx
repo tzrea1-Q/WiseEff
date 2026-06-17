@@ -30,40 +30,42 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
   const canExpand = events.length > initialVisible;
 
   return (
-    <section className={cn("rounded-lg border border-border bg-card p-4", className)}>
-      <header className="mb-3 flex items-center justify-between">
+    <section className={cn("audit-timeline-panel rounded-lg border border-border bg-card", className)}>
+      <header className="audit-timeline-panel-head">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-semibold text-foreground">审计事件</h3>
           <span className="text-xs text-muted-foreground">{events.length} 条</span>
         </div>
       </header>
       {events.length === 0 ? (
-        <p className="text-sm text-muted-foreground">暂无审计事件</p>
+        <p className="audit-timeline-empty text-sm text-muted-foreground">暂无审计事件</p>
       ) : (
         <>
-          <ul className="flex flex-col gap-2.5">
+          <ul className="audit-timeline-list">
             {visibleEvents.map((event) => {
               const selected = selectedId === event.id;
+              const index = events.findIndex((item) => item.id === event.id) + 1;
               return (
-                <li key={event.id}>
+                <li key={event.id} className="audit-timeline-list-item">
                   <button
                     type="button"
                     className={cn(
-                      "audit-timeline-item flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40",
-                      selected && "audit-timeline-item-selected bg-muted/60"
+                      "audit-timeline-item audit-timeline-row",
+                      selected && "audit-timeline-item-selected"
                     )}
                     aria-pressed={selected}
                     onClick={() => onSelect?.(event.id)}
                   >
+                    <span className="audit-timeline-index" aria-hidden="true">{index}</span>
                     <span
                       className={cn(
-                        "mt-0.5 inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10px] font-semibold uppercase",
+                        "audit-timeline-severity inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10px] font-semibold uppercase",
                         severityBadge[event.severity]
                       )}
                     >
                       {severityLabel[event.severity]}
                     </span>
-                    <div className="min-w-0 flex-1">
+                    <div className="audit-timeline-content min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">{event.action}</p>
                       <p className="text-xs text-muted-foreground">
                         <span>{event.actor}</span>
@@ -82,7 +84,7 @@ export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
-              className="mt-3 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
+              className="audit-timeline-expand mt-3 inline-flex h-7 items-center gap-1 rounded-md px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/5"
             >
               <ChevronDown className={cn("size-3 transition-transform", expanded && "rotate-180")} />
               {expanded ? "收起" : `展开更多（${events.length - initialVisible}）`}

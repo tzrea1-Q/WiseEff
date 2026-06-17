@@ -344,7 +344,9 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(rowByParameterName(searchTable(page)).locator(".parameter-value-diff > span").first()).toHaveText(targetValue);
 
     await page.goto("/parameter-admin?audit=open");
-    await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
+    await expect(page).toHaveURL(/\/audit/);
+    await expect(page.getByLabelText("搜索审计记录")).toBeVisible();
+    await page.goto("/parameter-admin");
     await page.getByRole("searchbox", { name: "搜索参数" }).fill(parameterName);
     await expect(page.getByRole("region", { name: "项目共享参数库" })).toContainText(parameterName);
 

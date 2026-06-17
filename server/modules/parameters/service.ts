@@ -44,7 +44,7 @@ import {
 } from "./repository";
 import { applyImportBatchBodySchema, createImportBatchBodySchema } from "./schemas";
 import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
-import type { ParameterImportSourceItemDto, ParameterImportSummaryDto } from "./types";
+import type { ChangeRequestDto, ParameterImportSourceItemDto, ParameterImportSummaryDto } from "./types";
 import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
 import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
@@ -387,6 +387,68 @@ async function updateRoundStatusIfNeeded(
   });
 }
 
+async function buildReviewParticipants(
+  db: Queryable,
+  organizationId: string,
+  request: ChangeRequestDto,
+  decisions: Awaited<ReturnType<typeof listReviewDecisions>>
+) {
+  const userIds = new Set<string>();
+  for (const decision of decisions) {
+    userIds.add(decision.reviewerUserId);
+  }
+  if (request.workflowAssignees) {
+    userIds.add(request.workflowAssignees.hardwareCommitterId);
+    userIds.add(request.workflowAssignees.softwareCommitterId);
+    userIds.add(request.workflowAssignees.softwareUserId);
+  }
+  const names = await listUserNamesByIds(db, { organizationId, userIds: [...userIds] });
+  const participants: Array<{ role: string; name: string; action?: string; note?: string; time?: string }> = [
+    { role: "提交人", name: request.submitter, action: "提交变更" }
+  ];
+
+  for (const decision of decisions) {
+    participants.push({
+      role: parameterStatusLabels[decision.fromStatus as ParameterChangeRequestStatus],
+      name: names.get(decision.reviewerUserId) ?? decision.reviewerUserId,
+      action: decision.decision === "advance" ? "推进流程" : "打回变更",
+      note: decision.note ?? undefined,
+      time: decision.createdAt
+    });
+  }
+
+  return participants;
+}
+
+function buildChangeRequestAuditMetadata(
+  request: ChangeRequestDto,
+  input: {
+    fromStatus: ParameterChangeRequestStatus;
+    toStatus: ParameterChangeRequestStatus;
+    note?: string;
+    expectedVersion?: number;
+    participants?: Array<{ role: string; name: string; action?: string; note?: string; time?: string }>;
+  }
+) {
+  const parameterImpact = request.impact.find((item) => item.kind === "parameter");
+
+  return {
+    fromStatus: input.fromStatus,
+    toStatus: input.toStatus,
+    note: input.note,
+    expectedVersion: input.expectedVersion,
+    parameterId: request.parameterId,
+    parameterName: request.title,
+    module: request.module,
+    currentValue: request.currentValue,
+    targetValue: request.targetValue,
+    risk: parameterImpact?.risk,
+    reason: parameterImpact?.note,
+    submitter: request.submitter,
+    participants: input.participants
+  };
+}
+
 async function createParameterReviewAudit(
   db: Queryable,
   auth: AuthContext,
@@ -399,6 +461,8 @@ async function createParameterReviewAudit(
     toStatus: ParameterChangeRequestStatus;
     note?: string;
     expectedVersion?: number;
+    changeRequest: ChangeRequestDto;
+    participants?: Array<{ role: string; name: string; action?: string; note?: string; time?: string }>;
   },
   context: ServiceContext = {}
 ) {
@@ -414,12 +478,13 @@ async function createParameterReviewAudit(
     severity: input.kind === "parameter-merge" ? "High" : "Medium",
     targetType: "parameter-change-request",
     targetId: input.requestId,
-    metadata: {
+    metadata: buildChangeRequestAuditMetadata(input.changeRequest, {
       fromStatus: input.fromStatus,
       toStatus: input.toStatus,
       note: input.note,
-      expectedVersion: input.expectedVersion
-    },
+      expectedVersion: input.expectedVersion,
+      participants: input.participants
+    }),
     traceId: context.requestId ?? randomUUID()
   });
 }
@@ -1040,7 +1105,17 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         action: "reject",
         fromStatus,
         toStatus,
-        note: input.note
+        note: input.note,
+        changeRequest: request,
+        participants: [
+          { role: "提交人", name: request.submitter, action: "提交变更" },
+          {
+            role: parameterStatusLabels[fromStatus],
+            name: auth.user.name,
+            action: "打回变更",
+            note: input.note
+          }
+        ]
       }, context);
 
       return updated;
@@ -1087,7 +1162,17 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         action: "advance",
         fromStatus,
         toStatus,
-        note: input.note
+        note: input.note,
+        changeRequest: request,
+        participants: [
+          { role: "提交人", name: request.submitter, action: "提交变更" },
+          {
+            role: parameterStatusLabels[fromStatus],
+            name: auth.user.name,
+            action: "推进审阅",
+            note: input.note
+          }
+        ]
       }, context);
 
       return updated;
@@ -1095,13 +1180,14 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
 
     requireCanMerge(auth, request.projectId);
 
+    let reviewDecisions: Awaited<ReturnType<typeof listReviewDecisions>> = [];
     if (request.impact.some((item) => item.kind === "parameter" && item.risk === "High")) {
-      const decisions = await listReviewDecisions(tx, {
+      reviewDecisions = await listReviewDecisions(tx, {
         organizationId: auth.organization.id,
         requestId: input.requestId
       });
 
-      if (!hasHighRiskReviewEvidence(decisions)) {
+      if (!hasHighRiskReviewEvidence(reviewDecisions)) {
         throw new ApiError(
           "CONFLICT",
           "High-risk parameter changes require hardware and software review before merge.",
@@ -1109,7 +1195,20 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           { requestId: input.requestId }
         );
       }
+    } else {
+      reviewDecisions = await listReviewDecisions(tx, {
+        organizationId: auth.organization.id,
+        requestId: input.requestId
+      });
     }
+
+    const participants = await buildReviewParticipants(tx, auth.organization.id, request, reviewDecisions);
+    participants.push({
+      role: "合入执行",
+      name: auth.user.name,
+      action: "合入参数",
+      note: input.note
+    });
 
     const merged = await mergeChangeRequest(tx, {
       historyId: randomUUID(),
@@ -1153,7 +1252,9 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       fromStatus,
       toStatus: "merged",
       note: input.note,
-      expectedVersion: input.expectedVersion
+      expectedVersion: input.expectedVersion,
+      changeRequest: request,
+      participants
     }, context);
 
     return updated;
