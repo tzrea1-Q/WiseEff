@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import { initialState } from "@/mockData";
-import { createParameterRuntimeActions, parameterRuntimeFailureNotification } from "./parameterRuntime";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
+import { createParameterRuntimeActions, parameterRuntimeFailureNotification, formatParameterRuntimeError } from "./parameterRuntime";
 
 const apiProjects = [{ id: "api-project", name: "API Project", code: "API" }];
 const apiParameter = { ...initialState.parameters[0], id: "api-project-param-1", projectId: "api-project" };
@@ -123,6 +124,71 @@ describe("createParameterRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: parameterRuntimeFailureNotification });
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "ADD_PARAMETER_SUBMISSION_ROUND" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
+  });
+
+  it("surfaces open change request conflicts with a clear notification", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      submitParameterChanges: vi.fn().mockRejectedValue(
+        new WiseEffApiError("CONFLICT", "Parameter already has an open change request.", {
+          parameterId: apiParameter.id,
+          requestId: "297b6f63-db21-4ed6-adf7-1052a30d6f7c"
+        }, "req-1")
+      )
+    });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+    const message = formatParameterRuntimeError(
+      new WiseEffApiError("CONFLICT", "Parameter already has an open change request.", {
+        parameterId: apiParameter.id,
+        requestId: "297b6f63-db21-4ed6-adf7-1052a30d6f7c"
+      }, "req-1")
+    );
+
+    const result = await actions.submitChanges({
+      projectId: "api-project",
+      items: [{ parameterId: apiParameter.id, targetValue: "42", reason: "Tune value" }]
+    });
+
+    expect(message).toContain("已有进行中的变更请求");
+    expect(result).toEqual({ notification: message, alreadyNotified: true });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message });
+  });
+
+  it("deletes matching API drafts when discarding stashed changes", async () => {
+    const dispatch = vi.fn();
+    const repository = createRepository({
+      listDrafts: vi.fn().mockResolvedValue([
+        {
+          id: "draft-to-delete",
+          projectId: "api-project",
+          parameterId: apiParameter.id,
+          targetValue: "42",
+          reason: "Tune value",
+          updatedAt: "2026-05-25T08:00:00.000Z"
+        }
+      ]),
+      deleteDraft: vi.fn().mockResolvedValue(undefined)
+    });
+    const actions = createParameterRuntimeActions({ runtimeMode: "api", repository, dispatch });
+
+    await actions.discardDrafts({ projectId: "api-project", parameterIds: [apiParameter.id] });
+
+    expect(repository.listDrafts).toHaveBeenCalledWith("api-project");
+    expect(repository.deleteDraft).toHaveBeenCalledWith("draft-to-delete");
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "HYDRATE_PARAMETER_RUNTIME" }));
+  });
+
+  it("dispatches discard action in mock mode", async () => {
+    const dispatch = vi.fn();
+    const actions = createParameterRuntimeActions({ runtimeMode: "mock", dispatch });
+
+    await actions.discardDrafts({ projectId: "aurora", parameterIds: [apiParameter.id] });
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "DISCARD_STASHED_PARAMETER_DRAFTS",
+      projectId: "aurora",
+      parameterIds: [apiParameter.id]
+    });
   });
 
   it("refresh loads projects, parameters, change requests, submission rounds, and drafts", async () => {

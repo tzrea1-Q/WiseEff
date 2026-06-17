@@ -191,6 +191,7 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
     getParameter: vi.fn().mockResolvedValue(initialState.parameters[0]),
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
+    discardDrafts: vi.fn().mockResolvedValue(undefined),
     reviewChange: vi.fn().mockResolvedValue(undefined),
     createImportPreview: vi.fn().mockResolvedValue({
       id: "preview-1",
@@ -217,11 +218,24 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-function renderPage(dispatch = vi.fn(), onNavigate = vi.fn(), parameterActions?: ParameterPageActions) {
+function createParametersPageState(overrides: Partial<typeof initialState> = {}) {
+  return {
+    ...initialState,
+    changeRequests: [],
+    ...overrides
+  };
+}
+
+function renderPage(
+  dispatch = vi.fn(),
+  onNavigate = vi.fn(),
+  parameterActions?: ParameterPageActions,
+  state = createParametersPageState()
+) {
   const result = render(
     <TopBarActionsHarness>
       <ParametersPage
-        state={initialState}
+        state={state}
         dispatch={dispatch}
         onNavigate={onNavigate}
         search=""
@@ -787,10 +801,10 @@ describe("ParametersPage draft edge cases", () => {
 });
 
 describe("ParametersPage · 提交契约", () => {
-  it("restores API-mode stashed drafts into the current-round modified table after refresh", () => {
+  it("discards persisted stashed drafts when removing an item from the modified table", async () => {
     const restoredParameter = initialState.parameters[0];
-    const restoredState = {
-      ...initialState,
+    const discardDrafts = vi.fn().mockResolvedValue(undefined);
+    const stashedState = createParametersPageState({
       parameterDrafts: [
         {
           id: "api-draft-1",
@@ -801,7 +815,116 @@ describe("ParametersPage · 提交契约", () => {
           updatedAt: "2026-06-15T08:00:00.000Z"
         }
       ]
-    };
+    });
+
+    const { rerender } = render(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={stashedState}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          parameterActions={createParameterActions({ discardDrafts })}
+        />
+      </TopBarActionsHarness>
+    );
+
+    const modifiedTable = screen.getByRole("region", { name: "本轮已修改参数表" });
+    expect(within(modifiedTable).getByText("已暂存")).toBeInTheDocument();
+
+    fireEvent.click(within(modifiedTable).getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "移除本项" }));
+
+    await waitFor(() => {
+      expect(discardDrafts).toHaveBeenCalledWith({
+        projectId: initialState.activeProjectId,
+        parameterIds: [restoredParameter.id]
+      });
+    });
+
+    rerender(
+      <TopBarActionsHarness>
+        <ParametersPage
+          state={{ ...stashedState, parameterDrafts: [] }}
+          dispatch={vi.fn()}
+          onNavigate={vi.fn()}
+          search=""
+          parameterActions={createParameterActions({ discardDrafts })}
+        />
+      </TopBarActionsHarness>
+    );
+
+    const searchTable = screen.getByRole("region", { name: "检索参数表" });
+    expect(within(searchTable).getByText(restoredParameter.name)).toBeInTheDocument();
+    expect(within(searchTable).queryByText("已暂存")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "本轮已修改参数表" })).not.toBeInTheDocument();
+  });
+
+  it("dispatches discard for mock-mode stashed rounds when clearing all drafts", async () => {
+    const stashedParameter = initialState.parameters[0];
+    const dispatch = vi.fn();
+    const stashedState = createParametersPageState({
+      parameterSubmissionRounds: [
+        {
+          id: "PRS-stash-1",
+          projectId: initialState.activeProjectId,
+          projectName: "Aurora 量产平台",
+          submitter: "H. Zhao",
+          createdAt: "刚刚",
+          status: "已暂存" as const,
+          summary: "本轮暂存包含 1 个参数修改。",
+          items: [
+            {
+              requestId: "",
+              parameterId: stashedParameter.id,
+              name: stashedParameter.name,
+              module: stashedParameter.module,
+              currentValue: stashedParameter.currentValue,
+              targetValue: "3300",
+              unit: stashedParameter.unit,
+              risk: stashedParameter.risk,
+              reason: "暂存修改"
+            }
+          ]
+        },
+        ...initialState.parameterSubmissionRounds
+      ]
+    });
+
+    render(
+      <TopBarActionsHarness>
+        <ParametersPage state={stashedState} dispatch={dispatch} onNavigate={vi.fn()} search="" />
+      </TopBarActionsHarness>
+    );
+
+    const searchTable = screen.getByRole("region", { name: "检索参数表" });
+    expect(within(searchTable).getByText("已暂存")).toBeInTheDocument();
+    fireEvent.click(within(searchTable).getByRole("button", { name: /编辑 fast_charge_current_limit_ma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "全部清空" }));
+
+    await waitFor(() => {
+      expect(dispatch).toHaveBeenCalledWith({
+        type: "DISCARD_STASHED_PARAMETER_DRAFTS",
+        projectId: initialState.activeProjectId,
+        parameterIds: [stashedParameter.id]
+      });
+    });
+  });
+
+  it("restores API-mode stashed drafts into the current-round modified table after refresh", () => {
+    const restoredParameter = initialState.parameters[0];
+    const restoredState = createParametersPageState({
+      parameterDrafts: [
+        {
+          id: "api-draft-1",
+          projectId: initialState.activeProjectId,
+          parameterId: restoredParameter.id,
+          targetValue: "3300",
+          reason: "刷新后继续提交",
+          updatedAt: "2026-06-15T08:00:00.000Z"
+        }
+      ]
+    });
 
     render(
       <TopBarActionsHarness>
