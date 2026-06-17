@@ -25,6 +25,7 @@ Completed plans are historical implementation evidence. They can explain why a s
 | M6.1 self-hosted runtime baseline | `2026-06-02-wiseeff-m6-1-self-hosted-runtime-baseline.md` |
 | Chinese developer docs | `2026-05-29-wiseeff-developer-docs-zh-cn.md` |
 | Bilingual developer docs | `2026-06-10-wiseeff-bilingual-developer-docs.md` |
+| Audit center M1/M2 | `2026-06-17-wiseeff-audit-center-m1.md`, `2026-06-17-wiseeff-audit-center-m2.md` |
 
 ## Historical Feature Plans
 

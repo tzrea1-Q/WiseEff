@@ -15,6 +15,7 @@ import type {
 } from "@/application/ports/ParameterRepository";
 import { submitParameterRound, type BuildRuntimeReviewFields } from "@/domain/parameters/commands";
 import type { ChangeRequest, ParameterHistoryEntry, ParameterRecord, ParameterSubmissionRound } from "@/domain/parameters/types";
+import { requestStatusToBackend } from "@/domain/parameters/submissionWorkflowTrail";
 import { canPerform } from "@/app/permissions";
 import { roleSupportsWorkflowSlot } from "@/domain/users/types";
 import { projects, roles, type PrototypeState } from "@/mockData";
@@ -297,6 +298,7 @@ function applyReviewChange(state: PrototypeState, input: ReviewParameterChangeIn
 
   if (input.decision === "reject") {
     if (!canPerform(state.activeRoleId, "parameter.review")) return state;
+    const fromStatus = requestStatusToBackend(target.status);
     return {
       ...state,
       changeRequests: state.changeRequests.map((request) =>
@@ -309,12 +311,29 @@ function applyReviewChange(state: PrototypeState, input: ReviewParameterChangeIn
             }
           : request
       ),
-      parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, "已打回")
+      parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, "已打回"),
+      parameterReviewDecisions:
+        fromStatus
+          ? [
+              ...state.parameterReviewDecisions,
+              {
+                id: `prd-${input.requestId}-${state.parameterReviewDecisions.length + 1}`,
+                requestId: input.requestId,
+                reviewerUserId: state.currentUserId,
+                decision: "reject",
+                fromStatus,
+                toStatus: "rejected",
+                createdAt: MOCK_CONTRACT_NOW
+              }
+            ]
+          : state.parameterReviewDecisions
     };
   }
 
   if (!canAdvanceReviewRequest(state.activeRoleId, target)) return state;
   const nextStep = getNextReviewStep(target);
+  const fromStatus = requestStatusToBackend(target.status);
+  const toStatus = requestStatusToBackend(nextStep.status);
 
   return {
     ...state,
@@ -328,7 +347,22 @@ function applyReviewChange(state: PrototypeState, input: ReviewParameterChangeIn
           }
         : request
     ),
-    parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, nextStep.status)
+    parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, nextStep.status),
+    parameterReviewDecisions:
+      fromStatus && toStatus
+        ? [
+            ...state.parameterReviewDecisions,
+            {
+              id: `prd-${input.requestId}-${state.parameterReviewDecisions.length + 1}`,
+              requestId: input.requestId,
+              reviewerUserId: state.currentUserId,
+              decision: "advance",
+              fromStatus,
+              toStatus,
+              createdAt: MOCK_CONTRACT_NOW
+            }
+          ]
+        : state.parameterReviewDecisions
   };
 }
 
@@ -409,6 +443,33 @@ export function createMockParameterRepository(runtime: MockRuntimeState): Parame
       const next = submitParameterRound(before, { ...input, projects, roles, buildRuntimeReviewFields });
       writeMockState(runtime, next);
       return cloneSubmissionRound(next.parameterSubmissionRounds[0]);
+    },
+    async withdrawSubmissionRound(roundId: string): Promise<ParameterSubmissionRound> {
+      const state = readMockState(runtime);
+      const round = state.parameterSubmissionRounds.find((item) => item.id === roundId);
+      if (!round) {
+        throw new Error(`Submission round not found: ${roundId}`);
+      }
+
+      const next = {
+        ...state,
+        parameterSubmissionRounds: state.parameterSubmissionRounds.map((item) =>
+          item.id === roundId
+            ? { ...item, status: "已撤回" as const, summary: `${item.summary} 已由提交人撤回。` }
+            : item
+        ),
+        changeRequests: state.changeRequests.map((request) =>
+          request.submissionRoundId === roundId && request.status !== "已合入"
+            ? { ...request, status: "已打回" as const, rejectReason: "提交人已撤回本轮提交。" }
+            : request
+        )
+      };
+      writeMockState(runtime, next);
+      const updated = next.parameterSubmissionRounds.find((item) => item.id === roundId);
+      if (!updated) {
+        throw new Error(`Submission round not found after withdraw: ${roundId}`);
+      }
+      return cloneSubmissionRound(updated);
     },
     async reviewChange(input: ReviewParameterChangeInput): Promise<ChangeRequest> {
       const next = applyReviewChange(readMockState(runtime), input);

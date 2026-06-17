@@ -83,6 +83,13 @@ export const routeManifest = [
     stability: "mvp"
   },
   {
+    id: "parameters.withdrawSubmissionRound",
+    method: "POST",
+    path: "/api/v1/parameter-submission-rounds/:roundId/withdraw",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
     id: "parameters.listChangeRequests",
     method: "GET",
     path: "/api/v1/parameter-change-requests",

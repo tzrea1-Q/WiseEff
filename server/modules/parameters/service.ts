@@ -19,6 +19,8 @@ import {
   getChangeRequestById,
   getProjectById,
   getProjectParameterForUpdate,
+  getSubmissionRoundById,
+  getSubmissionRoundSubmitterUserId,
   hasEligibleWorkflowAssignee,
   insertImportBatch,
   insertReviewDecision,
@@ -26,18 +28,25 @@ import {
   listChangeRequests as listChangeRequestRows,
   listDraftsForUser,
   listReviewDecisions,
+  listReviewDecisionsForRequestIds,
+  listChangeRequestWorkflowStateByIds,
+  listUserNamesByIds,
   listSubmissionRounds as listSubmissionRoundRows,
   markImportBatchApplied,
   mergeChangeRequest,
   type ParameterDefinitionImportCandidate,
   type PersistedImportBatchItem,
   updateChangeRequestStatus,
+  updateSubmissionRoundStatus,
   updateSubmissionRoundStatusFromRequests,
-  upsertDraft
+  upsertDraft,
+  withdrawOpenChangeRequestsForRound
 } from "./repository";
 import { applyImportBatchBodySchema, createImportBatchBodySchema } from "./schemas";
-import { getNextParameterStatus, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
+import { getNextParameterStatus, parameterStatusLabels, type ParameterChangeRequestStatus, type ParameterSubmissionRoundStatus } from "./status";
 import type { ParameterImportSourceItemDto, ParameterImportSummaryDto } from "./types";
+import { buildSubmissionWorkflowTrail } from "../../../src/domain/parameters/submissionWorkflowTrail";
+import { deriveSubmissionTimeline } from "../../../src/parameterSubmissionTimeline";
 
 type ServiceContext = AuditCorrelationContext;
 
@@ -797,10 +806,93 @@ export async function listDrafts(db: Queryable, auth: AuthContext, query: DraftL
 export async function listSubmissionRounds(db: Queryable, auth: AuthContext, query: SubmissionRoundListQuery = {}) {
   requireCanView(auth);
 
-  return listSubmissionRoundRows(db, {
-    organizationId: auth.organization.id,
+  const organizationId = auth.organization.id;
+  const rounds = await listSubmissionRoundRows(db, {
+    organizationId,
     projectId: query.projectId,
     status: query.status
+  });
+
+  if (rounds.length === 0) {
+    return rounds;
+  }
+
+  const requestIds = [...new Set(rounds.flatMap((round) => round.items.map((item) => item.requestId)))];
+  const [decisions, workflowStates] = await Promise.all([
+    listReviewDecisionsForRequestIds(db, { organizationId, requestIds }),
+    listChangeRequestWorkflowStateByIds(db, { organizationId, requestIds })
+  ]);
+
+  const userIds = new Set<string>();
+  for (const round of rounds) {
+    if (round.workflowAssignees) {
+      userIds.add(round.workflowAssignees.hardwareCommitterId);
+      userIds.add(round.workflowAssignees.softwareCommitterId);
+      userIds.add(round.workflowAssignees.softwareUserId);
+    }
+  }
+  for (const decision of decisions) {
+    userIds.add(decision.reviewerUserId);
+  }
+  for (const request of workflowStates) {
+    if (request.assignedTo) {
+      userIds.add(request.assignedTo);
+    }
+  }
+
+  const userNames = await listUserNamesByIds(db, { organizationId, userIds: [...userIds] });
+  const resolveUserName = (userId?: string) => {
+    if (!userId) {
+      return "未指派";
+    }
+    return userNames.get(userId) ?? userId;
+  };
+
+  const workflowStateByRequestId = new Map(workflowStates.map((request) => [request.id, request]));
+
+  return rounds.map((round) => {
+    const roundRequestIds = round.items.map((item) => item.requestId);
+    const roundDecisions = decisions.filter((decision) => roundRequestIds.includes(decision.requestId));
+    const timelineRound = {
+      ...round,
+      status: parameterStatusLabels[round.status]
+    };
+    const { activeIndex } = deriveSubmissionTimeline(timelineRound);
+
+    const workflowTrail = buildSubmissionWorkflowTrail({
+      activeIndex,
+      workflowAssignees: round.workflowAssignees,
+      requestIds: roundRequestIds,
+      changeRequests: roundRequestIds.flatMap((requestId) => {
+        const request = workflowStateByRequestId.get(requestId);
+        if (!request) {
+          return [];
+        }
+
+        return [
+          {
+            id: request.id,
+            assignedTo: request.assignedTo,
+            status: parameterStatusLabels[request.status as ParameterChangeRequestStatus] as (typeof timelineRound)["status"]
+          }
+        ];
+      }),
+      reviewDecisions: roundDecisions.map((decision) => ({
+        id: decision.id,
+        requestId: decision.requestId,
+        reviewerUserId: decision.reviewerUserId,
+        decision: decision.decision,
+        fromStatus: decision.fromStatus,
+        toStatus: decision.toStatus,
+        createdAt: decision.createdAt
+      })),
+      resolveUserName
+    });
+
+    return {
+      ...round,
+      workflowTrail
+    };
   });
 }
 
@@ -812,6 +904,95 @@ export async function listChangeRequests(db: Queryable, auth: AuthContext, query
     projectId: query.projectId,
     status: query.status,
     assignedTo: query.assignedTo
+  });
+}
+
+const nonWithdrawableSubmissionRoundStatuses = new Set<ParameterSubmissionRoundStatus>([
+  "merged",
+  "rejected",
+  "withdrawn",
+  "stashed"
+]);
+
+export async function withdrawSubmissionRound(
+  db: Database,
+  auth: AuthContext,
+  roundId: string,
+  context: ServiceContext = {}
+) {
+  requireCanEdit(auth);
+
+  return db.transaction(async (tx) => {
+    const owner = await getSubmissionRoundSubmitterUserId(tx, {
+      organizationId: auth.organization.id,
+      roundId
+    });
+
+    if (!owner) {
+      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", 404, { roundId });
+    }
+
+    if (owner.submitter_user_id !== auth.user.id) {
+      throw new ApiError("FORBIDDEN", "Only the submitter can withdraw this submission round.", 403, { roundId });
+    }
+
+    if (nonWithdrawableSubmissionRoundStatuses.has(owner.status)) {
+      throw new ApiError("CONFLICT", "Parameter submission round is already closed.", 409, {
+        roundId,
+        status: owner.status
+      });
+    }
+
+    const round = await getSubmissionRoundById(tx, {
+      organizationId: auth.organization.id,
+      roundId
+    });
+
+    if (!round) {
+      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", 404, { roundId });
+    }
+
+    await withdrawOpenChangeRequestsForRound(tx, {
+      organizationId: auth.organization.id,
+      roundId,
+      note: "提交人已撤回本轮提交。"
+    });
+
+    await updateSubmissionRoundStatus(tx, {
+      organizationId: auth.organization.id,
+      roundId,
+      status: "withdrawn",
+      summary: `${round.summary} 已由提交人撤回。`
+    });
+
+    await createAuditEvent(tx, {
+      id: randomUUID(),
+      organizationId: auth.organization.id,
+      projectId: round.projectId,
+      actorUserId: auth.user.id,
+      actorType: "user",
+      app: "parameter-management",
+      kind: "parameter-submission-withdraw",
+      action: "withdraw",
+      severity: "Medium",
+      targetType: "parameter-submission-round",
+      targetId: roundId,
+      metadata: {
+        itemCount: round.items.length
+      },
+      traceId: context.requestId ?? randomUUID()
+    });
+
+    const updated = await getSubmissionRoundById(tx, {
+      organizationId: auth.organization.id,
+      roundId
+    });
+
+    if (!updated) {
+      throw new ApiError("NOT_FOUND", "Parameter submission round was not found.", 404, { roundId });
+    }
+
+    return updated;
   });
 }
 

@@ -177,6 +177,26 @@ export type ParameterWorkflowAssignees = {
   softwareUserId: string;
 };
 
+export type ParameterReviewDecisionRecord = {
+  id: string;
+  requestId: string;
+  reviewerUserId: string;
+  decision: "advance" | "reject";
+  fromStatus: string;
+  toStatus: string;
+  createdAt: string;
+};
+
+export type SubmissionWorkflowStageDetail = {
+  key: "hardware_review" | "software_review" | "software_merge";
+  stepIndex: number;
+  label: string;
+  assigneeName: string;
+  executorName?: string;
+  executorLabel: "执行人" | "当前处理";
+  state: "pending" | "active" | "completed" | "skipped";
+};
+
 export type ParameterSubmissionRound = {
   id: string;
   projectId: string;
@@ -186,6 +206,7 @@ export type ParameterSubmissionRound = {
   status: RequestStatus | "已撤回" | "已暂存";
   summary: string;
   workflowAssignees?: ParameterWorkflowAssignees;
+  workflowTrail?: SubmissionWorkflowStageDetail[];
   items: ParameterSubmissionItem[];
 };
 
@@ -286,6 +307,7 @@ export type AuditEvent = {
     foundOrphans?: number;
   };
   viaAgent?: boolean;
+  traceId?: string;
 };
 
 export type DebugSnapshotEntry = {
@@ -330,6 +352,7 @@ export type PrototypeState = {
   parameterDrafts: ParameterDraftDto[];
   aiFeedback: AIFeedbackEntry[];
   parameterSubmissionRounds: ParameterSubmissionRound[];
+  parameterReviewDecisions: ParameterReviewDecisionRecord[];
   parameterInitializationDrafts: ProjectParameterInitializationDraft[];
   parameterInitializationReviews: ProjectParameterInitializationReview[];
   projectInitializationStatuses: Record<string, ProjectInitializationStatus>;
@@ -606,7 +629,8 @@ function buildAuditEvents(): AuditEvent[] {
       severity: "High",
       parameterId: "fast-charge-current",
       userId: "u-wang-jie",
-      metadata: { previousValue: "3800", newValue: "3200" }
+      metadata: { previousValue: "3800", newValue: "3200" },
+      traceId: "trace-param-edit-001"
     },
     {
       id: "ae-002",
@@ -641,7 +665,8 @@ function buildAuditEvents(): AuditEvent[] {
       severity: "Medium",
       batchId: "BI-20260510-001",
       viaAgent: true,
-      metadata: { affectedIds: ["fast-charge-current", "battery-temp-target"], diffSummary: { added: 3, updated: 5, deleted: 0 } }
+      metadata: { affectedIds: ["fast-charge-current", "battery-temp-target"], diffSummary: { added: 3, updated: 5, deleted: 0 } },
+      traceId: "trace-param-edit-001"
     },
     {
       id: "ae-005",
@@ -833,6 +858,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
     projectInitializationStatuses: Object.fromEntries(
       configDraft.projects.map((project) => [project.id, "initialized" as const])
     ),
+    parameterReviewDecisions: [],
     parameterSubmissionRounds: [
       {
         id: "PRS-2405",

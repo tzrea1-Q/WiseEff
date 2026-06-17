@@ -8,7 +8,7 @@ import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepos
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
-const userState = { ...initialState, activeRoleId: "user" };
+const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
 const committerState = { ...initialState, activeRoleId: "committer" };
 const adminState = { ...initialState, activeRoleId: "admin" };
 const apiParameter = {
@@ -56,6 +56,7 @@ function createAppParameterRepository(overrides: Partial<ParameterRepository> = 
     listChangeRequests: vi.fn().mockResolvedValue([]),
     listSubmissionRounds: vi.fn().mockResolvedValue([]),
     submitParameterChanges: vi.fn().mockResolvedValue({ ...initialState.parameterSubmissionRounds[0], id: "api-runtime-round" }),
+    withdrawSubmissionRound: vi.fn().mockResolvedValue({ ...initialState.parameterSubmissionRounds[0], id: "api-runtime-round", status: "已撤回" }),
     reviewChange: vi.fn().mockResolvedValue({ ...initialState.changeRequests[0], id: "api-runtime-change" }),
     createImportPreview: vi.fn().mockResolvedValue({
       id: "api-runtime-batch",
@@ -1537,7 +1538,7 @@ describe("WiseEff app shell", () => {
 
     expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史审阅" }));
 
     expect(window.location.pathname).toBe("/parameter-submissions");
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
@@ -1567,7 +1568,7 @@ describe("WiseEff app shell", () => {
     expect(within(dialog).getByText(/4310/)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
-    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史审阅" }));
 
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
@@ -1622,6 +1623,50 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("Zhao Heng");
     expect(screen.queryByText("当前还没有你的历史提交。")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "撤回本轮提交" })).toBeEnabled();
+  });
+
+  it("formats ISO submission timestamps on the personal history page", () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const zhaoRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "api-zhao-round-iso",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Zhao Heng",
+      createdAt: "2026-06-17T03:10:21.456Z",
+      status: "硬件Committer检视" as const,
+      summary: "Hardware User API 提交。",
+      items: [
+        {
+          requestId: "api-zhao-request-iso",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "验证时间格式"
+        }
+      ]
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [zhaoRound]
+        }}
+      />
+    );
+
+    expect(screen.queryByText("2026-06-17T03:10:21.456Z")).not.toBeInTheDocument();
+    expect(screen.getAllByText(/分钟前|小时前|天前|2026/).length).toBeGreaterThan(0);
   });
 
   it("does not show role-owned submission rounds as personal history when a current user is known", () => {
@@ -1682,7 +1727,7 @@ describe("WiseEff app shell", () => {
 
     const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
-    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史审阅" }));
 
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
     expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*个参数/)).toHaveLength(1);
@@ -1736,6 +1781,9 @@ describe("WiseEff app shell", () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"boost"');
 
     const css = readFileSync("src/styles.css", "utf8");
+    expect(readCssBlock(css, ".submission-history-layout")).toContain("grid-template-columns: 320px minmax(0, 1fr);");
+    expect(readCssBlock(css, ".submission-history-layout .history-panel")).toContain("grid-column: auto;");
+    expect(readCssBlock(css, ".submission-history-layout .submission-round-detail")).toContain("grid-column: auto;");
     expect(readCssBlock(css, ".submission-round-detail")).toContain("min-width: 0;");
     expect(readCssBlock(css, ".history-diff-list")).toContain("overflow: hidden;");
     expect(readCssBlock(css, ".history-submission-diff")).toContain("max-height: 300px;");
@@ -1885,7 +1933,7 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "通过初始化" }));
 
-    fireEvent.click(screen.getByRole("tab", { name: "历史提交" }));
+    fireEvent.click(screen.getByRole("tab", { name: "历史审阅" }));
 
     const approvedReviewTable = screen.getByRole("table");
     expect(within(approvedReviewTable).getByText("参数初始化")).toBeInTheDocument();
@@ -2088,7 +2136,7 @@ describe("WiseEff app shell", () => {
       ["项目", "筛选项目", "Aurora 量产平台"],
       ["模块", "筛选模块", "Charging Policy"],
       ["提交人", "筛选提交人", "H. Zhao"],
-      ["状态", "筛选状态", "软件Committer检视"]
+      ["状态", "筛选状态", "硬件Committer检视"]
     ];
 
     for (const [headerName, buttonName, optionName] of checks) {
@@ -2103,11 +2151,11 @@ describe("WiseEff app shell", () => {
 
     const statusHeader = within(table).getByRole("columnheader", { name: /状态/ });
     fireEvent.click(within(statusHeader).getByRole("button", { name: "筛选状态" }));
-    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "软件Committer检视" }));
+    fireEvent.click(within(statusHeader).getByRole("checkbox", { name: "硬件Committer检视" }));
     const visibleBodyRows = Array.from(table.querySelectorAll("tbody tr"));
     expect(visibleBodyRows.length).toBeGreaterThan(0);
-    expect(visibleBodyRows.every((row) => row.textContent?.includes("软件MDE检视"))).toBe(true);
-    expect(within(table).queryByText("快充输入电流调整")).not.toBeInTheDocument();
+    expect(visibleBodyRows.every((row) => row.textContent?.includes("硬件MDE检视"))).toBe(true);
+    expect(within(table).getByText("快充输入电流调整")).toBeInTheDocument();
   });
 
   it("does not expose request identifiers in the parameter review UI", () => {
@@ -2130,13 +2178,13 @@ describe("WiseEff app shell", () => {
     expect(reviewHeaderRule).toContain("gap: 4px;");
   });
 
-  it("switches the review table title between pending requests and merged submission history", () => {
+  it("switches the review table between pending requests and role-specific review history", () => {
     window.history.replaceState(null, "", "/parameter-review");
 
     renderAppForCurrentPath();
 
     const pendingTab = screen.getByRole("tab", { name: "待审阅" });
-    const historyTab = screen.getByRole("tab", { name: "历史提交" });
+    const historyTab = screen.getByRole("tab", { name: "历史审阅" });
     const pendingTable = screen.getByRole("table");
 
     expect(pendingTab).toHaveAttribute("aria-selected", "true");
@@ -2149,8 +2197,14 @@ describe("WiseEff app shell", () => {
     expect(historyTab).toHaveAttribute("aria-selected", "true");
     expect(within(historyTable).getByText("SOC 平滑窗口调整")).toBeInTheDocument();
     expect(within(historyTable).queryByText("快充输入电流调整")).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("SOC 平滑窗口调整");
-    expect(screen.getByRole("complementary", { name: "审阅详情" })).not.toHaveTextContent(/PRQ-\d+/);
+
+    fireEvent.click(within(historyTable).getByText("SOC 平滑窗口调整"));
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+    expect(reviewDetail).toHaveTextContent("SOC 平滑窗口调整");
+    expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
+    expect(within(reviewDetail).queryByRole("button", { name: "推进流程" })).not.toBeInTheDocument();
+    expect(within(reviewDetail).queryByRole("button", { name: "打回修改" })).not.toBeInTheDocument();
   });
 
   it("labels and aligns the review change column", () => {
@@ -2500,12 +2554,12 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-review",
-        present: ["待审阅", "历史提交", "变更", "变更历史", "当前", "提交人"],
+        present: ["待审阅", "历史审阅", "变更", "变更历史", "当前", "提交人"],
         absent: ["Filter Queue", "Pending Requests", "Req ID", "Submitter", "Proposed Change", "Change History", "Targeting module"]
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "项目共享参数库", "共享参数定义", "项目参数值矩阵", "保存到 JSON 文件", "导出 JSON", "共享参数"],
+        present: ["项目参数管理后台", "项目共享参数库", "共享参数定义", "项目参数值矩阵", "批量参数导入", "共享参数"],
         absent: ["项目参数 Admin", "items", "events"]
       },
       {
@@ -2815,8 +2869,8 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector(".config-preview-panel")).not.toBeInTheDocument();
     const adminActions = screen.getByRole("toolbar", { name: "项目参数管理后台页面操作" });
     expect(adminActions).toHaveTextContent("批量参数导入");
-    expect(adminActions).toHaveTextContent("保存到 JSON 文件");
-    expect(adminActions).toHaveTextContent("导出 JSON");
+    expect(adminActions).not.toHaveTextContent("保存到 JSON 文件");
+    expect(adminActions).not.toHaveTextContent("导出 JSON");
     const configFormLabelCss = readCssBlock(readFileSync("src/styles.css", "utf8"), ".config-form-grid label");
     expect(configFormLabelCss).toContain("align-items: flex-start;");
     expect(configFormLabelCss).toContain("text-align: left;");
@@ -2884,36 +2938,18 @@ describe("WiseEff app shell", () => {
     expect(document.body).toHaveTextContent("WiseAgent 已生成闲置清理建议");
   });
 
-  it("saves project admin edits to the local JSON config endpoint", () => {
+  it("does not expose local JSON save actions on parameter admin", () => {
     window.history.replaceState(null, "", "/parameter-admin");
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true })
-    });
-    vi.stubGlobal("fetch", fetchMock);
 
     render(<App initialAppState={adminState} />);
 
-    const projectValues = screen.getByRole("region", { name: "项目参数值矩阵" });
-    fireEvent.change(within(projectValues).getByLabelText("AUR-Prod 当前值"), { target: { value: "3650" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/power-management-config",
-      expect.objectContaining({
-        method: "PUT",
-        body: expect.stringContaining('"currentValue": "3650"')
-      })
-    );
+    const adminActions = screen.getByRole("toolbar", { name: "项目参数管理后台页面操作" });
+    expect(within(adminActions).queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
+    expect(within(adminActions).queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
   });
 
-  it("does not save parameter admin config directly in injected API mode", async () => {
+  it("shows API mode guidance instead of local JSON save on parameter admin", async () => {
     window.history.replaceState(null, "", "/parameter-admin");
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true })
-    });
-    vi.stubGlobal("fetch", fetchMock);
 
     render(
       <App
@@ -2924,10 +2960,8 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "保存到 JSON 文件" }));
-
-    expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);
-    expect(document.body).toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
+    expect(await screen.findByText("API 模式下参数库修改通过导入批次或审阅流程写入。")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
   });
 
   it("edits debug parameter config and reflects it in the debugging workspace", () => {

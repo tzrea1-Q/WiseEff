@@ -1,42 +1,63 @@
-import type { PageKey } from "@/appConfig";
-import type { RiskLevel } from "../parameters/types";
+import type { RiskLevel } from "@/mockData";
 
-export type AuditEventKind =
-  | "parameter-add"
-  | "parameter-update"
-  | "parameter-delete"
-  | "batch-import"
-  | "bulk-risk-change"
-  | "bulk-module-change"
-  | "bulk-delete"
-  | "user-add"
-  | "user-role-change"
-  | "user-toggle"
-  | "export"
-  | "rollback-undo"
-  | "agent-action";
+export type { AuditEvent } from "@/mockData";
 
-export type AuditEvent = {
+export type AuditActorType = "user" | "agent" | "system";
+
+export type AuditEventView = {
   id: string;
-  kind?: AuditEventKind;
-  app: PageKey;
-  actor: string;
+  app: string;
+  kind: string;
   action: string;
-  time: string;
   severity: RiskLevel;
+  actor: string;
+  actorType: AuditActorType;
+  timeLabel: string;
+  createdAt?: string;
+  traceId?: string;
+  targetType?: string | null;
+  targetId?: string | null;
   parameterId?: string;
   batchId?: string;
   userId?: string;
-  metadata?: {
-    previousValue?: string;
-    newValue?: string;
-    previousRole?: string;
-    newRole?: string;
-    affectedIds?: string[];
-    diffSummary?: { added: number; updated: number; deleted: number };
-    snapshotName?: string;
-    aiActionId?: string;
-    foundOrphans?: number;
-  };
+  metadata?: Record<string, unknown>;
   viaAgent?: boolean;
+};
+
+export type AuditEventDto = {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  actorUserId: string | null;
+  actorType: AuditActorType;
+  actorName?: string | null;
+  app: string;
+  kind: string;
+  action: string;
+  severity: RiskLevel;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+  traceId: string;
+  createdAt: string;
+};
+
+export type AuditEventListResponse = {
+  items: AuditEventDto[];
+  nextCursor: string | null;
+};
+
+export type ListAuditEventsParams = {
+  projectId?: string;
+  app?: string;
+  apps?: string[];
+  kind?: string;
+  severity?: RiskLevel;
+  targetType?: string;
+  targetId?: string;
+  traceId?: string;
+  from?: string;
+  to?: string;
+  cursor?: string;
+  limit?: number;
 };

@@ -105,6 +105,26 @@ export type ParameterSubmissionItem = {
   reason: string;
 };
 
+export type SubmissionWorkflowStageDetail = {
+  key: "hardware_review" | "software_review" | "software_merge";
+  stepIndex: number;
+  label: string;
+  assigneeName: string;
+  executorName?: string;
+  executorLabel: "执行人" | "当前处理";
+  state: "pending" | "active" | "completed" | "skipped";
+};
+
+export type ParameterReviewDecisionRecord = {
+  id: string;
+  requestId: string;
+  reviewerUserId: string;
+  decision: "advance" | "reject";
+  fromStatus: string;
+  toStatus: string;
+  createdAt: string;
+};
+
 export type ParameterSubmissionRound = {
   id: string;
   projectId: string;
@@ -114,6 +134,7 @@ export type ParameterSubmissionRound = {
   status: RequestStatus | "已撤回" | "已暂存";
   summary: string;
   workflowAssignees?: ParameterWorkflowAssignees;
+  workflowTrail?: SubmissionWorkflowStageDetail[];
   items: ParameterSubmissionItem[];
 };
 

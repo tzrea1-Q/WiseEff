@@ -36,6 +36,7 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
     discardDrafts: vi.fn().mockResolvedValue(undefined),
+    withdrawSubmissionRound: vi.fn().mockResolvedValue(undefined),
     reviewChange: vi.fn().mockResolvedValue(undefined),
     createImportPreview: vi.fn().mockResolvedValue({
       id: "api-import-batch",
@@ -92,19 +93,6 @@ function renderPage(search = "", state = initialState, dispatch = vi.fn(), param
   );
 }
 
-function buildDirtyState() {
-  return {
-    ...initialState,
-    configDraft: {
-      ...initialState.configDraft,
-      parameterLibrary: [
-        { ...initialState.configDraft.parameterLibrary[0], description: "changed" },
-        ...initialState.configDraft.parameterLibrary.slice(1)
-      ]
-    }
-  };
-}
-
 describe("ParameterAdminPage", () => {
   it("renders topbar actions without a dedicated page header", () => {
     renderPage();
@@ -133,7 +121,8 @@ describe("ParameterAdminPage", () => {
     const toolbar = screen.getByRole("toolbar", { name: "参数管理后台页面操作" });
 
     expect(within(toolbar).getByRole("button", { name: /批量参数导入/ })).toBeInTheDocument();
-    expect(within(toolbar).getByRole("button", { name: /导出/ })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: /导出/ })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: /保存到 JSON/ })).not.toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: /权限/ })).toBeInTheDocument();
     expect(within(toolbar).getByRole("button", { name: /审计/ })).toBeInTheDocument();
   });
@@ -148,46 +137,23 @@ describe("ParameterAdminPage", () => {
     expect(within(strip).getByText("最近导入")).toBeInTheDocument();
   });
 
-  it("reflects audit drawer state on the shell", () => {
+  it("opens an audit dialog with parameter-admin events and detail diff", () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /审计/ }));
+
+    const dialog = screen.getByRole("dialog", { name: "参数管理审计" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getAllByText("更新 fast_charge_current_limit_ma 推荐值").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("Wang Jie").length).toBeGreaterThan(0);
+    expect(within(dialog).getByText("3800")).toBeInTheDocument();
+    expect(within(dialog).getByText("3200")).toBeInTheDocument();
+  });
+
+  it("opens audit dialog from legacy audit=open query", () => {
     renderPage("audit=open");
 
-    expect(document.querySelector(".param-admin-shell")?.getAttribute("data-audit")).toBe("open");
-    expect(screen.getByRole("complementary", { name: "审计抽屉" })).toBeInTheDocument();
-  });
-
-  it("shows a dirty indicator after config diverges from the last export", () => {
-    const { rerender } = renderPage();
-
-    expect(screen.queryByText(/未导出/)).toBeNull();
-
-    rerender(
-      <TopBarActionsHarness>
-        <ParameterAdminPage state={buildDirtyState()} dispatch={vi.fn()} onNavigate={vi.fn()} search="" />
-      </TopBarActionsHarness>
-    );
-
-    expect(screen.getByText(/1 处未导出/)).toBeInTheDocument();
-  });
-
-  it("opens a diff dialog from the export menu and confirms MARK_EXPORTED", () => {
-    const dispatch = vi.fn();
-    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:parameter-admin");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-
-    renderPage("", buildDirtyState(), dispatch);
-
-    const toolbar = screen.getByRole("toolbar", { name: "参数管理后台页面操作" });
-
-    fireEvent.click(within(toolbar).getByRole("button", { name: /导出 JSON/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: /下载/ }));
-
-    expect(screen.getByRole("dialog", { name: "导出 JSON 快照" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: /确认导出/ }));
-
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "MARK_EXPORTED" }));
-    expect(createObjectUrl).toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "参数管理审计" })).toBeInTheDocument();
   });
 
   it("opens delete confirmation and dispatches DELETE_PROJECT_PARAMETER", () => {

@@ -51,6 +51,7 @@ function createParameterRepository(overrides: Partial<ParameterRepository> = {})
     listChangeRequests: vi.fn().mockResolvedValue([]),
     listSubmissionRounds: vi.fn().mockResolvedValue([]),
     submitParameterChanges: vi.fn(),
+    withdrawSubmissionRound: vi.fn(),
     reviewChange: vi.fn(),
     createImportPreview: vi.fn(),
     applyImportBatch: vi.fn(),

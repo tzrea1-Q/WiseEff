@@ -5,6 +5,7 @@ export type ActionKey =
   | "parameter.view"
   | "parameter.edit"
   | "parameter.review"
+  | "parameter.merge"
   | "debugging.use"
   | "logs.upload"
   | "admin.access"
@@ -24,13 +25,15 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   debugging: "hardware-user",
   "node-debugging": "hardware-user",
   "debugging-admin": "admin",
-  "user-permissions": "admin"
+  "user-permissions": "admin",
+  audit: "admin"
 };
 
 const actionRequiredRoles: Record<ActionKey, PlatformRoleId> = {
   "parameter.view": "guest",
   "parameter.edit": "hardware-user",
   "parameter.review": "hardware-committer",
+  "parameter.merge": "software-user",
   "debugging.use": "hardware-user",
   "logs.upload": "hardware-user",
   "admin.access": "admin",
@@ -54,12 +57,25 @@ export function getRequiredRoleForAction(actionKey: ActionKey): PlatformRoleId {
   return actionRequiredRoles[actionKey];
 }
 
+export function canAccessParameterReviewPage(roleId: string): boolean {
+  const normalizedRole = migrateLegacyRoleId(roleId);
+  return canPerform(normalizedRole, "parameter.review") || canPerform(normalizedRole, "parameter.merge");
+}
+
 export function canAccessPage(roleId: string, pageKey: PageKey): boolean {
-  return comparePlatformRoles(roleId, getRequiredRoleForPage(pageKey)) >= 0;
+  const normalizedRole = migrateLegacyRoleId(roleId);
+  if (pageKey === "parameter-review") {
+    return canAccessParameterReviewPage(normalizedRole);
+  }
+  return comparePlatformRoles(normalizedRole, getRequiredRoleForPage(pageKey)) >= 0;
 }
 
 export function canPerform(roleId: string, actionKey: ActionKey): boolean {
-  return comparePlatformRoles(roleId, getRequiredRoleForAction(actionKey)) >= 0;
+  const normalizedRole = migrateLegacyRoleId(roleId);
+  if (actionKey === "parameter.merge") {
+    return normalizedRole === "software-user" || normalizedRole === "admin";
+  }
+  return comparePlatformRoles(normalizedRole, getRequiredRoleForAction(actionKey)) >= 0;
 }
 
 export function getDisabledReason(roleId: string, actionKey: ActionKey): string | undefined {

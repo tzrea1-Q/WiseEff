@@ -58,7 +58,7 @@ describe("derivePersonalWorkbench", () => {
     expect(workbench.nextActions[0].path).toMatch(/^\/parameters/);
   });
 
-  it("does not create software merge todos before users have an accessible merge action", () => {
+  it("creates merge todos when software users can access the parameter review page", () => {
     const state: PrototypeState = {
       ...initialState,
       activeRoleId: "software-user",
@@ -75,11 +75,11 @@ describe("derivePersonalWorkbench", () => {
     const workbench = derivePersonalWorkbench(state, analyticsFor(state));
     const todoActions = workbench.nextActions.filter((action) => action.kind === "todo");
 
-    expect(todoActions).toEqual([]);
-    expect(workbench.nextActions).not.toContainEqual(
+    expect(todoActions).toContainEqual(
       expect.objectContaining({
-        id: "user-software-merge",
-        path: "/parameter-submissions"
+        id: "user-merge-queue",
+        path: "/parameter-review",
+        title: "处理待合入参数变更"
       })
     );
   });

@@ -192,6 +192,7 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
     submitChanges: vi.fn().mockResolvedValue(undefined),
     stashChanges: vi.fn().mockResolvedValue(undefined),
     discardDrafts: vi.fn().mockResolvedValue(undefined),
+    withdrawSubmissionRound: vi.fn().mockResolvedValue(undefined),
     reviewChange: vi.fn().mockResolvedValue(undefined),
     createImportPreview: vi.fn().mockResolvedValue({
       id: "preview-1",

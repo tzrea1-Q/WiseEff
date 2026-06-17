@@ -1,5 +1,6 @@
 import type { Queryable } from "../../shared/database/client";
-import type { AuditEventDto, CreateAuditEventInput } from "./types";
+import type { CreateAuditEventInput } from "./types";
+import type { AuditEventListItemDto, ListAuditEventsQuery, ListAuditEventsResult } from "./listTypes";
 
 type AuditEventRow = {
   id: string;
@@ -7,6 +8,7 @@ type AuditEventRow = {
   project_id: string | null;
   actor_user_id: string | null;
   actor_type: "user" | "agent" | "system";
+  actor_name: string | null;
   app: string;
   kind: string;
   action: string;
@@ -18,13 +20,14 @@ type AuditEventRow = {
   created_at: string;
 };
 
-function toDto(row: AuditEventRow): AuditEventDto {
+function toListItem(row: AuditEventRow): AuditEventListItemDto {
   return {
     id: row.id,
     organizationId: row.organization_id,
     projectId: row.project_id,
     actorUserId: row.actor_user_id,
     actorType: row.actor_type,
+    actorName: row.actor_name,
     app: row.app,
     kind: row.kind,
     action: row.action,
@@ -64,18 +67,105 @@ export async function createAuditEvent(db: Queryable, input: CreateAuditEventInp
   );
 }
 
-export async function listAuditEvents(db: Queryable, query: { organizationId: string; projectId?: string }) {
+export async function listAuditEvents(db: Queryable, query: ListAuditEventsQuery): Promise<ListAuditEventsResult> {
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
+  const values: unknown[] = [query.organizationId];
+  const conditions = ["ae.organization_id = $1"];
+
+  if (query.projectId) {
+    values.push(query.projectId);
+    conditions.push(`ae.project_id = $${values.length}`);
+  }
+
+  if (query.apps && query.apps.length > 0) {
+    values.push(query.apps);
+    conditions.push(`ae.app = any($${values.length}::text[])`);
+  } else if (query.app) {
+    values.push(query.app);
+    conditions.push(`ae.app = $${values.length}`);
+  }
+
+  if (query.kind) {
+    values.push(query.kind);
+    conditions.push(`ae.kind = $${values.length}`);
+  }
+
+  if (query.severity) {
+    values.push(query.severity);
+    conditions.push(`ae.severity = $${values.length}`);
+  }
+
+  if (query.actorUserId) {
+    values.push(query.actorUserId);
+    conditions.push(`ae.actor_user_id = $${values.length}`);
+  }
+
+  if (query.targetType) {
+    values.push(query.targetType);
+    conditions.push(`ae.target_type = $${values.length}`);
+  }
+
+  if (query.targetId) {
+    values.push(query.targetId);
+    conditions.push(`ae.target_id = $${values.length}`);
+  }
+
+  if (query.traceId) {
+    values.push(query.traceId);
+    conditions.push(`ae.trace_id = $${values.length}`);
+  }
+
+  if (query.from) {
+    values.push(query.from);
+    conditions.push(`ae.created_at >= $${values.length}::timestamptz`);
+  }
+
+  if (query.to) {
+    values.push(query.to);
+    conditions.push(`ae.created_at <= $${values.length}::timestamptz`);
+  }
+
+  if (query.cursor) {
+    values.push(query.cursor);
+    conditions.push(`ae.created_at < $${values.length}::timestamptz`);
+  }
+
+  values.push(limit + 1);
+  const limitParam = `$${values.length}`;
+
   const result = await db.query<AuditEventRow>(
     `
-    select *
-    from audit_events
-    where organization_id = $1
-      and ($2::text is null or project_id = $2)
-    order by created_at desc
-    limit 100
+    select
+      ae.id,
+      ae.organization_id,
+      ae.project_id,
+      ae.actor_user_id,
+      ae.actor_type,
+      u.name as actor_name,
+      ae.app,
+      ae.kind,
+      ae.action,
+      ae.severity,
+      ae.target_type,
+      ae.target_id,
+      ae.metadata,
+      ae.trace_id,
+      ae.created_at
+    from audit_events ae
+    left join users u on u.id = ae.actor_user_id
+    where ${conditions.join(" and ")}
+    order by ae.created_at desc, ae.id desc
+    limit ${limitParam}
     `,
-    [query.organizationId, query.projectId ?? null]
+    values
   );
 
-  return result.rows.map(toDto);
+  const hasMore = result.rows.length > limit;
+  const rows = hasMore ? result.rows.slice(0, limit) : result.rows;
+  const items = rows.map(toListItem);
+
+  return {
+    items,
+    nextCursor: hasMore && items.length > 0 ? items[items.length - 1].createdAt : null
+  };
 }

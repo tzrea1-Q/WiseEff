@@ -147,6 +147,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameters"],
     responseBody: "ParameterSubmissionRoundListResponse"
   },
+  "parameters.withdrawSubmissionRound": {
+    summary: "Withdraw parameter submission round",
+    tags: ["parameters"],
+    responseBody: "ParameterSubmissionRoundResponse"
+  },
   "parameters.listChangeRequests": {
     summary: "List parameter change requests",
     tags: ["parameters"],

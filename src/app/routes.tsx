@@ -20,6 +20,7 @@ import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { AuditCenterPage } from "@/AuditCenterPage";
 import { DebuggingPage } from "@/DebuggingPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
@@ -45,6 +46,7 @@ export type ParameterPageActions = {
   submitChanges(input: SubmitParameterChangesInput): Promise<ParameterRuntimeVoidResult>;
   stashChanges(items: ParameterDraftItem[]): Promise<ParameterRuntimeVoidResult>;
   discardDrafts(input: DiscardParameterDraftsInput): Promise<ParameterRuntimeVoidResult>;
+  withdrawSubmissionRound(roundId: string): Promise<ParameterRuntimeVoidResult>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ParameterRuntimeVoidResult>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto | ParameterRuntimeActionFailure>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterRuntimeVoidResult>;
@@ -195,6 +197,8 @@ export function PageRouter({
       return <DebuggingAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} debuggingActions={debuggingActions} debuggingGateway={debuggingGateway} logActions={logActions} parameterActions={parameterActions} />;
     case "user-permissions":
       return <UserPermissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} userGovernanceActions={userGovernanceActions} />;
+    case "audit":
+      return <AuditCenterPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} runtimeMode={runtimeMode} />;
     default:
       return <HomePage />;
   }

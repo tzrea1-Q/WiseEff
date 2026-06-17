@@ -2,11 +2,11 @@ import { canAccessPage } from "@/app/permissions";
 import {
   getPlatformRole,
   migrateLegacyRoleId,
-  roleSupportsWorkflowSlot,
   type PlatformRoleId
 } from "@/domain/users/types";
 import type { PageKey } from "./appConfig";
-import type { ChangeRequest, ParameterSubmissionRound, PrototypeState, RequestStatus } from "./mockData";
+import type { ParameterSubmissionRound, PrototypeState } from "./mockData";
+import { canActOnReviewRequest } from "@/domain/parameters/reviewQueue";
 import type { ParameterHomepageAnalytics, ParameterHotspot } from "./parameterHomepageAnalytics";
 
 export type WorkbenchRoleView = "guest" | "user" | "committer" | "admin";
@@ -44,15 +44,6 @@ export type PersonalWorkbenchViewModel = {
   nextActions: WorkbenchAction[];
   scenarioEntries: WorkbenchScenarioEntry[];
 };
-
-const activeStatuses = new Set<RequestStatus>([
-  "硬件Committer检视",
-  "软件Committer检视",
-  "软件User合入",
-  "待审阅",
-  "自动检查通过",
-  "等待合入"
-]);
 
 export function derivePersonalWorkbench(
   state: PrototypeState,
@@ -134,6 +125,20 @@ function buildUserActions(state: PrototypeState, roleId: PlatformRoleId): Workbe
       meta: `${rejectedRound.items.length} 项参数 · ${rejectedRound.createdAt}`,
       path: "/parameter-submissions",
       source: "submission"
+    });
+  }
+
+  const mergeRequests = getReviewRequests(state, roleId);
+  if (mergeRequests.length > 0 && canAccessPage(roleId, "parameter-review")) {
+    actions.push({
+      id: "user-merge-queue",
+      kind: "todo",
+      priority: "secondary",
+      title: "处理待合入参数变更",
+      description: "参数变更已进入软件开发人员合入节点，请在参数审阅页完成最后一步推进。",
+      meta: `${mergeRequests.length} 项待合入`,
+      path: "/parameter-review",
+      source: "review"
     });
   }
 
@@ -229,15 +234,8 @@ function buildAdminActions(state: PrototypeState, analytics: ParameterHomepageAn
   return actions;
 }
 
-function canReviewRequest(roleId: PlatformRoleId, request: ChangeRequest) {
-  if (request.status === "硬件Committer检视") return roleSupportsWorkflowSlot(roleId, "hardwareCommitter");
-  if (request.status === "软件Committer检视") return roleSupportsWorkflowSlot(roleId, "softwareCommitter");
-  if (request.status === "软件User合入") return roleSupportsWorkflowSlot(roleId, "softwareUser");
-  return activeStatuses.has(request.status) && getWorkbenchRoleView(roleId) === "committer";
-}
-
 function getReviewRequests(state: PrototypeState, roleId: PlatformRoleId) {
-  return state.changeRequests.filter((request) => canReviewRequest(roleId, request));
+  return state.changeRequests.filter((request) => canActOnReviewRequest(roleId, request));
 }
 
 function buildRecommendationActions(
@@ -346,6 +344,19 @@ function buildScenarioEntries(
           ? [
               entry("edit", "修改参数", "从参数目录选择可维护参数。", "/parameters", "parameters", "参数", state.parameters.length),
               entry("submissions", "我的提交", "查看草稿、退回与合入状态。", "/parameter-submissions", "parameter-submissions", "流程", state.parameterSubmissionRounds.length),
+              ...(getReviewRequests(state, roleId).length > 0 && canAccessPage(roleId, "parameter-review")
+                ? [
+                    entry(
+                      "merge",
+                      "参数合入",
+                      "处理已进入软件开发人员合入节点的变更。",
+                      "/parameter-review",
+                      "parameter-review",
+                      "待合入",
+                      getReviewRequests(state, roleId).length
+                    )
+                  ]
+                : []),
               entry("hotspots", "风险热区", "按风险建议选择下一次修改对象。", "/parameter-home", "parameter-home", "热区", analytics.hotspots.length)
             ]
           : [

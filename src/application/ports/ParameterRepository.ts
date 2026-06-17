@@ -121,6 +121,7 @@ export interface ParameterRepository {
   listChangeRequests(query?: ChangeRequestListQuery): Promise<ChangeRequest[]>;
   listSubmissionRounds(query?: SubmissionRoundListQuery): Promise<ParameterSubmissionRound[]>;
   submitParameterChanges(input: SubmitParameterChangesInput): Promise<ParameterSubmissionRound>;
+  withdrawSubmissionRound(roundId: string): Promise<ParameterSubmissionRound>;
   reviewChange(input: ReviewParameterChangeInput): Promise<ChangeRequest>;
   createImportPreview(input: ParameterImportPreviewInput): Promise<ParameterImportBatchDto>;
   applyImportBatch(input: ApplyParameterImportBatchInput): Promise<ParameterImportBatchDto>;

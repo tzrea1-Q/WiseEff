@@ -1,11 +1,14 @@
 import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { AuditEvent, RiskLevel } from "@/mockData";
+import type { AuditEventView } from "@/domain/audit/types";
+import type { RiskLevel } from "@/mockData";
 
 export type AuditTimelineProps = {
-  events: AuditEvent[];
+  events: AuditEventView[];
   initialVisible?: number;
+  selectedId?: string | null;
+  onSelect?: (eventId: string) => void;
   className?: string;
 };
 
@@ -21,7 +24,7 @@ const severityLabel: Record<RiskLevel, string> = {
   Low: "低"
 };
 
-export function AuditTimeline({ events, initialVisible = 5, className }: AuditTimelineProps) {
+export function AuditTimeline({ events, initialVisible = 5, selectedId, onSelect, className }: AuditTimelineProps) {
   const [expanded, setExpanded] = useState(false);
   const visibleEvents = expanded ? events : events.slice(0, initialVisible);
   const canExpand = events.length > initialVisible;
@@ -39,26 +42,41 @@ export function AuditTimeline({ events, initialVisible = 5, className }: AuditTi
       ) : (
         <>
           <ul className="flex flex-col gap-2.5">
-            {visibleEvents.map((event) => (
-              <li key={event.id} className="flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted/40">
-                <span
-                  className={cn(
-                    "mt-0.5 inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10px] font-semibold uppercase",
-                    severityBadge[event.severity]
-                  )}
-                >
-                  {severityLabel[event.severity]}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{event.action}</p>
-                  <p className="text-xs text-muted-foreground">
-                    <span>{event.actor}</span>
-                    <span className="mx-1">·</span>
-                    <span>{event.time}</span>
-                  </p>
-                </div>
-              </li>
-            ))}
+            {visibleEvents.map((event) => {
+              const selected = selectedId === event.id;
+              return (
+                <li key={event.id}>
+                  <button
+                    type="button"
+                    className={cn(
+                      "audit-timeline-item flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted/40",
+                      selected && "audit-timeline-item-selected bg-muted/60"
+                    )}
+                    aria-pressed={selected}
+                    onClick={() => onSelect?.(event.id)}
+                  >
+                    <span
+                      className={cn(
+                        "mt-0.5 inline-flex h-5 shrink-0 items-center rounded-md px-1.5 text-[10px] font-semibold uppercase",
+                        severityBadge[event.severity]
+                      )}
+                    >
+                      {severityLabel[event.severity]}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{event.action}</p>
+                      <p className="text-xs text-muted-foreground">
+                        <span>{event.actor}</span>
+                        <span className="mx-1">·</span>
+                        <span>{event.kind}</span>
+                        <span className="mx-1">·</span>
+                        <span>{event.timeLabel}</span>
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           {canExpand ? (
             <button
