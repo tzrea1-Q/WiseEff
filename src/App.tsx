@@ -473,6 +473,19 @@ function activeRoleLabel(activeRoleId: string) {
   return roles.find((role) => role.id === activeRoleId)?.name ?? "平台用户";
 }
 
+function getUserDisplayAliases(user: User | undefined) {
+  if (!user) {
+    return [];
+  }
+
+  const aliases = [user.name];
+  const [firstName, lastName] = user.name.split(/\s+/);
+  if (firstName && lastName) {
+    aliases.push(`${firstName[0]}. ${lastName}`);
+  }
+  return aliases;
+}
+
 function addAuditEvent(
   state: PrototypeState,
   event: Omit<AuditEvent, "id" | "actor" | "time" | "kind"> & { actor?: string; kind?: AuditEvent["kind"] }
@@ -780,7 +793,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           ...state.projectInitializationStatuses,
           [review.projectId]: "initialization_rejected"
         },
-        notifications: [`参数初始化 ${review.id} 已驳回：${reason}`, ...state.notifications]
+        notifications: [`参数初始化已驳回：${reason}`, ...state.notifications]
       };
     }
     case "ADD_CHANGE_REQUEST": {
@@ -793,7 +806,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
       const project = projects.find((item) => item.id === parameter.projectId);
-      const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+      const submitter = state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId);
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const summary = action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。";
       const workflowAssignees = {
@@ -847,7 +860,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           },
           ...state.parameterSubmissionRounds
         ],
-        notifications: [`已提交 ${request.id}，等待参数管理员审阅`, ...state.notifications]
+        notifications: [`已提交 ${parameter.name}，等待参数管理员审阅`, ...state.notifications]
       };
     }
     case "ADD_PARAMETER_SUBMISSION_ROUND": {
@@ -865,7 +878,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         reason: action.reason,
         assignees: action.assignees,
         projects,
-        roles,
+        roles: [
+          {
+            id: state.activeRoleId,
+            name: state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId)
+          },
+          ...roles.filter((role) => role.id !== state.activeRoleId)
+        ],
         buildRuntimeReviewFields
       });
     }
@@ -887,7 +906,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       }
 
       const project = projects.find((item) => item.id === draftItems[0].parameter.projectId);
-      const submitter = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
+      const submitter = state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId);
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
       const submissionItems = draftItems.map(({ parameter, item }): ParameterSubmissionItem => ({
         requestId: "",
@@ -916,7 +935,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
           },
           ...state.parameterSubmissionRounds
         ],
-        notifications: [`已暂存 ${roundId}，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
+        notifications: [`已暂存本轮，包含 ${submissionItems.length} 个参数修改`, ...state.notifications]
       };
     }
     case "WITHDRAW_PARAMETER_SUBMISSION_ROUND":
@@ -930,7 +949,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
             ? { ...request, status: "已打回", rejectReason: "提交人已撤回本轮提交。" }
             : request
         ),
-        notifications: [`${action.roundId} 已撤回`, ...state.notifications]
+        notifications: ["本轮提交已撤回", ...state.notifications]
       };
     case "ADVANCE_REVIEW": {
       const target = state.changeRequests.find((request) => request.id === action.requestId);
@@ -951,7 +970,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ),
         parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, nextStep.status),
         notifications: [
-          `${action.requestId} 已推进到下一流程节点${action.fastTrack ? "（快速通道）" : ""}`,
+          `${target.title} 已推进到下一流程节点${action.fastTrack ? "（快速通道）" : ""}`,
           ...state.notifications
         ]
       };
@@ -976,15 +995,15 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ),
         parameterSubmissionRounds: updateRoundStatusAfterRequest(state.parameterSubmissionRounds, target, "已打回"),
         notifications: [
-          `${action.requestId} 已打回修改${action.fastTrack ? "（快速通道）" : ""}：${action.reason}`,
+          `${target.title} 已打回修改${action.fastTrack ? "（快速通道）" : ""}：${action.reason}`,
           ...state.notifications
         ]
       };
       }
     case "TRANSFER_REVIEW": {
       if (!canPerform(activeRoleId, "parameter.review")) return state;
-      const exists = state.changeRequests.some((request) => request.id === action.requestId);
-      if (!exists) {
+      const target = state.changeRequests.find((request) => request.id === action.requestId);
+      if (!target) {
         return state;
       }
 
@@ -1000,13 +1019,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
               }
             : request
         ),
-        notifications: [`${action.requestId} 已转交给 ${action.to}`, ...state.notifications]
+        notifications: [`${target.title} 已转交给 ${action.to}`, ...state.notifications]
       };
     }
     case "UNDO_REVIEW_ACTION": {
       if (!canPerform(activeRoleId, "parameter.review")) return state;
-      const exists = state.changeRequests.some((request) => request.id === action.requestId);
-      if (!exists) {
+      const target = state.changeRequests.find((request) => request.id === action.requestId);
+      if (!target) {
         return state;
       }
 
@@ -1022,7 +1041,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
               }
             : request
         ),
-        notifications: [`${action.requestId} 已撤销上一步操作`, ...state.notifications]
+        notifications: [`${target.title} 已撤销上一步操作`, ...state.notifications]
       };
     }
     case "AI_FEEDBACK": {
@@ -3335,7 +3354,8 @@ export function getContextQuery(search: string) {
 }
 
 function isComplexSubmissionHistoryValue(value: string) {
-  return value.includes("\n") || value.length > 80;
+  const normalizedValue = value.trim();
+  return normalizedValue.includes("\n") || normalizedValue.length > 80;
 }
 
 function isComplexSubmissionHistoryItem(item: ParameterSubmissionItem) {
@@ -3351,6 +3371,13 @@ function formatSubmissionHistoryValue(value: string, unit: string, isComplexItem
     return value || "-";
   }
   return `${value || "-"} ${unit}`.trim();
+}
+
+function getSubmissionValueSummary(value: string) {
+  const firstLine = value.split(/\r?\n/)[0]?.trim() ?? "";
+  const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
+  const lineCount = value.split(/\r?\n/).filter((line) => line.trim()).length;
+  return { propertyName, lineCount };
 }
 
 type SubmissionHistoryDiffLineKind = "equal" | "remove" | "add";
@@ -3451,7 +3478,7 @@ function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) 
       <div className="submission-diff-card__head">
         <div>
           <strong>{item.name}</strong>
-          <small>{item.module} · {riskLabels[item.risk]} · {item.requestId}</small>
+          <small>{item.module} · {riskLabels[item.risk]}</small>
         </div>
         <span>{isComplexItem ? "复杂配置" : "数值配置"}</span>
       </div>
@@ -3466,6 +3493,31 @@ function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) 
   );
 }
 
+function ReviewChangeValueSummary({ request }: { request: ChangeRequest }) {
+  if (isComplexSubmissionHistoryValue(request.currentValue) || isComplexSubmissionHistoryValue(request.targetValue)) {
+    const valueSummary = getSubmissionValueSummary(request.currentValue || request.targetValue);
+    const differenceLabel = request.currentValue === request.targetValue ? "当前与目标一致" : "当前与目标不同";
+    return (
+      <span
+        className="parameter-value-summary review-change-value-summary"
+        title={`${valueSummary.propertyName} · ${valueSummary.lineCount} 行 · ${differenceLabel}`}
+      >
+        <span>复杂配置</span>
+        <strong>{valueSummary.propertyName}</strong>
+        <small>{valueSummary.lineCount} 行 · {differenceLabel}</small>
+      </span>
+    );
+  }
+
+  return (
+    <span className="value-change__values">
+      <span className="strike">{request.currentValue.trim() || "-"}</span>
+      <ArrowRight size={14} />
+      <strong>{request.targetValue.trim() || "-"}</strong>
+    </span>
+  );
+}
+
 function shouldShowSubmissionRoundSummary(round: ParameterSubmissionRound) {
   const summary = round.summary.trim();
   if (!summary) {
@@ -3475,8 +3527,11 @@ function shouldShowSubmissionRoundSummary(round: ParameterSubmissionRound) {
 }
 
 function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
-  const myName = roles.find((role) => role.id === state.activeRoleId)?.name ?? "平台用户";
-  const myRounds = state.parameterSubmissionRounds.filter((round) => round.submitter === myName);
+  const currentUser = state.users.find((user) => user.id === state.currentUserId);
+  const submitterAliases = new Set(
+    currentUser ? getUserDisplayAliases(currentUser) : [activeRoleLabel(state.activeRoleId), "平台用户"]
+  );
+  const myRounds = state.parameterSubmissionRounds.filter((round) => submitterAliases.has(round.submitter));
   const [selectedRoundId, setSelectedRoundId] = useState(myRounds[0]?.id ?? "");
   const selectedRound = myRounds.find((round) => round.id === selectedRoundId) ?? myRounds[0];
   const timelineView = deriveSubmissionTimeline(selectedRound ?? null);
@@ -3513,7 +3568,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
               variant="ghost"
               onClick={() => setSelectedRoundId(round.id)}
             >
-              <strong>{round.id}</strong>
+              <strong>{round.projectName}</strong>
               <span>{formatWorkflowDisplayText(round.status)} · {round.items.length} 项 · {round.createdAt}</span>
             </Button>
           ))}
@@ -3525,7 +3580,7 @@ function ParameterSubmissionsPage({ state, dispatch, onNavigate }: PageProps) {
               <div className="detail-card">
                 <div className="detail-heading">
                   <div>
-                    <span className="eyebrow">{selectedRound.id}</span>
+                    <span className="eyebrow">提交轮次</span>
                     <h2>{selectedRound.projectName}</h2>
                   </div>
                   <StatusBadge status={selectedRound.status} />
@@ -3741,6 +3796,9 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
   const selectedInitializationSubmitter = selectedInitialization
     ? state.users.find((user) => user.id === selectedInitialization.review.submittedBy)?.name ?? selectedInitialization.review.submittedBy
     : "";
+  const selectedProjectName = selected
+    ? getReviewRowField({ kind: "change", request: selected }, "project")
+    : "";
   const selectedInitializationPrimarySource = selectedInitialization
     ? state.configDraft.projects.find((project) => project.id === selectedInitialization.draft.primarySourceProjectId)
     : null;
@@ -3913,11 +3971,6 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
               <TableRow>
                 <TableHead className="review-filter-header">
                   <div className="review-column-filter-head">
-                    <span>请求编号</span>
-                  </div>
-                </TableHead>
-                <TableHead className="review-filter-header">
-                  <div className="review-column-filter-head">
                     <span>项目</span>
                     <ColumnFilter
                       label="项目"
@@ -3984,7 +4037,6 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                       key={row.review.id}
                       onClick={() => setSelectedId(row.review.id)}
                     >
-                      <TableCell className="mono">{row.review.id}</TableCell>
                       <TableCell>{row.draft.projectName}</TableCell>
                       <TableCell>参数初始化</TableCell>
                       <TableCell>{state.users.find((user) => user.id === row.review.submittedBy)?.name ?? row.review.submittedBy}</TableCell>
@@ -3992,7 +4044,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                         <button
                           className="value-change value-change-button"
                           type="button"
-                          aria-label={`查看 ${row.review.id} 初始化详情`}
+                          aria-label={`查看 ${row.draft.projectName} 初始化详情`}
                           onClick={(event) => {
                             event.stopPropagation();
                             setSelectedId(row.review.id);
@@ -4020,7 +4072,6 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                     key={request.id}
                     onClick={() => setSelectedId(request.id)}
                   >
-                    <TableCell className="mono">{request.id}</TableCell>
                     <TableCell>{project?.name ?? request.projectId ?? parameter?.projectId ?? "未关联项目"}</TableCell>
                     <TableCell>{request.module}</TableCell>
                     <TableCell>{request.submitter}</TableCell>
@@ -4028,15 +4079,14 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                       <button
                         className="value-change value-change-button"
                         type="button"
-                        aria-label={`查看 ${request.id} 提交详情`}
+                        aria-label={`查看 ${request.title} 提交详情`}
                         onClick={(event) => {
                           event.stopPropagation();
                           openSubmissionDetail(request);
                         }}
                       >
-                        <span className="strike">{request.currentValue}</span>
-                        <ArrowRight size={14} />
-                        <strong>{request.targetValue}</strong>
+                        <span className="value-change__title">{request.title}</span>
+                        <ReviewChangeValueSummary request={request} />
                       </button>
                     </TableCell>
                     <TableCell>
@@ -4054,7 +4104,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
         {selectedInitialization ? (
           <>
             <div className="detail-card">
-              <span className="eyebrow">{selectedInitialization.review.id}</span>
+              <span className="eyebrow">参数初始化</span>
               <h2>参数初始化</h2>
               <p>
                 {selectedInitialization.draft.projectName} 初始化由 {selectedInitializationSubmitter} 提交。
@@ -4115,7 +4165,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
         ) : selected ? (
           <>
             <div className="detail-card">
-              <span className="eyebrow">{selected.id}</span>
+              <span className="eyebrow">{selectedProjectName}</span>
               <h2>{selected.title}</h2>
               <p>
                 目标模块为 <strong>{selected.module}</strong>，由 {selected.submitter} 提交。
@@ -4160,7 +4210,6 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
       </aside>
       {rejectOpen && (selected || selectedInitialization) ? (
         <RejectReviewDialog
-          reviewId={selectedInitialization?.review.id ?? selected?.id ?? ""}
           onCancel={() => setRejectOpen(false)}
           onSubmit={rejectSelected}
         />
@@ -4178,7 +4227,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
           >
             <div className="submission-dialog-head">
               <div>
-                <span className="eyebrow">{selectedDetailRound.id} · {selectedDetailRound.projectName}</span>
+                <span className="eyebrow">{selectedDetailRound.projectName}</span>
                 <h2 id="submission-detail-title">提交详情</h2>
                 <p>本轮提交包含 {selectedDetailRound.items.length} 个参数修改，由 {selectedDetailRound.submitter} 提交。</p>
                 {shouldShowSubmissionRoundSummary(selectedDetailRound) ? <p>{selectedDetailRound.summary}</p> : null}
@@ -4198,11 +4247,9 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
 }
 
 function RejectReviewDialog({
-  reviewId,
   onCancel,
   onSubmit
 }: {
-  reviewId: string;
   onCancel: () => void;
   onSubmit: (reason: string) => void;
 }) {
@@ -4220,7 +4267,7 @@ function RejectReviewDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>打回修改</AlertDialogTitle>
           <AlertDialogDescription>
-            将 {reviewId} 打回给提交人，管理员需要填写明确原因，方便项目侧补充测试数据或重新调整目标值。
+            将这项修改打回给提交人，管理员需要填写明确原因，方便项目侧补充测试数据或重新调整目标值。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <Label htmlFor="reject-reason">打回原因</Label>

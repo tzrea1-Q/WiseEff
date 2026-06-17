@@ -914,7 +914,7 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    expect(await screen.findAllByText("api-review-with-version")).not.toHaveLength(0);
+    expect(await screen.findAllByText(apiReview.title)).not.toHaveLength(0);
     fireEvent.click(within(screen.getByRole("complementary", { name: "审阅详情" })).getByRole("button", { name: "推进流程" }));
 
     await waitFor(() => expect(parameterRepository.reviewChange).toHaveBeenCalledWith({
@@ -1571,10 +1571,100 @@ describe("WiseEff app shell", () => {
 
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
-    expect(screen.getAllByText(/PRS-/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/PRS-/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/本轮提交包含\s*2\s*个参数/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
     expect(screen.getByText("charge_voltage_limit_mv")).toBeInTheDocument();
+  });
+
+  it("shows API-created submission rounds for the current user display name", () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const zhaoRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "api-zhao-round",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Zhao Heng",
+      createdAt: "刚刚",
+      status: "硬件Committer检视" as const,
+      summary: "Hardware User API 提交。",
+      items: [
+        {
+          requestId: "api-zhao-request",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "验证 API 提交按用户展示"
+        }
+      ]
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [zhaoRound]
+        }}
+      />
+    );
+
+    const historyPanel = screen.getByRole("complementary", { name: "我的提交轮次" });
+    expect(historyPanel).toHaveTextContent("提交轮次");
+    expect(historyPanel).toHaveTextContent("1 轮");
+    expect(screen.getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "提交轮次详情" })).toHaveTextContent("Zhao Heng");
+    expect(screen.queryByText("当前还没有你的历史提交。")).not.toBeInTheDocument();
+  });
+
+  it("does not show role-owned submission rounds as personal history when a current user is known", () => {
+    window.history.replaceState(null, "", "/parameter-submissions");
+    const simpleParameter = initialState.parameters.find((parameter) => parameter.name === "fast_charge_current_limit_ma");
+    expect(simpleParameter).toBeDefined();
+    const roleOwnedRound = {
+      ...initialState.parameterSubmissionRounds[0],
+      id: "legacy-role-round",
+      projectId: simpleParameter!.projectId,
+      projectName: "Aurora 量产平台",
+      submitter: "Hardware User",
+      createdAt: "刚刚",
+      items: [
+        {
+          requestId: "legacy-role-request",
+          parameterId: simpleParameter!.id,
+          name: simpleParameter!.name,
+          module: simpleParameter!.module,
+          currentValue: "3850",
+          targetValue: "3200",
+          unit: simpleParameter!.unit,
+          risk: simpleParameter!.risk,
+          reason: "旧角色名提交不应进入个人历史"
+        }
+      ]
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [roleOwnedRound]
+        }}
+      />
+    );
+
+    const historyPanel = screen.getByRole("complementary", { name: "我的提交轮次" });
+    expect(historyPanel).toHaveTextContent("0 轮");
+    expect(screen.queryByText("fast_charge_current_limit_ma")).not.toBeInTheDocument();
+    expect(screen.getByText("当前还没有你的历史提交。")).toBeInTheDocument();
   });
 
   it("keeps submission round detail copy to a single prompt line and a single-row timeline", () => {
@@ -1611,7 +1701,7 @@ describe("WiseEff app shell", () => {
       id: "PRS-complex",
       projectId: dtsParameter!.projectId,
       projectName: "Aurora 量产平台",
-      submitter: "Admin",
+      submitter: "Xu Yun",
       createdAt: "刚刚",
       items: [
         {
@@ -1660,7 +1750,7 @@ describe("WiseEff app shell", () => {
       id: "PRS-simple",
       projectId: simpleParameter!.projectId,
       projectName: "Aurora 量产平台",
-      submitter: "Admin",
+      submitter: "Xu Yun",
       createdAt: "刚刚",
       items: [
         {
@@ -1936,8 +2026,9 @@ describe("WiseEff app shell", () => {
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
 
-    expect(reviewDetail).toHaveTextContent("PRQ-9101");
     expect(reviewDetail).toHaveTextContent("Battery Safety");
+    expect(reviewDetail).toHaveTextContent("电池目标温度下调");
+    expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
   });
 
   it("falls back to module-only matching for parameter review query strings", () => {
@@ -1947,8 +2038,9 @@ describe("WiseEff app shell", () => {
 
     const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
 
-    expect(reviewDetail).toHaveTextContent("PRQ-9102");
     expect(reviewDetail).toHaveTextContent("Charging Policy");
+    expect(reviewDetail).toHaveTextContent("快充输入电流调整");
+    expect(reviewDetail).not.toHaveTextContent(/PRQ-\d+/);
   });
 
   it("omits the duplicate in-page header on the parameter review workbench", () => {
@@ -1977,11 +2069,13 @@ describe("WiseEff app shell", () => {
     fireEvent.click(within(headerRow).getByRole("checkbox", { name: "H. Zhao" }));
 
     expect(within(headerRow).getByRole("button", { name: "筛选提交人" })).toHaveClass("active");
-    expect(within(table).getByText("PRQ-9102")).toBeInTheDocument();
-    expect(within(table).queryByText("PRQ-9101")).not.toBeInTheDocument();
+    expect(within(table).getByText("快充输入电流调整")).toBeInTheDocument();
+    expect(within(table).queryByText("电池目标温度下调")).not.toBeInTheDocument();
 
     const styles = readFileSync("src/styles.css", "utf8");
-    expect(readCssBlock(styles, ".review-table-wrap [data-slot=\"table-container\"]")).toContain("overflow: visible;");
+    const reviewTableContainerRule = readCssBlock(styles, ".review-table-wrap [data-slot=\"table-container\"]");
+    expect(reviewTableContainerRule).toContain("overflow-x: auto;");
+    expect(readCssBlock(styles, ".review-table-wrap table")).toContain("min-width:");
   });
 
   it("keeps parameter review header filters only on project, module, submitter, and status", () => {
@@ -2013,7 +2107,19 @@ describe("WiseEff app shell", () => {
     const visibleBodyRows = Array.from(table.querySelectorAll("tbody tr"));
     expect(visibleBodyRows.length).toBeGreaterThan(0);
     expect(visibleBodyRows.every((row) => row.textContent?.includes("软件MDE检视"))).toBe(true);
-    expect(within(table).queryByText("PRQ-9102")).not.toBeInTheDocument();
+    expect(within(table).queryByText("快充输入电流调整")).not.toBeInTheDocument();
+  });
+
+  it("does not expose request identifiers in the parameter review UI", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+
+    renderAppForCurrentPath();
+
+    const requestIdPattern = /PRQ-\d+|PRS-\d+/;
+
+    expect(screen.queryByRole("columnheader", { name: "请求编号" })).not.toBeInTheDocument();
+    expect(screen.getByRole("table")).not.toHaveTextContent(requestIdPattern);
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).not.toHaveTextContent(requestIdPattern);
   });
 
   it("keeps Excel-style header filters next to their header labels", () => {
@@ -2034,16 +2140,17 @@ describe("WiseEff app shell", () => {
     const pendingTable = screen.getByRole("table");
 
     expect(pendingTab).toHaveAttribute("aria-selected", "true");
-    expect(within(pendingTable).getByText("PRQ-9102")).toBeInTheDocument();
-    expect(within(pendingTable).queryByText("PRQ-9085")).not.toBeInTheDocument();
+    expect(within(pendingTable).getByText("快充输入电流调整")).toBeInTheDocument();
+    expect(within(pendingTable).queryByText("SOC 平滑窗口调整")).not.toBeInTheDocument();
 
     fireEvent.click(historyTab);
 
     const historyTable = screen.getByRole("table");
     expect(historyTab).toHaveAttribute("aria-selected", "true");
-    expect(within(historyTable).getByText("PRQ-9085")).toBeInTheDocument();
-    expect(within(historyTable).queryByText("PRQ-9102")).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("PRQ-9085");
+    expect(within(historyTable).getByText("SOC 平滑窗口调整")).toBeInTheDocument();
+    expect(within(historyTable).queryByText("快充输入电流调整")).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).toHaveTextContent("SOC 平滑窗口调整");
+    expect(screen.getByRole("complementary", { name: "审阅详情" })).not.toHaveTextContent(/PRQ-\d+/);
   });
 
   it("labels and aligns the review change column", () => {
@@ -2065,16 +2172,96 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const row = screen.getByRole("row", { name: /PRQ-9102/ });
-    fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-9102 提交详情" }));
+    const row = screen.getByRole("row", { name: /快充输入电流调整/ });
+    fireEvent.click(within(row).getByRole("button", { name: "查看 快充输入电流调整 提交详情" }));
 
     const dialog = screen.getByRole("dialog", { name: "提交详情" });
-    expect(dialog).toHaveTextContent("PRS-2405");
     expect(dialog).toHaveTextContent("fast_charge_current_limit_ma");
+    expect(dialog).not.toHaveTextContent(/PRQ-\d+|PRS-\d+/);
     expect(dialog.querySelector(".diff-values")).not.toBeInTheDocument();
     expect(dialog.querySelector(".history-submission-diff")).toBeInTheDocument();
     expect(dialog.querySelector(".submission-preview-diff-row[data-kind='remove'] code")).toHaveTextContent("3800 mA");
     expect(dialog.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent("3200 mA");
+  });
+
+  it("summarizes complex parameter changes in the review table instead of flattening config values", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const complexParameter = initialState.parameters.find((parameter) => parameter.name === "dts_fast_charge_profile_matrix");
+    expect(complexParameter).toBeDefined();
+    const complexTargetValue = complexParameter!.currentValue.replace('"burst"', '"boost"');
+    const complexRequest = {
+      ...initialState.changeRequests[0],
+      id: "PRQ-complex-table",
+      submissionRoundId: "PRS-complex-table",
+      projectId: complexParameter!.projectId,
+      parameterId: complexParameter!.id,
+      module: complexParameter!.module,
+      title: complexParameter!.name,
+      currentValue: complexParameter!.currentValue,
+      targetValue: complexTargetValue,
+      submitter: "Xu Yun",
+      status: "硬件Committer检视" as const
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          changeRequests: [complexRequest, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    const row = screen.getByRole("row", { name: /dts_fast_charge_profile_matrix/ });
+    const changeButton = within(row).getByRole("button", { name: "查看 dts_fast_charge_profile_matrix 提交详情" });
+    const summary = changeButton.querySelector(".parameter-value-summary");
+
+    expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent("复杂配置");
+    expect(summary).toHaveTextContent("fast-charge-profile-matrix");
+    expect(summary).toHaveTextContent("4 行 · 当前与目标不同");
+    expect(summary?.getAttribute("title") ?? "").not.toContain('"burst"');
+    expect(summary?.getAttribute("title") ?? "").not.toContain('"boost"');
+    expect(changeButton).not.toHaveTextContent('"burst"');
+    expect(changeButton).not.toHaveTextContent('"boost"');
+  });
+
+  it("keeps scalar review changes with trailing whitespace in the simple value layout", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const scalarParameter = initialState.parameters.find((parameter) => parameter.name === "battery_health_reserve_pct");
+    expect(scalarParameter).toBeDefined();
+    const scalarRequest = {
+      ...initialState.changeRequests[0],
+      id: "PRQ-scalar-whitespace",
+      submissionRoundId: "PRS-scalar-whitespace",
+      projectId: scalarParameter!.projectId,
+      parameterId: scalarParameter!.id,
+      module: scalarParameter!.module,
+      title: scalarParameter!.name,
+      currentValue: "15",
+      targetValue: "13\n",
+      submitter: "Xu Yun",
+      status: "硬件Committer检视" as const
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          changeRequests: [scalarRequest, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    const row = screen.getByRole("row", { name: /battery_health_reserve_pct/ });
+    const changeButton = within(row).getByRole("button", { name: "查看 battery_health_reserve_pct 提交详情" });
+
+    expect(changeButton.querySelector(".parameter-value-summary")).not.toBeInTheDocument();
+    expect(changeButton.querySelector(".value-change__values")).toHaveTextContent("15");
+    expect(changeButton.querySelector(".value-change__values")).toHaveTextContent("13");
+    expect(changeButton).not.toHaveTextContent("复杂配置");
   });
 
   it("renders mixed simple and complex review submission details with the history diff layout", () => {
@@ -2143,8 +2330,8 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    const row = screen.getByRole("row", { name: /PRQ-mixed-complex/ });
-    fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-mixed-complex 提交详情" }));
+    const row = screen.getByRole("row", { name: /dts_fast_charge_profile_matrix/ });
+    fireEvent.click(within(row).getByRole("button", { name: "查看 dts_fast_charge_profile_matrix 提交详情" }));
 
     const dialog = screen.getByRole("dialog", { name: "提交详情" });
     expect(dialog.querySelector(".submission-dialog")).toHaveClass("submission-dialog--wide");
@@ -2166,12 +2353,12 @@ describe("WiseEff app shell", () => {
 
     renderAppForCurrentPath();
 
-    const row = screen.getByRole("row", { name: /PRQ-9098/ });
-    fireEvent.click(within(row).getByRole("button", { name: "查看 PRQ-9098 提交详情" }));
+    const row = screen.getByRole("row", { name: /预充阶段电压上限微调/ });
+    fireEvent.click(within(row).getByRole("button", { name: "查看 预充阶段电压上限微调 提交详情" }));
 
     const dialog = screen.getByRole("dialog", { name: "提交详情" });
-    expect(dialog).toHaveTextContent("PRS-2401");
     expect(dialog).toHaveTextContent("预充阶段电压上限微调");
+    expect(dialog).not.toHaveTextContent(/PRQ-\d+|PRS-\d+/);
   });
 
   it("opens the log upload dialog only after upload simulation", () => {
