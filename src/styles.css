@@ -1801,6 +1801,7 @@ body {
   grid-column: 1 / -1;
   min-width: 0;
   min-height: 650px;
+  overflow: hidden;
 }
 
 .workbench-two-col {
@@ -2420,7 +2421,11 @@ body {
 .parameters-page-layout .workbench-main {
   padding: 18px;
   gap: 12px;
-  overflow: visible;
+  overflow: hidden;
+}
+
+.parameters-workbench-main {
+  min-width: 0;
 }
 
 .workbench-sheet {
@@ -2734,15 +2739,18 @@ td small {
 
 .parameters-table-scroll {
   min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
-  overflow-y: visible;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--outline);
   border-radius: 8px;
   background: #fff;
+  -webkit-overflow-scrolling: touch;
 }
 
 .parameters-table--column-filters .parameters-table-scroll {
-  overflow: visible;
+  overflow-x: auto;
 }
 
 .parameters-table-grid {
@@ -2807,46 +2815,72 @@ td small {
   position: sticky;
   left: 48px;
   z-index: 3;
-  width: 248px;
-  min-width: 0;
+  width: clamp(140px, 26vw, 240px);
+  min-width: 140px;
+  max-width: 240px;
   background: #fff;
   box-shadow: inset -1px 0 0 var(--outline);
 }
 
 .parameters-table-grid th:nth-child(3),
 .parameters-table-grid td:nth-child(3) {
-  width: 108px;
+  width: 10%;
+  min-width: 88px;
 }
 
 .parameters-table-grid th:nth-child(4),
 .parameters-table-grid td:nth-child(4) {
-  width: 118px;
+  width: 18%;
+  min-width: 112px;
 }
 
 .parameters-table-grid th:nth-child(5),
 .parameters-table-grid td:nth-child(5) {
-  width: 108px;
+  width: 10%;
+  min-width: 88px;
 }
 
 .parameters-table-grid th:nth-child(6),
 .parameters-table-grid td:nth-child(6) {
-  width: 102px;
+  width: 9%;
+  min-width: 84px;
 }
 
 .parameters-table-grid th:nth-child(7),
 .parameters-table-grid td:nth-child(7) {
-  width: 116px;
+  width: 11%;
+  min-width: 96px;
 }
 
 .parameters-table-grid th:last-child,
 .parameters-table-grid td:last-child {
-  width: 96px;
+  position: sticky;
+  right: 0;
+  z-index: 3;
+  width: 72px;
+  min-width: 72px;
   text-align: center;
+  background: #fff;
+  box-shadow: inset 1px 0 0 #edf1f8;
 }
 
 .parameters-table-grid th:nth-child(2) {
   z-index: 5;
   background: var(--surface-low);
+}
+
+.parameters-table-grid th:last-child {
+  z-index: 6;
+  background: var(--surface-low);
+}
+
+.parameters-table-grid tbody tr:hover td:last-child,
+.parameters-table-grid tbody tr.parameters-table-row-focused td:last-child {
+  background: #f4f7ff;
+}
+
+.parameters-table-grid tbody tr.parameters-table-row-focused td:last-child {
+  background: var(--primary-soft);
 }
 
 .parameters-table-grid tbody tr:hover td:first-child,
@@ -3105,7 +3139,14 @@ td small {
   box-shadow: var(--shadow-soft);
 }
 
-.parameters-column-filter--right .parameters-column-filter__menu {
+.parameters-column-filter__menu--fixed {
+  position: fixed;
+  top: auto;
+  left: auto;
+  right: auto;
+}
+
+.parameters-column-filter--right .parameters-column-filter__menu:not(.parameters-column-filter__menu--fixed) {
   right: 0;
   left: auto;
 }
@@ -10037,6 +10078,33 @@ td small {
   .feedback-dialog .dialog-actions {
     padding: 12px 18px 16px;
   }
+}
+
+@media (max-width: 1180px) {
+  .parameters-table-grid th:nth-child(3),
+  .parameters-table-grid td:nth-child(3),
+  .parameters-table-grid th:nth-child(5),
+  .parameters-table-grid td:nth-child(5) {
+    display: none;
+  }
+
+  .parameters-table-grid th:nth-child(2),
+  .parameters-table-grid td:nth-child(2) {
+    width: clamp(128px, 34vw, 220px);
+  }
+
+  .parameters-table-grid th:nth-child(4),
+  .parameters-table-grid td:nth-child(4) {
+    width: 24%;
+    min-width: 120px;
+  }
+}
+
+@media (max-width: 960px) {
+  .parameters-table-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
 
   .parameters-table-toolbar,
   .parameters-table-filters {
@@ -10085,7 +10153,9 @@ td small {
   .parameters-table-grid th:first-child,
   .parameters-table-grid td:first-child,
   .parameters-table-grid th:nth-child(2),
-  .parameters-table-grid td:nth-child(2) {
+  .parameters-table-grid td:nth-child(2),
+  .parameters-table-grid th:last-child,
+  .parameters-table-grid td:last-child {
     position: static;
     box-shadow: none;
   }
@@ -10100,6 +10170,7 @@ td small {
     width: auto;
     min-width: 0;
     left: auto;
+    right: auto;
     box-shadow: none;
   }
 
@@ -10357,6 +10428,14 @@ td small {
 
   table {
     min-width: 720px;
+  }
+
+  .parameters-table-grid {
+    min-width: 0;
+  }
+
+  .parameters-table-scroll {
+    max-width: 100%;
   }
 
   .workbench-sheet {
