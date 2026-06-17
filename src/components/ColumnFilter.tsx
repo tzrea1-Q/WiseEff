@@ -1,5 +1,6 @@
 import { Funnel } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
 export type ColumnFilterProps = {
   label: string;
@@ -12,6 +13,33 @@ export type ColumnFilterProps = {
   align?: "left" | "right";
 };
 
+const MENU_WIDTH = 240;
+const MENU_GAP = 7;
+const VIEWPORT_MARGIN = 16;
+
+function getMenuPosition(trigger: HTMLButtonElement, align: "left" | "right"): CSSProperties {
+  const rect = trigger.getBoundingClientRect();
+
+  if (align === "right") {
+    return {
+      position: "fixed",
+      top: rect.bottom + MENU_GAP,
+      right: Math.max(VIEWPORT_MARGIN, window.innerWidth - rect.right),
+      left: "auto",
+      zIndex: 60
+    };
+  }
+
+  const maxLeft = window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN;
+  return {
+    position: "fixed",
+    top: rect.bottom + MENU_GAP,
+    left: Math.max(VIEWPORT_MARGIN, Math.min(rect.left, maxLeft)),
+    right: "auto",
+    zIndex: 60
+  };
+}
+
 export function ColumnFilter({
   label,
   groupLabel,
@@ -23,8 +51,32 @@ export function ColumnFilter({
   align = "left"
 }: ColumnFilterProps) {
   const [open, setOpen] = useState(false);
+  const [menuStyle, setMenuStyle] = useState<CSSProperties | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selectedCount = selectedValues.length;
+
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) {
+      setMenuStyle(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      if (!triggerRef.current) {
+        return;
+      }
+      setMenuStyle(getMenuPosition(triggerRef.current, align));
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [align, open]);
 
   useEffect(() => {
     if (!open) {
@@ -44,6 +96,7 @@ export function ColumnFilter({
   return (
     <div className={`parameters-column-filter parameters-column-filter--${align}`} ref={rootRef}>
       <button
+        ref={triggerRef}
         aria-expanded={open}
         aria-label={`筛选${label}`}
         className={`parameters-column-filter__trigger${selectedCount > 0 ? " active" : ""}`}
@@ -57,7 +110,12 @@ export function ColumnFilter({
         {selectedCount > 0 ? <span>{selectedCount}</span> : null}
       </button>
       {open ? (
-        <div className="parameters-column-filter__menu" role="group" aria-label={groupLabel}>
+        <div
+          className="parameters-column-filter__menu parameters-column-filter__menu--fixed"
+          role="group"
+          aria-label={groupLabel}
+          style={menuStyle ?? undefined}
+        >
           <div className="parameters-column-filter__menu-head">
             <strong>{label}</strong>
             <button type="button" onClick={onClear} disabled={selectedCount === 0}>

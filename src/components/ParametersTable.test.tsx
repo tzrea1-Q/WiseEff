@@ -368,12 +368,14 @@ describe("ParametersTable", () => {
     const tableGridRule = styles.match(/\.parameters-table-grid\s*\{[^}]*\}/)?.[0] ?? "";
     const tableHeaderRule = styles.match(/\.parameters-table-grid th\s*\{[^}]*\}/)?.[0] ?? "";
     const nameColumnRule = styles.match(/\.parameters-table-grid th:nth-child\(2\),\s*\.parameters-table-grid td:nth-child\(2\)\s*\{[^}]*\}/)?.[0] ?? "";
+    const scrollRule = styles.match(/\.parameters-table-scroll\s*\{[^}]*\}/)?.[0] ?? "";
 
     expect(tableGridRule).not.toMatch(/min-width:\s*980px/);
     expect(tableGridRule).toMatch(/min-width:\s*0/);
     expect(tableGridRule).toMatch(/table-layout:\s*fixed/);
     expect(tableHeaderRule).not.toMatch(/white-space:\s*nowrap/);
-    expect(nameColumnRule).toMatch(/min-width:\s*0/);
+    expect(nameColumnRule).toMatch(/clamp\(/);
+    expect(scrollRule).toMatch(/overflow-x:\s*auto/);
   });
 
   it("lets long DTS-style parameter descriptions wrap inside the name column", () => {
@@ -399,16 +401,18 @@ describe("ParametersTable", () => {
     expect(diffChildRule).toMatch(/white-space:\s*pre-wrap/);
   });
 
-  it("lets column filter menus escape the table scroll container", () => {
+  it("keeps column filter menus usable while the table scrolls horizontally", () => {
     const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
     const filteredTableRule =
       styles.match(/\.parameters-table--column-filters\s+\.parameters-table-scroll\s*\{[^}]*\}/)?.[0] ?? "";
     const parametersWorkbenchRule =
       styles.match(/\.parameters-page-layout\s+\.workbench-main\s*\{[^}]*\}/)?.[0] ?? "";
+    const fixedMenuRule =
+      styles.match(/\.parameters-column-filter__menu--fixed\s*\{[^}]*\}/)?.[0] ?? "";
 
-    expect(filteredTableRule).toMatch(/overflow:\s*visible/);
-    expect(filteredTableRule).not.toMatch(/overflow-x:\s*auto/);
-    expect(parametersWorkbenchRule).toMatch(/overflow:\s*visible/);
+    expect(filteredTableRule).toMatch(/overflow-x:\s*auto/);
+    expect(parametersWorkbenchRule).toMatch(/overflow:\s*hidden/);
+    expect(fixedMenuRule).toMatch(/position:\s*fixed/);
   });
 
   it("keeps header filter buttons adjacent to header labels", () => {
@@ -437,7 +441,7 @@ describe("ParametersTable", () => {
   it("turns the parameter table into mobile cards instead of a forced wide grid", () => {
     const styles = readFileSync(resolve(__dirname, "../styles.css"), "utf8");
 
-    expect(styles).toContain("@media (max-width: 760px)");
+    expect(styles).toContain("@media (max-width: 960px)");
     expect(styles).toContain(".parameters-table-grid thead");
     expect(styles).toContain("display: none");
     expect(styles).toContain(".parameters-table-grid tbody tr");
