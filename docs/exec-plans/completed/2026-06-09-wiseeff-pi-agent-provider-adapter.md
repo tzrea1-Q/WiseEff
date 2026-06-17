@@ -364,7 +364,7 @@ No new browser acceptance requirement ID is needed unless implementation changes
 | Area | Status | Files | Required Action |
 | --- | --- | --- | --- |
 | Repository maps | Update | `README.md`, `ARCHITECTURE.md`, `docs/README.md` | Mention Pi-backed live Agent provider seam if implementation changes top-level setup or architecture wording. |
-| Planning docs | Update | `docs/PLANS.md`, `docs/exec-plans/active/2026-06-09-wiseeff-pi-agent-provider-adapter.md`, `docs/exec-plans/tech-debt-tracker.md` | Current plan already includes required sections. Add tech debt only if `pi-agent-core`, eval expansion, or streaming are deferred as explicit follow-ups beyond existing Agent provider debt. |
+| Planning docs | Update | `docs/PLANS.md`, `docs/exec-plans/completed/2026-06-09-wiseeff-pi-agent-provider-adapter.md`, `docs/exec-plans/tech-debt-tracker.md` | Current plan already includes required sections. Add tech debt only if `pi-agent-core`, eval expansion, or streaming are deferred as explicit follow-ups beyond existing Agent provider debt. |
 | Product specs | Review | `docs/product-specs/index.md`, `docs/product-specs/product-spec.md`, `docs/product-specs/prototype-functional-spec.md` | Usually unchanged because product behavior and UI stay the same. Record unchanged evidence before completion. |
 | Architecture docs | Update | `ARCHITECTURE.md`, `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/domain-model.md` | Update provider seam wording. Domain model only needs review unless trace fields change. |
 | API docs/contracts | Review | `docs/api/README.md`, `docs/api/examples.md`, `docs/design-docs/api-contract.md`, `docs/generated/openapi.json` | No endpoint contract change expected. Regenerate/check OpenAPI only if response schema changes. |
@@ -400,3 +400,21 @@ Before moving this plan to `docs/exec-plans/completed/`, complete all of the fol
 - Legacy `AGENT_API_FORMAT=openai` and `AGENT_API_FORMAT=wiseeff` tests still pass.
 - Node self-hosted runtime floor is enforced.
 - Focused tests, `npm run test:m4`, `npm run build`, and `npm run docs:check` pass.
+
+## Implementation Status
+
+Implemented in repository; verification rerun on 2026-06-17 before archival:
+
+```bash
+npm test -- scripts/run-pi-agent-smoke.test.ts server/modules/agent/piProvider.test.ts server/modules/agent/providerRegistry.test.ts server/modules/agent/providerEvidence.test.ts server/config/env.test.ts server/config/envExample.test.ts
+npm run docs:check
+```
+
+Result:
+
+- Focused Pi provider gate: passed, 6 files / 45 tests.
+- `docs:check`: passed.
+
+Deferred follow-up tracked in TD-026: target live Pi smoke evidence, `pi-agent-core`, streaming UX, and larger live eval suites.
+
+Completion decision, 2026-06-17: move this plan to `docs/exec-plans/completed/`. Round-one adapter scope is complete; target live smoke remains optional evidence work under TD-026, not a blocker for adapter completion.

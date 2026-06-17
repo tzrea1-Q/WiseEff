@@ -14,7 +14,7 @@
 
 - [earendil-works/pi README](https://github.com/earendil-works/pi): Pi monorepo identifies `@earendil-works/pi-ai` as the unified multi-provider LLM API, `@earendil-works/pi-agent-core` as the agent runtime, and `@earendil-works/pi-coding-agent` as the CLI. It also states Pi does not provide a built-in filesystem/process/network/credential permission system, so WiseEff must keep its own runtime boundary.
 - [@earendil-works/pi-ai npm package](https://www.npmjs.com/package/@earendil-works/pi-ai): current dependency used by WiseEff first-round adapter. The installed first-round package is pinned to `0.79.0` and requires Node `>=22.19.0`.
-- Existing WiseEff first-round plan: `docs/exec-plans/active/2026-06-09-wiseeff-pi-agent-provider-adapter.md`.
+- Existing WiseEff first-round plan: `docs/exec-plans/completed/2026-06-09-wiseeff-pi-agent-provider-adapter.md`.
 
 ## Scope
 
@@ -626,7 +626,7 @@ No new browser acceptance requirement ID is needed unless implementation changes
 | Area | Status | Files | Required Action |
 | --- | --- | --- | --- |
 | Repository maps | Review | `README.md`, `CONTRIBUTING.md`, `AGENTS.md`, `ARCHITECTURE.md`, `docs/README.md` | Update only if evidence commands become top-level onboarding or architecture summary items. |
-| Planning docs | Update | `docs/PLANS.md`, `docs/exec-plans/active/2026-06-09-wiseeff-pi-agent-evidence-evaluation.md`, `docs/exec-plans/tech-debt-tracker.md` | Register this plan; add debt only for intentionally deferred follow-ups. |
+| Planning docs | Update | `docs/PLANS.md`, `docs/exec-plans/completed/2026-06-09-wiseeff-pi-agent-evidence-evaluation.md`, `docs/exec-plans/tech-debt-tracker.md` | Register this plan; add debt only for intentionally deferred follow-ups. |
 | Product specs | Review | `docs/product-specs/index.md`, `docs/product-specs/product-spec.md`, `docs/product-specs/prototype-functional-spec.md` | No product workflow change expected; record unchanged evidence before completion. |
 | Architecture docs | Update | `docs/design-docs/full-stack-architecture.md`, `docs/design-docs/security-governance.md`, `ARCHITECTURE.md` | Describe Pi provider evidence seam and unchanged execution boundary. |
 | API docs/contracts | Review | `docs/api/README.md`, `docs/api/examples.md`, `docs/design-docs/api-contract.md`, `docs/generated/openapi.json` | Review if `/health/ready` or pilot-readiness details should be documented; regenerate/check OpenAPI only if contract artifacts cover those fields. |
@@ -703,3 +703,5 @@ Result:
 - `build`: passed with the existing Vite chunk-size warning.
 - `git diff --check`: passed.
 - `test:m4`: partial pass. `npm test` passed 216 files / 1954 tests, `npm run test:server` passed 75 files / 631 tests, and `npm run build` passed. The final Playwright `e2e/agent.api.spec.ts` failed in `beforeAll` because `DATABASE_URL` is not set in this local environment.
+
+Completion decision, 2026-06-17: move this plan to `docs/exec-plans/completed/`. Offline eval, safe provider evidence, readiness metadata, metrics labels, smoke runner tests, and documentation gates are complete. Optional target live `agent:pi-smoke` evidence and deferred Pi expansion remain tracked in TD-026.

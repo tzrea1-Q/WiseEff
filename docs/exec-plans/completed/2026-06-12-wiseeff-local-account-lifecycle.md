@@ -140,3 +140,7 @@ Self-service registration must never create Admin accounts. Users may request Ha
 - Affected behavior: unauthenticated API-mode entry, login form, register form, profile edit modal, logout.
 - Existing requirement coverage: `AUTH-RUNTIME-001` covers API-mode auth parity but not local account forms.
 - Action: focused component tests and browser verification cover unauthenticated API-mode auth screen, login, registration, profile update, and logout. Acceptance matrix updates may be deferred only if recorded as follow-up.
+
+## Completion Status
+
+Completion decision, 2026-06-17: all tasks, documentation gates, and recorded verification passed on 2026-06-12. Move this plan to `docs/exec-plans/completed/`; deferred acceptance-matrix expansion for local-account forms remains acceptable because component tests and browser verification cover the changed UI behavior.

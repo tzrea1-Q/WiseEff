@@ -26,6 +26,8 @@ Completed plans are historical implementation evidence. They can explain why a s
 | Chinese developer docs | `2026-05-29-wiseeff-developer-docs-zh-cn.md` |
 | Bilingual developer docs | `2026-06-10-wiseeff-bilingual-developer-docs.md` |
 | Audit center M1/M2 | `2026-06-17-wiseeff-audit-center-m1.md`, `2026-06-17-wiseeff-audit-center-m2.md` |
+| Local account lifecycle | `2026-06-12-wiseeff-local-account-lifecycle.md` |
+| Pi Agent provider adapter | `2026-06-09-wiseeff-pi-agent-provider-adapter.md`, `2026-06-09-wiseeff-pi-agent-evidence-evaluation.md` |
 
 ## Historical Feature Plans
 
