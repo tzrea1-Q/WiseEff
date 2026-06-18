@@ -59,10 +59,22 @@ describe("ParameterDefinitionForm", () => {
     expect(screen.getByText(/已存在同名参数/)).toBeInTheDocument();
   });
 
-  it("splits range into min and max inputs", () => {
+  it("splits range into min and max inputs for scalar parameters", () => {
     render(<ParameterDefinitionForm {...build()} />);
 
     expect(screen.getByLabelText("范围最小值")).toBeInTheDocument();
     expect(screen.getByLabelText("范围最大值")).toBeInTheDocument();
+  });
+
+  it("uses a code editor and hides numeric range fields for complex parameters", () => {
+    const complex = initialState.configDraft.parameterLibrary.find((parameter) => parameter.name === "battery_thermal_derate_curve");
+    expect(complex).toBeDefined();
+
+    render(<ParameterDefinitionForm {...build({ parameter: complex! })} />);
+
+    expect(screen.getByLabelText("参数推荐配置")).toHaveClass("parameter-admin-code-editor");
+    expect(screen.queryByLabelText("范围最小值")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("范围最大值")).not.toBeInTheDocument();
+    expect(screen.getByText("复杂配置")).toBeInTheDocument();
   });
 });

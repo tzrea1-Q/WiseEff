@@ -1,4 +1,9 @@
 import { migrateParameterRange } from "../parameterAdminAnalytics";
+import {
+  complexEditorRows,
+  getComplexParameterKindLabel,
+  isComplexParameter
+} from "../parameterValueKind";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "../powerManagementConfig";
 import { RiskPicker } from "./RiskPicker";
 
@@ -21,6 +26,7 @@ export function ParameterDefinitionForm({
   const firstProjectId = projects[0]?.id;
   const recommendedValue = firstProjectId ? parameter.values[firstProjectId]?.recommendedValue ?? "" : "";
   const nameError = getNameError(parameter, allParameters);
+  const isComplex = isComplexParameter(parameter);
 
   const updateRange = (patch: { min?: string; max?: string }) => {
     const min = (patch.min ?? String(range.min ?? "")).trim();
@@ -40,7 +46,7 @@ export function ParameterDefinitionForm({
     <section className="shared-definition-panel" aria-label="共享参数定义">
       <div className="panel-header">
         <strong>共享参数定义</strong>
-        <span>所有项目共用</span>
+        <span>{isComplex ? "复杂配置 · 所有项目共用" : "所有项目共用"}</span>
       </div>
       <form className="param-def-form" onSubmit={(event) => event.preventDefault()}>
         <fieldset className="def-group">
@@ -66,21 +72,43 @@ export function ParameterDefinitionForm({
           </div>
         </fieldset>
         <fieldset className="def-group">
-          <legend>取值范围</legend>
-          <div className="def-group-fields">
+          <legend>{isComplex ? "推荐配置" : "取值范围"}</legend>
+          {isComplex ? (
+            <div className="parameter-admin-complex-meta" aria-label="复杂参数摘要">
+              <span className="parameter-draft-meta-pill">复杂配置</span>
+              <span>{getComplexParameterKindLabel(parameter)}</span>
+              <span>{complexEditorRows(recommendedValue)} 行推荐配置</span>
+            </div>
+          ) : null}
+          <div className={isComplex ? "def-group-fields def-group-fields--stack" : "def-group-fields"}>
             <label>
-              推荐值
+              {isComplex ? "推荐配置" : "推荐值"}
               <span className="label-hint">ⓘ 对所有项目生效</span>
-              <input aria-label="参数推荐值" value={recommendedValue} onChange={(event) => onRecommendedValueChange(event.target.value)} />
+              {isComplex ? (
+                <textarea
+                  aria-label="参数推荐配置"
+                  className="parameter-admin-code-editor"
+                  value={recommendedValue}
+                  rows={complexEditorRows(recommendedValue, 8)}
+                  wrap="off"
+                  onChange={(event) => onRecommendedValueChange(event.target.value)}
+                />
+              ) : (
+                <input aria-label="参数推荐值" value={recommendedValue} onChange={(event) => onRecommendedValueChange(event.target.value)} />
+              )}
             </label>
-            <label>
-              范围最小值
-              <input aria-label="范围最小值" inputMode="decimal" value={range.min ?? ""} onChange={(event) => updateRange({ min: event.target.value })} />
-            </label>
-            <label>
-              范围最大值
-              <input aria-label="范围最大值" inputMode="decimal" value={range.max ?? ""} onChange={(event) => updateRange({ max: event.target.value })} />
-            </label>
+            {!isComplex ? (
+              <>
+                <label>
+                  范围最小值
+                  <input aria-label="范围最小值" inputMode="decimal" value={range.min ?? ""} onChange={(event) => updateRange({ min: event.target.value })} />
+                </label>
+                <label>
+                  范围最大值
+                  <input aria-label="范围最大值" inputMode="decimal" value={range.max ?? ""} onChange={(event) => updateRange({ max: event.target.value })} />
+                </label>
+              </>
+            ) : null}
           </div>
         </fieldset>
         <fieldset className="def-group">
@@ -96,7 +124,13 @@ export function ParameterDefinitionForm({
             </label>
             <label>
               配置格式
-              <textarea value={parameter.configFormat} onChange={(event) => onMetadataChange({ configFormat: event.target.value })} rows={2} />
+              <textarea
+                className={isComplex ? "parameter-admin-code-editor" : undefined}
+                value={parameter.configFormat}
+                onChange={(event) => onMetadataChange({ configFormat: event.target.value })}
+                rows={isComplex ? complexEditorRows(parameter.configFormat, 4) : 2}
+                wrap={isComplex ? "off" : undefined}
+              />
             </label>
           </div>
         </fieldset>
