@@ -303,8 +303,8 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       />
       <CreateParameterDialog
         open={createDialogOpen}
-        existingModules={library.map((p) => p.module)}
-        existingNames={library.map((p) => p.name)}
+        projects={projects}
+        existingParameters={library}
         onCancel={() => setCreateDialogOpen(false)}
         onConfirm={(draft) => {
           dispatch({ type: "ADD_PROJECT_PARAMETER_FROM_DRAFT", draft });

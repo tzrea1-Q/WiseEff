@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import type { PowerManagementRisk } from "../powerManagementConfig";
-import { RiskPicker } from "./RiskPicker";
+import { CircleX } from "lucide-react";
+import { useEffect, useState } from "react";
+import type { PowerManagementParameterTemplate, PowerManagementProject, PowerManagementRisk } from "../powerManagementConfig";
+import { ParameterDefinitionForm } from "./ParameterDefinitionForm";
+
+const NAME_RE = /^[a-z][a-z0-9_]*$/;
 
 export interface CreateParameterDraft {
   name: string;
@@ -8,144 +11,163 @@ export interface CreateParameterDraft {
   unit: string;
   risk: PowerManagementRisk;
   description: string;
+  explanation: string;
+  configFormat: string;
+  range: string;
+  recommendedValue: string;
+}
+
+function buildDraftParameter(
+  projects: readonly PowerManagementProject[],
+  existingParameters: readonly PowerManagementParameterTemplate[]
+): PowerManagementParameterTemplate {
+  const defaultModule = [...new Set(existingParameters.map((parameter) => parameter.module))].sort()[0] ?? "";
+  const values = projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
+    acc[project.id] = { currentValue: "", recommendedValue: "", updatedAt: "" };
+    return acc;
+  }, {} as PowerManagementParameterTemplate["values"]);
+
+  return {
+    id: "create-parameter-draft",
+    name: "",
+    module: defaultModule,
+    unit: "",
+    risk: "Medium",
+    description: "",
+    explanation: "",
+    configFormat: "",
+    range: "",
+    values
+  };
+}
+
+function getCreateValidationErrors(
+  draft: PowerManagementParameterTemplate,
+  existingParameters: readonly PowerManagementParameterTemplate[]
+) {
+  const name = draft.name.trim();
+  const nameError = !name
+    ? "参数名不能为空"
+    : !NAME_RE.test(name)
+      ? "只允许小写字母、数字、下划线，且首字符为字母"
+      : existingParameters.some((parameter) => parameter.name === name)
+        ? "已存在同名参数"
+        : null;
+  const moduleError = !draft.module.trim() ? "模块不能为空" : null;
+
+  return { nameError, moduleError, canSubmit: !nameError && !moduleError };
 }
 
 export function CreateParameterDialog({
   open,
-  existingModules,
-  existingNames,
+  projects,
+  existingParameters,
   onConfirm,
   onCancel
 }: {
   open: boolean;
-  existingModules: readonly string[];
-  existingNames: readonly string[];
+  projects: readonly PowerManagementProject[];
+  existingParameters: readonly PowerManagementParameterTemplate[];
   onConfirm: (draft: CreateParameterDraft) => void;
   onCancel: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [module, setModule] = useState("");
-  const [customModule, setCustomModule] = useState("");
-  const [unit, setUnit] = useState("");
-  const [risk, setRisk] = useState<PowerManagementRisk>("Medium");
-  const [description, setDescription] = useState("");
-  const [showNewModule, setShowNewModule] = useState(false);
-
-  const sortedModules = useMemo(() => [...new Set(existingModules)].sort(), [existingModules]);
+  const [draft, setDraft] = useState<PowerManagementParameterTemplate>(() => buildDraftParameter(projects, existingParameters));
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      return undefined;
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (event.key === "Escape") {
+        onCancel();
+      }
     };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onCancel, open]);
 
   useEffect(() => {
     if (open) {
-      setName("");
-      setModule(sortedModules[0] ?? "");
-      setCustomModule("");
-      setUnit("");
-      setRisk("Medium");
-      setDescription("");
-      setShowNewModule(false);
+      setDraft(buildDraftParameter(projects, existingParameters));
     }
-  }, [open, sortedModules]);
+  }, [open, projects, existingParameters]);
 
-  if (!open) return null;
+  if (!open) {
+    return null;
+  }
 
-  const NAME_RE = /^[a-z][a-z0-9_]*$/;
-  const resolvedModule = showNewModule ? customModule.trim() : module;
-  const nameError = !name.trim()
-    ? "参数名不能为空"
-    : !NAME_RE.test(name)
-      ? "只允许小写字母、数字、下划线，且首字符为字母"
-      : existingNames.includes(name)
-        ? "已存在同名参数"
-        : null;
-  const moduleError = !resolvedModule ? "模块不能为空" : null;
-  const canSubmit = !nameError && !moduleError;
+  const firstProjectId = projects[0]?.id;
+  const recommendedValue = firstProjectId ? draft.values[firstProjectId]?.recommendedValue ?? "" : "";
+  const { canSubmit } = getCreateValidationErrors(draft, existingParameters);
 
-  const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!canSubmit) return;
-    onConfirm({ name, module: resolvedModule, unit, risk, description });
+  const handleMetadataChange = (patch: Partial<Omit<PowerManagementParameterTemplate, "id" | "values">>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const handleRecommendedValueChange = (value: string) => {
+    setDraft((current) => ({
+      ...current,
+      values: projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
+        const existing = current.values[project.id] ?? { currentValue: "", recommendedValue: "", updatedAt: "" };
+        acc[project.id] = { ...existing, recommendedValue: value };
+        return acc;
+      }, {} as PowerManagementParameterTemplate["values"])
+    }));
+  };
+
+  const handleSubmit = () => {
+    if (!canSubmit) {
+      return;
+    }
+
+    onConfirm({
+      name: draft.name.trim(),
+      module: draft.module.trim(),
+      unit: draft.unit,
+      risk: draft.risk,
+      description: draft.description,
+      explanation: draft.explanation,
+      configFormat: draft.configFormat,
+      range: draft.range,
+      recommendedValue
+    });
   };
 
   return (
-    <div aria-labelledby="create-parameter-title" aria-modal="true" className="modal-backdrop" role="dialog">
-      <form className="confirm-dialog create-parameter-dialog" onSubmit={handleSubmit}>
-        <h2 id="create-parameter-title">新增参数</h2>
-        <div className="create-param-fields">
-          <label>
-            参数名 <span className="required">*</span>
-            <input
-              aria-label="参数名"
-              aria-invalid={name && nameError ? "true" : undefined}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="例如 battery_temp_limit_c"
-              autoFocus
-            />
-            {name && nameError ? <span className="field-error">{nameError}</span> : null}
-          </label>
-          <label>
-            模块 <span className="required">*</span>
-            {showNewModule ? (
-              <>
-                <input
-                  aria-label="新模块名称"
-                  value={customModule}
-                  onChange={(event) => setCustomModule(event.target.value)}
-                  placeholder="输入新模块名称"
-                />
-                <button className="link-button" type="button" onClick={() => setShowNewModule(false)}>
-                  选择已有模块
-                </button>
-              </>
-            ) : (
-              <>
-                <select aria-label="模块" value={module} onChange={(event) => setModule(event.target.value)}>
-                  {sortedModules.map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
-                </select>
-                <button className="link-button" type="button" onClick={() => setShowNewModule(true)}>
-                  + 创建新模块
-                </button>
-              </>
-            )}
-          </label>
-          <label>
-            单位
-            <input aria-label="单位" value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="例如 mA, °C, %" />
-          </label>
-          <label>
-            重要性
-            <RiskPicker value={risk} onChange={setRisk} />
-          </label>
-          <label className="wide">
-            描述
-            <textarea
-              aria-label="描述"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={2}
-              placeholder="简要说明参数用途"
-            />
-          </label>
+    <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="新增参数">
+      <div className="submission-dialog param-admin-editor-dialog">
+        <div className="submission-dialog-head param-admin-editor-dialog-head">
+          <div className="param-admin-editor-dialog-head-text">
+            <span className="eyebrow">共享参数定义</span>
+            <h2 id="create-parameter-title">新增参数</h2>
+            <p>填写名称、模块、风险、推荐值与描述信息，创建后对所有项目生效。</p>
+          </div>
+          <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
+            <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
+          </button>
         </div>
+
+        <div className="param-admin-editor-dialog-body">
+          <ParameterDefinitionForm
+            allParameters={existingParameters}
+            parameter={draft}
+            projects={projects}
+            onMetadataChange={handleMetadataChange}
+            onRecommendedValueChange={handleRecommendedValueChange}
+          />
+        </div>
+
         <div className="dialog-actions">
           <button className="button subtle" type="button" onClick={onCancel}>
             取消
           </button>
-          <button className="button primary" type="submit" disabled={!canSubmit}>
+          <button className="button primary" type="button" disabled={!canSubmit} onClick={handleSubmit}>
             创建参数
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }

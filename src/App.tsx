@@ -309,7 +309,20 @@ export type AppAction =
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
   | { type: "DISCARD_ALL_DEBUG_DIRTY" }
   | { type: "ADD_PROJECT_PARAMETER" }
-  | { type: "ADD_PROJECT_PARAMETER_FROM_DRAFT"; draft: { name: string; module: string; unit: string; risk: PowerManagementRisk; description: string } }
+  | {
+      type: "ADD_PROJECT_PARAMETER_FROM_DRAFT";
+      draft: {
+        name: string;
+        module: string;
+        unit: string;
+        risk: PowerManagementRisk;
+        description: string;
+        explanation: string;
+        configFormat: string;
+        range: string;
+        recommendedValue: string;
+      };
+    }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }

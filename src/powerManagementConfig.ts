@@ -179,11 +179,22 @@ export function addProjectParameter(config: PowerManagementConfig) {
 
 export function addProjectParameterFromDraft(
   config: PowerManagementConfig,
-  draft: { name: string; module: string; unit: string; risk: PowerManagementRisk; description: string }
+  draft: {
+    name: string;
+    module: string;
+    unit: string;
+    risk: PowerManagementRisk;
+    description: string;
+    explanation: string;
+    configFormat: string;
+    range: string;
+    recommendedValue: string;
+  }
 ) {
   const nextIndex = config.parameterLibrary.length + 1;
+  const initialValue = draft.recommendedValue.trim() || "0";
   const values = config.projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
-    acc[project.id] = { currentValue: "0", recommendedValue: "0", updatedAt: "刚刚" };
+    acc[project.id] = { currentValue: initialValue, recommendedValue: initialValue, updatedAt: "刚刚" };
     return acc;
   }, {} as PowerManagementParameterTemplate["values"]);
 
@@ -193,10 +204,10 @@ export function addProjectParameterFromDraft(
       id: `new-power-parameter-${nextIndex}`,
       name: draft.name,
       description: draft.description,
-      explanation: "",
-      configFormat: "",
+      explanation: draft.explanation,
+      configFormat: draft.configFormat,
       module: draft.module,
-      range: "",
+      range: draft.range,
       unit: draft.unit,
       risk: draft.risk,
       values

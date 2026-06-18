@@ -23,9 +23,17 @@ export function ParameterDefinitionForm({
   const nameError = getNameError(parameter, allParameters);
 
   const updateRange = (patch: { min?: string; max?: string }) => {
-    const min = patch.min ?? String(range.min ?? "");
-    const max = patch.max ?? String(range.max ?? "");
-    onMetadataChange({ range: min || max ? ` - ` : parameter.range });
+    const min = (patch.min ?? String(range.min ?? "")).trim();
+    const max = (patch.max ?? String(range.max ?? "")).trim();
+    if (!min && !max) {
+      onMetadataChange({ range: "" });
+      return;
+    }
+    if (min && max) {
+      onMetadataChange({ range: `${min} - ${max}` });
+      return;
+    }
+    onMetadataChange({ range: min || max });
   };
 
   return (
