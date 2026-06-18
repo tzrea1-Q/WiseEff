@@ -427,7 +427,7 @@ describe("/debugging runtime wiring", () => {
 });
 
 describe("/debugging-admin API mode", () => {
-  it("renders DebuggingAdmin as read-only with helper text in API mode", async () => {
+  it("renders DebuggingAdmin as read-only in API mode", async () => {
     window.history.replaceState(null, "", "/debugging-admin");
     render(
       <App
@@ -451,7 +451,8 @@ describe("/debugging-admin API mode", () => {
       />
     );
 
-    expect(await screen.findByText("API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。")).toBeInTheDocument();
+    await screen.findByRole("button", { name: /\+/ });
+    expect(screen.queryByText("API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /\+/ })).toBeDisabled();
     const deleteButtons = document.querySelectorAll<HTMLButtonElement>(".debug-admin-row-delete");
     expect(deleteButtons.length).toBeGreaterThan(0);

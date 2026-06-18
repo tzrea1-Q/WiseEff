@@ -4471,7 +4471,6 @@ function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; 
   };
   const saveConfig = async () => {
     if (runtimeMode === "api") {
-      setSyncMessage("API 模式下参数库修改通过导入批次或审阅流程写入。");
       return;
     }
     setSaving(true);
@@ -5703,11 +5702,6 @@ function DebuggingAdminPage({
               + 新增
             </Button>
           </div>
-          {isApiMode ? (
-            <p className="debug-admin-helper">
-              API 模式下调试参数目录由后端种子和迁移管理；本页仅用于查看节点路径、访问模式和风险配置。
-            </p>
-          ) : null}
           <div className="debug-admin-list-filters">
             <div className="debug-admin-list-search">
               <Search size={14} aria-hidden />

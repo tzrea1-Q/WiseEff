@@ -12057,6 +12057,144 @@ td small {
   align-items: start;
 }
 
+.param-admin-main {
+  min-width: 0;
+  min-height: 0;
+}
+
+.param-admin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 280px;
+  padding: 32px 24px;
+  color: var(--app-muted);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+  text-align: center;
+}
+
+.param-admin-empty p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.param-admin-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.param-admin-library-table {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  box-shadow: var(--shadow-soft);
+}
+
+.param-admin-library-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.param-admin-library-filters {
+  flex: 1 1 auto;
+}
+
+.param-admin-library-grid th:last-child,
+.param-admin-library-grid td:last-child {
+  width: min(320px, 34vw);
+  min-width: 240px;
+  max-width: 360px;
+  text-align: left;
+}
+
+.param-admin-library-grid th:nth-child(3),
+.param-admin-library-grid td:nth-child(3) {
+  width: 12%;
+  min-width: 100px;
+}
+
+.param-admin-library-grid th:nth-child(4),
+.param-admin-library-grid td:nth-child(4) {
+  width: 8%;
+  min-width: 72px;
+}
+
+.param-admin-library-grid th:nth-child(5),
+.param-admin-library-grid td:nth-child(5) {
+  width: 10%;
+  min-width: 88px;
+}
+
+.param-admin-library-grid th:nth-child(6),
+.param-admin-library-grid td:nth-child(6) {
+  width: 12%;
+  min-width: 96px;
+}
+
+.param-admin-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.param-admin-row-action {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.param-admin-editor-dialog {
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(88vh, 920px);
+}
+
+.param-admin-editor-dialog.submission-dialog--wide {
+  width: min(960px, calc(100vw - 48px));
+}
+
+.param-admin-editor-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.param-admin-editor-dialog-head-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.param-admin-editor-dialog-body {
+  overflow: auto;
+  max-height: min(62vh, 640px);
+  margin-top: 4px;
+}
+
+.param-admin-editor-dialog .shared-definition-panel,
+.param-admin-editor-dialog .project-value-matrix {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.param-admin-editor-dialog .shared-definition-panel .panel-header,
+.param-admin-editor-dialog .project-value-matrix .panel-header,
+.param-admin-editor-dialog .project-value-matrix > p {
+  display: none;
+}
+
 .library-column,
 .detail-column {
   min-width: 0;
@@ -13599,6 +13737,7 @@ td small {
   }
 
   .param-admin-grid,
+  .param-admin-main .parameters-table-scroll,
   .pvm-scroll .pvm-table,
   .pvm-header,
   .pvm-row {
