@@ -7,14 +7,13 @@ import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
-import { ParameterDefinitionForm } from "./components/ParameterDefinitionForm";
-import { ParameterLibraryList } from "./components/ParameterLibraryList";
-import { ProjectValueMatrix } from "./components/ProjectValueMatrix";
+import { ParameterDefinitionDialog } from "./components/admin/ParameterDefinitionDialog";
+import { ParameterLibraryTable } from "./components/admin/ParameterLibraryTable";
+import { ParameterValuesDialog } from "./components/admin/ParameterValuesDialog";
 import { UndoableToast } from "./components/UndoableToast";
 import { useTopBarActions } from "./components/layout";
 import { useParamAdminSearch, type ParamAdminSearch } from "./hooks/useParamAdminSearch";
 import { getCoverage } from "./parameterAdminAnalytics";
-import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 
 function buildParameterAuditCenterPath(projectId: string) {
   const params = new URLSearchParams({ app: "parameter" });
@@ -32,8 +31,9 @@ function getImportClassificationLabel(item: ParameterImportBatchDto["items"][num
   return isEligibleImportItem(item) ? item.classification : `${item.classification} · not eligible`;
 }
 
-export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions, runtimeMode }: PageProps) {
-  const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.parameterLibrary[0]?.id ?? "");
+export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions }: PageProps) {
+  const [definitionDialogParameterId, setDefinitionDialogParameterId] = useState<string | null>(null);
+  const [valuesDialogParameterId, setValuesDialogParameterId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -43,14 +43,13 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   const [selectedImportItemIds, setSelectedImportItemIds] = useState<string[]>([]);
   const [importPending, setImportPending] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const isApiMode = (runtimeMode ?? wiseEffRuntimeMode) === "api";
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
-  const selectedParameter =
-    state.configDraft.parameterLibrary.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.parameterLibrary[0];
   const library = state.configDraft.parameterLibrary;
   const projects = state.configDraft.projects;
+  const definitionParameter = library.find((parameter) => parameter.id === definitionDialogParameterId) ?? null;
+  const valuesParameter = library.find((parameter) => parameter.id === valuesDialogParameterId) ?? null;
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
   const orphanCount = library.filter((parameter) => getCoverage(parameter, projects) === "orphan").length;
   const highRiskOrphans = library.filter((parameter) => parameter.risk === "High" && getCoverage(parameter, projects) === "orphan");
@@ -124,45 +123,30 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
     }
   ];
 
-  useEffect(() => {
-    if (!state.configDraft.parameterLibrary.some((parameter) => parameter.id === selectedParameterId)) {
-      setSelectedParameterId(state.configDraft.parameterLibrary[0]?.id ?? "");
-    }
-  }, [selectedParameterId, state.configDraft.parameterLibrary]);
-
-  const updateMetadata = (patch: Partial<ParameterEditorDraft>) => {
-    if (!selectedParameter) {
-      return;
-    }
+  const updateMetadata = (parameterId: string, patch: Partial<ParameterEditorDraft>) => {
     dispatch({
       type: "UPDATE_PROJECT_PARAMETER_METADATA",
       projectId: state.configDraft.projects[0]?.id ?? state.activeProjectId,
-      parameterId: selectedParameter.id,
+      parameterId,
       patch
     });
   };
 
-  const updateValue = (projectId: string, patch: Partial<ParameterValueDraft>) => {
-    if (!selectedParameter) {
-      return;
-    }
+  const updateValue = (parameterId: string, projectId: string, patch: Partial<ParameterValueDraft>) => {
     dispatch({
       type: "UPDATE_PROJECT_PARAMETER_VALUE",
       projectId,
-      parameterId: selectedParameter.id,
+      parameterId,
       patch
     });
   };
 
-  const updateRecommendedValue = (recommendedValue: string) => {
-    if (!selectedParameter) {
-      return;
-    }
+  const updateRecommendedValue = (parameterId: string, recommendedValue: string) => {
     state.configDraft.projects.forEach((project) => {
       dispatch({
         type: "UPDATE_PROJECT_PARAMETER_VALUE",
         projectId: project.id,
-        parameterId: selectedParameter.id,
+        parameterId,
         patch: { recommendedValue }
       });
     });
@@ -179,7 +163,6 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
     }
 
     dispatch({ type: "DELETE_PROJECT_PARAMETER", parameterId: deleteTargetId });
-    setSelectedParameterId(library.find((parameter) => parameter.id !== deleteTargetId)?.id ?? "");
     setDeleteTargetId(null);
   };
 
@@ -284,73 +267,32 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         persistKey="parameter-admin-insights"
         onDismiss={(insightId) => dispatch({ type: "DISMISS_INSIGHT", insightId })}
       />
-      <main className="param-admin-grid">
-        <div className="library-column">
-          <ParameterLibraryList
-            parameters={state.configDraft.parameterLibrary}
-            projects={state.configDraft.projects}
-            search={search}
-            selectedId={selectedParameter?.id}
-            onSelect={setSelectedParameterId}
-            onUpdateSearch={updateSearch}
-          />
-          <div className="library-admin-actions">
-            <div className="config-list-actions">
-              <button
-                className="button subtle"
-                type="button"
-                onClick={() => setCreateDialogOpen(true)}
-              >
+      <main className="param-admin-main">
+        {library.length === 0 ? (
+          <div className="param-admin-empty">
+            <Info size={22} aria-hidden="true" />
+            <p>还没有任何参数。从下方开始</p>
+            <div className="param-admin-empty-actions">
+              <button className="button primary" type="button" onClick={() => dispatch({ type: "ADD_PROJECT_PARAMETER" })}>
                 新增参数
               </button>
-              <button
-                className="button danger"
-                type="button"
-                disabled={!selectedParameter || state.configDraft.parameterLibrary.length <= 1}
-                aria-label={selectedParameter ? `删除 ${selectedParameter.name}` : "删除参数"}
-                onClick={() => {
-                  if (!selectedParameter) {
-                    return;
-                  }
-                  setDeleteTargetId(selectedParameter.id);
-                }}
-              >
-                删除参数
+              <button className="button subtle" type="button" onClick={openImportDialog}>
+                批量导入
               </button>
             </div>
           </div>
-        </div>
-
-        <section className="detail-column config-editor-panel project-config-editor">
-          {library.length === 0 ? (
-            <div className="detail-empty">
-              <Info size={22} aria-hidden="true" />
-              <p>还没有任何参数。从下方开始</p>
-              <div className="detail-empty-actions">
-                <button className="button primary" type="button" onClick={() => dispatch({ type: "ADD_PROJECT_PARAMETER" })}>
-                  新增参数
-                </button>
-                <button className="button subtle" type="button" onClick={openImportDialog}>
-                  批量导入
-                </button>
-              </div>
-            </div>
-          ) : selectedParameter ? (
-            <>
-              <ParameterDefinitionForm
-                allParameters={state.configDraft.parameterLibrary}
-                parameter={selectedParameter}
-                projects={state.configDraft.projects}
-                onMetadataChange={updateMetadata}
-                onRecommendedValueChange={updateRecommendedValue}
-              />
-
-              <ProjectValueMatrix parameter={selectedParameter} projects={state.configDraft.projects} onValueChange={updateValue} />
-            </>
-          ) : (
-            <EmptyState text="请选择一个项目参数。" />
-          )}
-        </section>
+        ) : (
+          <ParameterLibraryTable
+            parameters={library}
+            projects={projects}
+            search={search}
+            onUpdateSearch={updateSearch}
+            onEditDefinition={setDefinitionDialogParameterId}
+            onEditValues={setValuesDialogParameterId}
+            onCreateParameter={() => setCreateDialogOpen(true)}
+            onDeleteParameter={setDeleteTargetId}
+          />
+        )}
       </main>
       <DeleteParameterDialog
         open={Boolean(deleteTarget)}
@@ -366,15 +308,9 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         onCancel={() => setCreateDialogOpen(false)}
         onConfirm={(draft) => {
           dispatch({ type: "ADD_PROJECT_PARAMETER_FROM_DRAFT", draft });
-          setSelectedParameterId(`new-power-parameter-${library.length + 1}`);
           setCreateDialogOpen(false);
         }}
       />
-      {isApiMode ? (
-        <div className="permission-inline-note" role="status">
-          API 模式下参数库修改通过导入批次或审阅流程写入。
-        </div>
-      ) : null}
       {importDialogOpen ? (
         <ParameterImportDialog
           sourceName={importSourceName}
@@ -390,6 +326,24 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
           onApply={applyPreview}
           onSelectedItemIdsChange={setSelectedImportItemIds}
           onClose={() => setImportDialogOpen(false)}
+        />
+      ) : null}
+      {definitionParameter ? (
+        <ParameterDefinitionDialog
+          parameter={definitionParameter}
+          projects={projects}
+          allParameters={library}
+          onMetadataChange={(patch) => updateMetadata(definitionParameter.id, patch)}
+          onRecommendedValueChange={(value) => updateRecommendedValue(definitionParameter.id, value)}
+          onClose={() => setDefinitionDialogParameterId(null)}
+        />
+      ) : null}
+      {valuesParameter ? (
+        <ParameterValuesDialog
+          parameter={valuesParameter}
+          projects={projects}
+          onValueChange={(projectId, patch) => updateValue(valuesParameter.id, projectId, patch)}
+          onClose={() => setValuesDialogParameterId(null)}
         />
       ) : null}
       {state._undoStack ? (
@@ -639,15 +593,6 @@ function formatRelativeTime(iso: string) {
     return `${hours} 小时前`;
   }
   return `${Math.round(hours / 24)} 天前`;
-}
-
-function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="empty-state">
-      <Info size={20} />
-      {text}
-    </div>
-  );
 }
 
 export type ParameterAdminDispatch = React.Dispatch<AppAction>;

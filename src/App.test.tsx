@@ -2948,7 +2948,7 @@ describe("WiseEff app shell", () => {
     expect(within(adminActions).queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
   });
 
-  it("shows API mode guidance instead of local JSON save on parameter admin", async () => {
+  it("does not show API mode guidance on parameter admin", async () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
     render(
@@ -2960,7 +2960,7 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    expect(await screen.findByText("API 模式下参数库修改通过导入批次或审阅流程写入。")).toBeInTheDocument();
+    expect(screen.queryByText("API 模式下参数库修改通过导入批次或审阅流程写入。")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
   });
 
@@ -3068,7 +3068,7 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
 
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);
-    expect(document.body).toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
+    expect(document.body).not.toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
   });
 
   it("removes reset-to-code-version actions from both config admin pages", () => {

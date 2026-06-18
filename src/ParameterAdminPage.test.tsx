@@ -108,11 +108,28 @@ describe("ParameterAdminPage", () => {
     expect(screen.getByRole("toolbar", { name: "参数管理后台页面操作" })).toBeInTheDocument();
   });
 
-  it("renders at least one parameter list item", () => {
+  it("renders the parameter library table with action buttons", () => {
     renderPage();
 
     const library = screen.getByRole("region", { name: "项目共享参数库" });
-    expect(within(library).getAllByRole("button", { name: /fast_charge|charge_voltage|battery/ }).length).toBeGreaterThan(0);
+    expect(within(library).getByRole("table")).toBeInTheDocument();
+    expect(within(library).getByText(/fast_charge_current_limit_ma/)).toBeInTheDocument();
+    expect(within(library).getAllByRole("button", { name: "修改参数定义" }).length).toBeGreaterThan(0);
+    expect(within(library).getAllByRole("button", { name: "修改项目参数值" }).length).toBeGreaterThan(0);
+  });
+
+  it("opens definition and values dialogs from row actions", () => {
+    renderPage();
+    const library = screen.getByRole("region", { name: "项目共享参数库" });
+
+    fireEvent.click(within(library).getAllByRole("button", { name: "修改参数定义" })[0]);
+    expect(screen.getByRole("dialog", { name: /修改参数定义/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("参数名")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+
+    fireEvent.click(within(library).getAllByRole("button", { name: "修改项目参数值" })[0]);
+    expect(screen.getByRole("dialog", { name: /修改项目参数值/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toBeInTheDocument();
   });
 
   it("renders a single page heading", () => {
