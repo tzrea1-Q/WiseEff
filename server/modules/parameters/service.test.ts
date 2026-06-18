@@ -1675,6 +1675,7 @@ describe("parameter service", () => {
   it("software user can merge software merge request", async () => {
     const { db, txCalls } = createFakeDb([
       [changeRequestRow({ status: "software_merge", risk: "Medium" })],
+      [],
       [
         {
           id: "request-1",
@@ -1765,6 +1766,7 @@ describe("parameter service", () => {
         reviewDecisionRow({ id: "decision-hardware", from_status: "hardware_review", to_status: "software_review" }),
         reviewDecisionRow({ id: "decision-software", from_status: "software_review", to_status: "software_merge" })
       ],
+      [],
       [
         {
           id: "request-1",
@@ -1840,6 +1842,7 @@ describe("parameter service", () => {
         reviewDecisionRow({ id: "decision-hardware", from_status: "hardware_review", to_status: "software_review" }),
         reviewDecisionRow({ id: "decision-software", from_status: "software_review", to_status: "software_merge" })
       ],
+      [],
       [
         {
           id: "request-1",

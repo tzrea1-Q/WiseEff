@@ -79,13 +79,19 @@ function createParameterActions(overrides: Partial<ParameterPageActions> = {}): 
   };
 }
 
-function renderPage(search = "", state = initialState, dispatch = vi.fn(), parameterActions?: ParameterPageActions) {
+function renderPage(
+  search = "",
+  state = initialState,
+  dispatch = vi.fn(),
+  parameterActions?: ParameterPageActions,
+  onNavigate = vi.fn()
+) {
   return render(
     <TopBarActionsHarness>
       <ParameterAdminPage
         state={state}
         dispatch={dispatch}
-        onNavigate={vi.fn()}
+        onNavigate={onNavigate}
         search={search}
         parameterActions={parameterActions}
       />
@@ -137,23 +143,24 @@ describe("ParameterAdminPage", () => {
     expect(within(strip).getByText("最近导入")).toBeInTheDocument();
   });
 
-  it("opens an audit dialog with parameter-admin events and detail diff", () => {
-    renderPage();
+  it("navigates to audit center when audit button is clicked", () => {
+    const onNavigate = vi.fn();
+    renderPage("", initialState, vi.fn(), undefined, onNavigate);
 
     fireEvent.click(screen.getByRole("button", { name: /审计/ }));
 
-    const dialog = screen.getByRole("dialog", { name: "参数管理审计" });
-    expect(dialog).toBeInTheDocument();
-    expect(within(dialog).getAllByText("更新 fast_charge_current_limit_ma 推荐值").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("Wang Jie").length).toBeGreaterThan(0);
-    expect(within(dialog).getByText("3800")).toBeInTheDocument();
-    expect(within(dialog).getByText("3200")).toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith(
+      `/audit?app=parameter&projectId=${encodeURIComponent(initialState.activeProjectId)}`
+    );
   });
 
-  it("opens audit dialog from legacy audit=open query", () => {
-    renderPage("audit=open");
+  it("redirects legacy audit=open query to audit center", () => {
+    const onNavigate = vi.fn();
+    renderPage("audit=open", initialState, vi.fn(), undefined, onNavigate);
 
-    expect(screen.getByRole("dialog", { name: "参数管理审计" })).toBeInTheDocument();
+    expect(onNavigate).toHaveBeenCalledWith(
+      `/audit?app=parameter&projectId=${encodeURIComponent(initialState.activeProjectId)}`
+    );
   });
 
   it("opens delete confirmation and dispatches DELETE_PROJECT_PARAMETER", () => {

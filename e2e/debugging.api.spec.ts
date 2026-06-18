@@ -292,7 +292,8 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
   await expect(parameterRow(page, "Fast charge current")).toContainText("3000", { timeout: 30_000 });
 
   await page.goto("/parameter-admin?audit=open");
-  await expect(page.getByRole("complementary", { name: "审计抽屉" })).toBeVisible();
+  await expect(page).toHaveURL(/\/audit/);
+  await expect(page.getByLabelText("搜索审计记录")).toBeVisible();
   const auditResponse = await page.request.get(apiRoute("/api/v1/audit-events"), { headers: smokeHeaders() });
   expect(auditResponse.ok()).toBe(true);
   const auditBody = (await auditResponse.json()) as {
