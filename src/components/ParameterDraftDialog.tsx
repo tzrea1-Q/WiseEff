@@ -61,10 +61,6 @@ function getRangeWarning(parameter: ParameterRecord, targetValue: string) {
   return "";
 }
 
-function isComplexDraftValue(value: string) {
-  return value.includes("\n") || value.length > 80;
-}
-
 function getLineCount(value: string) {
   return value ? value.split(/\r?\n/).length : 0;
 }
@@ -161,12 +157,7 @@ export function ParameterDraftDialog({
 
   const draftCount = drafts.length;
   const allDraftsAreSubmittable = drafts.length > 0 && drafts.every((item) => item.targetValue.trim() && item.reason.trim());
-  const hasComplexDraft = drafts.some(
-    (item) =>
-      isComplexDraftValue(item.parameter.currentValue) ||
-      isComplexDraftValue(item.targetValue) ||
-      isComplexDraftValue(item.parameter.configFormat)
-  );
+  const hasComplexDraft = drafts.some((item) => item.parameter.valueKind === "complex");
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
@@ -204,10 +195,7 @@ export function ParameterDraftDialog({
               const warning = getRangeWarning(item.parameter, item.targetValue);
               const warningId = `target-warning-${item.parameterId}`;
               const isFocusedCard = focusedParameterId === item.parameterId;
-              const isComplexCard =
-                isComplexDraftValue(item.parameter.currentValue) ||
-                isComplexDraftValue(item.targetValue) ||
-                isComplexDraftValue(item.parameter.configFormat);
+              const isComplexCard = item.parameter.valueKind === "complex";
 
               return (
                 <article

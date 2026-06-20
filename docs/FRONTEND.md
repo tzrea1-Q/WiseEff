@@ -17,13 +17,17 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 
 ## Runtime Modes
 
-Default mode is `mock`, which supports demos and frontend development.
-
-API mode:
+Default mode is `api`. `npm run dev` and `npm run dev:all` inject API runtime settings; copy `.env.example` to `.env` for the same defaults when using other Vite entrypoints.
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
+```
+
+Use `mock` only for frontend-only demos or component tests that should not call the backend:
+
+```text
+VITE_WISEEFF_RUNTIME_MODE=mock
 ```
 
 Production builds must not use mock runtime as a business data source.

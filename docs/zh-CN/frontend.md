@@ -19,20 +19,20 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 
 ## Runtime 模式
 
-默认是 `mock`：
-
-```text
-VITE_WISEEFF_RUNTIME_MODE=mock
-```
-
-API runtime：
+默认是 **API mode**。`npm run dev` 与 `npm run dev:all` 会注入 API runtime；`.env.example` 与之一致。
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 ```
 
-生产构建不能把 mock data 当业务数据源。组件测试和演示可以继续使用 mock。
+仅在纯前端演示或组件测试、且不需要调用后端时显式使用 mock：
+
+```text
+VITE_WISEEFF_RUNTIME_MODE=mock
+```
+
+生产构建不能把 mock data 当业务数据源。组件测试默认仍通过 `npm test` 覆盖为 mock，避免本地 `.env` 的 API 设置污染单测。
 
 API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒绝，前端显示 WiseEff 认证页，支持本地账号登录和注册。本地登录使用用户名和密码；注册会选择组织（`硬件部` / `软件部`）、姓名、允许自助选择的平台角色、用户名和密码。注册角色下拉不包含 Admin；申请 Hardware/Software Committer 时，后端会创建 inactive 账号、对应基础 User 角色和待审批申请，`/api/v1/auth/register` 返回 `202 pending_approval` 且不返回 session token，前端继续停留在认证页，展示待审批结果态且不再保留可编辑注册表单。只有登录或非 Committer 注册成功后，前端才把不透明的 `we_local_*` session token 存到 `localStorage` 的 `wiseeff.localAuthToken`；默认 API client 会优先使用 OIDC runtime token，若没有 OIDC token 再回退到本地 token。
 

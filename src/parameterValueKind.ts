@@ -1,24 +1,9 @@
-import type { PowerManagementParameterTemplate } from "./powerManagementConfig";
+import type { ParameterValueKind, PowerManagementParameterTemplate } from "./powerManagementConfig";
 
-export function isComplexParameterValue(value: string) {
-  return value.includes("\n") || value.length > 80;
-}
+export type { ParameterValueKind };
 
-export function isComplexParameter(parameter: PowerManagementParameterTemplate) {
-  if (isComplexParameterValue(parameter.configFormat)) {
-    return true;
-  }
-
-  for (const entry of Object.values(parameter.values)) {
-    if (!entry) {
-      continue;
-    }
-    if (isComplexParameterValue(entry.currentValue) || isComplexParameterValue(entry.recommendedValue)) {
-      return true;
-    }
-  }
-
-  return false;
+export function isComplexParameter(parameter: { valueKind: ParameterValueKind }) {
+  return parameter.valueKind === "complex";
 }
 
 export function getComplexParameterLineCount(value: string) {

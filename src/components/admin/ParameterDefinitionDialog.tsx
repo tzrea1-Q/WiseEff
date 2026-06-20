@@ -8,6 +8,7 @@ import type { PowerManagementParameterTemplate, PowerManagementProject } from "@
 export type ParameterDefinitionDialogProps = {
   parameter: PowerManagementParameterTemplate;
   projects: readonly PowerManagementProject[];
+  modules: readonly string[];
   allParameters: readonly PowerManagementParameterTemplate[];
   onMetadataChange: (patch: Partial<ParameterEditorDraft>) => void;
   onRecommendedValueChange: (value: string) => void;
@@ -17,6 +18,7 @@ export type ParameterDefinitionDialogProps = {
 export function ParameterDefinitionDialog({
   parameter,
   projects,
+  modules,
   allParameters,
   onMetadataChange,
   onRecommendedValueChange,
@@ -64,6 +66,7 @@ export function ParameterDefinitionDialog({
         <div className="param-admin-editor-dialog-body">
           <ParameterDefinitionForm
             allParameters={allParameters}
+            modules={modules}
             parameter={parameter}
             projects={projects}
             onMetadataChange={onMetadataChange}

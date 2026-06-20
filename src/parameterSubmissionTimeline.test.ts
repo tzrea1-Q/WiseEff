@@ -11,6 +11,7 @@ const submissionItem: ParameterSubmissionItem = {
   targetValue: "2",
   unit: "",
   risk: "Low",
+  valueKind: "scalar",
   reason: "Exercise timeline derivation."
 };
 

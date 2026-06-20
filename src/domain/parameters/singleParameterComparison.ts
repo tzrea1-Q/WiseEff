@@ -49,16 +49,16 @@ function isBlank(value: string | null | undefined) {
   return !value || value.trim() === "";
 }
 
-function formatValue(value: string | null | undefined, unit: string) {
-  if (isBlank(value)) {
+function formatValue(parameter: ParameterRecord) {
+  if (isBlank(parameter.currentValue)) {
     return "未配置";
   }
 
-  if (needsCompactTextDelta(value ?? "")) {
-    return value ?? "";
+  if (parameter.valueKind === "complex") {
+    return parameter.currentValue ?? "";
   }
 
-  return `${value} ${unit}`.trim();
+  return `${parameter.currentValue} ${parameter.unit}`.trim();
 }
 
 function parseNumeric(value: string | null | undefined) {
@@ -75,8 +75,8 @@ function roundOne(value: number) {
   return Math.round(value * 10) / 10;
 }
 
-function needsCompactTextDelta(value: string) {
-  return value.includes("\n") || value.length > 80;
+function isComplexParameter(parameter: ParameterRecord | null | undefined) {
+  return parameter?.valueKind === "complex";
 }
 
 function buildDelta(baseRow: SingleParameterComparisonRow | null, targetRow: SingleParameterComparisonRow | null): SingleParameterDelta {
@@ -124,7 +124,7 @@ function buildDelta(baseRow: SingleParameterComparisonRow | null, targetRow: Sin
     return { kind: "text", status: "same", label: "值相同" };
   }
 
-  if (needsCompactTextDelta(baseValue) || needsCompactTextDelta(targetValue)) {
+  if (isComplexParameter(baseRow.parameter) || isComplexParameter(targetRow.parameter)) {
     return { kind: "text", status: "changed", label: "配置存在差异，查看下方 diff" };
   }
 
@@ -154,8 +154,8 @@ export function buildSingleParameterProjectComparison({
       projectName: project.name,
       parameter,
       status,
-      currentValue: parameter ? formatValue(parameter.currentValue, parameter.unit) : "未配置",
-      recommendedValue: parameter ? formatValue(parameter.recommendedValue, parameter.unit) : "未配置",
+      currentValue: parameter ? formatValue(parameter) : "未配置",
+      recommendedValue: parameter ? formatValue({ ...parameter, currentValue: parameter.recommendedValue }) : "未配置",
       risk: parameter?.risk ?? "Missing",
       updatedAt: parameter?.updatedAt ?? "-",
       unit,

@@ -109,8 +109,14 @@ Final responses for frontend-visible work must include verification evidence: lo
 
 ## Runtime Rules
 
-- Frontend mock mode is for demos and tests.
-- API mode uses:
+- Frontend **defaults to API mode** for local dev (`npm run dev`, `npm run dev:all`, and `.env.example`).
+- Mock mode is for frontend-only demos and tests; set explicitly:
+
+```text
+VITE_WISEEFF_RUNTIME_MODE=mock
+```
+
+- API mode (default) uses:
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api

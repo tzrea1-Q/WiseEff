@@ -1006,16 +1006,8 @@ export function ParametersPage({
   );
 }
 
-function isComplexSubmissionValue(value: string) {
-  return value.includes("\n") || value.length > 80;
-}
-
 function isComplexSubmissionItem(item: ParameterDraftItem & { parameter: ParameterRecord }) {
-  return (
-    isComplexSubmissionValue(item.parameter.currentValue) ||
-    isComplexSubmissionValue(item.targetValue) ||
-    isComplexSubmissionValue(item.parameter.configFormat)
-  );
+  return item.parameter.valueKind === "complex";
 }
 
 function getSubmissionLineCount(value: string) {

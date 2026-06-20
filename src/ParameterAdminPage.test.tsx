@@ -114,20 +114,20 @@ describe("ParameterAdminPage", () => {
     const library = screen.getByRole("region", { name: "项目共享参数库" });
     expect(within(library).getByRole("table")).toBeInTheDocument();
     expect(within(library).getByText(/fast_charge_current_limit_ma/)).toBeInTheDocument();
-    expect(within(library).getAllByRole("button", { name: "修改参数定义" }).length).toBeGreaterThan(0);
-    expect(within(library).getAllByRole("button", { name: "修改项目参数值" }).length).toBeGreaterThan(0);
+    expect(within(library).getAllByRole("button", { name: "修改" }).length).toBeGreaterThan(0);
+    expect(within(library).getAllByRole("button", { name: "项目参数" }).length).toBeGreaterThan(0);
   });
 
   it("opens definition and values dialogs from row actions", () => {
     renderPage();
     const library = screen.getByRole("region", { name: "项目共享参数库" });
 
-    fireEvent.click(within(library).getAllByRole("button", { name: "修改参数定义" })[0]);
+    fireEvent.click(within(library).getAllByRole("button", { name: "修改" })[0]);
     expect(screen.getByRole("dialog", { name: /修改参数定义/ })).toBeInTheDocument();
     expect(screen.getByLabelText("参数名")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "完成" }));
 
-    fireEvent.click(within(library).getAllByRole("button", { name: "修改项目参数值" })[0]);
+    fireEvent.click(within(library).getAllByRole("button", { name: "项目参数" })[0]);
     expect(screen.getByRole("dialog", { name: /修改项目参数值/ })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toBeInTheDocument();
   });
@@ -178,6 +178,14 @@ describe("ParameterAdminPage", () => {
     expect(onNavigate).toHaveBeenCalledWith(
       `/audit?app=parameter&projectId=${encodeURIComponent(initialState.activeProjectId)}`
     );
+  });
+
+  it("opens module management dialog from the library heading", () => {
+    renderPage("", initialState, vi.fn());
+
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+
+    expect(screen.getByRole("dialog", { name: "模块管理" })).toBeInTheDocument();
   });
 
   it("opens delete confirmation and dispatches DELETE_PROJECT_PARAMETER", () => {

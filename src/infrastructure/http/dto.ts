@@ -13,13 +13,17 @@ export type ParameterRecordDto = {
   range: ParameterRecord["range"];
   unit: ParameterRecord["unit"];
   risk: ParameterRecord["risk"];
+  valueKind?: ParameterRecord["valueKind"];
   updatedAt: ParameterRecord["updatedAt"];
   updatedAtTs: ParameterRecord["updatedAtTs"];
   history: ParameterRecord["history"];
 };
 
 export function parameterRecordFromDto(dto: ParameterRecordDto): ParameterRecord {
-  return { ...dto };
+  return {
+    ...dto,
+    valueKind: dto.valueKind ?? "scalar"
+  };
 }
 
 export function parameterRecordToDto(record: ParameterRecord): ParameterRecordDto {

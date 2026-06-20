@@ -1,4 +1,5 @@
 import { migrateParameterRange } from "../parameterAdminAnalytics";
+import type { ParameterValueKind } from "../powerManagementConfig";
 import {
   complexEditorRows,
   getComplexParameterKindLabel,
@@ -12,12 +13,14 @@ const NAME_RE = /^[a-z][a-z0-9_]*$/;
 export function ParameterDefinitionForm({
   parameter,
   projects,
+  modules,
   allParameters,
   onMetadataChange,
   onRecommendedValueChange
 }: {
   parameter: PowerManagementParameterTemplate;
   projects: readonly PowerManagementProject[];
+  modules: readonly string[];
   allParameters: readonly PowerManagementParameterTemplate[];
   onMetadataChange: (patch: Partial<Omit<PowerManagementParameterTemplate, "id" | "values">>) => void;
   onRecommendedValueChange: (value: string) => void;
@@ -27,6 +30,7 @@ export function ParameterDefinitionForm({
   const recommendedValue = firstProjectId ? parameter.values[firstProjectId]?.recommendedValue ?? "" : "";
   const nameError = getNameError(parameter, allParameters);
   const isComplex = isComplexParameter(parameter);
+  const moduleOptions = buildModuleOptions(modules, parameter.module);
 
   const updateRange = (patch: { min?: string; max?: string }) => {
     const min = (patch.min ?? String(range.min ?? "")).trim();
@@ -59,7 +63,11 @@ export function ParameterDefinitionForm({
             </label>
             <label>
               模块
-              <input aria-label="模块" value={parameter.module} onChange={(event) => onMetadataChange({ module: event.target.value })} />
+              <select aria-label="模块" value={parameter.module} onChange={(event) => onMetadataChange({ module: event.target.value })}>
+                {moduleOptions.map((moduleName) => (
+                  <option key={moduleName} value={moduleName}>{moduleName}</option>
+                ))}
+              </select>
             </label>
             <label>
               单位
@@ -68,6 +76,17 @@ export function ParameterDefinitionForm({
             <label>
               重要性
               <RiskPicker value={parameter.risk} onChange={(risk) => onMetadataChange({ risk })} />
+            </label>
+            <label>
+              参数值类型
+              <select
+                aria-label="参数值类型"
+                value={parameter.valueKind}
+                onChange={(event) => onMetadataChange({ valueKind: event.target.value as ParameterValueKind })}
+              >
+                <option value="scalar">单一数值</option>
+                <option value="complex">复杂配置</option>
+              </select>
             </label>
           </div>
         </fieldset>
@@ -82,8 +101,10 @@ export function ParameterDefinitionForm({
           ) : null}
           <div className={isComplex ? "def-group-fields def-group-fields--stack" : "def-group-fields"}>
             <label>
-              {isComplex ? "推荐配置" : "推荐值"}
-              <span className="label-hint">ⓘ 对所有项目生效</span>
+              <span className="def-field-label-row">
+                {isComplex ? "推荐配置" : "推荐值"}
+                <span className="label-hint">ⓘ 对所有项目生效</span>
+              </span>
               {isComplex ? (
                 <textarea
                   aria-label="参数推荐配置"
@@ -137,6 +158,14 @@ export function ParameterDefinitionForm({
       </form>
     </section>
   );
+}
+
+function buildModuleOptions(modules: readonly string[], currentModule: string) {
+  const moduleSet = new Set(modules.map((moduleName) => moduleName.trim()).filter(Boolean));
+  if (currentModule.trim()) {
+    moduleSet.add(currentModule.trim());
+  }
+  return Array.from(moduleSet).sort((left, right) => left.localeCompare(right));
 }
 
 function getNameError(parameter: PowerManagementParameterTemplate, allParameters: readonly PowerManagementParameterTemplate[]) {

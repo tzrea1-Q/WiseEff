@@ -24,6 +24,7 @@ function parameter(patch: Partial<ParameterRecord>): ParameterRecord {
     range: patch.range ?? "2500 - 4500",
     unit: patch.unit ?? "mA",
     risk: patch.risk ?? "High",
+    valueKind: patch.valueKind ?? "scalar",
     updatedAt: patch.updatedAt ?? "today 10:00",
     updatedAtTs: patch.updatedAtTs ?? "2026-05-21T02:00:00.000Z",
     history: patch.history ?? []
@@ -107,8 +108,8 @@ describe("buildSingleParameterProjectComparison", () => {
 
     const data = buildSingleParameterProjectComparison({
       parameters: [
-        parameter({ projectId: "aurora", name: "dts_fast_charge_profile_matrix", currentValue: baseValue, unit: "profile" }),
-        parameter({ projectId: "nebula", name: "dts_fast_charge_profile_matrix", currentValue: targetValue, unit: "profile" })
+        parameter({ projectId: "aurora", name: "dts_fast_charge_profile_matrix", currentValue: baseValue, unit: "profile", valueKind: "complex" }),
+        parameter({ projectId: "nebula", name: "dts_fast_charge_profile_matrix", currentValue: targetValue, unit: "profile", valueKind: "complex" })
       ],
       projects,
       parameterName: "dts_fast_charge_profile_matrix",

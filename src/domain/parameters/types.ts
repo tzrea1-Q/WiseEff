@@ -1,3 +1,5 @@
+import type { ParameterValueKind } from "@/powerManagementConfig";
+
 export type RiskLevel = "High" | "Medium" | "Low";
 
 export type ParameterHistoryEntry = {
@@ -21,6 +23,7 @@ export type ParameterRecord = {
   range: string;
   unit: string;
   risk: RiskLevel;
+  valueKind: ParameterValueKind;
   updatedAt: string;
   updatedAtTs: string;
   history: ParameterHistoryEntry[];
@@ -78,6 +81,7 @@ export type ChangeRequest = {
   currentValue: string;
   targetValue: string;
   submitter: string;
+  valueKind?: ParameterValueKind;
   createdAt: string;
   createdAtTs: string;
   updatedAt: string;
@@ -102,6 +106,7 @@ export type ParameterSubmissionItem = {
   targetValue: string;
   unit: string;
   risk: RiskLevel;
+  valueKind: ParameterValueKind;
   reason: string;
 };
 

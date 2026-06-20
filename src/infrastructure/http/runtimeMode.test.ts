@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { parseRuntimeMode, parseStaticApiAuthorization } from "./runtimeMode";
 
 describe("parseRuntimeMode", () => {
-  it("defaults to mock mode", () => {
-    expect(parseRuntimeMode(undefined, "development")).toBe("mock");
+  it("defaults to api mode when unset", () => {
+    expect(parseRuntimeMode(undefined, "development")).toBe("api");
+    expect(parseRuntimeMode("", "development")).toBe("api");
   });
 
-  it("accepts api mode", () => {
-    expect(parseRuntimeMode("api", "development")).toBe("api");
+  it("accepts mock mode outside production", () => {
+    expect(parseRuntimeMode("mock", "development")).toBe("mock");
   });
 
   it("blocks mock mode in production", () => {

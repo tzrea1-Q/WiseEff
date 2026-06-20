@@ -13,7 +13,7 @@ Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then
 | `PORT` | `8787` | API startup | The frontend assumes `127.0.0.1:8787` in API mode by default. |
 | `DATABASE_URL` | local PostgreSQL URL | Migrations, seeds, API mode, E2E | PostgreSQL is the source of truth. |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | Used by M5 smoke scripts. |
-| `VITE_WISEEFF_RUNTIME_MODE` | `api` in `.env.example` | frontend runtime | Use `mock` for frontend-only tests or demos. |
+| `VITE_WISEEFF_RUNTIME_MODE` | `api` (code default and `.env.example`) | frontend runtime | `npm run dev` / `npm run dev:all` also inject `api`. Use `mock` for frontend-only tests or demos. |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | frontend API runtime | Must point at the API process. |
 
 ## Auth

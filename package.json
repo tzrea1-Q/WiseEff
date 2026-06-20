@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 vite --host 127.0.0.1",
     "dev:all": "tsx scripts/run-dev-all.ts",
     "dev:api": "tsx watch server/index.ts",
     "worker:logs": "tsx server/modules/logs/workerRunner.ts",

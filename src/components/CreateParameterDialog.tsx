@@ -15,13 +15,15 @@ export interface CreateParameterDraft {
   configFormat: string;
   range: string;
   recommendedValue: string;
+  valueKind: PowerManagementParameterTemplate["valueKind"];
 }
 
 function buildDraftParameter(
   projects: readonly PowerManagementProject[],
+  modules: readonly string[],
   existingParameters: readonly PowerManagementParameterTemplate[]
 ): PowerManagementParameterTemplate {
-  const defaultModule = [...new Set(existingParameters.map((parameter) => parameter.module))].sort()[0] ?? "";
+  const defaultModule = modules[0] ?? [...new Set(existingParameters.map((parameter) => parameter.module))].sort()[0] ?? "";
   const values = projects.reduce<PowerManagementParameterTemplate["values"]>((acc, project) => {
     acc[project.id] = { currentValue: "", recommendedValue: "", updatedAt: "" };
     return acc;
@@ -37,6 +39,7 @@ function buildDraftParameter(
     explanation: "",
     configFormat: "",
     range: "",
+    valueKind: "scalar",
     values
   };
 }
@@ -61,17 +64,19 @@ function getCreateValidationErrors(
 export function CreateParameterDialog({
   open,
   projects,
+  modules,
   existingParameters,
   onConfirm,
   onCancel
 }: {
   open: boolean;
   projects: readonly PowerManagementProject[];
+  modules: readonly string[];
   existingParameters: readonly PowerManagementParameterTemplate[];
   onConfirm: (draft: CreateParameterDraft) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<PowerManagementParameterTemplate>(() => buildDraftParameter(projects, existingParameters));
+  const [draft, setDraft] = useState<PowerManagementParameterTemplate>(() => buildDraftParameter(projects, modules, existingParameters));
 
   useEffect(() => {
     if (!open) {
@@ -90,9 +95,9 @@ export function CreateParameterDialog({
 
   useEffect(() => {
     if (open) {
-      setDraft(buildDraftParameter(projects, existingParameters));
+      setDraft(buildDraftParameter(projects, modules, existingParameters));
     }
-  }, [open, projects, existingParameters]);
+  }, [open, projects, modules, existingParameters]);
 
   if (!open) {
     return null;
@@ -131,7 +136,8 @@ export function CreateParameterDialog({
       explanation: draft.explanation,
       configFormat: draft.configFormat,
       range: draft.range,
-      recommendedValue
+      recommendedValue,
+      valueKind: draft.valueKind
     });
   };
 
@@ -152,6 +158,7 @@ export function CreateParameterDialog({
         <div className="param-admin-editor-dialog-body">
           <ParameterDefinitionForm
             allParameters={existingParameters}
+            modules={modules}
             parameter={draft}
             projects={projects}
             onMetadataChange={handleMetadataChange}

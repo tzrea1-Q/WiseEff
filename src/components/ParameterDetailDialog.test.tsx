@@ -26,6 +26,7 @@ function parameter(projectId: string, value: string, patch: Partial<ParameterRec
     range: "2500 - 4500",
     unit: "mA",
     risk: "High",
+    valueKind: "scalar",
     updatedAt: "today 10:00",
     updatedAtTs: "2026-05-21T02:00:00.000Z",
     history: [{ version: "v5.2", value: "3800", changedAt: "yesterday", changedBy: "Wang Jie" }],
@@ -59,7 +60,8 @@ const dtsParameter = parameter("aurora", dtsValue, {
   recommendedValue: dtsValue,
   range: "0 - 1",
   unit: "profile",
-  risk: "Low"
+  risk: "Low",
+  valueKind: "complex"
 });
 
 const dtsParameters = [
@@ -69,14 +71,16 @@ const dtsParameters = [
     name: "dts_fast_charge_profile_matrix",
     recommendedValue: dtsTargetValue,
     unit: "profile",
-    risk: "Low"
+    risk: "Low",
+    valueKind: "complex"
   }),
   parameter("atlas", dtsValue, {
     id: "atlas-dts-fast-charge-profile-matrix",
     name: "dts_fast_charge_profile_matrix",
     recommendedValue: dtsValue,
     unit: "profile",
-    risk: "Low"
+    risk: "Low",
+    valueKind: "complex"
   })
 ];
 
@@ -189,6 +193,7 @@ describe("ParameterDetailDialog", () => {
       range: "0 - 1",
       unit: "curve",
       risk: "Low",
+      valueKind: "complex",
       history: [
         {
           version: "v5.2",
