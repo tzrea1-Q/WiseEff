@@ -4,6 +4,9 @@ alter table debugging_devices
 alter table debugging_targets
   add column if not exists protocol text not null default 'hdc';
 
+alter table debugging_targets
+  drop constraint if exists debugging_targets_device_id_target_ref_key;
+
 alter table debugging_sessions
   add column if not exists protocol text not null default 'hdc';
 
@@ -58,6 +61,8 @@ set node_path = excluded.node_path,
   enabled = excluded.enabled,
   updated_at = now();
 
+create unique index if not exists debugging_targets_device_protocol_target_ref_idx
+  on debugging_targets(device_id, protocol, target_ref);
 create index if not exists debugging_targets_protocol_idx on debugging_targets(project_id, protocol, status);
 create index if not exists debugging_sessions_protocol_idx on debugging_sessions(project_id, protocol, started_at desc);
 create index if not exists node_operations_protocol_idx on node_operations(session_id, protocol, created_at desc);

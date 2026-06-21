@@ -581,9 +581,8 @@ export async function upsertDetectedTargets(
         organization_id, project_id, device_id, id, protocol, target_ref, label, status
       )
       values ($1, $2, $3, $4, $5, $6, $7, $8)
-      on conflict (device_id, target_ref) do update
-      set protocol = excluded.protocol,
-        label = excluded.label,
+      on conflict (device_id, protocol, target_ref) do update
+      set label = excluded.label,
         status = excluded.status,
         detected_at = now()
       returning id, organization_id, project_id, device_id, protocol, target_ref, label, status, detected_at

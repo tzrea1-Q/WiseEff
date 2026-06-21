@@ -421,11 +421,11 @@ Key columns:
 - `organization_id` references `organizations(id)`
 - `project_id` references `projects(id)`
 - `device_id` references `debugging_devices(id)`
-- `target_ref`, `label`, `status`, `detected_at`, `metadata`
+- `protocol`, `target_ref`, `label`, `status`, `detected_at`, `metadata`
 
 Constraints:
 
-- Unique `device_id, target_ref`
+- Unique `device_id, protocol, target_ref`
 
 ### `debugging_parameters`
 

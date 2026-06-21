@@ -293,7 +293,7 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into debugging_targets");
-    expect(calls[0].text).toContain("on conflict (device_id, target_ref) do update");
+    expect(calls[0].text).toContain("on conflict (device_id, protocol, target_ref) do update");
     expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "simulator://aurora-1", "Aurora Target", "detected"]);
     expect(calls[1].text).toContain("update debugging_devices");
     expect(calls[1].text).toContain("last_seen_at = now()");

@@ -170,14 +170,15 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         organization_id,
         project_id,
         device_id,
+        protocol,
         target_ref,
         label,
         status,
         detected_at,
         metadata
       )
-      values ($1, $2, $3, $4, $5, $6, 'detected', now(), $7::jsonb)
-      on conflict (device_id, target_ref) do update set
+      values ($1, $2, $3, $4, 'hdc', $5, $6, 'detected', now(), $7::jsonb)
+      on conflict (device_id, protocol, target_ref) do update set
         organization_id = excluded.organization_id,
         project_id = excluded.project_id,
         id = excluded.id,

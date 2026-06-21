@@ -143,7 +143,7 @@ function deviceGatewayGate(options: {
       message: "Simulator device gateway mode is not acceptable for pilot readiness."
     };
   }
-  if (options.debugGatewayRegistry && !options.debugGateway && !options.debugGatewayRegistry.hasGateway("hdc")) {
+  if (options.debugGatewayRegistry && !options.debugGatewayRegistry.hasGateway("hdc")) {
     return {
       ok: false,
       status: "missing",
