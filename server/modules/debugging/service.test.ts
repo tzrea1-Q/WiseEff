@@ -5,6 +5,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { CreateAuditEventInput } from "../audit/types";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
+import { createDebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { createDebuggingService } from "./service";
 
 type QueryCall = {
@@ -170,6 +171,7 @@ function targetRow(overrides: Record<string, unknown> = {}) {
     organization_id: "org-1",
     project_id: "aurora",
     device_id: "device-1",
+    protocol: "hdc",
     target_ref: "simulator://aurora-1",
     label: "Aurora Target",
     status: "detected",
@@ -201,6 +203,23 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function bindingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "binding-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    parameter_id: "param-1",
+    protocol: "hdc",
+    node_path: "/sys/current",
+    access_mode: "RW",
+    enabled: true,
+    notes: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    ...overrides
+  };
+}
+
 function sessionRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "session-1",
@@ -208,6 +227,7 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
     project_id: "aurora",
     device_id: "device-1",
     target_id: "target-1",
+    protocol: "hdc",
     actor_user_id: "user-1",
     status: "active",
     started_at: timestamp,
@@ -223,18 +243,19 @@ function operationRow(call: QueryCall, overrides: Record<string, unknown> = {}) 
     project_id: call.values[2],
     session_id: call.values[3],
     parameter_id: call.values[4],
-    node_path: call.values[5],
-    operation_type: call.values[6],
-    status: call.values[7],
-    requested_value: call.values[8],
-    previous_value: call.values[9],
-    read_value: call.values[10],
-    readback_value: call.values[11],
-    verified: call.values[12],
-    failure_reason: call.values[13],
-    duration_ms: call.values[14],
-    approval_id: call.values[15],
-    snapshot_id: call.values[16],
+    protocol: call.values[5],
+    node_path: call.values[6],
+    operation_type: call.values[7],
+    status: call.values[8],
+    requested_value: call.values[9],
+    previous_value: call.values[10],
+    read_value: call.values[11],
+    readback_value: call.values[12],
+    verified: call.values[13],
+    failure_reason: call.values[14],
+    duration_ms: call.values[15],
+    approval_id: call.values[16],
+    snapshot_id: call.values[17],
     created_at: timestamp,
     ...overrides
   };
@@ -333,7 +354,15 @@ describe("debugging service", () => {
   it("detectTargets requires debugging:read, calls gateway, persists targets, writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [deviceRow()],
-      (call) => [targetRow({ id: call.values[3], target_ref: call.values[4], label: call.values[5], status: call.values[6] })],
+      (call) => [
+        targetRow({
+          id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
+        })
+      ],
       []
     ]);
     const gateway = makeGateway();
@@ -378,6 +407,98 @@ describe("debugging service", () => {
     ]);
     expect(JSON.stringify(spans)).not.toContain("device-1");
     expect(JSON.stringify(spans)).not.toContain("simulator://aurora-1");
+  });
+
+  it("detects ADB targets through the registry and audits protocol metadata", async () => {
+    const adbGateway = makeGateway({
+      detectTargets: vi.fn(async () => ({
+        ok: true,
+        targets: [
+          {
+            id: "adb:emulator-5554",
+            deviceId: "device-1",
+            targetRef: "emulator-5554",
+            label: "ADB target emulator-5554",
+            online: true,
+            protocol: "adb" as const
+          }
+        ]
+      }))
+    });
+    const { db } = createFakeDb([
+      [deviceRow({ transport: "adb" })],
+      (call) => [
+        targetRow({
+          id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
+        })
+      ],
+      []
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
+      createAuditEvent: audit.createAuditEvent
+    });
+
+    const targets = await service.detectTargets(readAuth, {
+      projectId: "aurora",
+      deviceId: "device-1",
+      protocol: "adb"
+    });
+
+    expect(targets[0]).toMatchObject({ protocol: "adb", targetRef: "emulator-5554" });
+    expect(adbGateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
+    expect(audit.events.at(-1)?.metadata).toMatchObject({ protocol: "adb", targetCount: 1 });
+  });
+
+  it("persists detected targets with the requested protocol even if an adapter reports a conflicting protocol", async () => {
+    const adbGateway = makeGateway({
+      detectTargets: vi.fn(async () => ({
+        ok: true,
+        targets: [
+          {
+            id: "adb:emulator-5554",
+            deviceId: "device-1",
+            targetRef: "emulator-5554",
+            label: "ADB target emulator-5554",
+            online: true,
+            protocol: "hdc" as const
+          }
+        ]
+      }))
+    });
+    const { db, txCalls } = createFakeDb([
+      [deviceRow({ transport: "adb" })],
+      (call) => [
+        targetRow({
+          id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
+        })
+      ],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await service.detectTargets(readAuth, {
+      projectId: "aurora",
+      deviceId: "device-1",
+      protocol: "adb"
+    });
+
+    const upsertCall = txCalls.find((call) => call.text.includes("insert into debugging_targets"));
+    expect(upsertCall?.values[4]).toBe("adb");
   });
 
   it("detectTargets commits a failed debug event when gateway detection fails", async () => {
@@ -481,15 +602,14 @@ describe("debugging service", () => {
       "info",
       "Debug session created."
     ]);
-    expect(JSON.parse(String(eventCall?.values[8]))).toEqual({ deviceId: "device-1", targetId: "target-1" });
+    expect(JSON.parse(String(eventCall?.values[8]))).toEqual({ deviceId: "device-1", targetId: "target-1", protocol: "hdc" });
   });
 
-  it("readNode requires debugging:read, rejects catalog/path mismatch, records operation, writes audit", async () => {
+  it("readNode requires debugging:read, resolves bindings, records operation, writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
-      [parameterRow({ node_path: "/sys/other" })],
-      [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => [operationRow(call)]
     ]);
@@ -502,11 +622,7 @@ describe("debugging service", () => {
     await expect(service.readNode(makeAuth(["debugging:view"]), { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
     );
-    await expect(
-      service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Parameter does not match requested node path.", 400));
-
-    const operation = await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" });
+    const operation = await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/frontend/ignored" });
 
     expect(gateway.readNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current" });
     expect(operation).toMatchObject({ operationType: "read", status: "succeeded", readValue: "3000", verified: true });
@@ -533,6 +649,30 @@ describe("debugging service", () => {
     expect(JSON.stringify(spans)).not.toContain("3000");
   });
 
+  it("reads an ADB node from the session protocol binding without trusting frontend nodePath", async () => {
+    const adbGateway = makeGateway();
+    const { db } = createFakeDb([
+      [sessionRow({ protocol: "adb" })],
+      [parameterRow()],
+      [bindingRow({ protocol: "adb", node_path: "/sys/adb/current" })],
+      [targetRow({ protocol: "adb", target_ref: "emulator-5554" })],
+      (call) => [operationRow(call, { protocol: "adb", node_path: "/sys/adb/current" })]
+    ]);
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await service.readNode(readAuth, {
+      sessionId: "session-1",
+      parameterId: "param-1",
+      nodePath: "/malicious/frontend/path"
+    });
+
+    expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current" });
+  });
+
   it("readNode rejects inactive sessions and WO parameters before gateway call", async () => {
     const inactive = createFakeDb([[sessionRow({ status: "closed" })]]);
     const inactiveGateway = makeGateway();
@@ -547,7 +687,7 @@ describe("debugging service", () => {
     );
     expect(inactiveGateway.readNode).not.toHaveBeenCalled();
 
-    const writeOnly = createFakeDb([[sessionRow()], [parameterRow({ access_mode: "WO" })]]);
+    const writeOnly = createFakeDb([[sessionRow()], [parameterRow()], [bindingRow({ access_mode: "WO" })]]);
     const writeOnlyGateway = makeGateway();
     const writeOnlyService = createDebuggingService({
       db: writeOnly.db,
@@ -638,7 +778,7 @@ describe("debugging service", () => {
   });
 
   it("writeNode rejects RO parameters before gateway call", async () => {
-    const { db } = createFakeDb([[sessionRow()], [parameterRow({ access_mode: "RO" })]]);
+    const { db } = createFakeDb([[sessionRow()], [parameterRow()], [bindingRow({ access_mode: "RO" })]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
@@ -649,7 +789,7 @@ describe("debugging service", () => {
   });
 
   it("writeNode rejects numeric values outside minValue/maxValue", async () => {
-    const { db } = createFakeDb([[sessionRow()], [parameterRow({ min_value: "0", max_value: "5000" })]]);
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ min_value: "0", max_value: "5000" })], [bindingRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
@@ -660,7 +800,7 @@ describe("debugging service", () => {
   });
 
   it("writeNode rejects non-numeric values when a parameter has a numeric range", async () => {
-    const { db } = createFakeDb([[sessionRow()], [parameterRow({ min_value: "0", max_value: "5000" })]]);
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ min_value: "0", max_value: "5000" })], [bindingRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
@@ -672,7 +812,7 @@ describe("debugging service", () => {
   });
 
   it("writeNode rejects parameters from a different project before gateway call", async () => {
-    const { db } = createFakeDb([[sessionRow()], [parameterRow({ project_id: "other-project" })]]);
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ project_id: "other-project" })], [bindingRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
@@ -682,8 +822,70 @@ describe("debugging service", () => {
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
+  it("rejects writes when the session protocol binding is missing", async () => {
+    const { db } = createFakeDb([[sessionRow({ protocol: "adb" })], [parameterRow()], []]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: gateway }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      service.writeNode(writeAuth, {
+        sessionId: "session-1",
+        parameterId: "param-1",
+        value: "3200"
+      })
+    ).rejects.toMatchObject({
+      code: "DEBUG_BINDING_NOT_CONFIGURED"
+    });
+    expect(gateway.readNode).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("rejects writes when the session protocol binding is disabled", async () => {
+    const { db } = createFakeDb([[sessionRow({ protocol: "adb" })], [parameterRow()], [bindingRow({ protocol: "adb", enabled: false })]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: gateway }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      service.writeNode(writeAuth, {
+        sessionId: "session-1",
+        parameterId: "param-1",
+        value: "3200"
+      })
+    ).rejects.toMatchObject({
+      code: "DEBUG_BINDING_DISABLED"
+    });
+    expect(gateway.readNode).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit registry for non-default protocols", async () => {
+    const service = createDebuggingService({
+      db: createFakeDb([[deviceRow({ transport: "adb" })]]).db,
+      gateway: makeGateway(),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      service.detectTargets(readAuth, {
+        projectId: "aurora",
+        deviceId: "device-1",
+        protocol: "adb"
+      })
+    ).rejects.toMatchObject({
+      code: "PROTOCOL_UNSUPPORTED"
+    });
+  });
+
   it("writeNode rejects High-risk parameters without confirmation token or approval", async () => {
-    const { db } = createFakeDb([[sessionRow()], [parameterRow({ risk: "High" })]]);
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ risk: "High" })], [bindingRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
@@ -726,6 +928,7 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => {
         callOrder.push("snapshot");
@@ -746,7 +949,7 @@ describe("debugging service", () => {
     expect(callOrder).toEqual(["gateway-read", "snapshot", "gateway-write"]);
     const snapshotCall = txCalls.find((call) => call.text.includes("insert into debugging_snapshots"));
     expect(JSON.parse(String(snapshotCall?.values[7]))).toEqual([
-      { parameterId: "param-1", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" }
+      { parameterId: "param-1", protocol: "hdc", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" }
     ]);
     expect(operation).toMatchObject({ status: "succeeded", previousValue: "3000", snapshotId: "snapshot-1" });
   });
@@ -755,6 +958,7 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       debugDeviceLeaseResult([]),
       (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
@@ -786,6 +990,7 @@ describe("debugging service", () => {
     const { db } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
@@ -822,6 +1027,7 @@ describe("debugging service", () => {
     const { db } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
@@ -887,6 +1093,7 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
@@ -905,6 +1112,7 @@ describe("debugging service", () => {
     const { db } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
@@ -944,6 +1152,7 @@ describe("debugging service", () => {
     const { db, rollbacks } = createFakeDb([
       [sessionRow()],
       [parameterRow()],
+      [bindingRow()],
       [targetRow()],
       (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
@@ -1175,7 +1384,12 @@ describe("debugging service", () => {
       txCalls.findIndex((call) => call.text.includes("insert into node_operations"))
     );
     expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.values.includes("snapshot-1"))).toBe(true);
-    expect(audit.events[0]).toMatchObject({ kind: "debug-snapshot-rollback", action: "rollback", targetId: "snapshot-1" });
+    expect(audit.events[0]).toMatchObject({
+      kind: "debug-snapshot-rollback",
+      action: "rollback",
+      targetId: "snapshot-1",
+      metadata: expect.objectContaining({ protocol: "hdc" })
+    });
     expect(metrics.recordDeviceGatewayOperation).toHaveBeenCalledWith({
       mode: "simulator",
       action: "rollback",
@@ -1225,7 +1439,7 @@ describe("debugging service", () => {
       "info",
       "Snapshot rollback succeeded."
     ]);
-    expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", operationCount: 1 });
+    expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", operationCount: 1, protocol: "hdc" });
   });
 
   it("listDevices, listParameters, getSession, and listSessionEvents require view permission and return records", async () => {
@@ -1241,6 +1455,7 @@ describe("debugging service", () => {
           project_id: "aurora",
           session_id: "session-1",
           parameter_id: "param-1",
+          protocol: "hdc",
           node_path: "/sys/current",
           operation_type: "read",
           status: "succeeded",

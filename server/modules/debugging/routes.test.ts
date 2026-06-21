@@ -7,6 +7,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import type { DebugDeviceGateway } from "./gateway";
+import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import { registerDebuggingRoutes } from "./routes";
 import * as serviceModule from "./service";
 import type {
@@ -66,11 +67,12 @@ function makeGateway(): DebugDeviceGateway {
   };
 }
 
-function makeServer(options: { db?: Database; gateway?: DebugDeviceGateway; auth?: AuthContext } = {}) {
+function makeServer(options: { db?: Database; gateway?: DebugDeviceGateway; gatewayRegistry?: DebugDeviceGatewayRegistry; auth?: AuthContext } = {}) {
   const router = createRouter();
   registerDebuggingRoutes(router, {
     db: options.db,
     debugGateway: options.gateway,
+    debugGatewayRegistry: options.gatewayRegistry,
     getCurrentAuthContext: () => options.auth ?? makeAuth()
   });
   return createHttpServer(router);
@@ -118,6 +120,7 @@ function targetRecord(overrides: Partial<DebugTargetRecord> = {}): DebugTargetRe
     organizationId: "org-1",
     projectId: "aurora",
     deviceId: "device-1",
+    protocol: "hdc",
     targetRef: "simulator://aurora-1",
     label: "Aurora Target",
     status: "detected",
@@ -156,6 +159,7 @@ function sessionRecord(overrides: Partial<DebugSessionRecord> = {}): DebugSessio
     projectId: "aurora",
     deviceId: "device-1",
     targetId: "target-1",
+    protocol: "hdc",
     actorUserId: "user-1",
     status: "active",
     startedAt: timestamp,
@@ -171,6 +175,7 @@ function operationRecord(overrides: Partial<NodeOperationRecord> = {}): NodeOper
     projectId: "aurora",
     sessionId: "session-1",
     parameterId: "param-1",
+    protocol: "hdc",
     nodePath: "/sys/current",
     operationType: "read",
     status: "succeeded",
@@ -273,7 +278,30 @@ describe("debugging routes", () => {
     expect(response.body).toEqual({ items: [target] });
     expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
       makeAuth(),
-      { projectId: "aurora", deviceId: "device-1" },
+      { projectId: "aurora", deviceId: "device-1", protocol: "hdc" },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("passes protocol to target detection service", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const target = targetRecord({ protocol: "adb" });
+    serviceMocks.detectTargets.mockResolvedValue([target]);
+
+    const response = await requestJson<{ items: DebugTargetRecord[] }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/targets/detect",
+      {
+        method: "POST",
+        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
+      makeAuth(),
+      { projectId: "aurora", deviceId: "device-1", protocol: "adb" },
       { requestId: "test-request" }
     );
   });
@@ -312,7 +340,8 @@ describe("debugging routes", () => {
       {
         projectId: "aurora",
         deviceId: "device-1",
-        targetId: "target-1"
+        targetId: "target-1",
+        protocol: "hdc"
       },
       { requestId: "test-request" }
     );
@@ -373,6 +402,32 @@ describe("debugging routes", () => {
         sessionId: "session-1",
         parameterId: "param-1",
         nodePath: "/sys/current"
+      },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("accepts binding-aware read requests without nodePath", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const operation = operationRecord({ protocol: "adb", operationType: "read" });
+    serviceMocks.readNode.mockResolvedValue(operation);
+
+    const response = await requestJson<{ operation: NodeOperationRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/nodes/read",
+      {
+        method: "POST",
+        body: JSON.stringify({ sessionId: "session-1", parameterId: "param-1" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(serviceMocks.readNode).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        sessionId: "session-1",
+        parameterId: "param-1"
       },
       { requestId: "test-request" }
     );

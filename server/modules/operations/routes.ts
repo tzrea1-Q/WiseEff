@@ -6,6 +6,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { AgentProvider } from "../agent/provider";
 import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import type { DebugDeviceGateway } from "../debugging/gateway";
+import type { DebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
 import { buildLiveHealth, buildReadyHealth, type DurableQueueHealthCheck } from "./health";
 import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadiness";
 
@@ -120,8 +121,12 @@ function deviceGatewayEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateSt
   };
 }
 
-function deviceGatewayGate(options: { debugGateway?: DebugDeviceGateway; env: PilotReadinessEnv }): PilotReadinessGateStatus {
-  if (!options.debugGateway) {
+function deviceGatewayGate(options: {
+  debugGateway?: DebugDeviceGateway;
+  debugGatewayRegistry?: DebugDeviceGatewayRegistry;
+  env: PilotReadinessEnv;
+}): PilotReadinessGateStatus {
+  if (!options.debugGateway && !options.debugGatewayRegistry) {
     return {
       ok: false,
       status: "missing",
@@ -136,6 +141,13 @@ function deviceGatewayGate(options: { debugGateway?: DebugDeviceGateway; env: Pi
       ok: false,
       status: "blocked",
       message: "Simulator device gateway mode is not acceptable for pilot readiness."
+    };
+  }
+  if (options.debugGatewayRegistry && !options.debugGateway && !options.debugGatewayRegistry.hasGateway("hdc")) {
+    return {
+      ok: false,
+      status: "missing",
+      message: "HDC debug device gateway is not configured for this API process."
     };
   }
 
@@ -207,6 +219,7 @@ export function registerOperationsRoutes(
     objectStore?: ObjectStoreHealthCheck;
     agentProvider?: AgentProvider;
     debugGateway?: DebugDeviceGateway;
+    debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
     getCurrentAuthContext?: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -265,7 +278,7 @@ export function registerOperationsRoutes(
         status: "missing",
         message: "Worker queue health is unavailable."
       },
-      deviceGateway: deviceGatewayGate({ debugGateway: options.debugGateway, env }),
+      deviceGateway: deviceGatewayGate({ debugGateway: options.debugGateway, debugGatewayRegistry: options.debugGatewayRegistry, env }),
       agentProvider: await agentProviderGate({ agentProvider: options.agentProvider, env }),
       backups: backupDrillGate()
     });

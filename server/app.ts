@@ -9,6 +9,7 @@ import { createOidcVerifier } from "./modules/auth/oidcVerifier";
 import { createTokenVerifier, type TokenVerifier } from "./modules/auth/tokenVerifier";
 import { registerJobRoutes } from "./modules/jobs/routes";
 import type { DebugDeviceGateway } from "./modules/debugging/gateway";
+import type { DebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
@@ -57,6 +58,7 @@ export function createWiseEffServer(
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;
     debugGateway?: DebugDeviceGateway;
+    debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     agentProvider?: AgentProvider;
     durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
@@ -84,6 +86,7 @@ export function createWiseEffServer(
     objectStore: options.objectStoreHealth,
     agentProvider: options.agentProvider,
     debugGateway: options.debugGateway,
+    debugGatewayRegistry: options.debugGatewayRegistry,
     durableQueue: options.durableQueue,
     env: options.env,
     getCurrentAuthContext: authResolver
@@ -115,6 +118,7 @@ export function createWiseEffServer(
   registerDebuggingRoutes(router, {
     db: options.db,
     debugGateway: options.debugGateway,
+    debugGatewayRegistry: options.debugGatewayRegistry,
     debugGatewayMode: options.env?.DEBUG_DEVICE_GATEWAY_MODE,
     metrics,
     tracing,
@@ -172,6 +176,7 @@ export function createWiseEffServerFromEnv(
     objectStoreHealth?: ObjectStoreHealthCheck;
     logAnalysisQueue?: LogAnalysisQueue;
     debugGateway?: DebugDeviceGateway;
+    debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     agentProvider?: AgentProvider;
     durableQueue?: DurableQueueHealthCheck;
     env: ServerEnv;

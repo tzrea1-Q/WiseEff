@@ -8,6 +8,7 @@ import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
+import { createDebugDeviceGatewayRegistry, type DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import {
   getAllowedDebugProjectIds,
   requireDebugProjectAccess,
@@ -23,6 +24,7 @@ import {
   createDebugSnapshot,
   getDebugDevice,
   getDebugParameter,
+  getDebugParameterNodeBinding,
   getDebugSession as getDebugSessionRecord,
   getDebugSnapshot,
   getDebugTarget,
@@ -37,7 +39,9 @@ import {
   updateDebugParameterValues,
   upsertDetectedTargets
 } from "./repository";
-import type { DebugParameterRecord, DebugSessionRecord, NodeOperationRecord } from "./types";
+import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
+import type { DebugAccessMode } from "./status";
+import type { DebugParameterNodeBindingRecord, DebugParameterRecord, DebugSessionRecord, NodeOperationRecord } from "./types";
 
 type AuditWriter = typeof defaultCreateAuditEvent;
 
@@ -45,11 +49,12 @@ const DEVICE_LEASE_TTL_MS = 5 * 60 * 1000;
 
 type ServiceOptions = {
   db: Database;
-  gateway: DebugDeviceGateway;
+  gateway?: DebugDeviceGateway;
+  gatewayRegistry?: DebugDeviceGatewayRegistry;
   createAuditEvent?: AuditWriter;
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
   tracing?: Pick<TracingBoundary, "withSpan">;
-  gatewayMode?: "simulator" | "hdc" | string;
+  gatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
 };
 
 type ProjectQuery = {
@@ -63,18 +68,20 @@ type ScopedProjectQuery<T extends ProjectQuery> = T & {
 type DetectTargetsInput = {
   projectId: string;
   deviceId?: string;
+  protocol?: DebugConnectionProtocol;
 };
 
 type CreateSessionInput = {
   projectId: string;
   deviceId: string;
   targetId: string;
+  protocol?: DebugConnectionProtocol;
 };
 
 type ReadNodeInput = {
   sessionId: string;
   parameterId?: string;
-  nodePath: string;
+  nodePath?: string;
 };
 
 type WriteNodeInput = {
@@ -129,25 +136,27 @@ function ensureProjectMatch(actualProjectId: string, expectedProjectId: string, 
   }
 }
 
-function ensureReadable(parameter: DebugParameterRecord | null, session: DebugSessionRecord, nodePath: string) {
+function ensureReadable(parameter: DebugParameterRecord | null, session: DebugSessionRecord, accessMode: DebugAccessMode) {
   if (!parameter) {
     throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
   }
   ensureProjectMatch(parameter.projectId, session.projectId, "Parameter does not belong to the session project.");
-  if (parameter.nodePath !== nodePath) {
-    throw new ApiError("VALIDATION_FAILED", "Parameter does not match requested node path.", 400);
-  }
-  if (parameter.accessMode !== "RO" && parameter.accessMode !== "RW") {
+  if (accessMode !== "RO" && accessMode !== "RW") {
     throw new ApiError("VALIDATION_FAILED", "Parameter is not readable.", 400);
   }
 }
 
-function ensureWritable(parameter: DebugParameterRecord | null, session: DebugSessionRecord, input: WriteNodeInput): DebugParameterRecord {
+function ensureWritable(
+  parameter: DebugParameterRecord | null,
+  session: DebugSessionRecord,
+  input: WriteNodeInput,
+  accessMode: DebugAccessMode
+): DebugParameterRecord {
   if (!parameter) {
     throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
   }
   ensureProjectMatch(parameter.projectId, session.projectId, "Parameter does not belong to the session project.");
-  if (parameter.accessMode !== "WO" && parameter.accessMode !== "RW") {
+  if (accessMode !== "WO" && accessMode !== "RW") {
     throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400);
   }
 
@@ -201,6 +210,26 @@ async function requireDeviceLease(tx: Queryable, auth: AuthContext, session: Deb
   }
 }
 
+async function requireProtocolBinding(
+  tx: Queryable,
+  input: { organizationId: string; parameterId: string; protocol: DebugConnectionProtocol }
+): Promise<DebugParameterNodeBindingRecord> {
+  const binding = await getDebugParameterNodeBinding(tx, { ...input, includeDisabled: true });
+  if (!binding) {
+    throw new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug parameter is not configured for the selected protocol.", 400, {
+      parameterId: input.parameterId,
+      protocol: input.protocol
+    });
+  }
+  if (!binding.enabled) {
+    throw new ApiError("DEBUG_BINDING_DISABLED", "Debug parameter binding is disabled for the selected protocol.", 400, {
+      parameterId: input.parameterId,
+      protocol: input.protocol
+    });
+  }
+  return binding;
+}
+
 function scopedProjectQuery<T extends ProjectQuery>(auth: AuthContext, query: T): ScopedProjectQuery<T> {
   if (query.projectId) {
     requireDebugProjectAccess(auth, query.projectId);
@@ -220,7 +249,8 @@ function scopedProjectQuery<T extends ProjectQuery>(auth: AuthContext, query: T)
 
 export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
-  const gateway = options.gateway;
+  const gatewayRegistry =
+    options.gatewayRegistry ?? createDebugDeviceGatewayRegistry(options.gateway ? { hdc: options.gateway } : {});
   const writeAudit = options.createAuditEvent ?? defaultCreateAuditEvent;
   const gatewayMode = options.gatewayMode ?? "unknown";
   const tracing = options.tracing;
@@ -261,6 +291,7 @@ export function createDebuggingService(options: ServiceOptions) {
       requireDebugRead(auth);
       requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
+      const protocol = input.protocol ?? defaultDebugConnectionProtocol;
 
       if (input.deviceId) {
         const device = await getDebugDevice(db, { organizationId, deviceId: input.deviceId });
@@ -270,7 +301,8 @@ export function createDebuggingService(options: ServiceOptions) {
         ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
       }
 
-      const result = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId) }, async (spanAttributes) => {
+      const gateway = gatewayRegistry.requireGateway(protocol);
+      const result = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId), protocol }, async (spanAttributes) => {
         try {
           const gatewayResult = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
           spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
@@ -290,7 +322,7 @@ export function createDebuggingService(options: ServiceOptions) {
             kind: "target-detect-failed",
             severity: "error",
             message: failureReason(result.error, "Debug target detection failed."),
-            metadata: { deviceId: input.deviceId, error: result.error }
+            metadata: { deviceId: input.deviceId, protocol, error: result.error }
           });
         });
         throw new ApiError("DEVICE_UNAVAILABLE", failureReason(result.error, "Debug target detection failed."), 409);
@@ -303,6 +335,7 @@ export function createDebuggingService(options: ServiceOptions) {
           deviceId: input.deviceId ?? result.targets[0]?.deviceId ?? "",
           targets: result.targets.map((target) => ({
             id: target.id,
+            protocol,
             targetRef: target.targetRef,
             label: target.label,
             online: target.online
@@ -320,7 +353,7 @@ export function createDebuggingService(options: ServiceOptions) {
               severity: "Low",
               targetType: "debug-device",
               targetId: input.deviceId ?? null,
-              metadata: { targetCount: targets.length, deviceId: input.deviceId }
+              metadata: { targetCount: targets.length, deviceId: input.deviceId, protocol }
             },
             context
           )
@@ -340,6 +373,7 @@ export function createDebuggingService(options: ServiceOptions) {
       requireDebugRead(auth);
       requireDebugProjectAccess(auth, input.projectId);
       const organizationId = organizationIdFor(auth);
+      const protocol = input.protocol ?? defaultDebugConnectionProtocol;
 
       return db.transaction(async (tx) => {
         const device = await getDebugDevice(tx, { organizationId, deviceId: input.deviceId });
@@ -361,12 +395,20 @@ export function createDebuggingService(options: ServiceOptions) {
         if (target.status !== "detected") {
           throw new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.", 409);
         }
+        if (target.protocol !== protocol) {
+          throw new ApiError("VALIDATION_FAILED", "Debug target protocol does not match the requested protocol.", 400, {
+            targetProtocol: target.protocol,
+            protocol
+          });
+        }
+        gatewayRegistry.requireGateway(protocol);
 
         const session = await createDebugSession(tx, {
           organizationId,
           projectId: input.projectId,
           deviceId: input.deviceId,
           targetId: input.targetId,
+          protocol,
           actorUserId: auth.user.id
         });
         await insertDebugEvent(tx, {
@@ -376,7 +418,7 @@ export function createDebuggingService(options: ServiceOptions) {
           kind: "session-created",
           severity: "info",
           message: "Debug session created.",
-          metadata: { deviceId: input.deviceId, targetId: input.targetId }
+          metadata: { deviceId: input.deviceId, targetId: input.targetId, protocol }
         });
         await writeAudit(
           tx,
@@ -389,7 +431,7 @@ export function createDebuggingService(options: ServiceOptions) {
               severity: "Low",
               targetType: "debug-session",
               targetId: session.id,
-              metadata: { deviceId: input.deviceId, targetId: input.targetId }
+              metadata: { deviceId: input.deviceId, targetId: input.targetId, protocol }
             },
             context
           )
@@ -426,17 +468,27 @@ export function createDebuggingService(options: ServiceOptions) {
       return db.transaction(async (tx) => {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
         requireDebugProjectAccess(auth, session.projectId);
+        const protocol = session.protocol ?? defaultDebugConnectionProtocol;
+        const parameter = input.parameterId ? await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }) : null;
+        const binding = input.parameterId
+          ? await requireProtocolBinding(tx, { organizationId, parameterId: input.parameterId, protocol })
+          : null;
+        const nodePath = binding?.nodePath ?? input.nodePath;
+        if (!nodePath) {
+          throw new ApiError("VALIDATION_FAILED", "parameterId or nodePath is required.", 400);
+        }
         if (input.parameterId) {
-          ensureReadable(await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }), session, input.nodePath);
+          ensureReadable(parameter, session, binding?.accessMode ?? "RW");
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
+        const gateway = gatewayRegistry.requireGateway(protocol);
 
-        const result = await withGatewaySpan("read", { hasParameterId: Boolean(input.parameterId) }, async (spanAttributes) => {
+        const result = await withGatewaySpan("read", { hasParameterId: Boolean(input.parameterId), protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath: input.nodePath });
+            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath });
             spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
             return gatewayResult;
           } catch (error) {
@@ -451,7 +503,8 @@ export function createDebuggingService(options: ServiceOptions) {
           projectId: session.projectId,
           sessionId: session.id,
           parameterId: input.parameterId ?? null,
-          nodePath: input.nodePath,
+          protocol,
+          nodePath,
           operationType: "read",
           status: result.ok ? "succeeded" : "failed",
           readValue: result.value ?? result.stdout,
@@ -471,11 +524,12 @@ export function createDebuggingService(options: ServiceOptions) {
               action: "read",
               severity: result.ok ? "Low" : "Medium",
               targetType: "debug-node",
-              targetId: input.parameterId ?? input.nodePath,
+              targetId: input.parameterId ?? nodePath,
               metadata: {
                 sessionId: session.id,
                 operationId: operation.id,
-                nodePath: input.nodePath,
+                protocol,
+                nodePath,
                 readValue: operation.readValue,
                 failureReason: operation.failureReason
               }
@@ -495,16 +549,21 @@ export function createDebuggingService(options: ServiceOptions) {
       return db.transaction(async (tx) => {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
         requireDebugProjectAccess(auth, session.projectId);
-        const parameter = ensureWritable(await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }), session, input);
+        const protocol = session.protocol ?? defaultDebugConnectionProtocol;
+        const parameterRecord = await getDebugParameter(tx, { organizationId, parameterId: input.parameterId });
+        const binding = await requireProtocolBinding(tx, { organizationId, parameterId: input.parameterId, protocol });
+        const parameter = ensureWritable(parameterRecord, session, input, binding.accessMode);
+        const nodePath = binding.nodePath;
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
+        const gateway = gatewayRegistry.requireGateway(protocol);
         await requireDeviceLease(tx, auth, session);
 
-        const previous = await withGatewaySpan("read", { hasParameterId: true }, async (spanAttributes) => {
+        const previous = await withGatewaySpan("read", { hasParameterId: true, protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath: parameter.nodePath });
+            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath });
             spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
             return gatewayResult;
           } catch (error) {
@@ -520,7 +579,8 @@ export function createDebuggingService(options: ServiceOptions) {
             projectId: session.projectId,
             sessionId: session.id,
             parameterId: parameter.id,
-            nodePath: parameter.nodePath,
+            protocol,
+            nodePath,
             operationType: "write",
             status: "failed",
             requestedValue: input.value,
@@ -540,7 +600,7 @@ export function createDebuggingService(options: ServiceOptions) {
                 severity: "High",
                 targetType: "debug-node",
                 targetId: parameter.id,
-                metadata: { sessionId: session.id, operationId: operation.id, nodePath: parameter.nodePath, failureReason: operation.failureReason }
+                metadata: { sessionId: session.id, operationId: operation.id, protocol, nodePath, failureReason: operation.failureReason }
               },
               context
             )
@@ -554,12 +614,12 @@ export function createDebuggingService(options: ServiceOptions) {
           projectId: session.projectId,
           sessionId: session.id,
           risk: parameter.risk,
-          entries: [{ parameterId: parameter.id, nodePath: parameter.nodePath, previousValue, targetValue: input.value }],
+          entries: [{ parameterId: parameter.id, protocol, nodePath, previousValue, targetValue: input.value }],
           createdByUserId: auth.user.id
         });
-        const result = await withGatewaySpan("write", { requiresApproval: Boolean(input.approvalId) }, async (spanAttributes) => {
+        const result = await withGatewaySpan("write", { requiresApproval: Boolean(input.approvalId), protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath: parameter.nodePath, value: input.value, readBack: true });
+            const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath, value: input.value, readBack: true });
             spanAttributes.status = writeStatus(gatewayResult);
             return gatewayResult;
           } catch (error) {
@@ -575,7 +635,8 @@ export function createDebuggingService(options: ServiceOptions) {
           projectId: session.projectId,
           sessionId: session.id,
           parameterId: parameter.id,
-          nodePath: parameter.nodePath,
+          protocol,
+          nodePath,
           operationType: "write",
           status,
           requestedValue: input.value,
@@ -614,7 +675,8 @@ export function createDebuggingService(options: ServiceOptions) {
               metadata: {
                 sessionId: session.id,
                 operationId: operation.id,
-                nodePath: parameter.nodePath,
+                protocol,
+                nodePath,
                 requestedValue: input.value,
                 previousValue,
                 readbackValue: operation.readbackValue,
@@ -660,11 +722,17 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
+        const protocol = session.protocol ?? defaultDebugConnectionProtocol;
+        const gateway = gatewayRegistry.requireGateway(protocol);
         await requireDeviceLease(tx, auth, session);
 
         const operations: NodeOperationRecord[] = [];
         for (const entry of snapshot.entries) {
-          const result = await withGatewaySpan("rollback", { entryCount: snapshot.entries.length }, async (spanAttributes) => {
+          const entryProtocol = entry.protocol ?? protocol;
+          if (entryProtocol !== protocol) {
+            throw new ApiError("VALIDATION_FAILED", "Snapshot protocol does not match the rollback session.", 400);
+          }
+          const result = await withGatewaySpan("rollback", { entryCount: snapshot.entries.length, protocol }, async (spanAttributes) => {
             try {
               const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath: entry.nodePath, value: entry.previousValue, readBack: true });
               spanAttributes.status = writeStatus(gatewayResult);
@@ -683,6 +751,7 @@ export function createDebuggingService(options: ServiceOptions) {
               projectId: session.projectId,
               sessionId: session.id,
               parameterId: entry.parameterId,
+              protocol,
               nodePath: entry.nodePath,
               operationType: "rollback",
               status,
@@ -709,8 +778,8 @@ export function createDebuggingService(options: ServiceOptions) {
           severity: failed ? "error" : "info",
           message: failed ? "Snapshot rollback failed." : "Snapshot rollback succeeded.",
           metadata: failed
-            ? { snapshotId: claimedSnapshot.id, failures: operations.filter((operation) => operation.status !== "succeeded") }
-            : { snapshotId: claimedSnapshot.id, operationCount: operations.length }
+            ? { snapshotId: claimedSnapshot.id, protocol, failures: operations.filter((operation) => operation.status !== "succeeded") }
+            : { snapshotId: claimedSnapshot.id, protocol, operationCount: operations.length }
         });
 
         await writeAudit(
@@ -724,7 +793,7 @@ export function createDebuggingService(options: ServiceOptions) {
               severity: failed ? "High" : "Medium",
               targetType: "debug-snapshot",
               targetId: claimedSnapshot.id,
-              metadata: { sessionId: session.id, operationIds: operations.map((operation) => operation.id), failed }
+              metadata: { sessionId: session.id, protocol, operationIds: operations.map((operation) => operation.id), failed }
             },
             context
           )

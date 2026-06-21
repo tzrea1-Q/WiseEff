@@ -149,6 +149,52 @@ describe("debugging repository", () => {
     });
   });
 
+  it("can return disabled parameter node bindings when explicitly requested", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "binding-param-1-adb",
+          organization_id: "org-1",
+          project_id: "aurora",
+          parameter_id: "param-1",
+          protocol: "adb",
+          node_path: "/sys/adb/current",
+          access_mode: "RW",
+          enabled: false,
+          notes: "temporarily disabled",
+          created_at: timestamp,
+          updated_at: timestamp
+        }
+      ]
+    ]);
+
+    const binding = await getDebugParameterNodeBinding(db, {
+      organizationId: "org-1",
+      parameterId: "param-1",
+      protocol: "adb",
+      includeDisabled: true
+    });
+
+    expect(calls[0].text).not.toContain("enabled = true");
+    expect(binding).toMatchObject({
+      parameterId: "param-1",
+      protocol: "adb",
+      enabled: false
+    });
+  });
+
+  it("keeps parameter node binding lookup enabled-only by default", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await getDebugParameterNodeBinding(db, {
+      organizationId: "org-1",
+      parameterId: "param-1",
+      protocol: "adb"
+    });
+
+    expect(calls[0].text).toContain("enabled = true");
+  });
+
   it("listDebugDevices filters by organization and project", async () => {
     const { db, calls } = createFakeDb([
       [

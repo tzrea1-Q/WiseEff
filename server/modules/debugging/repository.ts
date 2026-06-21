@@ -442,7 +442,7 @@ export async function updateDebugParameterValues(
 
 export async function getDebugParameterNodeBinding(
   db: Queryable,
-  input: { organizationId: string; parameterId: string; protocol: DebugConnectionProtocol }
+  input: { organizationId: string; parameterId: string; protocol: DebugConnectionProtocol; includeDisabled?: boolean }
 ): Promise<DebugParameterNodeBindingRecord | null> {
   const result = await db.query<DebugParameterNodeBindingRow>(
     `
@@ -451,7 +451,7 @@ export async function getDebugParameterNodeBinding(
     where organization_id = $1
       and parameter_id = $2
       and protocol = $3
-      and enabled = true
+      ${input.includeDisabled ? "" : "and enabled = true"}
     limit 1
     `,
     [input.organizationId, input.parameterId, input.protocol]

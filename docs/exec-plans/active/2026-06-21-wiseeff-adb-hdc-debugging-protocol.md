@@ -1036,7 +1036,7 @@ Expected: commit succeeds.
 - Modify: `server/modules/debugging/routes.test.ts`
 - Modify: `server/app.ts`
 
-- [ ] **Step 1: Write service tests for ADB protocol and bindings**
+- [x] **Step 1: Write service tests for ADB protocol and bindings**
 
 Add cases to `server/modules/debugging/service.test.ts`:
 
@@ -1122,7 +1122,7 @@ it("rejects writes when the session protocol binding is missing", async () => {
 
 Adjust fake result ordering to match repository queries during implementation.
 
-- [ ] **Step 2: Write route tests for protocol fields**
+- [x] **Step 2: Write route tests for protocol fields**
 
 Add to `server/modules/debugging/routes.test.ts`:
 
@@ -1163,7 +1163,7 @@ it("accepts binding-aware read requests without nodePath", async () => {
 });
 ```
 
-- [ ] **Step 3: Run service and route tests and verify failure**
+- [x] **Step 3: Run service and route tests and verify failure**
 
 Run:
 
@@ -1173,7 +1173,7 @@ npm run test:server -- server/modules/debugging/service.test.ts server/modules/d
 
 Expected: FAIL because service still accepts a single gateway and uses parameter node path directly.
 
-- [ ] **Step 4: Update service options**
+- [x] **Step 4: Update service options**
 
 In `server/modules/debugging/service.ts`, replace the required `gateway` option with registry support while preserving tests that pass one gateway:
 
@@ -1200,7 +1200,7 @@ const registry = options.gatewayRegistry ?? createDebugDeviceGatewayRegistry({
 
 Use the final code pattern inside `createDebuggingService`, not a top-level `registry` variable.
 
-- [ ] **Step 5: Add binding helpers in service**
+- [x] **Step 5: Add binding helpers in service**
 
 Add:
 
@@ -1228,7 +1228,7 @@ async function requireProtocolBinding(
 
 Update `ensureReadable` and `ensureWritable` to accept a binding access mode and node path instead of `parameter.nodePath`.
 
-- [ ] **Step 6: Route detect and session creation through protocol**
+- [x] **Step 6: Route detect and session creation through protocol**
 
 In `detectTargets`, call:
 
@@ -1254,7 +1254,7 @@ Audit metadata must include `protocol`.
 
 In `createSession`, require `target.protocol === input.protocol` and create the session with that protocol.
 
-- [ ] **Step 7: Route read/write/rollback through session protocol and binding**
+- [x] **Step 7: Route read/write/rollback through session protocol and binding**
 
 For `readNode`:
 
@@ -1282,7 +1282,7 @@ if (entry.protocol && entry.protocol !== session.protocol) {
 }
 ```
 
-- [ ] **Step 8: Update routes/app wiring**
+- [x] **Step 8: Update routes/app wiring**
 
 In `server/modules/debugging/routes.ts`, accept `debugGatewayRegistry?: DebugDeviceGatewayRegistry` and pass it to `createDebuggingService`.
 
@@ -1294,7 +1294,7 @@ debugGatewayRegistry?: DebugDeviceGatewayRegistry;
 
 Pass both `debugGateway` and `debugGatewayRegistry` through to `registerDebuggingRoutes`.
 
-- [ ] **Step 9: Run service and route tests**
+- [x] **Step 9: Run service and route tests**
 
 Run:
 
@@ -1304,7 +1304,7 @@ npm run test:server -- server/modules/debugging/service.test.ts server/modules/d
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 Run:
 

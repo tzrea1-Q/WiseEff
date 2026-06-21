@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWiseEffServer } from "./app";
 import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
+import type { DebugDeviceGateway } from "./modules/debugging/gateway";
+import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { createMetricsRegistry } from "./observability/metrics";
 import type { Database, QueryResult } from "./shared/database/client";
 import { createHttpServer } from "./shared/http/server";
@@ -96,6 +98,103 @@ function createObservabilityDb() {
   };
 
   return db;
+}
+
+function createDebuggingDetectDb() {
+  const calls: QueryCall[] = [];
+  const db: Database = {
+    query: async <Row,>(text: string, values: unknown[] = []): Promise<QueryResult<Row>> => {
+      calls.push({ text, values });
+
+      if (text.includes("from users")) {
+        return {
+          rows: [
+            {
+              user_id: "development-user",
+              organization_id: "org-1",
+              organization_name: "ChargeLab",
+              name: "Development User",
+              email: "dev@example.com",
+              title: "Developer",
+              is_active: true,
+              project_id: "aurora",
+              role_id: "software-user"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+
+      if (text.includes("from projects")) {
+        return {
+          rows: [{ id: "aurora", name: "Aurora", code: "AUR" }] as Row[],
+          rowCount: 1
+        };
+      }
+
+      if (text.includes("from debugging_devices")) {
+        return {
+          rows: [
+            {
+              id: "device-1",
+              organization_id: "org-1",
+              project_id: "aurora",
+              name: "ADB lab device",
+              transport: "adb",
+              status: "online",
+              firmware: "adb-1",
+              last_seen_at: "2026-05-27T10:00:00.000Z"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+
+      if (text.includes("insert into debugging_targets")) {
+        return {
+          rows: [
+            {
+              id: values[3],
+              organization_id: values[0],
+              project_id: values[1],
+              device_id: values[2],
+              protocol: values[4],
+              target_ref: values[5],
+              label: values[6],
+              status: values[7],
+              detected_at: "2026-05-27T10:00:00.000Z"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+
+      return { rows: [], rowCount: 0 };
+    },
+    transaction: async (fn) => fn(db)
+  };
+
+  return { calls, db };
+}
+
+function createAdbDebugGateway(): DebugDeviceGateway {
+  return {
+    detectTargets: vi.fn(async () => ({
+      ok: true,
+      targets: [
+        {
+          id: "adb:emulator-5554",
+          deviceId: "device-1",
+          protocol: "adb" as const,
+          targetRef: "emulator-5554",
+          label: "ADB target emulator-5554",
+          online: true
+        }
+      ]
+    })),
+    readNode: vi.fn(),
+    writeNode: vi.fn()
+  };
 }
 
 function createProductionIdentityDb(input: {
@@ -362,6 +461,27 @@ describe("WiseEff API", () => {
 
     expect(response.status).toBe(200);
     expect(response.bodyText).toContain('wiseeff_log_analysis_job_duration_ms_sum{stage="report",status="complete"} 42');
+  });
+
+  it("wires the debugging gateway registry through app-level routes", async () => {
+    const { db } = createDebuggingDetectDb();
+    const adbGateway = createAdbDebugGateway();
+
+    const response = await requestJson<{ items: Array<{ protocol: string; targetRef: string }> }>(
+      createWiseEffServer({
+        db,
+        debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway })
+      }),
+      "/api/v1/debugging/targets/detect",
+      {
+        method: "POST",
+        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.items).toEqual([expect.objectContaining({ protocol: "adb", targetRef: "emulator-5554" })]);
+    expect(adbGateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
   });
 
   it("renders labeled Pi Agent provider readiness metrics when evidence is available", async () => {
