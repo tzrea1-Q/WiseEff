@@ -187,7 +187,6 @@ async function cleanupDebuggingAcceptanceState(client: Client, projectId: string
   await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
   await client.query("delete from node_operations where project_id = $1", [projectId]);
   await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
-  await client.query("delete from debug_device_leases where project_id = $1", [projectId]);
   await client.query("delete from debugging_sessions where project_id = $1", [projectId]);
 }
 
@@ -247,7 +246,8 @@ async function postJson<T>(
   request: APIRequestContext,
   path: string,
   data: Record<string, unknown>,
-  userId: string
+  userId: string,
+  responseSummary: (body: T) => string
 ) {
   const response = await request.post(apiRoute(path), {
     data,
@@ -265,9 +265,41 @@ async function postJson<T>(
     summary: summarizeApiResponse(response, {
       method: "POST",
       path,
-      responseSummary: JSON.stringify(body)
+      responseSummary: body ? responseSummary(body as T) : "body=absent"
     })
   };
+}
+
+function operationSummary(operation: NodeOperationDto) {
+  return [
+    `operation=${operation.id}`,
+    `status=${operation.status}`,
+    `verified=${operation.verified}`,
+    `snapshot=${operation.snapshotId ? "present" : "absent"}`,
+    `failure=${operation.failureReason ? "present" : "absent"}`
+  ].join("; ");
+}
+
+function operationsSummary(operations: NodeOperationDto[]) {
+  return `operations=${operations.length}; ${operations.map(operationSummary).join("; ")}`;
+}
+
+function compactAuditMetadata(metadata: Record<string, unknown> | undefined) {
+  if (!metadata) {
+    return undefined;
+  }
+
+  return JSON.stringify({
+    protocol: metadata.protocol,
+    operationId: typeof metadata.operationId === "string" ? metadata.operationId : undefined,
+    sessionId: typeof metadata.sessionId === "string" ? metadata.sessionId : undefined,
+    snapshotId: typeof metadata.snapshotId === "string" ? metadata.snapshotId : undefined,
+    targetCount: typeof metadata.targetCount === "number" ? metadata.targetCount : undefined,
+    operationCount: typeof metadata.operationCount === "number" ? metadata.operationCount : undefined,
+    verified: typeof metadata.verified === "boolean" ? metadata.verified : undefined,
+    failed: typeof metadata.failed === "boolean" ? metadata.failed : undefined,
+    failureReason: metadata.failureReason ? "present" : undefined
+  });
 }
 
 async function getAuditEvents(request: APIRequestContext, userId: string) {
@@ -301,7 +333,7 @@ function summarizeAudit(events: AuditEventDto[], kind: string, targetId: string 
     action: event!.action,
     targetId: event!.targetId,
     requestId: event!.traceId,
-    metadataSummary: event!.metadata ? JSON.stringify(event!.metadata) : undefined
+    metadataSummary: compactAuditMetadata(event!.metadata)
   };
 }
 
@@ -319,6 +351,8 @@ async function expectAdbUiReady(page: Page, config: AdbSmokeConfig) {
 }
 
 test.describe("ADB device-lab full-chain loop", () => {
+  test.setTimeout(180_000);
+
   test("detects and reads a real ADB target, with optional write/readback/rollback", async ({ page, request }, testInfo) => {
     // @acceptance ADB-LAB-001
     // @operation ADB-LAB-001
@@ -342,7 +376,8 @@ test.describe("ADB device-lab full-chain loop", () => {
       request,
       "/api/v1/debugging/targets/detect",
       { projectId: config.projectId, deviceId: config.deviceId, protocol: "adb" },
-      config.userId
+      config.userId,
+      (body) => `targets=${body.items.length}; detectedIds=${body.items.map((item) => item.id).join(",")}`
     );
     apiSummaries.push(detected.summary);
     const target = detected.body.items.find((item) => item.targetRef === config.targetRef);
@@ -359,7 +394,8 @@ test.describe("ADB device-lab full-chain loop", () => {
       request,
       "/api/v1/debugging/sessions",
       { projectId: config.projectId, deviceId: config.deviceId, targetId: target!.id, protocol: "adb" },
-      config.userId
+      config.userId,
+      (body) => `session=${body.item.id}; protocol=${body.item.protocol ?? "unset"}`
     );
     apiSummaries.push(sessionResponse.summary);
     if (sessionResponse.body.item.protocol) {
@@ -374,7 +410,8 @@ test.describe("ADB device-lab full-chain loop", () => {
         parameterId: config.parameterId,
         nodePath: config.nodePath
       },
-      config.userId
+      config.userId,
+      (body) => operationSummary(body.operation)
     );
     apiSummaries.push(readResponse.summary);
     expect(readResponse.body.operation.status, `ADB read failed: ${readResponse.body.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
@@ -402,7 +439,8 @@ test.describe("ADB device-lab full-chain loop", () => {
             readBack: true,
             confirmationToken: config.confirmWrite
           },
-          config.userId
+          config.userId,
+          (body) => operationSummary(body.operation)
         );
         apiSummaries.push(writeResponse.summary);
         snapshotId = writeResponse.body.operation.snapshotId;
@@ -420,7 +458,8 @@ test.describe("ADB device-lab full-chain loop", () => {
             request,
             `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`,
             { confirmationToken: config.confirmRollback },
-            config.userId
+            config.userId,
+            (body) => `${operationsSummary(body.operations)}; snapshot=${body.snapshot.id}; snapshotStatus=${body.snapshot.status}`
           );
           apiSummaries.push(rollbackResponse.summary);
         }
@@ -445,7 +484,8 @@ test.describe("ADB device-lab full-chain loop", () => {
           parameterId: config.parameterId,
           nodePath: config.nodePath
         },
-        config.userId
+        config.userId,
+        (body) => operationSummary(body.operation)
       );
       apiSummaries.push(finalReadResponse.summary);
       expect(finalReadResponse.body.operation.status).toBe("succeeded");
@@ -489,7 +529,7 @@ test.describe("ADB device-lab full-chain loop", () => {
           ADB_SMOKE_DEVICE_ID: config.deviceId,
           ADB_SMOKE_TARGET_REF: config.targetRef,
           ADB_SMOKE_PARAMETER_ID: config.parameterId,
-          ADB_SMOKE_NODE_PATH: config.nodePath
+          ADB_SMOKE_NODE_PATH: "set"
         }
       },
       reproduction: {
