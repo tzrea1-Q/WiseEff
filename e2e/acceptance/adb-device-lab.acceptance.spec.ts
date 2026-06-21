@@ -48,6 +48,11 @@ type AuditEventDto = {
   metadata?: Record<string, unknown>;
 };
 
+type ParsedAdbDevice = {
+  serial: string;
+  state: AdbDeviceState;
+};
+
 type AdbSmokeConfig = {
   projectId: string;
   deviceId: string;
@@ -90,6 +95,40 @@ function parseAdbDevices(stdout: string) {
     .filter((item) => Boolean(item.serial));
 }
 
+function observedAdbDevices(devices: ParsedAdbDevice[]) {
+  return devices.map((item) => `${item.serial}:${item.state}`).join(", ") || "(none)";
+}
+
+function validateSingleReadyAdbTarget(targetRef: string, devices: ParsedAdbDevice[]) {
+  const observed = observedAdbDevices(devices);
+  const matches = devices.filter((item) => item.serial === targetRef);
+  if (matches.length !== 1) {
+    throw new Error(
+      `ADB target ${targetRef} must appear exactly once in adb devices. Observed: ${observed}`
+    );
+  }
+  if (matches[0].state !== "device") {
+    throw new Error(`ADB target ${targetRef} is ${matches[0].state}; expected device. Observed: ${observed}`);
+  }
+
+  const readyDevices = devices.filter((item) => item.state === "device");
+  if (readyDevices.length !== 1) {
+    throw new Error(`ADB device-lab acceptance requires exactly one ready ADB device. Observed: ${observed}`);
+  }
+}
+
+test.describe("ADB device-lab preflight validation", () => {
+  test("rejects additional ready ADB devices before a hardware run", () => {
+    expect(() =>
+      validateSingleReadyAdbTarget("adb-target-1", [
+        { serial: "adb-target-1", state: "device" },
+        { serial: "adb-target-2", state: "device" },
+        { serial: "adb-target-3", state: "offline" }
+      ])
+    ).toThrow(/exactly one ready ADB device.*adb-target-1:device.*adb-target-2:device.*adb-target-3:offline/s);
+  });
+});
+
 function requireSingleReadyAdbTarget(targetRef: string) {
   const available = adbCommandAvailable();
   if (!available.ok) {
@@ -110,17 +149,7 @@ function requireSingleReadyAdbTarget(targetRef: string) {
   }
 
   const devices = parseAdbDevices(stdout);
-  const matches = devices.filter((item) => item.serial === targetRef);
-  if (matches.length !== 1) {
-    throw new Error(
-      `ADB target ${targetRef} must appear exactly once in adb devices. Observed: ${devices
-        .map((item) => `${item.serial}:${item.state}`)
-        .join(", ") || "(none)"}`
-    );
-  }
-  if (matches[0].state !== "device") {
-    throw new Error(`ADB target ${targetRef} is ${matches[0].state}; expected device.`);
-  }
+  validateSingleReadyAdbTarget(targetRef, devices);
 }
 
 function runSeedScript(script: string) {
@@ -284,6 +313,54 @@ function operationsSummary(operations: NodeOperationDto[]) {
   return `operations=${operations.length}; ${operations.map(operationSummary).join("; ")}`;
 }
 
+function stringValueShape(value: string | null | undefined) {
+  return typeof value === "string" ? `string:length=${value.length}` : "absent";
+}
+
+function readValueEvidence(value: string | null | undefined, pattern: RegExp | undefined) {
+  const patternMatched = typeof value === "string" && pattern ? new RegExp(pattern.source, pattern.flags).test(value) : false;
+
+  return [
+    `readValue=${stringValueShape(value)}`,
+    pattern
+      ? `readPattern=configured; readPatternMatched=${patternMatched ? "true" : "false"}`
+      : "readPattern=not-configured"
+  ].join("; ");
+}
+
+function writeModeEvidence(input: {
+  enabled: boolean;
+  writeValue?: string;
+  writeOperation?: NodeOperationDto;
+  rollbackOperation?: NodeOperationDto;
+  finalReadOperation?: NodeOperationDto;
+}) {
+  if (!input.enabled) {
+    return [
+      "writeMode=disabled",
+      `writeValue=${input.writeValue ? stringValueShape(input.writeValue) : "not-configured"}`,
+      "readback=not-run",
+      "rollback=not-run",
+      "finalRestore=not-run"
+    ].join("; ");
+  }
+
+  return [
+    "writeMode=enabled",
+    `writeValue=${stringValueShape(input.writeValue)}`,
+    `writeStatus=${input.writeOperation?.status ?? "not-run"}`,
+    `writeVerified=${input.writeOperation?.verified ?? "not-run"}`,
+    `writeReadback=${stringValueShape(input.writeOperation?.readbackValue)}`,
+    `rollbackStatus=${input.rollbackOperation?.status ?? "not-run"}`,
+    `rollbackVerified=${input.rollbackOperation?.verified ?? "not-run"}`,
+    `rollbackRequestedValue=${stringValueShape(input.rollbackOperation?.requestedValue)}`,
+    `rollbackReadback=${stringValueShape(input.rollbackOperation?.readbackValue)}`,
+    `finalReadStatus=${input.finalReadOperation?.status ?? "not-run"}`,
+    `finalReadValue=${stringValueShape(input.finalReadOperation?.readValue)}`,
+    `finalRestoration=${input.finalReadOperation ? "confirmed-by-shape-and-equality" : "not-run"}`
+  ].join("; ");
+}
+
 function compactAuditMetadata(metadata: Record<string, unknown> | undefined) {
   if (!metadata) {
     return undefined;
@@ -369,6 +446,7 @@ test.describe("ADB device-lab full-chain loop", () => {
     requireSingleReadyAdbTarget(config.targetRef);
     await prepareAdbAcceptanceState(config.projectId);
     await expectAdbUiReady(page, config);
+    const viewport = page.viewportSize();
 
     const apiSummaries: ReturnType<typeof summarizeApiResponse>[] = [];
 
@@ -417,14 +495,19 @@ test.describe("ADB device-lab full-chain loop", () => {
     expect(readResponse.body.operation.status, `ADB read failed: ${readResponse.body.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
     expect(readResponse.body.operation.readValue, "ADB read did not return a value.").toEqual(expect.any(String));
     if (config.readValuePattern) {
-      expect(readResponse.body.operation.readValue ?? "").toMatch(config.readValuePattern);
+      expect(
+        new RegExp(config.readValuePattern.source, config.readValuePattern.flags).test(readResponse.body.operation.readValue ?? ""),
+        `ADB read value did not match configured regex; observed ${stringValueShape(readResponse.body.operation.readValue)}.`
+      ).toBe(true);
     }
     const originalReadValue = readResponse.body.operation.readValue!;
+    const readEvidence = readValueEvidence(originalReadValue, config.readValuePattern);
 
     let snapshotId: string | null = null;
+    let writeOperation: NodeOperationDto | undefined;
     let rollbackResponse: { body: { operations: NodeOperationDto[]; snapshot: DebugSnapshotDto }; summary: ReturnType<typeof summarizeApiResponse> } | null = null;
     let finalReadResponse: { body: { operation: NodeOperationDto }; summary: ReturnType<typeof summarizeApiResponse> } | null = null;
-    let writeNotes = "Write/readback/rollback skipped because ADB_SMOKE_ENABLE_WRITE is not true or ADB_SMOKE_WRITE_VALUE is not set.";
+    let writeEvidence = writeModeEvidence({ enabled: config.writeEnabled, writeValue: config.writeValue });
 
     if (config.writeEnabled) {
       try {
@@ -443,6 +526,7 @@ test.describe("ADB device-lab full-chain loop", () => {
           (body) => operationSummary(body.operation)
         );
         apiSummaries.push(writeResponse.summary);
+        writeOperation = writeResponse.body.operation;
         snapshotId = writeResponse.body.operation.snapshotId;
 
         expect(writeResponse.body.operation.status, `ADB write failed: ${writeResponse.body.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
@@ -451,7 +535,10 @@ test.describe("ADB device-lab full-chain loop", () => {
           "ADB write succeeded without operation.snapshotId, so the test cannot safely restore hardware through snapshot rollback."
         ).toEqual(expect.any(String));
         expect(writeResponse.body.operation.verified).toBe(true);
-        expect(writeResponse.body.operation.readbackValue).toBe(config.writeValue);
+        expect(
+          writeResponse.body.operation.readbackValue === config.writeValue,
+          `ADB write readback mismatch; requested ${stringValueShape(config.writeValue)} and readback ${stringValueShape(writeResponse.body.operation.readbackValue)}.`
+        ).toBe(true);
       } finally {
         if (snapshotId) {
           rollbackResponse = await postJson<{ operations: NodeOperationDto[]; snapshot: DebugSnapshotDto }>(
@@ -472,8 +559,14 @@ test.describe("ADB device-lab full-chain loop", () => {
         `ADB snapshot rollback failed: ${rollbackResponse!.body.operations[0].failureReason ?? "no failure reason"}`
       ).toBe("succeeded");
       expect(rollbackResponse!.body.operations[0].verified).toBe(true);
-      expect(rollbackResponse!.body.operations[0].requestedValue).toBe(originalReadValue);
-      expect(rollbackResponse!.body.operations[0].readbackValue).toBe(originalReadValue);
+      expect(
+        rollbackResponse!.body.operations[0].requestedValue === originalReadValue,
+        `ADB rollback requested value mismatch; original ${stringValueShape(originalReadValue)} and requested ${stringValueShape(rollbackResponse!.body.operations[0].requestedValue)}.`
+      ).toBe(true);
+      expect(
+        rollbackResponse!.body.operations[0].readbackValue === originalReadValue,
+        `ADB rollback readback mismatch; original ${stringValueShape(originalReadValue)} and readback ${stringValueShape(rollbackResponse!.body.operations[0].readbackValue)}.`
+      ).toBe(true);
       expect(rollbackResponse!.body.snapshot.status).toBe("consumed");
 
       finalReadResponse = await postJson<{ operation: NodeOperationDto }>(
@@ -489,8 +582,17 @@ test.describe("ADB device-lab full-chain loop", () => {
       );
       apiSummaries.push(finalReadResponse.summary);
       expect(finalReadResponse.body.operation.status).toBe("succeeded");
-      expect(finalReadResponse.body.operation.readValue).toBe(originalReadValue);
-      writeNotes = `Write/readback/rollback enabled; snapshot ${snapshotId} restored original ADB node value.`;
+      expect(
+        finalReadResponse.body.operation.readValue === originalReadValue,
+        `ADB final read mismatch; original ${stringValueShape(originalReadValue)} and final ${stringValueShape(finalReadResponse.body.operation.readValue)}.`
+      ).toBe(true);
+      writeEvidence = writeModeEvidence({
+        enabled: config.writeEnabled,
+        writeValue: config.writeValue,
+        writeOperation,
+        rollbackOperation: rollbackResponse!.body.operations[0],
+        finalReadOperation: finalReadResponse.body.operation
+      });
     }
 
     const audit = await getAuditEvents(request, config.userId);
@@ -541,10 +643,12 @@ test.describe("ADB device-lab full-chain loop", () => {
         ]
       },
       notes: [
-        `Frontend selected ADB protocol for project ${config.projectId}; real detect/session/read used backend API with explicit deviceId ${config.deviceId}.`,
-        `Read operation returned a string for parameter ${config.parameterId}.`,
-        writeNotes,
-        finalReadResponse ? "Final read confirmed the original value after rollback." : "No final write-mode read was required."
+        `Browser route=/node-debugging?project=${config.projectId}; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
+        "Console/network diagnostics: this spec relies on Playwright request API summaries, default retain-on-failure traces, and operation evidence artifacts; no extra browser console/network collector is installed in this spec.",
+        `Frontend selected the ADB protocol only; the current frontend detect path cannot pass deviceId, so real detect/session/read/write/rollback evidence comes from Playwright request API calls with explicit deviceId=${config.deviceId} and protocol=adb.`,
+        `Read evidence for parameter ${config.parameterId}: ${readEvidence}.`,
+        `Write evidence for parameter ${config.parameterId}: ${writeEvidence}.`,
+        finalReadResponse ? "Final restoration was confirmed by equality with the original read value without recording the raw value." : "Read-only mode did not call write, rollback, or final restoration read."
       ].join(" ")
     });
   });
