@@ -10,6 +10,7 @@ export type ApiErrorCode =
   | "INVALID_APPROVAL_STATE"
   | "AGENT_TOOL_FAILED"
   | "DEVICE_UNAVAILABLE"
+  | "PROTOCOL_UNSUPPORTED"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {
