@@ -8,13 +8,14 @@ import type {
   DebugSnapshotStatus,
   DebugTargetStatus
 } from "./status";
+import type { DebugConnectionProtocol } from "./protocol";
 
 export type DebugDeviceRecord = {
   id: string;
   organizationId: string;
   projectId: string;
   name: string;
-  transport: "simulator" | "hdc";
+  transport: "simulator" | "hdc" | "adb" | "multi";
   status: DebugDeviceStatus;
   firmware: string;
   lastSeenAt: string | null;
@@ -27,6 +28,7 @@ export type DebugTargetRecord = {
   deviceId: string;
   targetRef: string;
   label: string;
+  protocol: DebugConnectionProtocol;
   status: DebugTargetStatus;
   detectedAt: string;
 };
@@ -51,12 +53,32 @@ export type DebugParameterRecord = {
   sortOrder: number;
 };
 
+export type DebugParameterNodeBindingRecord = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  parameterId: string;
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugAccessMode;
+  enabled: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DebugParameterWithBindingsRecord = DebugParameterRecord & {
+  selectedBinding: DebugParameterNodeBindingRecord | null;
+  bindings: DebugParameterNodeBindingRecord[];
+};
+
 export type DebugSessionRecord = {
   id: string;
   organizationId: string;
   projectId: string;
   deviceId: string;
   targetId: string;
+  protocol: DebugConnectionProtocol;
   actorUserId: string;
   status: DebugSessionStatus;
   startedAt: string;
@@ -76,6 +98,7 @@ export type DebugDeviceLeaseRecord = {
 
 export type DebugSnapshotEntry = {
   parameterId: string;
+  protocol?: DebugConnectionProtocol;
   nodePath: string;
   previousValue: string;
   targetValue: string;
@@ -99,6 +122,7 @@ export type NodeOperationRecord = {
   projectId: string;
   sessionId: string;
   parameterId: string | null;
+  protocol: DebugConnectionProtocol;
   nodePath: string;
   operationType: DebugOperationType;
   status: DebugOperationStatus;

@@ -1,6 +1,9 @@
+import type { DebugConnectionProtocol } from "@/domain/debugging/types";
+
 export type DeviceTarget = {
   id: string;
   deviceId?: string;
+  protocol?: DebugConnectionProtocol;
   label: string;
   targetRef?: string;
   status?: "detected" | "lost";
@@ -20,6 +23,7 @@ export type DebugSessionSnapshot = {
   projectId: string;
   deviceId: string;
   targetId: string;
+  protocol?: DebugConnectionProtocol;
   status: "active" | "closed";
   startedAt: string;
   endedAt: string | null;
@@ -37,6 +41,7 @@ export type NodeOperationSnapshot = {
   id: string;
   sessionId: string;
   parameterId?: string;
+  protocol?: DebugConnectionProtocol;
   nodePath: string;
   operationType: "detect" | "read" | "write" | "rollback";
   status: "pending" | "succeeded" | "failed" | "readback_mismatch";
@@ -54,13 +59,14 @@ export type NodeOperationSnapshot = {
 export type DetectTargetsInput = {
   projectId?: string;
   deviceId?: string;
+  protocol?: DebugConnectionProtocol;
 };
 
 export type ReadNodeInput = {
   sessionId?: string;
   target?: string;
   parameterId?: string;
-  nodePath: string;
+  nodePath?: string;
 };
 
 export type NodeReadResult = {
@@ -76,7 +82,7 @@ export type WriteNodeInput = {
   sessionId?: string;
   target?: string;
   parameterId?: string;
-  nodePath: string;
+  nodePath?: string;
   value: string;
   readBack: boolean;
   confirmationToken?: string;
@@ -100,9 +106,9 @@ export type RollbackSnapshotInput = {
 
 export interface DebuggingGateway {
   listDevices?(): Promise<DebugDeviceSnapshot[]>;
-  listParameters?(query?: { projectId?: string }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listParameters?(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
   detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]>;
-  createSession?(input: { projectId: string; deviceId: string; targetId: string }): Promise<DebugSessionSnapshot>;
+  createSession?(input: { projectId: string; deviceId: string; targetId: string; protocol?: DebugConnectionProtocol }): Promise<DebugSessionSnapshot>;
   getSession?(sessionId: string): Promise<DebugSessionSnapshot | null>;
   listSessionEvents?(sessionId: string): Promise<NodeOperationSnapshot[]>;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;

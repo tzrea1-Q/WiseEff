@@ -19,8 +19,9 @@ const rawEnvSchema = z.object({
   OBJECT_STORAGE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
   OBJECT_STORAGE_REGION: z.string().optional(),
-  DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator", "hdc"]).default("simulator"),
+  DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator", "hdc", "adb", "multi"]).default("simulator"),
   HDC_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
+  ADB_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: z
     .enum(["true", "false"])
     .default("false")
@@ -82,11 +83,11 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   }
   if (
     env.NODE_ENV === "production" &&
-    env.DEBUG_DEVICE_GATEWAY_MODE !== "hdc" &&
+    !["hdc", "adb", "multi"].includes(env.DEBUG_DEVICE_GATEWAY_MODE) &&
     !env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION
   ) {
     throw new Error(
-      "DEBUG_DEVICE_GATEWAY_MODE=hdc is required when NODE_ENV=production. Set DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true only for non-customer staging environments that intentionally run the simulator."
+      "DEBUG_DEVICE_GATEWAY_MODE=hdc, adb, or multi is required when NODE_ENV=production. Set DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true only for non-customer staging environments that intentionally run the simulator."
     );
   }
   if (env.AUTH_MODE === "production" && env.AUTH_PROVIDER === "hmac" && (!env.AUTH_TOKEN_ISSUER?.trim() || !env.AUTH_TOKEN_HMAC_SECRET?.trim())) {

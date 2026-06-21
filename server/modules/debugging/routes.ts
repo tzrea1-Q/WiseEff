@@ -6,6 +6,7 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { DebugDeviceGateway } from "./gateway";
+import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import {
   createDebugSessionBodySchema,
   detectTargetsBodySchema,
@@ -36,12 +37,10 @@ function requireDb(db: Database | undefined) {
   return db;
 }
 
-function requireDebugGateway(debugGateway: DebugDeviceGateway | undefined) {
-  if (!debugGateway) {
+function requireDebugGatewayAccess(debugGateway: DebugDeviceGateway | undefined, debugGatewayRegistry: DebugDeviceGatewayRegistry | undefined) {
+  if (!debugGateway && !debugGatewayRegistry) {
     throw new ApiError("INTERNAL_ERROR", "Debug device gateway is required for debugging routes.", 500);
   }
-
-  return debugGateway;
 }
 
 function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid debugging route input.") {
@@ -60,18 +59,19 @@ function normalizeArray<T>(value: T | T[] | undefined) {
 function serviceFrom(options: {
   db?: Database;
   debugGateway?: DebugDeviceGateway;
+  debugGatewayRegistry?: DebugDeviceGatewayRegistry;
   debugGatewayMode?: "simulator" | "hdc" | string;
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
   tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = requireDb(options.db);
-  const gateway = requireDebugGateway(options.debugGateway);
+  requireDebugGatewayAccess(options.debugGateway, options.debugGatewayRegistry);
   return {
     db,
-    gateway,
     service: createDebuggingService({
       db,
-      gateway,
+      gateway: options.debugGateway,
+      gatewayRegistry: options.debugGatewayRegistry,
       gatewayMode: options.debugGatewayMode,
       metrics: options.metrics,
       tracing: options.tracing
@@ -98,6 +98,7 @@ export function registerDebuggingRoutes(
   options: {
     db?: Database;
     debugGateway?: DebugDeviceGateway;
+    debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     debugGatewayMode?: "simulator" | "hdc" | string;
     metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
     tracing?: Pick<TracingBoundary, "withSpan">;

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
@@ -11,11 +11,12 @@ const apiSession = {
   projectId: userState.activeProjectId,
   deviceId: "api-device-1",
   targetId: "api-target-1",
+  protocol: "hdc" as const,
   status: "active" as const,
   startedAt: "2026-05-27T09:00:00.000Z",
   endedAt: null
 };
-const apiTarget = { id: "api-target-1", deviceId: "api-device-1", label: "API Gateway Target" };
+const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
 function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
   return {
@@ -109,6 +110,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.localStorage.clear();
   window.history.replaceState(null, "", "/");
 });
 
@@ -117,8 +119,146 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions();
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
 
-    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId, { protocol: "hdc" }));
     expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
+  });
+
+  it("passes the selected protocol to API target detection", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/在线 · API Gateway Target/);
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /重新检测/ }).at(-1) as HTMLElement);
+
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
+      userState.activeProjectId,
+      { protocol: "adb" }
+    ));
+  });
+
+  it("clears the active session when switching protocol", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    expect(screen.getByText(/切换协议后需要重新检测设备/)).toBeInTheDocument();
+    expect(screen.getByText(/离线 · ADB 设备/)).toBeInTheDocument();
+  });
+
+  it("disables rows that are missing a binding for the selected protocol", () => {
+    const missingBindingState = {
+      ...userState,
+      debugParameters: [{
+        ...userState.debugParameters[0],
+        nodePath: "",
+        bindingStatus: "missing" as const,
+        selectedProtocol: "adb" as const
+      }]
+    };
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+
+    render(<NodeDebuggingPage state={missingBindingState} debuggingActions={debuggingActions} />);
+
+    expect(screen.getByText("未配置该协议节点")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
+  });
+
+  it("recomputes row binding availability when switching protocols", async () => {
+    const hdcOnlyParameter = {
+      ...userState.debugParameters[0],
+      nodePath: "/sys/hdc/input_current_limit",
+      accessMode: "RW" as const,
+      selectedProtocol: "hdc" as const,
+      bindingStatus: "configured" as const,
+      bindings: [{
+        protocol: "hdc" as const,
+        nodePath: "/sys/hdc/input_current_limit",
+        accessMode: "RW" as const,
+        enabled: true
+      }]
+    };
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+
+    render(<NodeDebuggingPage state={{ ...userState, debugParameters: [hdcOnlyParameter] }} debuggingActions={debuggingActions} />);
+
+    expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    expect(await screen.findByText("未配置该协议节点")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
+  });
+
+  it("does not reuse a selected binding from another protocol when full bindings are absent", async () => {
+    const hdcSelectedParameter = {
+      ...userState.debugParameters[0],
+      nodePath: "/sys/hdc/input_current_limit",
+      accessMode: "RW" as const,
+      selectedProtocol: "hdc" as const,
+      bindingStatus: "configured" as const
+    };
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+
+    render(<NodeDebuggingPage state={{ ...userState, debugParameters: [hdcSelectedParameter] }} debuggingActions={debuggingActions} />);
+
+    expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    expect(await screen.findByText("未配置该协议节点")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
+  });
+
+  it("ignores stale detect results after switching protocols", async () => {
+    const detect = createDeferred<{ session: typeof apiSession; target: typeof apiTarget }>();
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => detect.promise),
+      readNode: vi.fn()
+    });
+
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(
+      userState.activeProjectId,
+      { protocol: "hdc" }
+    ));
+
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await act(async () => {
+      detect.resolve({ session: apiSession, target: apiTarget });
+      await detect.promise;
+    });
+
+    expect(screen.queryByText(/在线 · API Gateway Target/)).not.toBeInTheDocument();
+    expect(screen.getByText(/离线 · ADB 设备/)).toBeInTheDocument();
+    expect(screen.getByText(/切换协议后需要重新检测设备/)).toBeInTheDocument();
+    expect(debuggingActions.readNode).not.toHaveBeenCalled();
+  });
+
+  it("keeps protocol switching usable when protocol storage is unavailable", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    expect(screen.getByRole("button", { name: "HDC" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    expect(screen.getByRole("button", { name: "ADB" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText(/离线 · ADB 设备/)).toBeInTheDocument();
   });
 
   it("uses API gateway actions to read initial readable node rows", async () => {

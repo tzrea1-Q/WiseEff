@@ -2,6 +2,8 @@ import "dotenv/config";
 import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
 import { createAgentProviderFromEnv } from "./modules/agent/providerRegistry";
+import { createAdbDebugDeviceGateway } from "./modules/debugging/adbGateway";
+import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { createHdcDebugDeviceGateway } from "./modules/debugging/hdcGateway";
 import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
@@ -16,10 +18,24 @@ const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing
 const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
 const agentProvider = createAgentProviderFromEnv(env);
+const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
+const adbGateway = createAdbDebugDeviceGateway({ timeoutMs: env.ADB_TIMEOUT_MS });
+const simulatorGateway = createSimulatorDebugDeviceGateway();
 const debugGateway =
   env.DEBUG_DEVICE_GATEWAY_MODE === "hdc"
-    ? createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS })
-    : createSimulatorDebugDeviceGateway();
+    ? hdcGateway
+    : env.DEBUG_DEVICE_GATEWAY_MODE === "adb"
+      ? adbGateway
+      : simulatorGateway;
+const debugGatewayRegistry = createDebugDeviceGatewayRegistry({
+  hdc:
+    env.DEBUG_DEVICE_GATEWAY_MODE === "hdc" || env.DEBUG_DEVICE_GATEWAY_MODE === "multi"
+      ? hdcGateway
+      : env.DEBUG_DEVICE_GATEWAY_MODE === "simulator"
+        ? simulatorGateway
+        : undefined,
+  adb: env.DEBUG_DEVICE_GATEWAY_MODE === "multi" || env.DEBUG_DEVICE_GATEWAY_MODE === "adb" ? adbGateway : undefined
+});
 const logAnalysisQueueEnv = {
   REDIS_URL: env.REDIS_URL ?? "",
   LOG_ANALYSIS_QUEUE_PREFIX: env.LOG_ANALYSIS_QUEUE_PREFIX,
@@ -43,6 +59,7 @@ const server = createWiseEffServerFromEnv({
   objectStoreHealth: objectStore,
   logAnalysisQueue: logAnalysisQueueRuntime?.queue,
   debugGateway,
+  debugGatewayRegistry,
   agentProvider,
   durableQueue: logAnalysisQueueRuntime?.queue,
   env,

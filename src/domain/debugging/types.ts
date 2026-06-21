@@ -12,6 +12,16 @@ export type Device = {
 };
 
 export type DebugParameterAccessMode = "RO" | "WO" | "RW";
+export type DebugConnectionProtocol = "hdc" | "adb";
+export type DebugParameterBindingStatus = "configured" | "missing" | "disabled";
+
+export type DebugParameterNodeBinding = {
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  enabled: boolean;
+  notes?: string;
+};
 
 export type DebugParameter = {
   id: string;
@@ -27,6 +37,10 @@ export type DebugParameter = {
   status: "已同步" | "待下发" | "下发成功";
   nodePath: string;
   accessMode: DebugParameterAccessMode;
+  selectedProtocol?: DebugConnectionProtocol;
+  bindingStatus?: DebugParameterBindingStatus;
+  bindingDisabledReason?: string;
+  bindings?: DebugParameterNodeBinding[];
 };
 
 export type DebugSnapshotEntry = {

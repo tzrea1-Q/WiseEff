@@ -59,6 +59,11 @@ describe("createHdcGateway", () => {
     expect(readNodeValue).toHaveBeenCalledWith(input);
   });
 
+  it("rejects local read requests without a node path", async () => {
+    await expect(createHdcGateway().readNode({ parameterId: "param-1" })).rejects.toThrow("HDC nodePath is required.");
+    expect(readNodeValue).not.toHaveBeenCalled();
+  });
+
   it("passes write requests through to the hdc client", async () => {
     const input = { target: "target-a", nodePath: "/sys/node", value: "1", readBack: true };
     const response = { ok: true, value: "1", verified: true };
@@ -66,5 +71,12 @@ describe("createHdcGateway", () => {
 
     await expect(createHdcGateway().writeNode(input)).resolves.toBe(response);
     expect(writeNodeValue).toHaveBeenCalledWith(input);
+  });
+
+  it("rejects local write requests without a node path", async () => {
+    await expect(createHdcGateway().writeNode({ parameterId: "param-1", value: "1", readBack: true })).rejects.toThrow(
+      "HDC nodePath is required."
+    );
+    expect(writeNodeValue).not.toHaveBeenCalled();
   });
 });

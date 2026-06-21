@@ -106,6 +106,96 @@ describe("debugging dto mappers", () => {
     });
   });
 
+  it("maps protocol binding state into debug parameters", () => {
+    expect(
+      debugParameterFromDto({
+        ...parameterDto,
+        nodePath: "/legacy/current",
+        accessMode: "RO",
+        selectedBinding: {
+          protocol: "adb",
+          nodePath: "/sys/adb/current",
+          accessMode: "RW",
+          enabled: true
+        },
+        bindings: []
+      } as DebugParameterDto)
+    ).toMatchObject({
+      id: "param-1",
+      selectedProtocol: "adb",
+      nodePath: "/sys/adb/current",
+      accessMode: "RW",
+      bindingStatus: "configured"
+    });
+  });
+
+  it("maps missing selected binding into an unavailable row", () => {
+    expect(
+      debugParameterFromDto({
+        ...parameterDto,
+        selectedBinding: null,
+        bindings: []
+      } as DebugParameterDto)
+    ).toMatchObject({
+      nodePath: "",
+      accessMode: "RO",
+      bindingStatus: "missing"
+    });
+  });
+
+  it("maps binding-only protocol parameters without legacy node fields", () => {
+    expect(
+      debugParameterFromDto({
+        id: "param-1",
+        projectId: "aurora",
+        name: "Fast charge current",
+        key: "fast-charge-current",
+        description: "Charge limit",
+        module: "power",
+        unit: "mA",
+        range: "0-6000",
+        risk: "High",
+        currentValue: "3000",
+        targetValue: "3100",
+        selectedBinding: {
+          protocol: "adb",
+          nodePath: "/sys/adb/current",
+          accessMode: "RW",
+          enabled: true,
+          notes: null
+        },
+        bindings: []
+      } as DebugParameterDto)
+    ).toMatchObject({
+      selectedProtocol: "adb",
+      nodePath: "/sys/adb/current",
+      accessMode: "RW",
+      bindingStatus: "configured"
+    });
+  });
+
+  it("maps disabled selected bindings into unavailable rows", () => {
+    expect(
+      debugParameterFromDto({
+        ...parameterDto,
+        selectedBinding: {
+          protocol: "adb",
+          nodePath: "/sys/adb/current",
+          accessMode: "RW",
+          enabled: false,
+          notes: "待验证"
+        },
+        bindings: []
+      } as DebugParameterDto)
+    ).toMatchObject({
+      selectedProtocol: "adb",
+      nodePath: "",
+      accessMode: "RO",
+      bindingStatus: "disabled",
+      bindingDisabledReason: "待验证"
+    });
+  });
+
   it("maps detected targets", () => {
     expect(debugTargetFromDto(targetDto)).toEqual(targetDto);
   });

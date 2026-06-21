@@ -7,6 +7,11 @@ import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import type { NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
+import type {
+  DebugConnectionProtocol,
+  DebugParameterBindingStatus,
+  DebugParameterNodeBinding
+} from "./domain/debugging/types";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 type NodeRuntimeStatus =
@@ -17,7 +22,14 @@ type NodeRuntimeStatus =
   | "失败"
   | "不可用";
 
-type RuntimeRow = DebugParameter & {
+type ProtocolAwareDebugParameter = DebugParameter & {
+  selectedProtocol?: DebugConnectionProtocol;
+  bindingStatus?: DebugParameterBindingStatus;
+  bindingDisabledReason?: string;
+  bindings?: DebugParameterNodeBinding[];
+};
+
+type RuntimeRow = ProtocolAwareDebugParameter & {
   runtimeCurrentValue: string;
   draftValue: string;
   runtimeStatus: NodeRuntimeStatus;
@@ -29,27 +41,116 @@ type PageNodeOperationEvent = NodeOperationEvent & {
   durationMs?: number;
 };
 
-function canRead(row: Pick<DebugParameter, "accessMode" | "nodePath">) {
-  return Boolean(row.nodePath) && (row.accessMode === "RO" || row.accessMode === "RW");
+const protocolStorageKey = "wiseeff.nodeDebugging.protocol";
+const protocolSwitchRedetectMessage = "切换协议后需要重新检测设备";
+
+function readInitialProtocol(): DebugConnectionProtocol {
+  try {
+    return window.localStorage.getItem(protocolStorageKey) === "adb" ? "adb" : "hdc";
+  } catch {
+    return "hdc";
+  }
 }
 
-function canWrite(row: Pick<DebugParameter, "accessMode" | "nodePath">) {
-  return Boolean(row.nodePath) && (row.accessMode === "WO" || row.accessMode === "RW");
+function storeSelectedProtocol(protocol: DebugConnectionProtocol) {
+  try {
+    window.localStorage.setItem(protocolStorageKey, protocol);
+  } catch {
+    // Protocol state still updates in memory when browser storage is unavailable.
+  }
 }
 
-function initialStatus(row: DebugParameter): NodeRuntimeStatus {
-  if (!row.nodePath) return "不可用";
+function protocolLabel(protocol: DebugConnectionProtocol) {
+  return protocol.toUpperCase();
+}
+
+function bindingUnavailableReason(row: Pick<ProtocolAwareDebugParameter, "bindingStatus" | "nodePath">) {
+  if (row.bindingStatus === "missing") return "未配置该协议节点";
+  if (row.bindingStatus === "disabled") return "该协议节点已停用";
+  if (!row.nodePath) return "节点不可用";
+  return "";
+}
+
+function deriveParameterForProtocol(parameter: DebugParameter, protocol: DebugConnectionProtocol): ProtocolAwareDebugParameter {
+  const protocolParameter = parameter as ProtocolAwareDebugParameter;
+  if (!protocolParameter.bindings) {
+    if (protocolParameter.selectedProtocol && protocolParameter.selectedProtocol !== protocol) {
+      return {
+        ...protocolParameter,
+        selectedProtocol: protocol,
+        nodePath: "",
+        accessMode: "RO",
+        bindingStatus: "missing",
+        bindingDisabledReason: undefined
+      };
+    }
+
+    return protocolParameter;
+  }
+
+  const selectedBinding = protocolParameter.bindings.find((binding) => binding.protocol === protocol);
+  if (!selectedBinding) {
+    return {
+      ...protocolParameter,
+      selectedProtocol: protocol,
+      nodePath: "",
+      accessMode: "RO",
+      bindingStatus: "missing",
+      bindingDisabledReason: undefined
+    };
+  }
+
+  if (!selectedBinding.enabled) {
+    return {
+      ...protocolParameter,
+      selectedProtocol: protocol,
+      nodePath: "",
+      accessMode: "RO",
+      bindingStatus: "disabled",
+      bindingDisabledReason: selectedBinding.notes
+    };
+  }
+
+  return {
+    ...protocolParameter,
+    selectedProtocol: protocol,
+    nodePath: selectedBinding.nodePath,
+    accessMode: selectedBinding.accessMode,
+    bindingStatus: "configured",
+    bindingDisabledReason: undefined
+  };
+}
+
+function canRead(row: Pick<ProtocolAwareDebugParameter, "accessMode" | "nodePath" | "bindingStatus">) {
+  return !bindingUnavailableReason(row) && (row.accessMode === "RO" || row.accessMode === "RW");
+}
+
+function canWrite(row: Pick<ProtocolAwareDebugParameter, "accessMode" | "nodePath" | "bindingStatus">) {
+  return !bindingUnavailableReason(row) && (row.accessMode === "WO" || row.accessMode === "RW");
+}
+
+function initialStatus(row: ProtocolAwareDebugParameter): NodeRuntimeStatus {
+  if (bindingUnavailableReason(row)) return "不可用";
   return row.accessMode === "WO" ? "待写入" : "未检测";
 }
 
-function runtimeRowFromParameter(parameter: DebugParameter, existing?: RuntimeRow): RuntimeRow {
+function runtimeRowFromParameter(parameter: DebugParameter, protocol: DebugConnectionProtocol, existing?: RuntimeRow): RuntimeRow {
+  const protocolParameter = deriveParameterForProtocol(parameter, protocol);
+  const bindingReason = bindingUnavailableReason(protocolParameter);
+  const bindingChanged = existing
+    ? existing.nodePath !== protocolParameter.nodePath ||
+      existing.accessMode !== protocolParameter.accessMode ||
+      existing.bindingStatus !== protocolParameter.bindingStatus
+    : false;
+  const preserveRuntimeState = existing && !bindingChanged;
+
   return {
-    ...parameter,
-    runtimeCurrentValue: existing?.runtimeCurrentValue ?? (canRead(parameter) ? "" : parameter.currentValue),
-    draftValue: existing?.draftValue ?? parameter.targetValue,
-    runtimeStatus: existing?.runtimeStatus ?? initialStatus(parameter),
-    error: existing?.error,
-    lastReadValue: existing?.lastReadValue
+    ...protocolParameter,
+    runtimeCurrentValue: preserveRuntimeState ? existing.runtimeCurrentValue : canRead(protocolParameter) ? "" : protocolParameter.currentValue,
+    draftValue: existing?.draftValue ?? protocolParameter.targetValue,
+    runtimeStatus: preserveRuntimeState ? existing.runtimeStatus : initialStatus(protocolParameter),
+    error: bindingReason ? undefined : preserveRuntimeState ? existing.error : undefined,
+    lastReadValue: preserveRuntimeState ? existing.lastReadValue : undefined
   };
 }
 
@@ -67,7 +168,7 @@ function statusClass(status: NodeRuntimeStatus) {
 
 function displayCurrentValue(row: RuntimeRow) {
   if (row.accessMode === "WO") return "写入后不可回读";
-  if (!row.nodePath) return "节点不可用";
+  if (bindingUnavailableReason(row)) return "节点不可用";
   if (row.lastReadValue !== undefined) return row.runtimeCurrentValue;
   return row.runtimeStatus === "执行中" ? "读取中..." : "等待读取";
 }
@@ -121,7 +222,7 @@ function eventFromOperation(operation: NodeOperationSnapshot, rows: RuntimeRow[]
   const row = findOperationParameter(operation, rows);
   const stdout = operation.readbackValue ?? operation.readValue ?? operation.previousValue ?? operation.requestedValue;
   return {
-    parameterName: row?.name ?? (operation.operationType === "detect" ? "HDC 设备" : operation.parameterId ?? operation.nodePath),
+    parameterName: row?.name ?? (operation.operationType === "detect" ? `${protocolLabel(operation.protocol ?? "hdc")} 设备` : operation.parameterId ?? operation.nodePath),
     parameterKey: row?.key ?? operation.parameterId ?? operation.nodePath,
     accessMode: row?.accessMode ?? "RO",
     action: eventActionFromOperation(operation),
@@ -154,6 +255,7 @@ function NodeSessionSummaryCard({
   pendingCount,
   failedCount,
   latestEvent,
+  protocol,
   onDetect
 }: {
   connected: boolean;
@@ -166,12 +268,14 @@ function NodeSessionSummaryCard({
   pendingCount: number;
   failedCount: number;
   latestEvent: NodeOperationEvent | null;
+  protocol: DebugConnectionProtocol;
   onDetect: () => void;
 }) {
-  const statusLabel = connected ? `在线 · ${target}` : detecting ? "检测中 · HDC 设备" : "离线 · HDC 设备";
+  const label = protocolLabel(protocol);
+  const statusLabel = connected ? `在线 · ${target}` : detecting ? `检测中 · ${label} 设备` : `离线 · ${label} 设备`;
   const detailLabel = connected
-    ? "通过 HDC 读写 Linux 节点"
-    : connectionError ? "检测失败，请检查 HDC 环境" : "等待设备检测";
+    ? `通过 ${label} 读写 Linux 节点`
+    : connectionError === protocolSwitchRedetectMessage ? protocolSwitchRedetectMessage : connectionError ? `检测失败，请检查 ${label} 环境` : "等待设备检测";
 
   return (
     <section className="session-summary-card" aria-label="调试会话摘要">
@@ -219,7 +323,7 @@ function NodeSessionSummaryCard({
   );
 }
 
-function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
+function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: DebugConnectionProtocol }) {
   const titleId = `node-write-format-${row.id}`;
   const exampleValue = row.targetValue || row.currentValue || "value";
   const rangeText = `${row.range} ${row.unit}`.trim();
@@ -248,7 +352,7 @@ function NodeWriteFormatPanel({ row }: { row: RuntimeRow }) {
       <div className="node-write-format-example">
         <strong>示例</strong>
         <code>{exampleValue}</code>
-        <span>例如输入 {exampleValue}，系统会通过 HDC 将该值写入当前节点。</span>
+        <span>例如输入 {exampleValue}，系统会通过 {protocolLabel(protocol)} 将该值写入当前节点。</span>
       </div>
     </section>
   );
@@ -263,8 +367,9 @@ export function NodeDebuggingPage({
   debuggingActions?: DebuggingRuntimeActions;
   runtimeReady?: boolean;
 }) {
+  const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
-    state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter))
+    state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol))
   );
   const [target, setTarget] = useState<string | undefined>();
   const [detecting, setDetecting] = useState(false);
@@ -281,6 +386,8 @@ export function NodeDebuggingPage({
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
   const didAutoDetectRef = useRef(false);
   const autoReadSignatureRef = useRef("");
+  const protocolRef = useRef(protocol);
+  const detectRequestSeqRef = useRef(0);
   const rowsRef = useRef(rows);
   const rowOperationSeqRef = useRef<Record<string, number>>({});
   const selectAllRef = useRef<HTMLInputElement>(null);
@@ -315,11 +422,15 @@ export function NodeDebuggingPage({
   }, [rows]);
 
   useEffect(() => {
+    protocolRef.current = protocol;
+  }, [protocol]);
+
+  useEffect(() => {
     setRows((current) => {
       const existingById = new Map(current.map((row) => [row.id, row]));
-      return state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, existingById.get(parameter.id)));
+      return state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol, existingById.get(parameter.id)));
     });
-  }, [state.debugParameters]);
+  }, [protocol, state.debugParameters]);
 
   const visibleRows = useMemo(() => {
     return rows.filter((row) => {
@@ -374,6 +485,22 @@ export function NodeDebuggingPage({
 
   const updateRow = (id: string, patch: Partial<RuntimeRow>) => {
     setRows((current) => current.map((row) => row.id === id ? { ...row, ...patch } : row));
+  };
+
+  const switchProtocol = (nextProtocol: DebugConnectionProtocol) => {
+    if (nextProtocol === protocol) return;
+    detectRequestSeqRef.current += 1;
+    storeSelectedProtocol(nextProtocol);
+    setProtocol(nextProtocol);
+    setDetecting(false);
+    setTarget(undefined);
+    setActiveTargetId(undefined);
+    setActiveSessionId(undefined);
+    setSessionStartedAt(null);
+    setConnectionError(protocolSwitchRedetectMessage);
+    setDetectDiagnosticError("");
+    autoReadSignatureRef.current = "";
+    setSelectedIds(new Set());
   };
 
   const toggleSelectAll = () => {
@@ -470,11 +597,18 @@ export function NodeDebuggingPage({
       return;
     }
 
+    const requestProtocol = protocol;
+    const requestSeq = detectRequestSeqRef.current + 1;
+    detectRequestSeqRef.current = requestSeq;
+    const isCurrentDetectRequest = () =>
+      detectRequestSeqRef.current === requestSeq && protocolRef.current === requestProtocol;
+
     setDetecting(true);
     setDetectDiagnosticError("");
     try {
       if (debuggingActions) {
-        const result = await debuggingActions.detectAndStartSession(state.activeProjectId) as DetectResultWithOperation;
+        const result = await debuggingActions.detectAndStartSession(state.activeProjectId, { protocol: requestProtocol }) as DetectResultWithOperation;
+        if (!isCurrentDetectRequest()) return;
         const { session, target: detectedTarget } = result;
         setActiveSessionId(session.id);
         setActiveTargetId(detectedTarget.id);
@@ -487,13 +621,18 @@ export function NodeDebuggingPage({
         return;
       }
 
+      if (requestProtocol === "adb") {
+        throw new Error("ADB 调试需要 API 模式后端 gateway。");
+      }
+
       const result = await detectHdcTargets();
+      if (!isCurrentDetectRequest()) return;
       setTarget(result.activeTarget);
       setActiveTargetId(result.activeTarget);
       setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");
       appendEvent({
-        parameterName: "HDC 设备",
-        parameterKey: "hdc.list.targets",
+        parameterName: `${protocolLabel(requestProtocol)} 设备`,
+        parameterKey: `${requestProtocol}.list.targets`,
         accessMode: "RO",
         action: "detect",
         status: result.ok ? "已连接" : "检测失败",
@@ -506,6 +645,7 @@ export function NodeDebuggingPage({
         await readReadableRows(result.activeTarget, rowsRef.current);
       }
     } catch (error) {
+      if (!isCurrentDetectRequest()) return;
       setTarget(undefined);
       setActiveSessionId(undefined);
       setActiveTargetId(undefined);
@@ -516,7 +656,7 @@ export function NodeDebuggingPage({
       setDetectDiagnosticError(detectFailureMessage);
       if (debuggingActions) {
         appendEvent({
-          parameterName: "HDC 设备",
+          parameterName: `${protocolLabel(requestProtocol)} 设备`,
           parameterKey: "debugging.detect",
           accessMode: "RO",
           action: "detect",
@@ -527,7 +667,9 @@ export function NodeDebuggingPage({
         });
       }
     } finally {
-      setDetecting(false);
+      if (isCurrentDetectRequest()) {
+        setDetecting(false);
+      }
     }
   };
 
@@ -614,17 +756,30 @@ export function NodeDebuggingPage({
   useTopBarActions(
     <div className="device-pill">
       <span className={connected ? "live-dot" : "idle-dot"} />
-      {connected ? `已连接：${target}` : detecting ? "检测中..." : "未连接 HDC 设备"}
+      {connected ? `已连接：${target}` : detecting ? "检测中..." : `未连接 ${protocolLabel(protocol)} 设备`}
       <button className="link-button" type="button" disabled={!runtimeReady} onClick={() => void detect()}>
         重新检测
       </button>
     </div>,
-    [connected, detecting, runtimeReady, target]
+    [connected, detecting, protocol, runtimeReady, target]
   );
 
   return (
     <div className="workbench-page node-debugging-page">
       <div className="workbench-one-col">
+        <div className="protocol-switch" role="group" aria-label="连接协议">
+          {(["hdc", "adb"] as const).map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
+              aria-pressed={protocol === item}
+              onClick={() => switchProtocol(item)}
+            >
+              {protocolLabel(item)}
+            </button>
+          ))}
+        </div>
         <NodeSessionSummaryCard
           connected={connected}
           target={target}
@@ -636,6 +791,7 @@ export function NodeDebuggingPage({
           pendingCount={pendingRows.length}
           failedCount={failedCount}
           latestEvent={latestEvent}
+          protocol={protocol}
           onDetect={() => void detect()}
         />
         {diagnosticConnectionError ? (
@@ -645,7 +801,7 @@ export function NodeDebuggingPage({
         <section className="debug-table">
           <div className="panel-header">
             <strong>节点调试参数</strong>
-            <span>{connected ? "HDC 设备在线" : "等待设备检测"}</span>
+            <span>{connected ? `${protocolLabel(protocol)} 设备在线` : "等待设备检测"}</span>
           </div>
 
           <section className="parameters-table parameters-table--column-filters" aria-label="节点调试参数">
@@ -737,6 +893,7 @@ export function NodeDebuggingPage({
                       <td data-label="访问模式">{row.accessMode}</td>
                       <td className="mono" data-label="当前值">
                         {displayCurrentValue(row)}
+                        {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
                         {row.error ? <small className="node-row-error">{row.error}</small> : null}
                       </td>
                       <td data-label="目标写入值">
@@ -858,7 +1015,7 @@ export function NodeDebuggingPage({
               {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
               {canWrite(editingRow) ? (
                 <>
-                  <NodeWriteFormatPanel row={editingRow} />
+                  <NodeWriteFormatPanel row={editingRow} protocol={protocol} />
                   <label className="field-label" htmlFor={`node-target-${editingRow.id}`}>目标写入值</label>
                   <textarea
                     id={`node-target-${editingRow.id}`}

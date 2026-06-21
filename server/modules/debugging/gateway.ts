@@ -1,6 +1,9 @@
+import type { DebugConnectionProtocol } from "./protocol";
+
 export type GatewayTarget = {
   id: string;
   deviceId: string;
+  protocol?: DebugConnectionProtocol;
   targetRef: string;
   label: string;
   online: boolean;

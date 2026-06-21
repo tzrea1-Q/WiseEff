@@ -6,13 +6,14 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { AgentProvider } from "../agent/provider";
 import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import type { DebugDeviceGateway } from "../debugging/gateway";
+import type { DebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
 import { buildLiveHealth, buildReadyHealth, type DurableQueueHealthCheck } from "./health";
 import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadiness";
 
 export type PilotReadinessEnv = {
   NODE_ENV?: "development" | "test" | "production";
   AUTH_PROVIDER?: "hmac" | "oidc" | "local";
-  DEBUG_DEVICE_GATEWAY_MODE?: "simulator" | "hdc";
+  DEBUG_DEVICE_GATEWAY_MODE?: "simulator" | "hdc" | "adb" | "multi";
   DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION?: boolean;
   HDC_DEVICE_LAB_AVAILABLE?: boolean;
   HDC_SMOKE_PROJECT_ID?: string;
@@ -85,6 +86,10 @@ const hdcSmokeEvidenceFields = [
   "HDC_SMOKE_WRITE_VALUE"
 ] as const satisfies readonly (keyof PilotReadinessEnv)[];
 
+function debugGatewayMode(value: unknown): NonNullable<PilotReadinessEnv["DEBUG_DEVICE_GATEWAY_MODE"]> {
+  return value === "hdc" || value === "adb" || value === "multi" ? value : "simulator";
+}
+
 function deviceGatewayEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateStatus {
   const acceptanceEvidence = env.M5_DEVICE_GATEWAY_EVIDENCE?.trim();
   if (acceptanceEvidence) {
@@ -120,8 +125,29 @@ function deviceGatewayEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateSt
   };
 }
 
-function deviceGatewayGate(options: { debugGateway?: DebugDeviceGateway; env: PilotReadinessEnv }): PilotReadinessGateStatus {
-  if (!options.debugGateway) {
+function adbDeviceGatewayEvidenceGate(env: PilotReadinessEnv, mode: "adb" | "multi"): PilotReadinessGateStatus {
+  const acceptanceEvidence = env.M5_DEVICE_GATEWAY_EVIDENCE?.trim();
+  if (acceptanceEvidence) {
+    return {
+      ok: true,
+      status: "ready",
+      message: `Device gateway evidence recorded: ${acceptanceEvidence}.`
+    };
+  }
+
+  return {
+    ok: false,
+    status: "missing",
+    message: `${mode.toUpperCase()} device gateway evidence is not recorded. Set M5_DEVICE_GATEWAY_EVIDENCE after a hardware smoke.`
+  };
+}
+
+function deviceGatewayGate(options: {
+  debugGateway?: DebugDeviceGateway;
+  debugGatewayRegistry?: DebugDeviceGatewayRegistry;
+  env: PilotReadinessEnv;
+}): PilotReadinessGateStatus {
+  if (!options.debugGateway && !options.debugGatewayRegistry) {
     return {
       ok: false,
       status: "missing",
@@ -129,17 +155,34 @@ function deviceGatewayGate(options: { debugGateway?: DebugDeviceGateway; env: Pi
     };
   }
 
-  const mode = options.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator";
+  const mode = debugGatewayMode(options.env.DEBUG_DEVICE_GATEWAY_MODE);
 
-  if (mode !== "hdc") {
+  if (mode === "simulator") {
     return {
       ok: false,
       status: "blocked",
       message: "Simulator device gateway mode is not acceptable for pilot readiness."
     };
   }
+  const requiredProtocols = mode === "multi" ? (["hdc", "adb"] as const) : ([mode] as const);
+  if (options.debugGatewayRegistry) {
+    const missingProtocols = requiredProtocols.filter((protocol) => !options.debugGatewayRegistry?.hasGateway(protocol));
+    if (missingProtocols.length > 0) {
+      return {
+        ok: false,
+        status: "missing",
+        message: `${missingProtocols.map((protocol) => protocol.toUpperCase()).join("/")} debug device gateway is not configured for this API process.`
+      };
+    }
+  } else if (requiredProtocols.includes("adb")) {
+    return {
+      ok: false,
+      status: "missing",
+      message: "ADB debug device gateway is not configured for this API process."
+    };
+  }
 
-  return deviceGatewayEvidenceGate(options.env);
+  return mode === "hdc" ? deviceGatewayEvidenceGate(options.env) : adbDeviceGatewayEvidenceGate(options.env, mode);
 }
 
 async function agentProviderGate(options: { agentProvider?: AgentProvider; env: PilotReadinessEnv }): Promise<PilotReadinessGateStatus> {
@@ -184,7 +227,7 @@ async function agentProviderGate(options: { agentProvider?: AgentProvider; env: 
 function defaultPilotReadinessEnv(): PilotReadinessEnv {
   return {
     NODE_ENV: (process.env.NODE_ENV as PilotReadinessEnv["NODE_ENV"]) ?? "development",
-    DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE === "hdc" ? "hdc" : "simulator",
+    DEBUG_DEVICE_GATEWAY_MODE: debugGatewayMode(process.env.DEBUG_DEVICE_GATEWAY_MODE),
     DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: process.env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION === "true",
     HDC_DEVICE_LAB_AVAILABLE: process.env.HDC_DEVICE_LAB_AVAILABLE === "true",
     HDC_SMOKE_PROJECT_ID: process.env.HDC_SMOKE_PROJECT_ID?.trim() || undefined,
@@ -207,6 +250,7 @@ export function registerOperationsRoutes(
     objectStore?: ObjectStoreHealthCheck;
     agentProvider?: AgentProvider;
     debugGateway?: DebugDeviceGateway;
+    debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv;
     getCurrentAuthContext?: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -265,7 +309,7 @@ export function registerOperationsRoutes(
         status: "missing",
         message: "Worker queue health is unavailable."
       },
-      deviceGateway: deviceGatewayGate({ debugGateway: options.debugGateway, env }),
+      deviceGateway: deviceGatewayGate({ debugGateway: options.debugGateway, debugGatewayRegistry: options.debugGatewayRegistry, env }),
       agentProvider: await agentProviderGate({ agentProvider: options.agentProvider, env }),
       backups: backupDrillGate()
     });

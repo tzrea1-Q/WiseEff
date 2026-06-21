@@ -5,6 +5,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { developmentAuthContext } from "../auth/routes";
 import type { DebugDeviceGateway } from "../debugging/gateway";
+import { createDebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
 import { requestJson } from "../../test/testClient";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./routes";
 
@@ -484,6 +485,163 @@ describe("operations routes", () => {
         blockedBy: [],
         gates: {
           deviceGateway: { ok: true, status: "ready" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("blocks HDC readiness when only an ADB gateway is registered", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: createDebugGateway() }),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          HDC_DEVICE_LAB_AVAILABLE: true,
+          HDC_SMOKE_PROJECT_ID: "aurora",
+          HDC_SMOKE_DEVICE_ID: "lab-device-1",
+          HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
+          HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
+          HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway"],
+        gates: {
+          deviceGateway: { ok: false, status: "missing" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("treats the registry as authoritative for HDC readiness when both gateway options are present", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGateway: createDebugGateway(),
+        debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: createDebugGateway() }),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "hdc",
+          HDC_DEVICE_LAB_AVAILABLE: true,
+          HDC_SMOKE_PROJECT_ID: "aurora",
+          HDC_SMOKE_DEVICE_ID: "lab-device-1",
+          HDC_SMOKE_TARGET_REF: "Aurora Simulator 1",
+          HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
+          HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
+          HDC_SMOKE_WRITE_VALUE: "3100",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway"],
+        gates: {
+          deviceGateway: { ok: false, status: "missing" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("allows ADB device gateway mode with explicit device evidence", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: createDebugGateway() }),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "adb",
+          M5_DEVICE_GATEWAY_EVIDENCE: "ADB-LAB-001 passed at 2026-06-21T10:00:00Z",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: true,
+        status: "pilot_ready",
+        blockedBy: [],
+        gates: {
+          deviceGateway: { ok: true, status: "ready" }
+        }
+      });
+    } finally {
+      restoreProcessEnv("M5_BACKUP_RESTORE_DRILL_AT", originalBackupDrillAt);
+    }
+  });
+
+  it("blocks multi gateway readiness when one protocol gateway is missing", async () => {
+    const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
+    process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
+
+    try {
+      const router = createRouter();
+      const db = createReadyDb();
+      registerOperationsRoutes(router, {
+        db,
+        objectStore: createReadyObjectStore(),
+        debugGatewayRegistry: createDebugDeviceGatewayRegistry({ hdc: createDebugGateway() }),
+        agentProvider: createReadyAgentProvider(),
+        env: createPilotReadinessEnv({
+          DEBUG_DEVICE_GATEWAY_MODE: "multi",
+          M5_DEVICE_GATEWAY_EVIDENCE: "device gateway smoke passed",
+          M5_CONTRACT_CHECK_PASSED: true
+        }),
+        getCurrentAuthContext: async () => createAdminAuth()
+      });
+
+      const response = await requestJson(createHttpServer(router), "/api/v1/operations/pilot-readiness");
+
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({
+        ok: false,
+        status: "blocked",
+        blockedBy: ["deviceGateway"],
+        gates: {
+          deviceGateway: { ok: false, status: "missing" }
         }
       });
     } finally {
