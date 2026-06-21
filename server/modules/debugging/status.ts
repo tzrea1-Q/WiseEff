@@ -19,3 +19,5 @@ export type DebugSnapshotStatus = (typeof debugSnapshotStatuses)[number];
 export function isTerminalNodeOperationStatus(status: DebugOperationStatus) {
   return status !== "pending";
 }
+
+export { debugConnectionProtocols, defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
