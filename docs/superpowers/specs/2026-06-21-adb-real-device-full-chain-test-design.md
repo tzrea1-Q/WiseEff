@@ -96,7 +96,7 @@ Optional read assertion:
 ADB_SMOKE_EXPECT_READ_PATTERN=^-?[0-9]+$
 ```
 
-Optional write mode inputs:
+Optional write mode inputs, all explicitly set by the operator:
 
 ```bash
 ADB_SMOKE_ENABLE_WRITE=true
@@ -141,7 +141,7 @@ Only run this when `ADB_SMOKE_ENABLE_WRITE=true`.
 1. Store the read-only flow's original value.
 2. Write `ADB_SMOKE_WRITE_VALUE` through `/api/v1/debugging/nodes/write`.
 3. Assert `status = "succeeded"`, `verified = true`, `readbackValue = ADB_SMOKE_WRITE_VALUE`, and `snapshotId` exists.
-4. Roll back the snapshot with `ADB_SMOKE_CONFIRM_ROLLBACK`.
+4. Roll back the snapshot with explicit `ADB_SMOKE_CONFIRM_ROLLBACK`.
 5. Assert rollback operation succeeds and is verified.
 6. Read the node again and assert it equals the original value.
 
@@ -159,11 +159,13 @@ The evidence record should include:
 - Playwright trace/report/screenshot references,
 - console and network diagnostic status,
 - API method/path/status summaries,
-- request id when available,
-- project id, device id, target ref, protocol, parameter id, and node path,
+- request id shape when available,
+- shape summaries for project id, device id, target ref, parameter id, and node path presence,
 - read value shape or pattern result,
-- write value, previous value, readback value, rollback result, and final restored value when write mode runs,
+- write value, previous value, readback value, rollback result, and final restoration as shapes/status/equality summaries when write mode runs,
 - audit event summary for detection/session/read and write/rollback when applicable.
+
+The evidence must not publish raw ADB serials, raw node paths, raw read/write values, or raw operation/session/snapshot/request/audit identifiers.
 
 ## Documentation Impact
 

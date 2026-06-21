@@ -96,7 +96,7 @@ ADB_SMOKE_USER_ID=u-xu-yun
 ADB_SMOKE_EXPECT_READ_PATTERN=^-?[0-9]+$
 ```
 
-可选写入模式输入：
+可选写入模式输入，全部由操作者显式设置：
 
 ```bash
 ADB_SMOKE_ENABLE_WRITE=true
@@ -141,7 +141,7 @@ ADB_SMOKE_CONFIRM_ROLLBACK=confirm-rollback
 1. 保存只读流程得到的原值。
 2. 通过 `/api/v1/debugging/nodes/write` 写入 `ADB_SMOKE_WRITE_VALUE`。
 3. 断言 `status = "succeeded"`、`verified = true`、`readbackValue = ADB_SMOKE_WRITE_VALUE`，并且存在 `snapshotId`。
-4. 使用 `ADB_SMOKE_CONFIRM_ROLLBACK` 回滚 snapshot。
+4. 使用显式 `ADB_SMOKE_CONFIRM_ROLLBACK` 回滚 snapshot。
 5. 断言 rollback operation 成功且已验证。
 6. 再次读取节点，断言值恢复为原值。
 
@@ -159,11 +159,13 @@ ADB-LAB-001
 - Playwright trace、report、screenshot 引用，
 - console 和 network 诊断状态，
 - API method、path、status 摘要，
-- 可用的 request id，
-- project id、device id、target ref、protocol、parameter id 和 node path，
+- 可用 request id 的 shape，
+- project id、device id、target ref、parameter id 和 node path 存在性的 shape 摘要，
 - 读取值形态或正则匹配结果，
-- 写入模式下的写入值、原值、回读值、回滚结果和最终恢复值，
+- 写入模式下的写入值、原值、回读值、回滚结果和最终恢复，以 shape、状态和一致性摘要呈现，
 - 检测、会话、读取，以及写入和回滚的 audit event 摘要。
+
+证据不得发布原始 ADB serial、原始 node path、原始读写值，或原始 operation/session/snapshot/request/audit 标识符。
 
 ## 文档影响
 

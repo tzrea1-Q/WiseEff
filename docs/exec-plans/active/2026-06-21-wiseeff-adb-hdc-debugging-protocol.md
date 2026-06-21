@@ -2244,7 +2244,7 @@ In `e2e/acceptance/operationMatrix.ts`, add after `HDC-LAB-001`:
   acceptanceIds: ["ADB-LAB-001"],
   specFiles: ["e2e/acceptance/adb-device-lab.acceptance.spec.ts"],
   assertions: ["ui", "api", "audit"],
-  deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=adb or multi and ADB_DEVICE_LAB_AVAILABLE=true with hardware attached."
+  deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true with hardware attached."
 }
 ```
 
@@ -2275,10 +2275,10 @@ Create `e2e/acceptance/adb-device-lab.acceptance.spec.ts` by adapting `e2e/accep
 
 ```ts
 test.skip(process.env.ADB_DEVICE_LAB_AVAILABLE !== "true", "ADB device-lab acceptance requires ADB_DEVICE_LAB_AVAILABLE=true.");
-test.skip(!["adb", "multi"].includes(process.env.DEBUG_DEVICE_GATEWAY_MODE ?? ""), "ADB device-lab acceptance only runs in adb or multi gateway mode.");
+test.skip(process.env.DEBUG_DEVICE_GATEWAY_MODE !== "adb", "ADB device-lab acceptance only runs in adb gateway mode.");
 ```
 
-- Required env vars:
+- Required read-only env vars:
 
 ```text
 ADB_SMOKE_PROJECT_ID
@@ -2286,7 +2286,15 @@ ADB_SMOKE_DEVICE_ID
 ADB_SMOKE_TARGET_REF
 ADB_SMOKE_PARAMETER_ID
 ADB_SMOKE_NODE_PATH
+```
+
+- Optional write mode env vars, all explicitly provided by the operator:
+
+```text
+ADB_SMOKE_ENABLE_WRITE=true
 ADB_SMOKE_WRITE_VALUE
+ADB_SMOKE_CONFIRM_WRITE
+ADB_SMOKE_CONFIRM_ROLLBACK
 ```
 
 - Call detect/session/read/write/rollback APIs with `protocol: "adb"`.
@@ -2395,35 +2403,40 @@ Create `docs/runbooks/adb-device-lab.md`:
 
 Use this runbook to collect real-device evidence for the ADB gateway path.
 
-## Required Inputs
+## Required Read-Only Inputs
 
-- `DEBUG_DEVICE_GATEWAY_MODE=adb` or `DEBUG_DEVICE_GATEWAY_MODE=multi`
+- `DEBUG_DEVICE_GATEWAY_MODE=adb`
 - `ADB_DEVICE_LAB_AVAILABLE=true`
 - `ADB_SMOKE_PROJECT_ID`
 - `ADB_SMOKE_DEVICE_ID`
 - `ADB_SMOKE_TARGET_REF`
 - `ADB_SMOKE_PARAMETER_ID`
 - `ADB_SMOKE_NODE_PATH`
-- `ADB_SMOKE_WRITE_VALUE`
 - optional `ADB_SMOKE_EXPECT_READ_PATTERN`
 - optional `ADB_SMOKE_USER_ID`
 
+## Optional Write Inputs
+
+- `ADB_SMOKE_ENABLE_WRITE=true`
+- `ADB_SMOKE_WRITE_VALUE`
+- `ADB_SMOKE_CONFIRM_WRITE`
+- `ADB_SMOKE_CONFIRM_ROLLBACK`
+
 ## Procedure
 
-1. Confirm the device is in the approved lab environment.
-2. Confirm the target node is safe to read and write through ADB.
-3. Start the API with ADB or multi gateway mode.
-4. Run the ADB device-lab acceptance spec.
-5. Verify target detection.
-6. Verify node read.
-7. Verify node write with readback.
-8. Verify snapshot rollback.
-9. Record timeout/offline behavior if the lab procedure allows safe simulation.
-10. Record stderr/nonzero failure normalization if the lab procedure allows safe simulation.
+1. Confirm the local ADB device is connected to the API host and appears exactly once in `adb devices` with state `device`.
+2. Confirm `ADB_SMOKE_PARAMETER_ID` and `ADB_SMOKE_NODE_PATH` already map to an existing enabled ADB parameter binding.
+3. Confirm the target node is safe to read.
+4. If write mode is enabled, confirm the target node is safe to write and rollback through snapshot is approved.
+5. Start the API with `DEBUG_DEVICE_GATEWAY_MODE=adb`.
+6. Start the frontend in API mode.
+7. Run the ADB device-lab acceptance spec.
+8. Verify target detection, session creation, and node read.
+9. If write mode is explicitly enabled, verify write readback, snapshot rollback, and final restore.
 
 ## Acceptance
 
-Evidence must show command timestamps, target and node identifiers, requested value, previous/readback value, rollback value, audit event id or request id, and failure cases tested or explicitly skipped.
+Evidence must be compact and redacted: show command/API status, shape summaries for target/node/operation/request/audit identifiers, read/write value shapes, rollback/final-restore equality, and failure cases tested or explicitly skipped. Do not publish raw ADB serials, raw node paths, raw read/write values, or raw operation/session/snapshot/request/audit identifiers.
 ```
 
 Create the Chinese companion with the same sections in Chinese.

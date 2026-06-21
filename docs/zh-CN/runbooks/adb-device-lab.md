@@ -22,8 +22,8 @@
 
 - `ADB_SMOKE_ENABLE_WRITE=true`
 - `ADB_SMOKE_WRITE_VALUE`
-- 可选 `ADB_SMOKE_CONFIRM_WRITE`，默认 `confirm-high-risk-write`
-- 可选 `ADB_SMOKE_CONFIRM_ROLLBACK`，默认 `confirm-rollback`
+- `ADB_SMOKE_CONFIRM_WRITE`
+- `ADB_SMOKE_CONFIRM_ROLLBACK`
 
 ## 流程
 

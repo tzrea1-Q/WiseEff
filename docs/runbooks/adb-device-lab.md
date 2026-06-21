@@ -22,8 +22,8 @@ Write mode is disabled unless `ADB_SMOKE_ENABLE_WRITE=true`.
 
 - `ADB_SMOKE_ENABLE_WRITE=true`
 - `ADB_SMOKE_WRITE_VALUE`
-- optional `ADB_SMOKE_CONFIRM_WRITE`, default `confirm-high-risk-write`
-- optional `ADB_SMOKE_CONFIRM_ROLLBACK`, default `confirm-rollback`
+- `ADB_SMOKE_CONFIRM_WRITE`
+- `ADB_SMOKE_CONFIRM_ROLLBACK`
 
 ## Procedure
 

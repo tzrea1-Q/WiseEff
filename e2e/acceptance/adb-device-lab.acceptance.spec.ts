@@ -48,6 +48,8 @@ type AuditEventDto = {
   metadata?: Record<string, unknown>;
 };
 
+type ApiErrorBody = { error?: { message?: string; code?: string } } | null;
+
 type ParsedAdbDevice = {
   serial: string;
   state: AdbDeviceState;
@@ -96,7 +98,7 @@ function parseAdbDevices(stdout: string) {
 }
 
 function observedAdbDevices(devices: ParsedAdbDevice[]) {
-  return devices.map((item) => `${item.serial}:${item.state}`).join(", ") || "(none)";
+  return devices.map((item) => `serial=${identifierShape(item.serial)}:${item.state}`).join(", ") || "(none)";
 }
 
 function identifierShape(value: string | null | undefined) {
@@ -126,11 +128,11 @@ function validateSingleReadyAdbTarget(targetRef: string, devices: ParsedAdbDevic
   const matches = devices.filter((item) => item.serial === targetRef);
   if (matches.length !== 1) {
     throw new Error(
-      `ADB target ${targetRef} must appear exactly once in adb devices. Observed: ${observed}`
+      `ADB target ${identifierShape(targetRef)} must appear exactly once in adb devices. Observed: ${observed}`
     );
   }
   if (matches[0].state !== "device") {
-    throw new Error(`ADB target ${targetRef} is ${matches[0].state}; expected device. Observed: ${observed}`);
+    throw new Error(`ADB target ${identifierShape(targetRef)} is ${matches[0].state}; expected device. Observed: ${observed}`);
   }
 
   const readyDevices = devices.filter((item) => item.state === "device");
@@ -147,7 +149,13 @@ test.describe("ADB device-lab preflight validation", () => {
         { serial: "adb-target-2", state: "device" },
         { serial: "adb-target-3", state: "offline" }
       ])
-    ).toThrow(/exactly one ready ADB device.*adb-target-1:device.*adb-target-2:device.*adb-target-3:offline/s);
+    ).toThrow(/exactly one ready ADB device.*serial=set:length=12:device.*serial=set:length=12:offline/s);
+    expect(() =>
+      validateSingleReadyAdbTarget("adb-target-1", [
+        { serial: "adb-target-1", state: "device" },
+        { serial: "adb-target-2", state: "device" }
+      ])
+    ).not.toThrow(/adb-target-[12]/);
   });
 
   test("preserves debugging sessions that still own device leases during cleanup", async () => {
@@ -163,7 +171,32 @@ test.describe("ADB device-lab preflight validation", () => {
     const sessionDelete = queries.find((query) => query.includes("delete from debugging_sessions"));
     expect(sessionDelete).toContain("debug_device_leases");
     expect(sessionDelete).toContain("not exists");
+    const operationDelete = queries.find((query) => query.includes("delete from node_operations"));
+    const snapshotDelete = queries.find((query) => query.includes("delete from debugging_snapshots"));
+    expect(operationDelete).toContain("debug_device_leases");
+    expect(operationDelete).toContain("not exists");
+    expect(snapshotDelete).toContain("debug_device_leases");
+    expect(snapshotDelete).toContain("not exists");
     expect(queries.some((query) => /delete\s+from\s+debug_device_leases/i.test(query))).toBe(false);
+  });
+
+  test("requires explicit write and rollback confirmations when write mode is enabled", () => {
+    const previousEnv = { ...process.env };
+    try {
+      process.env.ADB_SMOKE_PROJECT_ID = "project-1";
+      process.env.ADB_SMOKE_DEVICE_ID = "device-1";
+      process.env.ADB_SMOKE_TARGET_REF = "target-1";
+      process.env.ADB_SMOKE_PARAMETER_ID = "param-1";
+      process.env.ADB_SMOKE_NODE_PATH = "/safe/node";
+      process.env.ADB_SMOKE_ENABLE_WRITE = "true";
+      process.env.ADB_SMOKE_WRITE_VALUE = "new-value";
+      delete process.env.ADB_SMOKE_CONFIRM_WRITE;
+      delete process.env.ADB_SMOKE_CONFIRM_ROLLBACK;
+
+      expect(() => requireAdbSmokeConfig()).toThrow(/ADB_SMOKE_CONFIRM_WRITE.*ADB_SMOKE_CONFIRM_ROLLBACK/s);
+    } finally {
+      process.env = previousEnv;
+    }
   });
 });
 
@@ -218,6 +251,43 @@ test.describe("ADB device-lab evidence redaction", () => {
     expect(auditPath).toContain("projectId=set:length=14");
     expect(auditPath).not.toContain("raw-project-id");
     expect(auditPath).not.toContain("raw-snapshot-id");
+  });
+
+  test("shape-summarizes target identifiers in failure diagnostics", () => {
+    expect(() => summarizeAudit([], "debug-node-read", "raw-target-id")).toThrow(/targetId=set:length=13/);
+    expect(() => summarizeAudit([], "debug-node-read", "raw-target-id")).not.toThrow(/raw-target-id/);
+
+    expect(detectedTargetsSummary([{ targetRef: "raw-target-id" } as DebugTargetDto])).toBe("set:length=13");
+  });
+
+  test("shape-summarizes API error bodies and operation failure reasons", () => {
+    const apiFailure = apiFailureDiagnostic("POST", "/api/v1/debugging/snapshots/raw-snapshot-id/rollback", 409, {
+      error: {
+        code: "ADB_WRITE_FAILED",
+        message: "raw-target-id failed while reading /raw/node/path"
+      }
+    });
+    const operationFailure = operationFailureDiagnostic({
+      id: "raw-operation-id",
+      status: "failed",
+      nodePath: "/raw/node/path",
+      readValue: null,
+      readbackValue: null,
+      requestedValue: null,
+      previousValue: null,
+      verified: false,
+      failureReason: "raw-target-id failed while reading /raw/node/path",
+      snapshotId: null
+    });
+
+    const diagnostics = `${apiFailure}\n${operationFailure}`;
+
+    expect(diagnostics).toContain("/api/v1/debugging/snapshots/:snapshotId/rollback");
+    expect(diagnostics).toContain("errorMessage=string:length=49");
+    expect(diagnostics).toContain("failureReason=present");
+    expect(diagnostics).not.toContain("raw-snapshot-id");
+    expect(diagnostics).not.toContain("raw-target-id");
+    expect(diagnostics).not.toContain("/raw/node/path");
   });
 });
 
@@ -304,10 +374,56 @@ async function seedM3DebuggingPermissions(client: Client) {
 async function cleanupDebuggingAcceptanceState(client: Client, projectId: string) {
   await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
   await client.query("delete from debugging_events where project_id = $1", [projectId]);
-  await client.query("update node_operations set snapshot_id = null where project_id = $1", [projectId]);
-  await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
-  await client.query("delete from node_operations where project_id = $1", [projectId]);
-  await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
+  await client.query(
+    `
+    update node_operations operations
+    set snapshot_id = null
+    where operations.project_id = $1
+      and not exists (
+        select 1
+        from debug_device_leases leases
+        where leases.session_id = operations.session_id
+      )
+    `,
+    [projectId]
+  );
+  await client.query(
+    `
+    update debugging_snapshots snapshots
+    set operation_id = null
+    where snapshots.project_id = $1
+      and not exists (
+        select 1
+        from debug_device_leases leases
+        where leases.session_id = snapshots.session_id
+      )
+    `,
+    [projectId]
+  );
+  await client.query(
+    `
+    delete from node_operations operations
+    where operations.project_id = $1
+      and not exists (
+        select 1
+        from debug_device_leases leases
+        where leases.session_id = operations.session_id
+      )
+    `,
+    [projectId]
+  );
+  await client.query(
+    `
+    delete from debugging_snapshots snapshots
+    where snapshots.project_id = $1
+      and not exists (
+        select 1
+        from debug_device_leases leases
+        where leases.session_id = snapshots.session_id
+      )
+    `,
+    [projectId]
+  );
   await client.query(
     `
     delete from debugging_sessions sessions
@@ -353,8 +469,15 @@ function requireAdbSmokeConfig(): AdbSmokeConfig {
   }
 
   const writeEnabled = process.env.ADB_SMOKE_ENABLE_WRITE === "true";
-  if (writeEnabled && !process.env.ADB_SMOKE_WRITE_VALUE?.trim()) {
-    throw new Error("ADB_SMOKE_WRITE_VALUE is required when ADB_SMOKE_ENABLE_WRITE=true.");
+  const missingWriteInputs = [
+    ["ADB_SMOKE_WRITE_VALUE", process.env.ADB_SMOKE_WRITE_VALUE],
+    ["ADB_SMOKE_CONFIRM_WRITE", process.env.ADB_SMOKE_CONFIRM_WRITE],
+    ["ADB_SMOKE_CONFIRM_ROLLBACK", process.env.ADB_SMOKE_CONFIRM_ROLLBACK]
+  ]
+    .filter(([, value]) => !value?.trim())
+    .map(([name]) => name);
+  if (writeEnabled && missingWriteInputs.length > 0) {
+    throw new Error(`${missingWriteInputs.join(", ")} required when ADB_SMOKE_ENABLE_WRITE=true.`);
   }
 
   return {
@@ -369,8 +492,8 @@ function requireAdbSmokeConfig(): AdbSmokeConfig {
     userId: process.env.ADB_SMOKE_USER_ID?.trim() || "u-xu-yun",
     writeEnabled,
     writeValue: process.env.ADB_SMOKE_WRITE_VALUE?.trim(),
-    confirmWrite: process.env.ADB_SMOKE_CONFIRM_WRITE?.trim() || "confirm-high-risk-write",
-    confirmRollback: process.env.ADB_SMOKE_CONFIRM_ROLLBACK?.trim() || "confirm-rollback"
+    confirmWrite: process.env.ADB_SMOKE_CONFIRM_WRITE?.trim() ?? "",
+    confirmRollback: process.env.ADB_SMOKE_CONFIRM_ROLLBACK?.trim() ?? ""
   };
 }
 
@@ -390,7 +513,7 @@ async function postJson<T>(
   });
   const body = (await response.json().catch(() => null)) as T | { error?: { message?: string; code?: string } } | null;
 
-  expect(response.ok(), `${path} failed with status ${response.status()}: ${JSON.stringify(body)}`).toBe(true);
+  expect(response.ok(), apiFailureDiagnostic("POST", path, response.status(), body as ApiErrorBody)).toBe(true);
 
   return {
     body: body as T,
@@ -417,6 +540,26 @@ function summarizeSafeApiResponse(
   };
 }
 
+function apiBodySummary(body: ApiErrorBody | unknown) {
+  if (!body || typeof body !== "object") {
+    return "body=absent";
+  }
+
+  const error = (body as ApiErrorBody)?.error;
+  if (error) {
+    return [
+      `errorCode=${typeof error.code === "string" ? error.code : "absent"}`,
+      `errorMessage=${stringValueShape(error.message)}`
+    ].join("; ");
+  }
+
+  return "body=present";
+}
+
+function apiFailureDiagnostic(method: string, path: string, status: number, body: ApiErrorBody | unknown) {
+  return `${method} ${apiEvidencePath(path)} failed with status ${status}: ${apiBodySummary(body)}`;
+}
+
 function operationSummary(operation: NodeOperationDto) {
   return [
     `operation=${identifierShape(operation.id)}`,
@@ -431,8 +574,16 @@ function operationsSummary(operations: NodeOperationDto[]) {
   return `operations=${operations.length}; ${operations.map(operationSummary).join("; ")}`;
 }
 
+function detectedTargetsSummary(targets: DebugTargetDto[]) {
+  return targets.map((item) => identifierShape(item.targetRef)).join(", ") || "(none)";
+}
+
 function stringValueShape(value: string | null | undefined) {
   return typeof value === "string" ? `string:length=${value.length}` : "absent";
+}
+
+function operationFailureDiagnostic(operation: Pick<NodeOperationDto, "failureReason">) {
+  return `failureReason=${operation.failureReason ? "present" : "absent"}`;
 }
 
 function readValueEvidence(value: string | null | undefined, pattern: RegExp | undefined) {
@@ -507,7 +658,7 @@ async function getAuditEvents(request: APIRequestContext, userId: string, projec
   });
   const body = (await response.json().catch(() => null)) as { items?: AuditEventDto[] } | { error?: { message?: string; code?: string } } | null;
 
-  expect(response.ok(), `audit events failed with status ${response.status()}: ${JSON.stringify(body)}`).toBe(true);
+  expect(response.ok(), apiFailureDiagnostic("GET", auditPath, response.status(), body as ApiErrorBody)).toBe(true);
 
   return {
     events: ((body as { items?: AuditEventDto[] })?.items ?? []),
@@ -521,7 +672,7 @@ async function getAuditEvents(request: APIRequestContext, userId: string, projec
 
 function summarizeAudit(events: AuditEventDto[], kind: string, targetId: string | null) {
   const event = events.find((item) => item.kind === kind && item.targetId === targetId);
-  expect(event, `Missing audit event kind=${kind} targetId=${targetId ?? "(null)"}.`).toBeTruthy();
+  expect(event, `Missing audit event kind=${kind} targetId=${targetId ? identifierShape(targetId) : "(null)"}.`).toBeTruthy();
 
   return {
     id: identifierShape(event!.id),
@@ -623,7 +774,7 @@ test.describe("ADB device-lab full-chain loop", () => {
     const target = detected.body.items.find((item) => item.targetRef === config.targetRef);
     expect(
       target,
-      `ADB target ${config.targetRef} was not detected. Detected targets: ${detected.body.items.map((item) => item.targetRef).join(", ") || "(none)"}`
+      `ADB target ${identifierShape(config.targetRef)} was not detected. Detected targets: ${detectedTargetsSummary(detected.body.items)}`
     ).toBeTruthy();
     expect(target!.status).toBe("detected");
     if (target!.protocol) {
@@ -654,7 +805,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       (body) => operationSummary(body.operation)
     );
     apiSummaries.push(readResponse.summary);
-    expect(readResponse.body.operation.status, `ADB read failed: ${readResponse.body.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
+    expect(readResponse.body.operation.status, `ADB read failed: ${operationFailureDiagnostic(readResponse.body.operation)}`).toBe("succeeded");
     expect(readResponse.body.operation.readValue, "ADB read did not return a value.").toEqual(expect.any(String));
     if (config.readValuePattern) {
       expect(
@@ -691,7 +842,7 @@ test.describe("ADB device-lab full-chain loop", () => {
         writeOperation = writeResponse.body.operation;
         snapshotId = writeResponse.body.operation.snapshotId;
 
-        expect(writeResponse.body.operation.status, `ADB write failed: ${writeResponse.body.operation.failureReason ?? "no failure reason"}`).toBe("succeeded");
+        expect(writeResponse.body.operation.status, `ADB write failed: ${operationFailureDiagnostic(writeResponse.body.operation)}`).toBe("succeeded");
         expect(
           snapshotId,
           "ADB write succeeded without operation.snapshotId, so the test cannot safely restore hardware through snapshot rollback."
@@ -718,7 +869,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       expect(rollbackResponse!.body.operations, "Snapshot rollback did not return rollback operations.").toHaveLength(1);
       expect(
         rollbackResponse!.body.operations[0].status,
-        `ADB snapshot rollback failed: ${rollbackResponse!.body.operations[0].failureReason ?? "no failure reason"}`
+        `ADB snapshot rollback failed: ${operationFailureDiagnostic(rollbackResponse!.body.operations[0])}`
       ).toBe("succeeded");
       expect(rollbackResponse!.body.operations[0].verified).toBe(true);
       expect(
@@ -800,7 +951,7 @@ test.describe("ADB device-lab full-chain loop", () => {
         steps: [
           "Set DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true.",
           "Set ADB_SMOKE_PROJECT_ID, ADB_SMOKE_DEVICE_ID, ADB_SMOKE_TARGET_REF, ADB_SMOKE_PARAMETER_ID, and ADB_SMOKE_NODE_PATH.",
-          "Optionally set ADB_SMOKE_ENABLE_WRITE=true and ADB_SMOKE_WRITE_VALUE for write/readback/rollback.",
+          "Optionally set ADB_SMOKE_ENABLE_WRITE=true plus ADB_SMOKE_WRITE_VALUE, ADB_SMOKE_CONFIRM_WRITE, and ADB_SMOKE_CONFIRM_ROLLBACK for write/readback/rollback.",
           "Run npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts."
         ]
       },
