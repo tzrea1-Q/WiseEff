@@ -127,6 +127,21 @@ test.describe("ADB device-lab preflight validation", () => {
       ])
     ).toThrow(/exactly one ready ADB device.*adb-target-1:device.*adb-target-2:device.*adb-target-3:offline/s);
   });
+
+  test("preserves debugging sessions that still own device leases during cleanup", async () => {
+    const queries: string[] = [];
+    const client = {
+      query: async (text: string) => {
+        queries.push(text);
+      }
+    } as unknown as Client;
+
+    await cleanupDebuggingAcceptanceState(client, "aurora");
+
+    const sessionDelete = queries.find((query) => query.includes("delete from debugging_sessions"));
+    expect(sessionDelete).toContain("debug_device_leases");
+    expect(sessionDelete).toContain("not exists");
+  });
 });
 
 function requireSingleReadyAdbTarget(targetRef: string) {
@@ -216,7 +231,18 @@ async function cleanupDebuggingAcceptanceState(client: Client, projectId: string
   await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
   await client.query("delete from node_operations where project_id = $1", [projectId]);
   await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
-  await client.query("delete from debugging_sessions where project_id = $1", [projectId]);
+  await client.query(
+    `
+    delete from debugging_sessions sessions
+    where sessions.project_id = $1
+      and not exists (
+        select 1
+        from debug_device_leases leases
+        where leases.session_id = sessions.id
+      )
+    `,
+    [projectId]
+  );
 }
 
 async function prepareAdbAcceptanceState(projectId: string) {
@@ -645,7 +671,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       notes: [
         `Browser route=/node-debugging?project=${config.projectId}; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
         "Console/network diagnostics: this spec relies on Playwright request API summaries, default retain-on-failure traces, and operation evidence artifacts; no extra browser console/network collector is installed in this spec.",
-        `Frontend selected the ADB protocol only; the current frontend detect path cannot pass deviceId, so real detect/session/read/write/rollback evidence comes from Playwright request API calls with explicit deviceId=${config.deviceId} and protocol=adb.`,
+        `Frontend selected the ADB protocol only; the current frontend detect path cannot pass deviceId, so real detect/session evidence uses Playwright request API calls with explicit deviceId=${config.deviceId} and protocol=adb, while read/write/rollback evidence is scoped through that ADB session.`,
         `Read evidence for parameter ${config.parameterId}: ${readEvidence}.`,
         `Write evidence for parameter ${config.parameterId}: ${writeEvidence}.`,
         finalReadResponse ? "Final restoration was confirmed by equality with the original read value without recording the raw value." : "Read-only mode did not call write, rollback, or final restoration read."
