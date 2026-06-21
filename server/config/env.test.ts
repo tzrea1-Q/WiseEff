@@ -36,6 +36,7 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_REGION).toBeUndefined();
     expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
     expect(env.HDC_TIMEOUT_MS).toBe(5000);
+    expect(env.ADB_TIMEOUT_MS).toBe(5000);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
     expect(env.AGENT_PROVIDER).toBe("deterministic");
     expect(env.AGENT_API_FORMAT).toBe("wiseeff");
@@ -107,6 +108,16 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(false);
+  });
+
+  it("allows adb and multi debugging gateway modes", () => {
+    expect(loadServerEnv({ DEBUG_DEVICE_GATEWAY_MODE: "adb" }).DEBUG_DEVICE_GATEWAY_MODE).toBe("adb");
+    expect(loadServerEnv({ DEBUG_DEVICE_GATEWAY_MODE: "multi" }).DEBUG_DEVICE_GATEWAY_MODE).toBe("multi");
+  });
+
+  it("defaults ADB_TIMEOUT_MS to HDC timeout budget", () => {
+    expect(loadServerEnv({}).ADB_TIMEOUT_MS).toBe(5000);
+    expect(loadServerEnv({ ADB_TIMEOUT_MS: "7500" }).ADB_TIMEOUT_MS).toBe(7500);
   });
 
   it("loads Pi-backed live agent provider settings without a base URL", () => {
@@ -350,7 +361,7 @@ describe("loadServerEnv", () => {
     ).toThrow("AGENT_API_BASE_URL is required when AGENT_API_FORMAT=openai");
   });
 
-  it("requires the HDC gateway in production unless simulator staging is explicitly allowed", () => {
+  it("requires a live device gateway in production unless simulator staging is explicitly allowed", () => {
     const productionEnv = {
       ...productionOidcEnv,
       AGENT_PROVIDER: "live",
@@ -365,8 +376,11 @@ describe("loadServerEnv", () => {
         DEBUG_DEVICE_GATEWAY_MODE: "simulator"
       })
     ).toThrow(
-      "DEBUG_DEVICE_GATEWAY_MODE=hdc is required when NODE_ENV=production. Set DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true only for non-customer staging environments that intentionally run the simulator."
+      "DEBUG_DEVICE_GATEWAY_MODE=hdc, adb, or multi is required when NODE_ENV=production. Set DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true only for non-customer staging environments that intentionally run the simulator."
     );
+
+    expect(loadServerEnv({ ...productionEnv, DEBUG_DEVICE_GATEWAY_MODE: "adb" }).DEBUG_DEVICE_GATEWAY_MODE).toBe("adb");
+    expect(loadServerEnv({ ...productionEnv, DEBUG_DEVICE_GATEWAY_MODE: "multi" }).DEBUG_DEVICE_GATEWAY_MODE).toBe("multi");
 
     expect(
       loadServerEnv({

@@ -1328,7 +1328,7 @@ Expected: commit succeeds.
 - Modify: `server/modules/operations/routes.ts`
 - Modify: related operations tests if health output changes.
 
-- [ ] **Step 1: Write env tests**
+- [x] **Step 1: Write env tests**
 
 Add to `server/config/env.test.ts`:
 
@@ -1344,7 +1344,7 @@ it("defaults ADB_TIMEOUT_MS to HDC timeout budget", () => {
 });
 ```
 
-- [ ] **Step 2: Run env tests and verify failure**
+- [x] **Step 2: Run env tests and verify failure**
 
 Run:
 
@@ -1354,7 +1354,7 @@ npm run test:server -- server/config/env.test.ts
 
 Expected: FAIL because `adb`, `multi`, and `ADB_TIMEOUT_MS` are unknown.
 
-- [ ] **Step 3: Update env schema**
+- [x] **Step 3: Update env schema**
 
 In `server/config/env.ts`:
 
@@ -1378,7 +1378,7 @@ if (
 }
 ```
 
-- [ ] **Step 4: Wire server startup registry**
+- [x] **Step 4: Wire server startup registry**
 
 In `server/index.ts`, import ADB and registry:
 
@@ -1407,7 +1407,7 @@ const debugGatewayRegistry = createDebugDeviceGatewayRegistry({
 
 Pass `debugGatewayRegistry` into `createWiseEffServerFromEnv`.
 
-- [ ] **Step 5: Update seed script**
+- [x] **Step 5: Update seed script**
 
 In `scripts/seed-m3-debugging.ts`, after inserting each `debugging_parameters` row, insert an HDC binding:
 
@@ -1431,7 +1431,7 @@ await tx.query(
 
 Do not seed enabled ADB bindings unless a safe fixture exists. If adding examples, set `enabled=false`.
 
-- [ ] **Step 6: Update env examples**
+- [x] **Step 6: Update env examples**
 
 Add to `.env.example` and `ops/self-hosted/.env.example`:
 
@@ -1442,11 +1442,11 @@ ADB_TIMEOUT_MS=5000
 
 Keep `HDC_TIMEOUT_MS=5000`.
 
-- [ ] **Step 7: Update readiness only if necessary**
+- [x] **Step 7: Update readiness only if necessary**
 
 If `server/modules/operations/health.ts` or readiness output reports `DEBUG_DEVICE_GATEWAY_MODE`, add support for `adb` and `multi` without changing the public shape unless tests require it. If no health code change is needed, record that in the commit message body or plan execution notes.
 
-- [ ] **Step 8: Run env and startup-related tests**
+- [x] **Step 8: Run env and startup-related tests**
 
 Run:
 
@@ -1456,7 +1456,7 @@ npm run test:server -- server/config/env.test.ts server/modules/operations/route
 
 Expected: PASS. If an operations test file does not exist, omit it and record the omission.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 Run:
 

@@ -259,6 +259,22 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           parameter.sortOrder
         ]
       );
+
+      await tx.query(
+        `
+        insert into debugging_parameter_node_bindings (
+          id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
+        )
+        values ($1, $2, $3, $4, 'hdc', $5, $6, true, $7, '{}'::jsonb, now())
+        on conflict (parameter_id, protocol) do update set
+          node_path = excluded.node_path,
+          access_mode = excluded.access_mode,
+          enabled = excluded.enabled,
+          notes = excluded.notes,
+          updated_at = now()
+        `,
+        [`${parameter.id}:hdc`, organizationId, projectId, parameter.id, parameter.nodePath, parameter.accessMode, "Seeded HDC node binding."]
+      );
     }
   });
 }

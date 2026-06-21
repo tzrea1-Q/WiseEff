@@ -13,7 +13,7 @@ import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadi
 export type PilotReadinessEnv = {
   NODE_ENV?: "development" | "test" | "production";
   AUTH_PROVIDER?: "hmac" | "oidc" | "local";
-  DEBUG_DEVICE_GATEWAY_MODE?: "simulator" | "hdc";
+  DEBUG_DEVICE_GATEWAY_MODE?: "simulator" | "hdc" | "adb" | "multi";
   DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION?: boolean;
   HDC_DEVICE_LAB_AVAILABLE?: boolean;
   HDC_SMOKE_PROJECT_ID?: string;
@@ -86,6 +86,10 @@ const hdcSmokeEvidenceFields = [
   "HDC_SMOKE_WRITE_VALUE"
 ] as const satisfies readonly (keyof PilotReadinessEnv)[];
 
+function debugGatewayMode(value: unknown): NonNullable<PilotReadinessEnv["DEBUG_DEVICE_GATEWAY_MODE"]> {
+  return value === "hdc" || value === "adb" || value === "multi" ? value : "simulator";
+}
+
 function deviceGatewayEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateStatus {
   const acceptanceEvidence = env.M5_DEVICE_GATEWAY_EVIDENCE?.trim();
   if (acceptanceEvidence) {
@@ -121,6 +125,23 @@ function deviceGatewayEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateSt
   };
 }
 
+function adbDeviceGatewayEvidenceGate(env: PilotReadinessEnv, mode: "adb" | "multi"): PilotReadinessGateStatus {
+  const acceptanceEvidence = env.M5_DEVICE_GATEWAY_EVIDENCE?.trim();
+  if (acceptanceEvidence) {
+    return {
+      ok: true,
+      status: "ready",
+      message: `Device gateway evidence recorded: ${acceptanceEvidence}.`
+    };
+  }
+
+  return {
+    ok: false,
+    status: "missing",
+    message: `${mode.toUpperCase()} device gateway evidence is not recorded. Set M5_DEVICE_GATEWAY_EVIDENCE after a hardware smoke.`
+  };
+}
+
 function deviceGatewayGate(options: {
   debugGateway?: DebugDeviceGateway;
   debugGatewayRegistry?: DebugDeviceGatewayRegistry;
@@ -134,24 +155,34 @@ function deviceGatewayGate(options: {
     };
   }
 
-  const mode = options.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator";
+  const mode = debugGatewayMode(options.env.DEBUG_DEVICE_GATEWAY_MODE);
 
-  if (mode !== "hdc") {
+  if (mode === "simulator") {
     return {
       ok: false,
       status: "blocked",
       message: "Simulator device gateway mode is not acceptable for pilot readiness."
     };
   }
-  if (options.debugGatewayRegistry && !options.debugGatewayRegistry.hasGateway("hdc")) {
+  const requiredProtocols = mode === "multi" ? (["hdc", "adb"] as const) : ([mode] as const);
+  if (options.debugGatewayRegistry) {
+    const missingProtocols = requiredProtocols.filter((protocol) => !options.debugGatewayRegistry?.hasGateway(protocol));
+    if (missingProtocols.length > 0) {
+      return {
+        ok: false,
+        status: "missing",
+        message: `${missingProtocols.map((protocol) => protocol.toUpperCase()).join("/")} debug device gateway is not configured for this API process.`
+      };
+    }
+  } else if (requiredProtocols.includes("adb")) {
     return {
       ok: false,
       status: "missing",
-      message: "HDC debug device gateway is not configured for this API process."
+      message: "ADB debug device gateway is not configured for this API process."
     };
   }
 
-  return deviceGatewayEvidenceGate(options.env);
+  return mode === "hdc" ? deviceGatewayEvidenceGate(options.env) : adbDeviceGatewayEvidenceGate(options.env, mode);
 }
 
 async function agentProviderGate(options: { agentProvider?: AgentProvider; env: PilotReadinessEnv }): Promise<PilotReadinessGateStatus> {
@@ -196,7 +227,7 @@ async function agentProviderGate(options: { agentProvider?: AgentProvider; env: 
 function defaultPilotReadinessEnv(): PilotReadinessEnv {
   return {
     NODE_ENV: (process.env.NODE_ENV as PilotReadinessEnv["NODE_ENV"]) ?? "development",
-    DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE === "hdc" ? "hdc" : "simulator",
+    DEBUG_DEVICE_GATEWAY_MODE: debugGatewayMode(process.env.DEBUG_DEVICE_GATEWAY_MODE),
     DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: process.env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION === "true",
     HDC_DEVICE_LAB_AVAILABLE: process.env.HDC_DEVICE_LAB_AVAILABLE === "true",
     HDC_SMOKE_PROJECT_ID: process.env.HDC_SMOKE_PROJECT_ID?.trim() || undefined,
