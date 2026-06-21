@@ -3,6 +3,7 @@ import type { Queryable } from "../../shared/database/client";
 import type {
   DebugDeviceRecord,
   DebugDeviceLeaseRecord,
+  DebugParameterNodeBindingRecord,
   DebugParameterRecord,
   DebugSessionRecord,
   DebugSnapshotEntry,
@@ -10,6 +11,7 @@ import type {
   DebugTargetRecord,
   NodeOperationRecord
 } from "./types";
+import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
 import type {
   DebugAccessMode,
   DebugDeviceStatus,
@@ -26,7 +28,7 @@ type DebugDeviceRow = {
   organization_id: string;
   project_id: string;
   name: string;
-  transport: "simulator" | "hdc";
+  transport: "simulator" | "hdc" | "adb" | "multi";
   status: DebugDeviceStatus;
   firmware: string;
   last_seen_at: string | Date | null;
@@ -48,6 +50,7 @@ type DebugTargetRow = {
   organization_id: string;
   project_id: string;
   device_id: string;
+  protocol?: DebugConnectionProtocol;
   target_ref: string;
   label: string;
   status: DebugTargetStatus;
@@ -80,10 +83,25 @@ type DebugSessionRow = {
   project_id: string;
   device_id: string;
   target_id: string;
+  protocol?: DebugConnectionProtocol;
   actor_user_id: string;
   status: DebugSessionStatus;
   started_at: string | Date;
   ended_at: string | Date | null;
+};
+
+type DebugParameterNodeBindingRow = {
+  id: string;
+  organization_id: string;
+  project_id: string;
+  parameter_id: string;
+  protocol: DebugConnectionProtocol;
+  node_path: string;
+  access_mode: DebugAccessMode;
+  enabled: boolean;
+  notes: string | null;
+  created_at: string | Date;
+  updated_at: string | Date;
 };
 
 type DebugSnapshotRow = {
@@ -104,6 +122,7 @@ type NodeOperationRow = {
   project_id: string;
   session_id: string;
   parameter_id: string | null;
+  protocol?: DebugConnectionProtocol;
   node_path: string;
   operation_type: DebugOperationType;
   status: DebugOperationStatus;
@@ -164,6 +183,7 @@ function toDebugTargetRecord(row: DebugTargetRow): DebugTargetRecord {
     organizationId: row.organization_id,
     projectId: row.project_id,
     deviceId: row.device_id,
+    protocol: row.protocol ?? defaultDebugConnectionProtocol,
     targetRef: row.target_ref,
     label: row.label,
     status: row.status,
@@ -193,6 +213,22 @@ function toDebugParameterRecord(row: DebugParameterRow): DebugParameterRecord {
   };
 }
 
+function toDebugParameterNodeBindingRecord(row: DebugParameterNodeBindingRow): DebugParameterNodeBindingRecord {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    projectId: row.project_id,
+    parameterId: row.parameter_id,
+    protocol: row.protocol,
+    nodePath: row.node_path,
+    accessMode: row.access_mode,
+    enabled: row.enabled,
+    notes: row.notes,
+    createdAt: dateTimeToIso(row.created_at) ?? "",
+    updatedAt: dateTimeToIso(row.updated_at) ?? ""
+  };
+}
+
 function toDebugSessionRecord(row: DebugSessionRow): DebugSessionRecord {
   return {
     id: row.id,
@@ -200,6 +236,7 @@ function toDebugSessionRecord(row: DebugSessionRow): DebugSessionRecord {
     projectId: row.project_id,
     deviceId: row.device_id,
     targetId: row.target_id,
+    protocol: row.protocol ?? defaultDebugConnectionProtocol,
     actorUserId: row.actor_user_id,
     status: row.status,
     startedAt: dateTimeToIso(row.started_at) ?? "",
@@ -228,6 +265,7 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
     projectId: row.project_id,
     sessionId: row.session_id,
     parameterId: row.parameter_id,
+    protocol: row.protocol ?? defaultDebugConnectionProtocol,
     nodePath: row.node_path,
     operationType: row.operation_type,
     status: row.status,
@@ -275,6 +313,7 @@ const nodeOperationColumns = `
   project_id,
   session_id,
   parameter_id,
+  protocol,
   node_path,
   operation_type,
   status,
@@ -401,13 +440,63 @@ export async function updateDebugParameterValues(
   );
 }
 
+export async function getDebugParameterNodeBinding(
+  db: Queryable,
+  input: { organizationId: string; parameterId: string; protocol: DebugConnectionProtocol }
+): Promise<DebugParameterNodeBindingRecord | null> {
+  const result = await db.query<DebugParameterNodeBindingRow>(
+    `
+    select id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, created_at, updated_at
+    from debugging_parameter_node_bindings
+    where organization_id = $1
+      and parameter_id = $2
+      and protocol = $3
+      and enabled = true
+    limit 1
+    `,
+    [input.organizationId, input.parameterId, input.protocol]
+  );
+
+  return result.rows[0] ? toDebugParameterNodeBindingRecord(result.rows[0]) : null;
+}
+
+export async function listDebugParameterNodeBindings(
+  db: Queryable,
+  input: { organizationId: string; projectId?: string; parameterIds?: string[]; protocol?: DebugConnectionProtocol }
+): Promise<DebugParameterNodeBindingRecord[]> {
+  const values: unknown[] = [input.organizationId];
+  const where = ["organization_id = $1"];
+
+  if (input.projectId) {
+    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, input.projectId);
+  }
+  if (input.parameterIds?.length) {
+    addCondition(where, values, (placeholder) => `parameter_id = any(${placeholder}::text[])`, input.parameterIds);
+  }
+  if (input.protocol) {
+    addCondition(where, values, (placeholder) => `protocol = ${placeholder}`, input.protocol);
+  }
+
+  const result = await db.query<DebugParameterNodeBindingRow>(
+    `
+    select id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, created_at, updated_at
+    from debugging_parameter_node_bindings
+    where ${where.join("\n      and ")}
+    order by parameter_id asc, protocol asc
+    `,
+    values
+  );
+
+  return result.rows.map(toDebugParameterNodeBindingRecord);
+}
+
 export async function getDebugSession(
   db: Queryable,
   input: { organizationId: string; sessionId: string }
 ): Promise<DebugSessionRecord | null> {
   const result = await db.query<DebugSessionRow>(
     `
-    select id, organization_id, project_id, device_id, target_id, actor_user_id, status, started_at, ended_at
+    select id, organization_id, project_id, device_id, target_id, protocol, actor_user_id, status, started_at, ended_at
     from debugging_sessions
     where organization_id = $1
       and id = $2
@@ -425,7 +514,7 @@ export async function getDebugTarget(
 ): Promise<DebugTargetRecord | null> {
   const result = await db.query<DebugTargetRow>(
     `
-    select id, organization_id, project_id, device_id, target_ref, label, status, detected_at
+    select id, organization_id, project_id, device_id, protocol, target_ref, label, status, detected_at
     from debugging_targets
     where organization_id = $1
       and id = $2
@@ -479,7 +568,7 @@ export async function upsertDetectedTargets(
     organizationId: string;
     projectId: string;
     deviceId: string;
-    targets: Array<{ id: string; targetRef: string; label: string; online: boolean }>;
+    targets: Array<{ id: string; protocol?: DebugConnectionProtocol; targetRef: string; label: string; online: boolean }>;
   }
 ): Promise<DebugTargetRecord[]> {
   const records: DebugTargetRecord[] = [];
@@ -489,16 +578,26 @@ export async function upsertDetectedTargets(
     const result = await db.query<DebugTargetRow>(
       `
       insert into debugging_targets (
-        organization_id, project_id, device_id, id, target_ref, label, status
+        organization_id, project_id, device_id, id, protocol, target_ref, label, status
       )
-      values ($1, $2, $3, $4, $5, $6, $7)
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
       on conflict (device_id, target_ref) do update
-      set label = excluded.label,
+      set protocol = excluded.protocol,
+        label = excluded.label,
         status = excluded.status,
         detected_at = now()
-      returning id, organization_id, project_id, device_id, target_ref, label, status, detected_at
+      returning id, organization_id, project_id, device_id, protocol, target_ref, label, status, detected_at
       `,
-      [input.organizationId, input.projectId, input.deviceId, target.id, target.targetRef, target.label, status]
+      [
+        input.organizationId,
+        input.projectId,
+        input.deviceId,
+        target.id,
+        target.protocol ?? defaultDebugConnectionProtocol,
+        target.targetRef,
+        target.label,
+        status
+      ]
     );
 
     if (result.rows[0]) {
@@ -529,18 +628,28 @@ export async function createDebugSession(
     projectId: string;
     deviceId: string;
     targetId: string;
+    protocol?: DebugConnectionProtocol;
     actorUserId: string;
   }
 ): Promise<DebugSessionRecord> {
   const result = await db.query<DebugSessionRow>(
     `
     insert into debugging_sessions (
-      id, organization_id, project_id, device_id, target_id, actor_user_id, status
+      id, organization_id, project_id, device_id, target_id, protocol, actor_user_id, status
     )
-    values ($1, $2, $3, $4, $5, $6, $7)
-    returning id, organization_id, project_id, device_id, target_id, actor_user_id, status, started_at, ended_at
+    values ($1, $2, $3, $4, $5, $6, $7, $8)
+    returning id, organization_id, project_id, device_id, target_id, protocol, actor_user_id, status, started_at, ended_at
     `,
-    [randomUUID(), input.organizationId, input.projectId, input.deviceId, input.targetId, input.actorUserId, "active"]
+    [
+      randomUUID(),
+      input.organizationId,
+      input.projectId,
+      input.deviceId,
+      input.targetId,
+      input.protocol ?? defaultDebugConnectionProtocol,
+      input.actorUserId,
+      "active"
+    ]
   );
 
   return toDebugSessionRecord(result.rows[0]);
@@ -615,6 +724,7 @@ export async function insertNodeOperation(
     projectId: string;
     sessionId: string;
     parameterId: string | null;
+    protocol?: DebugConnectionProtocol;
     nodePath: string;
     operationType: DebugOperationType;
     status: DebugOperationStatus;
@@ -633,11 +743,11 @@ export async function insertNodeOperation(
   const result = await db.query<NodeOperationRow>(
     `
     insert into node_operations (
-      id, organization_id, project_id, session_id, parameter_id, node_path, operation_type,
+      id, organization_id, project_id, session_id, parameter_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
       failure_reason, duration_ms, approval_id, snapshot_id, actor_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
     returning ${nodeOperationColumns}
     `,
     [
@@ -646,6 +756,7 @@ export async function insertNodeOperation(
       input.projectId,
       input.sessionId,
       input.parameterId,
+      input.protocol ?? defaultDebugConnectionProtocol,
       input.nodePath,
       input.operationType,
       input.status,

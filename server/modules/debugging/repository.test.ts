@@ -9,6 +9,9 @@ import {
   insertNodeOperation,
   linkOperationSnapshot,
   getDebugDevice,
+  getDebugParameterNodeBinding,
+  getDebugSession,
+  getDebugTarget,
   listDebugDevices,
   listDebugParameters,
   listDebugSessionEvents,
@@ -44,6 +47,108 @@ function createFakeDb(results: QueuedResult[] = []) {
 const timestamp = "2026-05-27T10:00:00.000Z";
 
 describe("debugging repository", () => {
+  it("maps target, session, and operation protocol fields", async () => {
+    const { db } = createFakeDb([
+      [
+        {
+          id: "target-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          device_id: "device-1",
+          protocol: "adb",
+          target_ref: "emulator-5554",
+          label: "ADB target emulator-5554",
+          status: "detected",
+          detected_at: timestamp
+        }
+      ],
+      [
+        {
+          id: "session-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          device_id: "device-1",
+          target_id: "target-1",
+          protocol: "adb",
+          actor_user_id: "user-1",
+          status: "active",
+          started_at: timestamp,
+          ended_at: null
+        }
+      ],
+      [
+        {
+          id: "operation-1",
+          organization_id: "org-1",
+          project_id: "aurora",
+          session_id: "session-1",
+          parameter_id: "param-1",
+          protocol: "adb",
+          node_path: "/sys/adb/current",
+          operation_type: "read",
+          status: "succeeded",
+          requested_value: null,
+          previous_value: null,
+          read_value: "3000",
+          readback_value: null,
+          verified: true,
+          failure_reason: null,
+          duration_ms: 5,
+          approval_id: null,
+          snapshot_id: null,
+          created_at: timestamp
+        }
+      ]
+    ]);
+
+    await expect(getDebugTarget(db, { organizationId: "org-1", targetId: "target-1" })).resolves.toMatchObject({ protocol: "adb" });
+    await expect(getDebugSession(db, { organizationId: "org-1", sessionId: "session-1" })).resolves.toMatchObject({ protocol: "adb" });
+    await expect(listDebugSessionEvents(db, { organizationId: "org-1", sessionId: "session-1" })).resolves.toEqual([
+      expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current" })
+    ]);
+  });
+
+  it("returns parameter node bindings by parameter and protocol", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "binding-param-1-adb",
+          organization_id: "org-1",
+          project_id: "aurora",
+          parameter_id: "param-1",
+          protocol: "adb",
+          node_path: "/sys/adb/current",
+          access_mode: "RW",
+          enabled: true,
+          notes: "ADB lab node",
+          created_at: timestamp,
+          updated_at: timestamp
+        }
+      ]
+    ]);
+
+    const binding = await getDebugParameterNodeBinding(db, {
+      organizationId: "org-1",
+      parameterId: "param-1",
+      protocol: "adb"
+    });
+
+    expect(calls[0].text).toContain("from debugging_parameter_node_bindings");
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].text).toContain("parameter_id = $2");
+    expect(calls[0].text).toContain("protocol = $3");
+    expect(calls[0].text).toContain("enabled = true");
+    expect(calls[0].values).toEqual(["org-1", "param-1", "adb"]);
+    expect(binding).toMatchObject({
+      parameterId: "param-1",
+      protocol: "adb",
+      nodePath: "/sys/adb/current",
+      accessMode: "RW",
+      enabled: true,
+      notes: "ADB lab node"
+    });
+  });
+
   it("listDebugDevices filters by organization and project", async () => {
     const { db, calls } = createFakeDb([
       [
@@ -124,9 +229,10 @@ describe("debugging repository", () => {
           organization_id: call.values[0],
           project_id: call.values[1],
           device_id: call.values[2],
-          target_ref: call.values[4],
-          label: call.values[5],
-          status: call.values[6],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7],
           detected_at: timestamp
         }
       ],
@@ -142,7 +248,7 @@ describe("debugging repository", () => {
 
     expect(calls[0].text).toContain("insert into debugging_targets");
     expect(calls[0].text).toContain("on conflict (device_id, target_ref) do update");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "target-1", "simulator://aurora-1", "Aurora Target", "detected"]);
+    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "simulator://aurora-1", "Aurora Target", "detected"]);
     expect(calls[1].text).toContain("update debugging_devices");
     expect(calls[1].text).toContain("last_seen_at = now()");
     expect(calls[1].values).toEqual(["org-1", "device-1", "online"]);
@@ -251,6 +357,7 @@ describe("debugging repository", () => {
           project_id: "aurora",
           device_id: "device-1",
           target_id: "target-1",
+          protocol: call.values[5],
           actor_user_id: "user-1",
           status: "active",
           started_at: timestamp,
@@ -268,7 +375,7 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into debugging_sessions");
-    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "user-1", "active"]);
+    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "user-1", "active"]);
     expect(session).toMatchObject({ organizationId: "org-1", projectId: "aurora", actorUserId: "user-1", status: "active" });
     expect(session.id).toEqual(expect.any(String));
   });
@@ -376,18 +483,19 @@ describe("debugging repository", () => {
           project_id: call.values[2],
           session_id: call.values[3],
           parameter_id: call.values[4],
-          node_path: call.values[5],
-          operation_type: call.values[6],
-          status: call.values[7],
-          requested_value: call.values[8],
-          previous_value: call.values[9],
-          read_value: call.values[10],
-          readback_value: call.values[11],
-          verified: call.values[12],
-          failure_reason: call.values[13],
-          duration_ms: call.values[14],
-          approval_id: call.values[15],
-          snapshot_id: call.values[16],
+          protocol: call.values[5],
+          node_path: call.values[6],
+          operation_type: call.values[7],
+          status: call.values[8],
+          requested_value: call.values[9],
+          previous_value: call.values[10],
+          read_value: call.values[11],
+          readback_value: call.values[12],
+          verified: call.values[13],
+          failure_reason: call.values[14],
+          duration_ms: call.values[15],
+          approval_id: call.values[16],
+          snapshot_id: call.values[17],
           created_at: timestamp
         }
       ]
@@ -419,6 +527,7 @@ describe("debugging repository", () => {
       "aurora",
       "session-1",
       "param-1",
+      "hdc",
       "/sys/current",
       "write",
       "readback_mismatch",
