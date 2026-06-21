@@ -103,6 +103,24 @@ function identifierShape(value: string | null | undefined) {
   return value ? `set:length=${value.length}` : "unset";
 }
 
+function apiEvidencePath(path: string) {
+  const [pathname, queryString] = path.split("?", 2);
+  const safePathname = pathname.replace(
+    /\/api\/v1\/debugging\/snapshots\/[^/]+\/rollback$/,
+    "/api/v1/debugging/snapshots/:snapshotId/rollback"
+  );
+  if (!queryString) {
+    return safePathname;
+  }
+
+  const params = new URLSearchParams(queryString);
+  const safeParams = Array.from(params.entries()).map(([key, value]) => {
+    const safeValue = /id$/i.test(key) ? identifierShape(value) : value;
+    return `${key}=${safeValue}`;
+  });
+  return `${safePathname}?${safeParams.join("&")}`;
+}
+
 function validateSingleReadyAdbTarget(targetRef: string, devices: ParsedAdbDevice[]) {
   const observed = observedAdbDevices(devices);
   const matches = devices.filter((item) => item.serial === targetRef);
@@ -146,6 +164,60 @@ test.describe("ADB device-lab preflight validation", () => {
     expect(sessionDelete).toContain("debug_device_leases");
     expect(sessionDelete).toContain("not exists");
     expect(queries.some((query) => /delete\s+from\s+debug_device_leases/i.test(query))).toBe(false);
+  });
+});
+
+test.describe("ADB device-lab evidence redaction", () => {
+  test("shape-summarizes operation and audit identifiers", () => {
+    const operation = operationSummary({
+      id: "raw-operation-id",
+      status: "succeeded",
+      nodePath: "/redacted/by/caller",
+      readValue: null,
+      readbackValue: null,
+      requestedValue: null,
+      previousValue: null,
+      verified: true,
+      failureReason: null,
+      snapshotId: "raw-snapshot-id"
+    });
+    const metadata = compactAuditMetadata({
+      protocol: "adb",
+      operationId: "raw-operation-id",
+      sessionId: "raw-session-id",
+      snapshotId: "raw-snapshot-id"
+    });
+    const audit = summarizeAudit(
+      [{
+        id: "raw-audit-id",
+        kind: "debug-node-read",
+        action: "read",
+        targetId: "raw-target-id",
+        traceId: "raw-trace-id",
+        metadata: { operationId: "raw-operation-id", sessionId: "raw-session-id", snapshotId: "raw-snapshot-id" }
+      }],
+      "debug-node-read",
+      "raw-target-id"
+    );
+
+    const evidence = JSON.stringify({ operation, metadata, audit });
+
+    expect(evidence).not.toContain("raw-operation-id");
+    expect(evidence).not.toContain("raw-session-id");
+    expect(evidence).not.toContain("raw-snapshot-id");
+    expect(evidence).not.toContain("raw-audit-id");
+    expect(evidence).not.toContain("raw-target-id");
+    expect(evidence).not.toContain("raw-trace-id");
+  });
+
+  test("shape-summarizes identifier-bearing API evidence paths", () => {
+    const rollbackPath = apiEvidencePath("/api/v1/debugging/snapshots/raw-snapshot-id/rollback");
+    const auditPath = apiEvidencePath("/api/v1/audit-events?app=debugging&projectId=raw-project-id&limit=100");
+
+    expect(rollbackPath).toBe("/api/v1/debugging/snapshots/:snapshotId/rollback");
+    expect(auditPath).toContain("projectId=set:length=14");
+    expect(auditPath).not.toContain("raw-project-id");
+    expect(auditPath).not.toContain("raw-snapshot-id");
   });
 });
 
@@ -322,7 +394,7 @@ async function postJson<T>(
 
   return {
     body: body as T,
-    summary: summarizeApiResponse(response, {
+    summary: summarizeSafeApiResponse(response, {
       method: "POST",
       path,
       responseSummary: body ? responseSummary(body as T) : "body=absent"
@@ -330,9 +402,24 @@ async function postJson<T>(
   };
 }
 
+function summarizeSafeApiResponse(
+  response: { status(): number; headers(): Record<string, string> },
+  input: { method: string; path: string; responseSummary?: string }
+) {
+  const summary = summarizeApiResponse(response, {
+    ...input,
+    path: apiEvidencePath(input.path)
+  });
+
+  return {
+    ...summary,
+    requestId: identifierShape(summary.requestId)
+  };
+}
+
 function operationSummary(operation: NodeOperationDto) {
   return [
-    `operation=${operation.id}`,
+    `operation=${identifierShape(operation.id)}`,
     `status=${operation.status}`,
     `verified=${operation.verified}`,
     `snapshot=${operation.snapshotId ? "present" : "absent"}`,
@@ -399,9 +486,9 @@ function compactAuditMetadata(metadata: Record<string, unknown> | undefined) {
 
   return JSON.stringify({
     protocol: metadata.protocol,
-    operationId: typeof metadata.operationId === "string" ? metadata.operationId : undefined,
-    sessionId: typeof metadata.sessionId === "string" ? metadata.sessionId : undefined,
-    snapshotId: typeof metadata.snapshotId === "string" ? metadata.snapshotId : undefined,
+    operationId: typeof metadata.operationId === "string" ? identifierShape(metadata.operationId) : undefined,
+    sessionId: typeof metadata.sessionId === "string" ? identifierShape(metadata.sessionId) : undefined,
+    snapshotId: typeof metadata.snapshotId === "string" ? identifierShape(metadata.snapshotId) : undefined,
     targetCount: typeof metadata.targetCount === "number" ? metadata.targetCount : undefined,
     operationCount: typeof metadata.operationCount === "number" ? metadata.operationCount : undefined,
     verified: typeof metadata.verified === "boolean" ? metadata.verified : undefined,
@@ -424,7 +511,7 @@ async function getAuditEvents(request: APIRequestContext, userId: string, projec
 
   return {
     events: ((body as { items?: AuditEventDto[] })?.items ?? []),
-    summary: summarizeApiResponse(response, {
+    summary: summarizeSafeApiResponse(response, {
       method: "GET",
       path: auditPath,
       responseSummary: `audit events=${(body as { items?: AuditEventDto[] } | null)?.items?.length ?? 0}`
@@ -437,11 +524,11 @@ function summarizeAudit(events: AuditEventDto[], kind: string, targetId: string 
   expect(event, `Missing audit event kind=${kind} targetId=${targetId ?? "(null)"}.`).toBeTruthy();
 
   return {
-    id: event!.id,
+    id: identifierShape(event!.id),
     kind: event!.kind,
     action: event!.action,
-    targetId: event!.targetId,
-    requestId: event!.traceId,
+    targetId: event!.targetId ? identifierShape(event!.targetId) : event!.targetId,
+    requestId: identifierShape(event!.traceId),
     metadataSummary: compactAuditMetadata(event!.metadata)
   };
 }
@@ -621,7 +708,7 @@ test.describe("ADB device-lab full-chain loop", () => {
             `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`,
             { confirmationToken: config.confirmRollback },
             config.userId,
-            (body) => `${operationsSummary(body.operations)}; snapshot=${body.snapshot.id}; snapshotStatus=${body.snapshot.status}`
+            (body) => `${operationsSummary(body.operations)}; snapshot=${identifierShape(body.snapshot.id)}; snapshotStatus=${body.snapshot.status}`
           );
           apiSummaries.push(rollbackResponse.summary);
         }
