@@ -118,7 +118,7 @@ export const navigationItems: PageConfig[] = [
     group: "调试平台",
     icon: TerminalSquare,
     title: "节点调试平台",
-    subtitle: "通过 HDC 读写设备节点，完成调试参数验证"
+    subtitle: "通过 HDC / ADB 读写设备节点，完成调试参数验证"
   },
   {
     key: "debugging-admin",

@@ -1750,9 +1750,10 @@ Expected: commit succeeds.
 **Files:**
 - Modify: `src/NodeDebuggingPage.tsx`
 - Modify: `src/NodeDebuggingPage.test.tsx`
+- Modify: `src/appConfig.ts`
 - Modify: `src/styles.css`
 
-- [ ] **Step 1: Write UI tests**
+- [x] **Step 1: Write UI tests**
 
 Add to `src/NodeDebuggingPage.test.tsx`:
 
@@ -1800,7 +1801,7 @@ it("disables rows that are missing a binding for the selected protocol", () => {
 });
 ```
 
-- [ ] **Step 2: Run UI tests and verify failure**
+- [x] **Step 2: Run UI tests and verify failure**
 
 Run:
 
@@ -1810,7 +1811,7 @@ npm test -- src/NodeDebuggingPage.test.tsx
 
 Expected: FAIL because protocol control and binding disabled copy do not exist.
 
-- [ ] **Step 3: Add protocol state and selector**
+- [x] **Step 3: Add protocol state and selector**
 
 In `src/NodeDebuggingPage.tsx`, add:
 
@@ -1865,7 +1866,7 @@ Render segmented buttons before `NodeSessionSummaryCard`:
 </div>
 ```
 
-- [ ] **Step 4: Pass protocol to detect and copy**
+- [x] **Step 4: Pass protocol to detect and copy**
 
 Update detect:
 
@@ -1883,7 +1884,7 @@ if (!debuggingActions && protocol === "adb") {
 
 Update hardcoded HDC copy to use `protocol.toUpperCase()`.
 
-- [ ] **Step 5: Add binding disabled reason**
+- [x] **Step 5: Add binding disabled reason**
 
 Add helpers:
 
@@ -1904,7 +1905,7 @@ Render reason in current value/status cells:
 {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
 ```
 
-- [ ] **Step 6: Add styles**
+- [x] **Step 6: Add styles**
 
 In `src/styles.css`:
 
@@ -1940,7 +1941,7 @@ In `src/styles.css`:
 
 Use existing CSS variables in the file. If names differ, choose existing neutral surface/border/text variables.
 
-- [ ] **Step 7: Run UI tests**
+- [x] **Step 7: Run UI tests**
 
 Run:
 
@@ -1950,7 +1951,7 @@ npm test -- src/NodeDebuggingPage.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 Run:
 
