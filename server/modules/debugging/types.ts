@@ -67,6 +67,11 @@ export type DebugParameterNodeBindingRecord = {
   updatedAt: string;
 };
 
+export type DebugParameterWithBindingsRecord = DebugParameterRecord & {
+  selectedBinding: DebugParameterNodeBindingRecord | null;
+  bindings: DebugParameterNodeBindingRecord[];
+};
+
 export type DebugSessionRecord = {
   id: string;
   organizationId: string;

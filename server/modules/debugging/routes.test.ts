@@ -322,6 +322,38 @@ describe("debugging routes", () => {
     expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora", risk: ["Medium", "High"] });
   });
 
+  it("passes the selected protocol to the parameter listing service", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const parameter = {
+      ...parameterRecord(),
+      selectedBinding: {
+        id: "binding-param-1-adb",
+        organizationId: "org-1",
+        projectId: "aurora",
+        parameterId: "param-1",
+        protocol: "adb" as const,
+        nodePath: "/sys/adb/current",
+        accessMode: "RW" as const,
+        enabled: true,
+        notes: "ADB lab node",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      },
+      bindings: []
+    };
+    serviceMocks.listParameters.mockResolvedValue([parameter]);
+
+    const response = await requestJson<{ items: unknown[] }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/parameters?projectId=aurora&protocol=adb"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [parameter] });
+    expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora", protocol: "adb", risk: undefined });
+  });
+
   it("POST /api/v1/debugging/sessions returns a session", async () => {
     const db = makeDb();
     const gateway = makeGateway();

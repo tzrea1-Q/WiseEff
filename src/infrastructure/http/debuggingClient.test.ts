@@ -150,6 +150,38 @@ describe("createHttpDebuggingGateway", () => {
     );
   });
 
+  it("sends protocol in detect and session requests", async () => {
+    const fetchMock = createFetchMock({ items: [] });
+    const gateway = createGateway(fetchMock);
+
+    await gateway.detectTargets({ projectId: "aurora", deviceId: "device-1", protocol: "adb" } as Parameters<typeof gateway.detectTargets>[0]);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/debugging/targets/detect",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })
+      })
+    );
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...sessionDto, protocol: "adb" } }));
+
+    await gateway.createSession?.({
+      projectId: "aurora",
+      deviceId: "device-1",
+      targetId: "adb:device-1",
+      protocol: "adb"
+    } as Parameters<NonNullable<typeof gateway.createSession>>[0]);
+
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      "/api/v1/debugging/sessions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", targetId: "adb:device-1", protocol: "adb" })
+      })
+    );
+  });
+
   it("creates debugging sessions through the production endpoint", async () => {
     const fetchMock = createFetchMock({ item: sessionDto });
     const gateway = createGateway(fetchMock);
@@ -180,7 +212,7 @@ describe("createHttpDebuggingGateway", () => {
   it("reads nodes through the production endpoint", async () => {
     const fetchMock = createFetchMock({ operation: readOperationDto });
     const gateway = createGateway(fetchMock);
-    const input = { sessionId: "session-1", parameterId: "param-1", nodePath: "/sys/current" };
+    const input = { sessionId: "session-1", nodePath: "/sys/current" };
 
     await expect(gateway.readNode(input)).resolves.toMatchObject({ ok: true, value: "3000" });
 
@@ -193,12 +225,25 @@ describe("createHttpDebuggingGateway", () => {
     );
   });
 
+  it("omits nodePath from API reads when parameterId is present", async () => {
+    const fetchMock = createFetchMock({ operation: readOperationDto });
+    const gateway = createGateway(fetchMock);
+
+    await gateway.readNode({ sessionId: "session-1", parameterId: "param-1", nodePath: "/frontend/path" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/debugging/nodes/read",
+      expect.objectContaining({
+        body: JSON.stringify({ sessionId: "session-1", parameterId: "param-1" })
+      })
+    );
+  });
+
   it("writes nodes with confirmation tokens through the production endpoint", async () => {
     const fetchMock = createFetchMock({ operation: writeOperationDto, snapshot: snapshotDto });
     const gateway = createGateway(fetchMock);
     const input = {
       sessionId: "session-1",
-      parameterId: "param-1",
       nodePath: "/sys/current",
       value: "3200",
       readBack: true,
@@ -212,6 +257,26 @@ describe("createHttpDebuggingGateway", () => {
       expect.objectContaining({
         body: JSON.stringify(input),
         method: "POST"
+      })
+    );
+  });
+
+  it("omits nodePath from API writes when parameterId is present", async () => {
+    const fetchMock = createFetchMock({ operation: writeOperationDto, snapshot: snapshotDto });
+    const gateway = createGateway(fetchMock);
+
+    await gateway.writeNode({
+      sessionId: "session-1",
+      parameterId: "param-1",
+      nodePath: "/frontend/path",
+      value: "3200",
+      readBack: true
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/debugging/nodes/write",
+      expect.objectContaining({
+        body: JSON.stringify({ sessionId: "session-1", parameterId: "param-1", value: "3200", readBack: true })
       })
     );
   });

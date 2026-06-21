@@ -33,6 +33,7 @@ const apiParameter = {
 const apiTarget: DeviceTarget = {
   id: "target-1",
   deviceId: apiDevice.id,
+  protocol: "hdc",
   label: "Api Target",
   targetRef: "ssh://api-device",
   status: "detected"
@@ -43,6 +44,7 @@ const apiSession: DebugSessionSnapshot = {
   projectId: "api-project",
   deviceId: apiDevice.id,
   targetId: apiTarget.id,
+  protocol: "hdc",
   status: "active",
   startedAt: "2026-05-25T08:01:00.000Z",
   endedAt: null
@@ -156,14 +158,37 @@ describe("createDebuggingRuntimeActions", () => {
 
     const result = await actions.detectAndStartSession("api-project");
 
-    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "api-project" });
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "api-project", protocol: "hdc" });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
       deviceId: apiDevice.id,
-      targetId: apiTarget.id
+      targetId: apiTarget.id,
+      protocol: "hdc"
     });
     expect(result).toEqual({ session: apiSession, target: apiTarget });
     expect(dispatch).toHaveBeenCalledWith({ type: "SET_DEBUG_ACTIVE_SESSION", session: apiSession, target: apiTarget });
+  });
+
+  it("passes the selected protocol through target detection and session creation", async () => {
+    const dispatch = vi.fn();
+    const adbTarget = { ...apiTarget, id: "adb:device-1", protocol: "adb" as const, targetRef: "device-1" };
+    const adbSession = { ...apiSession, targetId: adbTarget.id, protocol: "adb" as const };
+    const gateway = createGateway({
+      detectTargets: vi.fn().mockResolvedValue([adbTarget]),
+      createSession: vi.fn().mockResolvedValue(adbSession)
+    });
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+
+    const result = await actions.detectAndStartSession("api-project", { protocol: "adb" });
+
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "api-project", protocol: "adb" });
+    expect(gateway.createSession).toHaveBeenCalledWith({
+      projectId: "api-project",
+      deviceId: apiDevice.id,
+      targetId: adbTarget.id,
+      protocol: "adb"
+    });
+    expect(result).toEqual({ session: adbSession, target: adbTarget });
   });
 
   it("reads an API node, returns the read result, and dispatches the operation event", async () => {

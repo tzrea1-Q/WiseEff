@@ -9,6 +9,12 @@ import type {
 } from "@/application/ports/DebuggingGateway";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "@/hdcClient";
 
+function requireNodePath(input: ReadNodeInput | WriteNodeInput): asserts input is (ReadNodeInput | WriteNodeInput) & { nodePath: string } {
+  if (!input.nodePath?.trim()) {
+    throw new Error("HDC nodePath is required.");
+  }
+}
+
 export function createHdcGateway(): DebuggingGateway {
   return {
     async detectTargets(_input?: DetectTargetsInput): Promise<DeviceTarget[]> {
@@ -23,9 +29,11 @@ export function createHdcGateway(): DebuggingGateway {
       }));
     },
     async readNode(input: ReadNodeInput): Promise<NodeReadResult> {
+      requireNodePath(input);
       return readNodeValue(input);
     },
     async writeNode(input: WriteNodeInput): Promise<NodeWriteResult> {
+      requireNodePath(input);
       return writeNodeValue(input);
     }
   };

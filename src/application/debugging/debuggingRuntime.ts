@@ -11,6 +11,7 @@ import type {
   RollbackSnapshotInput,
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
+import type { DebugConnectionProtocol } from "@/domain/debugging/types";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { AppAction } from "@/App";
 import type { DebugParameter, Device, PrototypeState } from "@/mockData";
@@ -53,8 +54,8 @@ export type DebuggingRuntimeDispatchAction =
   | Extract<AppAction, { type: "CONNECT_DEVICE" } | { type: "PUSH_DEBUG_VALUES" } | { type: "ROLLBACK_LAST_SNAPSHOT" } | { type: "ADD_NOTIFICATION" }>;
 
 export type DebuggingRuntimeActions = {
-  refresh(query?: { projectId?: string }): Promise<void>;
-  detectAndStartSession(projectId: string): Promise<{ session: DebugSessionSnapshot; target: DeviceTarget }>;
+  refresh(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<void>;
+  detectAndStartSession(projectId: string, options?: { protocol?: DebugConnectionProtocol }): Promise<{ session: DebugSessionSnapshot; target: DeviceTarget }>;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;
   writeNode(input: WriteNodeInput & { risk?: "Low" | "Medium" | "High" }): Promise<NodeWriteResult>;
   pushValues(parameterIds: string[]): Promise<void>;
@@ -142,7 +143,7 @@ export function createDebuggingRuntimeActions({
   dispatch,
   getState
 }: DebuggingRuntimeOptions): DebuggingRuntimeActions {
-  const refresh = async (query?: { projectId?: string }) => {
+  const refresh = async (query?: { projectId?: string; protocol?: DebugConnectionProtocol }) => {
     if (mode !== "api") {
       return;
     }
@@ -164,11 +165,12 @@ export function createDebuggingRuntimeActions({
 
   return {
     refresh,
-    async detectAndStartSession(projectId) {
+    async detectAndStartSession(projectId, options) {
+      const protocol = options?.protocol ?? "hdc";
       if (mode !== "api") {
         const device = getState().devices.find((item) => item.projectId === projectId) ?? getState().devices[0];
         dispatch({ type: "CONNECT_DEVICE", deviceId: device.id });
-        const target = { id: device.id, deviceId: device.id, label: device.name };
+        const target = { id: device.id, deviceId: device.id, protocol, label: device.name };
         return {
           target,
           session: {
@@ -176,6 +178,7 @@ export function createDebuggingRuntimeActions({
             projectId,
             deviceId: device.id,
             targetId: target.id,
+            protocol,
             status: "active",
             startedAt: new Date().toISOString(),
             endedAt: null
@@ -185,7 +188,7 @@ export function createDebuggingRuntimeActions({
 
       return runApi(dispatch, async () => {
         const api = requireGateway(gateway);
-        const [target] = await api.detectTargets({ projectId });
+        const [target] = await api.detectTargets({ projectId, protocol });
         if (!target) {
           throw new Error("No debug target detected.");
         }
@@ -195,7 +198,8 @@ export function createDebuggingRuntimeActions({
         const session = await api.createSession({
           projectId,
           deviceId: target.deviceId ?? target.id,
-          targetId: target.id
+          targetId: target.id,
+          protocol
         });
         dispatch({ type: "SET_DEBUG_ACTIVE_SESSION", session, target });
         return { session, target };

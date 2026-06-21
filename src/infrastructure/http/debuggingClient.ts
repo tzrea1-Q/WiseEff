@@ -34,9 +34,10 @@ function appendQuery(path: string, params: URLSearchParams) {
   return query ? `${path}?${query}` : path;
 }
 
-function buildParametersPath(query?: { projectId?: string }) {
+function buildParametersPath(query?: { projectId?: string; protocol?: string }) {
   const params = new URLSearchParams();
   if (query?.projectId) params.set("projectId", query.projectId);
+  if (query?.protocol) params.set("protocol", query.protocol);
   return appendQuery("/api/v1/debugging/parameters", params);
 }
 
@@ -46,6 +47,22 @@ function sessionPath(sessionId: string) {
 
 function snapshotRollbackPath(snapshotId: string) {
   return `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`;
+}
+
+function readNodeRequestBody(input: ReadNodeInput): ReadNodeInput {
+  if (!input.parameterId) {
+    return input;
+  }
+  const { nodePath: _nodePath, ...body } = input;
+  return body;
+}
+
+function writeNodeRequestBody(input: WriteNodeInput): WriteNodeInput {
+  if (!input.parameterId) {
+    return input;
+  }
+  const { nodePath: _nodePath, ...body } = input;
+  return body;
 }
 
 export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultApiClient()): DebuggingGateway {
@@ -82,11 +99,11 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
       return response.items.map(nodeOperationFromDto);
     },
     async readNode(input: ReadNodeInput) {
-      const response = await apiClient.post<{ operation: NodeOperationDto }>("/api/v1/debugging/nodes/read", input);
+      const response = await apiClient.post<{ operation: NodeOperationDto }>("/api/v1/debugging/nodes/read", readNodeRequestBody(input));
       return nodeReadResultFromDto(response.operation);
     },
     async writeNode(input: WriteNodeInput) {
-      const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", input);
+      const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input));
       return nodeWriteResultFromDto(response);
     },
     async rollbackSnapshot(input: RollbackSnapshotInput) {

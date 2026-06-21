@@ -1479,7 +1479,7 @@ Expected: commit succeeds. If operations files were not changed, omit them from 
 - Modify: `src/infrastructure/http/debuggingClient.ts`
 - Modify: `src/infrastructure/http/debuggingClient.test.ts`
 
-- [ ] **Step 1: Write DTO mapper tests**
+- [x] **Step 1: Write DTO mapper tests**
 
 Add to `src/infrastructure/http/debuggingDtos.test.ts`:
 
@@ -1536,7 +1536,7 @@ it("maps missing selected binding into an unavailable row", () => {
 });
 ```
 
-- [ ] **Step 2: Write HTTP client tests**
+- [x] **Step 2: Write HTTP client tests**
 
 Add to `src/infrastructure/http/debuggingClient.test.ts`:
 
@@ -1569,7 +1569,7 @@ it("omits nodePath from API read/write when parameterId is present", async () =>
 
 Adapt `fetchMock`, `jsonResponse`, and `nodeOperationDto` helper names to the existing test file.
 
-- [ ] **Step 3: Run frontend infrastructure tests and verify failure**
+- [x] **Step 3: Run frontend infrastructure tests and verify failure**
 
 Run:
 
@@ -1579,7 +1579,7 @@ npm test -- src/infrastructure/http/debuggingDtos.test.ts src/infrastructure/htt
 
 Expected: FAIL because protocol and binding DTOs are not implemented.
 
-- [ ] **Step 4: Update frontend types**
+- [x] **Step 4: Update frontend types**
 
 In `src/domain/debugging/types.ts`:
 
@@ -1639,7 +1639,7 @@ export type DebugSessionSnapshot = {
 };
 ```
 
-- [ ] **Step 5: Update DTOs and client**
+- [x] **Step 5: Update DTOs and client**
 
 In `src/infrastructure/http/debuggingDtos.ts`, extend DTOs:
 
@@ -1665,13 +1665,14 @@ Update mapper:
 
 ```ts
 const selected = dto.selectedBinding;
+const hasSelectedBinding = "selectedBinding" in dto;
 const bindingStatus = selected ? (selected.enabled ? "configured" : "disabled") : "missing";
 return {
   ...,
-  nodePath: selected?.enabled ? selected.nodePath : dto.nodePath ?? "",
-  accessMode: selected?.enabled ? selected.accessMode : dto.accessMode ?? "RO",
+  nodePath: hasSelectedBinding ? selected?.enabled ? selected.nodePath : "" : dto.nodePath ?? "",
+  accessMode: hasSelectedBinding ? selected?.enabled ? selected.accessMode : "RO" : dto.accessMode ?? "RO",
   selectedProtocol: selected?.protocol,
-  bindingStatus,
+  bindingStatus: hasSelectedBinding ? bindingStatus : undefined,
   bindings: dto.bindings?.map((binding) => ({
     protocol: binding.protocol,
     nodePath: binding.nodePath,
@@ -1696,7 +1697,11 @@ function bindingAwareReadPayload(input: ReadNodeInput) {
 }
 ```
 
-- [ ] **Step 6: Update runtime actions**
+Implementation note: Task 6 also wires `protocol` through the backend parameter-list response so `selectedBinding` and `bindings`
+are present when the frontend asks for a selected protocol. Local HDC gateway calls now validate `nodePath` before calling the
+legacy `/api/hdc/*` helpers because the shared port allows API-mode parameter-based reads/writes without `nodePath`.
+
+- [x] **Step 6: Update runtime actions**
 
 In `src/application/debugging/debuggingRuntime.ts`, update `detectAndStartSession` signature:
 
@@ -1719,7 +1724,7 @@ const session = await api.createSession({
 
 Mock mode should include `protocol` on the target/session.
 
-- [ ] **Step 7: Run frontend infrastructure tests**
+- [x] **Step 7: Run frontend infrastructure tests**
 
 Run:
 

@@ -319,6 +319,38 @@ describe("debugging service", () => {
     expect(calls[1].values).toEqual(["org-1", ["aurora", "zephyr"]]);
   });
 
+  it("lists selected-protocol parameter bindings for frontend availability", async () => {
+    const { db, calls } = createFakeDb([
+      [parameterRow()],
+      [
+        bindingRow({ protocol: "hdc", node_path: "/sys/current", enabled: true }),
+        bindingRow({ id: "binding-param-1-adb", protocol: "adb", node_path: "/sys/adb/current", enabled: false, notes: "disabled in lab" })
+      ]
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listParameters(readAuth, { projectId: "aurora", protocol: "adb" })).resolves.toEqual([
+      expect.objectContaining({
+        id: "param-1",
+        selectedBinding: expect.objectContaining({
+          parameterId: "param-1",
+          protocol: "adb",
+          nodePath: "/sys/adb/current",
+          enabled: false,
+          notes: "disabled in lab"
+        }),
+        bindings: expect.arrayContaining([
+          expect.objectContaining({ protocol: "hdc", nodePath: "/sys/current", enabled: true }),
+          expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current", enabled: false })
+        ])
+      })
+    ]);
+
+    expect(calls[0].text).toContain("from debugging_parameters");
+    expect(calls[1].text).toContain("from debugging_parameter_node_bindings");
+    expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"]]);
+  });
+
   it("detectTargets and createSession deny different-project auth before gateway or writes", async () => {
     const { db, txCalls } = createFakeDb();
     const gateway = makeGateway();

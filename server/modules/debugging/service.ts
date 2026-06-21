@@ -32,6 +32,7 @@ import {
   insertNodeOperation,
   linkOperationSnapshot,
   listDebugDevices,
+  listDebugParameterNodeBindings,
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
@@ -41,7 +42,13 @@ import {
 } from "./repository";
 import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
 import type { DebugAccessMode } from "./status";
-import type { DebugParameterNodeBindingRecord, DebugParameterRecord, DebugSessionRecord, NodeOperationRecord } from "./types";
+import type {
+  DebugParameterNodeBindingRecord,
+  DebugParameterRecord,
+  DebugParameterWithBindingsRecord,
+  DebugSessionRecord,
+  NodeOperationRecord
+} from "./types";
 
 type AuditWriter = typeof defaultCreateAuditEvent;
 
@@ -59,6 +66,12 @@ type ServiceOptions = {
 
 type ProjectQuery = {
   projectId?: string;
+};
+
+type ParameterListQuery = ProjectQuery & {
+  module?: string;
+  risk?: string[];
+  protocol?: DebugConnectionProtocol;
 };
 
 type ScopedProjectQuery<T extends ProjectQuery> = T & {
@@ -247,6 +260,28 @@ function scopedProjectQuery<T extends ProjectQuery>(auth: AuthContext, query: T)
   return query;
 }
 
+function attachParameterBindings(
+  parameters: DebugParameterRecord[],
+  bindings: DebugParameterNodeBindingRecord[],
+  protocol: DebugConnectionProtocol
+): DebugParameterWithBindingsRecord[] {
+  const bindingsByParameterId = new Map<string, DebugParameterNodeBindingRecord[]>();
+  for (const binding of bindings) {
+    const existing = bindingsByParameterId.get(binding.parameterId) ?? [];
+    existing.push(binding);
+    bindingsByParameterId.set(binding.parameterId, existing);
+  }
+
+  return parameters.map((parameter) => {
+    const parameterBindings = bindingsByParameterId.get(parameter.id) ?? [];
+    return {
+      ...parameter,
+      selectedBinding: parameterBindings.find((binding) => binding.protocol === protocol) ?? null,
+      bindings: parameterBindings
+    };
+  });
+}
+
 export function createDebuggingService(options: ServiceOptions) {
   const db = options.db;
   const gatewayRegistry =
@@ -363,10 +398,21 @@ export function createDebuggingService(options: ServiceOptions) {
       });
     },
 
-    async listParameters(auth: AuthContext, query: ProjectQuery & { module?: string; risk?: string[] } = {}) {
+    async listParameters(auth: AuthContext, query: ParameterListQuery = {}) {
       requireDebugView(auth);
       const scopedQuery = scopedProjectQuery(auth, query);
-      return listDebugParameters(db, { organizationId: organizationIdFor(auth), ...scopedQuery });
+      const organizationId = organizationIdFor(auth);
+      const parameters = await listDebugParameters(db, { organizationId, ...scopedQuery });
+      if (!query.protocol || parameters.length === 0) {
+        return parameters;
+      }
+
+      const bindings = await listDebugParameterNodeBindings(db, {
+        organizationId,
+        projectId: scopedQuery.projectId,
+        parameterIds: parameters.map((parameter) => parameter.id)
+      });
+      return attachParameterBindings(parameters, bindings, query.protocol);
     },
 
     async createSession(auth: AuthContext, input: CreateSessionInput, context: ServiceContext = {}) {

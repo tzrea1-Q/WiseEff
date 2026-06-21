@@ -1,7 +1,10 @@
 import type {
+  DebugConnectionProtocol,
   Device,
   DeviceStatus,
-  DebugParameter
+  DebugParameter,
+  DebugParameterAccessMode,
+  DebugParameterNodeBinding
 } from "@/domain/debugging/types";
 import type {
   DebugSnapshotSummary,
@@ -23,9 +26,19 @@ export type DebugDeviceDto = {
 export type DebugTargetDto = {
   id: string;
   deviceId: string;
+  protocol?: DebugConnectionProtocol;
   label: string;
   targetRef: string;
   status: "detected" | "lost";
+};
+
+export type DebugParameterNodeBindingDto = {
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  enabled: boolean;
+  notes?: string | null;
+  disabledReason?: string | null;
 };
 
 export type DebugParameterDto = {
@@ -35,19 +48,22 @@ export type DebugParameterDto = {
   key: string;
   description: string;
   module: string;
-  nodePath: string;
-  accessMode: "RO" | "WO" | "RW";
+  nodePath?: string;
+  accessMode?: "RO" | "WO" | "RW";
   unit: string;
   range: string;
   risk: "Low" | "Medium" | "High";
   currentValue: string;
   targetValue: string;
+  selectedBinding?: DebugParameterNodeBindingDto | null;
+  bindings?: DebugParameterNodeBindingDto[];
 };
 
 export type NodeOperationDto = {
   id: string;
   sessionId: string;
   parameterId: string | null;
+  protocol?: DebugConnectionProtocol;
   nodePath: string;
   operationType: "detect" | "read" | "write" | "rollback";
   status: "pending" | "succeeded" | "failed" | "readback_mismatch";
@@ -88,6 +104,31 @@ export function debugDeviceFromDto(dto: DebugDeviceDto): Device {
 }
 
 export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
+  const bindings = dto.bindings?.map(debugParameterBindingFromDto);
+  const selectedBinding = dto.selectedBinding;
+  const hasSelectedBinding = "selectedBinding" in dto;
+  const selectedBindingEnabled = selectedBinding?.enabled === true;
+  const nodePath = hasSelectedBinding
+    ? selectedBindingEnabled
+      ? selectedBinding.nodePath
+      : ""
+    : dto.nodePath ?? "";
+  const accessMode = hasSelectedBinding
+    ? selectedBindingEnabled
+      ? selectedBinding.accessMode
+      : "RO"
+    : dto.accessMode ?? "RO";
+  const bindingStatus = hasSelectedBinding
+    ? selectedBinding?.enabled
+      ? "configured"
+      : selectedBinding
+        ? "disabled"
+        : "missing"
+    : undefined;
+  const bindingDisabledReason = selectedBinding && !selectedBinding.enabled
+    ? selectedBinding.disabledReason ?? selectedBinding.notes ?? undefined
+    : undefined;
+
   return {
     id: dto.id,
     name: dto.name,
@@ -100,8 +141,22 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
     range: dto.range,
     risk: dto.risk,
     status: "已同步",
+    nodePath,
+    accessMode,
+    selectedProtocol: selectedBinding?.protocol,
+    bindingStatus,
+    bindingDisabledReason,
+    bindings
+  };
+}
+
+function debugParameterBindingFromDto(dto: DebugParameterNodeBindingDto): DebugParameterNodeBinding {
+  return {
+    protocol: dto.protocol,
     nodePath: dto.nodePath,
-    accessMode: dto.accessMode
+    accessMode: dto.accessMode,
+    enabled: dto.enabled,
+    notes: dto.notes ?? undefined
   };
 }
 
@@ -114,6 +169,7 @@ export function nodeOperationFromDto(dto: NodeOperationDto): NodeOperationSnapsh
     id: dto.id,
     sessionId: dto.sessionId,
     parameterId: dto.parameterId ?? undefined,
+    protocol: dto.protocol,
     nodePath: dto.nodePath,
     operationType: dto.operationType,
     status: dto.status,
