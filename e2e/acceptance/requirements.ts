@@ -99,6 +99,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
+    id: "ADB-LAB-001",
+    workflow: "F",
+    title: "Real ADB device lab read-only smoke runs when explicitly enabled, with optional write and rollback.",
+    required: false
+  },
+  {
     id: "AGENT-APPROVAL-001",
     workflow: "G",
     title: "Agent context, approval, rejection, execution, and evidence path work.",

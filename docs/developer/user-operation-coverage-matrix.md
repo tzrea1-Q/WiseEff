@@ -21,6 +21,7 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `DEBUG-SIM-001` | P0 | debugging | automated | `/node-debugging` | Hardware Committer, Admin | ui, api, db, audit | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-PERM-001` | P1 | debugging | automated | `/node-debugging` | Guest, Hardware User, Software User | ui, api | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `HDC-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
+| `ADB-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/adb-device-lab.acceptance.spec.ts` |
 | `AGENT-APPROVAL-001` | P0 | agent | automated | `/agent` | Admin | ui, api, audit | `e2e/acceptance/agent.acceptance.spec.ts` |
 | `AGENT-UNAUTH-001` | P1 | agent | automated | `/agent` | Guest, Hardware User, Software User | api, audit | `e2e/acceptance/agent.acceptance.spec.ts` |
 | `PERM-GOV-001` | P0 | permissions | automated | `/user-permissions` | Admin | ui | `e2e/acceptance/permissions.acceptance.spec.ts` |
@@ -31,3 +32,4 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 ## Deferred Or Conditional Operations
 
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
+- `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true with ADB hardware attached.
