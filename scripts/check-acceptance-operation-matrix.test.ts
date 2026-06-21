@@ -89,6 +89,7 @@ describe("acceptance operation matrix", () => {
     const markdown = renderOperationMatrixMarkdown([baseOperation]);
 
     expect(markdown).toContain("# User Operation Coverage Matrix");
+    expect(markdown).toContain("> Chinese: [Chinese](../zh-CN/developer/user-operation-coverage-matrix.md)");
     expect(markdown).toContain("`PARAM-DRAFT-EDIT-001`");
     expect(markdown).toContain("| Operation ID | Priority | Area | Coverage | Route | Roles | Assertions | Specs |");
   });
