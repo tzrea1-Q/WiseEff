@@ -29,12 +29,13 @@
 
 1. 确认 ADB 设备连接在运行 WiseEff API 的同一台机器上。
 2. 运行 `adb devices`，确认 `ADB_SMOKE_TARGET_REF` 以 `device` 状态出现。
-3. 确认所选节点可安全读取。
-4. 如果启用写入模式，确认该节点可安全写入，并且允许通过 snapshot rollback 恢复。
-5. 使用 `DEBUG_DEVICE_GATEWAY_MODE=adb` 启动 API。
-6. 使用 API 模式启动前端。
-7. 在运行 Playwright 的 shell 中导出相同的 ADB lab 变量；否则即使 API 启动正确，spec 也会跳过。
-8. 运行：
+3. 确认 `ADB_SMOKE_PARAMETER_ID` 和 `ADB_SMOKE_NODE_PATH` 已映射到已有且启用的 ADB 参数绑定。
+4. 确认所选节点可安全读取。
+5. 如果启用写入模式，确认该节点可安全写入，并且允许通过 snapshot rollback 恢复。
+6. 使用 `DEBUG_DEVICE_GATEWAY_MODE=adb` 启动 API。
+7. 使用 API 模式启动前端。
+8. 在运行 Playwright 的 shell 中导出相同的 ADB lab 变量；否则即使 API 启动正确，spec 也会跳过。
+9. 运行：
 
 ```bash
 DEBUG_DEVICE_GATEWAY_MODE=adb \
@@ -65,5 +66,6 @@ npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 
 - 不要在客户硬件或未审批节点上运行写入模式。
 - 不要用 `adb shell` 直接写节点；测试必须使用 WiseEff API，以便执行租约、快照、回读、回滚和审计规则。
+- 只能使用已有且启用的 ADB 参数绑定；本 lab 不得创建或变更参数绑定。
 - `unauthorized`、`offline`、缺失或重复 ADB target 都会阻塞运行。
 - 本机 ADB 证据是 HDC 和目标环境证据的补充，不能替代 full-pilot HDC 签核。

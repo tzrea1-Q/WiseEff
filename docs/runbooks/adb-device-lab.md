@@ -29,12 +29,13 @@ Write mode is disabled unless `ADB_SMOKE_ENABLE_WRITE=true`.
 
 1. Confirm the ADB device is connected to the same machine that runs the WiseEff API.
 2. Run `adb devices` and confirm `ADB_SMOKE_TARGET_REF` is present with state `device`.
-3. Confirm the chosen node is safe to read.
-4. If write mode is enabled, confirm the node is safe to write and that rollback by snapshot is acceptable.
-5. Start the API with `DEBUG_DEVICE_GATEWAY_MODE=adb`.
-6. Start the frontend in API mode.
-7. Export the same ADB lab variables in the shell that runs Playwright; otherwise the spec will skip even if the API was started correctly.
-8. Run:
+3. Confirm `ADB_SMOKE_PARAMETER_ID` and `ADB_SMOKE_NODE_PATH` already map to an existing enabled ADB parameter binding.
+4. Confirm the chosen node is safe to read.
+5. If write mode is enabled, confirm the node is safe to write and that rollback by snapshot is acceptable.
+6. Start the API with `DEBUG_DEVICE_GATEWAY_MODE=adb`.
+7. Start the frontend in API mode.
+8. Export the same ADB lab variables in the shell that runs Playwright; otherwise the spec will skip even if the API was started correctly.
+9. Run:
 
 ```bash
 DEBUG_DEVICE_GATEWAY_MODE=adb \
@@ -65,5 +66,6 @@ Write-mode generated evidence must additionally show:
 
 - Do not run write mode against customer hardware or unapproved nodes.
 - Do not directly write nodes with `adb shell`; the test must use WiseEff APIs so lease, snapshot, readback, rollback, and audit rules apply.
+- Use existing enabled ADB parameter bindings only; this lab must not create or mutate parameter bindings.
 - `unauthorized`, `offline`, missing, or duplicate ADB targets block the run.
 - Local ADB evidence supplements HDC and target-environment evidence. It does not replace full-pilot HDC signoff.

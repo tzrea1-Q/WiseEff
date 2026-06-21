@@ -51,10 +51,13 @@
 
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
-| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | 调试 runtime | 真实 device-lab evidence 使用 `hdc`。 |
+| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | 调试 runtime | 审批过的真实 device-lab evidence 使用 `hdc`、`adb` 或 `multi`。 |
 | `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION` | `.env.example` 为 `true` | non-customer staging simulator mode | 不可用于 customer production signoff。 |
 | `HDC_TIMEOUT_MS` | `5000` | HDC adapter | 命令超时预算。 |
+| `ADB_TIMEOUT_MS` | `5000` | ADB adapter | 命令超时预算。 |
 | `HDC_DEVICE_LAB_AVAILABLE` | 未设置 | HDC smoke | 仅在具备真实目标值时设置。 |
+| `ADB_DEVICE_LAB_AVAILABLE` | 未设置 | ADB smoke | 仅在本机 ADB 设备和审批过的读写目标可用时设置。 |
+| `ADB_SMOKE_*` | 未设置 | ADB smoke | Project、WiseEff device、ADB target serial、parameter、node 和可选写入值。只能使用已有且启用的 ADB 参数绑定；lab 不得创建或变更绑定。 |
 
 ## Agent Provider
 

@@ -66,13 +66,13 @@ The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_
 
 ## Debugging Gateway
 
-`DebuggingGateway` is the frontend port for M3 device debugging. Page components call runtime actions from `src/application/debugging/debuggingRuntime.ts`; those actions keep mock/HDC demos available outside API mode and call the HTTP gateway in API mode.
+`DebuggingGateway` is the frontend port for M3 device debugging. Page components call runtime actions from `src/application/debugging/debuggingRuntime.ts`; those actions keep mock/HDC demos available outside API mode and call the HTTP gateway in API mode for HDC or ADB sessions.
 
 Runtime split:
 
 - `mock` mode keeps `/debugging` reducer behavior for demos and component tests.
 - Local HDC helpers remain available for non-API `/node-debugging` experiments.
-- `api` mode uses `src/infrastructure/http/debuggingClient.ts` for devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
+- `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
 
 The runtime coordinator hydrates devices and debugging parameters after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. A current residual gap is that snapshots created from `/node-debugging` writes are not yet promoted into `/debugging`'s `lastDebugSnapshot` rollback card; the M3 E2E therefore verifies rollback through the API if that UI affordance is disabled.
 

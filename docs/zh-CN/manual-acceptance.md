@@ -12,6 +12,7 @@
 - [备份恢复手册](../runbooks/backup-restore.md)
 - [回滚手册](../runbooks/rollback.md)
 - [HDC 设备实验室手册](../runbooks/hdc-device-lab.md)
+- [ADB Device Lab 运行手册](runbooks/adb-device-lab.md)
 - [Agent Provider 手册](../runbooks/agent-provider.md)
 - [M5 验收证据](../generated/m5-pilot-acceptance.md)
 
@@ -43,7 +44,7 @@
 | Auth mode | development / production |
 | 数据库 | local PostgreSQL / staging PostgreSQL |
 | 对象存储 | local / S3-compatible / other |
-| 设备网关 | simulator / HDC |
+| 设备网关 | simulator / HDC / ADB |
 | Agent provider | deterministic / live |
 | 证据位置 | `docs/generated/m5-pilot-acceptance.md` 或外部验收记录链接 |
 
@@ -55,7 +56,7 @@
 - 环境变量、数据库、对象存储、worker、设备网关、Agent provider。
 - 浏览器中的核心产品路径。
 - API-mode 全链路联调。
-- M5 smoke、backup/restore、rollback、HDC、Agent provider 证据。
+- M5 smoke、backup/restore、rollback、HDC、可选本机 ADB、Agent provider 证据。
 - 最终 Go/No-Go 判断。
 
 本次验收不替代：
@@ -63,7 +64,7 @@
 - 自动化测试本身。
 - 生产密钥安全审查。
 - 客户数据治理审批。
-- 未接入真实硬件时的 HDC 签收。
+- 未接入真实硬件时的 HDC 签收。本机 ADB 证据可补充调试覆盖，但不能替代 HDC full-pilot 签核。
 
 ## 4. 验收前准备
 
@@ -471,7 +472,46 @@ npm run acceptance:e2e -- e2e/acceptance/hdc-device-lab.acceptance.spec.ts
 - 写入节点被恢复。
 - 没有真实硬件证据时，不勾选 HDC 完成项。
 
-### 7.7 Agent 协同闭环
+### 7.7 ADB 真实设备验收
+
+仅当本机 ADB 设备连接在 API 主机上，且所选节点已按目标模式审批后运行。默认模式为只读。只能使用已有且启用的 ADB 参数绑定；本 lab 不得创建或变更参数绑定。生成的 operation evidence 会脱敏并记录 shape、状态和一致性摘要；原始 target、node 和 value 输入只保留在操作者 shell。
+
+只读模式必需变量：
+
+```text
+DEBUG_DEVICE_GATEWAY_MODE=adb
+ADB_DEVICE_LAB_AVAILABLE=true
+ADB_SMOKE_PROJECT_ID=
+ADB_SMOKE_DEVICE_ID=
+ADB_SMOKE_TARGET_REF=
+ADB_SMOKE_PARAMETER_ID=
+ADB_SMOKE_NODE_PATH=
+ADB_SMOKE_EXPECT_READ_PATTERN=
+```
+
+运行：
+
+```bash
+DEBUG_DEVICE_GATEWAY_MODE=adb \
+ADB_DEVICE_LAB_AVAILABLE=true \
+npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
+```
+
+检查：
+
+- [ ] ADB target detection 通过后端 gateway 成功。
+- [ ] `/node-debugging` 在 API 模式下可以切换到 ADB。
+- [ ] 节点读取通过 WiseEff API 成功。
+- [ ] 可选写入模式要么明确跳过，要么记录写入、回读、回滚和最终恢复证据。
+- [ ] 生成的 operation evidence 只记录 shape、状态和一致性摘要，不记录原始 node path 或原始读写值。
+
+通过标准：
+
+- 本机 ADB 证据已采集并保持只读默认安全边界。
+- 写入模式只在明确审批后运行，并验证回读、回滚和最终恢复。
+- 本机 ADB 证据只作为 HDC 和目标环境证据的补充，不能替代完整 pilot-ready HDC 签核。
+
+### 7.8 Agent 协同闭环
 
 打开：
 
@@ -496,7 +536,7 @@ npm run acceptance:e2e -- e2e/acceptance/hdc-device-lab.acceptance.spec.ts
 - 变更类工具必须经人工批准。
 - provider 和 tool-call 可追踪。
 
-### 7.8 权限与用户治理
+### 7.9 权限与用户治理
 
 打开：
 
@@ -615,6 +655,7 @@ API URL:
 - Log analysis:
 - Debugging simulator:
 - HDC device lab:
+- ADB device lab:
 - Agent:
 - Permissions:
 

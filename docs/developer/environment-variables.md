@@ -69,11 +69,14 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
-| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | debugging runtime | Use `hdc` for real device-lab evidence. |
+| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | debugging runtime | Use `hdc`, `adb`, or `multi` for approved real device-lab evidence. |
 | `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION` | `true` | non-customer staging simulator mode | Never use for customer production signoff. |
 | `HDC_TIMEOUT_MS` | `5000` | HDC adapter | Command timeout budget. |
+| `ADB_TIMEOUT_MS` | `5000` | ADB adapter | Command timeout budget. |
 | `HDC_DEVICE_LAB_AVAILABLE` | unset | HDC smoke | Set only when real target values are available. |
 | `HDC_SMOKE_*` | unset | HDC smoke | Project, device, target, parameter, node, and write value inputs. |
+| `ADB_DEVICE_LAB_AVAILABLE` | unset | ADB smoke | Set only when a local ADB device and approved read/write targets are available. |
+| `ADB_SMOKE_*` | unset | ADB smoke | Project, WiseEff device, ADB target serial, parameter, node, and optional write value inputs. Use existing enabled ADB parameter bindings only; the lab must not create or mutate bindings. |
 
 ## Agent Provider
 
