@@ -13,6 +13,10 @@ const config: PowerManagementConfig = {
     { id: "nebula", name: "Nebula", code: "NEB" },
     { id: "atlas", name: "Atlas", code: "ATL" }
   ],
+  parameterModules: [
+    { name: "Battery Safety", description: "", owner: "", scope: "" },
+    { name: "Charging Policy", description: "", owner: "", scope: "" }
+  ],
   parameterLibrary: [
     {
       id: "battery-temp-target",
@@ -24,6 +28,7 @@ const config: PowerManagementConfig = {
       range: "20 - 60",
       unit: "C",
       risk: "High",
+      valueKind: "scalar",
       values: {
         aurora: { currentValue: "38", recommendedValue: "35", updatedAt: "today" },
         nebula: { currentValue: "40", recommendedValue: "36", updatedAt: "today" },
@@ -40,6 +45,7 @@ const config: PowerManagementConfig = {
       range: "0 - 5000",
       unit: "mA",
       risk: "Medium",
+      valueKind: "scalar",
       values: {
         aurora: { currentValue: "3800", recommendedValue: "3200", updatedAt: "today" },
         nebula: { currentValue: "3600", recommendedValue: "3000", updatedAt: "today" },

@@ -1758,6 +1758,7 @@ describe("WiseEff app shell", () => {
           targetValue: dtsParameter!.currentValue.replace('"burst"', '"boost"'),
           unit: dtsParameter!.unit,
           risk: dtsParameter!.risk,
+          valueKind: dtsParameter!.valueKind,
           reason: "同步 DTS 矩阵配置"
         }
       ]
@@ -2344,6 +2345,7 @@ describe("WiseEff app shell", () => {
           targetValue: complexTargetValue,
           unit: complexParameter!.unit,
           risk: complexParameter!.risk,
+          valueKind: complexParameter!.valueKind,
           reason: "同步 DTS 矩阵配置"
         },
         {
@@ -2355,6 +2357,7 @@ describe("WiseEff app shell", () => {
           targetValue: "0.88",
           unit: simpleParameter!.unit,
           risk: simpleParameter!.risk,
+          valueKind: simpleParameter!.valueKind,
           reason: "同步 SOC 平滑系数"
         }
       ]

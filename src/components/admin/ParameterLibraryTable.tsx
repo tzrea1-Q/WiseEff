@@ -33,6 +33,7 @@ export type ParameterLibraryTableProps = {
   onEditDefinition: (parameterId: string) => void;
   onEditValues: (parameterId: string) => void;
   onCreateParameter?: () => void;
+  onManageModules?: () => void;
   onDeleteParameter?: (parameterId: string) => void;
 };
 
@@ -44,6 +45,7 @@ export function ParameterLibraryTable({
   onEditDefinition,
   onEditValues,
   onCreateParameter,
+  onManageModules,
   onDeleteParameter
 }: ParameterLibraryTableProps) {
   const [coverageOpen, setCoverageOpen] = useState(false);
@@ -63,6 +65,11 @@ export function ParameterLibraryTable({
           <p>维护跨项目共享的参数定义与各项目实际取值，通过操作列进入弹窗编辑。</p>
         </div>
         <div className="param-admin-library-heading-actions">
+          {onManageModules ? (
+            <button className="button subtle" type="button" onClick={onManageModules}>
+              模块管理
+            </button>
+          ) : null}
           {onCreateParameter ? (
             <button className="button subtle" type="button" onClick={onCreateParameter}>
               新增参数
@@ -193,14 +200,14 @@ export function ParameterLibraryTable({
                         className="button subtle param-admin-row-action"
                         onClick={() => onEditDefinition(parameter.id)}
                       >
-                        修改参数定义
+                        修改
                       </button>
                       <button
                         type="button"
                         className="button subtle param-admin-row-action"
                         onClick={() => onEditValues(parameter.id)}
                       >
-                        修改项目参数值
+                        项目参数
                       </button>
                       {onDeleteParameter ? (
                         <button

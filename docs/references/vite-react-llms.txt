@@ -14,8 +14,8 @@ Commands:
 - npm run preview
 
 Frontend runtime:
-- Default mock mode is for demos/tests.
-- API mode uses VITE_WISEEFF_RUNTIME_MODE=api.
+- Default local development uses API mode (`npm run dev`, `npm run dev:all`, `.env.example`).
+- Set VITE_WISEEFF_RUNTIME_MODE=mock only for frontend-only demos/tests.
 - API base URL defaults to http://127.0.0.1:8787.
 
 Code boundaries:

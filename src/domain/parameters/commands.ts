@@ -75,6 +75,7 @@ export function submitParameterRound<TState extends ParameterRoundState>(state: 
       currentValue: parameter.currentValue,
       targetValue: item.targetValue,
       submitter,
+      valueKind: parameter.valueKind,
       createdAt: "刚刚",
       status: input.assignees ? "硬件Committer检视" : "待审阅",
       assignedTo: input.assignees?.hardwareCommitterId,
@@ -91,6 +92,7 @@ export function submitParameterRound<TState extends ParameterRoundState>(state: 
     targetValue: item.targetValue,
     unit: parameter.unit,
     risk: parameter.risk,
+    valueKind: parameter.valueKind,
     reason: item.reason || "本轮参数修改已生成影响摘要，建议参数管理员按轮次审阅。"
   }));
 

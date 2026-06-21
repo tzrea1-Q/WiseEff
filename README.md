@@ -49,11 +49,17 @@ Use `npm run docs:check` for documentation governance, local Markdown links, bil
 
 ## Runtime Modes
 
-The frontend defaults to mock mode for demos and component development. API mode uses:
+The frontend defaults to **API mode** for local development and production-oriented work. `npm run dev` and `npm run dev:all` start the Vite app with API runtime unless you override the environment.
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
+```
+
+Use mock mode only for frontend-only demos or when you explicitly want in-memory prototype data without a running API:
+
+```text
+VITE_WISEEFF_RUNTIME_MODE=mock
 ```
 
 Production builds must not use mock data as a business data source. Backend writes must enforce authz, validation, transactions, and audit on the server side.

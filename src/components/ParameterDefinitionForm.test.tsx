@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { initialState } from "../mockData";
+import { listParameterModuleNames } from "../powerManagementConfig";
 import { ParameterDefinitionForm } from "./ParameterDefinitionForm";
 
 afterEach(() => {
@@ -11,6 +12,7 @@ function build(overrides: Partial<Parameters<typeof ParameterDefinitionForm>[0]>
   return {
     parameter: initialState.configDraft.parameterLibrary[0],
     projects: initialState.configDraft.projects,
+    modules: listParameterModuleNames(initialState.configDraft.parameterModules),
     allParameters: initialState.configDraft.parameterLibrary,
     onMetadataChange: vi.fn(),
     onRecommendedValueChange: vi.fn(),
@@ -27,6 +29,18 @@ describe("ParameterDefinitionForm", () => {
     expect(screen.getByLabelText(/推荐值/)).toBeInTheDocument();
     expect(screen.getByLabelText("单位")).toBeInTheDocument();
     expect(screen.getByRole("radiogroup", { name: "重要性" })).toBeInTheDocument();
+  });
+
+  it("renders module as a select with options from the parameter library", () => {
+    const props = build();
+    render(<ParameterDefinitionForm {...props} />);
+
+    const moduleSelect = screen.getByLabelText("模块");
+    expect(moduleSelect.tagName).toBe("SELECT");
+    expect(moduleSelect).toHaveValue(props.parameter.module);
+    expect(Array.from(moduleSelect.querySelectorAll("option")).map((option) => option.value)).toEqual(
+      props.modules
+    );
   });
 
   it("shows the recommended value global-effect hint", () => {
@@ -59,10 +73,22 @@ describe("ParameterDefinitionForm", () => {
     expect(screen.getByText(/已存在同名参数/)).toBeInTheDocument();
   });
 
-  it("splits range into min and max inputs", () => {
+  it("splits range into min and max inputs for scalar parameters", () => {
     render(<ParameterDefinitionForm {...build()} />);
 
     expect(screen.getByLabelText("范围最小值")).toBeInTheDocument();
     expect(screen.getByLabelText("范围最大值")).toBeInTheDocument();
+  });
+
+  it("uses a code editor and hides numeric range fields for complex parameters", () => {
+    const complex = initialState.configDraft.parameterLibrary.find((parameter) => parameter.name === "battery_thermal_derate_curve");
+    expect(complex).toBeDefined();
+
+    render(<ParameterDefinitionForm {...build({ parameter: complex! })} />);
+
+    expect(screen.getByLabelText("参数推荐配置")).toHaveClass("parameter-admin-code-editor");
+    expect(screen.queryByLabelText("范围最小值")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("范围最大值")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("复杂参数摘要").querySelector(".parameter-draft-meta-pill")).toHaveTextContent("复杂配置");
   });
 });

@@ -88,6 +88,7 @@ export function parameterRecordFromDto(dto: ParameterRecordDto): ParameterRecord
   return {
     ...dto,
     risk: riskLabels[dto.risk],
+    valueKind: dto.valueKind ?? "scalar",
     history: dto.history.map(parameterHistoryEntryFromDto)
   };
 }

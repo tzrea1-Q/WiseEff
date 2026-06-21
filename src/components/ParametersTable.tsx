@@ -121,10 +121,6 @@ function getValueDiffIcon(row: ParameterRecord) {
   return "→";
 }
 
-function isComplexParameterValue(value: string) {
-  return value.includes("\n") || value.length > 80;
-}
-
 function getParameterValueSummary(value: string) {
   const firstLine = value.split("\n")[0]?.trim() ?? "";
   const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
@@ -396,7 +392,7 @@ export function ParametersTable({
             {visibleRows.map((row) => {
               const isModified = modifiedIds ? modifiedIds.has(row.id) : false;
               const isStashed = stashedIds ? stashedIds.has(row.id) : false;
-              const hasComplexValue = isComplexParameterValue(row.currentValue) || isComplexParameterValue(row.recommendedValue);
+              const hasComplexValue = row.valueKind === "complex";
               const valueSummary = getParameterValueSummary(row.currentValue || row.recommendedValue);
               const displayedUpdatedAt = formatUpdatedAtForTable(row.updatedAt);
               return (

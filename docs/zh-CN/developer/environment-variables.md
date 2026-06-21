@@ -13,7 +13,7 @@
 | `PORT` | `8787` | API 启动 | API mode 前端默认访问 `127.0.0.1:8787`。 |
 | `DATABASE_URL` | 本地 PostgreSQL URL | migrations、seeds、API mode、E2E | PostgreSQL 是产品化数据源。 |
 | `WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | smoke clients | M5/M6 smoke 脚本使用。 |
-| `VITE_WISEEFF_RUNTIME_MODE` | `.env.example` 中为 `api` | 前端 runtime | 前端-only demo/test 可设为 `mock`。 |
+| `VITE_WISEEFF_RUNTIME_MODE` | `api`（代码默认与 `.env.example`） | 前端 runtime | `npm run dev` / `npm run dev:all` 也会注入 `api`。前端-only demo/test 可设为 `mock`。 |
 | `VITE_WISEEFF_API_BASE_URL` | `http://127.0.0.1:8787` | 前端 API runtime | 必须指向 API 进程。 |
 
 ## 认证

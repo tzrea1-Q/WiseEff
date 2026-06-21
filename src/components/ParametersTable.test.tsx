@@ -19,6 +19,7 @@ const rows: ParameterRecord[] = [
     range: "2500-3800",
     unit: "mA",
     risk: "High",
+    valueKind: "scalar",
     updatedAt: "2 小时前",
     updatedAtTs: "2026-05-10T08:00:00Z",
     history: []
@@ -36,6 +37,7 @@ const rows: ParameterRecord[] = [
     range: "30-40",
     unit: "°C",
     risk: "Medium",
+    valueKind: "scalar",
     updatedAt: "5 小时前",
     updatedAtTs: "2026-05-10T05:00:00Z",
     history: []
@@ -53,6 +55,7 @@ const rows: ParameterRecord[] = [
     range: "0.50-0.95",
     unit: "ratio",
     risk: "Low",
+    valueKind: "scalar",
     updatedAt: "1 天前",
     updatedAtTs: "2026-05-09T10:00:00Z",
     history: []
@@ -77,6 +80,7 @@ const complexRow: ParameterRecord = {
   range: "0 - 1",
   unit: "profile",
   risk: "Low",
+  valueKind: "complex",
   updatedAt: "today 14:05",
   updatedAtTs: "2026-05-10T14:05:00Z",
   history: []

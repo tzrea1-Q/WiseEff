@@ -18,6 +18,7 @@ const parameter: ParameterRecord = {
   range: "2500 - 4500",
   unit: "mA",
   risk: "High",
+  valueKind: "scalar",
   updatedAt: "今天 08:12",
   updatedAtTs: "2026-05-23T00:12:00.000Z",
   history: []
@@ -46,7 +47,8 @@ const dtsParameter: ParameterRecord = {
   recommendedValue: dtsValue,
   range: "0 - 1",
   unit: "profile",
-  risk: "Low"
+  risk: "Low",
+  valueKind: "complex"
 };
 
 const dtsDraft: ParameterDraftDialogItem = {

@@ -35,11 +35,17 @@ npm run observability:check
 
 ## 运行模式
 
-前端默认使用 mock mode，适合演示和组件测试。API mode 使用：
+前端默认使用 **API mode** 进行本地开发。`npm run dev` 与 `npm run dev:all` 会注入 API runtime；复制 `.env.example` 到 `.env` 可保持一致。
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api
 VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
+```
+
+仅在需要纯前端演示、且不连接后端 API 时显式使用 mock mode：
+
+```text
+VITE_WISEEFF_RUNTIME_MODE=mock
 ```
 
 生产构建不能把 mock data 当作业务数据源。后端写入必须在服务端执行 authz、validation、transaction 和 audit。

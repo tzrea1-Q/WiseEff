@@ -9,6 +9,10 @@ import {
   addDebugParameter,
   addDebugParameterFromDraft,
   addProjectParameter,
+  addProjectParameterFromDraft,
+  addParameterModule,
+  updateParameterModule,
+  deleteParameterModule,
   deleteDebugParameter,
   deleteProjectParameter,
   updateProjectParameter,
@@ -19,6 +23,7 @@ describe("powerManagementConfig", () => {
   it("ships one shared project parameter library used by all projects", () => {
     expect(bundledPowerManagementConfig.projects).toHaveLength(3);
     expect(bundledPowerManagementConfig.parameterLibrary).toHaveLength(12);
+    expect(bundledPowerManagementConfig.parameterModules.length).toBeGreaterThan(0);
     expect(bundledPowerManagementConfig.projects.some((project) => "parameters" in project)).toBe(false);
     expect(bundledPowerManagementConfig.debugParameters.length).toBeGreaterThanOrEqual(8);
   });
@@ -251,5 +256,30 @@ describe("addDebugParameterFromDraft", () => {
     const next = addDebugParameterFromDraft(base, draft, new Date("2026-05-10T00:00:00.000Z"));
 
     expect(next.debugParameters.at(-1)?.status).toBe("已同步");
+  });
+
+  it("manages parameter modules independently from parameter usage", () => {
+    const base = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const withModule = addParameterModule(base, "Custom Power");
+    expect(withModule.parameterModules.some((module) => module.name === "Custom Power")).toBe(true);
+
+    const chargingPolicyCount = withModule.parameterLibrary.filter((parameter) => parameter.module === "Charging Policy").length;
+    const renamed = updateParameterModule(withModule, "Charging Policy", {
+      name: "Charge Policy",
+      description: withModule.parameterModules.find((module) => module.name === "Charging Policy")?.description ?? "",
+      owner: withModule.parameterModules.find((module) => module.name === "Charging Policy")?.owner ?? "",
+      scope: withModule.parameterModules.find((module) => module.name === "Charging Policy")?.scope ?? ""
+    });
+    expect(renamed.parameterModules.some((module) => module.name === "Charge Policy")).toBe(true);
+    expect(renamed.parameterLibrary.filter((parameter) => parameter.module === "Charge Policy").length).toBe(chargingPolicyCount);
+    expect(renamed.debugParameters.every((parameter) => parameter.module !== "Charging Policy")).toBe(true);
+
+    const unusedModule = "Unused Module";
+    const withUnused = addParameterModule(renamed, unusedModule);
+    const deletedUnused = deleteParameterModule(withUnused, unusedModule);
+    expect(deletedUnused.parameterModules.some((module) => module.name === unusedModule)).toBe(false);
+
+    const blockedDelete = deleteParameterModule(withUnused, "Charge Policy");
+    expect(blockedDelete.parameterModules.some((module) => module.name === "Charge Policy")).toBe(true);
   });
 });

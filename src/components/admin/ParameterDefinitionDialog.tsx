@@ -2,11 +2,13 @@ import { CircleX } from "lucide-react";
 import { useEffect } from "react";
 import { ParameterDefinitionForm } from "@/components/ParameterDefinitionForm";
 import type { ParameterEditorDraft } from "@/App";
+import { isComplexParameter } from "@/parameterValueKind";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "@/powerManagementConfig";
 
 export type ParameterDefinitionDialogProps = {
   parameter: PowerManagementParameterTemplate;
   projects: readonly PowerManagementProject[];
+  modules: readonly string[];
   allParameters: readonly PowerManagementParameterTemplate[];
   onMetadataChange: (patch: Partial<ParameterEditorDraft>) => void;
   onRecommendedValueChange: (value: string) => void;
@@ -16,11 +18,14 @@ export type ParameterDefinitionDialogProps = {
 export function ParameterDefinitionDialog({
   parameter,
   projects,
+  modules,
   allParameters,
   onMetadataChange,
   onRecommendedValueChange,
   onClose
 }: ParameterDefinitionDialogProps) {
+  const isComplex = isComplexParameter(parameter);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -34,12 +39,24 @@ export function ParameterDefinitionDialog({
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={`修改参数定义 ${parameter.name}`}>
-      <div className="submission-dialog param-admin-editor-dialog">
+      <div
+        className={[
+          "submission-dialog",
+          "param-admin-editor-dialog",
+          isComplex ? "submission-dialog--wide param-admin-editor-dialog--complex" : ""
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         <div className="submission-dialog-head param-admin-editor-dialog-head">
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">共享参数定义</span>
             <h2 id="param-definition-dialog-title">{parameter.name}</h2>
-            <p>修改名称、模块、风险、推荐值与描述信息，对所有项目生效。</p>
+            <p>
+              {isComplex
+                ? "维护复杂配置块的名称、模块、风险、推荐配置与描述信息，对所有项目生效。"
+                : "修改名称、模块、风险、推荐值与描述信息，对所有项目生效。"}
+            </p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onClose} aria-label="关闭">
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
@@ -49,6 +66,7 @@ export function ParameterDefinitionDialog({
         <div className="param-admin-editor-dialog-body">
           <ParameterDefinitionForm
             allParameters={allParameters}
+            modules={modules}
             parameter={parameter}
             projects={projects}
             onMetadataChange={onMetadataChange}

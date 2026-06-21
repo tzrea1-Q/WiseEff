@@ -1,5 +1,6 @@
 import { History, Info, ShieldCheck, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { listParameterModuleNames } from "./powerManagementConfig";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
 import type { ParameterImportBatchDto, ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
@@ -7,6 +8,7 @@ import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
+import { ModuleManagementDialog } from "./components/admin/ModuleManagementDialog";
 import { ParameterDefinitionDialog } from "./components/admin/ParameterDefinitionDialog";
 import { ParameterLibraryTable } from "./components/admin/ParameterLibraryTable";
 import { ParameterValuesDialog } from "./components/admin/ParameterValuesDialog";
@@ -36,6 +38,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   const [valuesDialogParameterId, setValuesDialogParameterId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importSourceName, setImportSourceName] = useState("pasted-import.json");
@@ -47,6 +50,8 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
   const library = state.configDraft.parameterLibrary;
+  const modules = state.configDraft.parameterModules;
+  const moduleNames = useMemo(() => listParameterModuleNames(modules), [modules]);
   const projects = state.configDraft.projects;
   const definitionParameter = library.find((parameter) => parameter.id === definitionDialogParameterId) ?? null;
   const valuesParameter = library.find((parameter) => parameter.id === valuesDialogParameterId) ?? null;
@@ -290,6 +295,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
             onEditDefinition={setDefinitionDialogParameterId}
             onEditValues={setValuesDialogParameterId}
             onCreateParameter={() => setCreateDialogOpen(true)}
+            onManageModules={() => setModuleDialogOpen(true)}
             onDeleteParameter={setDeleteTargetId}
           />
         )}
@@ -303,12 +309,26 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
       />
       <CreateParameterDialog
         open={createDialogOpen}
-        existingModules={library.map((p) => p.module)}
-        existingNames={library.map((p) => p.name)}
+        projects={projects}
+        modules={moduleNames}
+        existingParameters={library}
         onCancel={() => setCreateDialogOpen(false)}
         onConfirm={(draft) => {
           dispatch({ type: "ADD_PROJECT_PARAMETER_FROM_DRAFT", draft });
           setCreateDialogOpen(false);
+        }}
+      />
+      <ModuleManagementDialog
+        open={moduleDialogOpen}
+        modules={modules}
+        parameters={library}
+        onClose={() => setModuleDialogOpen(false)}
+        onAddModule={(module) => dispatch({ type: "ADD_PARAMETER_MODULE", module })}
+        onUpdateModule={(moduleName, patch) => dispatch({ type: "UPDATE_PARAMETER_MODULE", moduleName, patch })}
+        onDeleteModule={(moduleName) => dispatch({ type: "DELETE_PARAMETER_MODULE", moduleName })}
+        onEditParameterDefinition={(parameterId) => {
+          setModuleDialogOpen(false);
+          setDefinitionDialogParameterId(parameterId);
         }}
       />
       {importDialogOpen ? (
@@ -332,6 +352,7 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
         <ParameterDefinitionDialog
           parameter={definitionParameter}
           projects={projects}
+          modules={moduleNames}
           allParameters={library}
           onMetadataChange={(patch) => updateMetadata(definitionParameter.id, patch)}
           onRecommendedValueChange={(value) => updateRecommendedValue(definitionParameter.id, value)}

@@ -6,13 +6,15 @@ import {
   flattenProjectParameters,
   PowerManagementConfig,
   PowerManagementDebugParameter,
-  PowerManagementProjectId
+  PowerManagementProjectId,
+  type ParameterValueKind
 } from "./powerManagementConfig";
 import { buildParameterHistory, buildReviewMockRequests, REVIEW_MOCK_NOW } from "./reviewMockData";
 import type {
   ProjectInitializationStatus,
   ProjectParameterInitializationDraft,
-  ProjectParameterInitializationReview
+  ProjectParameterInitializationReview,
+  ParameterWorkflowAssignees
 } from "@/domain/parameters/types";
 import type { ParameterDraftDto } from "@/application/ports/ParameterRepository";
 import type { PlatformRole, UserAccount } from "@/domain/users/types";
@@ -128,6 +130,7 @@ export type ParameterRecord = {
   range: string;
   unit: string;
   risk: RiskLevel;
+  valueKind: ParameterValueKind;
   updatedAt: string;
   updatedAtTs: string;
   history: ParameterHistoryEntry[];
@@ -144,6 +147,7 @@ export type ChangeRequest = {
   currentValue: string;
   targetValue: string;
   submitter: string;
+  valueKind?: ParameterValueKind;
   createdAt: string;
   createdAtTs: string;
   updatedAt: string;
@@ -168,13 +172,8 @@ export type ParameterSubmissionItem = {
   targetValue: string;
   unit: string;
   risk: RiskLevel;
+  valueKind: ParameterValueKind;
   reason: string;
-};
-
-export type ParameterWorkflowAssignees = {
-  hardwareCommitterId: string;
-  softwareCommitterId: string;
-  softwareUserId: string;
 };
 
 export type ParameterReviewDecisionRecord = {
@@ -883,6 +882,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
             targetValue: "3200",
             unit: "mA",
             risk: "High",
+            valueKind: "scalar",
             reason: "将高风险参数回落到安全阈值内。"
           }
         ]
@@ -910,6 +910,7 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
             targetValue: "35",
             unit: "°C",
             risk: "Medium",
+            valueKind: "scalar",
             reason: "减少快充后段降额频率。"
           }
         ]

@@ -106,13 +106,13 @@ npm run dev
 
 ## Runtime Modes
 
-Mock mode is for demos and frontend component tests:
+Mock mode is for frontend-only demos and component tests:
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=mock
 ```
 
-API mode is the production-oriented development path:
+API mode is the default local development path. `npm run dev` and `npm run dev:all` set it explicitly; `.env.example` matches the same contract:
 
 ```text
 VITE_WISEEFF_RUNTIME_MODE=api

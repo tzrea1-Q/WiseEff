@@ -32,6 +32,17 @@ describe("ProjectValueMatrix", () => {
     expect(screen.getAllByText("mA")).toHaveLength(initialState.configDraft.projects.length);
   });
 
+  it("renders complex parameters with multiline editors and recommended config blocks", () => {
+    const complex = initialState.configDraft.parameterLibrary.find((parameter) => parameter.name === "battery_thermal_derate_curve");
+    expect(complex).toBeDefined();
+
+    render(<ProjectValueMatrix {...build({ parameter: complex! })} />);
+
+    expect(screen.queryByText("偏差")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(`${initialState.configDraft.projects[0].code} 当前配置`)).toHaveClass("parameter-admin-code-editor");
+    expect(screen.getAllByText("推荐配置").length).toBeGreaterThan(0);
+  });
+
   it("marks out-of-range values invalid", () => {
     const parameter = {
       ...initialState.configDraft.parameterLibrary[0],

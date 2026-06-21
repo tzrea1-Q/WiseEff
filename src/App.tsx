@@ -138,6 +138,9 @@ import {
   addDebugParameterFromDraft,
   addProjectParameter,
   addProjectParameterFromDraft,
+  addParameterModule,
+  updateParameterModule,
+  deleteParameterModule,
   deleteDebugParameter,
   deleteProjectParameter,
   serializePowerManagementConfig,
@@ -309,8 +312,25 @@ export type AppAction =
   | { type: "COMMIT_DEBUG_PARAMETER_DRAFT"; parameterId: string; draft: DebugParameterEditorDraft }
   | { type: "DISCARD_ALL_DEBUG_DIRTY" }
   | { type: "ADD_PROJECT_PARAMETER" }
-  | { type: "ADD_PROJECT_PARAMETER_FROM_DRAFT"; draft: { name: string; module: string; unit: string; risk: PowerManagementRisk; description: string } }
+  | {
+      type: "ADD_PROJECT_PARAMETER_FROM_DRAFT";
+      draft: {
+        name: string;
+        module: string;
+        unit: string;
+        risk: PowerManagementRisk;
+        description: string;
+        explanation: string;
+        configFormat: string;
+        range: string;
+        recommendedValue: string;
+        valueKind: import("@/powerManagementConfig").ParameterValueKind;
+      };
+    }
   | { type: "DELETE_PROJECT_PARAMETER"; parameterId: string }
+  | { type: "ADD_PARAMETER_MODULE"; module: import("@/powerManagementConfig").ParameterModuleDraft }
+  | { type: "UPDATE_PARAMETER_MODULE"; moduleName: string; patch: import("@/powerManagementConfig").ParameterModuleDraft }
+  | { type: "DELETE_PARAMETER_MODULE"; moduleName: string }
   | { type: "ADD_DEBUG_PARAMETER"; initialDraft?: DebugParameterEditorDraft }
   | { type: "DELETE_DEBUG_PARAMETER"; parameterId: string }
   | { type: "ASSIGN_USER_ROLE"; userId: string; roleId: PlatformRoleId }
@@ -421,6 +441,7 @@ export type ParameterEditorDraft = {
   range: string;
   unit: string;
   risk: DebugParameter["risk"];
+  valueKind: import("@/powerManagementConfig").ParameterValueKind;
 };
 
 type DebugParameterEditorDraft = {
@@ -623,6 +644,7 @@ function buildDraftSubmissionRounds(
       targetValue: draft.targetValue,
       unit: parameter?.unit ?? "",
       risk: parameter?.risk ?? "Medium",
+      valueKind: parameter?.valueKind ?? "scalar",
       reason: draft.reason
     };
 
@@ -842,6 +864,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         currentValue: parameter.currentValue,
         targetValue: action.targetValue,
         submitter,
+        valueKind: parameter.valueKind,
         createdAt: "刚刚",
         status: "硬件Committer检视",
         assignedTo: workflowAssignees.hardwareCommitterId,
@@ -857,6 +880,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         targetValue: action.targetValue,
         unit: parameter.unit,
         risk: parameter.risk,
+        valueKind: parameter.valueKind,
         reason: summary
       };
 
@@ -934,6 +958,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         targetValue: item.targetValue,
         unit: parameter.unit,
         risk: parameter.risk,
+        valueKind: parameter.valueKind,
         reason: item.reason || ""
       }));
 
@@ -1490,6 +1515,42 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...derivePowerManagementRuntimeState(configDraft),
         _undoStack: undo,
         auditEvents: [event, ...state.auditEvents]
+      };
+    }
+    case "ADD_PARAMETER_MODULE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      const configDraft = addParameterModule(state.configDraft, action.module);
+      if (configDraft === state.configDraft) {
+        return state;
+      }
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "UPDATE_PARAMETER_MODULE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      const configDraft = updateParameterModule(state.configDraft, action.moduleName, action.patch);
+      if (configDraft === state.configDraft) {
+        return state;
+      }
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "DELETE_PARAMETER_MODULE": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      const configDraft = deleteParameterModule(state.configDraft, action.moduleName);
+      if (configDraft === state.configDraft) {
+        return state;
+      }
+      return {
+        ...state,
+        configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
       };
     }
     case "ADD_DEBUG_PARAMETER": {
@@ -3419,13 +3480,8 @@ export function getContextQuery(search: string) {
   };
 }
 
-function isComplexSubmissionHistoryValue(value: string) {
-  const normalizedValue = value.trim();
-  return normalizedValue.includes("\n") || normalizedValue.length > 80;
-}
-
 function isComplexSubmissionHistoryItem(item: ParameterSubmissionItem) {
-  return isComplexSubmissionHistoryValue(item.currentValue) || isComplexSubmissionHistoryValue(item.targetValue);
+  return item.valueKind === "complex";
 }
 
 function getSubmissionHistoryLineCount(value: string) {
@@ -3560,7 +3616,7 @@ function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) 
 }
 
 function ReviewChangeValueSummary({ request }: { request: ChangeRequest }) {
-  if (isComplexSubmissionHistoryValue(request.currentValue) || isComplexSubmissionHistoryValue(request.targetValue)) {
+  if (request.valueKind === "complex") {
     const valueSummary = getSubmissionValueSummary(request.currentValue || request.targetValue);
     const differenceLabel = request.currentValue === request.targetValue ? "当前与目标一致" : "当前与目标不同";
     return (

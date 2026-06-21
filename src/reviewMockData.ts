@@ -5,6 +5,11 @@ import type {
   ParameterHistoryEntry,
   RequestStatus
 } from "./mockData";
+import { bundledPowerManagementConfig, flattenProjectParameters } from "./powerManagementConfig";
+
+const parameterValueKindById = new Map(
+  flattenProjectParameters(bundledPowerManagementConfig).map((parameter) => [parameter.id, parameter.valueKind])
+);
 
 export const REVIEW_MOCK_NOW = "2026-05-10T12:00:00.000Z";
 
@@ -413,7 +418,8 @@ export function buildReviewMockRequests(): ChangeRequest[] {
       impact: buildImpactItems(seed.impactKey),
       assignedTo: seed.assignedTo,
       workflowAssignees: seed.workflowAssignees,
-      reviewerNote: seed.reviewerNote
+      reviewerNote: seed.reviewerNote,
+      valueKind: parameterValueKindById.get(seed.parameterId) ?? "scalar"
     };
   });
 }

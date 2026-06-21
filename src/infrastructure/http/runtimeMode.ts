@@ -1,13 +1,15 @@
 export type WiseEffRuntimeMode = "mock" | "api";
 
 export function parseRuntimeMode(value: string | undefined, environment: string): WiseEffRuntimeMode {
-  const mode = value === "api" ? "api" : "mock";
-
-  if (environment === "production" && mode === "mock") {
-    throw new Error("Mock runtime cannot be used in production builds");
+  const trimmed = value?.trim();
+  if (trimmed === "mock") {
+    if (environment === "production") {
+      throw new Error("Mock runtime cannot be used in production builds");
+    }
+    return "mock";
   }
 
-  return mode;
+  return "api";
 }
 
 export function parseStaticApiAuthorization(value: string | undefined, environment: string) {

@@ -7,6 +7,7 @@ import {
 } from "@/domain/parameters/singleParameterComparison";
 import type { ParameterRecord } from "@/domain/parameters/types";
 import type { ParameterHistoryEntry } from "@/domain/parameters/types";
+import { isComplexParameter } from "@/parameterValueKind";
 import { riskLabels } from "../workbenchUi";
 
 export type ParameterDetailDialogProps = {
@@ -40,10 +41,6 @@ function formatHistoryValue(value: string, unit: string) {
   return `${value || "-"} ${unit}`.trim();
 }
 
-function isComplexParameterValue(value: string) {
-  return value.includes("\n") || value.length > 80;
-}
-
 function CodeValue({
   actionLabel,
   disabled,
@@ -72,14 +69,12 @@ function CodeValue({
   );
 }
 
-function HistoryEntryItem({ entry }: { entry: ParameterHistoryEntry }) {
-  const isComplex = isComplexParameterValue(entry.value);
-
+function HistoryEntryItem({ entry, isComplexParameterKind }: { entry: ParameterHistoryEntry; isComplexParameterKind: boolean }) {
   return (
-    <li className="parameter-detail-history__item" data-complex={isComplex || undefined}>
+    <li className="parameter-detail-history__item" data-complex={isComplexParameterKind || undefined}>
       <span className="parameter-detail-history__version">{entry.version}</span>
       <span className="parameter-detail-history__value">
-        {isComplex ? <code tabIndex={0}>{entry.value || "-"}</code> : <span>{entry.value || "-"}</span>}
+        {isComplexParameterKind ? <code tabIndex={0}>{entry.value || "-"}</code> : <span>{entry.value || "-"}</span>}
       </span>
       <small className="parameter-detail-history__meta">
         {entry.changedAt} / {entry.changedBy}
@@ -413,7 +408,7 @@ export function ParameterDetailDialog({
   const baseProjectCode = comparison.baseRow?.projectCode ?? currentProjectId;
   const draftDisabled = !canEdit || alreadyInDraft;
   const draftLabel = alreadyInDraft ? "已在草稿中" : "加入修改草稿";
-  const hasComplexValue = isComplexParameterValue(parameter.currentValue) || isComplexParameterValue(parameter.recommendedValue);
+  const hasComplexValue = isComplexParameter(parameter);
   const rowsByProjectId = new Map(comparison.rows.map((row) => [row.projectId, row]));
   const targetRow = rowsByProjectId.get(targetProjectId) ?? null;
   const targetParameter = parameters.find((item) => item.projectId === targetProjectId && item.name === parameter.name) ?? null;
@@ -573,7 +568,11 @@ export function ParameterDetailDialog({
                 </div>
                 <ul>
                   {parameter.history.slice(0, 3).map((entry) => (
-                    <HistoryEntryItem entry={entry} key={`${entry.version}-${entry.changedAt}`} />
+                    <HistoryEntryItem
+                      entry={entry}
+                      isComplexParameterKind={hasComplexValue}
+                      key={`${entry.version}-${entry.changedAt}`}
+                    />
                   ))}
                 </ul>
               </div>
