@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
-import { expect, test, type APIRequestContext, type Page } from "playwright/test";
+import { expect, test, type APIRequestContext, type Page, type Route } from "playwright/test";
 import type { Client } from "pg";
 import { withPgClient } from "./helpers/database";
 import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operationEvidence";
@@ -99,6 +99,10 @@ function observedAdbDevices(devices: ParsedAdbDevice[]) {
   return devices.map((item) => `${item.serial}:${item.state}`).join(", ") || "(none)";
 }
 
+function identifierShape(value: string | null | undefined) {
+  return value ? `set:length=${value.length}` : "unset";
+}
+
 function validateSingleReadyAdbTarget(targetRef: string, devices: ParsedAdbDevice[]) {
   const observed = observedAdbDevices(devices);
   const matches = devices.filter((item) => item.serial === targetRef);
@@ -141,6 +145,7 @@ test.describe("ADB device-lab preflight validation", () => {
     const sessionDelete = queries.find((query) => query.includes("delete from debugging_sessions"));
     expect(sessionDelete).toContain("debug_device_leases");
     expect(sessionDelete).toContain("not exists");
+    expect(queries.some((query) => /delete\s+from\s+debug_device_leases/i.test(query))).toBe(false);
   });
 });
 
@@ -405,8 +410,9 @@ function compactAuditMetadata(metadata: Record<string, unknown> | undefined) {
   });
 }
 
-async function getAuditEvents(request: APIRequestContext, userId: string) {
-  const response = await request.get(apiRoute("/api/v1/audit-events?app=debugging&limit=100"), {
+async function getAuditEvents(request: APIRequestContext, userId: string, projectId: string) {
+  const auditPath = `/api/v1/audit-events?app=debugging&projectId=${encodeURIComponent(projectId)}&limit=100`;
+  const response = await request.get(apiRoute(auditPath), {
     headers: {
       ...smokeHeaders(),
       "x-wiseeff-user": userId
@@ -420,7 +426,7 @@ async function getAuditEvents(request: APIRequestContext, userId: string) {
     events: ((body as { items?: AuditEventDto[] })?.items ?? []),
     summary: summarizeApiResponse(response, {
       method: "GET",
-      path: "/api/v1/audit-events?app=debugging&limit=100",
+      path: auditPath,
       responseSummary: `audit events=${(body as { items?: AuditEventDto[] } | null)?.items?.length ?? 0}`
     })
   };
@@ -438,6 +444,44 @@ function summarizeAudit(events: AuditEventDto[], kind: string, targetId: string 
     requestId: event!.traceId,
     metadataSummary: compactAuditMetadata(event!.metadata)
   };
+}
+
+async function installFrontendDebuggingApiGuard(page: Page) {
+  const observed = {
+    detectRequests: 0,
+    blockedRequests: [] as string[]
+  };
+
+  await page.route("**/api/v1/debugging/targets/detect", async (route) => {
+    observed.detectRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [] })
+    });
+  });
+
+  const blockUnexpectedFrontendDeviceCall = async (route: Route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    observed.blockedRequests.push(`${request.method()} ${url.pathname}`);
+    await route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          code: "FRONTEND_DEVICE_CALL_BLOCKED",
+          message: "ADB device-lab UI stage only proves protocol selection; request API owns the real device chain."
+        }
+      })
+    });
+  };
+
+  await page.route("**/api/v1/debugging/sessions**", blockUnexpectedFrontendDeviceCall);
+  await page.route("**/api/v1/debugging/nodes/**", blockUnexpectedFrontendDeviceCall);
+  await page.route("**/api/v1/debugging/snapshots/**/rollback", blockUnexpectedFrontendDeviceCall);
+
+  return observed;
 }
 
 async function selectAdbProtocol(page: Page) {
@@ -471,7 +515,12 @@ test.describe("ADB device-lab full-chain loop", () => {
     const config = requireAdbSmokeConfig();
     requireSingleReadyAdbTarget(config.targetRef);
     await prepareAdbAcceptanceState(config.projectId);
+    const frontendGuard = await installFrontendDebuggingApiGuard(page);
     await expectAdbUiReady(page, config);
+    expect(
+      frontendGuard.blockedRequests,
+      `Frontend UI stage attempted request-API device calls: ${frontendGuard.blockedRequests.join(", ")}`
+    ).toEqual([]);
     const viewport = page.viewportSize();
 
     const apiSummaries: ReturnType<typeof summarizeApiResponse>[] = [];
@@ -481,7 +530,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       "/api/v1/debugging/targets/detect",
       { projectId: config.projectId, deviceId: config.deviceId, protocol: "adb" },
       config.userId,
-      (body) => `targets=${body.items.length}; detectedIds=${body.items.map((item) => item.id).join(",")}`
+      (body) => `targets=${body.items.length}; detectedTargetRef=${identifierShape(body.items[0]?.targetRef)}`
     );
     apiSummaries.push(detected.summary);
     const target = detected.body.items.find((item) => item.targetRef === config.targetRef);
@@ -499,7 +548,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       "/api/v1/debugging/sessions",
       { projectId: config.projectId, deviceId: config.deviceId, targetId: target!.id, protocol: "adb" },
       config.userId,
-      (body) => `session=${body.item.id}; protocol=${body.item.protocol ?? "unset"}`
+      (body) => `session=${identifierShape(body.item.id)}; protocol=${body.item.protocol ?? "unset"}`
     );
     apiSummaries.push(sessionResponse.summary);
     if (sessionResponse.body.item.protocol) {
@@ -621,7 +670,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       });
     }
 
-    const audit = await getAuditEvents(request, config.userId);
+    const audit = await getAuditEvents(request, config.userId, config.projectId);
     apiSummaries.push(audit.summary);
     const auditSummaries = [
       summarizeAudit(audit.events, "debug-target-detect", config.deviceId),
@@ -653,10 +702,10 @@ test.describe("ADB device-lab full-chain loop", () => {
           ADB_DEVICE_LAB_AVAILABLE: process.env.ADB_DEVICE_LAB_AVAILABLE?.trim() || "unset",
           ADB_SMOKE_ENABLE_WRITE: config.writeEnabled ? "true" : "false",
           ADB_SMOKE_WRITE_VALUE: config.writeValue ? "set" : "unset",
-          ADB_SMOKE_PROJECT_ID: config.projectId,
-          ADB_SMOKE_DEVICE_ID: config.deviceId,
-          ADB_SMOKE_TARGET_REF: config.targetRef,
-          ADB_SMOKE_PARAMETER_ID: config.parameterId,
+          ADB_SMOKE_PROJECT_ID: identifierShape(config.projectId),
+          ADB_SMOKE_DEVICE_ID: identifierShape(config.deviceId),
+          ADB_SMOKE_TARGET_REF: identifierShape(config.targetRef),
+          ADB_SMOKE_PARAMETER_ID: identifierShape(config.parameterId),
           ADB_SMOKE_NODE_PATH: "set"
         }
       },
@@ -669,11 +718,12 @@ test.describe("ADB device-lab full-chain loop", () => {
         ]
       },
       notes: [
-        `Browser route=/node-debugging?project=${config.projectId}; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
-        "Console/network diagnostics: this spec relies on Playwright request API summaries, default retain-on-failure traces, and operation evidence artifacts; no extra browser console/network collector is installed in this spec.",
-        `Frontend selected the ADB protocol only; the current frontend detect path cannot pass deviceId, so real detect/session evidence uses Playwright request API calls with explicit deviceId=${config.deviceId} and protocol=adb, while read/write/rollback evidence is scoped through that ADB session.`,
-        `Read evidence for parameter ${config.parameterId}: ${readEvidence}.`,
-        `Write evidence for parameter ${config.parameterId}: ${writeEvidence}.`,
+        `Browser route=/node-debugging?project=${identifierShape(config.projectId)}; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
+        `Frontend debugging API guard fulfilled ${frontendGuard.detectRequests} auto-detect request(s) with an empty target list and blocked ${frontendGuard.blockedRequests.length} unexpected session/read/write/rollback request(s).`,
+        "Console/network diagnostics: this spec relies on Playwright request API summaries, default retain-on-failure traces, operation evidence artifacts, and the frontend debugging API guard; no extra browser console collector is installed in this spec.",
+        `Frontend selected the ADB protocol only; the current frontend detect path cannot pass deviceId, so real detect/session evidence uses Playwright request API calls with configured device ${identifierShape(config.deviceId)} and protocol=adb, while read/write/rollback evidence is scoped through that ADB session.`,
+        `Read evidence for configured parameter ${identifierShape(config.parameterId)}: ${readEvidence}.`,
+        `Write evidence for configured parameter ${identifierShape(config.parameterId)}: ${writeEvidence}.`,
         finalReadResponse ? "Final restoration was confirmed by equality with the original read value without recording the raw value." : "Read-only mode did not call write, rollback, or final restoration read."
       ].join(" ")
     });
