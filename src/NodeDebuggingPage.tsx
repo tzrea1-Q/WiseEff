@@ -5,7 +5,7 @@ import { ColumnFilter } from "./components/ColumnFilter";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
-import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import type { NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type {
   DebugConnectionProtocol,
@@ -20,6 +20,7 @@ type NodeRuntimeStatus =
   | "执行中"
   | "成功"
   | "失败"
+  | "写入失败"
   | "不可用";
 
 type ProtocolAwareDebugParameter = DebugParameter & {
@@ -29,13 +30,18 @@ type ProtocolAwareDebugParameter = DebugParameter & {
   bindings?: DebugParameterNodeBinding[];
 };
 
+type RowOperationKind = "read" | "write";
+
 type RuntimeRow = ProtocolAwareDebugParameter & {
   runtimeCurrentValue: string;
   draftValue: string;
   runtimeStatus: NodeRuntimeStatus;
+  activeOperation?: RowOperationKind;
   error?: string;
   lastReadValue?: string;
 };
+
+const unsupportedNodeValueLabel = "该节点不支持";
 
 type PageNodeOperationEvent = NodeOperationEvent & {
   durationMs?: number;
@@ -85,7 +91,7 @@ function deriveParameterForProtocol(parameter: DebugParameter, protocol: DebugCo
       };
     }
 
-    return protocolParameter;
+    return { ...protocolParameter, selectedProtocol: protocol };
   }
 
   const selectedBinding = protocolParameter.bindings.find((binding) => binding.protocol === protocol);
@@ -138,7 +144,8 @@ function runtimeRowFromParameter(parameter: DebugParameter, protocol: DebugConne
   const protocolParameter = deriveParameterForProtocol(parameter, protocol);
   const bindingReason = bindingUnavailableReason(protocolParameter);
   const bindingChanged = existing
-    ? existing.nodePath !== protocolParameter.nodePath ||
+    ? existing.selectedProtocol !== protocol ||
+      existing.nodePath !== protocolParameter.nodePath ||
       existing.accessMode !== protocolParameter.accessMode ||
       existing.bindingStatus !== protocolParameter.bindingStatus
     : false;
@@ -154,6 +161,12 @@ function runtimeRowFromParameter(parameter: DebugParameter, protocol: DebugConne
   };
 }
 
+function isUnsupportedParameterError(message?: string) {
+  if (!message) return false;
+  return message.includes("not configured for the selected protocol")
+    || message.includes("binding is disabled for the selected protocol");
+}
+
 function statusClass(status: NodeRuntimeStatus) {
   const classMap: Record<NodeRuntimeStatus, string> = {
     "未检测": "node-status-untested",
@@ -161,6 +174,7 @@ function statusClass(status: NodeRuntimeStatus) {
     "执行中": "node-status-running",
     "成功": "node-status-success",
     "失败": "node-status-failed",
+    "写入失败": "node-status-failed",
     "不可用": "node-status-unavailable"
   };
   return `node-status-badge ${classMap[status]}`;
@@ -168,9 +182,25 @@ function statusClass(status: NodeRuntimeStatus) {
 
 function displayCurrentValue(row: RuntimeRow) {
   if (row.accessMode === "WO") return "写入后不可回读";
-  if (bindingUnavailableReason(row)) return "节点不可用";
+  if (bindingUnavailableReason(row)) return unsupportedNodeValueLabel;
+  if (row.runtimeStatus === "写入失败") {
+    if (isUnsupportedParameterError(row.error)) return unsupportedNodeValueLabel;
+    if (row.lastReadValue !== undefined) return row.runtimeCurrentValue;
+    return row.error || "写入失败";
+  }
+  if (row.runtimeStatus === "失败") {
+    if (isUnsupportedParameterError(row.error)) return unsupportedNodeValueLabel;
+    return row.error || "读取失败";
+  }
   if (row.lastReadValue !== undefined) return row.runtimeCurrentValue;
-  return row.runtimeStatus === "执行中" ? "读取中..." : "等待读取";
+  if (row.runtimeStatus === "执行中") {
+    return row.activeOperation === "write" ? "写入中..." : "读取中...";
+  }
+  return "等待读取";
+}
+
+function readFailureMessage(error: unknown) {
+  return formatDebuggingRuntimeError(error);
 }
 
 function formatSessionDuration(startedAt: string | null, now: Date) {
@@ -384,7 +414,6 @@ export function NodeDebuggingPage({
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
-  const didAutoDetectRef = useRef(false);
   const autoReadSignatureRef = useRef("");
   const protocolRef = useRef(protocol);
   const detectRequestSeqRef = useRef(0);
@@ -472,7 +501,7 @@ export function NodeDebuggingPage({
     [events]
   );
   const failedCount = useMemo(
-    () => rows.filter((row) => row.runtimeStatus === "失败").length,
+    () => rows.filter((row) => row.runtimeStatus === "失败" || row.runtimeStatus === "写入失败").length,
     [rows]
   );
   const latestEvent = events.at(-1) ?? null;
@@ -497,9 +526,10 @@ export function NodeDebuggingPage({
     setActiveTargetId(undefined);
     setActiveSessionId(undefined);
     setSessionStartedAt(null);
-    setConnectionError(protocolSwitchRedetectMessage);
+    setConnectionError("");
     setDetectDiagnosticError("");
     autoReadSignatureRef.current = "";
+    rowOperationSeqRef.current = {};
     setSelectedIds(new Set());
   };
 
@@ -529,41 +559,66 @@ export function NodeDebuggingPage({
   const readRowWithTarget = async (row: RuntimeRow, activeTarget?: string, sessionId?: string) => {
     if ((!activeTarget && !sessionId) || !canRead(row)) return;
     const operationSeq = nextRowOperationSeq(row.id);
-    updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
-    const result: ReadResultWithOperation = debuggingActions
-      ? await debuggingActions.readNode({
-          sessionId,
-          target: activeTarget,
-          parameterId: row.id,
+    updateRow(row.id, { runtimeStatus: "执行中", activeOperation: "read", error: undefined });
+    try {
+      const result: ReadResultWithOperation = debuggingActions
+        ? await debuggingActions.readNode({
+            sessionId,
+            target: activeTarget,
+            parameterId: row.id,
+            nodePath: row.nodePath
+          })
+        : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
+      const isLatest = isLatestRowOperation(row.id, operationSeq);
+      if (isLatest) {
+        if (result.ok) {
+          const value = result.value ?? result.stdout?.trim() ?? "";
+          updateRow(row.id, {
+            runtimeCurrentValue: value,
+            lastReadValue: value,
+            runtimeStatus: "成功",
+            activeOperation: undefined
+          });
+        } else {
+          updateRow(row.id, {
+            runtimeStatus: "失败",
+            activeOperation: undefined,
+            error: result.error || result.stderr || "读取失败"
+          });
+        }
+      }
+      if (result.operation) {
+        appendEvent(eventFromOperation(result.operation, rowsRef.current));
+      } else {
+        appendEvent({
+          parameterName: row.name,
+          parameterKey: row.key,
+          accessMode: row.accessMode,
+          action: "read",
+          status: result.ok ? "读取成功" : "读取失败",
+          returncode: result.returncode,
+          stdout: result.stdout,
+          stderr: result.stderr || result.error,
           nodePath: row.nodePath
-        })
-      : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
-    const isLatest = isLatestRowOperation(row.id, operationSeq);
-    if (result.ok) {
-      const value = result.value ?? result.stdout?.trim() ?? "";
-      if (isLatest) updateRow(row.id, {
-        runtimeCurrentValue: value,
-        lastReadValue: value,
-        runtimeStatus: "成功"
-      });
-    } else {
-      if (isLatest) updateRow(row.id, {
-        runtimeStatus: "失败",
-        error: result.error || result.stderr || "读取失败"
-      });
-    }
-    if (result.operation) {
-      appendEvent(eventFromOperation(result.operation, rowsRef.current));
-    } else {
+        });
+      }
+    } catch (error) {
+      const message = readFailureMessage(error);
+      if (isLatestRowOperation(row.id, operationSeq)) {
+        updateRow(row.id, {
+          runtimeStatus: "失败",
+          activeOperation: undefined,
+          error: message
+        });
+      }
       appendEvent({
         parameterName: row.name,
         parameterKey: row.key,
         accessMode: row.accessMode,
         action: "read",
-        status: result.ok ? "读取成功" : "读取失败",
-        returncode: result.returncode,
-        stdout: result.stdout,
-        stderr: result.stderr || result.error,
+        status: "读取失败",
+        returncode: (error as DiagnosticError | undefined)?.returncode,
+        stderr: (error as DiagnosticError | undefined)?.stderr || message,
         nodePath: row.nodePath
       });
     }
@@ -650,7 +705,7 @@ export function NodeDebuggingPage({
       setActiveSessionId(undefined);
       setActiveTargetId(undefined);
       const diagnosticError = error instanceof Error ? error as DiagnosticError : undefined;
-      const detectFailureMessage = diagnosticError?.message || "检测失败";
+      const detectFailureMessage = formatDebuggingRuntimeError(error);
       const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
       setConnectionError(detectFailureMessage);
       setDetectDiagnosticError(detectFailureMessage);
@@ -674,63 +729,89 @@ export function NodeDebuggingPage({
   };
 
   useEffect(() => {
-    if (didAutoDetectRef.current) return;
     if (!runtimeReady) return;
-    didAutoDetectRef.current = true;
     void detect();
-  }, [runtimeReady]);
+  }, [protocol, runtimeReady]);
 
   const writeRow = async (row: RuntimeRow) => {
     if ((!target && !activeSessionId) || !canWrite(row)) return;
     const readBack = row.accessMode === "RW";
     const operationSeq = nextRowOperationSeq(row.id);
-    updateRow(row.id, { runtimeStatus: "执行中", error: undefined });
-    const result: WriteResultWithOperation = debuggingActions
-      ? await debuggingActions.writeNode({
-          sessionId: activeSessionId,
-          target: activeTargetId,
-          parameterId: row.id,
-          nodePath: row.nodePath,
-          value: row.draftValue,
-          readBack,
-          risk: row.risk
-        })
-      : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
+    updateRow(row.id, { runtimeStatus: "执行中", activeOperation: "write", error: undefined });
+    try {
+      const result: WriteResultWithOperation = debuggingActions
+        ? await debuggingActions.writeNode({
+            sessionId: activeSessionId,
+            target: activeTargetId,
+            parameterId: row.id,
+            nodePath: row.nodePath,
+            value: row.draftValue,
+            readBack,
+            risk: row.risk
+          })
+        : await writeNodeValue({ target: target ?? "", nodePath: row.nodePath, value: row.draftValue, readBack });
 
-    if (!isLatestRowOperation(row.id, operationSeq)) return;
+      if (!isLatestRowOperation(row.id, operationSeq)) return;
 
-    if (!result.ok) {
-      updateRow(row.id, {
-        runtimeStatus: "失败",
-        error: result.error || result.writeResult?.stderr || "写入失败"
-      });
-    } else if (readBack && result.verified) {
-      const value = result.value ?? result.readResult?.stdout?.trim() ?? row.draftValue;
-      updateRow(row.id, { runtimeCurrentValue: value, lastReadValue: value, runtimeStatus: "成功" });
-    } else if (readBack) {
-      const value = result.value ?? result.readResult?.stdout?.trim();
-      updateRow(row.id, {
-        runtimeCurrentValue: value ?? row.runtimeCurrentValue,
-        lastReadValue: value ?? row.lastReadValue,
-        runtimeStatus: "失败",
-        error: result.error || result.readResult?.stderr || "回读不一致"
-      });
-    } else {
-      updateRow(row.id, { runtimeStatus: "成功" });
-    }
+      if (!result.ok) {
+        updateRow(row.id, {
+          runtimeStatus: "写入失败",
+          activeOperation: undefined,
+          error: result.error || result.writeResult?.stderr || "写入失败"
+        });
+      } else if (readBack && result.verified) {
+        const value = result.value ?? result.readResult?.stdout?.trim() ?? row.draftValue;
+        updateRow(row.id, {
+          runtimeCurrentValue: value,
+          lastReadValue: value,
+          runtimeStatus: "成功",
+          activeOperation: undefined
+        });
+      } else if (readBack) {
+        const value = result.value ?? result.readResult?.stdout?.trim();
+        updateRow(row.id, {
+          runtimeCurrentValue: value ?? row.runtimeCurrentValue,
+          lastReadValue: value ?? row.lastReadValue,
+          runtimeStatus: "失败",
+          activeOperation: undefined,
+          error: result.error || result.readResult?.stderr || "回读不一致"
+        });
+      } else {
+        updateRow(row.id, { runtimeStatus: "成功", activeOperation: undefined });
+      }
 
-    if (result.operation) {
-      appendEvent(eventFromOperation(result.operation, rowsRef.current));
-    } else {
+      if (result.operation) {
+        appendEvent(eventFromOperation(result.operation, rowsRef.current));
+      } else {
+        appendEvent({
+          parameterName: row.name,
+          parameterKey: row.key,
+          accessMode: row.accessMode,
+          action: readBack ? "write-readback" : "write",
+          status: !result.ok ? "写入失败" : readBack ? (result.verified ? "回读一致" : "回读不一致") : "写入成功",
+          returncode: (result.writeResult as CommandResultMeta | undefined)?.returncode,
+          stdout: result.readResult?.stdout || result.writeResult?.stdout,
+          stderr: result.readResult?.stderr || result.writeResult?.stderr || result.error,
+          nodePath: row.nodePath
+        });
+      }
+    } catch (error) {
+      const message = readFailureMessage(error);
+      if (isLatestRowOperation(row.id, operationSeq)) {
+        updateRow(row.id, {
+          runtimeStatus: "写入失败",
+          activeOperation: undefined,
+          error: message
+        });
+      }
       appendEvent({
         parameterName: row.name,
         parameterKey: row.key,
         accessMode: row.accessMode,
         action: readBack ? "write-readback" : "write",
-        status: !result.ok ? "写入失败" : readBack ? (result.verified ? "回读一致" : "回读不一致") : "写入成功",
-        returncode: (result.writeResult as CommandResultMeta | undefined)?.returncode,
-        stdout: result.readResult?.stdout || result.writeResult?.stdout,
-        stderr: result.readResult?.stderr || result.writeResult?.stderr || result.error,
+        status: "写入失败",
+        returncode: (error as DiagnosticError | undefined)?.returncode ?? 1,
+        stderr: (error as DiagnosticError | undefined)?.stderr || message,
         nodePath: row.nodePath
       });
     }
@@ -894,7 +975,7 @@ export function NodeDebuggingPage({
                       <td className="mono" data-label="当前值">
                         {displayCurrentValue(row)}
                         {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
-                        {row.error ? <small className="node-row-error">{row.error}</small> : null}
+                        {row.error && row.runtimeStatus !== "失败" && row.runtimeStatus !== "写入失败" ? <small className="node-row-error">{row.error}</small> : null}
                       </td>
                       <td data-label="目标写入值">
                         {canWrite(row) ? row.draftValue : <span>只读</span>}

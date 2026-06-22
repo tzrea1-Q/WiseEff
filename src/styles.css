@@ -1824,15 +1824,27 @@ body {
   flex-wrap: wrap;
 }
 
-.debugging-page .parameters-table-toolbar {
+.debugging-page .parameters-table-toolbar,
+.node-debugging-page .parameters-table-toolbar {
   width: 100%;
-  padding: 6px 14px 0 0;
+  box-sizing: border-box;
+  padding: 6px 14px 0;
   margin-bottom: 4px;
 }
 
-.debugging-page .parameters-table-search {
+.debugging-page .parameters-table-search,
+.node-debugging-page .parameters-table-search {
   flex: 0 1 260px;
   min-width: 180px;
+  max-width: min(260px, calc(100% - 120px));
+}
+
+.debugging-page .parameters-table-count,
+.node-debugging-page .parameters-table-count {
+  margin-left: auto;
+  flex-shrink: 0;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .debugging-action-buttons {

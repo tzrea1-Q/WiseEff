@@ -8,7 +8,8 @@ import type {
   NodeOperationSnapshot
 } from "@/application/ports/DebuggingGateway";
 import { initialState } from "@/mockData";
-import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification } from "./debuggingRuntime";
+import { createDebuggingRuntimeActions, debuggingRuntimeFailureNotification, formatDebuggingRuntimeError } from "./debuggingRuntime";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 
 const apiDevice: DebugDeviceSnapshot = {
   id: "api-device-1",
@@ -204,7 +205,11 @@ describe("createDebuggingRuntimeActions", () => {
 
     const result = await actions.detectAndStartSession("api-project");
 
-    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "api-project", protocol: "hdc" });
+    expect(gateway.detectTargets).toHaveBeenCalledWith({
+      projectId: "api-project",
+      protocol: "hdc",
+      deviceId: initialState.devices[0].id
+    });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
       deviceId: apiDevice.id,
@@ -227,7 +232,11 @@ describe("createDebuggingRuntimeActions", () => {
 
     const result = await actions.detectAndStartSession("api-project", { protocol: "adb" });
 
-    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "api-project", protocol: "adb" });
+    expect(gateway.detectTargets).toHaveBeenCalledWith({
+      projectId: "api-project",
+      protocol: "adb",
+      deviceId: initialState.devices[0].id
+    });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
       deviceId: apiDevice.id,
@@ -457,12 +466,22 @@ describe("createDebuggingRuntimeActions", () => {
 
     expect(failure).toBeInstanceOf(Error);
     expect(failure).toMatchObject({ alreadyNotified: true, cause });
-    expect(failure).toHaveProperty("message", debuggingRuntimeFailureNotification);
+    expect(failure).toHaveProperty("message", "gateway unavailable");
 
     expect(dispatch).toHaveBeenCalledTimes(1);
-    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: debuggingRuntimeFailureNotification });
+    expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: "gateway unavailable" });
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "UPSERT_DEBUG_NODE_OPERATION" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "UPSERT_DEBUG_SNAPSHOT" }));
     expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: "PUSH_DEBUG_VALUES" }));
+  });
+
+  it("formats WiseEff API failures with the server message", () => {
+    expect(
+      formatDebuggingRuntimeError(new WiseEffApiError("NOT_FOUND", "Debug protocol binding was not found.", {}, "req-1"))
+    ).toBe("Debug protocol binding was not found.");
+  });
+
+  it("falls back to the generic debugging notification for unknown failures", () => {
+    expect(formatDebuggingRuntimeError({})).toBe(debuggingRuntimeFailureNotification);
   });
 });

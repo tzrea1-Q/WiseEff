@@ -12,6 +12,7 @@ import type {
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
 import type { DebugConnectionProtocol } from "@/domain/debugging/types";
+import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { AppAction } from "@/App";
 import type { DebugParameter, Device, PrototypeState } from "@/mockData";
@@ -80,9 +81,43 @@ function requireGateway(gateway?: DebuggingGateway): DebuggingGateway {
   return gateway;
 }
 
+function resolveDebuggingRuntimeCause(error: unknown): unknown {
+  if (error instanceof Error && error.cause) {
+    return error.cause;
+  }
+  return error;
+}
+
+export function formatDebuggingRuntimeError(error: unknown): string {
+  const cause = resolveDebuggingRuntimeCause(error);
+
+  if (cause instanceof WiseEffApiError) {
+    if (cause.code === "UNAUTHENTICATED") {
+      return "请先登录后再执行调试操作。";
+    }
+    if (cause.code === "FORBIDDEN") {
+      return "当前账号无权执行此调试操作。";
+    }
+    if (cause.message.trim()) {
+      return cause.message;
+    }
+  }
+
+  if (error instanceof Error && error.message.trim() && error.message !== debuggingRuntimeFailureNotification) {
+    return error.message;
+  }
+
+  if (cause instanceof Error && cause.message.trim()) {
+    return cause.message;
+  }
+
+  return debuggingRuntimeFailureNotification;
+}
+
 function notifyFailure(dispatch: DebuggingRuntimeOptions["dispatch"], cause: unknown): DebuggingRuntimeNotifiedFailure {
-  dispatch({ type: "ADD_NOTIFICATION", message: debuggingRuntimeFailureNotification });
-  return Object.assign(new Error(debuggingRuntimeFailureNotification, { cause }), { alreadyNotified: true as const, cause });
+  const message = formatDebuggingRuntimeError(cause);
+  dispatch({ type: "ADD_NOTIFICATION", message });
+  return Object.assign(new Error(message, { cause }), { alreadyNotified: true as const, cause });
 }
 
 function deviceStatusFromApi(status: DebugDeviceSnapshot["status"]): Device["status"] {
@@ -104,6 +139,22 @@ function deviceFromApi(device: DebugDeviceSnapshot): Device {
     status: deviceStatusFromApi(device.status),
     lastSeen: device.lastSeenAt ?? "unknown"
   };
+}
+
+function resolveProjectDebugDevice(
+  state: PrototypeState,
+  projectId: string,
+  protocol: DebugConnectionProtocol = "hdc"
+): Device {
+  const projectDevices = state.devices.filter((item) => item.projectId === projectId);
+  const device =
+    (protocol === "adb" ? projectDevices.find((item) => item.id.startsWith("adb-")) : undefined) ??
+    projectDevices[0] ??
+    state.devices[0];
+  if (!device) {
+    throw new Error("No debug device is registered for this project.");
+  }
+  return device;
 }
 
 function dispatchOperation(dispatch: DebuggingRuntimeOptions["dispatch"], operation?: NodeOperationSnapshot) {
@@ -168,7 +219,7 @@ export function createDebuggingRuntimeActions({
     async detectAndStartSession(projectId, options) {
       const protocol = options?.protocol ?? "hdc";
       if (mode !== "api") {
-        const device = getState().devices.find((item) => item.projectId === projectId) ?? getState().devices[0];
+        const device = resolveProjectDebugDevice(getState(), projectId, protocol);
         dispatch({ type: "CONNECT_DEVICE", deviceId: device.id });
         const target = { id: device.id, deviceId: device.id, protocol, label: device.name };
         return {
@@ -188,7 +239,8 @@ export function createDebuggingRuntimeActions({
 
       return runApi(dispatch, async () => {
         const api = requireGateway(gateway);
-        const [target] = await api.detectTargets({ projectId, protocol });
+        const device = resolveProjectDebugDevice(getState(), projectId, protocol);
+        const [target] = await api.detectTargets({ projectId, protocol, deviceId: device.id });
         if (!target) {
           throw new Error("No debug target detected.");
         }
@@ -197,7 +249,7 @@ export function createDebuggingRuntimeActions({
         }
         const session = await api.createSession({
           projectId,
-          deviceId: target.deviceId ?? target.id,
+          deviceId: target.deviceId ?? device.id,
           targetId: target.id,
           protocol
         });
