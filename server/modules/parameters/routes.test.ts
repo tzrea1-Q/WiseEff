@@ -371,9 +371,28 @@ describe("parameter routes", () => {
 
   it("review route allows software-user merge role before service work", async () => {
     const db = makeDb();
-    service.reviewChange.mockResolvedValue({
+    vi.mocked(service.reviewChange).mockResolvedValue({
       id: "request-1",
-      status: "merged"
+      parameterId: "param-1",
+      module: "Charging",
+      title: "Merge request",
+      currentValue: "3000",
+      targetValue: "3100",
+      submitter: "Riley Chen",
+      createdAt: "2026-05-25T05:00:00.000Z",
+      createdAtTs: "2026-05-25T05:00:00.000Z",
+      updatedAt: "2026-05-25T05:15:00.000Z",
+      status: "merged",
+      aiSummary: "Merged request.",
+      waitingHours: 0,
+      aiSuggestion: {
+        recommendation: "advance",
+        confidence: "high",
+        summary: "Merged request.",
+        reasons: [],
+        similarRequests: []
+      },
+      impact: []
     });
 
     const response = await requestJson(

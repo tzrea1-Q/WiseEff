@@ -93,26 +93,26 @@ function labelParameterStatus(status: string) {
 function readParticipants(metadata: Record<string, unknown>, event: AuditEventView): AuditParticipantView[] {
   const raw = metadata.participants;
   if (Array.isArray(raw)) {
-    return raw
-      .map((entry) => {
-        if (!entry || typeof entry !== "object") {
-          return null;
-        }
-        const record = entry as Record<string, unknown>;
-        const name = asString(record.name);
-        const role = asString(record.role);
-        if (!name || !role) {
-          return null;
-        }
-        return {
+    return raw.flatMap((entry): AuditParticipantView[] => {
+      if (!entry || typeof entry !== "object") {
+        return [];
+      }
+      const record = entry as Record<string, unknown>;
+      const name = asString(record.name);
+      const role = asString(record.role);
+      if (!name || !role) {
+        return [];
+      }
+      return [
+        {
           role,
           name,
           action: asString(record.action),
           note: asString(record.note),
           time: asString(record.time) ?? asString(record.at)
-        };
-      })
-      .filter((entry): entry is AuditParticipantView => Boolean(entry));
+        }
+      ];
+    });
   }
 
   const submitter = asString(metadata.submitter);

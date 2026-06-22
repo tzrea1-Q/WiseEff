@@ -155,6 +155,7 @@ function importItemToParameterRecord(projectId: string, item: ParameterImportBat
     range: item.range,
     unit: item.unit,
     risk: item.risk,
+    valueKind: "scalar",
     updatedAt: MOCK_CONTRACT_NOW,
     updatedAtTs: MOCK_CONTRACT_NOW,
     history: [
@@ -215,6 +216,7 @@ function applyImportItemsToState(state: PrototypeState, batch: ParameterImportBa
     const existingLibrary = libraryIndex >= 0 ? configParameterLibrary[libraryIndex] : undefined;
     const currentValue = item.currentValue ?? existing?.currentValue ?? item.recommendedValue ?? "";
     const recommendedValue = item.recommendedValue ?? existing?.recommendedValue ?? item.currentValue ?? "";
+    const valueKind = existing?.valueKind ?? existingLibrary?.valueKind ?? "scalar";
     const nextLibrary = {
       id: libraryId,
       name: item.name,
@@ -225,6 +227,7 @@ function applyImportItemsToState(state: PrototypeState, batch: ParameterImportBa
       range: item.range,
       unit: item.unit,
       risk: item.risk,
+      valueKind,
       values: {
         ...(existingLibrary?.values ?? {}),
         [batch.projectId]: {

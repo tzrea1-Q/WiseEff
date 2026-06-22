@@ -9,10 +9,6 @@ const defaultState: AuditQueryState = {
   search: ""
 };
 
-function readParam(search: string, key: string) {
-  return new URLSearchParams(search).get(key) ?? undefined;
-}
-
 export function parseAuditSearch(search: string, defaults: Partial<AuditQueryState> = {}): AuditQueryState {
   const params = new URLSearchParams(search);
   const appGroup = (params.get("app") ?? defaults.appGroup ?? defaultState.appGroup) as AuditAppGroupId;

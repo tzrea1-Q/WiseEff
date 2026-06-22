@@ -28,8 +28,9 @@ export type ProjectDto = ProjectSummary;
 
 export type ParameterHistoryEntryDto = ParameterHistoryEntry;
 
-export type ParameterRecordDto = Omit<ParameterRecord, "risk" | "history"> & {
+export type ParameterRecordDto = Omit<ParameterRecord, "risk" | "history" | "valueKind"> & {
   risk: BackendRiskLevel;
+  valueKind?: ParameterRecord["valueKind"];
   history: ParameterHistoryEntryDto[];
 };
 
@@ -44,8 +45,9 @@ export type ChangeRequestDto = Omit<ChangeRequest, "status" | "impact"> & {
   impact: ImpactItemDto[];
 };
 
-export type ParameterSubmissionItemDto = Omit<ParameterSubmissionItem, "risk"> & {
+export type ParameterSubmissionItemDto = Omit<ParameterSubmissionItem, "risk" | "valueKind"> & {
   risk: BackendRiskLevel;
+  valueKind?: ParameterSubmissionItem["valueKind"];
 };
 
 export type ParameterSubmissionRoundDto = Omit<ParameterSubmissionRound, "status" | "items"> & {
@@ -114,7 +116,8 @@ export function submissionRoundFromDto(dto: ParameterSubmissionRoundDto): Parame
     status: submissionRoundStatusLabels[dto.status],
     items: dto.items.map((item) => ({
       ...item,
-      risk: riskLabels[item.risk]
+      risk: riskLabels[item.risk],
+      valueKind: item.valueKind ?? "scalar"
     }))
   };
 }

@@ -3974,6 +3974,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
           targetValue: selected.targetValue,
           unit: parameter?.unit ?? "",
           risk: parameter?.risk ?? "Medium",
+          valueKind: selected.valueKind ?? parameter?.valueKind ?? "scalar",
           reason: selected.aiSummary
         }
       ]
