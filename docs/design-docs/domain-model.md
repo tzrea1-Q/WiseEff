@@ -21,3 +21,9 @@ The product model separates prototype display data into durable, auditable busin
 ## State Machines
 
 Parameter requests, log analysis runs, debugging sessions, and Agent approvals should move through explicit states. Tests and browser acceptance should verify invalid transitions, terminal-state behavior, and audit invariants.
+
+## Debugging Catalog Scope
+
+Debugging parameters are an organization-level debugging catalog. `debugging_parameters.project_id` and `debugging_parameter_node_bindings.project_id` are nullable; `null` means shared across projects. Parameter management remains project-scoped through the M1 parameter-management tables.
+
+Debugging runtime records are still project-contextual. Sessions, targets, leases, node operations, snapshots, events, and audit rows keep `project_id` so permissions, operation history, and evidence stay tied to the selected project context.

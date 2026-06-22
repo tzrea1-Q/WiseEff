@@ -1,5 +1,11 @@
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { createAdbDebugDeviceGateway, type AdbCommandRunner } from "./adbGateway";
+import { createAdbDebugDeviceGateway, createDefaultAdbCommandRunner, type AdbCommandRunner } from "./adbGateway";
+
+vi.mock("node:child_process", () => ({
+  spawn: vi.fn()
+}));
 
 function makeRunner(results: Awaited<ReturnType<AdbCommandRunner>>[]) {
   const calls: Array<{ command: string; args: string[]; timeoutMs: number }> = [];
@@ -16,6 +22,29 @@ function makeRunner(results: Awaited<ReturnType<AdbCommandRunner>>[]) {
 }
 
 describe("ADB debug device gateway", () => {
+  it("starts adb commands without an open stdin pipe so shell reads can exit on hardware", async () => {
+    const child = new EventEmitter() as EventEmitter & {
+      stdout: EventEmitter & { setEncoding: ReturnType<typeof vi.fn> };
+      stderr: EventEmitter & { setEncoding: ReturnType<typeof vi.fn> };
+      kill: ReturnType<typeof vi.fn>;
+    };
+    child.stdout = Object.assign(new EventEmitter(), { setEncoding: vi.fn() });
+    child.stderr = Object.assign(new EventEmitter(), { setEncoding: vi.fn() });
+    child.kill = vi.fn();
+    vi.mocked(spawn).mockReturnValueOnce(child as never);
+
+    const runnerPromise = createDefaultAdbCommandRunner()("adb", ["devices"], { timeoutMs: 1000 });
+    child.stdout.emit("data", "List of devices attached\n");
+    child.emit("close", 0);
+
+    await expect(runnerPromise).resolves.toMatchObject({ code: 0 });
+    expect(spawn).toHaveBeenCalledWith("adb", ["devices"], {
+      shell: false,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  });
+
   it("rejects ADB target detection without a requested deviceId", async () => {
     const { runCommand } = makeRunner([]);
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
@@ -66,8 +95,8 @@ describe("ADB debug device gateway", () => {
   });
 
   it("constructs argv-safe ADB write commands", async () => {
-    const value = "5; rm -rf / quoted";
-    const nodePath = "/sys/node with spaces";
+    const value = "5; rm -rf / quoted ' value";
+    const nodePath = "/sys/node with spaces ' path";
     const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 7 }]);
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
 
@@ -81,12 +110,7 @@ describe("ADB debug device gateway", () => {
           "-s",
           "emulator-5554",
           "shell",
-          "sh",
-          "-c",
-          "printf '%s' \"$1\" > \"$2\"",
-          "wiseeff-write-node",
-          value,
-          nodePath
+          "printf %s '5; rm -rf / quoted '\\'' value' > '/sys/node with spaces '\\'' path'"
         ],
         timeoutMs: 1500
       }
@@ -94,7 +118,7 @@ describe("ADB debug device gateway", () => {
   });
 
   it("constructs argv-safe ADB read commands", async () => {
-    const nodePath = "/sys/node with spaces";
+    const nodePath = "/sys/node with spaces ' path";
     const { calls, runCommand } = makeRunner([{ code: 0, stdout: "42\n", stderr: "", durationMs: 5 }]);
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
 
@@ -104,7 +128,7 @@ describe("ADB debug device gateway", () => {
     expect(calls).toEqual([
       {
         command: "adb",
-        args: ["-s", "emulator-5554", "shell", "sh", "-c", "cat \"$1\"", "wiseeff-read-node", nodePath],
+        args: ["-s", "emulator-5554", "shell", "cat '/sys/node with spaces '\\'' path'"],
         timeoutMs: 1500
       }
     ]);

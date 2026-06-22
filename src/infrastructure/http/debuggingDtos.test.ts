@@ -174,6 +174,49 @@ describe("debugging dto mappers", () => {
     });
   });
 
+  it("maps shared debugging parameters without a project id", () => {
+    const parameter = debugParameterFromDto({
+      id: "shared-param-1",
+      projectId: null,
+      name: "ADB smoke readable",
+      key: "adb_smoke_readable",
+      description: "Shared smoke parameter.",
+      module: "Diagnostics",
+      nodePath: "/sys/adb/smoke",
+      accessMode: "RO",
+      unit: "",
+      range: "",
+      risk: "Low",
+      currentValue: "",
+      targetValue: "",
+      selectedBinding: {
+        protocol: "adb",
+        nodePath: "/sys/adb/smoke",
+        accessMode: "RO",
+        enabled: true,
+        isSmokeDefault: true,
+        notes: "Default ADB smoke binding."
+      },
+      bindings: [
+        {
+          protocol: "adb",
+          nodePath: "/sys/adb/smoke",
+          accessMode: "RO",
+          enabled: true,
+          isSmokeDefault: true,
+          notes: "Default ADB smoke binding."
+        }
+      ]
+    });
+
+    expect(parameter.projectId).toBeNull();
+    expect(parameter.bindingStatus).toBe("configured");
+    expect(parameter.bindings?.[0]).toMatchObject({
+      protocol: "adb",
+      isSmokeDefault: true
+    });
+  });
+
   it("maps disabled selected bindings into unavailable rows", () => {
     expect(
       debugParameterFromDto({

@@ -172,7 +172,7 @@ export type ParameterSubmissionItem = {
   targetValue: string;
   unit: string;
   risk: RiskLevel;
-  valueKind: ParameterValueKind;
+  valueKind?: ParameterValueKind;
   reason: string;
 };
 

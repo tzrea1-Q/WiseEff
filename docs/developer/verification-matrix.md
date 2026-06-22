@@ -26,6 +26,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | `npm run acceptance:visual` | Stable-region visual regression snapshots | Changing CSS, layout, shell/page regions, visual hierarchy, or masked snapshot regions. |
 | `npm run acceptance:responsive` | Desktop/tablet/mobile responsive usability and overflow checks | Changing layout, dialogs, tables, toolbars, navigation, or viewport-dependent UI. |
 | `npm run acceptance:e2e` | Deterministic browser acceptance A-H flows | UI-interaction frontend/backend logic changes in API mode. |
+| `npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts` | Local real-device ADB frontend/API/device evidence | When an approved local ADB device is connected and `DEBUG_DEVICE_GATEWAY_MODE=adb` plus `ADB_DEVICE_LAB_AVAILABLE=true` are configured. Defaults to read-only unless `ADB_SMOKE_ENABLE_WRITE=true`. |
 | `npm run acceptance:browser` | Preflight plus browser acceptance evidence | Before accepting a local or target browser workflow candidate. |
 | `npm run queue:check` | M6.4 target durable queue readiness | Against a running self-hosted or staging API configured with Redis/BullMQ durable queue mode. |
 | `npm run selfhost:check` | M6.1 self-hosted compose/env/proxy metadata | After changing `ops/self-hosted/`, package selfhost scripts, or self-hosted runtime docs. |

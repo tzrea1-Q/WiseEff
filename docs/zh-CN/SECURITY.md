@@ -60,7 +60,7 @@ Agent tool 分为：
 
 设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。
 
-Simulator-backed path 只用于本地验证。真实 pilot readiness 需要 HDC/device-lab 目标证据：不能有前端直接设备写入，不能无 lease 和 snapshot 写入，不能无确认 rollback，也不能绕过审计。
+Simulator-backed path 只用于本地验证。ADB/HDC 都必须经过同一个后端 gateway、权限、lease、snapshot、rollback 和 audit 边界。真实 pilot readiness 需要 HDC/device-lab 目标证据；本机 ADB lab 证据只能作为补充：不能有前端直接设备写入，不能无 lease 和 snapshot 写入，不能无确认 rollback，也不能绕过审计。
 
 ## Secret 和备份安全
 

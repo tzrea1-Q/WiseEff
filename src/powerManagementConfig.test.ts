@@ -9,7 +9,6 @@ import {
   addDebugParameter,
   addDebugParameterFromDraft,
   addProjectParameter,
-  addProjectParameterFromDraft,
   addParameterModule,
   updateParameterModule,
   deleteParameterModule,

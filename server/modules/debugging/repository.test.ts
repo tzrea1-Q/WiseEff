@@ -8,11 +8,13 @@ import {
   insertDebugEvent,
   insertNodeOperation,
   linkOperationSnapshot,
+  getDefaultAdbSmokeParameterNodeBinding,
   getDebugDevice,
   getDebugParameterNodeBinding,
   getDebugSession,
   getDebugTarget,
   listDebugDevices,
+  listDebugParameterNodeBindings,
   listDebugParameters,
   listDebugSessionEvents,
   markSnapshotConsumed,
@@ -374,6 +376,126 @@ describe("debugging repository", () => {
     expect(calls[0].text).toContain("organization_id = $1");
     expect(calls[0].text).toContain("project_id = any($2::text[])");
     expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
+  });
+
+  it("lists shared debugging parameters for a project context", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "shared-param-1",
+          organization_id: "org-1",
+          project_id: null,
+          name: "ADB smoke readable",
+          key: "adb_smoke_readable",
+          description: "Shared smoke parameter.",
+          module: "Diagnostics",
+          node_path: "/sys/adb/smoke",
+          access_mode: "RO",
+          unit: "",
+          range_label: "",
+          min_value: null,
+          max_value: null,
+          risk: "Low",
+          current_value: "",
+          target_value: "",
+          sort_order: 1
+        }
+      ]
+    ]);
+
+    const parameters = await listDebugParameters(db, { organizationId: "org-1", projectId: "aurora" });
+
+    expect(calls[0].text).toContain("(project_id is null or project_id = $2)");
+    expect(calls[0].values).toEqual(["org-1", "aurora"]);
+    expect(parameters).toEqual([
+      expect.objectContaining({
+        id: "shared-param-1",
+        projectId: null,
+        key: "adb_smoke_readable"
+      })
+    ]);
+  });
+
+  it("lists shared debugging parameters for multiple allowed project contexts", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await listDebugParameters(db, { organizationId: "org-1", projectIds: ["aurora", "zephyr"] });
+
+    expect(calls[0].text).toContain("(project_id is null or project_id = any($2::text[]))");
+    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
+  });
+
+  it("lists shared protocol bindings for selected parameters", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "binding-shared-adb",
+          organization_id: "org-1",
+          project_id: null,
+          parameter_id: "shared-param-1",
+          protocol: "adb",
+          node_path: "/sys/adb/smoke",
+          access_mode: "RO",
+          enabled: true,
+          is_smoke_default: true,
+          notes: "Default ADB smoke binding.",
+          created_at: timestamp,
+          updated_at: timestamp
+        }
+      ]
+    ]);
+
+    const bindings = await listDebugParameterNodeBindings(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      parameterIds: ["shared-param-1"],
+      protocol: "adb"
+    });
+
+    expect(calls[0].text).toContain("(project_id is null or project_id = $2)");
+    expect(bindings).toEqual([
+      expect.objectContaining({
+        projectId: null,
+        parameterId: "shared-param-1",
+        protocol: "adb",
+        isSmokeDefault: true
+      })
+    ]);
+  });
+
+  it("returns the enabled default ADB smoke binding for an organization", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        {
+          id: "binding-shared-adb",
+          organization_id: "org-1",
+          project_id: null,
+          parameter_id: "shared-param-1",
+          protocol: "adb",
+          node_path: "/sys/adb/smoke",
+          access_mode: "RO",
+          enabled: true,
+          is_smoke_default: true,
+          notes: "Default ADB smoke binding.",
+          created_at: timestamp,
+          updated_at: timestamp
+        }
+      ]
+    ]);
+
+    const binding = await getDefaultAdbSmokeParameterNodeBinding(db, { organizationId: "org-1" });
+
+    expect(calls[0].text).toContain("is_smoke_default = true");
+    expect(calls[0].text).toContain("protocol = 'adb'");
+    expect(calls[0].text).toContain("project_id is null");
+    expect(binding).toMatchObject({
+      projectId: null,
+      parameterId: "shared-param-1",
+      protocol: "adb",
+      accessMode: "RO",
+      enabled: true,
+      isSmokeDefault: true
+    });
   });
 
   it("updateDebugParameterValues stores current and target values for a scoped parameter", async () => {

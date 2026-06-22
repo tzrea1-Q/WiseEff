@@ -36,7 +36,7 @@ export type DebugTargetRecord = {
 export type DebugParameterRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
+  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -56,12 +56,13 @@ export type DebugParameterRecord = {
 export type DebugParameterNodeBindingRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
+  projectId: string | null;
   parameterId: string;
   protocol: DebugConnectionProtocol;
   nodePath: string;
   accessMode: DebugAccessMode;
   enabled: boolean;
+  isSmokeDefault: boolean;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

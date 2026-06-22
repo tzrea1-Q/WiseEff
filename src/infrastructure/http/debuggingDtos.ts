@@ -37,13 +37,14 @@ export type DebugParameterNodeBindingDto = {
   nodePath: string;
   accessMode: DebugParameterAccessMode;
   enabled: boolean;
+  isSmokeDefault?: boolean;
   notes?: string | null;
   disabledReason?: string | null;
 };
 
 export type DebugParameterDto = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -131,6 +132,7 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
 
   return {
     id: dto.id,
+    projectId: dto.projectId,
     name: dto.name,
     key: dto.key,
     description: dto.description,
@@ -156,6 +158,7 @@ function debugParameterBindingFromDto(dto: DebugParameterNodeBindingDto): DebugP
     nodePath: dto.nodePath,
     accessMode: dto.accessMode,
     enabled: dto.enabled,
+    isSmokeDefault: dto.isSmokeDefault,
     notes: dto.notes ?? undefined
   };
 }

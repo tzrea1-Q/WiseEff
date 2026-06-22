@@ -27,3 +27,5 @@
 - [docs/zh-CN/runbooks/durable-queue.md](durable-queue.md)
 - [docs/zh-CN/runbooks/staging-deployment.md](staging-deployment.md)
 - [docs/zh-CN/runbooks/backup-restore.md](backup-restore.md)
+- [docs/zh-CN/runbooks/hdc-device-lab.md](hdc-device-lab.md)
+- [docs/zh-CN/runbooks/adb-device-lab.md](adb-device-lab.md)：本机真实 ADB 设备证据采集。

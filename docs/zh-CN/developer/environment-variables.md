@@ -51,10 +51,21 @@
 
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
-| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | 调试 runtime | 真实 device-lab evidence 使用 `hdc`。 |
+| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | 调试 runtime | 审批过的真实 device-lab evidence 使用 `hdc`、`adb` 或 `multi`。 |
 | `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION` | `.env.example` 为 `true` | non-customer staging simulator mode | 不可用于 customer production signoff。 |
 | `HDC_TIMEOUT_MS` | `5000` | HDC adapter | 命令超时预算。 |
+| `ADB_TIMEOUT_MS` | `5000` | ADB adapter | 命令超时预算。 |
 | `HDC_DEVICE_LAB_AVAILABLE` | 未设置 | HDC smoke | 仅在具备真实目标值时设置。 |
+| `ADB_DEVICE_LAB_AVAILABLE` | 未设置 | ADB smoke | 仅在本机 ADB 设备和审批过的读写目标可用时设置。 |
+| `ADB_SMOKE_PROJECT_ID` | 无 | ADB device-lab | `DEBUG_DEVICE_GATEWAY_MODE=adb` 且 `ADB_DEVICE_LAB_AVAILABLE=true` 时必需；仅作为运行上下文。 |
+| `ADB_SMOKE_DEVICE_ID` | auto | ADB device-lab | 可选校验 override，用于校验自动发现的 WiseEff ADB device inventory id。 |
+| `ADB_SMOKE_TARGET_REF` | auto | ADB device-lab | 可选校验 override，用于校验唯一 ready `adb devices` serial。 |
+| `ADB_SMOKE_PARAMETER_ID` | auto | ADB device-lab | 可选校验 override，用于校验共享默认 ADB smoke parameter id。 |
+| `ADB_SMOKE_NODE_PATH` | auto | ADB device-lab | 可选校验 override，用于校验服务端 binding node path。 |
+| `ADB_SMOKE_ENABLE_WRITE` | `false` | ADB device-lab | 启用可选 write/readback/rollback；不会由自动配置推断。 |
+| `ADB_SMOKE_WRITE_VALUE` | 无 | ADB device-lab | 仅当 `ADB_SMOKE_ENABLE_WRITE=true` 时必需。 |
+| `ADB_SMOKE_CONFIRM_WRITE` | 无 | ADB device-lab | 仅当 `ADB_SMOKE_ENABLE_WRITE=true` 时必需。 |
+| `ADB_SMOKE_CONFIRM_ROLLBACK` | 无 | ADB device-lab | 仅当 `ADB_SMOKE_ENABLE_WRITE=true` 时必需。 |
 
 ## Agent Provider
 

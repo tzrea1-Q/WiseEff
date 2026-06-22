@@ -149,11 +149,19 @@ function ensureProjectMatch(actualProjectId: string, expectedProjectId: string, 
   }
 }
 
+function ensureParameterAllowedForSession(parameter: DebugParameterRecord, session: DebugSessionRecord) {
+  if (parameter.projectId !== null && parameter.projectId !== session.projectId) {
+    throw new ApiError("VALIDATION_FAILED", "Legacy project-scoped parameter does not belong to the session project.", 400, {
+      projectId: session.projectId
+    });
+  }
+}
+
 function ensureReadable(parameter: DebugParameterRecord | null, session: DebugSessionRecord, accessMode: DebugAccessMode) {
   if (!parameter) {
     throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
   }
-  ensureProjectMatch(parameter.projectId, session.projectId, "Parameter does not belong to the session project.");
+  ensureParameterAllowedForSession(parameter, session);
   if (accessMode !== "RO" && accessMode !== "RW") {
     throw new ApiError("VALIDATION_FAILED", "Parameter is not readable.", 400);
   }
@@ -168,7 +176,7 @@ function ensureWritable(
   if (!parameter) {
     throw new ApiError("NOT_FOUND", "Debug parameter was not found.", 404);
   }
-  ensureProjectMatch(parameter.projectId, session.projectId, "Parameter does not belong to the session project.");
+  ensureParameterAllowedForSession(parameter, session);
   if (accessMode !== "WO" && accessMode !== "RW") {
     throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400);
   }
@@ -410,7 +418,8 @@ export function createDebuggingService(options: ServiceOptions) {
       const bindings = await listDebugParameterNodeBindings(db, {
         organizationId,
         projectId: scopedQuery.projectId,
-        parameterIds: parameters.map((parameter) => parameter.id)
+        parameterIds: parameters.map((parameter) => parameter.id),
+        protocol: query.protocol
       });
       return attachParameterBindings(parameters, bindings, query.protocol);
     },

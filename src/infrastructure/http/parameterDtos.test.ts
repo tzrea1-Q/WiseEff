@@ -57,7 +57,8 @@ describe("parameter http dto mappers", () => {
 
     expect(parameterRecordFromDto(dto)).toEqual({
       ...dto,
-      risk: "High"
+      risk: "High",
+      valueKind: "scalar"
     });
   });
 
@@ -138,7 +139,7 @@ describe("parameter http dto mappers", () => {
     expect(submissionRoundFromDto(dto)).toEqual({
       ...dto,
       status: "软件User合入",
-      items: [{ ...dto.items[0], risk: "Low" }]
+      items: [{ ...dto.items[0], risk: "Low", valueKind: "scalar" }]
     });
   });
 

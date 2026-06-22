@@ -20,6 +20,7 @@ Runbooks describe repeatable operational procedures. They complement the design 
 - [Observability Operations](observability-operations.md): Prometheus, alert rules, Grafana dashboards, and M6.5 alert response.
 - [Incidents](incidents.md): severity, evidence, handoff, and closure for operational incidents.
 - [HDC Device Lab](hdc-device-lab.md): real-device evidence collection.
+- [ADB Device Lab](adb-device-lab.md): local real-device ADB evidence collection.
 - [Agent Provider](agent-provider.md): live provider readiness, fallback, and trace evidence.
 
 ## Evidence Rule

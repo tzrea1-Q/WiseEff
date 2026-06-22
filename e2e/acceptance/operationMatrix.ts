@@ -199,6 +199,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached."
   },
   {
+    id: "ADB-LAB-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/node-debugging",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Run the real ADB device-lab read-only smoke when explicitly enabled, with optional write/readback/rollback.",
+    coverage: "conditional",
+    acceptanceIds: ["ADB-LAB-001"],
+    specFiles: ["e2e/acceptance/adb-device-lab.acceptance.spec.ts"],
+    assertions: ["ui", "api", "audit"],
+    deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding."
+  },
+  {
     id: "AGENT-APPROVAL-001",
     priority: "P0",
     area: "agent",

@@ -13,6 +13,7 @@ Use this guide together with:
 - [Backup And Restore](backup-restore.md)
 - [Rollback](rollback.md)
 - [HDC Device Lab](hdc-device-lab.md)
+- [ADB Device Lab](adb-device-lab.md)
 - [Agent Provider](agent-provider.md)
 - [M5 Pilot Acceptance Evidence](../generated/m5-pilot-acceptance.md)
 
@@ -46,7 +47,7 @@ Fill this section before starting:
 | Auth mode | development / production |
 | Database | local PostgreSQL / staging PostgreSQL |
 | Object store | local / S3-compatible / other |
-| Device gateway | simulator / HDC |
+| Device gateway | simulator / HDC / ADB |
 | Agent provider | deterministic / live |
 | Evidence location | `docs/generated/m5-pilot-acceptance.md` or external evidence link |
 
@@ -58,7 +59,7 @@ This manual review covers:
 - Runtime dependency readiness.
 - Browser-based product workflows.
 - Backend/API smoke checks.
-- Operational gates for backup/restore, rollback, HDC, Agent provider, and M5 pilot readiness.
+- Operational gates for backup/restore, rollback, HDC, optional local ADB evidence, Agent provider, and M5 pilot readiness.
 - Evidence capture and Go/No-Go judgment.
 
 This review does not replace:
@@ -66,7 +67,7 @@ This review does not replace:
 - Automated unit, integration, and Playwright gates.
 - Security review for production credentials.
 - Customer data governance approval.
-- HDC hardware signoff when the device lab is not available.
+- HDC hardware signoff when the device lab is not available. Local ADB evidence can supplement debugging coverage, but it does not replace HDC full-pilot signoff.
 
 ## Pre-Flight Checklist
 
@@ -517,6 +518,39 @@ Pass criteria:
 - The written node is restored.
 - No HDC checklist item is marked complete without real hardware evidence.
 
+### F2. ADB Device-Lab Loop
+
+Run only when a local ADB device is connected to the API host and the selected node is approved for the chosen mode. The default mode is read-only. Use only existing enabled ADB parameter bindings; this lab must not create or mutate parameter bindings. Generated operation evidence is compact and redacted; raw target, node, and value inputs stay in the operator shell. Local ADB evidence supplements debugging coverage, but it does not replace HDC full-pilot signoff.
+
+Required read-only variables:
+
+```text
+DEBUG_DEVICE_GATEWAY_MODE=adb
+ADB_DEVICE_LAB_AVAILABLE=true
+ADB_SMOKE_PROJECT_ID=
+ADB_SMOKE_DEVICE_ID=
+ADB_SMOKE_TARGET_REF=
+ADB_SMOKE_PARAMETER_ID=
+ADB_SMOKE_NODE_PATH=
+ADB_SMOKE_EXPECT_READ_PATTERN=
+```
+
+Run:
+
+```bash
+DEBUG_DEVICE_GATEWAY_MODE=adb \
+ADB_DEVICE_LAB_AVAILABLE=true \
+npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
+```
+
+Acceptance:
+
+- [ ] ADB target detection succeeds through the backend gateway.
+- [ ] `/node-debugging` can switch to ADB in API mode.
+- [ ] Node read succeeds through the WiseEff API.
+- [ ] Optional write mode is either explicitly skipped or records write, readback, rollback, and final restore evidence.
+- [ ] Generated operation evidence records shape/status/equality summaries without raw node paths or raw read/write values.
+
 ### G. Agent Collaboration Loop
 
 Open:
@@ -668,6 +702,7 @@ API URL:
 - Log analysis:
 - Debugging simulator:
 - HDC device lab:
+- ADB device lab:
 - Agent:
 - Permissions:
 

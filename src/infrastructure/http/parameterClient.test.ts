@@ -140,7 +140,7 @@ describe("createHttpParameterRepository", () => {
     const parameters = await repository.listParameters({ projectId: "aurora", risk: ["High"] });
 
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/parameters?projectId=aurora&risk=High", expect.objectContaining({ method: "GET" }));
-    expect(parameters).toEqual([{ ...parameterDto, risk: "High", history: [] }]);
+    expect(parameters).toEqual([{ ...parameterDto, risk: "High", valueKind: "scalar", history: [] }]);
   });
 
   it("unwraps list and single item response envelopes", async () => {
