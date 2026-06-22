@@ -166,12 +166,12 @@ describe("createDebuggingRuntimeActions", () => {
           targetValue: "",
           unit: "",
           range: "",
-          risk: "Low",
-          status: "已同步",
+          risk: "Low" as const,
+          status: "已同步" as const,
           nodePath: "/sys/adb/smoke",
-          accessMode: "RO",
-          selectedProtocol: "adb",
-          bindingStatus: "configured"
+          accessMode: "RO" as const,
+          selectedProtocol: "adb" as const,
+          bindingStatus: "configured" as const
         }
       ]),
       detectTargets: vi.fn(),
