@@ -60,7 +60,7 @@ type DebugTargetRow = {
 type DebugParameterRow = {
   id: string;
   organization_id: string;
-  project_id: string;
+  project_id: string | null;
   name: string;
   key: string;
   description: string;
@@ -93,12 +93,13 @@ type DebugSessionRow = {
 type DebugParameterNodeBindingRow = {
   id: string;
   organization_id: string;
-  project_id: string;
+  project_id: string | null;
   parameter_id: string;
   protocol: DebugConnectionProtocol;
   node_path: string;
   access_mode: DebugAccessMode;
   enabled: boolean;
+  is_smoke_default: boolean;
   notes: string | null;
   created_at: string | Date;
   updated_at: string | Date;
@@ -223,6 +224,7 @@ function toDebugParameterNodeBindingRecord(row: DebugParameterNodeBindingRow): D
     nodePath: row.node_path,
     accessMode: row.access_mode,
     enabled: row.enabled,
+    isSmokeDefault: row.is_smoke_default,
     notes: row.notes,
     createdAt: dateTimeToIso(row.created_at) ?? "",
     updatedAt: dateTimeToIso(row.updated_at) ?? ""
@@ -287,6 +289,14 @@ function addCondition(parts: string[], values: unknown[], condition: (placeholde
   parts.push(condition(`$${values.length}`));
 }
 
+function addNullableProjectCondition(parts: string[], values: unknown[], projectId?: string, projectIds?: string[]) {
+  if (projectId) {
+    addCondition(parts, values, (placeholder) => `(project_id is null or project_id = ${placeholder})`, projectId);
+  } else if (projectIds?.length) {
+    addCondition(parts, values, (placeholder) => `(project_id is null or project_id = any(${placeholder}::text[]))`, projectIds);
+  }
+}
+
 const debugParameterColumns = `
   id,
   organization_id,
@@ -305,6 +315,21 @@ const debugParameterColumns = `
   current_value,
   target_value,
   sort_order
+`;
+
+const debugParameterNodeBindingColumns = `
+  id,
+  organization_id,
+  project_id,
+  parameter_id,
+  protocol,
+  node_path,
+  access_mode,
+  enabled,
+  is_smoke_default,
+  notes,
+  created_at,
+  updated_at
 `;
 
 const nodeOperationColumns = `
@@ -380,11 +405,7 @@ export async function listDebugParameters(
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
-  if (input.projectId) {
-    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, input.projectId);
-  } else if (input.projectIds?.length) {
-    addCondition(where, values, (placeholder) => `project_id = any(${placeholder}::text[])`, input.projectIds);
-  }
+  addNullableProjectCondition(where, values, input.projectId, input.projectIds);
   if (input.module) {
     addCondition(where, values, (placeholder) => `module = ${placeholder}`, input.module);
   }
@@ -446,7 +467,7 @@ export async function getDebugParameterNodeBinding(
 ): Promise<DebugParameterNodeBindingRecord | null> {
   const result = await db.query<DebugParameterNodeBindingRow>(
     `
-    select id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, created_at, updated_at
+    select ${debugParameterNodeBindingColumns}
     from debugging_parameter_node_bindings
     where organization_id = $1
       and parameter_id = $2
@@ -467,9 +488,7 @@ export async function listDebugParameterNodeBindings(
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
-  if (input.projectId) {
-    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, input.projectId);
-  }
+  addNullableProjectCondition(where, values, input.projectId);
   if (input.parameterIds?.length) {
     addCondition(where, values, (placeholder) => `parameter_id = any(${placeholder}::text[])`, input.parameterIds);
   }
@@ -479,7 +498,7 @@ export async function listDebugParameterNodeBindings(
 
   const result = await db.query<DebugParameterNodeBindingRow>(
     `
-    select id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, created_at, updated_at
+    select ${debugParameterNodeBindingColumns}
     from debugging_parameter_node_bindings
     where ${where.join("\n      and ")}
     order by parameter_id asc, protocol asc
@@ -488,6 +507,28 @@ export async function listDebugParameterNodeBindings(
   );
 
   return result.rows.map(toDebugParameterNodeBindingRecord);
+}
+
+export async function getDefaultAdbSmokeParameterNodeBinding(
+  db: Queryable,
+  input: { organizationId: string; includeDisabled?: boolean }
+): Promise<DebugParameterNodeBindingRecord | null> {
+  const result = await db.query<DebugParameterNodeBindingRow>(
+    `
+    select ${debugParameterNodeBindingColumns}
+    from debugging_parameter_node_bindings
+    where organization_id = $1
+      and project_id is null
+      and protocol = 'adb'
+      and is_smoke_default = true
+      ${input.includeDisabled ? "" : "and enabled = true"}
+    order by id asc
+    limit 1
+    `,
+    [input.organizationId]
+  );
+
+  return result.rows[0] ? toDebugParameterNodeBindingRecord(result.rows[0]) : null;
 }
 
 export async function getDebugSession(
