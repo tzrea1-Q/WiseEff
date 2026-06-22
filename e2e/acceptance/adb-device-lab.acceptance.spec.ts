@@ -69,6 +69,27 @@ type AdbSmokeConfig = {
   confirmRollback: string;
 };
 
+type MinimalAdbSmokeConfig = Pick<AdbSmokeConfig, "projectId" | "deviceId" | "targetRef" | "parameterId" | "nodePath">;
+type AdbSmokeEnv = Partial<Record<"ADB_SMOKE_DEVICE_ID" | "ADB_SMOKE_TARGET_REF" | "ADB_SMOKE_PARAMETER_ID" | "ADB_SMOKE_NODE_PATH" | "ADB_SMOKE_ENABLE_WRITE" | "ADB_SMOKE_WRITE_VALUE" | "ADB_SMOKE_CONFIRM_WRITE" | "ADB_SMOKE_CONFIRM_ROLLBACK" | "ADB_SMOKE_EXPECT_READ_PATTERN" | "ADB_SMOKE_USER_ID", string>>;
+type AdbSmokeQueryClient = Pick<Client, "query">;
+
+type AdbSmokeDeviceRow = {
+  id: string;
+  transport: string;
+  status: string;
+};
+
+type AdbSmokeBindingRow = {
+  parameter_id: string;
+  node_path: string;
+  access_mode: string;
+  enabled: boolean;
+  is_smoke_default: boolean;
+  binding_project_id: string | null;
+  parameter_project_id: string | null;
+};
+
+const acceptanceOrganizationId = "org-chargelab";
 const knownAdbStates = new Set<AdbDeviceState>(["device", "unauthorized", "offline", "unknown"]);
 
 function normalizeAdbDeviceState(state: string): AdbDeviceState {
@@ -123,35 +144,133 @@ function apiEvidencePath(path: string) {
   return `${safePathname}?${safeParams.join("&")}`;
 }
 
-function validateSingleReadyAdbTarget(targetRef: string, devices: ParsedAdbDevice[]) {
+function discoverSingleReadyAdbTarget(devices: ParsedAdbDevice[]) {
   const observed = observedAdbDevices(devices);
-  const matches = devices.filter((item) => item.serial === targetRef);
-  if (matches.length !== 1) {
-    throw new Error(
-      `ADB target ${identifierShape(targetRef)} must appear exactly once in adb devices. Observed: ${observed}`
-    );
-  }
-  if (matches[0].state !== "device") {
-    throw new Error(`ADB target ${identifierShape(targetRef)} is ${matches[0].state}; expected device. Observed: ${observed}`);
-  }
-
   const readyDevices = devices.filter((item) => item.state === "device");
   if (readyDevices.length !== 1) {
     throw new Error(`ADB device-lab acceptance requires exactly one ready ADB device. Observed: ${observed}`);
   }
+  return readyDevices[0].serial;
 }
 
 test.describe("ADB device-lab preflight validation", () => {
+  test("discovers the only ready ADB target without requiring a target override", () => {
+    const targetRef = discoverSingleReadyAdbTarget([
+      { serial: "adb-target-1", state: "device" },
+      { serial: "adb-target-2", state: "offline" }
+    ]);
+
+    expect(targetRef).toBe("adb-target-1");
+  });
+
+  test("rejects multiple ready ADB targets before configuration", () => {
+    expect(() =>
+      discoverSingleReadyAdbTarget([
+        { serial: "adb-target-1", state: "device" },
+        { serial: "adb-target-2", state: "device" }
+      ])
+    ).toThrow(/exactly one ready ADB device.*serial=set:length=12:device/s);
+  });
+
+  test("validates optional smoke overrides against discovered configuration", () => {
+    expect(() =>
+      validateAdbSmokeOverrides(
+        {
+          projectId: "aurora",
+          deviceId: "device-1",
+          targetRef: "target-1",
+          parameterId: "param-1",
+          nodePath: "/safe/node"
+        },
+        {
+          ADB_SMOKE_TARGET_REF: "other-target"
+        }
+      )
+    ).toThrow(/ADB_SMOKE_TARGET_REF.*discovered=set:length=8.*override=set:length=12/s);
+  });
+
+  test("resolves write confirmation requirements after auto configuration", () => {
+    expect(() =>
+      finalizeAdbSmokeConfig(
+        {
+          projectId: "aurora",
+          deviceId: "device-1",
+          targetRef: "target-1",
+          parameterId: "param-1",
+          nodePath: "/safe/node"
+        },
+        {
+          ADB_SMOKE_ENABLE_WRITE: "true",
+          ADB_SMOKE_WRITE_VALUE: "new-value"
+        }
+      )
+    ).toThrow(/ADB_SMOKE_CONFIRM_WRITE.*ADB_SMOKE_CONFIRM_ROLLBACK/s);
+  });
+
+  test("resolves one ADB inventory row and one shared default smoke binding from the database", async () => {
+    const client = createAdbSmokeConfigClient([
+      [{ id: "device-1", transport: "adb", status: "online" }],
+      [
+        {
+          parameter_id: "param-1",
+          node_path: "/safe/node",
+          access_mode: "RO",
+          enabled: true,
+          is_smoke_default: true,
+          binding_project_id: null,
+          parameter_project_id: null
+        }
+      ]
+    ]);
+
+    await expect(resolveAdbSmokeCatalogConfig(client, { projectId: "aurora", targetRef: "target-1" })).resolves.toMatchObject({
+      projectId: "aurora",
+      deviceId: "device-1",
+      targetRef: "target-1",
+      parameterId: "param-1",
+      nodePath: "/safe/node"
+    });
+  });
+
+  test("rejects missing ADB inventory rows with redacted diagnostics", async () => {
+    const client = createAdbSmokeConfigClient([[], []]);
+
+    await expect(resolveAdbSmokeCatalogConfig(client, { projectId: "aurora", targetRef: "target-1" })).rejects.toThrow(
+      /exactly one ADB debugging device inventory row.*count=0/
+    );
+  });
+
+  test("rejects non-readable default smoke bindings", async () => {
+    const client = createAdbSmokeConfigClient([
+      [{ id: "device-1", transport: "adb", status: "online" }],
+      [
+        {
+          parameter_id: "param-1",
+          node_path: "/safe/node",
+          access_mode: "WO",
+          enabled: true,
+          is_smoke_default: true,
+          binding_project_id: null,
+          parameter_project_id: null
+        }
+      ]
+    ]);
+
+    await expect(resolveAdbSmokeCatalogConfig(client, { projectId: "aurora", targetRef: "target-1" })).rejects.toThrow(
+      /default ADB smoke binding must be readable.*accessMode=WO/
+    );
+  });
+
   test("rejects additional ready ADB devices before a hardware run", () => {
     expect(() =>
-      validateSingleReadyAdbTarget("adb-target-1", [
+      discoverSingleReadyAdbTarget([
         { serial: "adb-target-1", state: "device" },
         { serial: "adb-target-2", state: "device" },
         { serial: "adb-target-3", state: "offline" }
       ])
     ).toThrow(/exactly one ready ADB device.*serial=set:length=12:device.*serial=set:length=12:offline/s);
     expect(() =>
-      validateSingleReadyAdbTarget("adb-target-1", [
+      discoverSingleReadyAdbTarget([
         { serial: "adb-target-1", state: "device" },
         { serial: "adb-target-2", state: "device" }
       ])
@@ -193,7 +312,15 @@ test.describe("ADB device-lab preflight validation", () => {
       delete process.env.ADB_SMOKE_CONFIRM_WRITE;
       delete process.env.ADB_SMOKE_CONFIRM_ROLLBACK;
 
-      expect(() => requireAdbSmokeConfig()).toThrow(/ADB_SMOKE_CONFIRM_WRITE.*ADB_SMOKE_CONFIRM_ROLLBACK/s);
+      expect(() =>
+        finalizeAdbSmokeConfig({
+          projectId: "project-1",
+          deviceId: "device-1",
+          targetRef: "target-1",
+          parameterId: "param-1",
+          nodePath: "/safe/node"
+        })
+      ).toThrow(/ADB_SMOKE_CONFIRM_WRITE.*ADB_SMOKE_CONFIRM_ROLLBACK/s);
     } finally {
       process.env = previousEnv;
     }
@@ -291,7 +418,7 @@ test.describe("ADB device-lab evidence redaction", () => {
   });
 });
 
-function requireSingleReadyAdbTarget(targetRef: string) {
+function requireSingleReadyAdbTarget() {
   const available = adbCommandAvailable();
   if (!available.ok) {
     throw new Error(
@@ -311,7 +438,7 @@ function requireSingleReadyAdbTarget(targetRef: string) {
   }
 
   const devices = parseAdbDevices(stdout);
-  validateSingleReadyAdbTarget(targetRef, devices);
+  return discoverSingleReadyAdbTarget(devices);
 }
 
 function runSeedScript(script: string) {
@@ -450,29 +577,35 @@ async function prepareAdbAcceptanceState(projectId: string) {
   });
 }
 
-function requireAdbSmokeConfig(): AdbSmokeConfig {
-  const required = [
-    "ADB_SMOKE_PROJECT_ID",
-    "ADB_SMOKE_DEVICE_ID",
-    "ADB_SMOKE_TARGET_REF",
-    "ADB_SMOKE_PARAMETER_ID",
-    "ADB_SMOKE_NODE_PATH"
-  ] as const;
-  const missing = required.filter((name) => !process.env[name]?.trim());
-  if (missing.length > 0) {
-    throw new Error(
-      [
-        `ADB device-lab acceptance requires ${missing.join(", ")} when DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true.`,
-        "Set project, WiseEff device id, adb serial, parameter id, and safe node path before running against real hardware."
-      ].join(" ")
-    );
+function requireAdbSmokeProjectId(env: NodeJS.ProcessEnv = process.env) {
+  const projectId = env.ADB_SMOKE_PROJECT_ID?.trim();
+  if (!projectId) {
+    throw new Error("ADB device-lab acceptance requires ADB_SMOKE_PROJECT_ID as the operation project context.");
   }
+  return projectId;
+}
 
-  const writeEnabled = process.env.ADB_SMOKE_ENABLE_WRITE === "true";
+function validateOverride(name: keyof AdbSmokeEnv, discovered: string, override: string | undefined) {
+  const trimmed = override?.trim();
+  if (trimmed && trimmed !== discovered) {
+    throw new Error(`${name} does not match auto-discovered ADB smoke config: discovered=${identifierShape(discovered)} override=${identifierShape(trimmed)}.`);
+  }
+}
+
+function validateAdbSmokeOverrides(config: MinimalAdbSmokeConfig, env: AdbSmokeEnv = process.env) {
+  validateOverride("ADB_SMOKE_DEVICE_ID", config.deviceId, env.ADB_SMOKE_DEVICE_ID);
+  validateOverride("ADB_SMOKE_TARGET_REF", config.targetRef, env.ADB_SMOKE_TARGET_REF);
+  validateOverride("ADB_SMOKE_PARAMETER_ID", config.parameterId, env.ADB_SMOKE_PARAMETER_ID);
+  validateOverride("ADB_SMOKE_NODE_PATH", config.nodePath, env.ADB_SMOKE_NODE_PATH);
+}
+
+function finalizeAdbSmokeConfig(config: MinimalAdbSmokeConfig, env: AdbSmokeEnv = process.env): AdbSmokeConfig {
+  validateAdbSmokeOverrides(config, env);
+  const writeEnabled = env.ADB_SMOKE_ENABLE_WRITE === "true";
   const missingWriteInputs = [
-    ["ADB_SMOKE_WRITE_VALUE", process.env.ADB_SMOKE_WRITE_VALUE],
-    ["ADB_SMOKE_CONFIRM_WRITE", process.env.ADB_SMOKE_CONFIRM_WRITE],
-    ["ADB_SMOKE_CONFIRM_ROLLBACK", process.env.ADB_SMOKE_CONFIRM_ROLLBACK]
+    ["ADB_SMOKE_WRITE_VALUE", env.ADB_SMOKE_WRITE_VALUE],
+    ["ADB_SMOKE_CONFIRM_WRITE", env.ADB_SMOKE_CONFIRM_WRITE],
+    ["ADB_SMOKE_CONFIRM_ROLLBACK", env.ADB_SMOKE_CONFIRM_ROLLBACK]
   ]
     .filter(([, value]) => !value?.trim())
     .map(([name]) => name);
@@ -481,20 +614,111 @@ function requireAdbSmokeConfig(): AdbSmokeConfig {
   }
 
   return {
-    projectId: process.env.ADB_SMOKE_PROJECT_ID!.trim(),
-    deviceId: process.env.ADB_SMOKE_DEVICE_ID!.trim(),
-    targetRef: process.env.ADB_SMOKE_TARGET_REF!.trim(),
-    parameterId: process.env.ADB_SMOKE_PARAMETER_ID!.trim(),
-    nodePath: process.env.ADB_SMOKE_NODE_PATH!.trim(),
-    readValuePattern: process.env.ADB_SMOKE_EXPECT_READ_PATTERN?.trim()
-      ? new RegExp(process.env.ADB_SMOKE_EXPECT_READ_PATTERN.trim())
-      : undefined,
-    userId: process.env.ADB_SMOKE_USER_ID?.trim() || "u-xu-yun",
+    ...config,
+    readValuePattern: env.ADB_SMOKE_EXPECT_READ_PATTERN?.trim() ? new RegExp(env.ADB_SMOKE_EXPECT_READ_PATTERN.trim()) : undefined,
+    userId: env.ADB_SMOKE_USER_ID?.trim() || "u-xu-yun",
     writeEnabled,
-    writeValue: process.env.ADB_SMOKE_WRITE_VALUE?.trim(),
-    confirmWrite: process.env.ADB_SMOKE_CONFIRM_WRITE?.trim() ?? "",
-    confirmRollback: process.env.ADB_SMOKE_CONFIRM_ROLLBACK?.trim() ?? ""
+    writeValue: env.ADB_SMOKE_WRITE_VALUE?.trim(),
+    confirmWrite: env.ADB_SMOKE_CONFIRM_WRITE?.trim() ?? "",
+    confirmRollback: env.ADB_SMOKE_CONFIRM_ROLLBACK?.trim() ?? ""
   };
+}
+
+function candidateShapes(rows: Array<{ id?: string; parameter_id?: string; status?: string; access_mode?: string; enabled?: boolean }>) {
+  return rows
+    .map((row) => {
+      const id = row.id ?? row.parameter_id;
+      return [
+        `id=${identifierShape(id)}`,
+        row.status ? `status=${row.status}` : null,
+        row.access_mode ? `accessMode=${row.access_mode}` : null,
+        typeof row.enabled === "boolean" ? `enabled=${row.enabled}` : null
+      ].filter(Boolean).join(":");
+    })
+    .join(", ") || "(none)";
+}
+
+async function resolveAdbSmokeCatalogConfig(
+  client: AdbSmokeQueryClient,
+  input: { projectId: string; targetRef: string }
+): Promise<MinimalAdbSmokeConfig> {
+  const devices = await client.query<AdbSmokeDeviceRow>(
+    `
+    select id, transport, status
+    from debugging_devices
+    where organization_id = $1
+      and transport = 'adb'
+    order by id asc
+    `,
+    [acceptanceOrganizationId]
+  );
+  if (devices.rows.length !== 1) {
+    throw new Error(
+      `ADB device-lab acceptance requires exactly one ADB debugging device inventory row; count=${devices.rows.length}; candidates=${candidateShapes(devices.rows)}.`
+    );
+  }
+
+  const bindings = await client.query<AdbSmokeBindingRow>(
+    `
+    select
+      bindings.parameter_id,
+      bindings.node_path,
+      bindings.access_mode,
+      bindings.enabled,
+      bindings.is_smoke_default,
+      bindings.project_id as binding_project_id,
+      parameters.project_id as parameter_project_id
+    from debugging_parameter_node_bindings bindings
+    join debugging_parameters parameters
+      on parameters.organization_id = bindings.organization_id
+      and parameters.id = bindings.parameter_id
+    where bindings.organization_id = $1
+      and bindings.protocol = 'adb'
+      and bindings.is_smoke_default = true
+    order by bindings.id asc
+    `,
+    [acceptanceOrganizationId]
+  );
+  if (bindings.rows.length !== 1) {
+    throw new Error(
+      `ADB device-lab acceptance requires exactly one default ADB smoke binding; count=${bindings.rows.length}; candidates=${candidateShapes(bindings.rows)}.`
+    );
+  }
+
+  const binding = bindings.rows[0];
+  if (binding.binding_project_id !== null || binding.parameter_project_id !== null) {
+    throw new Error("Default ADB smoke binding must be shared; bindingProject=present or parameterProject=present.");
+  }
+  if (!binding.enabled) {
+    throw new Error("Default ADB smoke binding must be enabled; enabled=false.");
+  }
+  if (binding.access_mode !== "RO" && binding.access_mode !== "RW") {
+    throw new Error(`default ADB smoke binding must be readable; accessMode=${binding.access_mode}.`);
+  }
+
+  return {
+    projectId: input.projectId,
+    deviceId: devices.rows[0].id,
+    targetRef: input.targetRef,
+    parameterId: binding.parameter_id,
+    nodePath: binding.node_path
+  };
+}
+
+function createAdbSmokeConfigClient(results: unknown[][]): AdbSmokeQueryClient {
+  return {
+    query: async () => {
+      const rows = results.shift() ?? [];
+      return { rows, rowCount: rows.length } as Awaited<ReturnType<Client["query"]>>;
+    }
+  };
+}
+
+async function resolveAdbSmokeConfig(input: { projectId: string; targetRef: string }): Promise<AdbSmokeConfig> {
+  return withPgClient(async (client) => {
+    const config = await resolveAdbSmokeCatalogConfig(client, input);
+    return finalizeAdbSmokeConfig(config);
+  });
 }
 
 async function postJson<T>(
@@ -750,9 +974,10 @@ test.describe("ADB device-lab full-chain loop", () => {
       "ADB device-lab acceptance is skipped unless real hardware is available."
     );
 
-    const config = requireAdbSmokeConfig();
-    requireSingleReadyAdbTarget(config.targetRef);
-    await prepareAdbAcceptanceState(config.projectId);
+    const projectId = requireAdbSmokeProjectId();
+    const targetRef = requireSingleReadyAdbTarget();
+    await prepareAdbAcceptanceState(projectId);
+    const config = await resolveAdbSmokeConfig({ projectId, targetRef });
     const frontendGuard = await installFrontendDebuggingApiGuard(page);
     await expectAdbUiReady(page, config);
     expect(
@@ -941,16 +1166,17 @@ test.describe("ADB device-lab full-chain loop", () => {
           ADB_SMOKE_ENABLE_WRITE: config.writeEnabled ? "true" : "false",
           ADB_SMOKE_WRITE_VALUE: config.writeValue ? "set" : "unset",
           ADB_SMOKE_PROJECT_ID: identifierShape(config.projectId),
-          ADB_SMOKE_DEVICE_ID: identifierShape(config.deviceId),
-          ADB_SMOKE_TARGET_REF: identifierShape(config.targetRef),
-          ADB_SMOKE_PARAMETER_ID: identifierShape(config.parameterId),
-          ADB_SMOKE_NODE_PATH: "set"
+          ADB_SMOKE_DEVICE_ID: process.env.ADB_SMOKE_DEVICE_ID?.trim() ? "override-validated" : "auto",
+          ADB_SMOKE_TARGET_REF: process.env.ADB_SMOKE_TARGET_REF?.trim() ? "override-validated" : "auto",
+          ADB_SMOKE_PARAMETER_ID: process.env.ADB_SMOKE_PARAMETER_ID?.trim() ? "override-validated" : "auto",
+          ADB_SMOKE_NODE_PATH: process.env.ADB_SMOKE_NODE_PATH?.trim() ? "override-validated" : "auto",
+          ADB_SMOKE_AUTO_CONFIG: "true"
         }
       },
       reproduction: {
         steps: [
           "Set DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true.",
-          "Set ADB_SMOKE_PROJECT_ID, ADB_SMOKE_DEVICE_ID, ADB_SMOKE_TARGET_REF, ADB_SMOKE_PARAMETER_ID, and ADB_SMOKE_NODE_PATH.",
+          "Set ADB_SMOKE_PROJECT_ID as the operation project context; device, target, parameter, and node path are auto-discovered from one ready ADB device and the shared default ADB smoke binding.",
           "Optionally set ADB_SMOKE_ENABLE_WRITE=true plus ADB_SMOKE_WRITE_VALUE, ADB_SMOKE_CONFIRM_WRITE, and ADB_SMOKE_CONFIRM_ROLLBACK for write/readback/rollback.",
           "Run npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts."
         ]
