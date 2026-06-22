@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
+import { debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
@@ -129,7 +130,6 @@ describe("/node-debugging", () => {
 
     await screen.findByText(/在线 · API Gateway Target/);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
-    fireEvent.click(screen.getAllByRole("button", { name: /重新检测/ }).at(-1) as HTMLElement);
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
       userState.activeProjectId,
@@ -137,15 +137,20 @@ describe("/node-debugging", () => {
     ));
   });
 
-  it("clears the active session when switching protocol", async () => {
+  it("clears the active session and auto-detects when switching protocol", async () => {
     const debuggingActions = createDebuggingActions();
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
 
     expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
-    expect(screen.getByText(/切换协议后需要重新检测设备/)).toBeInTheDocument();
-    expect(screen.getByText(/离线 · ADB 设备/)).toBeInTheDocument();
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
+      userState.activeProjectId,
+      { protocol: "adb" }
+    ));
+    expect(debuggingActions.detectAndStartSession).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText(/切换协议后需要重新检测设备/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/在线 · API Gateway Target/)).toBeInTheDocument());
   });
 
   it("disables rows that are missing a binding for the selected protocol", () => {
@@ -166,6 +171,30 @@ describe("/node-debugging", () => {
 
     expect(screen.getByText("未配置该协议节点")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
+  });
+
+  it("clears runtime read state when switching protocols", async () => {
+    let detectCallCount = 0;
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => {
+        detectCallCount += 1;
+        if (detectCallCount === 1) {
+          return Promise.resolve({ session: apiSession, target: apiTarget });
+        }
+        return new Promise<never>(() => undefined);
+      })
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalled());
+    expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    await waitFor(() => {
+      expect(within(findRowByText("charger.input_current_limit_ma")).queryByText("3651")).not.toBeInTheDocument();
+    });
+    expect(within(findRowByText("charger.input_current_limit_ma")).getByText("等待读取")).toBeInTheDocument();
   });
 
   it("recomputes row binding availability when switching protocols", async () => {
@@ -217,9 +246,14 @@ describe("/node-debugging", () => {
   });
 
   it("ignores stale detect results after switching protocols", async () => {
-    const detect = createDeferred<{ session: typeof apiSession; target: typeof apiTarget }>();
+    const hdcDetect = createDeferred<{ session: typeof apiSession; target: typeof apiTarget }>();
+    const adbDetect = createDeferred<{ session: typeof apiSession; target: typeof apiTarget }>();
+    let detectCallCount = 0;
     const debuggingActions = createDebuggingActions({
-      detectAndStartSession: vi.fn(() => detect.promise),
+      detectAndStartSession: vi.fn(() => {
+        detectCallCount += 1;
+        return detectCallCount === 1 ? hdcDetect.promise : adbDetect.promise;
+      }),
       readNode: vi.fn()
     });
 
@@ -230,14 +264,18 @@ describe("/node-debugging", () => {
     ));
 
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
+      userState.activeProjectId,
+      { protocol: "adb" }
+    ));
+
     await act(async () => {
-      detect.resolve({ session: apiSession, target: apiTarget });
-      await detect.promise;
+      hdcDetect.resolve({ session: apiSession, target: apiTarget });
+      await hdcDetect.promise;
     });
 
     expect(screen.queryByText(/在线 · API Gateway Target/)).not.toBeInTheDocument();
-    expect(screen.getByText(/离线 · ADB 设备/)).toBeInTheDocument();
-    expect(screen.getByText(/切换协议后需要重新检测设备/)).toBeInTheDocument();
+    expect(screen.queryByText(/切换协议后需要重新检测设备/)).not.toBeInTheDocument();
     expect(debuggingActions.readNode).not.toHaveBeenCalled();
   });
 
@@ -258,7 +296,7 @@ describe("/node-debugging", () => {
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     expect(screen.getByRole("button", { name: "ADB" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/离线 · ADB 设备/)).toBeInTheDocument();
+    expect(screen.getByText(/检测中 · ADB 设备/)).toBeInTheDocument();
   });
 
   it("uses API gateway actions to read initial readable node rows", async () => {
@@ -274,6 +312,55 @@ describe("/node-debugging", () => {
       parameterId: "dbg-trickle-start"
     }));
     expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
+  });
+
+  it("shows read failure instead of staying on reading when API read rejects", async () => {
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn().mockRejectedValue(new Error("Node read failed."))
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/API Gateway Target/);
+    const row = findRowByText("charger.input_current_limit_ma");
+    await within(row).findByText("Node read failed.");
+    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
+  });
+
+  it("shows read failure when API read returns a failed result", async () => {
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn().mockResolvedValue({
+        ok: false,
+        error: "node missing",
+        stderr: "No such file"
+      })
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/API Gateway Target/);
+    const row = findRowByText("charger.input_current_limit_ma");
+    await within(row).findByText("node missing");
+    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
+    expect(currentValueCell(row)).not.toHaveTextContent("等待读取");
+  });
+
+  it("shows the API error reason when read rejects with a runtime failure", async () => {
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn().mockRejectedValue(
+        Object.assign(new Error("ADB command failed: No such file or directory", { cause: new Error("adb read failed") }), {
+          alreadyNotified: true,
+          cause: new Error("adb read failed")
+        })
+      )
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/API Gateway Target/);
+    const row = findRowByText("charger.input_current_limit_ma");
+    await within(currentValueCell(row)).findByText("ADB command failed: No such file or directory");
+    expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
+    expect(currentValueCell(row)).not.toHaveTextContent(debuggingRuntimeFailureNotification);
   });
 
   it("syncs visible node rows when API hydration replaces debug parameters", () => {
@@ -397,6 +484,47 @@ describe("/node-debugging", () => {
       value: "3700",
       readBack: true
     })));
+  });
+
+  it("shows write failure instead of staying on reading when API write rejects", async () => {
+    const debuggingActions = createDebuggingActions({
+      writeNode: vi.fn().mockRejectedValue(new Error("Debug parameter is not configured for the selected protocol."))
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/在线 · API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+
+    await within(row).findByText(/^写入失败$/);
+    expect(currentValueCell(row)).toHaveTextContent("该节点不支持");
+    expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
+    expect(currentValueCell(row)).not.toHaveTextContent("写入中...");
+  });
+
+  it("shows write failure instead of staying on reading when API write returns a failed result", async () => {
+    const debuggingActions = createDebuggingActions({
+      writeNode: vi.fn().mockResolvedValue({
+        ok: false,
+        error: "Debug parameter is not configured for the selected protocol.",
+        writeResult: { ok: false, stderr: "Debug parameter is not configured for the selected protocol." }
+      })
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/在线 · API Gateway Target/);
+
+    const row = findRowByText("charger.input_current_limit_ma");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
+
+    await within(row).findByText(/^写入失败$/);
+    expect(currentValueCell(row)).toHaveTextContent("该节点不支持");
+    expect(currentValueCell(row)).not.toHaveTextContent("读取中...");
   });
 
   it("shows API readback mismatches as failed row status with the returned error", async () => {
