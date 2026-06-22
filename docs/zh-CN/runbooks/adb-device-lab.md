@@ -4,17 +4,33 @@
 
 使用本手册采集 ADB 调试 gateway 路径的本机真实设备证据。该流程是显式实验室证据，不是默认 CI gate。
 
-## 只读模式必需输入
+## 最小只读环境
 
-- `DEBUG_DEVICE_GATEWAY_MODE=adb`
-- `ADB_DEVICE_LAB_AVAILABLE=true`
-- `ADB_SMOKE_PROJECT_ID`
+当本机只连接了一个 ready ADB 设备，并且 WiseEff 数据库中已经存在一个 `transport = 'adb'` 的设备 inventory 行和一个共享默认 ADB smoke binding 时，只读 ADB lab 会自动配置。
+
+```bash
+DEBUG_DEVICE_GATEWAY_MODE=adb \
+ADB_DEVICE_LAB_AVAILABLE=true \
+ADB_SMOKE_PROJECT_ID=aurora \
+npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
+```
+
+`ADB_SMOKE_PROJECT_ID` 是权限、session、node operation、audit 和 evidence 的运行上下文，不再作为调试参数 catalog 的过滤条件。
+
+Lab 自动发现：
+
+- 从 `adb devices` 发现 `targetRef`，并要求恰好一个状态为 `device` 的 ready 设备。
+- 从 WiseEff `debugging_devices` 中发现唯一 `transport = 'adb'` 的 `deviceId`。
+- 从共享、enabled、`is_smoke_default = true` 的 ADB binding 中发现 `parameterId`，由后端解析 `nodePath`。
+
+可选校验 override：
+
 - `ADB_SMOKE_DEVICE_ID`
 - `ADB_SMOKE_TARGET_REF`
 - `ADB_SMOKE_PARAMETER_ID`
 - `ADB_SMOKE_NODE_PATH`
-- 可选 `ADB_SMOKE_EXPECT_READ_PATTERN`
-- 可选 `ADB_SMOKE_USER_ID`
+
+如果设置了 override，它必须和自动发现结果一致；不一致时 lab 会在读取硬件前失败。
 
 ## 可选写入输入
 
@@ -28,8 +44,8 @@
 ## 流程
 
 1. 确认 ADB 设备连接在运行 WiseEff API 的同一台机器上。
-2. 运行 `adb devices`，确认 `ADB_SMOKE_TARGET_REF` 以 `device` 状态出现。
-3. 确认 `ADB_SMOKE_PARAMETER_ID` 和 `ADB_SMOKE_NODE_PATH` 已映射到已有且启用的 ADB 参数绑定。
+2. 运行 `adb devices`，确认恰好一个 target 以 `device` 状态出现。
+3. 确认数据库已存在唯一 ADB device inventory 行和唯一共享、enabled、readable 的默认 ADB smoke binding。
 4. 确认所选节点可安全读取。
 5. 如果启用写入模式，确认该节点可安全写入，并且允许通过 snapshot rollback 恢复。
 6. 使用 `DEBUG_DEVICE_GATEWAY_MODE=adb` 启动 API。
@@ -40,16 +56,17 @@
 ```bash
 DEBUG_DEVICE_GATEWAY_MODE=adb \
 ADB_DEVICE_LAB_AVAILABLE=true \
+ADB_SMOKE_PROJECT_ID=aurora \
 npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 ```
 
 ## 验收
 
-操作者必须在本机配置原始 project、device、target、parameter 和 node 输入。生成的 operation evidence 会保持紧凑并做脱敏；它应展示 shape、存在性、状态和一致性证明，而不是发布原始 node path、标识符或取值。
+操作者必须在本机配置项目运行上下文，并提前准备已有 device inventory 和默认 binding 数据。生成的 operation evidence 会保持紧凑并做脱敏；它应展示 shape、存在性、状态和一致性证明，而不是发布原始 node path、标识符或取值。
 
 只读生成证据必须展示：
 
-- 已配置 project、device、target、parameter 和 node 输入，并以存在性或 shape 摘要展示，
+- 已配置 project 上下文，以及自动发现的 device、target、parameter 和 node 输入，并以存在性或 shape 摘要展示，
 - ADB target 检测成功，
 - 节点读取成功，
 - 可用的 request 或 audit 关联，并以脱敏 shape 摘要展示，

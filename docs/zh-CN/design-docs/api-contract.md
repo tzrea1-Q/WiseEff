@@ -92,6 +92,12 @@ M5.1 documentation governance adds `npm run docs:check` for active plan metadata
 
 M6.2 adds OIDC-backed production auth and durable user-governance contract entries. Target production must use `AUTH_PROVIDER=oidc`; local HMAC bearer tokens are only accepted for development smoke/test profiles. User governance routes require `users:manage`, preserve the standard error envelope, and write audit records for each mutation in the same transaction as durable user/role state.
 
+## 调试参数语义
+
+`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` 返回共享调试 catalog 行，以及属于请求项目的 legacy 行。`projectId` 查询参数用于鉴权和运行上下文化；它不是共享调试 catalog 行的所有权边界。
+
+当请求提供 `parameterId` 时，读写节点 API 会从 `debugging_parameter_node_bindings` 解析对应协议的 `nodePath`。Catalog 参数请求不需要发送原始 node path。
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

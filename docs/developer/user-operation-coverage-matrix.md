@@ -32,4 +32,4 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 ## Deferred Or Conditional Operations
 
 - `HDC-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true with hardware attached.
-- `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true with ADB hardware attached.
+- `ADB-LAB-001`: Requires DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true with exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding.

@@ -76,7 +76,15 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | `HDC_DEVICE_LAB_AVAILABLE` | unset | HDC smoke | Set only when real target values are available. |
 | `HDC_SMOKE_*` | unset | HDC smoke | Project, device, target, parameter, node, and write value inputs. |
 | `ADB_DEVICE_LAB_AVAILABLE` | unset | ADB smoke | Set only when a local ADB device and approved read/write targets are available. |
-| `ADB_SMOKE_*` | unset | ADB smoke | Project, WiseEff device, ADB target serial, parameter, node, and optional write value inputs. Use existing enabled ADB parameter bindings only; the lab must not create or mutate bindings. |
+| `ADB_SMOKE_PROJECT_ID` | none | ADB device-lab | Required when `DEBUG_DEVICE_GATEWAY_MODE=adb` and `ADB_DEVICE_LAB_AVAILABLE=true`; operation context only. |
+| `ADB_SMOKE_DEVICE_ID` | auto | ADB device-lab | Optional validation override for the discovered WiseEff ADB device inventory id. |
+| `ADB_SMOKE_TARGET_REF` | auto | ADB device-lab | Optional validation override for the single ready `adb devices` serial. |
+| `ADB_SMOKE_PARAMETER_ID` | auto | ADB device-lab | Optional validation override for the shared default ADB smoke parameter id. |
+| `ADB_SMOKE_NODE_PATH` | auto | ADB device-lab | Optional validation override for the server-side binding node path. |
+| `ADB_SMOKE_ENABLE_WRITE` | `false` | ADB device-lab | Enables optional write/readback/rollback; never inferred from auto-configuration. |
+| `ADB_SMOKE_WRITE_VALUE` | none | ADB device-lab | Required only when `ADB_SMOKE_ENABLE_WRITE=true`. |
+| `ADB_SMOKE_CONFIRM_WRITE` | none | ADB device-lab | Required only when `ADB_SMOKE_ENABLE_WRITE=true`. |
+| `ADB_SMOKE_CONFIRM_ROLLBACK` | none | ADB device-lab | Required only when `ADB_SMOKE_ENABLE_WRITE=true`. |
 
 ## Agent Provider
 

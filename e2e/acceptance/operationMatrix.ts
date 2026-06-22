@@ -209,7 +209,7 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["ADB-LAB-001"],
     specFiles: ["e2e/acceptance/adb-device-lab.acceptance.spec.ts"],
     assertions: ["ui", "api", "audit"],
-    deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true with ADB hardware attached."
+    deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding."
   },
   {
     id: "AGENT-APPROVAL-001",

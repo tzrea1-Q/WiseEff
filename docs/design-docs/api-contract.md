@@ -28,6 +28,12 @@ Rules:
 - Audit: audit event listing and detail.
 - Operations: liveness, readiness, metrics, pilot/release readiness.
 
+## Debugging Parameter Semantics
+
+`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` returns shared debugging catalog rows plus legacy rows owned by the requested project. The `projectId` query parameter authorizes and contextualizes the request; it is not the ownership boundary for shared debugging catalog rows.
+
+Read/write node APIs resolve protocol-specific `nodePath` from `debugging_parameter_node_bindings` when `parameterId` is provided. The request does not need to send a raw node path for catalog parameters.
+
 ## Governance
 
 The backend remains the contract owner. Frontend DTOs must map explicitly and tests must fail on drift. New endpoints should be added to the OpenAPI artifact and reviewed for authz, audit, error envelope, pagination, and evidence impact.

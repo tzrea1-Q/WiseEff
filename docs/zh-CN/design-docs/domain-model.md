@@ -159,6 +159,10 @@ M2 implementation notes:
 - 写入操作必须记录目标值、回读值、验证结果和错误。
 - 回滚必须引用快照。
 
+调试参数是组织级调试 catalog。`debugging_parameters.project_id` 和 `debugging_parameter_node_bindings.project_id` 可为空；`null` 表示跨项目共享。参数管理仍通过 M1 参数管理表保持项目级作用域。
+
+调试运行时记录仍保留项目上下文。Sessions、targets、leases、node operations、snapshots、events 和 audit rows 都保留 `project_id`，确保权限、操作历史和 evidence 绑定到选定项目上下文。
+
 M3 implementation notes:
 
 - `debugging_devices` stores simulator or future HDC devices; the M3 seed creates `Aurora Simulator Device`.

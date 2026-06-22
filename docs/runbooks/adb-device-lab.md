@@ -4,17 +4,33 @@
 
 Use this runbook to collect local real-device evidence for the ADB debugging gateway path. This procedure is explicit lab evidence, not a default CI gate.
 
-## Required Read-Only Inputs
+## Minimal Read-Only Environment
 
-- `DEBUG_DEVICE_GATEWAY_MODE=adb`
-- `ADB_DEVICE_LAB_AVAILABLE=true`
-- `ADB_SMOKE_PROJECT_ID`
+The read-only ADB lab auto-configures when one ready ADB device is connected and the WiseEff database already contains one ADB device inventory row plus one shared default ADB smoke binding.
+
+```bash
+DEBUG_DEVICE_GATEWAY_MODE=adb \
+ADB_DEVICE_LAB_AVAILABLE=true \
+ADB_SMOKE_PROJECT_ID=aurora \
+npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
+```
+
+`ADB_SMOKE_PROJECT_ID` is the operation context for permissions, session records, node operations, audit, and evidence. It is not a filter for the debugging parameter catalog.
+
+The lab discovers:
+
+- `targetRef` from `adb devices`, requiring exactly one ready device with state `device`.
+- `deviceId` from exactly one WiseEff `debugging_devices` row with `transport = 'adb'`.
+- `parameterId` and server-side `nodePath` from exactly one shared enabled ADB binding with `is_smoke_default = true`.
+
+Optional validation overrides:
+
 - `ADB_SMOKE_DEVICE_ID`
 - `ADB_SMOKE_TARGET_REF`
 - `ADB_SMOKE_PARAMETER_ID`
 - `ADB_SMOKE_NODE_PATH`
-- optional `ADB_SMOKE_EXPECT_READ_PATTERN`
-- optional `ADB_SMOKE_USER_ID`
+
+When set, overrides must match the discovered values. The lab fails before reading hardware if any override differs.
 
 ## Optional Write Inputs
 
@@ -28,8 +44,8 @@ Write mode is disabled unless `ADB_SMOKE_ENABLE_WRITE=true`.
 ## Procedure
 
 1. Confirm the ADB device is connected to the same machine that runs the WiseEff API.
-2. Run `adb devices` and confirm `ADB_SMOKE_TARGET_REF` is present with state `device`.
-3. Confirm `ADB_SMOKE_PARAMETER_ID` and `ADB_SMOKE_NODE_PATH` already map to an existing enabled ADB parameter binding.
+2. Run `adb devices` and confirm exactly one target is present with state `device`.
+3. Confirm the database already has exactly one ADB device inventory row and one shared enabled readable default ADB smoke binding.
 4. Confirm the chosen node is safe to read.
 5. If write mode is enabled, confirm the node is safe to write and that rollback by snapshot is acceptable.
 6. Start the API with `DEBUG_DEVICE_GATEWAY_MODE=adb`.
@@ -40,16 +56,17 @@ Write mode is disabled unless `ADB_SMOKE_ENABLE_WRITE=true`.
 ```bash
 DEBUG_DEVICE_GATEWAY_MODE=adb \
 ADB_DEVICE_LAB_AVAILABLE=true \
+ADB_SMOKE_PROJECT_ID=aurora \
 npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 ```
 
 ## Acceptance
 
-The operator must configure the raw project, device, target, parameter, and node inputs locally. Generated operation evidence is intentionally compact and redacted; it should show shape, presence, status, and equality proof rather than publishing raw node paths, identifiers, or values.
+The operator must configure the project operation context and the pre-existing device inventory/default binding data locally. Generated operation evidence is intentionally compact and redacted; it should show shape, presence, status, and equality proof rather than publishing raw node paths, identifiers, or values.
 
 Read-only generated evidence must show:
 
-- configured project, device, target, parameter, and node inputs as present or shape summaries,
+- configured project context and auto-discovered device, target, parameter, and node inputs as present or shape summaries,
 - successful ADB target detection,
 - successful node read,
 - request or audit correlation as redacted shape summaries when available,
