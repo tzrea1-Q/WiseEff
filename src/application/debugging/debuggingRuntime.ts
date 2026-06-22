@@ -11,7 +11,7 @@ import type {
   RollbackSnapshotInput,
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
-import type { DebugConnectionProtocol } from "@/domain/debugging/types";
+import type { DebugConnectionProtocol, DebugDeviceTransport } from "@/domain/debugging/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { AppAction } from "@/App";
@@ -135,10 +135,41 @@ function deviceFromApi(device: DebugDeviceSnapshot): Device {
     id: device.id,
     name: device.name,
     projectId: device.projectId,
+    transport: device.transport,
     firmware: device.firmware,
     status: deviceStatusFromApi(device.status),
     lastSeen: device.lastSeenAt ?? "unknown"
   };
+}
+
+function transportMatchesProtocol(transport: DebugDeviceTransport | undefined, protocol: DebugConnectionProtocol) {
+  return transport === protocol || transport === "multi";
+}
+
+function findProtocolDebugDevice(
+  devices: Device[],
+  projectId: string,
+  protocol: DebugConnectionProtocol = "hdc"
+): Device | undefined {
+  const projectDevices = devices.filter((item) => item.projectId === projectId);
+  return projectDevices.find((item) => transportMatchesProtocol(item.transport, protocol));
+}
+
+function resolveProjectDebugDeviceFromDevices(
+  devices: Device[],
+  projectId: string,
+  protocol: DebugConnectionProtocol = "hdc"
+): Device {
+  const projectDevices = devices.filter((item) => item.projectId === projectId);
+  const device =
+    findProtocolDebugDevice(devices, projectId, protocol) ??
+    (protocol === "adb" ? projectDevices.find((item) => item.id.startsWith("adb-")) : undefined) ??
+    projectDevices[0] ??
+    devices[0];
+  if (!device) {
+    throw new Error("No debug device is registered for this project.");
+  }
+  return device;
 }
 
 function resolveProjectDebugDevice(
@@ -146,15 +177,7 @@ function resolveProjectDebugDevice(
   projectId: string,
   protocol: DebugConnectionProtocol = "hdc"
 ): Device {
-  const projectDevices = state.devices.filter((item) => item.projectId === projectId);
-  const device =
-    (protocol === "adb" ? projectDevices.find((item) => item.id.startsWith("adb-")) : undefined) ??
-    projectDevices[0] ??
-    state.devices[0];
-  if (!device) {
-    throw new Error("No debug device is registered for this project.");
-  }
-  return device;
+  return resolveProjectDebugDeviceFromDevices(state.devices, projectId, protocol);
 }
 
 function dispatchOperation(dispatch: DebuggingRuntimeOptions["dispatch"], operation?: NodeOperationSnapshot) {
@@ -201,9 +224,10 @@ export function createDebuggingRuntimeActions({
 
     await runApi(dispatch, async () => {
       const api = requireGateway(gateway);
+      const parameterQuery = { ...query, protocol: query?.protocol ?? "hdc" as const };
       const [devices, debugParameters] = await Promise.all([
         api.listDevices?.() ?? Promise.resolve([]),
-        api.listParameters?.(query) ?? Promise.resolve([])
+        api.listParameters?.(parameterQuery) ?? Promise.resolve([])
       ]);
 
       dispatch({
@@ -239,7 +263,16 @@ export function createDebuggingRuntimeActions({
 
       return runApi(dispatch, async () => {
         const api = requireGateway(gateway);
-        const device = resolveProjectDebugDevice(getState(), projectId, protocol);
+        let state = getState();
+        let device = findProtocolDebugDevice(state.devices, projectId, protocol);
+        if (!device && api.listDevices) {
+          const apiDevices = (await api.listDevices()).map(deviceFromApi);
+          if (apiDevices.length > 0) {
+            state = { ...state, devices: apiDevices };
+            device = resolveProjectDebugDevice(state, projectId, protocol);
+          }
+        }
+        device ??= resolveProjectDebugDevice(state, projectId, protocol);
         const [target] = await api.detectTargets({ projectId, protocol, deviceId: device.id });
         if (!target) {
           throw new Error("No debug target detected.");

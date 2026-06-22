@@ -1,5 +1,6 @@
 import type {
   DebugConnectionProtocol,
+  DebugDeviceTransport,
   Device,
   DeviceStatus,
   DebugParameter,
@@ -18,6 +19,7 @@ export type DebugDeviceDto = {
   id: string;
   projectId: string;
   name: string;
+  transport?: DebugDeviceTransport;
   firmware: string;
   status: "online" | "offline" | "unknown";
   lastSeenAt: string | null;
@@ -98,6 +100,7 @@ export function debugDeviceFromDto(dto: DebugDeviceDto): Device {
     id: dto.id,
     name: dto.name,
     projectId: dto.projectId,
+    transport: dto.transport,
     firmware: dto.firmware,
     status: deviceStatusLabels[dto.status],
     lastSeen: dto.lastSeenAt ?? "-"

@@ -185,9 +185,9 @@ Device Gateway 健康检查：
 - Local and CI debugging smoke defaults to `DEBUG_DEVICE_GATEWAY_MODE=simulator`, which uses the seeded Aurora simulator target.
 - Customer production must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`. Set `HDC_TIMEOUT_MS` to the pilot lab's command timeout budget; the default is `5000`.
 - `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` bypasses the production HDC requirement only for explicitly marked non-customer staging environments.
-- The HDC adapter executes `hdc` with command plus argv arrays and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
+- The HDC adapter executes `hdc` through argv arrays with shell-quoted node commands and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
 - HDC and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence.
-- Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it also requires `DATABASE_URL`, `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, and `HDC_SMOKE_WRITE_VALUE`. Optional settings are `HDC_SMOKE_EXPECT_READ_PATTERN` and `HDC_SMOKE_USER_ID`.
+- Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it requires `DATABASE_URL`, exactly one connected HDC target, `HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write`, and `HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback`. The lab auto-prepares a WiseEff lab-only temporary file node by default. Optional validation overrides include `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, `HDC_SMOKE_ORIGINAL_VALUE`, `HDC_SMOKE_WRITE_VALUE`, `HDC_SMOKE_EXPECT_READ_PATTERN`, and `HDC_SMOKE_USER_ID`.
 - The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.
 
 ## M5 Release Operations

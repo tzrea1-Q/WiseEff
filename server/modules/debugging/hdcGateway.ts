@@ -43,13 +43,28 @@ function normalizeFailure(result: HdcCommandResult, timeoutMs: number) {
   return `HDC command failed: ${reason}`;
 }
 
+function remoteShellDiagnostic(result: HdcCommandResult) {
+  const output = [result.stderr, result.stdout].map((value) => value.trim()).filter(Boolean).join("\n");
+  const diagnosticLine = output
+    .split(/\r?\n/)
+    .find((line) =>
+      /(?:^|:\s)(?:cat|sh|\/bin\/sh): .*?(?:No such file or directory|Permission denied|not found|Read-only file system)/i.test(line)
+    );
+  return diagnosticLine?.trim();
+}
+
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function nodeResultFromCommand(result: HdcCommandResult, timeoutMs: number, value?: string): GatewayNodeResult {
-  if (result.timedOut || result.code !== 0) {
+  const diagnostic = remoteShellDiagnostic(result);
+  if (result.timedOut || result.code !== 0 || diagnostic) {
     return {
       ok: false,
       stdout: result.stdout,
       stderr: result.stderr,
-      error: normalizeFailure(result, timeoutMs),
+      error: diagnostic ? `HDC command failed: ${diagnostic}` : normalizeFailure(result, timeoutMs),
       durationMs: result.durationMs
     };
   }
@@ -150,11 +165,7 @@ export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): De
       "-t",
       input.targetRef,
       "shell",
-      "sh",
-      "-c",
-      "cat \"$1\"",
-      "wiseeff-read-node",
-      input.nodePath
+      `cat ${shellQuote(input.nodePath)}`
     ]);
 
     return nodeResultFromCommand(result, timeoutMs);
@@ -199,12 +210,7 @@ export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): De
         "-t",
         input.targetRef,
         "shell",
-        "sh",
-        "-c",
-        "printf '%s' \"$1\" > \"$2\"",
-        "wiseeff-write-node",
-        input.value,
-        input.nodePath
+        `printf %s ${shellQuote(input.value)} > ${shellQuote(input.nodePath)}`
       ]);
       const writeResult = nodeResultFromCommand(writeCommand, timeoutMs, input.value);
 

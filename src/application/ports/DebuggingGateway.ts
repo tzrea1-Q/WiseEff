@@ -1,4 +1,4 @@
-import type { DebugConnectionProtocol } from "@/domain/debugging/types";
+import type { DebugConnectionProtocol, DebugDeviceTransport } from "@/domain/debugging/types";
 
 export type DeviceTarget = {
   id: string;
@@ -13,6 +13,7 @@ export type DebugDeviceSnapshot = {
   id: string;
   name: string;
   projectId: string;
+  transport?: DebugDeviceTransport;
   firmware: string;
   status: "online" | "offline" | "unknown";
   lastSeenAt: string | null;

@@ -15,6 +15,7 @@ const apiDevice: DebugDeviceSnapshot = {
   id: "api-device-1",
   name: "Api Device",
   projectId: "api-project",
+  transport: "hdc",
   firmware: "v1.0.0",
   status: "online",
   lastSeenAt: "2026-05-25T08:00:00.000Z"
@@ -135,7 +136,7 @@ describe("createDebuggingRuntimeActions", () => {
     await actions.refresh({ projectId: "api-project" });
 
     expect(gateway.listDevices).toHaveBeenCalledTimes(1);
-    expect(gateway.listParameters).toHaveBeenCalledWith({ projectId: "api-project" });
+    expect(gateway.listParameters).toHaveBeenCalledWith({ projectId: "api-project", protocol: "hdc" });
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_DEBUG_RUNTIME",
       devices: [
@@ -143,6 +144,7 @@ describe("createDebuggingRuntimeActions", () => {
           id: apiDevice.id,
           name: apiDevice.name,
           projectId: apiDevice.projectId,
+          transport: apiDevice.transport,
           firmware: apiDevice.firmware,
           status: initialState.devices[1].status,
           lastSeen: apiDevice.lastSeenAt ?? "unknown"
@@ -208,7 +210,7 @@ describe("createDebuggingRuntimeActions", () => {
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       projectId: "api-project",
       protocol: "hdc",
-      deviceId: initialState.devices[0].id
+      deviceId: apiDevice.id
     });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
@@ -222,9 +224,11 @@ describe("createDebuggingRuntimeActions", () => {
 
   it("passes the selected protocol through target detection and session creation", async () => {
     const dispatch = vi.fn();
-    const adbTarget = { ...apiTarget, id: "adb:device-1", protocol: "adb" as const, targetRef: "device-1" };
-    const adbSession = { ...apiSession, targetId: adbTarget.id, protocol: "adb" as const };
+    const adbDevice = { ...apiDevice, id: "adb-device-aurora", transport: "adb" as const };
+    const adbTarget = { ...apiTarget, id: "adb:device-1", deviceId: adbDevice.id, protocol: "adb" as const, targetRef: "device-1" };
+    const adbSession = { ...apiSession, deviceId: adbDevice.id, targetId: adbTarget.id, protocol: "adb" as const };
     const gateway = createGateway({
+      listDevices: vi.fn().mockResolvedValue([apiDevice, adbDevice]),
       detectTargets: vi.fn().mockResolvedValue([adbTarget]),
       createSession: vi.fn().mockResolvedValue(adbSession)
     });
@@ -235,15 +239,85 @@ describe("createDebuggingRuntimeActions", () => {
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       projectId: "api-project",
       protocol: "adb",
-      deviceId: initialState.devices[0].id
+      deviceId: adbDevice.id
     });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
-      deviceId: apiDevice.id,
+      deviceId: adbDevice.id,
       targetId: adbTarget.id,
       protocol: "adb"
     });
     expect(result).toEqual({ session: adbSession, target: adbTarget });
+  });
+
+  it("selects the project device matching the requested debug protocol", async () => {
+    const dispatch = vi.fn();
+    const hdcDevice = { ...apiDevice, id: "hdc-device-lab-aurora", transport: "hdc" as const };
+    const gateway = createGateway({
+      detectTargets: vi.fn().mockResolvedValue([{ ...apiTarget, deviceId: hdcDevice.id }]),
+      createSession: vi.fn().mockResolvedValue({ ...apiSession, deviceId: hdcDevice.id })
+    });
+    const actions = createDebuggingRuntimeActions({
+      mode: "api",
+      gateway,
+      dispatch,
+      getState: () => ({
+        ...initialState,
+        devices: [
+          { ...initialState.devices[0], id: "sim-device-aurora", projectId: "api-project", transport: "simulator" as const },
+          { ...initialState.devices[1], id: "adb-device-aurora", projectId: "api-project", transport: "adb" as const },
+          {
+            id: hdcDevice.id,
+            name: hdcDevice.name,
+            projectId: hdcDevice.projectId,
+            firmware: hdcDevice.firmware,
+            status: "已连接" as const,
+            lastSeen: hdcDevice.lastSeenAt ?? "-",
+            transport: "hdc" as const
+          }
+        ]
+      })
+    });
+
+    await actions.detectAndStartSession("api-project", { protocol: "hdc" });
+
+    expect(gateway.detectTargets).toHaveBeenCalledWith({
+      projectId: "api-project",
+      protocol: "hdc",
+      deviceId: hdcDevice.id
+    });
+    expect(gateway.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "api-project",
+        deviceId: hdcDevice.id,
+        protocol: "hdc"
+      })
+    );
+  });
+
+  it("reloads API devices before detecting when local state has not hydrated a protocol device yet", async () => {
+    const dispatch = vi.fn();
+    const hdcDevice = { ...apiDevice, id: "hdc-device-lab-aurora", projectId: "aurora", transport: "hdc" as const };
+    const gateway = createGateway({
+      listDevices: vi.fn().mockResolvedValue([hdcDevice]),
+      detectTargets: vi.fn().mockResolvedValue([{ ...apiTarget, deviceId: hdcDevice.id }]),
+      createSession: vi.fn().mockResolvedValue({ ...apiSession, projectId: "aurora", deviceId: hdcDevice.id })
+    });
+    const actions = createDebuggingRuntimeActions({
+      mode: "api",
+      gateway,
+      dispatch,
+      getState: () => initialState
+    });
+
+    await actions.detectAndStartSession("aurora", { protocol: "hdc" });
+
+    expect(gateway.listDevices).toHaveBeenCalledTimes(1);
+    expect(gateway.detectTargets).toHaveBeenCalledWith({
+      projectId: "aurora",
+      protocol: "hdc",
+      deviceId: hdcDevice.id
+    });
   });
 
   it("reads an API node, returns the read result, and dispatches the operation event", async () => {

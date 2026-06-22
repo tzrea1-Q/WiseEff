@@ -484,19 +484,16 @@ Pass criteria:
 
 Run only when real HDC hardware is connected and safe target values are approved.
 
-Required variables:
+Minimal variables:
 
 ```text
 DEBUG_DEVICE_GATEWAY_MODE=hdc
 HDC_DEVICE_LAB_AVAILABLE=true
-HDC_SMOKE_PROJECT_ID=
-HDC_SMOKE_DEVICE_ID=
-HDC_SMOKE_TARGET_REF=
-HDC_SMOKE_PARAMETER_ID=
-HDC_SMOKE_NODE_PATH=
-HDC_SMOKE_WRITE_VALUE=
-HDC_SMOKE_EXPECT_READ_PATTERN=
+HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write
+HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback
 ```
+
+The lab defaults to project `aurora`, auto-discovers the single HDC target, and auto-prepares the lab-only temporary node `/data/local/tmp/wiseeff_hdc_smoke_node`. Use [HDC Device Lab](hdc-device-lab.md) for optional validation overrides.
 
 Run:
 

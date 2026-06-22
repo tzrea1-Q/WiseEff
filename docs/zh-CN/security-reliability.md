@@ -72,7 +72,7 @@ telemetry 中不要记录 bearer token、provider key、原始上传日志内容
 - 失败原因和审计。
 - rollback 路径。
 
-本地 simulator 只能证明流程结构。真实 pilot signoff 需要 HDC device-lab evidence。
+本地 simulator 只能证明流程结构。真实 pilot signoff 需要 HDC device-lab evidence。HDC lab 默认自动准备 lab-only 临时文件节点；执行写入和 snapshot rollback 前仍必须显式设置 `HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write` 和 `HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback`。客户或生产节点路径需要单独审批，不能用默认 lab 配置替代。
 
 ## Health 和 pilot-readiness
 

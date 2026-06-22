@@ -18,6 +18,7 @@ const deviceDto: DebugDeviceDto = {
   id: "device-1",
   projectId: "aurora",
   name: "Simulator",
+  transport: "hdc",
   firmware: "1.0.0",
   status: "online",
   lastSeenAt: "2026-05-25T02:00:00.000Z"
@@ -90,6 +91,7 @@ describe("debugging dto mappers", () => {
   it("maps debug device status to the existing domain literal", () => {
     expect(debugDeviceFromDto(deviceDto)).toMatchObject({
       id: "device-1",
+      transport: "hdc",
       status: "已连接"
     });
   });
