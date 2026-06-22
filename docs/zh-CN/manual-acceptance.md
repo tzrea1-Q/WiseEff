@@ -438,19 +438,16 @@ test-fixtures/logs/unsupported.bin
 
 只有接入真实 HDC 设备并获得安全写入值后才执行。
 
-需要变量：
+最小变量：
 
 ```text
 DEBUG_DEVICE_GATEWAY_MODE=hdc
 HDC_DEVICE_LAB_AVAILABLE=true
-HDC_SMOKE_PROJECT_ID=
-HDC_SMOKE_DEVICE_ID=
-HDC_SMOKE_TARGET_REF=
-HDC_SMOKE_PARAMETER_ID=
-HDC_SMOKE_NODE_PATH=
-HDC_SMOKE_WRITE_VALUE=
-HDC_SMOKE_EXPECT_READ_PATTERN=
+HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write
+HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback
 ```
+
+Lab 默认使用项目 `aurora`，自动发现唯一 HDC target，并自动准备 lab-only 临时节点 `/data/local/tmp/wiseeff_hdc_smoke_node`。可选校验 override 见 [HDC Device Lab](runbooks/hdc-device-lab.md)。
 
 运行：
 

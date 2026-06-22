@@ -70,6 +70,7 @@ export type LogStatus = "Processing" | "Complete" | "Failed";
 export type LogSeverity = "Critical" | "Warning" | "Info";
 export type LogArchiveState = "active" | "archived";
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
+export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
 export type LogAdminRole = "Admin" | "Editor" | "Viewer";
 export type LogAdminUserAvatarTone = "blue" | "teal" | "violet" | "slate";
 export type TimeWindow = "today" | "7d" | "30d";
@@ -240,6 +241,7 @@ export type Device = {
   id: string;
   name: string;
   projectId: string;
+  transport?: DebugDeviceTransport;
   firmware: string;
   status: DeviceStatus;
   lastSeen: string;

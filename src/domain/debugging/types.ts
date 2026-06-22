@@ -1,11 +1,13 @@
 import type { RiskLevel } from "../parameters/types";
 
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
+export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
 
 export type Device = {
   id: string;
   name: string;
   projectId: string;
+  transport?: DebugDeviceTransport;
   firmware: string;
   status: DeviceStatus;
   lastSeen: string;

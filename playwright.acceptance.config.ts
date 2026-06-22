@@ -39,7 +39,7 @@ const webServers = [
     timeout: 60_000
   },
   {
-    command: `npm run dev -- --port ${frontendPort} --strictPort`,
+    command: `npx vite --host 127.0.0.1 --port ${frontendPort} --strictPort`,
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: apiURL,

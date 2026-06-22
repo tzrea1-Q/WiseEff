@@ -56,6 +56,17 @@
 | `HDC_TIMEOUT_MS` | `5000` | HDC adapter | 命令超时预算。 |
 | `ADB_TIMEOUT_MS` | `5000` | ADB adapter | 命令超时预算。 |
 | `HDC_DEVICE_LAB_AVAILABLE` | 未设置 | HDC smoke | 仅在具备真实目标值时设置。 |
+| `HDC_SMOKE_PROJECT_ID` | `aurora` | HDC device-lab | 权限、session、node operation、audit 和 evidence 的运行上下文。 |
+| `HDC_SMOKE_DEVICE_ID` | auto lab row | HDC device-lab | 可选校验 override，用于校验 lab-only WiseEff HDC device inventory id。 |
+| `HDC_SMOKE_TARGET_REF` | auto | HDC device-lab | 可选校验 override，用于校验唯一 `hdc list targets` target。 |
+| `HDC_SMOKE_PARAMETER_ID` | auto lab parameter | HDC device-lab | 可选校验 override，用于校验 lab-only 临时节点参数 id。 |
+| `HDC_SMOKE_NODE_PATH` | `/data/local/tmp/wiseeff_hdc_smoke_node` | HDC device-lab | 可选校验 override，用于校验 lab-only 临时文件节点。 |
+| `HDC_SMOKE_ORIGINAL_VALUE` | `wiseeff-hdc-original` | HDC device-lab | 可选 lab 临时节点初始化值。 |
+| `HDC_SMOKE_WRITE_VALUE` | `wiseeff-hdc-updated` | HDC device-lab | 显式确认后使用的可选 lab 写入值。 |
+| `HDC_SMOKE_CONFIRM_WRITE` | 无 | HDC device-lab | HDC write/readback evidence 必填，必须等于 `confirm-high-risk-write`。 |
+| `HDC_SMOKE_CONFIRM_ROLLBACK` | 无 | HDC device-lab | HDC snapshot restore 必填，必须等于 `confirm-rollback`。 |
+| `HDC_SMOKE_EXPECT_READ_PATTERN` | 未设置 | HDC device-lab | 可选读取证据正则校验。 |
+| `HDC_SMOKE_USER_ID` | `u-xu-yun` | HDC device-lab | 可选 smoke actor override。 |
 | `ADB_DEVICE_LAB_AVAILABLE` | 未设置 | ADB smoke | 仅在本机 ADB 设备和审批过的读写目标可用时设置。 |
 | `ADB_SMOKE_PROJECT_ID` | 无 | ADB device-lab | `DEBUG_DEVICE_GATEWAY_MODE=adb` 且 `ADB_DEVICE_LAB_AVAILABLE=true` 时必需；仅作为运行上下文。 |
 | `ADB_SMOKE_DEVICE_ID` | auto | ADB device-lab | 可选校验 override，用于校验自动发现的 WiseEff ADB device inventory id。 |

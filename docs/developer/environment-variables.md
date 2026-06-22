@@ -74,7 +74,17 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | `HDC_TIMEOUT_MS` | `5000` | HDC adapter | Command timeout budget. |
 | `ADB_TIMEOUT_MS` | `5000` | ADB adapter | Command timeout budget. |
 | `HDC_DEVICE_LAB_AVAILABLE` | unset | HDC smoke | Set only when real target values are available. |
-| `HDC_SMOKE_*` | unset | HDC smoke | Project, device, target, parameter, node, and write value inputs. |
+| `HDC_SMOKE_PROJECT_ID` | `aurora` | HDC device-lab | Operation context for permissions, session records, node operations, audit, and evidence. |
+| `HDC_SMOKE_DEVICE_ID` | auto lab row | HDC device-lab | Optional validation override for the lab-only WiseEff HDC device inventory id. |
+| `HDC_SMOKE_TARGET_REF` | auto | HDC device-lab | Optional validation override for the single `hdc list targets` target. |
+| `HDC_SMOKE_PARAMETER_ID` | auto lab parameter | HDC device-lab | Optional validation override for the lab-only temporary-node parameter id. |
+| `HDC_SMOKE_NODE_PATH` | `/data/local/tmp/wiseeff_hdc_smoke_node` | HDC device-lab | Optional validation override for the lab-only temporary file node. |
+| `HDC_SMOKE_ORIGINAL_VALUE` | `wiseeff-hdc-original` | HDC device-lab | Optional lab temporary-node setup value. |
+| `HDC_SMOKE_WRITE_VALUE` | `wiseeff-hdc-updated` | HDC device-lab | Optional lab write value used after explicit confirmation. |
+| `HDC_SMOKE_CONFIRM_WRITE` | none | HDC device-lab | Required for HDC write/readback evidence; must equal `confirm-high-risk-write`. |
+| `HDC_SMOKE_CONFIRM_ROLLBACK` | none | HDC device-lab | Required for HDC snapshot restoration; must equal `confirm-rollback`. |
+| `HDC_SMOKE_EXPECT_READ_PATTERN` | unset | HDC device-lab | Optional regex validation for read evidence. |
+| `HDC_SMOKE_USER_ID` | `u-xu-yun` | HDC device-lab | Optional smoke actor override. |
 | `ADB_DEVICE_LAB_AVAILABLE` | unset | ADB smoke | Set only when a local ADB device and approved read/write targets are available. |
 | `ADB_SMOKE_PROJECT_ID` | none | ADB device-lab | Required when `DEBUG_DEVICE_GATEWAY_MODE=adb` and `ADB_DEVICE_LAB_AVAILABLE=true`; operation context only. |
 | `ADB_SMOKE_DEVICE_ID` | auto | ADB device-lab | Optional validation override for the discovered WiseEff ADB device inventory id. |

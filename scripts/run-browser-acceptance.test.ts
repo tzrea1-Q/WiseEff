@@ -530,6 +530,18 @@ describe("playwright acceptance config", () => {
 
     expect(config.use).toMatchObject({ baseURL: "https://frontend.example.test" });
   });
+
+  it("starts the frontend with the configured acceptance API URL", async () => {
+    const config = await importAcceptanceConfig(undefined, "http://127.0.0.1:5199", "http://127.0.0.1:8899");
+    const webServers = config.webServer as Array<{ command: string; env?: Record<string, string> }>;
+    const frontendServer = webServers[1];
+
+    expect(frontendServer.command).toContain("vite");
+    expect(frontendServer.command).not.toContain("npm run dev");
+    expect(frontendServer.env).toMatchObject({
+      VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8899"
+    });
+  });
 });
 
 describe("playwright quality config", () => {
@@ -642,9 +654,10 @@ describe("browser acceptance evidence", () => {
   });
 });
 
-async function importAcceptanceConfig(noStartRuntime: string | undefined, frontendUrl?: string) {
+async function importAcceptanceConfig(noStartRuntime: string | undefined, frontendUrl?: string, apiUrl?: string) {
   const previous = process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME;
   const previousFrontendUrl = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
+  const previousApiUrl = process.env.VITE_WISEEFF_API_BASE_URL;
   if (noStartRuntime === undefined) {
     delete process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME;
   } else {
@@ -654,6 +667,11 @@ async function importAcceptanceConfig(noStartRuntime: string | undefined, fronte
     delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
   } else {
     process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL = frontendUrl;
+  }
+  if (apiUrl === undefined) {
+    delete process.env.VITE_WISEEFF_API_BASE_URL;
+  } else {
+    process.env.VITE_WISEEFF_API_BASE_URL = apiUrl;
   }
 
   try {
@@ -670,6 +688,11 @@ async function importAcceptanceConfig(noStartRuntime: string | undefined, fronte
       delete process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL;
     } else {
       process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL = previousFrontendUrl;
+    }
+    if (previousApiUrl === undefined) {
+      delete process.env.VITE_WISEEFF_API_BASE_URL;
+    } else {
+      process.env.VITE_WISEEFF_API_BASE_URL = previousApiUrl;
     }
   }
 }

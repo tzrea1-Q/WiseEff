@@ -51,7 +51,7 @@ describe(".env.example", () => {
       OBJECT_STORE_ROOT: ".wiseeff-object-store",
       WISEEFF_LOCAL_BACKUP_DIR: ".wiseeff-backups",
       WISEEFF_LOCAL_RESTORE_DIR: ".wiseeff-restore",
-      DEBUG_DEVICE_GATEWAY_MODE: "simulator",
+      DEBUG_DEVICE_GATEWAY_MODE: "multi",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
       HDC_TIMEOUT_MS: "5000",
       ADB_TIMEOUT_MS: "5000",
@@ -85,7 +85,7 @@ describe(".env.example", () => {
 
     expect(serverEnv.AUTH_MODE).toBe("production");
     expect(serverEnv.OBJECT_STORE_MODE).toBe("local");
-    expect(serverEnv.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
+    expect(serverEnv.DEBUG_DEVICE_GATEWAY_MODE).toBe("multi");
     expect(serverEnv.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(true);
     expect(serverEnv.AGENT_PROVIDER).toBe("live");
   });

@@ -113,6 +113,28 @@ describe("HDC debug device gateway", () => {
     });
   });
 
+  it("treats remote shell cat diagnostics on stdout as HDC read failures", async () => {
+    const { runCommand } = makeRunner([
+      {
+        code: 0,
+        stdout: "/bin/sh: cat: /sys/missing-node: No such file or directory\n",
+        stderr: "",
+        durationMs: 12
+      }
+    ]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+
+    const result = await gateway.readNode({ targetRef: "AURORA-001", nodePath: "/sys/missing-node" });
+
+    expect(result).toEqual({
+      ok: false,
+      stdout: "/bin/sh: cat: /sys/missing-node: No such file or directory\n",
+      stderr: "",
+      error: "HDC command failed: /bin/sh: cat: /sys/missing-node: No such file or directory",
+      durationMs: 12
+    });
+  });
+
   it("reports read-back mismatch after a successful HDC write", async () => {
     const { runCommand } = makeRunner([
       {
@@ -183,8 +205,8 @@ describe("HDC debug device gateway", () => {
   });
 
   it("constructs HDC commands with argv arrays for target, node, and value", async () => {
-    const value = '5; rm -rf / "quoted"';
-    const nodePath = "/sys/node with spaces";
+    const value = "5; rm -rf / quoted ' value";
+    const nodePath = "/sys/node with spaces ' path";
     const { calls, runCommand } = makeRunner([
       {
         code: 0,
@@ -206,7 +228,36 @@ describe("HDC debug device gateway", () => {
     expect(calls).toEqual([
       {
         command: "hdc",
-        args: ["-t", "AURORA 001", "shell", "sh", "-c", "printf '%s' \"$1\" > \"$2\"", "wiseeff-write-node", value, nodePath],
+        args: [
+          "-t",
+          "AURORA 001",
+          "shell",
+          "printf %s '5; rm -rf / quoted '\\'' value' > '/sys/node with spaces '\\'' path'"
+        ],
+        timeoutMs: 1500
+      }
+    ]);
+  });
+
+  it("constructs HDC read commands without shell positional parameters", async () => {
+    const nodePath = "/sys/node with spaces ' path";
+    const { calls, runCommand } = makeRunner([
+      {
+        code: 0,
+        stdout: "123\n",
+        stderr: "",
+        durationMs: 6
+      }
+    ]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    const result = await gateway.readNode({ targetRef: "AURORA 001", nodePath });
+
+    expect(result).toMatchObject({ ok: true, value: "123" });
+    expect(calls).toEqual([
+      {
+        command: "hdc",
+        args: ["-t", "AURORA 001", "shell", "cat '/sys/node with spaces '\\'' path'"],
         timeoutMs: 1500
       }
     ]);
