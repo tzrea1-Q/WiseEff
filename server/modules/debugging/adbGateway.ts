@@ -43,6 +43,10 @@ function normalizeFailure(result: AdbCommandResult, timeoutMs: number) {
   return `ADB command failed: ${reason}`;
 }
 
+function shellQuote(value: string) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function nodeResultFromCommand(result: AdbCommandResult, timeoutMs: number, value?: string): GatewayNodeResult {
   if (result.timedOut || result.code !== 0) {
     return {
@@ -72,7 +76,7 @@ export function createDefaultAdbCommandRunner(): AdbCommandRunner {
       let stderr = "";
       let settled = false;
 
-      const child = spawn(command, args, { shell: false, windowsHide: true });
+      const child = spawn(command, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
       const timeout = setTimeout(() => {
         settled = true;
         child.kill();
@@ -157,11 +161,7 @@ export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): De
       "-s",
       input.targetRef,
       "shell",
-      "sh",
-      "-c",
-      "cat \"$1\"",
-      "wiseeff-read-node",
-      input.nodePath
+      `cat ${shellQuote(input.nodePath)}`
     ]);
     return nodeResultFromCommand(result, timeoutMs);
   }
@@ -201,12 +201,7 @@ export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): De
         "-s",
         input.targetRef,
         "shell",
-        "sh",
-        "-c",
-        "printf '%s' \"$1\" > \"$2\"",
-        "wiseeff-write-node",
-        input.value,
-        input.nodePath
+        `printf %s ${shellQuote(input.value)} > ${shellQuote(input.nodePath)}`
       ]);
       const writeResult = nodeResultFromCommand(writeCommand, timeoutMs, input.value);
 
