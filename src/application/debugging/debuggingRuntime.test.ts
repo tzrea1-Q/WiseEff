@@ -151,6 +151,52 @@ describe("createDebuggingRuntimeActions", () => {
     });
   });
 
+  it("refreshes shared debug parameters using project only as operation context", async () => {
+    const gateway = {
+      listDevices: vi.fn(async () => []),
+      listParameters: vi.fn(async () => [
+        {
+          id: "shared-param-1",
+          projectId: null,
+          name: "ADB smoke readable",
+          key: "adb_smoke_readable",
+          description: "Shared smoke parameter.",
+          module: "Diagnostics",
+          currentValue: "",
+          targetValue: "",
+          unit: "",
+          range: "",
+          risk: "Low",
+          status: "已同步",
+          nodePath: "/sys/adb/smoke",
+          accessMode: "RO",
+          selectedProtocol: "adb",
+          bindingStatus: "configured"
+        }
+      ]),
+      detectTargets: vi.fn(),
+      readNode: vi.fn(),
+      writeNode: vi.fn()
+    } satisfies DebuggingGateway;
+    const dispatch = vi.fn();
+    const actions = createDebuggingRuntimeActions({
+      mode: "api",
+      gateway,
+      dispatch,
+      getState: () => ({ ...initialState, activeProjectId: "aurora" })
+    });
+
+    await actions.refresh({ projectId: "aurora", protocol: "adb" });
+
+    expect(gateway.listParameters).toHaveBeenCalledWith({ projectId: "aurora", protocol: "adb" });
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "HYDRATE_DEBUG_RUNTIME",
+        debugParameters: [expect.objectContaining({ projectId: null, selectedProtocol: "adb" })]
+      })
+    );
+  });
+
   it("detects targets, creates a session, and stores active API session state", async () => {
     const dispatch = vi.fn();
     const gateway = createGateway();

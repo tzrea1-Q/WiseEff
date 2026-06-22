@@ -20,11 +20,13 @@ export type DebugParameterNodeBinding = {
   nodePath: string;
   accessMode: DebugParameterAccessMode;
   enabled: boolean;
+  isSmokeDefault?: boolean;
   notes?: string;
 };
 
 export type DebugParameter = {
   id: string;
+  projectId?: string | null;
   name: string;
   key: string;
   description: string;
