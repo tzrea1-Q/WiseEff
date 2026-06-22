@@ -213,6 +213,7 @@ function bindingRow(overrides: Record<string, unknown> = {}) {
     node_path: "/sys/current",
     access_mode: "RW",
     enabled: true,
+    is_smoke_default: false,
     notes: null,
     created_at: timestamp,
     updated_at: timestamp,
@@ -348,7 +349,43 @@ describe("debugging service", () => {
 
     expect(calls[0].text).toContain("from debugging_parameters");
     expect(calls[1].text).toContain("from debugging_parameter_node_bindings");
-    expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"]]);
+    expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"], "adb"]);
+  });
+
+  it("lists shared debugging parameters for any authorized project context", async () => {
+    const { db, calls } = createFakeDb([[parameterRow({ project_id: null })]]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listParameters(readAuth, { projectId: "aurora" })).resolves.toEqual([
+      expect.objectContaining({ id: "param-1", projectId: null })
+    ]);
+
+    expect(calls[0].text).toContain("(project_id is null or project_id = $2)");
+    expect(calls[0].values).toEqual(["org-1", "aurora"]);
+  });
+
+  it("lists selected-protocol shared parameter bindings without filtering them out by project", async () => {
+    const { db, calls } = createFakeDb([
+      [parameterRow({ project_id: null })],
+      [bindingRow({ project_id: null, protocol: "adb", node_path: "/sys/adb/current", is_smoke_default: true })]
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listParameters(readAuth, { projectId: "aurora", protocol: "adb" })).resolves.toEqual([
+      expect.objectContaining({
+        id: "param-1",
+        projectId: null,
+        selectedBinding: expect.objectContaining({
+          projectId: null,
+          protocol: "adb",
+          nodePath: "/sys/adb/current",
+          isSmokeDefault: true
+        })
+      })
+    ]);
+
+    expect(calls[1].text).toContain("(project_id is null or project_id = $2)");
+    expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"], "adb"]);
   });
 
   it("detectTargets and createSession deny different-project auth before gateway or writes", async () => {
@@ -705,6 +742,26 @@ describe("debugging service", () => {
     expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current" });
   });
 
+  it("reads a shared parameter through the project-scoped session protocol binding", async () => {
+    const adbGateway = makeGateway();
+    const { db } = createFakeDb([
+      [sessionRow({ project_id: "aurora", protocol: "adb" })],
+      [parameterRow({ project_id: null })],
+      [bindingRow({ project_id: null, protocol: "adb", node_path: "/sys/adb/current", access_mode: "RO" })],
+      [targetRow({ project_id: "aurora", protocol: "adb", target_ref: "emulator-5554" })],
+      (call) => [operationRow(call, { project_id: "aurora", protocol: "adb", node_path: "/sys/adb/current" })]
+    ]);
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: adbGateway }),
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1" });
+
+    expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current" });
+  });
+
   it("readNode rejects inactive sessions and WO parameters before gateway call", async () => {
     const inactive = createFakeDb([[sessionRow({ status: "closed" })]]);
     const inactiveGateway = makeGateway();
@@ -843,15 +900,42 @@ describe("debugging service", () => {
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
-  it("writeNode rejects parameters from a different project before gateway call", async () => {
+  it("still rejects legacy project-scoped parameters from a different project before gateway call", async () => {
     const { db } = createFakeDb([[sessionRow()], [parameterRow({ project_id: "other-project" })], [bindingRow()]]);
     const gateway = makeGateway();
     const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
 
     await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Parameter does not belong to the session project.", 400)
+      new ApiError("VALIDATION_FAILED", "Legacy project-scoped parameter does not belong to the session project.", 400)
     );
     expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writes a shared writable parameter while operation and audit stay in the session project", async () => {
+    const { db, txCalls } = createFakeDb([
+      [sessionRow({ project_id: "aurora", protocol: "adb" })],
+      [parameterRow({ project_id: null, risk: "Medium", min_value: "0", max_value: "5000" })],
+      [bindingRow({ project_id: null, protocol: "adb", node_path: "/sys/adb/current", access_mode: "RW" })],
+      [targetRow({ project_id: "aurora", protocol: "adb", target_ref: "emulator-5554" })],
+      (call) => [snapshotRow({ id: call.values[0], project_id: call.values[2], risk: call.values[4] })],
+      (call) => [operationRow(call, { project_id: "aurora", protocol: "adb", node_path: "/sys/adb/current" })],
+      []
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({
+      db,
+      gatewayRegistry: createDebugDeviceGatewayRegistry({ adb: makeGateway() }),
+      createAuditEvent: audit.createAuditEvent
+    });
+
+    await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    const operationInsert = txCalls.find((call) => call.text.includes("insert into node_operations"));
+    expect(operationInsert?.values[2]).toBe("aurora");
+    expect(audit.events.at(-1)).toMatchObject({
+      projectId: "aurora",
+      targetId: "param-1"
+    });
   });
 
   it("rejects writes when the session protocol binding is missing", async () => {

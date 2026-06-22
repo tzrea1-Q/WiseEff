@@ -330,12 +330,13 @@ describe("debugging routes", () => {
       selectedBinding: {
         id: "binding-param-1-adb",
         organizationId: "org-1",
-        projectId: "aurora",
+        projectId: null,
         parameterId: "param-1",
         protocol: "adb" as const,
         nodePath: "/sys/adb/current",
         accessMode: "RW" as const,
         enabled: true,
+        isSmokeDefault: true,
         notes: "ADB lab node",
         createdAt: timestamp,
         updatedAt: timestamp
