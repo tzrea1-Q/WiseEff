@@ -13,6 +13,7 @@ const validPackageJson = {
 };
 
 const validCompose = `
+version: "3.8"
 x-wiseeff-build: &wiseeff-build
   context: ../..
   dockerfile: ops/self-hosted/Dockerfile
@@ -158,7 +159,8 @@ describe("self-hosted config metadata", () => {
       existingFiles: new Set([
         "ops/self-hosted/storage/README.md",
         "ops/self-hosted/storage/provider-decision.md",
-        "ops/self-hosted/storage/object-store.env.example"
+        "ops/self-hosted/storage/object-store.env.example",
+        "ops/self-hosted/scripts/compose"
       ])
     });
 
@@ -235,7 +237,8 @@ describe("self-hosted config metadata", () => {
     expect(result.missingFiles).toEqual([
       "ops/self-hosted/storage/README.md",
       "ops/self-hosted/storage/provider-decision.md",
-      "ops/self-hosted/storage/object-store.env.example"
+      "ops/self-hosted/storage/object-store.env.example",
+      "ops/self-hosted/scripts/compose"
     ]);
   });
 
@@ -250,7 +253,8 @@ describe("self-hosted config metadata", () => {
       existingFiles: new Set([
         "ops/self-hosted/storage/README.md",
         "ops/self-hosted/storage/provider-decision.md",
-        "ops/self-hosted/storage/object-store.env.example"
+        "ops/self-hosted/storage/object-store.env.example",
+        "ops/self-hosted/scripts/compose"
       ])
     });
 

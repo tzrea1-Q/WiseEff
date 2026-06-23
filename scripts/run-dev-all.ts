@@ -2,6 +2,12 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import net from "node:net";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import {
+  buildDockerComposeCommand,
+  DEFAULT_DOCKER_COMPOSE_INVOCATION,
+  resolveDockerCompose,
+  type DockerComposeInvocation
+} from "./docker-compose";
 
 type RuntimeEnv = Record<string, string | undefined>;
 
@@ -49,7 +55,11 @@ export type DevAllPortRecoveryResult = {
 const seedScripts = ["db:seed:m0", "db:seed:m1", "db:seed:m2", "db:seed:m3"];
 const execFileAsync = promisify(execFile);
 
-export function buildDevAllPlan(env: RuntimeEnv = process.env, platform = process.platform): DevAllPlan {
+export function buildDevAllPlan(
+  env: RuntimeEnv = process.env,
+  platform = process.platform,
+  dockerCompose: DockerComposeInvocation = DEFAULT_DOCKER_COMPOSE_INVOCATION
+): DevAllPlan {
   const npmShell = platform === "win32";
   const serviceEnv = normalizeLocalDevEnv(env);
   const apiBaseUrl =
@@ -62,15 +72,20 @@ export function buildDevAllPlan(env: RuntimeEnv = process.env, platform = proces
     VITE_WISEEFF_API_BASE_URL: apiBaseUrl
   };
 
+  const postgresUp = buildDockerComposeCommand(dockerCompose, ["up", "-d", "postgres"]);
+  const postgresReady = buildDockerComposeCommand(dockerCompose, [
+    "exec",
+    "-T",
+    "postgres",
+    "sh",
+    "-c",
+    "until pg_isready -U wiseeff -d wiseeff; do sleep 1; done"
+  ]);
+
   return {
     prepare: [
-      { label: "postgres", command: "docker", args: ["compose", "up", "-d", "postgres"], shell: false },
-      {
-        label: "postgres:ready",
-        command: "docker",
-        args: ["compose", "exec", "-T", "postgres", "sh", "-c", "until pg_isready -U wiseeff -d wiseeff; do sleep 1; done"],
-        shell: false
-      },
+      { label: "postgres", command: postgresUp.command, args: postgresUp.args, shell: false },
+      { label: "postgres:ready", command: postgresReady.command, args: postgresReady.args, shell: false },
       { label: "database", command: "npm", args: ["run", "db:migrate"], env: serviceEnv, shell: npmShell },
       ...seedScripts.map((script) => ({
         label: script.replace("db:", ""),
@@ -366,7 +381,8 @@ function stopServices(children: ChildProcess[]) {
 
 async function runDevAll() {
   await import("dotenv/config");
-  const plan = buildDevAllPlan();
+  const dockerCompose = await resolveDockerCompose({ composeFile: "compose.yaml" });
+  const plan = buildDevAllPlan(process.env, process.platform, dockerCompose);
   const apiPort = Number(plan.services[0].env?.PORT ?? process.env.PORT ?? 8787);
 
   try {

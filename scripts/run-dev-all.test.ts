@@ -36,6 +36,28 @@ describe("buildDevAllPlan", () => {
     vi.doUnmock("dotenv/config");
   });
 
+  it("builds docker-compose commands when the standalone binary is selected", () => {
+    const plan = buildDevAllPlan({}, "linux", {
+      command: "docker-compose",
+      composeArgsPrefix: [],
+      fileArgs: ["-f", "compose.yaml"]
+    });
+
+    expect(plan.prepare.map((step) => [step.label, step.command, step.args])).toEqual([
+      ["postgres", "docker-compose", ["-f", "compose.yaml", "up", "-d", "postgres"]],
+      [
+        "postgres:ready",
+        "docker-compose",
+        ["-f", "compose.yaml", "exec", "-T", "postgres", "sh", "-c", "until pg_isready -U wiseeff -d wiseeff; do sleep 1; done"]
+      ],
+      ["database", "npm", ["run", "db:migrate"]],
+      ["seed:m0", "npm", ["run", "db:seed:m0"]],
+      ["seed:m1", "npm", ["run", "db:seed:m1"]],
+      ["seed:m2", "npm", ["run", "db:seed:m2"]],
+      ["seed:m3", "npm", ["run", "db:seed:m3"]]
+    ]);
+  });
+
   it("starts PostgreSQL before migrations, seeds, API, and API-mode frontend", () => {
     const plan = buildDevAllPlan(
       {
