@@ -1,0 +1,27 @@
+{
+  "recommendedVersion": "0.1.0",
+  "minCompatibleVersion": "0.1.0",
+  "items": [
+    {
+      "platform": "windows",
+      "arch": "amd64",
+      "version": "0.1.0",
+      "artifact": "wiseeff-bridge_0.1.0_windows_amd64.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "version": "0.1.0",
+      "artifact": "wiseeff-bridge_0.1.0_darwin_arm64.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "platform": "linux",
+      "arch": "amd64",
+      "version": "0.1.0",
+      "artifact": "wiseeff-bridge_0.1.0_linux_amd64.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

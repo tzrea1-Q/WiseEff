@@ -47,6 +47,10 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(true);
+    expect(env.DEVICE_BRIDGE_ARTIFACT_ROOT).toBe("ops/self-hosted/bridge-artifacts");
+    expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(300);
+    expect(env.DEVICE_BRIDGE_TOKEN_TTL_DAYS).toBe(90);
+    expect(env.DEVICE_BRIDGE_WS_PATH).toBe("/api/v1/device-bridges/ws");
   });
 
   it("parses explicit API settings", () => {
@@ -108,6 +112,20 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(false);
+  });
+
+  it("parses device bridge settings", () => {
+    const env = loadServerEnv({
+      DEVICE_BRIDGE_ARTIFACT_ROOT: "tmp/bridge-artifacts",
+      DEVICE_BRIDGE_PAIRING_TTL_SECONDS: "600",
+      DEVICE_BRIDGE_TOKEN_TTL_DAYS: "30",
+      DEVICE_BRIDGE_WS_PATH: "/custom/device-bridge/ws"
+    });
+
+    expect(env.DEVICE_BRIDGE_ARTIFACT_ROOT).toBe("tmp/bridge-artifacts");
+    expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(600);
+    expect(env.DEVICE_BRIDGE_TOKEN_TTL_DAYS).toBe(30);
+    expect(env.DEVICE_BRIDGE_WS_PATH).toBe("/custom/device-bridge/ws");
   });
 
   it("allows adb and multi debugging gateway modes", () => {

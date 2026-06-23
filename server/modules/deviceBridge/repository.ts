@@ -216,6 +216,81 @@ export async function touchBridgeLastSeen(
   );
 }
 
+export async function listBridgesForUser(
+  db: Queryable,
+  input: { userId: string; organizationId: string }
+): Promise<DeviceBridgeRecord[]> {
+  const result = await db.query<DeviceBridgeRow>(
+    `
+    select
+      id,
+      organization_id,
+      user_id,
+      machine_label,
+      platform,
+      arch,
+      client_version,
+      capabilities,
+      created_at,
+      last_seen_at,
+      revoked_at
+    from device_bridges
+    where user_id = $1
+      and organization_id = $2
+    order by created_at desc
+    `,
+    [input.userId, input.organizationId]
+  );
+
+  return result.rows.map(toDeviceBridgeRecord);
+}
+
+export async function revokeBridge(
+  db: Queryable,
+  input: { bridgeId: string; userId: string; organizationId: string; revokedAt: Date }
+): Promise<DeviceBridgeRecord | null> {
+  const result = await db.query<DeviceBridgeRow>(
+    `
+    update device_bridges
+    set revoked_at = $4
+    where id = $1
+      and user_id = $2
+      and organization_id = $3
+      and revoked_at is null
+    returning
+      id,
+      organization_id,
+      user_id,
+      machine_label,
+      platform,
+      arch,
+      client_version,
+      capabilities,
+      created_at,
+      last_seen_at,
+      revoked_at
+    `,
+    [input.bridgeId, input.userId, input.organizationId, input.revokedAt.toISOString()]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  await db.query(
+    `
+    update device_bridge_tokens
+    set revoked_at = $2
+    where bridge_id = $1
+      and revoked_at is null
+    `,
+    [input.bridgeId, input.revokedAt.toISOString()]
+  );
+
+  return toDeviceBridgeRecord(row);
+}
+
 export function createDeviceBridgeRepository(db: Queryable) {
   return {
     createPairingCode: (input: Parameters<typeof createPairingCode>[1]) => createPairingCode(db, input),
@@ -223,7 +298,9 @@ export function createDeviceBridgeRepository(db: Queryable) {
     createBridge: (input: Parameters<typeof createBridge>[1]) => createBridge(db, input),
     createBridgeToken: (input: Parameters<typeof createBridgeToken>[1]) => createBridgeToken(db, input),
     validateBridgeToken: (input: Parameters<typeof validateBridgeToken>[1]) => validateBridgeToken(db, input),
-    touchBridgeLastSeen: (input: Parameters<typeof touchBridgeLastSeen>[1]) => touchBridgeLastSeen(db, input)
+    touchBridgeLastSeen: (input: Parameters<typeof touchBridgeLastSeen>[1]) => touchBridgeLastSeen(db, input),
+    listBridgesForUser: (input: Parameters<typeof listBridgesForUser>[1]) => listBridgesForUser(db, input),
+    revokeBridge: (input: Parameters<typeof revokeBridge>[1]) => revokeBridge(db, input)
   };
 }
 

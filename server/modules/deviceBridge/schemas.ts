@@ -22,6 +22,10 @@ export const pairWithCodeResponseSchema = z.object({
   tokenExpiresAt: nonEmptyString
 });
 
+export const bridgeIdParamsSchema = z.object({
+  bridgeId: z.string().trim().min(1)
+});
+
 export type PairWithCodeBody = z.infer<typeof pairWithCodeBodySchema>;
 export type IssuePairingCodeResponse = z.infer<typeof issuePairingCodeResponseSchema>;
 export type PairWithCodeResponse = z.infer<typeof pairWithCodeResponseSchema>;

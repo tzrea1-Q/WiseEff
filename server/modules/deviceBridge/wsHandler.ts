@@ -1,6 +1,7 @@
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 
 import type { WebSocket } from "ws";
+import { WebSocketServer } from "ws";
 
 import type { BridgeConnectionPool } from "./connectionPool";
 import {
@@ -109,4 +110,27 @@ export function createDeviceBridgeWsHandler(options: DeviceBridgeWsHandlerOption
       });
     }
   };
+}
+
+export function attachDeviceBridgeWebSocket(
+  server: Server,
+  options: {
+    path: string;
+    wsHandler: DeviceBridgeWsHandler;
+  }
+) {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url ?? "/", "http://localhost");
+    if (url.pathname !== options.path) {
+      return;
+    }
+
+    wss.handleUpgrade(request, socket, head, (wsSocket) => {
+      void options.wsHandler.handleConnection(wsSocket, request);
+    });
+  });
+
+  return wss;
 }
