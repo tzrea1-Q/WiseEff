@@ -172,12 +172,58 @@ export async function createBridgeToken(
   return { id: input.id };
 }
 
+export async function validateBridgeToken(
+  db: Queryable,
+  input: { tokenHash: string; now: Date }
+): Promise<{ bridgeId: string; scopes: DeviceBridgeTokenScope[] } | null> {
+  const result = await db.query<{ bridge_id: string; scopes: DeviceBridgeTokenScope[] }>(
+    `
+    update device_bridge_tokens as tokens
+    set last_used_at = $2
+    from device_bridges as bridges
+    where tokens.bridge_id = bridges.id
+      and tokens.token_hash = $1
+      and tokens.revoked_at is null
+      and tokens.expires_at > $2
+      and bridges.revoked_at is null
+    returning tokens.bridge_id, tokens.scopes
+    `,
+    [input.tokenHash, input.now.toISOString()]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return {
+    bridgeId: row.bridge_id,
+    scopes: row.scopes
+  };
+}
+
+export async function touchBridgeLastSeen(
+  db: Queryable,
+  input: { bridgeId: string; seenAt: Date }
+) {
+  await db.query(
+    `
+    update device_bridges
+    set last_seen_at = $2
+    where id = $1
+    `,
+    [input.bridgeId, input.seenAt.toISOString()]
+  );
+}
+
 export function createDeviceBridgeRepository(db: Queryable) {
   return {
     createPairingCode: (input: Parameters<typeof createPairingCode>[1]) => createPairingCode(db, input),
     consumePairingCode: (input: Parameters<typeof consumePairingCode>[1]) => consumePairingCode(db, input),
     createBridge: (input: Parameters<typeof createBridge>[1]) => createBridge(db, input),
-    createBridgeToken: (input: Parameters<typeof createBridgeToken>[1]) => createBridgeToken(db, input)
+    createBridgeToken: (input: Parameters<typeof createBridgeToken>[1]) => createBridgeToken(db, input),
+    validateBridgeToken: (input: Parameters<typeof validateBridgeToken>[1]) => validateBridgeToken(db, input),
+    touchBridgeLastSeen: (input: Parameters<typeof touchBridgeLastSeen>[1]) => touchBridgeLastSeen(db, input)
   };
 }
 
