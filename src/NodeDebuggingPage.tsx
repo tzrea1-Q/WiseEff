@@ -50,7 +50,7 @@ type PageNodeOperationEvent = NodeOperationEvent & {
 const protocolStorageKey = "wiseeff.nodeDebugging.protocol";
 const protocolSwitchRedetectMessage = "切换协议后需要重新检测设备";
 
-function readInitialProtocol(): DebugConnectionProtocol {
+export function readInitialNodeDebuggingProtocol(): DebugConnectionProtocol {
   try {
     return window.localStorage.getItem(protocolStorageKey) === "adb" ? "adb" : "hdc";
   } catch {
@@ -397,7 +397,7 @@ export function NodeDebuggingPage({
   debuggingActions?: DebuggingRuntimeActions;
   runtimeReady?: boolean;
 }) {
-  const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialProtocol);
+  const [protocol, setProtocol] = useState<DebugConnectionProtocol>(readInitialNodeDebuggingProtocol);
   const [rows, setRows] = useState<RuntimeRow[]>(() =>
     state.debugParameters.map((parameter) => runtimeRowFromParameter(parameter, protocol))
   );
@@ -531,6 +531,13 @@ export function NodeDebuggingPage({
     autoReadSignatureRef.current = "";
     rowOperationSeqRef.current = {};
     setSelectedIds(new Set());
+    if (debuggingActions) {
+      void Promise.resolve()
+        .then(() => debuggingActions.refresh({ projectId: state.activeProjectId, protocol: nextProtocol }))
+        .catch((error) => {
+          setConnectionError(formatDebuggingRuntimeError(error));
+        });
+    }
   };
 
   const toggleSelectAll = () => {

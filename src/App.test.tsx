@@ -6,6 +6,7 @@ import { initialState } from "./mockData";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogAnalysisRepository } from "@/application/ports/LogAnalysisRepository";
 import type { ParameterRepository } from "@/application/ports/ParameterRepository";
+import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 
 const userState = { ...initialState, activeRoleId: "user", changeRequests: [] };
@@ -92,6 +93,41 @@ function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): D
   };
 }
 
+function createAppDebuggingAdminApiMock() {
+  const seedParameter = {
+    id: "param-1",
+    projectId: null,
+    name: "Fast charge current",
+    key: "debug.fast_charge.current",
+    description: "Parameter",
+    module: "Charging",
+    nodePath: "/sys/current",
+    accessMode: "RW",
+    unit: "mA",
+    range: "0-5000",
+    risk: "High",
+    currentValue: "3000",
+    targetValue: "3000",
+    sortOrder: 10,
+    enabled: true,
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: null,
+    bindings: [
+      { protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true },
+      { protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: true }
+    ]
+  };
+
+  return {
+    seedParameter,
+    get: vi.fn().mockResolvedValue({ items: [seedParameter] }),
+    post: vi.fn().mockResolvedValue({ item: seedParameter }),
+    patch: vi.fn().mockResolvedValue({ item: seedParameter }),
+    put: vi.fn()
+  };
+}
+
 function createAppLogAnalysisRepository(overrides: Partial<LogAnalysisRepository> = {}): LogAnalysisRepository {
   return {
     listLogs: vi.fn().mockResolvedValue([]),
@@ -137,7 +173,7 @@ function createResolvedAdminAuthClient() {
       },
       organization: { id: "org-chargelab", name: "ChargeLab" },
       roles: [{ projectId: null, roleId: "admin" }],
-      permissions: ["admin:access", "users:manage"]
+      permissions: ["admin:access", "users:manage", "debugging:admin", "debugging:view"]
     }))
   };
 }
@@ -194,6 +230,12 @@ function readCssBlock(css: string, selector: string) {
   const end = css.indexOf("\n}", start);
   expect(end).toBeGreaterThan(start);
   return css.slice(start, end);
+}
+
+function findTableRowByText(text: string) {
+  return Array.from(screen.getByRole("table").querySelectorAll<HTMLTableRowElement>("tbody tr")).find((row) =>
+    row.textContent?.includes(text)
+  ) as HTMLTableRowElement | undefined;
 }
 
 function stateForCurrentPath() {
@@ -724,7 +766,7 @@ describe("WiseEff app shell", () => {
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging");
     const debuggingGateway = createAppDebuggingGateway();
 
     render(
@@ -751,9 +793,9 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    expect(await screen.findByDisplayValue("api_debug_runtime_parameter")).toBeInTheDocument();
+    expect(await screen.findByText("api_debug_runtime_parameter")).toBeInTheDocument();
     expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" }));
   });
 
   it("skips debugging runtime hydration for roles without debugging access", async () => {
@@ -818,13 +860,34 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId }));
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" }));
     expect(debuggingGateway.detectTargets).not.toHaveBeenCalled();
     expect(debuggingGateway.readNode).not.toHaveBeenCalled();
   });
 
+  it("hydrates node debugging parameters for the persisted selected protocol", async () => {
+    window.history.replaceState(null, "", "/node-debugging");
+    window.localStorage.setItem("wiseeff.nodeDebugging.protocol", "adb");
+    const debuggingGateway = createAppDebuggingGateway();
+
+    render(
+      <App
+        authClient={createResolvedAdminAuthClient()}
+        debuggingGateway={debuggingGateway}
+        initialAppState={userState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({
+      projectId: initialState.activeProjectId,
+      protocol: "adb"
+    }));
+  });
+
   it("keeps debugging runtime hydration independent when parameter refresh fails", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+    window.history.replaceState(null, "", "/debugging");
     const debuggingGateway = createAppDebuggingGateway();
     const parameterRepository = createAppParameterRepository({
       listProjects: vi.fn().mockRejectedValue(new Error("parameter API unavailable"))
@@ -854,10 +917,10 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    expect(await screen.findByDisplayValue("api_debug_runtime_parameter")).toBeInTheDocument();
+    expect(await screen.findByText("api_debug_runtime_parameter")).toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
     expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
-    expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId });
+    expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" });
   });
 
   it("threads debugging runtime props through debugging route cases", () => {
@@ -1538,7 +1601,7 @@ describe("WiseEff app shell", () => {
 
     expect(screen.queryByRole("button", { name: "我的历史提交" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "历史审阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     expect(window.location.pathname).toBe("/parameter-submissions");
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
@@ -1568,7 +1631,7 @@ describe("WiseEff app shell", () => {
     expect(within(dialog).getByText(/4310/)).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
-    fireEvent.click(screen.getByRole("button", { name: "历史审阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     expect(screen.getByText("我的提交轮次")).toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
@@ -1727,7 +1790,7 @@ describe("WiseEff app shell", () => {
 
     const dialog = screen.getByRole("dialog", { name: "提交本轮参数" });
     fireEvent.click(within(dialog).getByRole("button", { name: "确认提交" }));
-    fireEvent.click(screen.getByRole("button", { name: "历史审阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "历史提交" }));
 
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
     expect(within(detail).getAllByText(/本轮提交包含\s*\d+\s*个参数/)).toHaveLength(1);
@@ -1746,7 +1809,7 @@ describe("WiseEff app shell", () => {
       id: "PRS-complex",
       projectId: dtsParameter!.projectId,
       projectName: "Aurora 量产平台",
-      submitter: "Xu Yun",
+      submitter: "Zhao Heng",
       createdAt: "刚刚",
       items: [
         {
@@ -1764,7 +1827,16 @@ describe("WiseEff app shell", () => {
       ]
     };
 
-    render(<App initialAppState={{ ...initialState, activeRoleId: "admin", parameterSubmissionRounds: [complexRound] }} />);
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [complexRound]
+        }}
+      />
+    );
 
     const detail = document.querySelector<HTMLElement>(".submission-round-detail");
     expect(detail).not.toBeNull();
@@ -1782,9 +1854,10 @@ describe("WiseEff app shell", () => {
     expect(diff!.querySelector(".submission-preview-diff-row[data-kind='add'] code")).toHaveTextContent('"boost"');
 
     const css = readFileSync("src/styles.css", "utf8");
-    expect(readCssBlock(css, ".submission-history-layout")).toContain("grid-template-columns: 320px minmax(0, 1fr);");
-    expect(readCssBlock(css, ".submission-history-layout .history-panel")).toContain("grid-column: auto;");
-    expect(readCssBlock(css, ".submission-history-layout .submission-round-detail")).toContain("grid-column: auto;");
+    expect(css).toContain(".submission-history-layout {\n  display: grid;\n  grid-template-columns: 320px minmax(0, 1fr);");
+    expect(readCssBlock(css, ".submission-history-layout")).toContain("grid-template-columns: 1fr;");
+    expect(css).toContain(".submission-history-layout .history-panel,\n.submission-history-layout .submission-round-detail {");
+    expect(css).toContain("grid-column: auto;");
     expect(readCssBlock(css, ".submission-round-detail")).toContain("min-width: 0;");
     expect(readCssBlock(css, ".history-diff-list")).toContain("overflow: hidden;");
     expect(readCssBlock(css, ".history-submission-diff")).toContain("max-height: 300px;");
@@ -1799,7 +1872,7 @@ describe("WiseEff app shell", () => {
       id: "PRS-simple",
       projectId: simpleParameter!.projectId,
       projectName: "Aurora 量产平台",
-      submitter: "Xu Yun",
+      submitter: "Zhao Heng",
       createdAt: "刚刚",
       items: [
         {
@@ -1816,7 +1889,16 @@ describe("WiseEff app shell", () => {
       ]
     };
 
-    render(<App initialAppState={{ ...initialState, activeRoleId: "admin", parameterSubmissionRounds: [simpleRound] }} />);
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          currentUserId: "u-zhao-heng",
+          activeRoleId: "hardware-user",
+          parameterSubmissionRounds: [simpleRound]
+        }}
+      />
+    );
 
     const detail = screen.getByRole("region", { name: "提交轮次详情" });
     const simpleCard = within(detail).getByText("fast_charge_current_limit_ma").closest(".submission-diff-card");
@@ -2254,6 +2336,7 @@ describe("WiseEff app shell", () => {
       title: complexParameter!.name,
       currentValue: complexParameter!.currentValue,
       targetValue: complexTargetValue,
+      valueKind: "complex" as const,
       submitter: "Xu Yun",
       status: "硬件Committer检视" as const
     };
@@ -2269,8 +2352,7 @@ describe("WiseEff app shell", () => {
     );
 
     const row = screen.getByRole("row", { name: /dts_fast_charge_profile_matrix/ });
-    const changeButton = within(row).getByRole("button", { name: "查看 dts_fast_charge_profile_matrix 提交详情" });
-    const summary = changeButton.querySelector(".parameter-value-summary");
+    const summary = row.querySelector(".parameter-value-summary");
 
     expect(summary).toBeInTheDocument();
     expect(summary).toHaveTextContent("复杂配置");
@@ -2278,8 +2360,8 @@ describe("WiseEff app shell", () => {
     expect(summary).toHaveTextContent("4 行 · 当前与目标不同");
     expect(summary?.getAttribute("title") ?? "").not.toContain('"burst"');
     expect(summary?.getAttribute("title") ?? "").not.toContain('"boost"');
-    expect(changeButton).not.toHaveTextContent('"burst"');
-    expect(changeButton).not.toHaveTextContent('"boost"');
+    expect(row).not.toHaveTextContent('"burst"');
+    expect(row).not.toHaveTextContent('"boost"');
   });
 
   it("keeps scalar review changes with trailing whitespace in the simple value layout", () => {
@@ -2562,7 +2644,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-admin",
-        present: ["项目参数管理后台", "项目共享参数库", "共享参数定义", "项目参数值矩阵", "批量参数导入", "共享参数"],
+        present: ["项目参数管理后台", "项目共享参数库", "批量参数导入", "共享参数"],
         absent: ["项目参数 Admin", "items", "events"]
       },
       {
@@ -2848,15 +2930,21 @@ describe("WiseEff app shell", () => {
 
     render(<App initialAppState={adminState} />);
 
-    const projectValues = screen.getByRole("region", { name: "项目参数值矩阵" });
-    const sharedDefinition = screen.getByRole("region", { name: "共享参数定义" });
+    const targetRow = findTableRowByText("fast_charge_current_limit_ma");
+    expect(targetRow).toBeDefined();
+    fireEvent.click(within(targetRow as HTMLElement).getByRole("button", { name: "项目参数" }));
+    const projectValues = screen.getByRole("dialog", { name: /项目参数值/ });
     const auroraCurrentValue = within(projectValues).getByLabelText("AUR-Prod 当前值");
 
     fireEvent.change(auroraCurrentValue, { target: { value: "3650" } });
+    fireEvent.click(within(projectValues).getByRole("button", { name: "关闭" }));
+
+    fireEvent.click(within(findTableRowByText("fast_charge_current_limit_ma") as HTMLElement).getByRole("button", { name: "修改" }));
+    const sharedDefinition = screen.getByRole("dialog", { name: /参数定义/ });
 
     expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
     expect(within(sharedDefinition).getByLabelText("参数推荐值")).toHaveValue("3200");
-    expect(within(projectValues).queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("AUR-Prod 推荐值")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
   });
 
@@ -2866,8 +2954,13 @@ describe("WiseEff app shell", () => {
     render(<App initialAppState={adminState} />);
 
     expect(screen.getByText("项目共享参数库")).toBeInTheDocument();
-    expect(screen.getByText("共享参数定义")).toBeInTheDocument();
-    expect(screen.getByText("项目参数值矩阵")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "修改" })[0]);
+    expect(screen.getByRole("dialog", { name: /参数定义/ })).toHaveTextContent("共享参数定义");
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "项目参数" })[0]);
+    expect(screen.getByRole("dialog", { name: /项目参数值/ })).toHaveTextContent("项目参数值");
+    expect(screen.getByRole("dialog", { name: /项目参数值/ })).toHaveTextContent("所有项目共用同一条参数定义，只在这里维护各项目的实际值。");
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
     expect(screen.queryByText("配置源预览")).not.toBeInTheDocument();
     expect(document.querySelector(".config-preview-panel")).not.toBeInTheDocument();
     const adminActions = screen.getByRole("toolbar", { name: "项目参数管理后台页面操作" });
@@ -2878,19 +2971,20 @@ describe("WiseEff app shell", () => {
     expect(configFormLabelCss).toContain("align-items: flex-start;");
     expect(configFormLabelCss).toContain("text-align: left;");
     expect(readCssBlock(readFileSync("src/styles.css", "utf8"), ".project-value-row label")).toContain("text-align: left;");
-    expect(screen.getByText("所有项目共用同一条参数定义，只在这里维护各项目的实际值。")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "NEB-RD" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
 
     expect(screen.getByRole("dialog", { name: "新增参数" })).toBeInTheDocument();
-    fireEvent.change(screen.getByPlaceholderText("例如 battery_temp_limit_c"), { target: { value: "new_power_parameter_13" } });
+    fireEvent.change(screen.getByLabelText("参数名"), { target: { value: "new_power_parameter_13" } });
     fireEvent.click(screen.getByRole("button", { name: "创建参数" }));
 
-    expect(screen.getByDisplayValue("new_power_parameter_13")).toBeInTheDocument();
-
     expect(screen.getByText("new_power_parameter_13")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "项目参数值矩阵" })).toHaveTextContent("NEB-RD");
+    const newParameterRow = findTableRowByText("new_power_parameter_13");
+    expect(newParameterRow).toBeDefined();
+    fireEvent.click(within(newParameterRow as HTMLElement).getByRole("button", { name: "项目参数" }));
+    expect(screen.getByRole("dialog", { name: /项目参数值/ })).toHaveTextContent("NEB-RD");
+    fireEvent.click(screen.getByRole("button", { name: "完成" }));
 
     fireEvent.click(screen.getByRole("button", { name: /删除 new_power_parameter_13/ }));
 
@@ -2970,7 +3064,7 @@ describe("WiseEff app shell", () => {
   it("edits debug parameter config and reflects it in the debugging workspace", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App initialAppState={adminState} />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
 
@@ -2989,7 +3083,7 @@ describe("WiseEff app shell", () => {
   it("adds and deletes debug parameters from the debugging admin config", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App initialAppState={adminState} />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     fireEvent.click(screen.getByRole("button", { name: "+ 新增" }));
 
@@ -3005,7 +3099,7 @@ describe("WiseEff app shell", () => {
   it("renders the debugging admin context in a normalized workspace header", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    renderAppForCurrentPath();
+    render(<App initialAppState={stateForCurrentPath()} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(topbar).toHaveTextContent("可调参数");
@@ -3035,7 +3129,7 @@ describe("WiseEff app shell", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<App initialAppState={adminState} />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
@@ -3057,21 +3151,61 @@ describe("WiseEff app shell", () => {
       json: async () => ({ ok: true })
     });
     vi.stubGlobal("fetch", fetchMock);
+    const apiClient = createAppDebuggingAdminApiMock();
 
     render(
       <App
         authClient={createResolvedAdminAuthClient()}
+        debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
         initialAppState={adminState}
         runtimeMode="api"
         parameterRepository={createAppParameterRepository()}
       />
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: /配置源预览/ }));
-    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
+    expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /配置源预览/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
 
     expect(fetchMock.mock.calls.some(([url]) => url === "/api/power-management-config")).toBe(false);
     expect(document.body).not.toHaveTextContent("API 模式下参数库修改通过导入批次或审阅流程写入。");
+  });
+
+  it("does not save debug admin catalog without debugging:admin permission in API mode", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const apiClient = createAppDebuggingAdminApiMock();
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: vi.fn(async () => ({
+            user: {
+              id: "u-api-admin-readonly",
+              organizationId: "org-chargelab",
+              name: "API Admin Readonly",
+              email: "api-admin-readonly@chargelab.cn",
+              title: "API Platform Owner",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "debugging:view"]
+          }))
+        }}
+        debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
+        initialAppState={adminState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
+    expect(screen.getByText("缺少 debugging:admin 权限，目录仅可查看。")).toBeInTheDocument();
+
+    const saveButton = screen.getByRole("button", { name: "保存参数" });
+    expect(saveButton).toBeDisabled();
+    fireEvent.click(saveButton);
+    expect(apiClient.patch).not.toHaveBeenCalled();
   });
 
   it("removes reset-to-code-version actions from both config admin pages", () => {

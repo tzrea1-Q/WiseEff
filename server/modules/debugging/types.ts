@@ -51,6 +51,10 @@ export type DebugParameterRecord = {
   currentValue: string;
   targetValue: string;
   sortOrder: number;
+  enabled: boolean;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string | null;
 };
 
 export type DebugParameterNodeBindingRecord = {

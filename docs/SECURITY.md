@@ -63,6 +63,7 @@ For M2 log analysis:
 For M3 debugging:
 
 - Device and parameter reads require `debugging:view` and `debugging:read`.
+- Debugging catalog administration requires `debugging:admin`; this governs parameter metadata and HDC/ADB node-binding changes only.
 - Node writes require `debugging:write`, project access, an active session, a writable access mode, range validation, an active device lease for the session, and a pre-write snapshot.
 - High-risk writes require `confirm-high-risk-write` or a future approval id.
 - Snapshot rollback requires `debugging:rollback`, `confirm-rollback`, and an active device lease for the session.
@@ -88,6 +89,8 @@ M1 parameter-management writes emit audit events from the backend for `parameter
 M2 log-analysis writes emit backend audit events for `log-upload`, `log-upload-failed`, `log-rerun`, `log-archive`, `log-unarchive`, and `log-feedback`. The UI may hide or disable actions by role, but the server permission check and audit write are the authoritative boundary.
 
 M3 debugging emits backend audit events for target detection, session creation, node reads, node writes, and snapshot rollback. Write audit metadata includes the session, operation, node path, requested value, previous value, readback value, verification result, failure reason, and snapshot id when applicable.
+
+Debugging admin catalog writes emit audit events for parameter metadata and binding changes. Binding audit metadata should avoid publishing raw node paths unless the deployment policy explicitly allows them. Catalog administration does not authorize device writes; device node writes still go through the runtime debugging path with confirmation, lease, snapshot, readback, and audit checks.
 
 M3.5 request correlation uses `X-Request-Id` as the HTTP request id. The server reflects a client-provided id or generates one, includes it in error responses, and passes it through M1 parameter, M2 log, and M3 debugging write services as audit `traceId`. Direct service calls without an HTTP request still generate a trace id.
 

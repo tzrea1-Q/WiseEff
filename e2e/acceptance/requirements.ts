@@ -93,6 +93,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "DEBUG-ADMIN-001",
+    workflow: "E",
+    title: "Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode.",
+    required: true
+  },
+  {
     id: "HDC-LAB-001",
     workflow: "F",
     title: "Real HDC device lab read/write smoke runs when explicitly enabled.",

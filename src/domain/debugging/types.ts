@@ -37,14 +37,44 @@ export type DebugParameter = {
   targetValue: string;
   unit: string;
   range: string;
+  minValue?: number | null;
+  maxValue?: number | null;
   risk: RiskLevel;
   status: "已同步" | "待下发" | "下发成功";
   nodePath: string;
   accessMode: DebugParameterAccessMode;
+  sortOrder?: number;
+  enabled?: boolean;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archiveReason?: string | null;
   selectedProtocol?: DebugConnectionProtocol;
   bindingStatus?: DebugParameterBindingStatus;
   bindingDisabledReason?: string;
   bindings?: DebugParameterNodeBinding[];
+};
+
+export type DebugParameterArchiveState = "active" | "archived";
+
+export type DebugAdminParameterDraft = {
+  id?: string;
+  projectId?: string | null;
+  name: string;
+  key: string;
+  description: string;
+  module: string;
+  currentValue: string;
+  targetValue: string;
+  unit: string;
+  range: string;
+  minValue?: number | null;
+  maxValue?: number | null;
+  risk: RiskLevel;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  sortOrder: number;
+  enabled: boolean;
+  bindings: DebugParameterNodeBinding[];
 };
 
 export type DebugSnapshotEntry = {

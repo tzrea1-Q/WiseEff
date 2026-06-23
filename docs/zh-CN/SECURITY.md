@@ -38,13 +38,13 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 新增后端业务路由时，必须把前端 capability 映射到服务端授权检查，并补 forbidden 用户的负向测试。
 
-参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。调试节点写入必须具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
+参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。`debugging:admin` 只管理调试 catalog metadata 和 HDC/ADB node bindings；调试节点写入仍必须走 runtime path，并具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
 
 ## 审计要求
 
 审计记录应包含 actor、target、action、severity、metadata、trace/request id、timestamp，以及项目或组织 scope。
 
-必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、设备读写、Agent tool、管理员变更和导出。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
+必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、设备读写、Agent tool、管理员变更和导出。调试 catalog metadata 与 binding 变更必须写审计；binding audit metadata 不应暴露 raw node path，除非部署策略明确允许。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
 
 ## Agent 安全
 

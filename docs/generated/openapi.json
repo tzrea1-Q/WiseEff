@@ -1634,6 +1634,400 @@
         }
       }
     },
+    "/api/v1/debugging/admin/parameters": {
+      "get": {
+        "operationId": "debugging.admin.listParameters",
+        "summary": "List debug admin catalog parameters",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminParameterListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "debugging.admin.createParameter",
+        "summary": "Create debug admin catalog parameter",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminParameterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminParameterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/parameters/{parameterId}": {
+      "patch": {
+        "operationId": "debugging.admin.updateParameter",
+        "summary": "Update debug admin catalog parameter",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminParameterPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminParameterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/parameters/{parameterId}/archive": {
+      "post": {
+        "operationId": "debugging.admin.archiveParameter",
+        "summary": "Archive debug admin catalog parameter",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminArchiveParameterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminParameterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/parameters/{parameterId}/restore": {
+      "post": {
+        "operationId": "debugging.admin.restoreParameter",
+        "summary": "Restore debug admin catalog parameter",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminParameterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/parameters/{parameterId}/bindings/{protocol}": {
+      "put": {
+        "operationId": "debugging.admin.upsertBinding",
+        "summary": "Upsert debug admin protocol binding",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "debugging.admin.patchBinding",
+        "summary": "Update debug admin protocol binding",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/parameters/{parameterId}/bindings/{protocol}/archive": {
+      "post": {
+        "operationId": "debugging.admin.archiveBinding",
+        "summary": "Archive debug admin protocol binding",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "parameterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/debugging/sessions": {
       "post": {
         "operationId": "debugging.createSession",
@@ -2454,6 +2848,34 @@
       "DebugParameterListResponse": {
         "type": "object",
         "x-wiseeff-schema": "DebugParameterListResponse"
+      },
+      "DebugAdminParameterListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminParameterListResponse"
+      },
+      "DebugAdminParameterRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminParameterRequest"
+      },
+      "DebugAdminParameterResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminParameterResponse"
+      },
+      "DebugAdminParameterPatchRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminParameterPatchRequest"
+      },
+      "DebugAdminArchiveParameterRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminArchiveParameterRequest"
+      },
+      "DebugAdminBindingRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminBindingRequest"
+      },
+      "DebugAdminBindingResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminBindingResponse"
       },
       "CreateDebugSessionRequest": {
         "type": "object",

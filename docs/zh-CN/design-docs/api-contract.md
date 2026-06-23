@@ -94,9 +94,26 @@ M6.2 adds OIDC-backed production auth and durable user-governance contract entri
 
 ## 调试参数语义
 
-`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` 返回共享调试 catalog 行，以及属于请求项目的 legacy 行。`projectId` 查询参数用于鉴权和运行上下文化；它不是共享调试 catalog 行的所有权边界。
+`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` 只返回 enabled 且未 archived 的共享调试 catalog 行，以及属于请求项目的 legacy 行。`projectId` 查询参数用于鉴权和运行上下文化；它不是共享调试 catalog 行的所有权边界。
 
 当请求提供 `parameterId` 时，读写节点 API 会从 `debugging_parameter_node_bindings` 解析对应协议的 `nodePath`。Catalog 参数请求不需要发送原始 node path。
+
+### 调试管理 Catalog
+
+`/api/v1/debugging/admin/*` 专用于 Admin catalog governance，要求 `debugging:admin` 权限。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/api/v1/debugging/admin/parameters` | 查询完整调试 catalog；`includeArchived=true` 时包含 disabled 或 archived 行。 |
+| `POST` | `/api/v1/debugging/admin/parameters` | 创建调试参数和可选 HDC/ADB bindings。 |
+| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId` | 更新调试参数 metadata。 |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/archive` | 归档参数，但不删除历史引用。 |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/restore` | 恢复已归档参数。 |
+| `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert HDC 或 ADB node binding。 |
+| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | 更新 HDC 或 ADB node binding。 |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | 禁用单个 protocol binding。 |
+
+运行时 `/api/v1/debugging/parameters?protocol=...` 只返回启用、未归档，且所选协议 binding 启用的参数。管理列表 API 可返回缺失或已归档的 bindings，供 `/debugging-admin` 展示 HDC/ADB 覆盖标签。
 
 ## 3. Auth 与用户
 

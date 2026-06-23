@@ -8,11 +8,18 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { DebugDeviceGateway } from "./gateway";
 import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
 import {
+  archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
+  debugAdminBindingParamsSchema,
+  debugAdminParameterParamsSchema,
   detectTargetsBodySchema,
+  listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
+  patchDebugParameterAdminBodySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
+  upsertDebugParameterNodeBindingBodySchema,
+  writeDebugParameterAdminBodySchema,
   writeNodeBodySchema
 } from "./schemas";
 import { createDebuggingService } from "./service";
@@ -43,7 +50,7 @@ function requireDebugGatewayAccess(debugGateway: DebugDeviceGateway | undefined,
   }
 }
 
-function parseWithSchema<T>(schema: z.ZodType<T>, value: unknown, message = "Invalid debugging route input.") {
+function parseWithSchema<T extends z.ZodTypeAny>(schema: T, value: unknown, message = "Invalid debugging route input."): z.output<T> {
   const parsed = schema.safeParse(value);
   if (!parsed.success) {
     throw new ApiError("VALIDATION_FAILED", message, 400, { issues: parsed.error.issues });
@@ -60,7 +67,7 @@ function serviceFrom(options: {
   db?: Database;
   debugGateway?: DebugDeviceGateway;
   debugGatewayRegistry?: DebugDeviceGatewayRegistry;
-  debugGatewayMode?: "simulator" | "hdc" | string;
+  debugGatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
   tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
@@ -99,7 +106,7 @@ export function registerDebuggingRoutes(
     db?: Database;
     debugGateway?: DebugDeviceGateway;
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
-    debugGatewayMode?: "simulator" | "hdc" | string;
+    debugGatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
     metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
     tracing?: Pick<TracingBoundary, "withSpan">;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
@@ -133,6 +140,90 @@ export function registerDebuggingRoutes(
     });
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/debugging/admin/parameters", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(listDebuggingAdminParametersQuerySchema, request.query);
+    const items = await service.listAdminParameters(auth, {
+      ...query,
+      risk: normalizeArray(query.risk)
+    });
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/debugging/admin/parameters", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(writeDebugParameterAdminBodySchema, request.body);
+    const item = await service.createAdminParameter(auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v1/debugging/admin/parameters/:parameterId", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminParameterParamsSchema, request.params);
+    const body = parseWithSchema(patchDebugParameterAdminBodySchema, request.body);
+    const item = await service.updateAdminParameter(auth, { parameterId: params.parameterId, ...body }, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/debugging/admin/parameters/:parameterId/archive", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminParameterParamsSchema, request.params);
+    const body = parseWithSchema(archiveDebugParameterBodySchema, request.body ?? {});
+    const item = await service.archiveAdminParameter(
+      auth,
+      { parameterId: params.parameterId, reason: body.reason },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/debugging/admin/parameters/:parameterId/restore", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminParameterParamsSchema, request.params);
+    const item = await service.restoreAdminParameter(auth, { parameterId: params.parameterId }, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  const upsertAdminBinding = async (request: RouteRequest) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminBindingParamsSchema, request.params);
+    const body = parseWithSchema(upsertDebugParameterNodeBindingBodySchema, request.body);
+    const item = await service.upsertAdminParameterBinding(
+      auth,
+      { parameterId: params.parameterId, protocol: params.protocol, ...body },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  };
+
+  router.put("/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol", upsertAdminBinding);
+  router.patch("/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol", upsertAdminBinding);
+
+  router.post("/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminBindingParamsSchema, request.params);
+    const item = await service.archiveAdminParameterBinding(
+      auth,
+      { parameterId: params.parameterId, protocol: params.protocol },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
   });
 
   router.post("/api/v1/debugging/sessions", async (request) => {

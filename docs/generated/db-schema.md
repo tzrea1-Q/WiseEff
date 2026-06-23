@@ -439,12 +439,24 @@ Key columns:
 - `description`, `unit`, `range_label`, `min_value`, `max_value`
 - `created_at`, `updated_at`
 
+Archive/runtime columns:
+
+- `enabled boolean not null default true`
+- `archived_at timestamptz`
+- `archived_by text references users(id)`
+- `archive_reason text`
+
+Runtime list queries use enabled rows where `archived_at is null`. Admin list queries may include archived rows.
+
 Indexes and constraints:
 
 - legacy unique constraints on `project_id, key` and `project_id, node_path`
 - `debugging_parameters_shared_key_idx` on `organization_id, key` where `project_id is null`
 - `debugging_parameters_shared_node_path_idx` on `organization_id, node_path` where `project_id is null`
 - `debugging_parameters_shared_filter_idx` for shared catalog filtering
+- `debugging_parameters_runtime_enabled_idx`
+- `debugging_parameters_shared_runtime_enabled_idx`
+- `debugging_parameters_admin_archive_idx`
 
 ### `debugging_parameter_node_bindings`
 

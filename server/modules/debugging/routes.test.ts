@@ -12,7 +12,9 @@ import { registerDebuggingRoutes } from "./routes";
 import * as serviceModule from "./service";
 import type {
   DebugDeviceRecord,
+  DebugParameterNodeBindingRecord,
   DebugParameterRecord,
+  DebugParameterWithBindingsRecord,
   DebugSessionRecord,
   DebugSnapshotRecord,
   DebugTargetRecord,
@@ -28,7 +30,14 @@ const serviceMocks = vi.hoisted(() => ({
   listSessionEvents: vi.fn(),
   readNode: vi.fn(),
   writeNode: vi.fn(),
-  rollbackSnapshot: vi.fn()
+  rollbackSnapshot: vi.fn(),
+  listAdminParameters: vi.fn(),
+  createAdminParameter: vi.fn(),
+  updateAdminParameter: vi.fn(),
+  archiveAdminParameter: vi.fn(),
+  restoreAdminParameter: vi.fn(),
+  upsertAdminParameterBinding: vi.fn(),
+  archiveAdminParameterBinding: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -148,6 +157,38 @@ function parameterRecord(overrides: Partial<DebugParameterRecord> = {}): DebugPa
     currentValue: "3000",
     targetValue: "3200",
     sortOrder: 10,
+    enabled: true,
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: null,
+    ...overrides
+  };
+}
+
+function parameterWithBindingsRecord(overrides: Partial<DebugParameterWithBindingsRecord> = {}): DebugParameterWithBindingsRecord {
+  const parameter = parameterRecord(overrides);
+  return {
+    ...parameter,
+    selectedBinding: null,
+    bindings: [],
+    ...overrides
+  };
+}
+
+function bindingRecord(overrides: Partial<DebugParameterNodeBindingRecord> = {}): DebugParameterNodeBindingRecord {
+  return {
+    id: "binding-1",
+    organizationId: "org-1",
+    projectId: "aurora",
+    parameterId: "param-1",
+    protocol: "hdc",
+    nodePath: "/sys/current",
+    accessMode: "RW",
+    enabled: true,
+    isSmokeDefault: false,
+    notes: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
     ...overrides
   };
 }
@@ -353,6 +394,213 @@ describe("debugging routes", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [parameter] });
     expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora", protocol: "adb", risk: undefined });
+  });
+
+  it("GET /api/v1/debugging/admin/parameters parses includeArchived, risk, protocol, and coverage", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = parameterWithBindingsRecord({
+      projectId: null,
+      bindings: [bindingRecord({ projectId: null, protocol: "adb" })],
+      selectedBinding: bindingRecord({ projectId: null, protocol: "adb" })
+    });
+    const auth = makeAuth({ permissions: ["debugging:view", "debugging:admin"] });
+    serviceMocks.listAdminParameters.mockResolvedValue([item]);
+
+    const response = await requestJson<{ items: DebugParameterWithBindingsRecord[] }>(
+      makeServer({ db, gateway, auth }),
+      "/api/v1/debugging/admin/parameters?projectId=aurora&includeArchived=true&risk=Medium&risk=High&protocol=adb&coverage=dual-protocol"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [item] });
+    expect(serviceMocks.listAdminParameters).toHaveBeenCalledWith(auth, {
+      projectId: "aurora",
+      includeArchived: true,
+      risk: ["Medium", "High"],
+      protocol: "adb",
+      coverage: "dual-protocol"
+    });
+  });
+
+  it("POST /api/v1/debugging/admin/parameters creates a catalog parameter", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = parameterWithBindingsRecord({ id: "param-created" });
+    serviceMocks.createAdminParameter.mockResolvedValue(item);
+
+    const response = await requestJson<{ item: DebugParameterWithBindingsRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          name: "Created parameter",
+          key: "created_parameter",
+          module: "Battery",
+          risk: "Medium",
+          bindings: [{ protocol: "hdc", nodePath: "/sys/created", accessMode: "RW", enabled: true }]
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ item });
+    expect(serviceMocks.createAdminParameter).toHaveBeenCalledWith(
+      makeAuth(),
+      expect.objectContaining({
+        projectId: "aurora",
+        name: "Created parameter",
+        key: "created_parameter",
+        description: "",
+        module: "Battery",
+        risk: "Medium",
+        enabled: true,
+        bindings: [{ protocol: "hdc", nodePath: "/sys/created", accessMode: "RW", enabled: true }]
+      }),
+      { requestId: "test-request" }
+    );
+  });
+
+  it("PATCH /api/v1/debugging/admin/parameters/:parameterId preserves explicit nullable and falsey fields", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = parameterWithBindingsRecord({
+      projectId: null,
+      minValue: null,
+      maxValue: null,
+      sortOrder: 0,
+      enabled: false
+    });
+    serviceMocks.updateAdminParameter.mockResolvedValue(item);
+
+    const response = await requestJson<{ item: DebugParameterWithBindingsRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters/param-1",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          projectId: null,
+          minValue: null,
+          maxValue: null,
+          sortOrder: 0,
+          enabled: false
+        })
+      }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(serviceMocks.updateAdminParameter).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        parameterId: "param-1",
+        projectId: null,
+        minValue: null,
+        maxValue: null,
+        sortOrder: 0,
+        enabled: false
+      },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("PUT and PATCH admin binding routes parse params and body", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const putItem = bindingRecord({ protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RO", notes: "ADB lab" });
+    const patchItem = bindingRecord({ protocol: "adb", nodePath: "/sys/adb/path", enabled: false });
+    serviceMocks.upsertAdminParameterBinding.mockResolvedValueOnce(putItem).mockResolvedValueOnce(patchItem);
+
+    const putResponse = await requestJson<{ item: DebugParameterNodeBindingRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters/param-1/bindings/adb",
+      {
+        method: "PUT",
+        body: JSON.stringify({ nodePath: "/sys/adb/path", accessMode: "RO", enabled: true, notes: "ADB lab" })
+      }
+    );
+    const patchResponse = await requestJson<{ item: DebugParameterNodeBindingRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters/param-1/bindings/adb",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ nodePath: "/sys/adb/path", accessMode: "RW", enabled: false })
+      }
+    );
+
+    expect(putResponse.status).toBe(200);
+    expect(putResponse.body).toEqual({ item: putItem });
+    expect(patchResponse.status).toBe(200);
+    expect(patchResponse.body).toEqual({ item: patchItem });
+    expect(serviceMocks.upsertAdminParameterBinding).toHaveBeenNthCalledWith(
+      1,
+      makeAuth(),
+      { parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RO", enabled: true, notes: "ADB lab" },
+      { requestId: "test-request" }
+    );
+    expect(serviceMocks.upsertAdminParameterBinding).toHaveBeenNthCalledWith(
+      2,
+      makeAuth(),
+      { parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RW", enabled: false },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("POST /api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive archives a binding", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = bindingRecord({ protocol: "adb", enabled: false });
+    serviceMocks.archiveAdminParameterBinding.mockResolvedValue(item);
+
+    const response = await requestJson<{ item: DebugParameterNodeBindingRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters/param-1/bindings/adb/archive",
+      { method: "POST" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(serviceMocks.archiveAdminParameterBinding).toHaveBeenCalledWith(
+      makeAuth(),
+      { parameterId: "param-1", protocol: "adb" },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("archive and restore admin parameter routes use route params", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const archived = parameterWithBindingsRecord({ enabled: false, archivedAt: timestamp });
+    const restored = parameterWithBindingsRecord({ enabled: true, archivedAt: null });
+    serviceMocks.archiveAdminParameter.mockResolvedValue(archived);
+    serviceMocks.restoreAdminParameter.mockResolvedValue(restored);
+
+    const archiveResponse = await requestJson<{ item: DebugParameterWithBindingsRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters/param-1/archive",
+      {
+        method: "POST",
+        body: JSON.stringify({ reason: "Deprecated" })
+      }
+    );
+    const restoreResponse = await requestJson<{ item: DebugParameterWithBindingsRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/parameters/param-1/restore",
+      { method: "POST" }
+    );
+
+    expect(archiveResponse.status).toBe(200);
+    expect(archiveResponse.body).toEqual({ item: archived });
+    expect(restoreResponse.status).toBe(200);
+    expect(restoreResponse.body).toEqual({ item: restored });
+    expect(serviceMocks.archiveAdminParameter).toHaveBeenCalledWith(
+      makeAuth(),
+      { parameterId: "param-1", reason: "Deprecated" },
+      { requestId: "test-request" }
+    );
+    expect(serviceMocks.restoreAdminParameter).toHaveBeenCalledWith(makeAuth(), { parameterId: "param-1" }, { requestId: "test-request" });
   });
 
   it("POST /api/v1/debugging/sessions returns a session", async () => {

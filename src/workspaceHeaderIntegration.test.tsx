@@ -15,7 +15,7 @@ describe("normalized workspace headers", () => {
   it("moves log dashboard page actions into the topbar and removes the duplicate content h1", () => {
     window.history.replaceState(null, "", "/log-dashboard");
 
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
 
@@ -29,7 +29,7 @@ describe("normalized workspace headers", () => {
   it("moves parameter admin management actions into the topbar and removes the duplicated page title", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App initialAppState={adminState} />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     const topbarActions = within(topbar).getByRole("toolbar", { name: "项目参数管理后台页面操作" });
@@ -46,7 +46,7 @@ describe("normalized workspace headers", () => {
   it("exposes normalized topbar action hooks for legacy buttons and compact status controls", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
-    render(<App initialAppState={adminState} />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const parameterAdminTopbar = document.querySelector(".topbar") as HTMLElement;
     const legacyPrimary = within(parameterAdminTopbar).getByRole("button", { name: "批量参数导入" });
@@ -59,7 +59,7 @@ describe("normalized workspace headers", () => {
     cleanup();
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App initialAppState={adminState} />);
+    render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     const debuggingTopbar = document.querySelector(".topbar") as HTMLElement;
     const compactMetrics = debuggingTopbar.querySelector(".debug-admin-strip--topbar");

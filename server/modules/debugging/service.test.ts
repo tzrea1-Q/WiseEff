@@ -199,6 +199,10 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     current_value: "3000",
     target_value: "3200",
     sort_order: 10,
+    enabled: true,
+    archived_at: null,
+    archived_by: null,
+    archive_reason: null,
     ...overrides
   };
 }
@@ -280,6 +284,9 @@ function snapshotRow(overrides: Record<string, unknown> = {}) {
 const readAuth = makeAuth(["debugging:view", "debugging:read"]);
 const writeAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"]);
 const rollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]);
+const adminAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:admin"], [
+  { projectId: null, roleId: "admin" }
+]);
 const otherProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [{ projectId: "zephyr", roleId: "software-user" }]);
 const otherProjectWriteAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"], [
   { projectId: "zephyr", roleId: "software-user" }
@@ -287,12 +294,337 @@ const otherProjectWriteAuth = makeAuth(["debugging:view", "debugging:read", "deb
 const otherProjectRollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"], [
   { projectId: "zephyr", roleId: "software-user" }
 ]);
+const projectAdminAuth = makeAuth(["debugging:view", "debugging:admin"], [{ projectId: "aurora", roleId: "admin" }]);
+const otherProjectAdminAuth = makeAuth(["debugging:view", "debugging:admin"], [{ projectId: "zephyr", roleId: "admin" }]);
 const multiProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [
   { projectId: "aurora", roleId: "software-user" },
   { projectId: "zephyr", roleId: "software-user" }
 ]);
 
 describe("debugging service", () => {
+  it("listAdminParameters requires debugging:admin, includes archived rows, and returns bindings", async () => {
+    const { db, calls } = createFakeDb([
+      [parameterRow({ id: "param-1", enabled: false, archived_at: "2026-06-22T12:00:00.000Z" })],
+      [
+        bindingRow({ parameter_id: "param-1", protocol: "hdc", node_path: "/sys/hdc/current" }),
+        bindingRow({ id: "binding-param-1-adb", parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/current" })
+      ]
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listAdminParameters(readAuth, { includeArchived: true })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Missing permission: debugging:admin.", 403, { permission: "debugging:admin" })
+    );
+
+    const items = await service.listAdminParameters(adminAuth, { includeArchived: true });
+
+    expect(calls[0].text).not.toContain("enabled = true");
+    expect(calls[0].text).not.toContain("archived_at is null");
+    expect(calls[1].text).toContain("from debugging_parameter_node_bindings");
+    expect(calls[1].values).toEqual(["org-1", ["param-1"]]);
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: "param-1",
+        enabled: false,
+        selectedBinding: expect.objectContaining({ protocol: "hdc" }),
+        bindings: expect.arrayContaining([expect.objectContaining({ protocol: "hdc" }), expect.objectContaining({ protocol: "adb" })])
+      })
+    ]);
+  });
+
+  it("filters admin parameters by binding coverage after attaching bindings", async () => {
+    const { db } = createFakeDb([
+      [parameterRow({ id: "param-1" }), parameterRow({ id: "param-2", name: "Voltage", key: "voltage", node_path: "/sys/voltage" })],
+      [bindingRow({ parameter_id: "param-1", protocol: "hdc" }), bindingRow({ id: "binding-adb", parameter_id: "param-1", protocol: "adb" })]
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listAdminParameters(adminAuth, { coverage: "missing-adb" })).resolves.toEqual([
+      expect.objectContaining({ id: "param-2" })
+    ]);
+  });
+
+  it("treats archived coverage as an admin archived query", async () => {
+    const { db, calls } = createFakeDb([[parameterRow({ id: "param-archived", enabled: false, archived_at: "2026-06-22T12:00:00.000Z" })], []]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listAdminParameters(adminAuth, { coverage: "archived" })).resolves.toEqual([
+      expect.objectContaining({ id: "param-archived", archivedAt: "2026-06-22T12:00:00.000Z" })
+    ]);
+    expect(calls[0].text).not.toContain("enabled = true");
+    expect(calls[0].text).not.toContain("archived_at is null");
+  });
+
+  it("limits admin parameter mutations to accessible projects and global admins for shared parameters", async () => {
+    const serviceForCreate = createDebuggingService({ db: createFakeDb().db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      serviceForCreate.createAdminParameter(projectAdminAuth, {
+        projectId: "zephyr",
+        name: "Denied",
+        key: "denied",
+        description: "",
+        module: "Battery",
+        risk: "Low",
+        unit: "",
+        range: "",
+        currentValue: "",
+        targetValue: "",
+        sortOrder: 0,
+        enabled: true,
+        bindings: []
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "zephyr" }));
+
+    await expect(
+      serviceForCreate.createAdminParameter(projectAdminAuth, {
+        projectId: null,
+        name: "Shared denied",
+        key: "shared_denied",
+        description: "",
+        module: "Battery",
+        risk: "Low",
+        unit: "",
+        range: "",
+        currentValue: "",
+        targetValue: "",
+        sortOrder: 0,
+        enabled: true,
+        bindings: []
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Global debugging admin access is required.", 403));
+
+    const updateDb = createFakeDb([[parameterRow({ project_id: "aurora" })]]);
+    const updateService = createDebuggingService({ db: updateDb.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+    await expect(updateService.updateAdminParameter(projectAdminAuth, { parameterId: "param-1", projectId: null })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Global debugging admin access is required.", 403)
+    );
+    expect(updateDb.rollbacks).toHaveLength(1);
+
+    const archiveDb = createFakeDb([[parameterRow({ project_id: "aurora" })]]);
+    const archiveService = createDebuggingService({ db: archiveDb.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+    await expect(archiveService.archiveAdminParameter(otherProjectAdminAuth, { parameterId: "param-1" })).rejects.toMatchObject(
+      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
+    );
+    expect(archiveDb.rollbacks).toHaveLength(1);
+
+    const bindingDb = createFakeDb([[parameterRow({ project_id: null })]]);
+    const bindingService = createDebuggingService({ db: bindingDb.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+    await expect(
+      bindingService.upsertAdminParameterBinding(projectAdminAuth, {
+        parameterId: "param-1",
+        protocol: "hdc",
+        nodePath: "/sys/shared",
+        accessMode: "RO",
+        enabled: true
+      })
+    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Global debugging admin access is required.", 403));
+    expect(bindingDb.rollbacks).toHaveLength(1);
+  });
+
+  it("archives a debug parameter and writes summary audit metadata", async () => {
+    const { db, txCalls, transactions } = createFakeDb([
+      [parameterRow({ id: "param-1" })],
+      [parameterRow({ id: "param-1", enabled: true, archived_at: "2026-06-22T12:00:00.000Z" })],
+      []
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+    const item = await service.archiveAdminParameter(adminAuth, { parameterId: "param-1", reason: "Deprecated" }, { requestId: "request-1" });
+
+    expect(item).toMatchObject({ id: "param-1", enabled: true, archivedAt: "2026-06-22T12:00:00.000Z" });
+    expect(transactions).toHaveLength(1);
+    expect(txCalls.some((call) => call.text.includes("update debugging_parameters"))).toBe(true);
+    expect(audit.events[0]).toMatchObject({
+      traceId: "request-1",
+      app: "debugging",
+      kind: "debug-parameter-admin-archive",
+      action: "archive",
+      targetType: "debug-parameter",
+      targetId: "param-1",
+      metadata: { parameterId: "param-1", projectId: "aurora", enabled: true, archived: true, hasReason: true }
+    });
+    expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/current");
+  });
+
+  it("creates an admin parameter with bindings in one transaction and omits raw node paths from audit", async () => {
+    const { db, txCalls, transactions } = createFakeDb([
+      [parameterRow({ id: "param-created", node_path: "/sys/hdc/path", access_mode: "RW" })],
+      [bindingRow({ parameter_id: "param-created", protocol: "hdc", node_path: "/sys/hdc/path" })],
+      [bindingRow({ id: "binding-created-adb", parameter_id: "param-created", protocol: "adb", node_path: "/sys/adb/path" })],
+      [
+        bindingRow({ parameter_id: "param-created", protocol: "hdc", node_path: "/sys/hdc/path" }),
+        bindingRow({ id: "binding-created-adb", parameter_id: "param-created", protocol: "adb", node_path: "/sys/adb/path" })
+      ]
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+    const item = await service.createAdminParameter(
+      adminAuth,
+      {
+        projectId: "aurora",
+        name: "Created parameter",
+        key: "created_parameter",
+        description: "Created in admin.",
+        module: "Battery",
+        risk: "Medium",
+        unit: "mA",
+        range: "0-5000",
+        minValue: 0,
+        maxValue: 5000,
+        currentValue: "100",
+        targetValue: "200",
+        sortOrder: 20,
+        enabled: true,
+        bindings: [
+          { protocol: "hdc", nodePath: "/sys/hdc/path", accessMode: "RW", enabled: true },
+          { protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RO", enabled: true, notes: "ADB lab" }
+        ]
+      },
+      { requestId: "request-create" }
+    );
+
+    expect(transactions).toHaveLength(1);
+    expect(txCalls[0].text).toContain("insert into debugging_parameters");
+    expect(txCalls.filter((call) => call.text.includes("insert into debugging_parameter_node_bindings"))).toHaveLength(2);
+    expect(item).toMatchObject({
+      id: "param-created",
+      selectedBinding: expect.objectContaining({ protocol: "hdc" }),
+      bindings: expect.arrayContaining([expect.objectContaining({ protocol: "hdc" }), expect.objectContaining({ protocol: "adb" })])
+    });
+    expect(audit.events[0]).toMatchObject({
+      kind: "debug-parameter-admin-create",
+      action: "create",
+      metadata: { parameterId: "param-created", projectId: "aurora", enabled: true, bindingCount: 2, protocols: ["hdc", "adb"] }
+    });
+    expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/hdc/path");
+    expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/adb/path");
+  });
+
+  it("updates an admin parameter with bindings in one transaction and omits raw node paths from audit", async () => {
+    const { db, txCalls, transactions } = createFakeDb([
+      [parameterRow({ id: "param-1", name: "Existing parameter", node_path: "/sys/existing", access_mode: "RO", min_value: "0", max_value: "5000" })],
+      [
+        bindingRow({ parameter_id: "param-1", protocol: "hdc", node_path: "/sys/hdc/existing", access_mode: "RW" }),
+        bindingRow({ id: "binding-param-1-adb", parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })
+      ],
+      [
+        parameterRow({
+          id: "param-1",
+          project_id: null,
+          name: "Updated parameter",
+          node_path: "/sys/updated",
+          access_mode: "RW",
+          min_value: null,
+          max_value: null,
+          sort_order: 0,
+          enabled: false
+        })
+      ],
+      [bindingRow({ parameter_id: "param-1", protocol: "hdc", node_path: "/sys/updated", access_mode: "RW" })],
+      [bindingRow({ id: "binding-param-1-adb", project_id: null, parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })],
+      [
+        bindingRow({ project_id: null, parameter_id: "param-1", protocol: "hdc", node_path: "/sys/updated", access_mode: "RW" }),
+        bindingRow({ id: "binding-param-1-adb", project_id: null, parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })
+      ]
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+    const item = await service.updateAdminParameter(
+      adminAuth,
+      {
+        parameterId: "param-1",
+        projectId: null,
+        name: "Updated parameter",
+        description: "Updated in admin.",
+        risk: "High",
+        minValue: null,
+        maxValue: null,
+        sortOrder: 0,
+        enabled: false,
+        bindings: [{ protocol: "hdc", nodePath: "/sys/updated", accessMode: "RW", enabled: true, notes: "Updated binding" }]
+      },
+      { requestId: "request-update" }
+    );
+
+    expect(transactions).toHaveLength(1);
+    expect(txCalls[0].text).toContain("from debugging_parameters");
+    expect(txCalls.some((call) => call.text.includes("update debugging_parameters"))).toBe(true);
+    const bindingUpsertCalls = txCalls.filter((call) => call.text.includes("insert into debugging_parameter_node_bindings"));
+    expect(bindingUpsertCalls).toHaveLength(2);
+    expect(bindingUpsertCalls[0].values.slice(2, 9)).toEqual([null, "param-1", "hdc", "/sys/updated", "RW", true, "Updated binding"]);
+    expect(bindingUpsertCalls[1].values.slice(2, 9)).toEqual([null, "param-1", "adb", "/sys/adb/existing", "RO", true, null]);
+    const updateCall = txCalls.find((call) => call.text.includes("update debugging_parameters"));
+    expect(updateCall?.values[2]).toBeNull();
+    expect(updateCall?.values[11]).toBeNull();
+    expect(updateCall?.values[12]).toBeNull();
+    expect(updateCall?.values[16]).toBe(0);
+    expect(updateCall?.values[17]).toBe(false);
+    expect(item).toMatchObject({
+      id: "param-1",
+      projectId: null,
+      name: "Updated parameter",
+      minValue: null,
+      maxValue: null,
+      sortOrder: 0,
+      enabled: false,
+      selectedBinding: expect.objectContaining({ protocol: "hdc", nodePath: "/sys/updated" }),
+      bindings: [
+        expect.objectContaining({ projectId: null, parameterId: "param-1", protocol: "hdc", nodePath: "/sys/updated" }),
+        expect.objectContaining({ projectId: null, parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/existing" })
+      ]
+    });
+    expect(audit.events[0]).toMatchObject({
+      traceId: "request-update",
+      kind: "debug-parameter-admin-update",
+      action: "update",
+      targetType: "debug-parameter",
+      targetId: "param-1",
+      metadata: { parameterId: "param-1", projectId: null, enabled: false, bindingCount: 2, protocols: ["hdc", "adb"] }
+    });
+    expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/updated");
+  });
+
+  it("upserts an admin parameter binding and converts repository null to NOT_FOUND", async () => {
+    const success = createFakeDb([[parameterRow({ project_id: "aurora" })], [bindingRow({ protocol: "adb", node_path: "/sys/adb/path" })]]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db: success.db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
+
+    await expect(
+      service.upsertAdminParameterBinding(
+        adminAuth,
+        { parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RO", enabled: true, notes: "ADB" },
+        { requestId: "request-binding" }
+      )
+    ).resolves.toMatchObject({ parameterId: "param-1", protocol: "adb", enabled: true });
+    expect(success.transactions).toHaveLength(1);
+    expect(audit.events[0]).toMatchObject({
+      kind: "debug-parameter-binding-admin-upsert",
+      action: "update",
+      targetType: "debug-parameter-binding",
+      targetId: "param-1:adb",
+      metadata: { parameterId: "param-1", protocol: "adb", enabled: true }
+    });
+    expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/adb/path");
+
+    const missing = createFakeDb([[]]);
+    const missingService = createDebuggingService({ db: missing.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      missingService.upsertAdminParameterBinding(adminAuth, {
+        parameterId: "missing-param",
+        protocol: "adb",
+        nodePath: "/sys/adb/path",
+        accessMode: "RO",
+        enabled: true
+      })
+    ).rejects.toMatchObject(new ApiError("NOT_FOUND", "Debug parameter was not found.", 404));
+    expect(missing.rollbacks).toHaveLength(1);
+  });
+
   it("listDevices and listParameters deny different-project auth before querying", async () => {
     const { db, calls } = createFakeDb();
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
@@ -325,7 +657,7 @@ describe("debugging service", () => {
       [parameterRow()],
       [
         bindingRow({ protocol: "hdc", node_path: "/sys/current", enabled: true }),
-        bindingRow({ id: "binding-param-1-adb", protocol: "adb", node_path: "/sys/adb/current", enabled: false, notes: "disabled in lab" })
+        bindingRow({ id: "binding-param-1-adb", protocol: "adb", node_path: "/sys/adb/current", enabled: true, notes: "ADB lab" })
       ]
     ]);
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
@@ -337,12 +669,12 @@ describe("debugging service", () => {
           parameterId: "param-1",
           protocol: "adb",
           nodePath: "/sys/adb/current",
-          enabled: false,
-          notes: "disabled in lab"
+          enabled: true,
+          notes: "ADB lab"
         }),
         bindings: expect.arrayContaining([
           expect.objectContaining({ protocol: "hdc", nodePath: "/sys/current", enabled: true }),
-          expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current", enabled: false })
+          expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current", enabled: true })
         ])
       })
     ]);
@@ -350,6 +682,50 @@ describe("debugging service", () => {
     expect(calls[0].text).toContain("from debugging_parameters");
     expect(calls[1].text).toContain("from debugging_parameter_node_bindings");
     expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"], "adb"]);
+  });
+
+  it("filters runtime parameters without an enabled selected-protocol binding", async () => {
+    const { db } = createFakeDb([
+      [
+        parameterRow({ id: "param-hdc-only", key: "hdc_only" }),
+        parameterRow({ id: "param-adb-disabled", key: "adb_disabled" }),
+        parameterRow({ id: "param-adb-enabled", key: "adb_enabled" })
+      ],
+      [
+        bindingRow({
+          id: "binding-hdc-only",
+          parameter_id: "param-hdc-only",
+          protocol: "hdc",
+          node_path: "/sys/hdc/only",
+          enabled: true
+        }),
+        bindingRow({
+          id: "binding-adb-disabled",
+          parameter_id: "param-adb-disabled",
+          protocol: "adb",
+          node_path: "/sys/adb/disabled",
+          enabled: false
+        }),
+        bindingRow({
+          id: "binding-adb-enabled",
+          parameter_id: "param-adb-enabled",
+          protocol: "adb",
+          node_path: "/sys/adb/enabled",
+          enabled: true
+        })
+      ]
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.listParameters(readAuth, { projectId: "aurora", protocol: "adb" })).resolves.toEqual([
+      expect.objectContaining({
+        id: "param-adb-enabled",
+        selectedBinding: expect.objectContaining({
+          protocol: "adb",
+          enabled: true
+        })
+      })
+    ]);
   });
 
   it("lists shared debugging parameters for any authorized project context", async () => {
@@ -790,6 +1166,21 @@ describe("debugging service", () => {
     expect(writeOnlyGateway.readNode).not.toHaveBeenCalled();
   });
 
+  it("readNode rejects archived parameters before gateway call", async () => {
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [parameterRow({ archived_at: "2026-06-22T12:00:00.000Z" })],
+      [bindingRow()]
+    ]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.", 400)
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
+  });
+
   it("readNode denies sessions outside the auth project scope before gateway call", async () => {
     const { db } = createFakeDb([[sessionRow()]]);
     const gateway = makeGateway();
@@ -874,6 +1265,18 @@ describe("debugging service", () => {
     await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400)
     );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode rejects disabled parameters before gateway call", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ enabled: false })], [bindingRow()]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
+      new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.", 400)
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
