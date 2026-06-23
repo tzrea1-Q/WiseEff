@@ -198,6 +198,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "BRIDGE-WIN-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/node-debugging",
+    roles: ["Hardware Committer", "Admin"],
+    action: "Use the Windows-first local bridge panel to download, pair, and reconnect local debugging targets.",
+    coverage: "future",
+    acceptanceIds: ["BRIDGE-WIN-001"],
+    specFiles: ["e2e/acceptance/debugging-local-bridge.acceptance.spec.ts"],
+    assertions: ["ui", "api"],
+    deferralReason: "Requires a real Windows bridge runtime and localhost health endpoint orchestration in acceptance."
+  },
+  {
     id: "HDC-LAB-001",
     priority: "P1",
     area: "debugging",

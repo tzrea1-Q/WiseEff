@@ -726,6 +726,45 @@ describe("/node-debugging", () => {
     }));
   });
 
+  it("shows a Windows download CTA when the local bridge is missing", async () => {
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "http://127.0.0.1:18787/health") {
+        throw new Error("bridge offline");
+      }
+      if (url.endsWith("/api/v1/device-bridges/mine")) {
+        return new Response(JSON.stringify({ items: [] }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/releases")) {
+        return new Response(JSON.stringify({
+          recommendedVersion: "0.1.0",
+          minCompatibleVersion: "0.1.0",
+          items: [
+            {
+              platform: "windows",
+              arch: "amd64",
+              version: "0.1.0",
+              downloadUrl: "/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
+            }
+          ]
+        }));
+      }
+      return new Response(JSON.stringify({ ok: true }));
+    }) as typeof fetch);
+
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    const downloadLink = await screen.findByRole("link", { name: "下载 Windows Bridge" });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      "/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
+    );
+  });
+
   it("falls back to local HDC calls when API gateway actions are not supplied", async () => {
     mockFetchSequence([
       { ok: true, targets: ["target-a"], activeTarget: "target-a" },
@@ -762,7 +801,7 @@ describe("/node-debugging", () => {
 
   it("auto-detects hdc targets on entry", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledWith("/api/hdc/targets"));
     expect(await screen.findByText(/已连接：target-a/)).toBeInTheDocument();
@@ -770,7 +809,7 @@ describe("/node-debugging", () => {
 
   it("moves hdc connection controls into the topbar and removes the standalone page header", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText("检测失败，请检查 HDC 环境");
 
@@ -783,7 +822,7 @@ describe("/node-debugging", () => {
 
   it("does not show seeded values as current values before readable nodes are read", async () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText("检测失败，请检查 HDC 环境");
     expect(screen.queryByText("hdc target detection failed")).not.toBeInTheDocument();
@@ -812,7 +851,7 @@ describe("/node-debugging", () => {
       complexJsonAutoRead,
       complexDtsAutoRead
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText(/已连接：target-a/);
     const rwRow = await within(findRowByText("charger.input_current_limit_ma")).findByText("3651");
@@ -841,7 +880,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     const summary = await screen.findByRole("region", { name: "调试会话摘要" });
     await within(summary).findByText(/在线 · target-a/);
@@ -877,7 +916,7 @@ describe("/node-debugging", () => {
       complexJsonAutoRead,
       complexDtsAutoRead
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await within(findRowByText("charger.input_current_limit_ma")).findByText("成功");
     const successBadge = within(findRowByText("charger.input_current_limit_ma")).getByText("成功");
@@ -892,7 +931,7 @@ describe("/node-debugging", () => {
 
   it("does not expose node paths to normal users", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText(/已连接：target-a/);
     expect(document.body).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
@@ -900,7 +939,7 @@ describe("/node-debugging", () => {
 
   it("omits risk filtering, risk column, and access mode filtering", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText(/已连接：target-a/);
 
@@ -911,7 +950,7 @@ describe("/node-debugging", () => {
 
   it("仅将状态筛选合并到表头，搜索框仍独立存在", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText(/已连接：target-a/);
 
@@ -931,7 +970,7 @@ describe("/node-debugging", () => {
 
   it("仅支持从状态表头筛选节点参数", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
 
     await screen.findByText(/已连接：target-a/);
 
@@ -964,7 +1003,7 @@ describe("/node-debugging", () => {
 
   it("uses a detail sheet for node operations instead of row-level read and write controls", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const roRow = findRowByText("battery.impedance_mohm");
@@ -992,7 +1031,7 @@ describe("/node-debugging", () => {
       complexJsonAutoRead,
       complexDtsAutoRead
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("battery.impedance_mohm");
@@ -1025,7 +1064,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1060,7 +1099,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1083,7 +1122,7 @@ describe("/node-debugging", () => {
 
   it("shows write format as an independent detail section", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1102,7 +1141,7 @@ describe("/node-debugging", () => {
 
   it("places the target value input after the write format section", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1117,7 +1156,7 @@ describe("/node-debugging", () => {
 
   it("keeps write format examples stable while editing the target value", async () => {
     mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -1135,7 +1174,7 @@ describe("/node-debugging", () => {
 
   it("uses a multiline target value editor for complex writes", async () => {
     mockFetchSequence(withComplexDebugAutoReads([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]));
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.policy_overlay_json");
@@ -1257,7 +1296,7 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3600\n", stderr: "" }
       }
     ]);
-    render(<App initialAppState={userState} />);
+    render(<App initialAppState={userState} runtimeMode="mock" />);
     await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");

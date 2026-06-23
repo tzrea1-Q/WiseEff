@@ -1,10 +1,20 @@
-import { Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Eye, Link2, Pencil, RotateCw, Search, Send } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
+import {
+  createPairingCode,
+  listMyBridges,
+  listReleases,
+  probeLocalBridgeHealth,
+  type DeviceBridgePairingCode,
+  type DeviceBridgeRecord,
+  type DeviceBridgeReleaseItem,
+  type LocalBridgeHealthState
+} from "./infrastructure/http/deviceBridgeClient";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import type { NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type {
@@ -509,6 +519,150 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
           <span>例如输入 {exampleValue}，系统会通过 {protocolLabel(protocol)} 将该值写入当前节点。</span>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+type BridgePanelStatus = "missing_bridge" | "not_paired" | "not_running" | "online_no_device" | "bridges_with_targets";
+
+function isWindowsAmd64Release(item: DeviceBridgeReleaseItem) {
+  return item.platform === "windows" && item.arch === "amd64";
+}
+
+function deriveBridgePanelStatus(input: {
+  health: LocalBridgeHealthState | null;
+  bridgeCount: number;
+  target?: string;
+}): BridgePanelStatus {
+  if (!input.health) {
+    return input.bridgeCount > 0 ? "not_running" : "missing_bridge";
+  }
+  if (!input.health.paired) {
+    return "not_paired";
+  }
+  if (!input.health.connected || !input.target) {
+    return "online_no_device";
+  }
+  return "bridges_with_targets";
+}
+
+function LocalDeviceBridgePanel({
+  target,
+  detecting,
+  onDetect
+}: {
+  target?: string;
+  detecting: boolean;
+  onDetect: () => void;
+}) {
+  const [checking, setChecking] = useState(false);
+  const [health, setHealth] = useState<LocalBridgeHealthState | null>(null);
+  const [bridges, setBridges] = useState<DeviceBridgeRecord[]>([]);
+  const [windowsRelease, setWindowsRelease] = useState<DeviceBridgeReleaseItem | null>(null);
+  const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
+  const [panelError, setPanelError] = useState("");
+
+  const refreshBridgeState = useCallback(async () => {
+    setChecking(true);
+    setPanelError("");
+    try {
+      const [nextHealth, nextBridges] = await Promise.all([
+        probeLocalBridgeHealth(),
+        listMyBridges().catch(() => [] as DeviceBridgeRecord[])
+      ]);
+      setHealth(nextHealth);
+      setBridges(nextBridges);
+      if (!nextHealth && nextBridges.length === 0) {
+        const manifest = await listReleases().catch(() => null);
+        const windowsItem = manifest?.items.find(isWindowsAmd64Release) ?? null;
+        setWindowsRelease(windowsItem);
+      } else {
+        setWindowsRelease(null);
+      }
+      return { nextHealth, nextBridges };
+    } finally {
+      setChecking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshBridgeState();
+  }, [refreshBridgeState]);
+
+  const panelStatus = deriveBridgePanelStatus({
+    health,
+    bridgeCount: bridges.length,
+    target
+  });
+
+  const startCommand = "wiseeff-bridge start";
+  const pairCommand = pairingCode
+    ? `wiseeff-bridge pair --server ${window.location.origin} --code ${pairingCode.code}`
+    : "wiseeff-bridge pair --server <当前域名> --code <6位配对码>";
+
+  const handleConnect = async () => {
+    const snapshot = await refreshBridgeState();
+    const needsPairingCode = !snapshot.nextHealth || !snapshot.nextHealth.paired;
+    if (needsPairingCode) {
+      try {
+        const code = await createPairingCode();
+        setPairingCode(code);
+      } catch (error) {
+        setPanelError(formatDebuggingRuntimeError(error));
+      }
+      return;
+    }
+    if (snapshot.nextHealth.connected) {
+      onDetect();
+    }
+  };
+
+  return (
+    <section className="local-device-bridge-panel" aria-label="本地设备连接">
+      <div className="local-device-bridge-panel__head">
+        <div>
+          <strong>本地设备桥接（Windows 优先）</strong>
+          <small>
+            {panelStatus === "bridges_with_targets" ? "Bridge 在线，已连接可调试目标。" :
+              panelStatus === "online_no_device" ? "Bridge 在线，但当前未检测到可调试设备。" :
+              panelStatus === "not_running" ? "已配对 Bridge，但本地服务未运行。" :
+              panelStatus === "not_paired" ? "Bridge 已启动但尚未配对，请先完成配对。" :
+              "未检测到本地 Bridge，请先下载安装。"}
+          </small>
+        </div>
+        <button className="button subtle" type="button" disabled={checking || detecting} onClick={() => void handleConnect()}>
+          <Link2 size={14} aria-hidden="true" />
+          {checking ? "检查中..." : "连接本地设备"}
+        </button>
+      </div>
+      <div className="local-device-bridge-panel__body">
+        {(panelStatus === "missing_bridge" && windowsRelease) ? (
+          <a className="button subtle" href={windowsRelease.downloadUrl}>
+            下载 Windows Bridge
+          </a>
+        ) : null}
+        {(panelStatus === "missing_bridge" || panelStatus === "not_paired") ? (
+          <div className="local-device-bridge-panel__command">
+            <span>配对命令</span>
+            <code>{pairCommand}</code>
+            {pairingCode ? <small>配对码有效期至 {pairingCode.expiresAt}</small> : null}
+          </div>
+        ) : null}
+        {panelStatus === "not_running" ? (
+          <div className="local-device-bridge-panel__command">
+            <span>启动命令</span>
+            <code>{startCommand}</code>
+          </div>
+        ) : null}
+        {bridges.length > 0 ? (
+          <div className="local-device-bridge-panel__bridges" aria-label="我的桥接器列表">
+            {bridges.slice(0, 3).map((bridge) => (
+              <span key={bridge.id}>{bridge.machineLabel} · {bridge.platform}/{bridge.arch}</span>
+            ))}
+          </div>
+        ) : null}
+        {panelError ? <p className="node-row-error">{panelError}</p> : null}
+      </div>
     </section>
   );
 }
@@ -1020,6 +1174,9 @@ export function NodeDebuggingPage({
             </button>
           ))}
         </div>
+        {debuggingActions && protocol === "adb" ? (
+          <LocalDeviceBridgePanel target={target} detecting={detecting} onDetect={() => void detect()} />
+        ) : null}
         <NodeSessionSummaryCard
           connected={connected}
           target={target}
