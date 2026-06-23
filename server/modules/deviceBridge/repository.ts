@@ -291,6 +291,41 @@ export async function revokeBridge(
   return toDeviceBridgeRecord(row);
 }
 
+export async function updateBridgeMachineLabel(
+  db: Queryable,
+  input: { bridgeId: string; userId: string; organizationId: string; machineLabel: string }
+): Promise<DeviceBridgeRecord | null> {
+  const result = await db.query<DeviceBridgeRow>(
+    `
+    update device_bridges
+    set machine_label = $4
+    where id = $1
+      and user_id = $2
+      and organization_id = $3
+    returning
+      id,
+      organization_id,
+      user_id,
+      machine_label,
+      platform,
+      arch,
+      client_version,
+      capabilities,
+      created_at,
+      last_seen_at,
+      revoked_at
+    `,
+    [input.bridgeId, input.userId, input.organizationId, input.machineLabel]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  return toDeviceBridgeRecord(row);
+}
+
 export function createDeviceBridgeRepository(db: Queryable) {
   return {
     createPairingCode: (input: Parameters<typeof createPairingCode>[1]) => createPairingCode(db, input),
@@ -300,7 +335,9 @@ export function createDeviceBridgeRepository(db: Queryable) {
     validateBridgeToken: (input: Parameters<typeof validateBridgeToken>[1]) => validateBridgeToken(db, input),
     touchBridgeLastSeen: (input: Parameters<typeof touchBridgeLastSeen>[1]) => touchBridgeLastSeen(db, input),
     listBridgesForUser: (input: Parameters<typeof listBridgesForUser>[1]) => listBridgesForUser(db, input),
-    revokeBridge: (input: Parameters<typeof revokeBridge>[1]) => revokeBridge(db, input)
+    revokeBridge: (input: Parameters<typeof revokeBridge>[1]) => revokeBridge(db, input),
+    updateBridgeMachineLabel: (input: Parameters<typeof updateBridgeMachineLabel>[1]) =>
+      updateBridgeMachineLabel(db, input)
   };
 }
 

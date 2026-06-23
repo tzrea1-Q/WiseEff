@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   issuePairingCodeResponseSchema,
   pairWithCodeBodySchema,
-  pairWithCodeResponseSchema
+  pairWithCodeResponseSchema,
+  renameBridgeBodySchema
 } from "./schemas";
 
 describe("device bridge schemas", () => {
@@ -52,6 +53,14 @@ describe("device bridge schemas", () => {
         tokenExpiresAt: "2026-09-21T00:00:00.000Z"
       }).success
     ).toBe(true);
+  });
+
+  it("accepts valid rename bridge request bodies", () => {
+    expect(renameBridgeBodySchema.safeParse({ machineLabel: "LAB-PC-02" }).success).toBe(true);
+  });
+
+  it("rejects empty machine labels in rename requests", () => {
+    expect(renameBridgeBodySchema.safeParse({ machineLabel: "" }).success).toBe(false);
   });
 
   it("rejects bridge tokens without wb_ prefix in responses", () => {

@@ -213,6 +213,59 @@ describe("device bridge routes", () => {
     });
   });
 
+  it("PATCH /api/v1/device-bridges/:bridgeId renames the bridge", async () => {
+    const repo = {
+      updateBridgeMachineLabel: vi.fn().mockResolvedValue(bridgeRecord({ machineLabel: "LAB-PC-02" }))
+    };
+    vi.mocked(repository.createDeviceBridgeRepository).mockReturnValue(repo as never);
+
+    const response = await requestJson<{ item: { id: string; machineLabel: string } }>(
+      makeServer({ db: makeDb() }),
+      "/api/v1/device-bridges/br-1",
+      { method: "PATCH", body: JSON.stringify({ machineLabel: "LAB-PC-02" }) }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.item.machineLabel).toBe("LAB-PC-02");
+    expect(repo.updateBridgeMachineLabel).toHaveBeenCalledWith({
+      bridgeId: "br-1",
+      userId: "user-1",
+      organizationId: "org-1",
+      machineLabel: "LAB-PC-02"
+    });
+  });
+
+  it("PATCH /api/v1/device-bridges/:bridgeId requires debugging:use", async () => {
+    const repo = {
+      updateBridgeMachineLabel: vi.fn()
+    };
+    vi.mocked(repository.createDeviceBridgeRepository).mockReturnValue(repo as never);
+
+    const response = await requestJson(
+      makeServer({ db: makeDb(), auth: makeAuth({ permissions: [] }) }),
+      "/api/v1/device-bridges/br-1",
+      { method: "PATCH", body: JSON.stringify({ machineLabel: "LAB-PC-02" }) }
+    );
+
+    expect(response.status).toBe(403);
+    expect(repo.updateBridgeMachineLabel).not.toHaveBeenCalled();
+  });
+
+  it("PATCH /api/v1/device-bridges/:bridgeId returns 404 when the bridge is missing", async () => {
+    const repo = {
+      updateBridgeMachineLabel: vi.fn().mockResolvedValue(null)
+    };
+    vi.mocked(repository.createDeviceBridgeRepository).mockReturnValue(repo as never);
+
+    const response = await requestJson(
+      makeServer({ db: makeDb() }),
+      "/api/v1/device-bridges/br-missing",
+      { method: "PATCH", body: JSON.stringify({ machineLabel: "LAB-PC-02" }) }
+    );
+
+    expect(response.status).toBe(404);
+  });
+
   it("POST /api/v1/device-bridges/:bridgeId/revoke returns 404 when the bridge is missing", async () => {
     const repo = {
       revokeBridge: vi.fn().mockResolvedValue(null)

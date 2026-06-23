@@ -26,6 +26,11 @@ export const bridgeIdParamsSchema = z.object({
   bridgeId: z.string().trim().min(1)
 });
 
+export const renameBridgeBodySchema = z.object({
+  machineLabel: nonEmptyString
+});
+
 export type PairWithCodeBody = z.infer<typeof pairWithCodeBodySchema>;
+export type RenameBridgeBody = z.infer<typeof renameBridgeBodySchema>;
 export type IssuePairingCodeResponse = z.infer<typeof issuePairingCodeResponseSchema>;
 export type PairWithCodeResponse = z.infer<typeof pairWithCodeResponseSchema>;

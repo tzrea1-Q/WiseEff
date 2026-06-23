@@ -7,7 +7,7 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createPairingService, type PairingService } from "./pairingService";
 import { createDeviceBridgeRepository } from "./repository";
 import type { BridgeReleaseManifest } from "./releaseManifest";
-import { bridgeIdParamsSchema, pairWithCodeBodySchema } from "./schemas";
+import { bridgeIdParamsSchema, pairWithCodeBodySchema, renameBridgeBodySchema } from "./schemas";
 import type { DeviceBridgeRecord } from "./types";
 
 function requireDb(db: Database | undefined) {
@@ -108,6 +108,33 @@ export function registerDeviceBridgeRoutes(
       status: 200,
       body: {
         items: items.map(toBridgeItem)
+      }
+    };
+  });
+
+  router.patch("/api/v1/device-bridges/:bridgeId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireDebuggingUsePermission(auth);
+    const params = parseWithSchema(bridgeIdParamsSchema, request.params);
+    const body = parseWithSchema(renameBridgeBodySchema, request.body);
+
+    const repo = createDeviceBridgeRepository(db);
+    const updated = await repo.updateBridgeMachineLabel({
+      bridgeId: params.bridgeId,
+      userId: auth.user.id,
+      organizationId: auth.user.organizationId,
+      machineLabel: body.machineLabel
+    });
+
+    if (!updated) {
+      throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: params.bridgeId });
+    }
+
+    return {
+      status: 200,
+      body: {
+        item: toBridgeItem(updated)
       }
     };
   });
