@@ -93,6 +93,22 @@ Important deployment notes:
 - Do not run `db:seed:*` scripts against customer or production data.
 - Do not commit `ops/self-hosted/.env`.
 
+For controlled self-managed deployments with local accounts (`AUTH_PROVIDER=local` in `ops/self-hosted/.env`), bootstrap the first admin after the stack is up:
+
+```bash
+./scripts/compose --env-file .env exec api npm run admin:bootstrap -- \
+  --username admin.ops \
+  --password 'ReplaceWithAStrongPassword'
+```
+
+For internal staging or demo hosts only, import bundled M0–M3 seed data:
+
+```bash
+./scripts/seed-demo-data.sh
+```
+
+Migration `0021_baseline_platform_roles.sql` seeds platform roles and local-registration organizations automatically on API startup.
+
 Upgrade an existing server deployment:
 
 ```bash

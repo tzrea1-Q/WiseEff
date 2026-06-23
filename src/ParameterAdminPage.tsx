@@ -1,6 +1,7 @@
 import { History, Info, ShieldCheck, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listParameterModuleNames } from "./powerManagementConfig";
+import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
 import type { ParameterImportBatchDto, ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
@@ -33,7 +34,14 @@ function getImportClassificationLabel(item: ParameterImportBatchDto["items"][num
   return isEligibleImportItem(item) ? item.classification : `${item.classification} · not eligible`;
 }
 
-export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSearch, parameterActions }: PageProps) {
+export function ParameterAdminPage({
+  state,
+  dispatch,
+  onNavigate,
+  search: rawSearch,
+  parameterActions,
+  runtimeMode
+}: PageProps) {
   const [definitionDialogParameterId, setDefinitionDialogParameterId] = useState<string | null>(null);
   const [valuesDialogParameterId, setValuesDialogParameterId] = useState<string | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -49,10 +57,21 @@ export function ParameterAdminPage({ state, dispatch, onNavigate, search: rawSea
   const urlSearch = useParamAdminSearch();
   const search = rawSearch ? parseParamAdminSearch(rawSearch) : urlSearch.search;
   const updateSearch = urlSearch.updateSearch;
-  const library = state.configDraft.parameterLibrary;
-  const modules = state.configDraft.parameterModules;
-  const moduleNames = useMemo(() => listParameterModuleNames(modules), [modules]);
+  const isApiMode = runtimeMode === "api";
   const projects = state.configDraft.projects;
+  const library = useMemo(() => {
+    if (isApiMode) {
+      return buildParameterLibraryFromRecords(state.parameters, projects);
+    }
+    return state.configDraft.parameterLibrary;
+  }, [isApiMode, projects, state.configDraft.parameterLibrary, state.parameters]);
+  const modules = useMemo(() => {
+    if (isApiMode) {
+      return buildParameterModulesFromRecords(state.parameters, state.configDraft.parameterModules);
+    }
+    return state.configDraft.parameterModules;
+  }, [isApiMode, state.configDraft.parameterModules, state.parameters]);
+  const moduleNames = useMemo(() => listParameterModuleNames(modules), [modules]);
   const definitionParameter = library.find((parameter) => parameter.id === definitionDialogParameterId) ?? null;
   const valuesParameter = library.find((parameter) => parameter.id === valuesDialogParameterId) ?? null;
   const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;

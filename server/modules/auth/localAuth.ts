@@ -1,19 +1,22 @@
-import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import { createAuditEvent } from "../audit/repository";
 import { getAuthContext } from "./repository";
+import {
+  defaultLocalRegistrationOrganizationResolver,
+  hashLocalAccountPassword,
+  hashLocalSessionToken,
+  validateLocalAccountPassword,
+  validateLocalAccountUsername
+} from "./localAccountCredentials";
 import type { AuthContext, BackendRoleId } from "./types";
 
 const scryptAsync = promisify(scrypt);
 const passwordHashPrefix = "scrypt";
 const defaultSessionTtlMs = 1000 * 60 * 60 * 24 * 7;
 const allowedLocalOrganizations = new Set(["硬件部", "软件部"]);
-const localRegistrationOrganizationIds: Record<string, string> = {
-  "硬件部": "org-hardware-department",
-  "软件部": "org-software-department"
-};
 const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
 const approvalRequiredRoleIds = new Set<BackendRoleId>(["hardware-committer", "software-committer"]);
 const defaultSelfRegistrationRoleId: BackendRoleId = "hardware-user";
@@ -91,34 +94,7 @@ export type UpdateCurrentUserProfileInput = {
   title?: string;
 };
 
-export function defaultLocalRegistrationOrganizationResolver(organizationName: string) {
-  return {
-    id: localRegistrationOrganizationIds[organizationName],
-    name: organizationName
-  };
-}
-
-function normalizeUsername(username: string) {
-  return username.trim().toLowerCase();
-}
-
-function requireUsername(username: string) {
-  if (!username) {
-    throw new ApiError("VALIDATION_FAILED", "Username is required.", 400);
-  }
-  if (username.length < 3 || username.length > 64) {
-    throw new ApiError("VALIDATION_FAILED", "Username must be 3 to 64 characters.", 400);
-  }
-  if (!/^[a-z0-9._-]+$/.test(username)) {
-    throw new ApiError("VALIDATION_FAILED", "Username can only contain letters, numbers, dots, underscores, or hyphens.", 400);
-  }
-}
-
-function requirePasswordPolicy(password: string) {
-  if (password.length < 8) {
-    throw new ApiError("VALIDATION_FAILED", "Password must be at least 8 characters.", 400);
-  }
-}
+export { defaultLocalRegistrationOrganizationResolver } from "./localAccountCredentials";
 
 function bearerToken(authorization: string | string[] | undefined) {
   const header = Array.isArray(authorization) ? authorization[0] : authorization;
@@ -150,13 +126,23 @@ export function isLocalSessionToken(token: string) {
 }
 
 function hashToken(token: string) {
-  return createHash("sha256").update(token).digest("base64url");
+  return hashLocalSessionToken(token);
 }
 
 async function hashPassword(password: string) {
-  const salt = randomBytes(16).toString("base64url");
-  const derived = (await scryptAsync(password, salt, 64)) as Buffer;
-  return `${passwordHashPrefix}$${salt}$${derived.toString("base64url")}`;
+  return hashLocalAccountPassword(password);
+}
+
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
+function requireUsername(username: string) {
+  validateLocalAccountUsername(username);
+}
+
+function requirePasswordPolicy(password: string) {
+  validateLocalAccountPassword(password);
 }
 
 async function verifyPassword(password: string, passwordHash: string) {

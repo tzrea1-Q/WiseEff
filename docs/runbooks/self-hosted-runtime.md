@@ -58,7 +58,39 @@ Do not commit `ops/self-hosted/.env`. The repository `.dockerignore` also exclud
 ./scripts/compose --env-file .env logs --tail=100 api worker proxy
 ```
 
-The API service runs migrations before starting. Do not run seed scripts against customer data.
+The API service runs migrations before starting. Migration `0021_baseline_platform_roles.sql` seeds the platform roles and local-registration organizations required for local account signup. Do not run demo seed scripts against customer data.
+
+## Bootstrap The First Local Admin
+
+Use this only for controlled self-managed deployments with `AUTH_PROVIDER=local`. It creates the first and only bootstrap admin when no admin role binding exists yet.
+
+```bash
+./scripts/compose --env-file .env exec api npm run admin:bootstrap -- \
+  --username admin.ops \
+  --password 'ReplaceWithAStrongPassword' \
+  --name 'Platform Admin' \
+  --organization 硬件部
+```
+
+Then log in through the UI with that username and password. Additional admins should be created from **User Permissions** after login.
+
+If bootstrap reports that an admin already exists, use the governance UI or reset the deployment database; the command is intentionally one-shot for safety.
+
+## Import Demo Seed Data
+
+For internal staging or demo hosts only:
+
+```bash
+./scripts/compose --env-file .env exec api npm run db:seed:all
+```
+
+Or from `ops/self-hosted/`:
+
+```bash
+./scripts/seed-demo-data.sh
+```
+
+This runs `db:seed:m0` through `db:seed:m3` in order. Demo data is stored under the `org-chargelab` organization. Move a local account into that organization or create users there if you need to browse the seeded Aurora project data.
 
 ## Verify Configuration
 

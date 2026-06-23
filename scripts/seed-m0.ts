@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import type { Database } from "../server/shared/database/client";
+import { seedBaselinePlatformRoles } from "../server/modules/auth/baselineCatalog";
 
 const organizationId = "org-chargelab";
 
@@ -14,81 +15,6 @@ const users = [
   ["u-chen-na", "Chen Na", "chen@chargelab.cn", "Software Integrator"],
   ["u-li-peng", "Li Peng", "lipeng@chargelab.cn", "Hardware Committer"],
   ["u-sun-mei", "Sun Mei", "sun@chargelab.cn", "Software Reviewer"]
-] as const;
-
-const roles = [
-  ["guest", "Guest", "guest", ["parameter:view", "logs:view"]],
-  [
-    "hardware-user",
-    "Hardware User",
-    "user",
-    ["parameter:view", "parameter:edit", "debugging:use", "debugging:view", "debugging:read", "logs:view", "logs:upload", "logs:feedback"]
-  ],
-  [
-    "software-user",
-    "Software User",
-    "user",
-    ["parameter:view", "parameter:edit", "debugging:use", "debugging:view", "debugging:read", "logs:view", "logs:upload", "logs:feedback"]
-  ],
-  [
-    "hardware-committer",
-    "Hardware Committer",
-    "committer",
-    [
-      "parameter:view",
-      "parameter:edit",
-      "debugging:use",
-      "debugging:view",
-      "debugging:read",
-      "debugging:write",
-      "debugging:rollback",
-      "logs:view",
-      "logs:upload",
-      "logs:feedback",
-      "parameter:review"
-    ]
-  ],
-  [
-    "software-committer",
-    "Software Committer",
-    "committer",
-    [
-      "parameter:view",
-      "parameter:edit",
-      "debugging:use",
-      "debugging:view",
-      "debugging:read",
-      "debugging:write",
-      "debugging:rollback",
-      "logs:view",
-      "logs:upload",
-      "logs:feedback",
-      "parameter:review"
-    ]
-  ],
-  [
-    "admin",
-    "Admin",
-    "admin",
-    [
-      "parameter:view",
-      "parameter:edit",
-      "debugging:use",
-      "debugging:view",
-      "debugging:read",
-      "debugging:write",
-      "debugging:rollback",
-      "debugging:admin",
-      "logs:view",
-      "logs:upload",
-      "logs:feedback",
-      "logs:analyze",
-      "logs:archive",
-      "parameter:review",
-      "admin:access",
-      "users:manage"
-    ]
-  ]
 ] as const;
 
 export async function seedM0Foundation(db: Database) {
@@ -117,16 +43,7 @@ export async function seedM0Foundation(db: Database) {
     );
   }
 
-  for (const [id, name, level, permissions] of roles) {
-    await db.query(
-      `
-      insert into roles (id, name, level, permissions)
-      values ($1, $2, $3, $4)
-      on conflict (id) do update set name = excluded.name, level = excluded.level, permissions = excluded.permissions
-      `,
-      [id, name, level, permissions]
-    );
-  }
+  await seedBaselinePlatformRoles(db);
 
   await db.query(
     `
