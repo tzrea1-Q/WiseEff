@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import { useState } from "react";
-import { FilterChipGroup } from "@/components/FilterChipGroup";
+import { LibraryRiskFilter } from "@/components/admin/LibraryRiskFilter";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import type { ParamAdminSearch } from "@/hooks/useParamAdminSearch";
 import { getCoverage, type ParameterCoverage } from "@/parameterAdminAnalytics";
@@ -89,18 +89,11 @@ export function ParameterLibraryTable({
             placeholder="搜索参数、模块或说明"
           />
         </label>
-        <FilterChipGroup
-          ariaLabel="风险等级"
-          value={search.risk}
-          options={[
-            { value: "all", label: "全部" },
-            { value: "high", label: "高" },
-            { value: "medium", label: "中" },
-            { value: "low", label: "低" }
-          ]}
-          onChange={(risk) => onUpdateSearch({ risk: risk as ParamAdminSearch["risk"] })}
-        />
         <div className="parameters-table-filters param-admin-library-filters">
+          <LibraryRiskFilter
+            value={search.risk}
+            onChange={(risk) => onUpdateSearch({ risk: risk as ParamAdminSearch["risk"] })}
+          />
           <MultiSelectDropdown
             label="模块"
             options={moduleOptions}

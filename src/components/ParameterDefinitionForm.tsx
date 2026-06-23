@@ -74,7 +74,7 @@ export function ParameterDefinitionForm({
               <input aria-label="单位" value={parameter.unit} onChange={(event) => onMetadataChange({ unit: event.target.value })} />
             </label>
             <label>
-              重要性
+              风险
               <RiskPicker value={parameter.risk} onChange={(risk) => onMetadataChange({ risk })} />
             </label>
             <label>

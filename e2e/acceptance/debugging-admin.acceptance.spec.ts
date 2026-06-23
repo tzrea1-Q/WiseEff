@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
-import { expect, test } from "playwright/test";
+import { expect, test, type Page } from "playwright/test";
 import type { Client } from "pg";
 import { useBrowserDiagnostics } from "./helpers/browserDiagnostics";
 import { withPgClient } from "./helpers/database";
@@ -158,6 +158,29 @@ function auditSummaryFor(items: AuditEventDto[], kind: string, targetId: string)
   };
 }
 
+function parameterRow(page: Page, name: string) {
+  return page.getByRole("row").filter({ hasText: name });
+}
+
+async function configureProtocolBindings(page: Page, parameterName: string, suffix: string) {
+  await parameterRow(page, parameterName).getByRole("button", { name: "路径绑定" }).click();
+  const bindingsDialog = page.getByRole("dialog", { name: `${parameterName} 路径绑定` });
+
+  const hdcPanel = bindingsDialog.locator(".debug-admin-binding-panel").filter({ hasText: "HDC" });
+  await hdcPanel.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
+  await hdcPanel.getByRole("checkbox").check();
+  await bindingsDialog.getByRole("button", { name: "保存 HDC binding" }).click();
+  await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+
+  const adbPanel = bindingsDialog.locator(".debug-admin-binding-panel").filter({ hasText: "ADB" });
+  await adbPanel.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
+  await adbPanel.getByRole("checkbox").check();
+  await bindingsDialog.getByRole("button", { name: "保存 ADB binding" }).click();
+  await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+
+  await bindingsDialog.getByRole("button", { name: "取消" }).click();
+}
+
 test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
   test.beforeAll(async () => {
     await prepareDebuggingAdminAcceptanceState();
@@ -178,21 +201,26 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     const parameterKey = `${acceptanceKeyPrefix}${suffix}`;
 
     await page.goto("/debugging-admin");
-    await expect(page.getByRole("listbox", { name: "可调参数目录" })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: /新增/ })).toBeEnabled();
+    await expect(page.getByRole("table", { name: "可调参数目录" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "新增参数" })).toBeEnabled();
 
-    await page.getByRole("button", { name: /新增/ }).click();
-    await page.getByLabel("参数名称").fill(parameterName);
-    await page.getByLabel("参数 key").fill(parameterKey);
-    await page.getByLabel("HDC 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/hdc`);
-    await page.getByLabel("ADB 节点路径").fill(`/tmp/wiseeff/acceptance/${suffix}/adb`);
-    await page.getByRole("button", { name: "保存参数" }).click();
+    await page.getByRole("button", { name: "新增参数" }).click();
+    const createDialog = page.getByRole("dialog", { name: "创建调试参数" });
+    await createDialog.getByLabel("参数名称").fill(parameterName);
+    await createDialog.getByLabel("参数 key").fill(parameterKey);
+    await createDialog.getByRole("button", { name: "创建" }).click();
     await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("双协议")).toBeVisible();
 
-    await page.getByLabel("参数名称").fill(editedName);
-    await page.getByRole("button", { name: "保存参数" }).click();
+    await page.getByRole("dialog", { name: "调试参数定义编辑" }).getByRole("button", { name: "取消" }).click();
+    await configureProtocolBindings(page, parameterName, suffix);
+    await expect(parameterRow(page, parameterName).getByText("双协议")).toBeVisible();
+
+    await parameterRow(page, parameterName).getByRole("button", { name: "修改" }).click();
+    const definitionDialog = page.getByRole("dialog", { name: "调试参数定义编辑" });
+    await definitionDialog.getByLabel("参数名称").fill(editedName);
+    await definitionDialog.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
+    await definitionDialog.getByRole("button", { name: "取消" }).click();
 
     const listResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/parameters?includeArchived=true"), {
       headers: smokeHeaders()
@@ -215,11 +243,15 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
 
     await page.reload();
     await expect(page.getByText(editedName)).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("option").filter({ hasText: editedName }).click();
-    await page.getByRole("button", { name: `归档 ${editedName}` }).click();
+    await parameterRow(page, editedName).getByRole("button", { name: "归档" }).click();
+    await page.getByRole("button", { name: /^归档$/ }).click();
     await expect(page.getByText("已归档")).toBeVisible({ timeout: 30_000 });
-    await page.getByRole("button", { name: "恢复参数" }).click();
-    await expect(page.getByText("已恢复")).toBeVisible({ timeout: 30_000 });
+
+    const restoreResponse = await page.request.post(
+      apiRoute(`/api/v1/debugging/admin/parameters/${encodeURIComponent(created!.id)}/restore`),
+      { headers: smokeHeaders(), data: {} }
+    );
+    expect(restoreResponse.ok()).toBe(true);
 
     const finalListResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/parameters?includeArchived=true"), {
       headers: smokeHeaders()
@@ -268,6 +300,11 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
           path: `/api/v1/debugging/admin/parameters/${created!.id}/bindings/adb/archive`,
           responseSummary: "ADB binding archived through admin API"
         }),
+        summarizeApiResponse(restoreResponse, {
+          method: "POST",
+          path: `/api/v1/debugging/admin/parameters/${created!.id}/restore`,
+          responseSummary: "Parameter restored through admin API after row archive"
+        }),
         summarizeApiResponse(finalListResponse, {
           method: "GET",
           path: "/api/v1/debugging/admin/parameters?includeArchived=true",
@@ -287,7 +324,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
         auditSummaryFor(auditBody.items, "debug-parameter-admin-restore", created!.id),
         auditSummaryFor(auditBody.items, "debug-parameter-binding-admin-archive", `${created!.id}:adb`)
       ],
-      notes: "Admin UI created, edited, archived, and restored a catalog parameter; API verified dual-protocol bindings and binding archive governance."
+      notes: "Admin UI created, edited, and row-archived a catalog parameter via modal layout; path bindings configured in 路径绑定 dialog; ADB binding archive and parameter restore verified through admin API."
     });
   });
 });

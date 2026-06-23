@@ -73,6 +73,18 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `/debugging`：保留参数调试工作台和 rollback 入口。
 - `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 
+### 调试管理后台 UI
+
+页面壳在 `src/DebuggingAdminPage.tsx`，交互节奏对齐 `/parameter-admin`：主区域是全宽目录表，新增/编辑/归档走弹窗，不再使用左侧列表 + 右侧内联编辑器分栏。
+
+- `DebugParameterLibraryTable` — 工具栏搜索、风险 chips、模块多选、覆盖/状态筛选，以及行内操作。
+- `DebugParameterDefinitionDialog` — **修改** 打开的元数据编辑弹窗（保存；已归档时可恢复）。
+- `DebugParameterBindingsDialog` — **路径绑定** 打开的 HDC / ADB binding 面板。
+- `CreateDebugParameterDialog` — 表格 **新增参数** 打开的空草稿创建弹窗（含默认 binding）。
+- `ArchiveDebugParameterDialog` — 行操作或定义弹窗触发的归档确认弹窗。
+
+筛选与弹窗深链由 `useDebugAdminSearch` 同步 URL。mock mode 在表格下方保留可折叠的 **配置源预览**（`power-management.json` 导出/同步）。
+
 Agent：
 
 - `UnifiedAgent` 根据当前 path、pageKey、project、role 和 auth context 创建 API session。

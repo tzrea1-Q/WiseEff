@@ -28,7 +28,7 @@ describe("ParameterDefinitionForm", () => {
     expect(screen.getByLabelText("模块")).toBeInTheDocument();
     expect(screen.getByLabelText(/推荐值/)).toBeInTheDocument();
     expect(screen.getByLabelText("单位")).toBeInTheDocument();
-    expect(screen.getByRole("radiogroup", { name: "重要性" })).toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "风险" })).toBeInTheDocument();
   });
 
   it("renders module as a select with options from the parameter library", () => {

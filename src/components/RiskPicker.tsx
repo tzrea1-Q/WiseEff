@@ -23,7 +23,7 @@ export function RiskPicker({ value, onChange }: { value: RiskLevel; onChange: (n
   };
 
   return (
-    <div className="risk-picker" role="radiogroup" aria-label="重要性" tabIndex={0} onKeyDown={handleKeyDown}>
+    <div className="risk-picker" role="radiogroup" aria-label="风险" tabIndex={0} onKeyDown={handleKeyDown}>
       {ORDER.map((level) => (
         <button
           aria-checked={value === level}

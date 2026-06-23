@@ -3066,7 +3066,11 @@ describe("WiseEff app shell", () => {
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
+    const catalog = screen.getByRole("table", { name: "可调参数目录" });
+    const chargerRow = within(catalog).getByRole("row", { name: /charger\.input_current_limit_ma|充电输入限流/ });
+    fireEvent.click(within(chargerRow).getByRole("button", { name: "修改" }));
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "保存" }));
 
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
     expect(document.body).toHaveTextContent('"targetValue": "3650"');
@@ -3085,13 +3089,16 @@ describe("WiseEff app shell", () => {
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "+ 新增" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
 
     expect(screen.getByDisplayValue("new_debug_parameter_9")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "创建" }));
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
     expect(document.body).toHaveTextContent('"key": "debug.new_parameter_9"');
 
-    fireEvent.click(screen.getByRole("button", { name: /删除 new_debug_parameter_9/ }));
+    const createdRow = screen.getByRole("row", { name: /new_debug_parameter_9/ });
+    fireEvent.click(within(createdRow).getByRole("button", { name: /归档 new_debug_parameter_9/ }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "归档" }));
 
     expect(screen.queryByDisplayValue("new_debug_parameter_9")).not.toBeInTheDocument();
   });
@@ -3108,17 +3115,14 @@ describe("WiseEff app shell", () => {
     expect(within(topbar).queryByRole("heading", { level: 1, name: "参数调试管理后台" })).not.toBeInTheDocument();
   });
 
-  it("keeps the debugging admin list stretched to the editor height", () => {
+  it("keeps the debugging admin shell using the parameter-admin main surface layout", () => {
     const styles = readFileSync("src/styles.css", "utf8");
-    const gridBlock = readCssBlock(styles, ".debug-admin-grid");
-    const listBlock = readCssBlock(styles, ".debug-admin-list");
-    const paramListBlock = readCssBlock(styles, ".debug-admin-param-list");
+    const shellBlock = readCssBlock(styles, ".debug-admin-shell");
+    const mainBlock = readCssBlock(styles, ".param-admin-main");
 
-    expect(gridBlock).toContain("align-items: stretch;");
-    expect(listBlock).toContain("height: 100%;");
-    expect(listBlock).toContain("min-height: 0;");
-    expect(listBlock).not.toContain("max-height:");
-    expect(paramListBlock).toContain("min-height: 0;");
+    expect(shellBlock.length).toBeGreaterThan(0);
+    expect(mainBlock).toContain("flex: 1;");
+    expect(mainBlock).toContain("min-height: 0;");
   });
 
   it("saves debug admin edits to the local JSON config endpoint", () => {
@@ -3131,7 +3135,11 @@ describe("WiseEff app shell", () => {
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
+    const catalog = screen.getByRole("table", { name: "可调参数目录" });
+    const chargerRow = within(catalog).getByRole("row", { name: /charger\.input_current_limit_ma|充电输入限流/ });
+    fireEvent.click(within(chargerRow).getByRole("button", { name: "修改" }));
     fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "保存" }));
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
     fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
 
@@ -3202,9 +3210,9 @@ describe("WiseEff app shell", () => {
     expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
     expect(screen.getByText("缺少 debugging:admin 权限，目录仅可查看。")).toBeInTheDocument();
 
-    const saveButton = screen.getByRole("button", { name: "保存参数" });
-    expect(saveButton).toBeDisabled();
-    fireEvent.click(saveButton);
+    const catalog = screen.getByRole("table", { name: "可调参数目录" });
+    expect(within(catalog).getByRole("button", { name: "修改" })).toBeDisabled();
+    expect(within(catalog).getByRole("button", { name: "路径绑定" })).toBeDisabled();
     expect(apiClient.patch).not.toHaveBeenCalled();
   });
 
