@@ -166,7 +166,11 @@ export const createDebugSessionBodySchema = z.object({
   projectId: nonEmptyString,
   deviceId: nonEmptyString,
   targetId: nonEmptyString,
+  bridgeId: nonEmptyString.optional(),
   protocol: protocolSchema
+}).refine((value) => !value.targetId.startsWith("bridge:") || Boolean(value.bridgeId), {
+  message: "bridgeId is required when targetId references a device bridge target.",
+  path: ["bridgeId"]
 });
 
 export const readNodeBodySchema = z

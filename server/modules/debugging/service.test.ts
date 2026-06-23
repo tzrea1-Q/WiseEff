@@ -172,10 +172,28 @@ function targetRow(overrides: Record<string, unknown> = {}) {
     project_id: "aurora",
     device_id: "device-1",
     protocol: "hdc",
+    bridge_id: null,
     target_ref: "simulator://aurora-1",
     label: "Aurora Target",
     status: "detected",
     detected_at: timestamp,
+    ...overrides
+  };
+}
+
+function bridgeRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "br-1",
+    organization_id: "org-1",
+    user_id: "user-1",
+    machine_label: "Laptop",
+    platform: "windows",
+    arch: "amd64",
+    client_version: "0.1.0",
+    capabilities: {},
+    created_at: timestamp,
+    last_seen_at: timestamp,
+    revoked_at: null,
     ...overrides
   };
 }
@@ -237,6 +255,9 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
     device_id: "device-1",
     target_id: "target-1",
     protocol: "hdc",
+    execution_mode: "server",
+    bridge_id: null,
+    bridge_machine_label: null,
     actor_user_id: "user-1",
     status: "active",
     started_at: timestamp,
@@ -813,10 +834,11 @@ describe("debugging service", () => {
       (call) => [
         targetRow({
           id: call.values[3],
-          protocol: call.values[4],
-          target_ref: call.values[5],
-          label: call.values[6],
-          status: call.values[7]
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8]
         })
       ],
       []
@@ -886,10 +908,11 @@ describe("debugging service", () => {
       (call) => [
         targetRow({
           id: call.values[3],
-          protocol: call.values[4],
-          target_ref: call.values[5],
-          label: call.values[6],
-          status: call.values[7]
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8]
         })
       ],
       []
@@ -933,10 +956,11 @@ describe("debugging service", () => {
       (call) => [
         targetRow({
           id: call.values[3],
-          protocol: call.values[4],
-          target_ref: call.values[5],
-          label: call.values[6],
-          status: call.values[7]
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8]
         })
       ],
       []
@@ -954,7 +978,7 @@ describe("debugging service", () => {
     });
 
     const upsertCall = txCalls.find((call) => call.text.includes("insert into debugging_targets"));
-    expect(upsertCall?.values[4]).toBe("adb");
+    expect(upsertCall?.values[5]).toBe("adb");
   });
 
   it("detectTargets commits a failed debug event when gateway detection fails", async () => {
@@ -981,6 +1005,52 @@ describe("debugging service", () => {
     });
   });
 
+  it("detectTargets merges bridge-backed targets from online bridges", async () => {
+    const bridgeRpcClient = {
+      call: vi
+        .fn()
+        .mockResolvedValueOnce({ targets: [{ targetRef: "serial-1", online: true, label: "ADB serial-1" }] })
+        .mockResolvedValueOnce({ targets: [] })
+    };
+    const bridgeConnectionPool = {
+      isConnected: vi.fn((bridgeId: string) => bridgeId === "br-1" || bridgeId === "br-2")
+    };
+    const { db, txCalls } = createFakeDb([
+      [bridgeRow({ id: "br-1", machine_label: "Laptop" }), bridgeRow({ id: "br-2", machine_label: "Desktop" })],
+      (call) => [
+        targetRow({
+          id: call.values[3],
+          device_id: call.values[2],
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8]
+        })
+      ]
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [] })) }),
+      bridgeConnectionPool,
+      bridgeRpcClient,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const targets = await service.detectTargets(readAuth, { projectId: "aurora" });
+
+    expect(bridgeRpcClient.call).toHaveBeenCalledWith("br-1", "debug.detectTargets", { protocol: "hdc" }, { timeoutMs: 5000 });
+    expect(targets).toEqual([
+      expect.objectContaining({
+        id: "bridge:br-1:hdc:serial-1",
+        bridgeId: "br-1",
+        deviceId: "bridge:br-1",
+        targetRef: "serial-1"
+      })
+    ]);
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[4] === "br-1")).toBe(true);
+  });
+
   it("createSession rejects offline or lost targets and persists an active session", async () => {
     const lost = createFakeDb([[deviceRow()], [targetRow({ status: "lost" })]]);
     const serviceForLost = createDebuggingService({ db: lost.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
@@ -1005,6 +1075,79 @@ describe("debugging service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into debugging_sessions"))).toBe(true);
     expect(session).toMatchObject({ projectId: "aurora", deviceId: "device-1", targetId: "target-1", status: "active" });
     expect(audit.events[0]).toMatchObject({ kind: "debug-session-create", action: "create", targetId: session.id });
+  });
+
+  it("createSession requires bridgeId when target is bridge-backed", async () => {
+    const targetId = "bridge:br-1:adb:serial-1";
+    const baseRows = [
+      [
+        targetRow({
+          id: targetId,
+          device_id: "bridge:br-1",
+          bridge_id: "br-1",
+          protocol: "adb",
+          target_ref: "serial-1"
+        })
+      ]
+    ];
+    const missingBridgeIdDb = createFakeDb(baseRows.map((rows) => [...rows]));
+    const missingBridgeIdService = createDebuggingService({
+      db: missingBridgeIdDb.db,
+      gateway: makeGateway(),
+      bridgeConnectionPool: { isConnected: vi.fn(() => true) },
+      bridgeRpcClient: { call: vi.fn() },
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await expect(
+      missingBridgeIdService.createSession(readAuth, {
+        projectId: "aurora",
+        deviceId: "bridge:br-1",
+        targetId,
+        protocol: "adb"
+      })
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "bridgeId is required for bridge-backed targets.", 400));
+
+    const { db, txCalls } = createFakeDb([
+      [
+        targetRow({
+          id: targetId,
+          device_id: "bridge:br-1",
+          bridge_id: "br-1",
+          protocol: "adb",
+          target_ref: "serial-1"
+        })
+      ],
+      [bridgeRow({ id: "br-1", machine_label: "Laptop" })],
+      (call) => [sessionRow({ id: call.values[0], device_id: call.values[3], target_id: call.values[4], protocol: call.values[5], execution_mode: "bridge", bridge_id: call.values[7], bridge_machine_label: call.values[8] })],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway(),
+      bridgeConnectionPool: { isConnected: vi.fn(() => true) },
+      bridgeRpcClient: { call: vi.fn() },
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const session = await service.createSession(readAuth, {
+      projectId: "aurora",
+      deviceId: "bridge:br-1",
+      targetId,
+      bridgeId: "br-1",
+      protocol: "adb"
+    });
+
+    expect(session).toMatchObject({ executionMode: "bridge", bridgeId: "br-1", bridgeMachineLabel: "Laptop" });
+    expect(
+      txCalls.some(
+        (call) =>
+          call.text.includes("insert into debugging_sessions") &&
+          call.values[6] === "bridge" &&
+          call.values[7] === "br-1" &&
+          call.values[8] === "Laptop"
+      )
+    ).toBe(true);
   });
 
   it("createSession rejects cross-project devices, cross-project targets, and mismatched device targets", async () => {
@@ -1058,7 +1201,13 @@ describe("debugging service", () => {
       "info",
       "Debug session created."
     ]);
-    expect(JSON.parse(String(eventCall?.values[8]))).toEqual({ deviceId: "device-1", targetId: "target-1", protocol: "hdc" });
+    expect(JSON.parse(String(eventCall?.values[8]))).toEqual({
+      deviceId: "device-1",
+      targetId: "target-1",
+      protocol: "hdc",
+      executionMode: "server",
+      bridgeId: null
+    });
   });
 
   it("readNode requires debugging:read, resolves bindings, records operation, writes audit", async () => {
@@ -1127,6 +1276,36 @@ describe("debugging service", () => {
     });
 
     expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current", preserveExactRead: false });
+  });
+
+  it("reads bridge-backed sessions through bridge rpc client", async () => {
+    const bridgeRpcClient = {
+      call: vi.fn().mockResolvedValue({ ok: true, value: "3000", stdout: "3000", durationMs: 4 })
+    };
+    const gateway = makeGateway();
+    const { db } = createFakeDb([
+      [sessionRow({ protocol: "adb", execution_mode: "bridge", bridge_id: "br-1", target_id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1" })],
+      [parameterRow()],
+      [bindingRow({ protocol: "adb", node_path: "/sys/adb/current" })],
+      [targetRow({ id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1", bridge_id: "br-1", protocol: "adb", target_ref: "serial-1" })],
+      (call) => [operationRow(call, { protocol: "adb" })]
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway,
+      bridgeRpcClient,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1" });
+
+    expect(bridgeRpcClient.call).toHaveBeenCalledWith(
+      "br-1",
+      "debug.readNode",
+      expect.objectContaining({ targetRef: "serial-1", nodePath: "/sys/adb/current", protocol: "adb" }),
+      { timeoutMs: 10000 }
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
   });
 
   it("reads a shared parameter through the project-scoped session protocol binding", async () => {
@@ -1350,6 +1529,58 @@ describe("debugging service", () => {
       projectId: "aurora",
       targetId: "param-1"
     });
+  });
+
+  it("writes bridge-backed sessions through bridge rpc client", async () => {
+    const bridgeRpcClient = {
+      call: vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, value: "3000", stdout: "3000", durationMs: 4 })
+        .mockResolvedValueOnce({
+          ok: true,
+          verified: true,
+          value: "3200",
+          writeResult: { ok: true, value: "3200", durationMs: 5 },
+          readResult: { ok: true, value: "3200", stdout: "3200", durationMs: 6 }
+        })
+    };
+    const gateway = makeGateway();
+    const { db } = createFakeDb([
+      [sessionRow({ protocol: "adb", execution_mode: "bridge", bridge_id: "br-1", target_id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1" })],
+      [parameterRow({ min_value: null, max_value: null })],
+      [bindingRow({ protocol: "adb", node_path: "/sys/adb/current" })],
+      [targetRow({ id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1", bridge_id: "br-1", protocol: "adb", target_ref: "serial-1" })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { protocol: "adb", snapshot_id: "snapshot-1" })],
+      [],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway,
+      bridgeRpcClient,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
+
+    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
+      1,
+      "br-1",
+      "debug.readNode",
+      expect.objectContaining({ targetRef: "serial-1", nodePath: "/sys/adb/current", protocol: "adb" }),
+      { timeoutMs: 10000 }
+    );
+    expect(bridgeRpcClient.call).toHaveBeenNthCalledWith(
+      2,
+      "br-1",
+      "debug.writeNode",
+      expect.objectContaining({ targetRef: "serial-1", nodePath: "/sys/adb/current", value: "3200", protocol: "adb" }),
+      { timeoutMs: 10000 }
+    );
+    expect(operation).toMatchObject({ status: "succeeded", verified: true });
+    expect(gateway.readNode).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
   it("rejects writes when the session protocol binding is missing", async () => {
@@ -1960,6 +2191,47 @@ describe("debugging service", () => {
     ]);
     expect(JSON.stringify(spans)).not.toContain("/sys/current");
     expect(JSON.stringify(spans)).not.toContain("3000");
+  });
+
+  it("rollbackSnapshot routes bridge-backed sessions through bridge rpc client", async () => {
+    const bridgeRpcClient = {
+      call: vi.fn().mockResolvedValue({
+        ok: true,
+        verified: true,
+        value: "3000",
+        writeResult: { ok: true, value: "3000", durationMs: 3 },
+        readResult: { ok: true, value: "3000", stdout: "3000", durationMs: 4 }
+      })
+    };
+    const gateway = makeGateway();
+    const { db } = createFakeDb([
+      [snapshotRow({ entries: [{ parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/current", previousValue: "3000", targetValue: "3200" }] })],
+      [sessionRow({ protocol: "adb", execution_mode: "bridge", bridge_id: "br-1", target_id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1" })],
+      [snapshotRow({ status: "rollback_pending" })],
+      [targetRow({ id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1", bridge_id: "br-1", protocol: "adb", target_ref: "serial-1" })],
+      (call) => [operationRow(call, { protocol: "adb" })],
+      [snapshotRow({ status: "consumed" })],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway,
+      bridgeRpcClient,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    await service.rollbackSnapshot(rollbackAuth, {
+      snapshotId: "snapshot-1",
+      confirmationToken: "confirm-rollback"
+    });
+
+    expect(bridgeRpcClient.call).toHaveBeenCalledWith(
+      "br-1",
+      "debug.writeNode",
+      expect.objectContaining({ targetRef: "serial-1", nodePath: "/sys/adb/current", value: "3000", protocol: "adb" }),
+      { timeoutMs: 10000 }
+    );
+    expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
   it("rollbackSnapshot inserts a succeeded event after successful rollback", async () => {

@@ -567,10 +567,11 @@ describe("debugging repository", () => {
           organization_id: call.values[0],
           project_id: call.values[1],
           device_id: call.values[2],
-          protocol: call.values[4],
-          target_ref: call.values[5],
-          label: call.values[6],
-          status: call.values[7],
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8],
           detected_at: timestamp
         }
       ],
@@ -580,17 +581,16 @@ describe("debugging repository", () => {
     const targets = await upsertDetectedTargets(db, {
       organizationId: "org-1",
       projectId: "aurora",
-      deviceId: "device-1",
-      targets: [{ id: "target-1", targetRef: "simulator://aurora-1", label: "Aurora Target", online: true }]
+      targets: [{ id: "target-1", deviceId: "device-1", targetRef: "simulator://aurora-1", label: "Aurora Target", online: true }]
     });
 
     expect(calls[0].text).toContain("insert into debugging_targets");
     expect(calls[0].text).toContain("on conflict (device_id, protocol, target_ref) do update");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "simulator://aurora-1", "Aurora Target", "detected"]);
+    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "target-1", null, "hdc", "simulator://aurora-1", "Aurora Target", "detected"]);
     expect(calls[1].text).toContain("update debugging_devices");
     expect(calls[1].text).toContain("last_seen_at = now()");
     expect(calls[1].values).toEqual(["org-1", "device-1", "online"]);
-    expect(targets[0]).toMatchObject({ id: "target-1", status: "detected", targetRef: "simulator://aurora-1" });
+    expect(targets[0]).toMatchObject({ id: "target-1", bridgeId: null, status: "detected", targetRef: "simulator://aurora-1" });
   });
 
   it("listDebugParameters returns sorted parameters by sort_order", async () => {
@@ -882,6 +882,9 @@ describe("debugging repository", () => {
           device_id: "device-1",
           target_id: "target-1",
           protocol: call.values[5],
+          execution_mode: call.values[6],
+          bridge_id: call.values[7],
+          bridge_machine_label: call.values[8],
           actor_user_id: "user-1",
           status: "active",
           started_at: timestamp,
@@ -899,8 +902,16 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into debugging_sessions");
-    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "user-1", "active"]);
-    expect(session).toMatchObject({ organizationId: "org-1", projectId: "aurora", actorUserId: "user-1", status: "active" });
+    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "server", null, null, "user-1", "active"]);
+    expect(session).toMatchObject({
+      organizationId: "org-1",
+      projectId: "aurora",
+      actorUserId: "user-1",
+      status: "active",
+      executionMode: "server",
+      bridgeId: null,
+      bridgeMachineLabel: null
+    });
     expect(session.id).toEqual(expect.any(String));
   });
 

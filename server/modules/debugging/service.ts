@@ -7,8 +7,17 @@ import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/ty
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
+import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
+import { listBridgesForUser } from "../deviceBridge/repository";
+import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import type { DebugDeviceGateway, GatewayWriteResult } from "./gateway";
 import { createDebugDeviceGatewayRegistry, type DebugDeviceGatewayRegistry } from "./gatewayRegistry";
+import {
+  detectTargetsAcrossBridges,
+  isBridgeBackedTargetId,
+  readNodeViaBridge,
+  writeNodeViaBridge
+} from "./bridgeExecution";
 import {
   getAllowedDebugProjectIds,
   requireDebugAdmin,
@@ -53,6 +62,7 @@ import type {
   DebugParameterNodeBindingRecord,
   DebugParameterRecord,
   DebugParameterWithBindingsRecord,
+  DebugSessionExecutionMode,
   DebugSessionRecord,
   DebugSnapshotEntry,
   DebugValueMetadata,
@@ -72,6 +82,8 @@ import { DEBUG_VALUE_KIND_COMPLEX } from "./types";
 type AuditWriter = typeof defaultCreateAuditEvent;
 
 const DEVICE_LEASE_TTL_MS = 5 * 60 * 1000;
+const BRIDGE_DETECT_TIMEOUT_MS = 5_000;
+const BRIDGE_NODE_TIMEOUT_MS = 10_000;
 
 type ServiceOptions = {
   db: Database;
@@ -81,6 +93,8 @@ type ServiceOptions = {
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
   tracing?: Pick<TracingBoundary, "withSpan">;
   gatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
+  bridgeConnectionPool?: Pick<BridgeConnectionPool, "isConnected">;
+  bridgeRpcClient?: Pick<BridgeRpcClient, "call">;
 };
 
 type ProjectQuery = {
@@ -173,6 +187,7 @@ type CreateSessionInput = {
   projectId: string;
   deviceId: string;
   targetId: string;
+  bridgeId?: string;
   protocol?: DebugConnectionProtocol;
 };
 
@@ -226,6 +241,10 @@ function ensureActiveSession(session: DebugSessionRecord | null): DebugSessionRe
   }
 
   return session;
+}
+
+function resolveExecutionMode(session: DebugSessionRecord): DebugSessionExecutionMode {
+  return session.executionMode ?? "server";
 }
 
 function ensureProjectMatch(actualProjectId: string, expectedProjectId: string, message: string) {
@@ -596,44 +615,69 @@ export function createDebuggingService(options: ServiceOptions) {
       }
 
       const gateway = gatewayRegistry.requireGateway(protocol);
-      const result = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId), protocol }, async (spanAttributes) => {
+      const gatewayResult = await withGatewaySpan("detect", { hasDeviceFilter: Boolean(input.deviceId), protocol }, async (spanAttributes) => {
         try {
-          const gatewayResult = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
-          spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
-          return gatewayResult;
+          const result = await gateway.detectTargets({ projectId: input.projectId, deviceId: input.deviceId });
+          spanAttributes.status = result.ok ? "succeeded" : "failed";
+          return result;
         } catch (error) {
           spanAttributes.status = "failed";
           spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
           throw error;
         }
       });
-      recordGatewayOperation("detect", result.ok ? "succeeded" : "failed");
-      if (!result.ok) {
+      recordGatewayOperation("detect", gatewayResult.ok ? "succeeded" : "failed");
+      if (!gatewayResult.ok) {
         await db.transaction(async (tx) => {
           await insertDebugEvent(tx, {
             organizationId,
             projectId: input.projectId,
             kind: "target-detect-failed",
             severity: "error",
-            message: failureReason(result.error, "Debug target detection failed."),
-            metadata: { deviceId: input.deviceId, protocol, error: result.error }
+            message: failureReason(gatewayResult.error, "Debug target detection failed."),
+            metadata: { deviceId: input.deviceId, protocol, error: gatewayResult.error }
           });
         });
-        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(result.error, "Debug target detection failed."), 409);
+        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(gatewayResult.error, "Debug target detection failed."), 409);
       }
+
+      const bridgeTargets =
+        !input.deviceId && options.bridgeRpcClient && options.bridgeConnectionPool
+          ? await detectTargetsAcrossBridges({
+              rpc: options.bridgeRpcClient,
+              bridges: (
+                await listBridgesForUser(db, {
+                  userId: auth.user.id,
+                  organizationId
+                })
+              )
+                .filter((bridge) => bridge.revokedAt === null && options.bridgeConnectionPool?.isConnected(bridge.id))
+                .map((bridge) => ({
+                  id: bridge.id,
+                  machineLabel: bridge.machineLabel
+                })),
+              protocol,
+              timeoutMs: BRIDGE_DETECT_TIMEOUT_MS
+            })
+          : [];
+
+      const persistedTargets = [
+        ...gatewayResult.targets.map((target) => ({
+          id: target.id,
+          deviceId: target.deviceId,
+          protocol,
+          targetRef: target.targetRef,
+          label: target.label,
+          online: target.online
+        })),
+        ...bridgeTargets
+      ];
 
       return db.transaction(async (tx) => {
         const targets = await upsertDetectedTargets(tx, {
           organizationId,
           projectId: input.projectId,
-          deviceId: input.deviceId ?? result.targets[0]?.deviceId ?? "",
-          targets: result.targets.map((target) => ({
-            id: target.id,
-            protocol,
-            targetRef: target.targetRef,
-            label: target.label,
-            online: target.online
-          }))
+          targets: persistedTargets
         });
 
         await writeAudit(
@@ -647,7 +691,13 @@ export function createDebuggingService(options: ServiceOptions) {
               severity: "Low",
               targetType: "debug-device",
               targetId: input.deviceId ?? null,
-              metadata: { targetCount: targets.length, deviceId: input.deviceId, protocol }
+              metadata: {
+                targetCount: targets.length,
+                serverTargetCount: gatewayResult.targets.length,
+                bridgeTargetCount: bridgeTargets.length,
+                deviceId: input.deviceId,
+                protocol
+              }
             },
             context
           )
@@ -1065,20 +1115,23 @@ export function createDebuggingService(options: ServiceOptions) {
       const protocol = input.protocol ?? defaultDebugConnectionProtocol;
 
       return db.transaction(async (tx) => {
-        const device = await getDebugDevice(tx, { organizationId, deviceId: input.deviceId });
-        if (!device) {
+        const bridgeExecutionRequested = isBridgeBackedTargetId(input.targetId);
+        const device = bridgeExecutionRequested ? null : await getDebugDevice(tx, { organizationId, deviceId: input.deviceId });
+        if (!bridgeExecutionRequested && !device) {
           throw new ApiError("NOT_FOUND", "Debug device was not found.", 404);
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: input.targetId });
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
-        ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
+        if (device) {
+          ensureProjectMatch(device.projectId, input.projectId, "Debug device does not belong to the requested project.");
+        }
         ensureProjectMatch(target.projectId, input.projectId, "Debug target does not belong to the requested project.");
-        if (target.deviceId !== device.id) {
+        if (target.deviceId !== input.deviceId) {
           throw new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.", 400);
         }
-        if (device.status !== "online") {
+        if (device && device.status !== "online") {
           throw new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.", 409);
         }
         if (target.status !== "detected") {
@@ -1090,7 +1143,38 @@ export function createDebuggingService(options: ServiceOptions) {
             protocol
           });
         }
-        gatewayRegistry.requireGateway(protocol);
+
+        const bridgeExecution = isBridgeBackedTargetId(target.id) || target.bridgeId !== null;
+        let bridgeId: string | null = null;
+        let bridgeMachineLabel: string | null = null;
+        let executionMode: DebugSessionExecutionMode = "server";
+
+        if (bridgeExecution) {
+          if (!input.bridgeId) {
+            throw new ApiError("VALIDATION_FAILED", "bridgeId is required for bridge-backed targets.", 400);
+          }
+          if (target.bridgeId && target.bridgeId !== input.bridgeId) {
+            throw new ApiError("VALIDATION_FAILED", "Provided bridgeId does not match the selected debug target.", 400, {
+              bridgeId: input.bridgeId,
+              targetBridgeId: target.bridgeId
+            });
+          }
+          if (!options.bridgeConnectionPool?.isConnected(input.bridgeId)) {
+            throw new ApiError("DEVICE_UNAVAILABLE", "Selected device bridge is offline.", 409, { bridgeId: input.bridgeId });
+          }
+
+          const userBridges = await listBridgesForUser(tx, { userId: auth.user.id, organizationId });
+          const bridge = userBridges.find((item) => item.id === input.bridgeId && item.revokedAt === null);
+          if (!bridge) {
+            throw new ApiError("NOT_FOUND", "Device bridge was not found.", 404, { bridgeId: input.bridgeId });
+          }
+
+          bridgeId = input.bridgeId;
+          bridgeMachineLabel = bridge.machineLabel;
+          executionMode = "bridge";
+        } else {
+          gatewayRegistry.requireGateway(protocol);
+        }
 
         const session = await createDebugSession(tx, {
           organizationId,
@@ -1098,6 +1182,9 @@ export function createDebuggingService(options: ServiceOptions) {
           deviceId: input.deviceId,
           targetId: input.targetId,
           protocol,
+          executionMode,
+          bridgeId,
+          bridgeMachineLabel,
           actorUserId: auth.user.id
         });
         await insertDebugEvent(tx, {
@@ -1107,7 +1194,7 @@ export function createDebuggingService(options: ServiceOptions) {
           kind: "session-created",
           severity: "info",
           message: "Debug session created.",
-          metadata: { deviceId: input.deviceId, targetId: input.targetId, protocol }
+          metadata: { deviceId: input.deviceId, targetId: input.targetId, protocol, executionMode, bridgeId }
         });
         await writeAudit(
           tx,
@@ -1120,7 +1207,7 @@ export function createDebuggingService(options: ServiceOptions) {
               severity: "Low",
               targetType: "debug-session",
               targetId: session.id,
-              metadata: { deviceId: input.deviceId, targetId: input.targetId, protocol }
+              metadata: { deviceId: input.deviceId, targetId: input.targetId, protocol, executionMode, bridgeId }
             },
             context
           )
@@ -1173,14 +1260,33 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
-        const gateway = gatewayRegistry.requireGateway(protocol);
+        const executionMode = resolveExecutionMode(session);
+        const bridgeId = session.bridgeId;
+        if (executionMode === "bridge" && !bridgeId) {
+          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.", 400);
+        }
+        if (executionMode === "bridge" && !options.bridgeRpcClient) {
+          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.", 500);
+        }
+        const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
 
         const readMetadata = parameter ? resolveDebugValueMetadata(parameter) : null;
         const preserveExactRead = readMetadata ? requiresExactRead(readMetadata) : false;
 
         const result = await withGatewaySpan("read", { hasParameterId: Boolean(input.parameterId), protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath, preserveExactRead });
+            const gatewayResult =
+              executionMode === "bridge"
+                ? await readNodeViaBridge({
+                    rpc: options.bridgeRpcClient as Pick<BridgeRpcClient, "call">,
+                    bridgeId: bridgeId as string,
+                    protocol,
+                    targetRef: target.targetRef,
+                    nodePath,
+                    preserveExactRead,
+                    timeoutMs: BRIDGE_NODE_TIMEOUT_MS
+                  })
+                : await gateway!.readNode({ targetRef: target.targetRef, nodePath, preserveExactRead });
             spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
             return gatewayResult;
           } catch (error) {
@@ -1255,7 +1361,15 @@ export function createDebuggingService(options: ServiceOptions) {
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
-        const gateway = gatewayRegistry.requireGateway(protocol);
+        const executionMode = resolveExecutionMode(session);
+        const bridgeId = session.bridgeId;
+        if (executionMode === "bridge" && !bridgeId) {
+          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.", 400);
+        }
+        if (executionMode === "bridge" && !options.bridgeRpcClient) {
+          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.", 500);
+        }
+        const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
         await requireDeviceLease(tx, auth, session);
         const metadata = resolveDebugValueMetadata(parameter);
         const preserveExactRead = requiresExactRead(metadata);
@@ -1263,7 +1377,18 @@ export function createDebuggingService(options: ServiceOptions) {
 
         const previous = await withGatewaySpan("read", { hasParameterId: true, protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath, preserveExactRead });
+            const gatewayResult =
+              executionMode === "bridge"
+                ? await readNodeViaBridge({
+                    rpc: options.bridgeRpcClient as Pick<BridgeRpcClient, "call">,
+                    bridgeId: bridgeId as string,
+                    protocol,
+                    targetRef: target.targetRef,
+                    nodePath,
+                    preserveExactRead,
+                    timeoutMs: BRIDGE_NODE_TIMEOUT_MS
+                  })
+                : await gateway!.readNode({ targetRef: target.targetRef, nodePath, preserveExactRead });
             spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
             return gatewayResult;
           } catch (error) {
@@ -1328,14 +1453,28 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         const result = await withGatewaySpan("write", { requiresApproval: Boolean(input.approvalId), protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.writeNode({
-              targetRef: target.targetRef,
-              nodePath,
-              value: input.value,
-              readBack: true,
-              preserveExactRead,
-              compareReadback
-            });
+            const gatewayResult =
+              executionMode === "bridge"
+                ? await writeNodeViaBridge({
+                    rpc: options.bridgeRpcClient as Pick<BridgeRpcClient, "call">,
+                    bridgeId: bridgeId as string,
+                    protocol,
+                    targetRef: target.targetRef,
+                    nodePath,
+                    value: input.value,
+                    readBack: true,
+                    preserveExactRead,
+                    compareReadback,
+                    timeoutMs: BRIDGE_NODE_TIMEOUT_MS
+                  })
+                : await gateway!.writeNode({
+                    targetRef: target.targetRef,
+                    nodePath,
+                    value: input.value,
+                    readBack: true,
+                    preserveExactRead,
+                    compareReadback
+                  });
             spanAttributes.status = writeStatus(gatewayResult);
             return gatewayResult;
           } catch (error) {
@@ -1446,7 +1585,15 @@ export function createDebuggingService(options: ServiceOptions) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
         }
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
-        const gateway = gatewayRegistry.requireGateway(protocol);
+        const executionMode = resolveExecutionMode(session);
+        const bridgeId = session.bridgeId;
+        if (executionMode === "bridge" && !bridgeId) {
+          throw new ApiError("VALIDATION_FAILED", "Bridge-backed session is missing bridge id.", 400);
+        }
+        if (executionMode === "bridge" && !options.bridgeRpcClient) {
+          throw new ApiError("INTERNAL_ERROR", "Bridge RPC client is required for bridge-backed sessions.", 500);
+        }
+        const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
         await requireDeviceLease(tx, auth, session);
 
         const operations: NodeOperationRecord[] = [];
@@ -1460,14 +1607,28 @@ export function createDebuggingService(options: ServiceOptions) {
           const compareReadback = (written: string, read: string) => compareDebugValues(written, read, entryMetadata);
           const result = await withGatewaySpan("rollback", { entryCount: snapshot.entries.length, protocol }, async (spanAttributes) => {
             try {
-              const gatewayResult = await gateway.writeNode({
-                targetRef: target.targetRef,
-                nodePath: entry.nodePath,
-                value: entry.previousValue,
-                readBack: true,
-                preserveExactRead,
-                compareReadback
-              });
+              const gatewayResult =
+                executionMode === "bridge"
+                  ? await writeNodeViaBridge({
+                      rpc: options.bridgeRpcClient as Pick<BridgeRpcClient, "call">,
+                      bridgeId: bridgeId as string,
+                      protocol,
+                      targetRef: target.targetRef,
+                      nodePath: entry.nodePath,
+                      value: entry.previousValue,
+                      readBack: true,
+                      preserveExactRead,
+                      compareReadback,
+                      timeoutMs: BRIDGE_NODE_TIMEOUT_MS
+                    })
+                  : await gateway!.writeNode({
+                      targetRef: target.targetRef,
+                      nodePath: entry.nodePath,
+                      value: entry.previousValue,
+                      readBack: true,
+                      preserveExactRead,
+                      compareReadback
+                    });
               spanAttributes.status = writeStatus(gatewayResult);
               return gatewayResult;
             } catch (error) {

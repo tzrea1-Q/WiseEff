@@ -70,6 +70,7 @@ export type DebugTargetRecord = {
   organizationId: string;
   projectId: string;
   deviceId: string;
+  bridgeId: string | null;
   targetRef: string;
   label: string;
   protocol: DebugConnectionProtocol;
@@ -132,6 +133,9 @@ export type DebugSessionRecord = {
   deviceId: string;
   targetId: string;
   protocol: DebugConnectionProtocol;
+  executionMode: DebugSessionExecutionMode;
+  bridgeId: string | null;
+  bridgeMachineLabel: string | null;
   actorUserId: string;
   status: DebugSessionStatus;
   startedAt: string;
@@ -202,3 +206,6 @@ export type NodeOperationRecord = {
   readbackValueDigest: string | null;
   valuePreview: string | null;
 };
+
+export const DEBUG_SESSION_EXECUTION_MODES = ["server", "bridge"] as const;
+export type DebugSessionExecutionMode = (typeof DEBUG_SESSION_EXECUTION_MODES)[number];

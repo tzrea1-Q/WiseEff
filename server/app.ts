@@ -14,6 +14,7 @@ import type { DebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegi
 import { registerDebuggingRoutes } from "./modules/debugging/routes";
 import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPool";
 import { createDeviceBridgeRepository } from "./modules/deviceBridge/repository";
+import type { BridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { createPairingService } from "./modules/deviceBridge/pairingService";
 import { loadLatestBridgeReleaseManifest } from "./modules/deviceBridge/releaseManifest";
 import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
@@ -136,6 +137,8 @@ export function createWiseEffServer(
     debugGatewayMode: options.env?.DEBUG_DEVICE_GATEWAY_MODE,
     metrics,
     tracing,
+    ...(options.deviceBridge?.connectionPool ? { bridgeConnectionPool: options.deviceBridge.connectionPool } : {}),
+    ...(options.deviceBridge?.rpcClient ? { bridgeRpcClient: options.deviceBridge.rpcClient } : {}),
     getCurrentAuthContext: authResolver
   });
   registerDeviceBridgeRoutes(router, buildDeviceBridgeRouteOptions(options, authResolver));
@@ -215,6 +218,7 @@ type DeviceBridgeRuntimeOptions = {
   wsPath?: string;
   wsHandler?: DeviceBridgeWsHandler;
   connectionPool?: ReturnType<typeof createBridgeConnectionPool>;
+  rpcClient?: Pick<BridgeRpcClient, "call">;
 };
 
 function resolveDeviceBridgeRuntime(options: {

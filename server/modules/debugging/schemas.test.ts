@@ -83,6 +83,26 @@ describe("debugging protocol schemas", () => {
     ).toBe("adb");
   });
 
+  it("requires bridgeId when targetId references a bridge-backed target", () => {
+    expect(() =>
+      createDebugSessionBodySchema.parse({
+        projectId: "aurora",
+        deviceId: "bridge:br-1",
+        targetId: "bridge:br-1:adb:serial-1",
+        protocol: "adb"
+      })
+    ).toThrow();
+    expect(
+      createDebugSessionBodySchema.parse({
+        projectId: "aurora",
+        deviceId: "bridge:br-1",
+        targetId: "bridge:br-1:adb:serial-1",
+        bridgeId: "br-1",
+        protocol: "adb"
+      })
+    ).toMatchObject({ bridgeId: "br-1" });
+  });
+
   it("rejects unsupported protocols at the API boundary", () => {
     expect(() => detectTargetsBodySchema.parse({ projectId: "aurora", protocol: "fastboot" })).toThrow();
     expect(() => listDebuggingParametersQuerySchema.parse({ protocol: "fastboot" })).toThrow();

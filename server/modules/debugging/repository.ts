@@ -6,6 +6,7 @@ import type {
   DebugNormalizationMode,
   DebugParameterNodeBindingRecord,
   DebugParameterRecord,
+  DebugSessionExecutionMode,
   DebugSessionRecord,
   DebugSnapshotEntry,
   DebugSnapshotRecord,
@@ -58,6 +59,7 @@ type DebugTargetRow = {
   organization_id: string;
   project_id: string;
   device_id: string;
+  bridge_id: string | null;
   protocol?: DebugConnectionProtocol;
   target_ref: string;
   label: string;
@@ -100,6 +102,9 @@ type DebugSessionRow = {
   device_id: string;
   target_id: string;
   protocol?: DebugConnectionProtocol;
+  execution_mode?: DebugSessionExecutionMode;
+  bridge_id: string | null;
+  bridge_machine_label: string | null;
   actor_user_id: string;
   status: DebugSessionStatus;
   started_at: string | Date;
@@ -207,6 +212,7 @@ function toDebugTargetRecord(row: DebugTargetRow): DebugTargetRecord {
     organizationId: row.organization_id,
     projectId: row.project_id,
     deviceId: row.device_id,
+    bridgeId: row.bridge_id ?? null,
     protocol: row.protocol ?? defaultDebugConnectionProtocol,
     targetRef: row.target_ref,
     label: row.label,
@@ -270,6 +276,9 @@ function toDebugSessionRecord(row: DebugSessionRow): DebugSessionRecord {
     deviceId: row.device_id,
     targetId: row.target_id,
     protocol: row.protocol ?? defaultDebugConnectionProtocol,
+    executionMode: row.execution_mode ?? "server",
+    bridgeId: row.bridge_id ?? null,
+    bridgeMachineLabel: row.bridge_machine_label ?? null,
     actorUserId: row.actor_user_id,
     status: row.status,
     startedAt: dateTimeToIso(row.started_at) ?? "",
@@ -889,7 +898,20 @@ export async function getDebugSession(
 ): Promise<DebugSessionRecord | null> {
   const result = await db.query<DebugSessionRow>(
     `
-    select id, organization_id, project_id, device_id, target_id, protocol, actor_user_id, status, started_at, ended_at
+    select
+      id,
+      organization_id,
+      project_id,
+      device_id,
+      target_id,
+      protocol,
+      execution_mode,
+      bridge_id,
+      bridge_machine_label,
+      actor_user_id,
+      status,
+      started_at,
+      ended_at
     from debugging_sessions
     where organization_id = $1
       and id = $2
@@ -907,7 +929,7 @@ export async function getDebugTarget(
 ): Promise<DebugTargetRecord | null> {
   const result = await db.query<DebugTargetRow>(
     `
-    select id, organization_id, project_id, device_id, protocol, target_ref, label, status, detected_at
+    select id, organization_id, project_id, device_id, bridge_id, protocol, target_ref, label, status, detected_at
     from debugging_targets
     where organization_id = $1
       and id = $2
@@ -960,8 +982,15 @@ export async function upsertDetectedTargets(
   input: {
     organizationId: string;
     projectId: string;
-    deviceId: string;
-    targets: Array<{ id: string; protocol?: DebugConnectionProtocol; targetRef: string; label: string; online: boolean }>;
+    targets: Array<{
+      id: string;
+      deviceId: string;
+      bridgeId?: string | null;
+      protocol?: DebugConnectionProtocol;
+      targetRef: string;
+      label: string;
+      online: boolean;
+    }>;
   }
 ): Promise<DebugTargetRecord[]> {
   const records: DebugTargetRecord[] = [];
@@ -971,20 +1000,22 @@ export async function upsertDetectedTargets(
     const result = await db.query<DebugTargetRow>(
       `
       insert into debugging_targets (
-        organization_id, project_id, device_id, id, protocol, target_ref, label, status
+        organization_id, project_id, device_id, id, bridge_id, protocol, target_ref, label, status
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       on conflict (device_id, protocol, target_ref) do update
       set label = excluded.label,
+        bridge_id = excluded.bridge_id,
         status = excluded.status,
         detected_at = now()
-      returning id, organization_id, project_id, device_id, protocol, target_ref, label, status, detected_at
+      returning id, organization_id, project_id, device_id, bridge_id, protocol, target_ref, label, status, detected_at
       `,
       [
         input.organizationId,
         input.projectId,
-        input.deviceId,
+        target.deviceId,
         target.id,
+        target.bridgeId ?? null,
         target.protocol ?? defaultDebugConnectionProtocol,
         target.targetRef,
         target.label,
@@ -997,18 +1028,28 @@ export async function upsertDetectedTargets(
     }
   }
 
-  const deviceStatus: DebugDeviceStatus = input.targets.some((target) => target.online) ? "online" : "offline";
-  await db.query(
-    `
-    update debugging_devices
-    set status = $3,
-      last_seen_at = now(),
-      updated_at = now()
-    where organization_id = $1
-      and id = $2
-    `,
-    [input.organizationId, input.deviceId, deviceStatus]
-  );
+  const statusByDeviceId = new Map<string, DebugDeviceStatus>();
+  for (const target of input.targets) {
+    const current = statusByDeviceId.get(target.deviceId);
+    const status: DebugDeviceStatus = target.online ? "online" : "offline";
+    if (current === "online") {
+      continue;
+    }
+    statusByDeviceId.set(target.deviceId, status);
+  }
+  for (const [deviceId, status] of statusByDeviceId.entries()) {
+    await db.query(
+      `
+      update debugging_devices
+      set status = $3,
+        last_seen_at = now(),
+        updated_at = now()
+      where organization_id = $1
+        and id = $2
+      `,
+      [input.organizationId, deviceId, status]
+    );
+  }
 
   return records;
 }
@@ -1021,16 +1062,42 @@ export async function createDebugSession(
     deviceId: string;
     targetId: string;
     protocol?: DebugConnectionProtocol;
+    executionMode?: DebugSessionExecutionMode;
+    bridgeId?: string | null;
+    bridgeMachineLabel?: string | null;
     actorUserId: string;
   }
 ): Promise<DebugSessionRecord> {
   const result = await db.query<DebugSessionRow>(
     `
     insert into debugging_sessions (
-      id, organization_id, project_id, device_id, target_id, protocol, actor_user_id, status
+      id,
+      organization_id,
+      project_id,
+      device_id,
+      target_id,
+      protocol,
+      execution_mode,
+      bridge_id,
+      bridge_machine_label,
+      actor_user_id,
+      status
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8)
-    returning id, organization_id, project_id, device_id, target_id, protocol, actor_user_id, status, started_at, ended_at
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    returning
+      id,
+      organization_id,
+      project_id,
+      device_id,
+      target_id,
+      protocol,
+      execution_mode,
+      bridge_id,
+      bridge_machine_label,
+      actor_user_id,
+      status,
+      started_at,
+      ended_at
     `,
     [
       randomUUID(),
@@ -1039,6 +1106,9 @@ export async function createDebugSession(
       input.deviceId,
       input.targetId,
       input.protocol ?? defaultDebugConnectionProtocol,
+      input.executionMode ?? "server",
+      input.bridgeId ?? null,
+      input.bridgeMachineLabel ?? null,
       input.actorUserId,
       "active"
     ]
