@@ -2,16 +2,22 @@
 
 > Chinese: [Chinese](README.zh-CN.md)
 
-Offline bundle for the WiseEff self-hosted Dockerfile base image (`node:22.21.1-alpine`).
+Offline bundle for the WiseEff self-hosted Dockerfile base image (`node:22.21.1-alpine`, **linux/amd64**).
 
 ## Load On An Air-Gapped Host
 
 ```bash
-docker load -i node-22.21.1-alpine.tar
-docker image inspect node:22.21.1-alpine --format '{{.Id}}'
+docker load -i node-22.21.1-alpine-amd64.tar
+docker image inspect node:22.21.1-alpine-amd64 --format '{{.Architecture}} {{.Id}}'
 ```
 
-After loading, build from `ops/self-hosted` as usual:
+After loading, tag the image for the Dockerfile `FROM` line if needed:
+
+```bash
+docker tag node:22.21.1-alpine-amd64 node:22.21.1-alpine
+```
+
+Then build from `ops/self-hosted` as usual:
 
 ```bash
 ./scripts/compose --env-file .env up -d --build
@@ -22,8 +28,8 @@ After loading, build from `ops/self-hosted` as usual:
 From a machine with Docker registry access:
 
 ```bash
-docker pull node:22.21.1-alpine
-docker save node:22.21.1-alpine -o node-22.21.1-alpine.tar
+docker pull --platform linux/amd64 node:22.21.1-alpine
+docker save node:22.21.1-alpine -o node-22.21.1-alpine-amd64.tar
 ```
 
-Image digest at export time: `sha256:0340fa682d72068edf603c305bfbc10e23219fb0e40df58d9ea4d6f33a9798bf`
+Amd64 image digest at export time: `sha256:eefb407f08684593068a61d76c3336fb418bdfd184357ccfe448aadfa1147b3e`
