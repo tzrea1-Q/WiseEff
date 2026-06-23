@@ -136,6 +136,7 @@ import {
 } from "./mockData";
 import { buildAISuggestion, buildImpactItems } from "./reviewMockData";
 import { buildAuditEvent } from "./parameterAdminAnalytics";
+import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";
 import {
   addDebugParameter,
   addDebugParameterFromDraft,
@@ -701,6 +702,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         action.projects,
         currentUser?.name ?? "API draft"
       );
+      const projects = action.projects.map((project) => ({ ...project }));
+      const parameterLibrary = buildParameterLibraryFromRecords(action.parameters, projects);
+      const parameterModules = buildParameterModulesFromRecords(action.parameters, state.configDraft.parameterModules);
       return {
         ...state,
         parameters: action.parameters,
@@ -710,7 +714,9 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         parameterReviewDecisions: [],
         configDraft: {
           ...state.configDraft,
-          projects: action.projects.map((project) => ({ ...project }))
+          projects,
+          parameterLibrary,
+          parameterModules
         }
       };
     }

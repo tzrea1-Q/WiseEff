@@ -58,6 +58,8 @@
     "db:seed:m1": "tsx scripts/seed-m1-parameters.ts",
     "db:seed:m2": "tsx scripts/seed-m2-logs.ts",
     "db:seed:m3": "tsx scripts/seed-m3-debugging.ts",
+    "db:seed:all": "tsx scripts/seed-all.ts",
+    "admin:bootstrap": "tsx scripts/bootstrap-local-admin.ts",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

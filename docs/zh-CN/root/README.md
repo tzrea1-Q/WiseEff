@@ -80,6 +80,22 @@ chmod 600 .env
 - 不要对客户或生产数据执行 `db:seed:*`。
 - 不要提交 `ops/self-hosted/.env`。
 
+使用本地账号（`ops/self-hosted/.env` 中 `AUTH_PROVIDER=local`）的自管部署，栈启动后创建首个 admin：
+
+```bash
+./scripts/compose --env-file .env exec api npm run admin:bootstrap -- \
+  --username admin.ops \
+  --password 'ReplaceWithAStrongPassword'
+```
+
+仅内部 staging/demo 主机可导入 bundled M0–M3 种子数据：
+
+```bash
+./scripts/seed-demo-data.sh
+```
+
+迁移 `0021_baseline_platform_roles.sql` 会在 API 启动时自动写入平台角色与本地注册组织。
+
 升级：
 
 ```bash

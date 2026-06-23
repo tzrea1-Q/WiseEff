@@ -90,7 +90,7 @@ export const bundledPowerManagementConfig: PowerManagementConfig = normalizePowe
   powerManagementConfigJson as RawPowerManagementConfig
 );
 
-function createEmptyParameterModule(name: string): PowerManagementParameterModule {
+export function createEmptyParameterModule(name: string): PowerManagementParameterModule {
   return {
     name,
     description: "",
@@ -485,7 +485,11 @@ export function serializePowerManagementConfig(config: PowerManagementConfig) {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
-function getLibraryParameterId(projectId: PowerManagementProjectId, parameterId: string) {
+export function resolveLibraryParameterId(projectId: PowerManagementProjectId, parameterId: string) {
   const projectPrefix = `${projectId}-`;
   return parameterId.startsWith(projectPrefix) ? parameterId.slice(projectPrefix.length) : parameterId;
+}
+
+function getLibraryParameterId(projectId: PowerManagementProjectId, parameterId: string) {
+  return resolveLibraryParameterId(projectId, parameterId);
 }

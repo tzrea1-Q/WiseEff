@@ -84,7 +84,8 @@ function renderPage(
   state = initialState,
   dispatch = vi.fn(),
   parameterActions?: ParameterPageActions,
-  onNavigate = vi.fn()
+  onNavigate = vi.fn(),
+  runtimeMode: "api" | "mock" = "mock"
 ) {
   return render(
     <TopBarActionsHarness>
@@ -94,6 +95,7 @@ function renderPage(
         onNavigate={onNavigate}
         search={search}
         parameterActions={parameterActions}
+        runtimeMode={runtimeMode}
       />
     </TopBarActionsHarness>
   );
@@ -116,6 +118,28 @@ describe("ParameterAdminPage", () => {
     expect(within(library).getByText(/fast_charge_current_limit_ma/)).toBeInTheDocument();
     expect(within(library).getAllByRole("button", { name: "修改" }).length).toBeGreaterThan(0);
     expect(within(library).getAllByRole("button", { name: "项目参数" }).length).toBeGreaterThan(0);
+  });
+
+  it("shows an empty library in API mode when runtime parameters are empty", () => {
+    renderPage(
+      "",
+      {
+        ...initialState,
+        parameters: [],
+        configDraft: {
+          ...initialState.configDraft,
+          projects: [],
+          parameterLibrary: initialState.configDraft.parameterLibrary
+        }
+      },
+      vi.fn(),
+      createParameterActions(),
+      vi.fn(),
+      "api"
+    );
+
+    expect(screen.getByText("还没有任何参数。从下方开始")).toBeInTheDocument();
+    expect(screen.queryByText(/fast_charge_current_limit_ma/)).not.toBeInTheDocument();
   });
 
   it("opens definition and values dialogs from row actions", () => {

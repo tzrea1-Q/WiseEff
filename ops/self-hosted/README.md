@@ -27,6 +27,22 @@ chmod 600 .env
 
 The `./scripts/compose` wrapper accepts either `docker compose` (Compose v2) or `docker-compose` (standalone v1). It passes `-f compose.yaml` automatically when the standalone binary is used and rejects Compose versions that are too old for this stack.
 
+After the stack is up with `AUTH_PROVIDER=local`, bootstrap the first admin once:
+
+```bash
+./scripts/compose --env-file .env exec api npm run admin:bootstrap -- \
+  --username admin.ops \
+  --password 'ReplaceWithAStrongPassword'
+```
+
+For internal demo/staging hosts, import bundled seed data with:
+
+```bash
+./scripts/seed-demo-data.sh
+```
+
+See [docs/runbooks/self-hosted-runtime.md](../../docs/runbooks/self-hosted-runtime.md) for full bootstrap and seed guidance.
+
 Run metadata and smoke checks from a development machine or CI runner with Node.js 22:
 
 ```bash
