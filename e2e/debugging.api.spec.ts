@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { Client } from "pg";
 import { expect, test, type Locator, type Page } from "playwright/test";
+import { WebSocket } from "ws";
 import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -19,6 +20,8 @@ type DebugTargetDto = {
 
 type DebugSessionDto = {
   id: string;
+  executionMode?: "server" | "bridge";
+  bridgeId?: string | null;
 };
 
 type NodeOperationDto = {
@@ -35,6 +38,17 @@ type NodeOperationDto = {
 type DebugSnapshotDto = {
   id: string;
   status: string;
+};
+
+type DeviceBridgePairingCodeDto = {
+  code: string;
+  expiresAt: string;
+};
+
+type DeviceBridgePairingResultDto = {
+  bridgeId: string;
+  bridgeToken: string;
+  tokenExpiresAt: string;
 };
 
 type HdcSmokeConfig = {
@@ -235,6 +249,144 @@ async function postJson<T>(page: Page, path: string, data: Record<string, unknow
   return body as T;
 }
 
+function bridgeWebSocketUrl() {
+  const apiBase = process.env.VITE_WISEEFF_API_BASE_URL ?? process.env.WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
+  const url = new URL(apiBase);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/api/v1/device-bridges/ws";
+  url.search = "";
+  return url.toString();
+}
+
+async function pairBridgeForUser(page: Page, userId: string) {
+  const pairingCode = await postJson<DeviceBridgePairingCodeDto>(page, "/api/v1/device-bridges/pairing-codes", {}, userId);
+  const paired = await page.request.post(apiRoute("/api/v1/device-bridges/pair"), {
+    data: {
+      code: pairingCode.code,
+      machineLabel: "E2E-Fake-Bridge",
+      platform: "windows",
+      arch: "amd64",
+      clientVersion: "0.1.0-test"
+    },
+    headers: smokeHeaders()
+  });
+  expect(paired.ok()).toBe(true);
+  const body = (await paired.json()) as DeviceBridgePairingResultDto;
+  return {
+    bridgeId: body.bridgeId,
+    bridgeToken: body.bridgeToken
+  };
+}
+
+async function connectFakeBridgeClient(
+  bridgeToken: string,
+  handlers: {
+    detectTargets: () => Array<{ targetRef: string; online: boolean; label: string }>;
+    readNode: () => { value: string; stdout: string; durationMs: number };
+    writeNode: (value: string) => { value: string; stdout: string; durationMs: number };
+  }
+) {
+  const socket = new WebSocket(bridgeWebSocketUrl(), {
+    headers: {
+      Authorization: `Bridge ${bridgeToken}`
+    }
+  });
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    };
+    socket.once("open", () => finish());
+    socket.once("error", (error) => finish(error as Error));
+    socket.once("close", (code, reason) => {
+      finish(new Error(`Fake bridge websocket closed before ready: code=${code} reason=${reason.toString()}`));
+    });
+  });
+
+  socket.on("message", (raw) => {
+    const payload = typeof raw === "string" ? raw : raw.toString("utf8");
+    let message: { type?: string; id?: string; method?: string; params?: Record<string, unknown> } | null = null;
+    try {
+      message = JSON.parse(payload) as { type?: string; id?: string; method?: string; params?: Record<string, unknown> };
+    } catch {
+      return;
+    }
+    if (!message || message.type !== "rpc.request" || typeof message.id !== "string") {
+      return;
+    }
+
+    if (message.method === "debug.detectTargets") {
+      socket.send(
+        JSON.stringify({
+          type: "rpc.response",
+          id: message.id,
+          ok: true,
+          result: {
+            targets: handlers.detectTargets()
+          }
+        })
+      );
+      return;
+    }
+
+    if (message.method === "debug.readNode") {
+      const readResult = handlers.readNode();
+      socket.send(
+        JSON.stringify({
+          type: "rpc.response",
+          id: message.id,
+          ok: true,
+          result: {
+            ok: true,
+            ...readResult
+          }
+        })
+      );
+      return;
+    }
+
+    if (message.method === "debug.writeNode") {
+      const requestedValue = typeof message.params?.value === "string" ? message.params.value : "";
+      const writeResult = handlers.writeNode(requestedValue);
+      socket.send(
+        JSON.stringify({
+          type: "rpc.response",
+          id: message.id,
+          ok: true,
+          result: {
+            ok: true,
+            verified: true,
+            value: writeResult.value,
+            writeResult: {
+              ok: true,
+              value: writeResult.value,
+              durationMs: writeResult.durationMs
+            },
+            readResult: {
+              ok: true,
+              value: writeResult.value,
+              stdout: writeResult.stdout,
+              durationMs: writeResult.durationMs
+            }
+          }
+        })
+      );
+      return;
+    }
+  });
+
+  return socket;
+}
+
 test.describe("simulator debugging API smoke", () => {
 test.beforeAll(async () => {
   if (process.env.DEBUG_DEVICE_GATEWAY_MODE === "hdc") {
@@ -406,4 +558,91 @@ test("HDC device-lab smoke detects target, reads, writes, verifies read-back, an
   ).toBe("succeeded");
   expect(rollbackResponse!.operations[0].verified).toBe(true);
   expect(rollbackResponse!.snapshot.status).toBe("consumed");
+});
+
+test("bridge-backed detect and session write enforce execution mode and governed confirmation", async ({ page }) => {
+  test.skip(
+    process.env.DEBUG_DEVICE_GATEWAY_MODE !== "simulator",
+    "Bridge fake integration smoke runs in simulator mode to avoid external hardware dependencies."
+  );
+  test.skip(!databaseUrl, "DATABASE_URL is required to run bridge-backed debugging API smoke.");
+
+  await prepareDebuggingApiSmokeState();
+
+  const userId = "u-xu-yun";
+  const fakeTargetRef = "bridge-sim-target-001";
+  const bridgePair = await pairBridgeForUser(page, userId);
+
+  const fakeBridge = await connectFakeBridgeClient(bridgePair.bridgeToken, {
+    detectTargets: () => [{ targetRef: fakeTargetRef, online: true, label: "Bridge simulator target" }],
+    readNode: () => ({ value: "3000", stdout: "3000", durationMs: 3 }),
+    writeNode: (value) => ({ value, stdout: value, durationMs: 4 })
+  });
+
+  try {
+    const detected = await postJson<{ items: DebugTargetDto[] }>(
+      page,
+      "/api/v1/debugging/targets/detect",
+      { projectId, protocol: "hdc" },
+      userId
+    );
+    const bridgeTarget = detected.items.find((item) => item.id.startsWith("bridge:"));
+    expect(bridgeTarget).toBeTruthy();
+    expect(bridgeTarget?.id).toContain(bridgePair.bridgeId);
+    expect(bridgeTarget?.targetRef).toBe(fakeTargetRef);
+
+    const sessionResponse = await postJson<{ item: DebugSessionDto }>(
+      page,
+      "/api/v1/debugging/sessions",
+      {
+        projectId,
+        deviceId: `bridge:${bridgePair.bridgeId}`,
+        targetId: bridgeTarget!.id,
+        bridgeId: bridgePair.bridgeId,
+        protocol: "hdc"
+      },
+      userId
+    );
+    expect(sessionResponse.item.executionMode).toBe("bridge");
+    expect(sessionResponse.item.bridgeId).toBe(bridgePair.bridgeId);
+
+    const missingConfirmation = await page.request.post(apiRoute("/api/v1/debugging/nodes/write"), {
+      headers: { ...smokeHeaders(), "x-wiseeff-user": userId },
+      data: {
+        sessionId: sessionResponse.item.id,
+        parameterId: fastChargeParameterId,
+        value: "3150",
+        readBack: true
+      }
+    });
+    expect(missingConfirmation.status()).toBe(400);
+    const missingConfirmationBody = (await missingConfirmation.json()) as { error?: { code?: string; message?: string } };
+    expect(missingConfirmationBody.error?.code).toBe("VALIDATION_FAILED");
+    expect(missingConfirmationBody.error?.message).toContain("High-risk write requires confirmation or approval");
+
+    const writeResponse = await postJson<{ operation: NodeOperationDto }>(
+      page,
+      "/api/v1/debugging/nodes/write",
+      {
+        sessionId: sessionResponse.item.id,
+        parameterId: fastChargeParameterId,
+        value: "3150",
+        readBack: true,
+        confirmationToken: "confirm-high-risk-write"
+      },
+      userId
+    );
+    expect(writeResponse.operation.status).toBe("succeeded");
+    expect(writeResponse.operation.verified).toBe(true);
+    expect(writeResponse.operation.snapshotId).toEqual(expect.any(String));
+  } finally {
+    await new Promise<void>((resolve) => {
+      if (fakeBridge.readyState === WebSocket.CLOSED) {
+        resolve();
+        return;
+      }
+      fakeBridge.once("close", () => resolve());
+      fakeBridge.close();
+    });
+  }
 });

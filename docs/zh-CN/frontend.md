@@ -73,6 +73,10 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `/debugging`：保留参数调试工作台和 rollback 入口。
 - `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 
+### 本地 Device Bridge（Phase 1）
+
+`/node-debugging` 现已提供 Windows 优先的本地 Bridge 连接面板（自托管 API mode）。前端通过 `src/infrastructure/http/deviceBridgeClient.ts` 调用 `/api/v1/device-bridges/releases` 获取同源下载信息，调用 `/api/v1/device-bridges/pairing-codes` 生成配对码，并调用 `/api/v1/device-bridges/mine` 列出当前用户 Bridge。浏览器侧 `http://127.0.0.1:18787/health` 仅用于 UI 引导，不构成写入安全边界；Bridge 设备执行仍由后端 debugging session、授权和审计控制。
+
 ### 调试管理后台 UI
 
 页面壳在 `src/DebuggingAdminPage.tsx`，交互节奏对齐 `/parameter-admin`：主区域是全宽目录表，新增/编辑/归档走弹窗，不再使用左侧列表 + 右侧内联编辑器分栏。
