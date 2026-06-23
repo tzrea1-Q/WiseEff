@@ -6,6 +6,8 @@
   "exports": {
     "./adbRunner": "./src/adbRunner.ts",
     "./adbTargets": "./src/adbTargets.ts",
+    "./hdcRunner": "./src/hdcRunner.ts",
+    "./hdcTargets": "./src/hdcTargets.ts",
     "./remoteNodeWrite": "./src/remoteNodeWrite.ts"
   }
 }
