@@ -67,6 +67,7 @@ For M3 debugging:
 - Node writes require `debugging:write`, project access, an active session, a writable access mode, range validation, an active device lease for the session, and a pre-write snapshot.
 - High-risk writes require `confirm-high-risk-write` or a future approval id.
 - Snapshot rollback requires `debugging:rollback`, `confirm-rollback`, and an active device lease for the session.
+- Bridge-backed sessions additionally require a user-owned, non-revoked, online device bridge and persist `execution_mode=bridge` plus `bridge_id` for audit and rollback continuity.
 - Frontend disabled buttons are UX only; the backend rejects read-only writes, missing confirmations, bad ranges, inactive sessions, and unauthorized actors.
 
 ## Audit Requirements
@@ -147,6 +148,10 @@ Device access must go through a gateway boundary. Write requests need:
 - readback result or failure reason.
 
 The M3 simulator-backed path implements this boundary for local verification. M3.5 adds `debug_device_leases` so node writes and snapshot rollback cannot proceed when another active session owns the device lease; the same session can renew the lease, and repository helpers can expire/release it. M5 and the ADB/HDC protocol work add HDC and ADB adapters behind the same `DebugDeviceGateway` boundary with argv-based process execution, command timeouts, stderr/nonzero normalization, and read-back mismatch reporting. Production deployments must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`, `adb`, or `multi`; `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` is only acceptable for non-customer staging. HDC, ADB, and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence. Real hardware evidence still belongs in pilot/device-lab acceptance: no direct frontend device writes, no write without a lease and snapshot, no rollback without an explicit confirmation token, and no audit bypass.
+
+Local device bridge connectivity uses short-lived pairing codes and scoped bridge tokens (`device-bridge:connect`, `device-bridge:execute`) that are validated server-side before WebSocket registration and RPC execution. Browser bridge health probes and pairing UI do not grant device-write authority; only authenticated debugging routes can create bridge-backed sessions and governed writes.
+
+Bridge rename (`PATCH /api/v1/device-bridges/:bridgeId`) and revoke (`POST /api/v1/device-bridges/:bridgeId/revoke`) require `debugging:use`, must target a user-owned bridge, and revoke immediately invalidates the bridge token for new WebSocket connections. Renaming updates display metadata only; it does not rotate credentials or grant additional scopes.
 
 ## References
 

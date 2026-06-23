@@ -1,0 +1,124 @@
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+import { execFile } from "node:child_process";
+import { build } from "esbuild";
+
+const execFileAsync = promisify(execFile);
+
+const VERSION = "0.1.0";
+
+type BridgeArtifactTarget = {
+  platform: "windows" | "darwin" | "linux";
+  arch: string;
+  package: "zip" | "tar.gz";
+};
+
+const ARTIFACT_TARGETS: BridgeArtifactTarget[] = [
+  { platform: "windows", arch: "amd64", package: "zip" },
+  { platform: "darwin", arch: "arm64", package: "tar.gz" },
+  { platform: "darwin", arch: "amd64", package: "tar.gz" }
+];
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(scriptDir, "..");
+const entryPoint = path.join(rootDir, "packages", "device-bridge", "src", "cli.ts");
+const bundleDir = path.join(rootDir, "packages", "device-bridge", "dist");
+const bundlePath = path.join(bundleDir, "cli.js");
+const stagingDir = path.join(bundleDir, "staging");
+const manifestPath = path.join(rootDir, "ops", "self-hosted", "bridge-artifacts", VERSION, "manifest.json");
+
+const MAC_LAUNCHER = `#!/bin/bash
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec node "$DIR/cli.js" "$@"
+`;
+
+function artifactFilename(target: BridgeArtifactTarget) {
+  const extension = target.package === "zip" ? "zip" : "tar.gz";
+  return `wiseeff-bridge_${VERSION}_${target.platform}_${target.arch}.${extension}`;
+}
+
+async function sha256File(filePath: string) {
+  const { stdout } = await execFileAsync("shasum", ["-a", "256", filePath]);
+  return stdout.split(/\s+/)[0] ?? "";
+}
+
+async function packageZip(inputPath: string, outputPath: string) {
+  await rm(outputPath, { force: true });
+  await execFileAsync("zip", ["-j", outputPath, inputPath]);
+}
+
+async function packageTarGz(stagingPath: string, outputPath: string) {
+  await rm(outputPath, { force: true });
+  await execFileAsync("tar", ["-czf", outputPath, "-C", stagingPath, "cli.js", "wiseeff-bridge"]);
+}
+
+await mkdir(bundleDir, { recursive: true });
+await mkdir(stagingDir, { recursive: true });
+
+await build({
+  entryPoints: [entryPoint],
+  outfile: bundlePath,
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node20",
+  sourcemap: false,
+  minify: false,
+  legalComments: "none",
+  banner: {
+    js: "#!/usr/bin/env node"
+  }
+});
+
+const manifestItems: Array<{
+  platform: BridgeArtifactTarget["platform"];
+  arch: string;
+  version: string;
+  artifact: string;
+  sha256: string;
+}> = [];
+
+for (const target of ARTIFACT_TARGETS) {
+  const artifactDir = path.join(rootDir, "ops", "self-hosted", "bridge-artifacts", VERSION, target.platform, target.arch);
+  const artifactName = artifactFilename(target);
+  const artifactPath = path.join(artifactDir, artifactName);
+
+  await mkdir(artifactDir, { recursive: true });
+
+  if (target.package === "zip") {
+    await packageZip(bundlePath, artifactPath);
+  } else {
+    const targetStagingDir = path.join(stagingDir, `${target.platform}-${target.arch}`);
+    await rm(targetStagingDir, { recursive: true, force: true });
+    await mkdir(targetStagingDir, { recursive: true });
+    await writeFile(path.join(targetStagingDir, "cli.js"), await readFile(bundlePath));
+    const launcherPath = path.join(targetStagingDir, "wiseeff-bridge");
+    await writeFile(launcherPath, MAC_LAUNCHER, "utf8");
+    await chmod(launcherPath, 0o755);
+    await packageTarGz(targetStagingDir, artifactPath);
+  }
+
+  const sha256 = await sha256File(artifactPath);
+  manifestItems.push({
+    platform: target.platform,
+    arch: target.arch,
+    version: VERSION,
+    artifact: artifactName,
+    sha256
+  });
+
+  console.log(`Created artifact: ${artifactPath}`);
+}
+
+const manifest = {
+  recommendedVersion: VERSION,
+  minCompatibleVersion: VERSION,
+  items: manifestItems
+};
+
+await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+console.log(`Updated manifest: ${manifestPath}`);
+console.log(`Built device bridge bundle: ${bundlePath}`);

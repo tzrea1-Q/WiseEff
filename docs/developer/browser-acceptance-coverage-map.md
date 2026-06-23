@@ -19,6 +19,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `LOG-HAPPY-001` | D | Yes | Log upload, analysis progress, evidence, feedback, archive, and unsupported-file path work. | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `DEBUG-SIM-001` | E | Yes | Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata. | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | E | Yes | Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata. | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
+| `BRIDGE-WIN-001` | E | No | Node debugging Windows-first local bridge panel can show bridge-missing, pairing, startup, and online states with the same-origin Windows download CTA. | `e2e/acceptance/debugging-local-bridge.acceptance.spec.ts` |
 | `HDC-LAB-001` | F | No | Real HDC device lab read/write smoke runs when explicitly enabled. | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `AGENT-APPROVAL-001` | G | Yes | Agent context, approval, rejection, execution, and evidence path work. | `e2e/acceptance/agent.acceptance.spec.ts` |
 | `PERM-GOV-001` | H | Yes | User governance page is Admin-only and the active Admin cannot disable itself. | `e2e/acceptance/permissions.acceptance.spec.ts` |
@@ -28,7 +29,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 ## Interpretation
 
 - `Blocking = Yes` means the ID must be covered by a Playwright acceptance marker before `npm run acceptance:coverage` can pass.
-- `Blocking = No` means the ID is tracked, but may be skipped when the required external dependency is explicitly out of scope. Today this applies only to the HDC device lab.
+- `Blocking = No` means the ID is tracked, but may be skipped when the required external dependency is explicitly out of scope. Today this includes the HDC device lab and Windows local bridge runtime coverage.
 - Coverage markers use comments in acceptance specs: `// @acceptance PARAM-REASON-001`.
 - A workflow-level pass does not imply every row above is covered. The generated browser evidence must report requirement-level coverage before this map can be treated as satisfied.
 - Operation markers use comments in acceptance specs: `// @operation PARAM-REASON-001`. Automated P0/P1 operation IDs must produce operation evidence under `docs/generated/acceptance-operation-evidence.md`.

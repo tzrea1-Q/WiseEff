@@ -1,0 +1,9 @@
+{
+  "name": "@wiseeff/device-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "wiseeff-bridge": "./dist/cli.js"
+  }
+}

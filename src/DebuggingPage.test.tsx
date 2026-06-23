@@ -373,7 +373,18 @@ describe("/debugging runtime wiring", () => {
 
   it("keeps push disabled while connect starts during an in-flight runtime write", async () => {
     const pendingPush = createDeferred();
-    const pendingConnect = createDeferred<{ session: Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>>["session"]; target: Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>>["target"] }>();
+    const pendingConnect = createDeferred<{
+      session: {
+        id: string;
+        projectId: string;
+        deviceId: string;
+        targetId: string;
+        status: "active" | "closed";
+        startedAt: string;
+        endedAt: string | null;
+      };
+      target: { id: string; deviceId: string; label: string };
+    }>();
     const actions = createDebuggingActions({
       detectAndStartSession: vi.fn().mockReturnValue(pendingConnect.promise),
       pushValues: vi.fn().mockReturnValue(pendingPush.promise)

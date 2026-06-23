@@ -5,12 +5,21 @@ import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
 import { developmentAuthContext, registerAuthRoutes } from "./modules/auth/routes";
+import type { AuthContext } from "./modules/auth/types";
 import { createOidcVerifier } from "./modules/auth/oidcVerifier";
 import { createTokenVerifier, type TokenVerifier } from "./modules/auth/tokenVerifier";
 import { registerJobRoutes } from "./modules/jobs/routes";
 import type { DebugDeviceGateway } from "./modules/debugging/gateway";
 import type { DebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { registerDebuggingRoutes } from "./modules/debugging/routes";
+import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPool";
+import { createDeviceBridgeRepository } from "./modules/deviceBridge/repository";
+import type { BridgeRpcClient } from "./modules/deviceBridge/rpc";
+import { createPairingService } from "./modules/deviceBridge/pairingService";
+import { loadLatestBridgeReleaseManifest } from "./modules/deviceBridge/releaseManifest";
+import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
+import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
+import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
@@ -51,6 +60,11 @@ function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv) {
   });
 }
 
+type DeviceBridgeEnv = Pick<
+  ServerEnv,
+  "DEVICE_BRIDGE_ARTIFACT_ROOT" | "DEVICE_BRIDGE_PAIRING_TTL_SECONDS" | "DEVICE_BRIDGE_TOKEN_TTL_DAYS" | "DEVICE_BRIDGE_WS_PATH"
+>;
+
 export function createWiseEffServer(
   options: {
     db?: Database;
@@ -61,11 +75,12 @@ export function createWiseEffServer(
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     agentProvider?: AgentProvider;
     durableQueue?: DurableQueueHealthCheck;
-    env?: PilotReadinessEnv;
+    env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
     localAuthService?: LocalAuthService;
     tracing?: Pick<TracingBoundary, "withSpan">;
     metrics?: MetricsRegistry;
+    deviceBridge?: DeviceBridgeRuntimeOptions;
   } = {}
 ) {
   const router = createRouter();
@@ -122,8 +137,11 @@ export function createWiseEffServer(
     debugGatewayMode: options.env?.DEBUG_DEVICE_GATEWAY_MODE,
     metrics,
     tracing,
+    ...(options.deviceBridge?.connectionPool ? { bridgeConnectionPool: options.deviceBridge.connectionPool } : {}),
+    ...(options.deviceBridge?.rpcClient ? { bridgeRpcClient: options.deviceBridge.rpcClient } : {}),
     getCurrentAuthContext: authResolver
   });
+  registerDeviceBridgeRoutes(router, buildDeviceBridgeRouteOptions(options, authResolver));
   registerAgentRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver,
@@ -166,7 +184,103 @@ export function createWiseEffServer(
     };
   });
 
-  return createHttpServer(router, { metrics, tracing });
+  return attachDeviceBridgeServer(createHttpServer(router, { metrics, tracing }), options);
+}
+
+function buildDeviceBridgeRouteOptions(
+  options: {
+    db?: Database;
+    env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
+    deviceBridge?: DeviceBridgeRuntimeOptions;
+  },
+  getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext
+) {
+  const runtime = resolveDeviceBridgeRuntime(options);
+  if (!runtime) {
+    return {
+      db: options.db,
+      getCurrentAuthContext
+    };
+  }
+
+  return {
+    db: options.db,
+    getCurrentAuthContext,
+    pairingService: runtime.pairingService,
+    loadReleaseManifest: runtime.loadReleaseManifest
+  };
+}
+
+type DeviceBridgeRuntimeOptions = {
+  artifactRoot?: string;
+  pairingTtlMs?: number;
+  tokenTtlDays?: number;
+  wsPath?: string;
+  wsHandler?: DeviceBridgeWsHandler;
+  connectionPool?: ReturnType<typeof createBridgeConnectionPool>;
+  rpcClient?: Pick<BridgeRpcClient, "call">;
+};
+
+function resolveDeviceBridgeRuntime(options: {
+  db?: Database;
+  env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
+  deviceBridge?: DeviceBridgeRuntimeOptions;
+}) {
+  const artifactRoot = options.deviceBridge?.artifactRoot ?? options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT;
+  if (!artifactRoot) {
+    return undefined;
+  }
+
+  const loadReleaseManifest = () => loadLatestBridgeReleaseManifest(artifactRoot);
+  if (!options.db) {
+    return { loadReleaseManifest };
+  }
+
+  const repo = createDeviceBridgeRepository(options.db);
+  const pairingTtlMs =
+    options.deviceBridge?.pairingTtlMs ??
+    (options.env?.DEVICE_BRIDGE_PAIRING_TTL_SECONDS !== undefined
+      ? options.env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS * 1000
+      : undefined);
+  const tokenTtlDays = options.deviceBridge?.tokenTtlDays ?? options.env?.DEVICE_BRIDGE_TOKEN_TTL_DAYS;
+
+  return {
+    loadReleaseManifest,
+    pairingService: createPairingService({
+      repo,
+      ...(pairingTtlMs !== undefined ? { pairingTtlMs } : {}),
+      ...(tokenTtlDays !== undefined ? { tokenTtlDays } : {})
+    }),
+    repo,
+    wsPath: options.deviceBridge?.wsPath ?? options.env?.DEVICE_BRIDGE_WS_PATH ?? "/api/v1/device-bridges/ws",
+    wsHandler:
+      options.deviceBridge?.wsHandler ??
+      (options.deviceBridge?.connectionPool
+        ? createDeviceBridgeWsHandler({
+            pool: options.deviceBridge.connectionPool,
+            repo
+          })
+        : undefined)
+  };
+}
+
+function attachDeviceBridgeServer(
+  server: ReturnType<typeof createHttpServer>,
+  options: {
+    db?: Database;
+    env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
+    deviceBridge?: DeviceBridgeRuntimeOptions;
+  }
+) {
+  const runtime = resolveDeviceBridgeRuntime(options);
+  const wsHandler = options.deviceBridge?.wsHandler ?? runtime?.wsHandler;
+  const wsPath = options.deviceBridge?.wsPath ?? runtime?.wsPath ?? options.env?.DEVICE_BRIDGE_WS_PATH;
+
+  if (wsHandler && wsPath) {
+    attachDeviceBridgeWebSocket(server, { path: wsPath, wsHandler });
+  }
+
+  return server;
 }
 
 export function createWiseEffServerFromEnv(
@@ -182,6 +296,7 @@ export function createWiseEffServerFromEnv(
     env: ServerEnv;
     authVerifierFactory?: (env: ServerEnv) => TokenVerifier;
     metrics?: MetricsRegistry;
+    deviceBridge?: DeviceBridgeRuntimeOptions;
   }
 ) {
   const verifier =

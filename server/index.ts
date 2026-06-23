@@ -6,6 +6,8 @@ import { createAdbDebugDeviceGateway } from "./modules/debugging/adbGateway";
 import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { createHdcDebugDeviceGateway } from "./modules/debugging/hdcGateway";
 import { createSimulatorDebugDeviceGateway } from "./modules/debugging/simulator";
+import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPool";
+import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { startLogWorkerLoop } from "./modules/logs/worker";
 import { createMetricsRegistry } from "./observability/metrics";
@@ -36,6 +38,8 @@ const debugGatewayRegistry = createDebugDeviceGatewayRegistry({
         : undefined,
   adb: env.DEBUG_DEVICE_GATEWAY_MODE === "multi" || env.DEBUG_DEVICE_GATEWAY_MODE === "adb" ? adbGateway : undefined
 });
+const bridgeConnectionPool = createBridgeConnectionPool();
+const bridgeRpcClient = createBridgeRpcClient({ pool: bridgeConnectionPool });
 const logAnalysisQueueEnv = {
   REDIS_URL: env.REDIS_URL ?? "",
   LOG_ANALYSIS_QUEUE_PREFIX: env.LOG_ANALYSIS_QUEUE_PREFIX,
@@ -63,7 +67,11 @@ const server = createWiseEffServerFromEnv({
   agentProvider,
   durableQueue: logAnalysisQueueRuntime?.queue,
   env,
-  metrics
+  metrics,
+  deviceBridge: {
+    connectionPool: bridgeConnectionPool,
+    rpcClient: bridgeRpcClient
+  }
 });
 
 function shutdown() {

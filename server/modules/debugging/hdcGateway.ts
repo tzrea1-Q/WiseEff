@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import type {
   DebugDeviceGateway,
   GatewayNodeResult,
@@ -8,18 +7,18 @@ import type {
   GatewayWriteResult
 } from "./gateway";
 import {
+  createHdcCommandRunner,
+  createDefaultHdcCommandRunner as createCoreDefaultHdcCommandRunner,
+  parseHdcTargets as parseCoreHdcTargets,
+  type HdcCommandResult
+} from "@wiseeff/device-command-core/hdcRunner";
+import {
   buildRemoteWriteShellCommand,
   normalizeRemoteReadValue,
   shellQuote
-} from "./remoteNodeWrite";
+} from "@wiseeff/device-command-core/remoteNodeWrite";
 
-export type HdcCommandResult = {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-  durationMs: number;
-  timedOut?: boolean;
-};
+export type { HdcCommandResult };
 
 export type HdcCommandRunner = (
   command: string,
@@ -34,10 +33,6 @@ type HdcGatewayOptions = {
 };
 
 const defaultTimeoutMs = 5000;
-
-function durationSince(startedAt: number) {
-  return Math.max(1, Date.now() - startedAt);
-}
 
 function normalizeFailure(result: HdcCommandResult, timeoutMs: number) {
   if (result.timedOut) {
@@ -86,76 +81,35 @@ function nodeResultFromCommand(
 }
 
 export function createDefaultHdcCommandRunner(): HdcCommandRunner {
-  return (command, args, options) =>
-    new Promise((resolve, reject) => {
-      const startedAt = Date.now();
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-
-      const child = spawn(command, args, { shell: false, windowsHide: true });
-      const timeout = setTimeout(() => {
-        settled = true;
-        child.kill();
-        resolve({
-          code: null,
-          stdout,
-          stderr,
-          timedOut: true,
-          durationMs: durationSince(startedAt)
-        });
-      }, options.timeoutMs);
-
-      child.stdout.setEncoding("utf8");
-      child.stderr.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk;
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += chunk;
-      });
-      child.on("error", (error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.on("close", (code) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        resolve({
-          code,
-          stdout,
-          stderr,
-          durationMs: durationSince(startedAt)
-        });
-      });
-    });
+  const run = createCoreDefaultHdcCommandRunner();
+  return (command, args, options) => {
+    const runner = command === "hdc" ? run : createHdcCommandRunner({ command });
+    return runner(args, options);
+  };
 }
 
-function targetFromLine(line: string, deviceId: string): GatewayTarget {
-  return {
-    id: line,
+function parseHdcTargets(stdout: string, deviceId: string): GatewayTarget[] {
+  return parseCoreHdcTargets(stdout).map(({ targetRef }) => ({
+    id: targetRef,
     deviceId,
-    targetRef: line,
-    label: `HDC target ${line}`,
+    targetRef,
+    label: `HDC target ${targetRef}`,
     online: true
-  };
+  }));
 }
 
 export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): DebugDeviceGateway {
   const command = options.command ?? "hdc";
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
+  const coreRunner = createHdcCommandRunner({ command });
   const runCommand = options.runCommand ?? createDefaultHdcCommandRunner();
 
   async function run(args: string[]) {
     try {
-      return await runCommand(command, args, { timeoutMs });
+      if (options.runCommand) {
+        return await runCommand(command, args, { timeoutMs });
+      }
+      return await coreRunner(args, { timeoutMs });
     } catch (error) {
       return {
         code: 1,
@@ -199,11 +153,7 @@ export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): De
 
       return {
         ok: true,
-        targets: result.stdout
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .map((line) => targetFromLine(line, input.deviceId!))
+        targets: parseHdcTargets(result.stdout, input.deviceId)
       };
     },
 

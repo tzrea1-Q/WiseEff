@@ -56,7 +56,13 @@ export type DebuggingRuntimeDispatchAction =
 
 export type DebuggingRuntimeActions = {
   refresh(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<void>;
-  detectAndStartSession(projectId: string, options?: { protocol?: DebugConnectionProtocol }): Promise<{ session: DebugSessionSnapshot; target: DeviceTarget }>;
+  detectAndStartSession(
+    projectId: string,
+    options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string }
+  ): Promise<
+    | { session: DebugSessionSnapshot; target: DeviceTarget }
+    | { candidates: DeviceTarget[] }
+  >;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;
   writeNode(input: WriteNodeInput & { risk?: "Low" | "Medium" | "High" }): Promise<NodeWriteResult>;
   pushValues(parameterIds: string[]): Promise<void>;
@@ -144,6 +150,10 @@ function deviceFromApi(device: DebugDeviceSnapshot): Device {
 
 function transportMatchesProtocol(transport: DebugDeviceTransport | undefined, protocol: DebugConnectionProtocol) {
   return transport === protocol || transport === "multi";
+}
+
+function isBridgeBackedTarget(target: Pick<DeviceTarget, "id" | "bridgeId">) {
+  return Boolean(target.bridgeId) || target.id.startsWith("bridge:");
 }
 
 function findProtocolDebugDevice(
@@ -289,10 +299,21 @@ export function createDebuggingRuntimeActions({
           }
         }
         device ??= resolveProjectDebugDevice(state, projectId, protocol);
-        const [target] = await api.detectTargets({ projectId, protocol, deviceId: device.id });
-        if (!target) {
+        const detectedTargets = await api.detectTargets({ projectId, protocol, deviceId: device.id });
+        if (detectedTargets.length === 0) {
           throw new Error("No debug target detected.");
         }
+        let target = options?.targetId
+          ? detectedTargets.find((candidate) => candidate.id === options.targetId)
+          : undefined;
+        if (options?.targetId && !target) {
+          throw new Error("Selected debug target was not found.");
+        }
+        const bridgeTargets = detectedTargets.filter(isBridgeBackedTarget);
+        if (!target && bridgeTargets.length > 1) {
+          return { candidates: bridgeTargets };
+        }
+        target ??= detectedTargets[0];
         if (!api.createSession) {
           throw new Error("Debug session creation is not supported by this gateway.");
         }
@@ -300,7 +321,8 @@ export function createDebuggingRuntimeActions({
           projectId,
           deviceId: target.deviceId ?? device.id,
           targetId: target.id,
-          protocol
+          protocol,
+          bridgeId: options?.bridgeId ?? target.bridgeId
         });
         dispatch({ type: "SET_DEBUG_ACTIVE_SESSION", session, target });
         return { session, target };

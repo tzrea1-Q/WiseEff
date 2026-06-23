@@ -7,6 +7,8 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import type { DebugDeviceGateway } from "./gateway";
 import type { DebugDeviceGatewayRegistry } from "./gatewayRegistry";
+import type { BridgeConnectionPool } from "../deviceBridge/connectionPool";
+import type { BridgeRpcClient } from "../deviceBridge/rpc";
 import {
   archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
@@ -70,6 +72,8 @@ function serviceFrom(options: {
   debugGatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
   metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
   tracing?: Pick<TracingBoundary, "withSpan">;
+  bridgeConnectionPool?: Pick<BridgeConnectionPool, "isConnected">;
+  bridgeRpcClient?: Pick<BridgeRpcClient, "call">;
 }) {
   const db = requireDb(options.db);
   requireDebugGatewayAccess(options.debugGateway, options.debugGatewayRegistry);
@@ -81,7 +85,9 @@ function serviceFrom(options: {
       gatewayRegistry: options.debugGatewayRegistry,
       gatewayMode: options.debugGatewayMode,
       metrics: options.metrics,
-      tracing: options.tracing
+      tracing: options.tracing,
+      ...(options.bridgeConnectionPool ? { bridgeConnectionPool: options.bridgeConnectionPool } : {}),
+      ...(options.bridgeRpcClient ? { bridgeRpcClient: options.bridgeRpcClient } : {})
     })
   };
 }
@@ -109,6 +115,8 @@ export function registerDebuggingRoutes(
     debugGatewayMode?: "simulator" | "hdc" | "adb" | "multi" | string;
     metrics?: Pick<MetricsRegistry, "recordDeviceGatewayOperation">;
     tracing?: Pick<TracingBoundary, "withSpan">;
+    bridgeConnectionPool?: Pick<BridgeConnectionPool, "isConnected">;
+    bridgeRpcClient?: Pick<BridgeRpcClient, "call">;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
   }
 ) {

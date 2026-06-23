@@ -40,6 +40,8 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 参数管理写入需要服务端权限和审计：草稿、提交、审阅、merge 和 import 不能只依赖前端禁用按钮。日志上传、重跑、归档、反馈也必须由后端校验权限并记录审计。`debugging:admin` 只管理调试 catalog metadata 和 HDC/ADB node bindings；调试节点写入仍必须走 runtime path，并具备调试写权限、项目访问、有效 session、可写 access mode、范围校验、设备 lease、写前快照和必要的高风险确认。
 
+Bridge-backed 调试会话还要求 bridge 属于当前用户、未撤销且在线；后端会持久化 `execution_mode=bridge` 与 `bridge_id`，保证审计、回滚和冲突检查与服务端执行路径一致。
+
 ## 审计要求
 
 审计记录应包含 actor、target、action、severity、metadata、trace/request id、timestamp，以及项目或组织 scope。
@@ -61,6 +63,10 @@ Agent tool 分为：
 设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。
 
 Simulator-backed path 只用于本地验证。ADB/HDC 都必须经过同一个后端 gateway、权限、lease、snapshot、rollback 和 audit 边界。真实 pilot readiness 需要 HDC/device-lab 目标证据；本机 ADB lab 证据只能作为补充：不能有前端直接设备写入，不能无 lease 和 snapshot 写入，不能无确认 rollback，也不能绕过审计。
+
+本地 Device Bridge 连接采用短时配对码和带 scope 的 bridge token（`device-bridge:connect`、`device-bridge:execute`）。这些 token 仅在服务端校验通过后用于 WebSocket 注册与 RPC 执行；浏览器中的 bridge 健康探测或配对 UI 本身不授予设备写入权限。
+
+Bridge 重命名（`PATCH /api/v1/device-bridges/:bridgeId`）与撤销（`POST /api/v1/device-bridges/:bridgeId/revoke`）需要 `debugging:use`，且只能操作当前用户拥有的 Bridge；撤销会立即使 bridge token 失效，阻止新的 WebSocket 连接。重命名只更新展示用机器标签，不轮换凭据，也不扩展 scope。
 
 ## Secret 和备份安全
 

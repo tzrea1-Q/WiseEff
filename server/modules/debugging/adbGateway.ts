@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import type {
   DebugDeviceGateway,
   GatewayNodeResult,
@@ -8,18 +7,18 @@ import type {
   GatewayWriteResult
 } from "./gateway";
 import {
+  createAdbCommandRunner,
+  createDefaultAdbCommandRunner as createCoreDefaultAdbCommandRunner,
+  parseAdbDevices as parseCoreAdbDevices,
+  type AdbCommandResult
+} from "@wiseeff/device-command-core/adbRunner";
+import {
   buildRemoteWriteShellCommand,
   normalizeRemoteReadValue,
   shellQuote
-} from "./remoteNodeWrite";
+} from "@wiseeff/device-command-core/remoteNodeWrite";
 
-export type AdbCommandResult = {
-  code: number | null;
-  stdout: string;
-  stderr: string;
-  durationMs: number;
-  timedOut?: boolean;
-};
+export type { AdbCommandResult };
 
 export type AdbCommandRunner = (
   command: string,
@@ -34,10 +33,6 @@ type AdbGatewayOptions = {
 };
 
 const defaultTimeoutMs = 5000;
-
-function durationSince(startedAt: number) {
-  return Math.max(1, Date.now() - startedAt);
-}
 
 function normalizeFailure(result: AdbCommandResult, timeoutMs: number) {
   if (result.timedOut) {
@@ -75,83 +70,36 @@ function nodeResultFromCommand(
 }
 
 export function createDefaultAdbCommandRunner(): AdbCommandRunner {
-  return (command, args, options) =>
-    new Promise((resolve, reject) => {
-      const startedAt = Date.now();
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-
-      const child = spawn(command, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-      const timeout = setTimeout(() => {
-        settled = true;
-        child.kill();
-        resolve({
-          code: null,
-          stdout,
-          stderr,
-          timedOut: true,
-          durationMs: durationSince(startedAt)
-        });
-      }, options.timeoutMs);
-
-      child.stdout.setEncoding("utf8");
-      child.stderr.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk;
-      });
-      child.stderr.on("data", (chunk) => {
-        stderr += chunk;
-      });
-      child.on("error", (error) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        reject(error);
-      });
-      child.on("close", (code) => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        clearTimeout(timeout);
-        resolve({
-          code,
-          stdout,
-          stderr,
-          durationMs: durationSince(startedAt)
-        });
-      });
-    });
+  const run = createCoreDefaultAdbCommandRunner();
+  return (command, args, options) => {
+    const runner = command === "adb" ? run : createAdbCommandRunner({ command });
+    return runner(args, options);
+  };
 }
 
 function parseAdbDevices(stdout: string, deviceId: string): GatewayTarget[] {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.toLowerCase().startsWith("list of devices"))
-    .map((line) => line.split(/\s+/))
-    .filter(([serial, state]) => Boolean(serial) && state === "device")
-    .map(([serial]) => ({
-      id: `adb:${serial}`,
-      deviceId,
-      protocol: "adb" as const,
-      targetRef: serial,
-      label: `ADB target ${serial}`,
-      online: true
-    }));
+  return parseCoreAdbDevices(stdout).map(({ targetRef }) => ({
+    id: `adb:${targetRef}`,
+    deviceId,
+    protocol: "adb" as const,
+    targetRef,
+    label: `ADB target ${targetRef}`,
+    online: true
+  }));
 }
 
 export function createAdbDebugDeviceGateway(options: AdbGatewayOptions = {}): DebugDeviceGateway {
   const command = options.command ?? "adb";
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
+  const coreRunner = createAdbCommandRunner({ command });
   const runCommand = options.runCommand ?? createDefaultAdbCommandRunner();
 
   async function run(args: string[]) {
     try {
-      return await runCommand(command, args, { timeoutMs });
+      if (options.runCommand) {
+        return await runCommand(command, args, { timeoutMs });
+      }
+      return await coreRunner(args, { timeoutMs });
     } catch (error) {
       return {
         code: 1,

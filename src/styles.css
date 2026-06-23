@@ -7413,6 +7413,227 @@ td small {
   outline-offset: 2px;
 }
 
+.local-device-bridge-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, #f8fbff, #f5f8fc);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+
+.local-device-bridge-panel__head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.local-device-bridge-panel__head strong {
+  display: block;
+  font-size: 14px;
+}
+
+.local-device-bridge-panel__head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.local-device-bridge-panel__body {
+  display: grid;
+  gap: 8px;
+}
+
+.local-device-bridge-panel__downloads {
+  display: grid;
+  gap: 8px;
+}
+
+.local-device-bridge-panel__downloads small {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.local-device-bridge-panel__alternate-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.local-device-bridge-panel__alternate-downloads > span {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.local-device-bridge-panel__command {
+  display: grid;
+  gap: 4px;
+}
+
+.local-device-bridge-panel__command span {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.local-device-bridge-panel__command code {
+  padding: 7px 8px;
+  color: #063970;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.local-device-bridge-panel__command small {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.local-device-bridge-panel__bridges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.local-device-bridge-panel__bridges span {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.local-device-bridge-panel__management {
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.local-device-bridge-panel__management > summary {
+  cursor: pointer;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.local-device-bridge-panel__bridge-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0 12px 12px;
+  list-style: none;
+}
+
+.local-device-bridge-panel__bridge-item {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 10px;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.local-device-bridge-panel__bridge-meta {
+  display: grid;
+  gap: 4px;
+  min-width: 260px;
+}
+
+.local-device-bridge-panel__bridge-meta label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--app-muted);
+}
+
+.local-device-bridge-panel__bridge-meta input {
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.local-device-bridge-panel__bridge-meta small {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.local-device-bridge-panel__bridge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+.bridge-status-online,
+.bridge-status-offline,
+.bridge-status-revoked {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bridge-status-online {
+  color: #066046;
+  background: #d7f8e8;
+}
+
+.bridge-status-offline {
+  color: #7a4100;
+  background: #fff3cf;
+}
+
+.bridge-status-revoked {
+  color: #7f1d1d;
+  background: #fee2e2;
+}
+
+.bridge-target-picker {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.bridge-target-picker__head strong {
+  display: block;
+  font-size: 14px;
+}
+
+.bridge-target-picker__head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.bridge-target-picker__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .node-debugging-page .parameters-table-grid td[data-label="访问模式"] {
   font-weight: 700;
 }
