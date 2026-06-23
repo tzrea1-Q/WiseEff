@@ -87,4 +87,22 @@ describe("device bridge cli", () => {
     expect(exitCode).toBe(0);
     expect(capture.logs.some((line) => line.includes("bridgeStatus=connected"))).toBe(true);
   });
+
+  it("rejects service commands on non-Windows platforms", async () => {
+    const capture = createStdoutCapture();
+    const originalPlatform = process.platform;
+
+    Object.defineProperty(process, "platform", { value: "darwin" });
+
+    try {
+      const exitCode = await runCli(["service", "install"], {
+        stdout: capture.stdout
+      });
+
+      expect(exitCode).toBe(1);
+      expect(capture.errors.some((line) => line.includes("only supported on Windows"))).toBe(true);
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    }
+  });
 });

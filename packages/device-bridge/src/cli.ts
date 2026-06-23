@@ -1,14 +1,18 @@
 import os from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { detectBridgePlatform, loadBridgeConfig, saveBridgeConfig, type BridgeConfig } from "./config";
 import { createRpcHandlers } from "./rpcHandlers";
 import { startHealthServer } from "./healthServer";
 import { createBridgeWsClient } from "./wsClient";
+import { runWindowsServiceCommand, type ServiceAction } from "./windowsService";
 
 const BRIDGE_VERSION = "0.1.0";
+const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
 
 type ParsedArgs = {
-  command?: "pair" | "start" | "status";
+  command?: "pair" | "start" | "status" | "service";
+  serviceAction?: ServiceAction;
   flags: Map<string, string>;
 };
 
@@ -19,17 +23,18 @@ type CliDependencies = {
   stdout: Pick<Console, "log" | "error">;
 };
 
-function parseArgs(argv: string[]): ParsedArgs {
-  const [command, ...rest] = argv;
+const SERVICE_ACTIONS = new Set<ServiceAction>(["install", "start", "stop", "uninstall"]);
+
+function parseFlags(tokens: string[]): Map<string, string> {
   const flags = new Map<string, string>();
 
-  for (let index = 0; index < rest.length; index += 1) {
-    const token = rest[index];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
     if (!token.startsWith("--")) {
       continue;
     }
     const key = token.slice(2);
-    const next = rest[index + 1];
+    const next = tokens[index + 1];
     if (next && !next.startsWith("--")) {
       flags.set(key, next);
       index += 1;
@@ -38,10 +43,24 @@ function parseArgs(argv: string[]): ParsedArgs {
     flags.set(key, "true");
   }
 
-  if (command === "pair" || command === "start" || command === "status") {
-    return { command, flags };
+  return flags;
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
+  const [command, ...rest] = argv;
+
+  if (command === "service") {
+    const [serviceAction, ...serviceRest] = rest;
+    if (serviceAction && SERVICE_ACTIONS.has(serviceAction as ServiceAction)) {
+      return { command: "service", serviceAction: serviceAction as ServiceAction, flags: parseFlags(serviceRest) };
+    }
+    return { command: "service", flags: parseFlags(rest) };
   }
-  return { flags };
+
+  if (command === "pair" || command === "start" || command === "status") {
+    return { command, flags: parseFlags(rest) };
+  }
+  return { flags: parseFlags(rest) };
 }
 
 function usage() {
@@ -51,7 +70,11 @@ function usage() {
     "Commands:",
     "  pair --server <url> --code <6-digit-code>",
     "  start",
-    "  status"
+    "  status",
+    "  service install   Register background service (Windows only)",
+    "  service start     Start installed service (Windows only)",
+    "  service stop      Stop installed service (Windows only)",
+    "  service uninstall Remove installed service (Windows only)"
   ].join("\n");
 }
 
@@ -218,6 +241,19 @@ export async function runCli(argv = process.argv.slice(2), overrides: Partial<Cl
   if (parsed.command === "pair") {
     const result = await runPairCommand(parsed, deps);
     return result.exitCode;
+  }
+
+  if (parsed.command === "service") {
+    if (!parsed.serviceAction) {
+      deps.stdout.error("Missing service action.");
+      deps.stdout.log(usage());
+      return 1;
+    }
+    return runWindowsServiceCommand(parsed.serviceAction, {
+      cliPath: CLI_ENTRY_PATH,
+      log: (message) => deps.stdout.log(message),
+      error: (message) => deps.stdout.error(message)
+    });
   }
 
   const config = await deps.loadConfig();

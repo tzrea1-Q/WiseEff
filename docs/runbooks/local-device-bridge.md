@@ -77,6 +77,25 @@ npm run acceptance:e2e -- e2e/acceptance/local-device-bridge.acceptance.spec.ts
 
 This spec remains skipped unless `DEVICE_BRIDGE_LAB_AVAILABLE=true`.
 
+## Windows Service (Phase 2)
+
+Run these commands from an elevated terminal on Windows after pairing the bridge.
+
+Install registers a background service named `WiseEffBridge` using `sc.exe`. The CLI writes a small wrapper script under `%LOCALAPPDATA%\\WiseEff\\device-bridge\\start-service.cmd` that runs `node <cli.js> start`.
+
+```powershell
+wiseeff-bridge service install
+wiseeff-bridge service start
+wiseeff-bridge service stop
+wiseeff-bridge service uninstall
+```
+
+Notes:
+
+- Pair the bridge before starting the service (`wiseeff-bridge pair ...`).
+- Service install/start/stop/uninstall are Windows-only; other platforms exit with a clear unsupported message.
+- Uninstall stops the service, deletes the Windows service entry, and removes the wrapper script when present.
+
 ## Troubleshooting
 
 - **Manifest missing Windows artifact**: check `DEVICE_BRIDGE_ARTIFACT_ROOT` and artifact layout.
