@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
+  debugAdminBindingParamsSchema,
+  debugAdminParameterParamsSchema,
   debugParameterNodeBindingSchema,
   detectTargetsBodySchema,
+  listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
+  patchDebugParameterAdminBodySchema,
+  upsertDebugParameterNodeBindingBodySchema,
+  writeDebugParameterAdminBodySchema,
   readNodeBodySchema,
   rollbackSnapshotBodySchema,
   writeNodeBodySchema
@@ -118,5 +125,105 @@ describe("debugging protocol schemas", () => {
         enabled: true
       })
     ).toThrow();
+  });
+});
+
+describe("debugging admin schemas", () => {
+  it("parses admin list filters", () => {
+    expect(
+      listDebuggingAdminParametersQuerySchema.parse({
+        projectId: "aurora",
+        includeArchived: "true",
+        protocol: "adb",
+        coverage: "missing-adb"
+      })
+    ).toEqual({
+      projectId: "aurora",
+      includeArchived: true,
+      protocol: "adb",
+      coverage: "missing-adb"
+    });
+  });
+
+  it("validates parameter metadata and optional bindings", () => {
+    expect(
+      writeDebugParameterAdminBodySchema.parse({
+        projectId: null,
+        name: "Fast charge current",
+        key: "debug.fast_charge.current",
+        description: "Fast charge current limit.",
+        module: "Charging",
+        risk: "High",
+        unit: "mA",
+        range: "0-5000",
+        minValue: 0,
+        maxValue: 5000,
+        currentValue: "3000",
+        targetValue: "3000",
+        sortOrder: 10,
+        enabled: true,
+        bindings: [
+          {
+            protocol: "hdc",
+            nodePath: "/sys/class/power_supply/battery/input_current_limit",
+            accessMode: "RW",
+            enabled: true,
+            notes: "HDC path"
+          }
+        ]
+      })
+    ).toMatchObject({
+      projectId: null,
+      name: "Fast charge current",
+      enabled: true,
+      bindings: [expect.objectContaining({ protocol: "hdc", enabled: true })]
+    });
+  });
+
+  it("rejects enabled bindings without absolute node paths", () => {
+    expect(() =>
+      upsertDebugParameterNodeBindingBodySchema.parse({
+        nodePath: "relative",
+        accessMode: "RW",
+        enabled: true
+      })
+    ).toThrow();
+  });
+
+  it("accepts partial admin parameter patches with optional bindings", () => {
+    expect(
+      patchDebugParameterAdminBodySchema.parse({
+        name: "Renamed",
+        enabled: false,
+        bindings: [
+          {
+            protocol: "adb",
+            nodePath: "/sys/adb/path",
+            accessMode: "RO",
+            enabled: true
+          }
+        ]
+      })
+    ).toEqual({
+      name: "Renamed",
+      enabled: false,
+      bindings: [
+        {
+          protocol: "adb",
+          nodePath: "/sys/adb/path",
+          accessMode: "RO",
+          enabled: true
+        }
+      ]
+    });
+  });
+
+  it("parses route params and archive reasons", () => {
+    expect(debugAdminParameterParamsSchema.parse({ parameterId: "param-1" })).toEqual({ parameterId: "param-1" });
+    expect(debugAdminBindingParamsSchema.parse({ parameterId: "param-1", protocol: "adb" })).toEqual({
+      parameterId: "param-1",
+      protocol: "adb"
+    });
+    expect(archiveDebugParameterBodySchema.parse({ reason: "Deprecated" })).toEqual({ reason: "Deprecated" });
   });
 });

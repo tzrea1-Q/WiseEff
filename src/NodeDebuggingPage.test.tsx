@@ -21,7 +21,7 @@ const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc
 
 function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
   return {
-    refresh: vi.fn(),
+    refresh: vi.fn().mockResolvedValue(undefined),
     detectAndStartSession: vi.fn().mockResolvedValue({ session: apiSession, target: apiTarget }),
     readNode: vi.fn(async (input) => ({
       ok: true,
@@ -135,6 +135,19 @@ describe("/node-debugging", () => {
       userState.activeProjectId,
       { protocol: "adb" }
     ));
+  });
+
+  it("refreshes runtime parameters for the selected protocol when switching protocols", async () => {
+    const debuggingActions = createDebuggingActions();
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/在线 · API Gateway Target/);
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    await waitFor(() => expect(debuggingActions.refresh).toHaveBeenCalledWith({
+      projectId: userState.activeProjectId,
+      protocol: "adb"
+    }));
   });
 
   it("clears the active session and auto-detects when switching protocol", async () => {

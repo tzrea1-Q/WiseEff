@@ -46,7 +46,14 @@ import {
 } from "@/application/debugging/debuggingRuntime";
 import type { AgentGateway } from "@/application/ports/AgentGateway";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
+import type {
+  DebugAdminParameterDraft,
+  DebugConnectionProtocol,
+  DebugParameter as DomainDebugParameter,
+  DebugParameterNodeBinding
+} from "@/domain/debugging/types";
 import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
+import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { createHttpAgentGateway } from "@/infrastructure/http/agentClient";
 import {
   createLogRuntimeActions,
@@ -104,6 +111,7 @@ import {
   splitChangeRequestsForReviewQueue
 } from "@/domain/parameters/reviewQueue";
 import { LinearTemplateHome } from "./linear-template/LinearTemplateHome";
+import { readInitialNodeDebuggingProtocol } from "./NodeDebuggingPage";
 import {
   AuditEvent,
   ChangeRequest,
@@ -1970,6 +1978,7 @@ export const appReducer = reducer;
 type AppProps = {
   agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
+  debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
   initialAppState?: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
@@ -1981,6 +1990,7 @@ type AppProps = {
 function App({
   agentGateway,
   authClient,
+  debuggingAdminClient,
   debuggingGateway,
   initialAppState = initialState,
   logAnalysisRepository,
@@ -1993,6 +2003,7 @@ function App({
       <AppShell
         agentGateway={agentGateway}
         authClient={authClient}
+        debuggingAdminClient={debuggingAdminClient}
         debuggingGateway={debuggingGateway}
         initialAppState={initialAppState}
         key={mockDataFingerprint}
@@ -2008,6 +2019,7 @@ function App({
 function AppShell({
   agentGateway,
   authClient,
+  debuggingAdminClient,
   debuggingGateway,
   initialAppState,
   logAnalysisRepository,
@@ -2017,6 +2029,7 @@ function AppShell({
 }: {
   agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
+  debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
   initialAppState: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
@@ -2034,8 +2047,10 @@ function AppShell({
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
   const [apiAuthStatus, setApiAuthStatus] = useState<ApiAuthStatus>(runtimeMode === "api" ? "checking" : "authenticated");
   const [apiAuthError, setApiAuthError] = useState("");
+  const [apiAuthPermissions, setApiAuthPermissions] = useState<string[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   const page = getPageByPath(path);
+  const pageKeyRef = useRef(page.key);
   const agentPlan = useMemo(() => createAgentPlan(path), [path]);
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
   const isPlatformHome = page.key === "home";
@@ -2057,6 +2072,10 @@ function AppShell({
   const debuggingGatewayClient = useMemo(
     () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
     [debuggingGateway, runtimeMode]
+  );
+  const debuggingAdminCatalogClient = useMemo(
+    () => debuggingAdminClient ?? (runtimeMode === "api" ? createDebuggingAdminClient() : undefined),
+    [debuggingAdminClient, runtimeMode]
   );
   const userGovernanceActionsClient = useMemo(
     () => userGovernanceActions ?? (runtimeMode === "api" ? createUserGovernanceClient() : undefined),
@@ -2093,8 +2112,15 @@ function AppShell({
     [debuggingGatewayClient, runtimeMode]
   );
   const DebuggingAdminPageWithRuntime = useCallback(
-    (props: PageProps) => <DebuggingAdminPage {...props} runtimeMode={runtimeMode} />,
-    [runtimeMode]
+    (props: PageProps) => (
+      <DebuggingAdminPage
+        {...props}
+        runtimeMode={runtimeMode}
+        debuggingAdminClient={debuggingAdminCatalogClient}
+        apiAuthPermissions={apiAuthPermissions}
+      />
+    ),
+    [apiAuthPermissions, debuggingAdminCatalogClient, runtimeMode]
   );
   const LogsPageWithRuntime = useCallback(
     (props: PageProps) => <LogsPage {...props} logActions={runtimeMode === "api" ? props.logActions : undefined} />,
@@ -2103,6 +2129,7 @@ function AppShell({
 
   const hydrateAuthContext = useCallback((context: AuthContextDto) => {
     const primaryRole = context.roles[0]?.roleId ?? "guest";
+    setApiAuthPermissions(context.permissions);
     dispatch({
       type: "HYDRATE_AUTH_CONTEXT",
       roleId: primaryRole,
@@ -2123,8 +2150,9 @@ function AppShell({
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
       const runtimeRoleId = migrateLegacyRoleId(roleId);
+      const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
       const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
-        ? debuggingActions.refresh({ projectId: stateRef.current.activeProjectId })
+        ? debuggingActions.refresh({ projectId: stateRef.current.activeProjectId, protocol: debuggingProtocol })
         : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
@@ -2183,6 +2211,10 @@ function AppShell({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    pageKeyRef.current = page.key;
+  }, [page.key]);
 
   useEffect(() => {
     writeSidebarCollapsedPreference(sidebarCollapsed);
@@ -5679,12 +5711,94 @@ function LogsAuxPanel({
   );
 }
 
+function emptyDebugAdminDraft(index: number): DebugAdminParameterDraft {
+  return {
+    projectId: null,
+    name: `new_debug_parameter_${index}`,
+    key: `debug.new_parameter_${index}`,
+    description: "",
+    module: "Diagnostics",
+    currentValue: "",
+    targetValue: "",
+    unit: "",
+    range: "",
+    minValue: null,
+    maxValue: null,
+    risk: "Low",
+    nodePath: "",
+    accessMode: "RO",
+    sortOrder: index,
+    enabled: true,
+    bindings: []
+  };
+}
+
+function draftFromDebugParameter(parameter: DomainDebugParameter): DebugAdminParameterDraft {
+  return {
+    id: parameter.id,
+    projectId: parameter.projectId ?? null,
+    name: parameter.name,
+    key: parameter.key,
+    description: parameter.description,
+    module: parameter.module,
+    currentValue: parameter.currentValue,
+    targetValue: parameter.targetValue,
+    unit: parameter.unit,
+    range: parameter.range,
+    minValue: parameter.minValue ?? null,
+    maxValue: parameter.maxValue ?? null,
+    risk: parameter.risk,
+    nodePath: parameter.nodePath,
+    accessMode: parameter.accessMode,
+    sortOrder: parameter.sortOrder ?? 0,
+    enabled: parameter.enabled ?? true,
+    bindings: parameter.bindings ?? []
+  };
+}
+
+function bindingForProtocol(bindings: DebugParameterNodeBinding[] | undefined, protocol: DebugConnectionProtocol): DebugParameterNodeBinding {
+  return bindings?.find((binding) => binding.protocol === protocol) ?? {
+    protocol,
+    nodePath: "",
+    accessMode: "RO",
+    enabled: false,
+    notes: ""
+  };
+}
+
+function isArchivedDebugParameter(parameter: DomainDebugParameter) {
+  return Boolean(parameter.archivedAt);
+}
+
+function coverageLabel(parameter: DomainDebugParameter) {
+  if (isArchivedDebugParameter(parameter)) return "已归档";
+  if (parameter.enabled === false) return "已停用";
+  const hdc = bindingForProtocol(parameter.bindings, "hdc").enabled;
+  const adb = bindingForProtocol(parameter.bindings, "adb").enabled;
+  if (hdc && adb) return "双协议";
+  if (hdc) return "HDC 已配置";
+  if (adb) return "ADB 已配置";
+  return "缺 HDC / ADB";
+}
+
 function DebuggingAdminPage({
   state,
   dispatch,
-  runtimeMode = wiseEffRuntimeMode
-}: PageProps & { runtimeMode?: WiseEffRuntimeMode }) {
+  runtimeMode = wiseEffRuntimeMode,
+  debuggingAdminClient,
+  apiAuthPermissions = []
+}: PageProps & {
+  runtimeMode?: WiseEffRuntimeMode;
+  debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
+  apiAuthPermissions?: string[];
+}) {
   const [selectedParameterId, setSelectedParameterId] = useState(state.configDraft.debugParameters[0]?.id ?? "");
+  const [adminParameters, setAdminParameters] = useState<DomainDebugParameter[]>([]);
+  const [adminDraft, setAdminDraft] = useState<DebugAdminParameterDraft | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const [lastSelectedAdminParameterId, setLastSelectedAdminParameterId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterRisk, setFilterRisk] = useState<string[]>([]);
   const [filterStatus, setFilterStatus] = useState<string[]>([]);
@@ -5692,51 +5806,244 @@ function DebuggingAdminPage({
   const [jsonExpanded, setJsonExpanded] = useState(false);
   const [saveFlash, setSaveFlash] = useState(false);
   const isApiMode = runtimeMode === "api";
-  const selectedParameter =
+  const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
+  const mockSelectedParameter =
     state.configDraft.debugParameters.find((parameter) => parameter.id === selectedParameterId) ?? state.configDraft.debugParameters[0];
+  const selectedAdminParameter =
+    selectedParameterId ? adminParameters.find((parameter) => parameter.id === selectedParameterId) : undefined;
+  const selectedParameter = isApiMode ? adminDraft : mockSelectedParameter;
+  const mockEditorParameter = !isApiMode ? mockSelectedParameter : undefined;
+  const apiEditorDraft = isApiMode ? adminDraft : undefined;
+  const selectedParameterForMeta = isApiMode ? selectedAdminParameter : undefined;
   const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
 
   useEffect(() => {
+    if (isApiMode) return;
     if (!state.configDraft.debugParameters.some((parameter) => parameter.id === selectedParameterId)) {
       setSelectedParameterId(state.configDraft.debugParameters[0]?.id ?? "");
     }
-  }, [selectedParameterId, state.configDraft.debugParameters]);
+  }, [isApiMode, selectedParameterId, state.configDraft.debugParameters]);
+
+  useEffect(() => {
+    if (!isApiMode || !debuggingAdminClient) return;
+
+    let cancelled = false;
+    setAdminLoading(true);
+    setAdminError("");
+    debuggingAdminClient
+      .listParameters({ includeArchived: true })
+      .then((parameters) => {
+        if (cancelled) return;
+        setAdminParameters(parameters);
+        const nextSelected = parameters.find((parameter) => parameter.id === selectedParameterId) ?? parameters[0];
+        setSelectedParameterId(nextSelected?.id ?? "");
+        setLastSelectedAdminParameterId(nextSelected?.id ?? "");
+        setAdminDraft(nextSelected ? draftFromDebugParameter(nextSelected) : null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAdminError("无法加载调试参数目录。");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAdminLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debuggingAdminClient, isApiMode]);
+
+  useEffect(() => {
+    if (!isApiMode) return;
+    if (!selectedParameterId) {
+      setLastSelectedAdminParameterId("");
+      return;
+    }
+    if (selectedParameterId === lastSelectedAdminParameterId) return;
+    const nextSelected = adminParameters.find((parameter) => parameter.id === selectedParameterId);
+    if (nextSelected) {
+      setAdminDraft(draftFromDebugParameter(nextSelected));
+      setLastSelectedAdminParameterId(selectedParameterId);
+    }
+  }, [adminParameters, isApiMode, lastSelectedAdminParameterId, selectedParameterId]);
 
   const filteredParameters = useMemo(() => {
-    return state.configDraft.debugParameters.filter((p) => {
+    const source = isApiMode ? adminParameters : state.configDraft.debugParameters;
+    return source.filter((p) => {
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         if (!p.name.toLowerCase().includes(q) && !p.key.toLowerCase().includes(q)) return false;
       }
       if (filterRisk.length && !filterRisk.includes(p.risk)) return false;
-      if (filterStatus.length && !filterStatus.includes(p.status)) return false;
+      if (!isApiMode && filterStatus.length && !filterStatus.includes(p.status)) return false;
       if (filterModule.length && !filterModule.includes(p.module)) return false;
       return true;
     });
-  }, [state.configDraft.debugParameters, searchQuery, filterRisk, filterStatus, filterModule]);
+  }, [adminParameters, filterModule, filterRisk, filterStatus, isApiMode, searchQuery, state.configDraft.debugParameters]);
 
   const moduleOptions = useMemo(
-    () => Array.from(new Set(state.configDraft.debugParameters.map((p) => p.module).filter(Boolean))),
-    [state.configDraft.debugParameters]
+    () => {
+      const source = isApiMode ? adminParameters : state.configDraft.debugParameters;
+      return Array.from(new Set(source.map((p) => p.module).filter(Boolean)));
+    },
+    [adminParameters, isApiMode, state.configDraft.debugParameters]
   );
 
   const updateDebug = (patch: Partial<DebugParameterEditorDraft>) => {
-    if (isApiMode) return;
-    if (!selectedParameter) return;
-    dispatch({ type: "UPDATE_DEBUG_PARAMETER", parameterId: selectedParameter.id, patch });
+    if (isApiMode) {
+      setAdminDraft((draft) => draft ? { ...draft, ...patch } : draft);
+      setSaveStatus("");
+      return;
+    }
+    if (!mockSelectedParameter) return;
+    dispatch({ type: "UPDATE_DEBUG_PARAMETER", parameterId: mockSelectedParameter.id, patch });
     setSaveFlash(true);
     setTimeout(() => setSaveFlash(false), 1500);
   };
 
-  const highRiskCount = state.configDraft.debugParameters.filter((p) => p.risk === "High").length;
+  const updateAdminBinding = (protocol: DebugConnectionProtocol, patch: Partial<DebugParameterNodeBinding>) => {
+    setAdminDraft((draft) => {
+      if (!draft) return draft;
+      const currentBinding = bindingForProtocol(draft.bindings, protocol);
+      const nextBinding = { ...currentBinding, ...patch, protocol };
+      const otherBindings = draft.bindings.filter((binding) => binding.protocol !== protocol);
+      return { ...draft, bindings: [...otherBindings, nextBinding] };
+    });
+    setSaveStatus("");
+  };
+
+  const replaceAdminParameter = (parameter: DomainDebugParameter) => {
+    setAdminParameters((parameters) => {
+      const index = parameters.findIndex((item) => item.id === parameter.id);
+      if (index === -1) return [...parameters, parameter];
+      return parameters.map((item) => item.id === parameter.id ? parameter : item);
+    });
+    setSelectedParameterId(parameter.id);
+    setLastSelectedAdminParameterId(parameter.id);
+    setAdminDraft(draftFromDebugParameter(parameter));
+  };
+
+  const saveAdminParameter = async () => {
+    if (!debuggingAdminClient || !adminDraft || !canEditAdminCatalog) return;
+    setAdminLoading(true);
+    setAdminError("");
+    setSaveStatus("");
+    try {
+      const saved = adminDraft.id
+        ? await debuggingAdminClient.updateParameter(adminDraft.id, adminDraft)
+        : await debuggingAdminClient.createParameter(adminDraft);
+      replaceAdminParameter(saved);
+      setSaveStatus("已保存");
+    } catch {
+      setAdminError("保存调试参数失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const archiveAdminParameter = async (parameter: DomainDebugParameter) => {
+    if (!debuggingAdminClient || !canEditAdminCatalog) return;
+    setAdminLoading(true);
+    setAdminError("");
+    setSaveStatus("");
+    try {
+      const archived = await debuggingAdminClient.archiveParameter(parameter.id, "Archived from debugging admin.");
+      replaceAdminParameter(archived);
+      setSaveStatus("已归档");
+    } catch {
+      setAdminError("归档调试参数失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const restoreAdminParameter = async (parameter: DomainDebugParameter) => {
+    if (!debuggingAdminClient || !canEditAdminCatalog) return;
+    setAdminLoading(true);
+    setAdminError("");
+    setSaveStatus("");
+    try {
+      const restored = await debuggingAdminClient.restoreParameter(parameter.id);
+      replaceAdminParameter(restored);
+      setSaveStatus("已恢复");
+    } catch {
+      setAdminError("恢复调试参数失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const saveAdminBinding = async (protocol: DebugConnectionProtocol) => {
+    if (!debuggingAdminClient || !adminDraft?.id || !canEditAdminCatalog) return;
+    setAdminLoading(true);
+    setAdminError("");
+    setSaveStatus("");
+    try {
+      const binding = await debuggingAdminClient.upsertBinding(adminDraft.id, protocol, bindingForProtocol(adminDraft.bindings, protocol));
+      setAdminDraft((draft) => {
+        if (!draft) return draft;
+        return {
+          ...draft,
+          bindings: [...draft.bindings.filter((item) => item.protocol !== protocol), binding]
+        };
+      });
+      setAdminParameters((parameters) =>
+        parameters.map((parameter) =>
+          parameter.id === adminDraft.id
+            ? { ...parameter, bindings: [...(parameter.bindings ?? []).filter((item) => item.protocol !== protocol), binding] }
+            : parameter
+        )
+      );
+      setSaveStatus("已保存");
+    } catch {
+      setAdminError(`保存 ${protocol.toUpperCase()} 绑定失败。`);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const archiveAdminBinding = async (protocol: DebugConnectionProtocol) => {
+    if (!debuggingAdminClient || !adminDraft?.id || !canEditAdminCatalog) return;
+    setAdminLoading(true);
+    setAdminError("");
+    setSaveStatus("");
+    try {
+      const binding = await debuggingAdminClient.archiveBinding(adminDraft.id, protocol);
+      setAdminDraft((draft) => {
+        if (!draft) return draft;
+        return {
+          ...draft,
+          bindings: [...draft.bindings.filter((item) => item.protocol !== protocol), binding]
+        };
+      });
+      setAdminParameters((parameters) =>
+        parameters.map((parameter) =>
+          parameter.id === adminDraft.id
+            ? { ...parameter, bindings: [...(parameter.bindings ?? []).filter((item) => item.protocol !== protocol), binding] }
+            : parameter
+        )
+      );
+      setSaveStatus("已归档");
+    } catch {
+      setAdminError(`归档 ${protocol.toUpperCase()} 绑定失败。`);
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const parameterCount = isApiMode ? adminParameters.length : state.configDraft.debugParameters.length;
+  const highRiskCount = (isApiMode ? adminParameters : state.configDraft.debugParameters).filter((p) => p.risk === "High").length;
   useTopBarActions(
     <div className="debug-admin-strip debug-admin-strip--topbar">
-      <span className="debug-admin-stat">可调参数 <strong>{state.configDraft.debugParameters.length}</strong></span>
+      <span className="debug-admin-stat">可调参数 <strong>{parameterCount}</strong></span>
       <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
       <span className="debug-admin-stat">在线设备 <strong>{state.devices.filter((d) => d.status === "已连接").length}/{state.devices.length}</strong></span>
-      <span className={`debug-admin-save-indicator${saveFlash ? " visible" : ""}`}>✓ 已自动保存</span>
+      <span className={`debug-admin-save-indicator${saveFlash || saveStatus ? " visible" : ""}`}>{saveStatus || "✓ 已自动保存"}</span>
     </div>,
-    [highRiskCount, saveFlash, state.configDraft.debugParameters.length, state.devices]
+    [highRiskCount, parameterCount, saveFlash, saveStatus, state.devices]
   );
 
   return (
@@ -5749,9 +6056,16 @@ function DebuggingAdminPage({
             <Button
               variant="outline"
               type="button"
-              disabled={isApiMode}
+              disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false}
               onClick={() => {
-                if (isApiMode) return;
+                if (isApiMode) {
+                  const draft = emptyDebugAdminDraft(adminParameters.length + 1);
+                  setSelectedParameterId("");
+                  setLastSelectedAdminParameterId("");
+                  setAdminDraft(draft);
+                  setSaveStatus("");
+                  return;
+                }
                 dispatch({ type: "ADD_DEBUG_PARAMETER" });
                 setSelectedParameterId(`dbg-new-parameter-${state.configDraft.debugParameters.length + 1}`);
               }}
@@ -5771,16 +6085,18 @@ function DebuggingAdminPage({
               />
             </div>
             <ReviewMultiFilter label="风险" options={["High", "Medium", "Low"]} selected={filterRisk} onChange={setFilterRisk} />
-            <ReviewMultiFilter label="状态" options={["已同步", "待下发", "下发成功"]} selected={filterStatus} onChange={setFilterStatus} />
+            {!isApiMode ? <ReviewMultiFilter label="状态" options={["已同步", "待下发", "下发成功"]} selected={filterStatus} onChange={setFilterStatus} /> : null}
             <ReviewMultiFilter label="模块" options={moduleOptions} selected={filterModule} onChange={setFilterModule} />
           </div>
+          {adminError ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
+          {isApiMode && !canEditAdminCatalog ? <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p> : null}
           <ul className="debug-admin-param-list" role="listbox" aria-label="可调参数目录">
             {filteredParameters.map((parameter) => (
               <li
                 key={parameter.id}
                 role="option"
-                aria-selected={parameter.id === selectedParameter?.id}
-                className={`debug-admin-param-row${parameter.id === selectedParameter?.id ? " selected" : ""}`}
+                aria-selected={parameter.id === selectedParameterId}
+                className={`debug-admin-param-row${parameter.id === selectedParameterId ? " selected" : ""}`}
                 onClick={() => setSelectedParameterId(parameter.id)}
               >
                 <span className="debug-admin-param-row-main">
@@ -5788,17 +6104,24 @@ function DebuggingAdminPage({
                   <small>{parameter.key}</small>
                 </span>
                 <span className="debug-admin-param-row-meta">
-                  <span className={`debug-status-tag ${parameter.status === "待下发" ? "pending" : parameter.status === "下发成功" ? "success" : ""}`}>{parameter.status}</span>
+                  {isApiMode ? (
+                    <span className="debug-admin-coverage-badge">{coverageLabel(parameter as DomainDebugParameter)}</span>
+                  ) : (
+                    <span className={`debug-status-tag ${parameter.status === "待下发" ? "pending" : parameter.status === "下发成功" ? "success" : ""}`}>{parameter.status}</span>
+                  )}
                   <RiskBadge risk={parameter.risk} />
                 </span>
                 <button
                   type="button"
                   className="debug-admin-row-delete"
-                  aria-label={`删除 ${parameter.name}`}
-                  disabled={isApiMode || state.configDraft.debugParameters.length <= 1}
+                  aria-label={isApiMode ? `从列表归档 ${parameter.name}` : `删除 ${parameter.name}`}
+                  disabled={isApiMode ? !canEditAdminCatalog || adminLoading || isArchivedDebugParameter(parameter as DomainDebugParameter) : state.configDraft.debugParameters.length <= 1}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (isApiMode) return;
+                    if (isApiMode) {
+                      void archiveAdminParameter(parameter as DomainDebugParameter);
+                      return;
+                    }
                     dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: parameter.id });
                     if (parameter.id === selectedParameterId) {
                       setSelectedParameterId(state.configDraft.debugParameters.find((p) => p.id !== parameter.id)?.id ?? "");
@@ -5815,16 +6138,35 @@ function DebuggingAdminPage({
         <div className="debug-admin-editor">
           {selectedParameter ? (
             <>
+              {isApiMode ? (
+                <div className="debug-admin-api-actions">
+                  <Button type="button" onClick={saveAdminParameter} disabled={!canEditAdminCatalog || adminLoading}>
+                    保存参数
+                  </Button>
+                  {selectedParameterForMeta ? (
+                    isArchivedDebugParameter(selectedParameterForMeta) ? (
+                      <Button type="button" variant="outline" onClick={() => void restoreAdminParameter(selectedParameterForMeta)} disabled={!canEditAdminCatalog || adminLoading}>
+                        恢复参数
+                      </Button>
+                    ) : (
+                      <Button type="button" variant="outline" onClick={() => void archiveAdminParameter(selectedParameterForMeta)} disabled={!canEditAdminCatalog || adminLoading}>
+                        归档 {selectedParameterForMeta.name}
+                      </Button>
+                    )
+                  ) : null}
+                  {saveStatus ? <span className="debug-admin-save-status">{saveStatus}</span> : null}
+                </div>
+              ) : null}
               <div className="debug-admin-form-section">
                 <h3 className="debug-admin-form-group-title">标识信息</h3>
                 <div className="debug-admin-form-fields">
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">参数名称</span>
-                    <Input value={selectedParameter.name} disabled={isApiMode} onChange={(e) => updateDebug({ name: e.target.value })} />
+                    <Input value={selectedParameter.name} disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false} onChange={(e) => updateDebug({ name: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">参数 key</span>
-                    <Input value={selectedParameter.key} disabled={isApiMode} onChange={(e) => updateDebug({ key: e.target.value })} />
+                    <Input value={selectedParameter.key} disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false} onChange={(e) => updateDebug({ key: e.target.value })} />
                   </label>
                 </div>
               </div>
@@ -5833,19 +6175,19 @@ function DebuggingAdminPage({
                 <div className="debug-admin-form-fields">
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">当前值</span>
-                    <Input value={selectedParameter.currentValue} disabled={isApiMode} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
+                    <Input value={selectedParameter.currentValue} disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false} onChange={(e) => updateDebug({ currentValue: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">目标值</span>
-                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} disabled={isApiMode} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
+                    <Input aria-label="调试目标值" value={selectedParameter.targetValue} disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false} onChange={(e) => updateDebug({ targetValue: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">范围</span>
-                    <Input value={selectedParameter.range} disabled={isApiMode} onChange={(e) => updateDebug({ range: e.target.value })} />
+                    <Input value={selectedParameter.range} disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false} onChange={(e) => updateDebug({ range: e.target.value })} />
                   </label>
                   <label className="debug-admin-field">
                     <span className="debug-admin-field-label">单位</span>
-                    <Input value={selectedParameter.unit} disabled={isApiMode} onChange={(e) => updateDebug({ unit: e.target.value })} />
+                    <Input value={selectedParameter.unit} disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false} onChange={(e) => updateDebug({ unit: e.target.value })} />
                   </label>
                 </div>
               </div>
@@ -5857,7 +6199,7 @@ function DebuggingAdminPage({
                     <SelectControl
                       value={selectedParameter.risk}
                       onValueChange={(risk) => updateDebug({ risk })}
-                      disabled={isApiMode}
+                      disabled={isApiMode ? !canEditAdminCatalog || adminLoading : false}
                       options={[
                         { value: "High", label: "高" },
                         { value: "Medium", label: "中" },
@@ -5865,57 +6207,139 @@ function DebuggingAdminPage({
                       ]}
                     />
                   </label>
-                  <label className="debug-admin-field">
-                    <span className="debug-admin-field-label">状态</span>
-                    <SelectControl
-                      value={selectedParameter.status}
-                      onValueChange={(status) => updateDebug({ status })}
-                      disabled={isApiMode}
-                      options={[
-                        { value: "已同步", label: "已同步" },
-                        { value: "待下发", label: "待下发" },
-                        { value: "下发成功", label: "下发成功" }
-                      ]}
-                    />
-                  </label>
+                  {mockEditorParameter ? (
+                    <label className="debug-admin-field">
+                      <span className="debug-admin-field-label">状态</span>
+                      <SelectControl
+                        value={mockEditorParameter.status}
+                        onValueChange={(status) => updateDebug({ status })}
+                        disabled={false}
+                        options={[
+                          { value: "已同步", label: "已同步" },
+                          { value: "待下发", label: "待下发" },
+                          { value: "下发成功", label: "下发成功" }
+                        ]}
+                      />
+                    </label>
+                  ) : apiEditorDraft ? (
+                    <label className="debug-admin-field">
+                      <span className="debug-admin-field-label">启用</span>
+                      <input
+                        type="checkbox"
+                        checked={apiEditorDraft.enabled}
+                        disabled={!canEditAdminCatalog || adminLoading}
+                        onChange={(event) => {
+                          setAdminDraft((draft) => draft ? { ...draft, enabled: event.target.checked } : draft);
+                          setSaveStatus("");
+                        }}
+                      />
+                    </label>
+                  ) : null}
                 </div>
               </div>
-              <div className="debug-admin-form-section">
-                <h3 className="debug-admin-form-group-title">节点调试</h3>
-                <div className="debug-admin-form-fields">
-                  <label className="debug-admin-field">
-                    <span className="debug-admin-field-label">节点路径</span>
-                    <Input
-                      aria-label="节点路径"
-                      value={selectedParameter.nodePath}
-                      disabled={isApiMode}
-                      onChange={(e) => updateDebug({ nodePath: e.target.value })}
-                    />
-                  </label>
-                  <label className="debug-admin-field">
-                    <span className="debug-admin-field-label">访问模式</span>
-                    <SelectControl
-                      ariaLabel="访问模式"
-                      value={selectedParameter.accessMode}
-                      onValueChange={(accessMode) => updateDebug({ accessMode })}
-                      disabled={isApiMode}
-                      options={[
-                        { value: "RO", label: "RO · 只读" },
-                        { value: "WO", label: "WO · 只写" },
-                        { value: "RW", label: "RW · 读写" }
-                      ]}
-                    />
-                  </label>
+              {isApiMode && adminDraft ? (
+                <div className="debug-admin-form-section">
+                  <h3 className="debug-admin-form-group-title">协议节点绑定</h3>
+                  <div className="debug-admin-binding-grid">
+                    {(["hdc", "adb"] as DebugConnectionProtocol[]).map((protocol) => {
+                      const binding = bindingForProtocol(adminDraft.bindings, protocol);
+                      const label = protocol.toUpperCase();
+                      return (
+                        <div className="debug-admin-binding-panel" key={protocol}>
+                          <h4>{label}</h4>
+                          <label className="debug-admin-field">
+                            <span className="debug-admin-field-label">{label} 节点路径</span>
+                            <Input
+                              aria-label={`${label} 节点路径`}
+                              value={binding.nodePath}
+                              disabled={!canEditAdminCatalog || adminLoading}
+                              onChange={(e) => updateAdminBinding(protocol, { nodePath: e.target.value })}
+                            />
+                          </label>
+                          <label className="debug-admin-field">
+                            <span className="debug-admin-field-label">{label} 访问模式</span>
+                            <SelectControl
+                              ariaLabel={`${label} 访问模式`}
+                              value={binding.accessMode}
+                              onValueChange={(accessMode) => updateAdminBinding(protocol, { accessMode })}
+                              disabled={!canEditAdminCatalog || adminLoading}
+                              options={[
+                                { value: "RO", label: "RO · 只读" },
+                                { value: "WO", label: "WO · 只写" },
+                                { value: "RW", label: "RW · 读写" }
+                              ]}
+                            />
+                          </label>
+                          <label className="debug-admin-field">
+                            <span className="debug-admin-field-label">启用</span>
+                            <input
+                              type="checkbox"
+                              checked={binding.enabled}
+                              disabled={!canEditAdminCatalog || adminLoading}
+                              onChange={(event) => updateAdminBinding(protocol, { enabled: event.target.checked })}
+                            />
+                          </label>
+                          <label className="debug-admin-field">
+                            <span className="debug-admin-field-label">备注</span>
+                            <Input
+                              value={binding.notes ?? ""}
+                              disabled={!canEditAdminCatalog || adminLoading}
+                              onChange={(e) => updateAdminBinding(protocol, { notes: e.target.value })}
+                            />
+                          </label>
+                          {adminDraft.id ? (
+                            <div className="debug-admin-binding-actions">
+                              <Button type="button" variant="outline" onClick={() => void saveAdminBinding(protocol)} disabled={!canEditAdminCatalog || adminLoading}>
+                                保存 {label} binding
+                              </Button>
+                              <Button type="button" variant="outline" onClick={() => void archiveAdminBinding(protocol)} disabled={!canEditAdminCatalog || adminLoading || !binding.enabled}>
+                                归档 {label} binding
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="debug-admin-form-section">
+                  <h3 className="debug-admin-form-group-title">节点调试</h3>
+                  <div className="debug-admin-form-fields">
+                    <label className="debug-admin-field">
+                      <span className="debug-admin-field-label">节点路径</span>
+                      <Input
+                        aria-label="节点路径"
+                        value={selectedParameter.nodePath}
+                        disabled={false}
+                        onChange={(e) => updateDebug({ nodePath: e.target.value })}
+                      />
+                    </label>
+                    <label className="debug-admin-field">
+                      <span className="debug-admin-field-label">访问模式</span>
+                      <SelectControl
+                        ariaLabel="访问模式"
+                        value={selectedParameter.accessMode}
+                        onValueChange={(accessMode) => updateDebug({ accessMode })}
+                        disabled={false}
+                        options={[
+                          { value: "RO", label: "RO · 只读" },
+                          { value: "WO", label: "WO · 只写" },
+                          { value: "RW", label: "RW · 读写" }
+                        ]}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
-            <EmptyState text="请选择一个调试参数。" />
+            <EmptyState text={adminLoading ? "正在加载调试参数目录。" : "请选择一个调试参数。"} />
           )}
         </div>
       </section>
 
-      <section className="debug-admin-json-section">
+      {!isApiMode ? <section className="debug-admin-json-section">
         <button
           type="button"
           className="debug-admin-json-toggle"
@@ -5931,7 +6355,7 @@ function DebuggingAdminPage({
             <ConfigExportActions configJson={configJson} runtimeMode={runtimeMode} />
           </div>
         ) : null}
-      </section>
+      </section> : null}
     </div>
   );
 }

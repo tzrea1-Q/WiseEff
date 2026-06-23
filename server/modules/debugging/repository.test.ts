@@ -3,6 +3,9 @@ import type { QueryResult, Queryable } from "../../shared/database/client";
 import {
   acquireDebugDeviceLease,
   claimSnapshotForRollback,
+  archiveDebugParameter,
+  archiveDebugParameterNodeBinding,
+  createDebugParameter,
   createDebugSession,
   createDebugSnapshot,
   insertDebugEvent,
@@ -20,7 +23,10 @@ import {
   markSnapshotConsumed,
   releaseDebugDeviceLease,
   restoreSnapshotValid,
+  restoreDebugParameter,
+  updateDebugParameter,
   updateDebugParameterValues,
+  upsertDebugParameterNodeBinding,
   upsertDetectedTargets
 } from "./repository";
 
@@ -48,7 +54,279 @@ function createFakeDb(results: QueuedResult[] = []) {
 
 const timestamp = "2026-05-27T10:00:00.000Z";
 
+function debugParameterRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "param-1",
+    organization_id: "org-1",
+    project_id: null,
+    name: "Fast charge current",
+    key: "debug.fast_charge.current",
+    description: "Parameter",
+    module: "Charging",
+    node_path: "/sys/current",
+    access_mode: "RW",
+    unit: "mA",
+    range_label: "0-5000",
+    min_value: 0,
+    max_value: 5000,
+    risk: "Medium",
+    current_value: "3000",
+    target_value: "3000",
+    sort_order: 10,
+    enabled: true,
+    archived_at: null,
+    archived_by: null,
+    archive_reason: null,
+    ...overrides
+  };
+}
+
+function debugParameterNodeBindingRow(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    id: "binding-1",
+    organization_id: "org-1",
+    project_id: null,
+    parameter_id: "param-1",
+    protocol: "hdc",
+    node_path: "/sys/current",
+    access_mode: "RW",
+    enabled: true,
+    is_smoke_default: false,
+    notes: null,
+    created_at: "2026-06-22T12:00:00.000Z",
+    updated_at: "2026-06-22T12:00:00.000Z",
+    ...overrides
+  };
+}
+
 describe("debugging repository", () => {
+  it("creates debugging parameters for admin catalog writes", async () => {
+    const { db, calls } = createFakeDb([[debugParameterRow({ id: "param-created", project_id: null })]]);
+
+    const created = await createDebugParameter(db, {
+      organizationId: "org-1",
+      projectId: null,
+      name: "Created",
+      key: "debug.created",
+      description: "",
+      module: "Diagnostics",
+      nodePath: "/sys/created",
+      accessMode: "RO",
+      unit: "",
+      range: "",
+      minValue: null,
+      maxValue: null,
+      risk: "Low",
+      currentValue: "",
+      targetValue: "",
+      sortOrder: 1,
+      enabled: true
+    });
+
+    expect(calls[0].text).toContain("insert into debugging_parameters");
+    expect(calls[0].values).toEqual([
+      expect.any(String),
+      "org-1",
+      null,
+      "Created",
+      "debug.created",
+      "",
+      "Diagnostics",
+      "/sys/created",
+      "RO",
+      "",
+      "",
+      null,
+      null,
+      "Low",
+      "",
+      "",
+      1,
+      true
+    ]);
+    expect(created).toMatchObject({ id: "param-created", projectId: null, enabled: true });
+  });
+
+  it("updates debugging parameter mutable metadata for admin catalog writes", async () => {
+    const { db, calls } = createFakeDb([
+      [
+        debugParameterRow({
+          id: "param-updated",
+          project_id: null,
+          name: "Updated",
+          key: "debug.updated",
+          description: "Updated description",
+          module: "Diagnostics",
+          node_path: "/sys/updated",
+          access_mode: "RW",
+          unit: "mV",
+          range_label: "0-9000",
+          min_value: 0,
+          max_value: 9000,
+          risk: "High",
+          current_value: "4500",
+          target_value: "4600",
+          sort_order: 22,
+          enabled: false
+        })
+      ]
+    ]);
+
+    const updated = await updateDebugParameter(db, {
+      organizationId: "org-1",
+      parameterId: "param-updated",
+      projectId: null,
+      name: "Updated",
+      key: "debug.updated",
+      description: "Updated description",
+      module: "Diagnostics",
+      nodePath: "/sys/updated",
+      accessMode: "RW",
+      unit: "mV",
+      range: "0-9000",
+      minValue: 0,
+      maxValue: 9000,
+      risk: "High",
+      currentValue: "4500",
+      targetValue: "4600",
+      sortOrder: 22,
+      enabled: false
+    });
+
+    expect(calls[0].text).toContain("update debugging_parameters");
+    expect(calls[0].text).toContain("where organization_id = $1");
+    expect(calls[0].text).toContain("and id = $2");
+    expect(calls[0].values).toEqual([
+      "org-1",
+      "param-updated",
+      null,
+      "Updated",
+      "debug.updated",
+      "Updated description",
+      "Diagnostics",
+      "/sys/updated",
+      "RW",
+      "mV",
+      "0-9000",
+      0,
+      9000,
+      "High",
+      "4500",
+      "4600",
+      22,
+      false
+    ]);
+    expect(updated).toMatchObject({
+      id: "param-updated",
+      name: "Updated",
+      projectId: null,
+      enabled: false
+    });
+  });
+
+  it("archives and restores debugging parameters without deleting rows", async () => {
+    const { db, calls } = createFakeDb([
+      [debugParameterRow({ id: "param-1", enabled: false, archived_at: "2026-06-22T12:00:00.000Z" })],
+      [debugParameterRow({ id: "param-1", enabled: true, archived_at: null })]
+    ]);
+
+    await archiveDebugParameter(db, {
+      organizationId: "org-1",
+      parameterId: "param-1",
+      actorUserId: "user-1",
+      reason: "Deprecated"
+    });
+    await restoreDebugParameter(db, { organizationId: "org-1", parameterId: "param-1" });
+
+    expect(calls[0].text).toContain("update debugging_parameters");
+    expect(calls[0].text).toContain("archived_at = now()");
+    expect(calls[0].values).toEqual(["org-1", "param-1", "user-1", "Deprecated"]);
+    expect(calls[1].text).toContain("archived_at = null");
+    expect(calls[1].values).toEqual(["org-1", "param-1"]);
+  });
+
+  it("preserves catalog enabled state when archiving and restoring debugging parameters", async () => {
+    const { db, calls } = createFakeDb([
+      [debugParameterRow({ id: "param-disabled", enabled: false, archived_at: "2026-06-22T12:00:00.000Z" })],
+      [debugParameterRow({ id: "param-disabled", enabled: false, archived_at: null })]
+    ]);
+
+    await archiveDebugParameter(db, {
+      organizationId: "org-1",
+      parameterId: "param-disabled",
+      actorUserId: "user-1",
+      reason: "Temporarily retired"
+    });
+    await restoreDebugParameter(db, { organizationId: "org-1", parameterId: "param-disabled" });
+
+    expect(calls[0].text).not.toContain("enabled = false");
+    expect(calls[1].text).not.toContain("enabled = true");
+  });
+
+  it("upserts and archives protocol bindings", async () => {
+    const { db, calls } = createFakeDb([
+      [debugParameterNodeBindingRow({ protocol: "adb", enabled: true })],
+      [debugParameterNodeBindingRow({ protocol: "adb", enabled: false })]
+    ]);
+
+    await upsertDebugParameterNodeBinding(db, {
+      organizationId: "org-1",
+      projectId: null,
+      parameterId: "param-1",
+      protocol: "adb",
+      nodePath: "/sys/adb/path",
+      accessMode: "RO",
+      enabled: true,
+      notes: "ADB read"
+    });
+    await archiveDebugParameterNodeBinding(db, {
+      organizationId: "org-1",
+      parameterId: "param-1",
+      protocol: "adb"
+    });
+
+    expect(calls[0].text).toContain("insert into debugging_parameter_node_bindings");
+    expect(calls[0].text).toContain("from debugging_parameters p");
+    expect(calls[0].text).toContain("p.id = $4");
+    expect(calls[0].text).toContain("p.organization_id = $2");
+    expect(calls[0].text).toContain("on conflict (parameter_id, protocol) do update");
+    expect(calls[0].text).toContain("where debugging_parameter_node_bindings.organization_id = excluded.organization_id");
+    expect(calls[0].values).toEqual([
+      expect.any(String),
+      "org-1",
+      null,
+      "param-1",
+      "adb",
+      "/sys/adb/path",
+      "RO",
+      true,
+      "ADB read"
+    ]);
+    expect(calls[1].text).toContain("enabled = false");
+    expect(calls[1].values).toEqual(["org-1", "param-1", "adb"]);
+  });
+
+  it("returns null when upserting a binding for a parameter outside the organization scope", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    const binding = await upsertDebugParameterNodeBinding(db, {
+      organizationId: "org-1",
+      projectId: null,
+      parameterId: "param-other-org",
+      protocol: "adb",
+      nodePath: "/sys/adb/path",
+      accessMode: "RO",
+      enabled: true,
+      notes: "ADB read"
+    });
+
+    expect(calls[0].text).toContain("insert into debugging_parameter_node_bindings");
+    expect(calls[0].text).toContain("from debugging_parameters p");
+    expect(calls[0].text).toContain("p.id = $4");
+    expect(calls[0].text).toContain("p.organization_id = $2");
+    expect(binding).toBeNull();
+  });
+
   it("maps target, session, and operation protocol fields", async () => {
     const { db } = createFakeDb([
       [
@@ -423,6 +701,72 @@ describe("debugging repository", () => {
 
     expect(calls[0].text).toContain("(project_id is null or project_id = any($2::text[]))");
     expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
+  });
+
+  it("maps debugging parameter archive fields", async () => {
+    const { db } = createFakeDb([
+      [
+        {
+          id: "param-archived",
+          organization_id: "org-1",
+          project_id: null,
+          name: "Archived parameter",
+          key: "debug.archived",
+          description: "Archived catalog row.",
+          module: "Diagnostics",
+          node_path: "/sys/archived",
+          access_mode: "RO",
+          unit: "",
+          range_label: "",
+          min_value: null,
+          max_value: null,
+          risk: "Low",
+          current_value: "",
+          target_value: "",
+          sort_order: 99,
+          enabled: false,
+          archived_at: "2026-06-22T12:00:00.000Z",
+          archived_by: "user-1",
+          archive_reason: "No longer supported."
+        }
+      ]
+    ]);
+
+    const parameters = await listDebugParameters(db, {
+      organizationId: "org-1",
+      includeArchived: true
+    });
+
+    expect(parameters[0]).toMatchObject({
+      id: "param-archived",
+      projectId: null,
+      enabled: false,
+      archivedAt: "2026-06-22T12:00:00.000Z",
+      archivedBy: "user-1",
+      archiveReason: "No longer supported."
+    });
+  });
+
+  it("excludes archived debugging parameters from runtime lists by default", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await listDebugParameters(db, { organizationId: "org-1", projectId: "aurora" });
+
+    expect(calls[0].text).toContain("enabled = true");
+    expect(calls[0].text).toContain("archived_at is null");
+  });
+
+  it("includes archived debugging parameters for admin lists when requested", async () => {
+    const { db, calls } = createFakeDb([[]]);
+
+    await listDebugParameters(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      includeArchived: true
+    });
+
+    expect(calls[0].text).not.toContain("enabled = true");
+    expect(calls[0].text).not.toContain("archived_at is null");
   });
 
   it("lists shared protocol bindings for selected parameters", async () => {

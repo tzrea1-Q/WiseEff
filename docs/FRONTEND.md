@@ -74,6 +74,8 @@ Runtime split:
 - Local HDC helpers remain available for non-API `/node-debugging` experiments.
 - `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
 
+`/debugging-admin` uses API-backed catalog management in `api` mode. It calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, archive, restore, and bind debug parameters. `mock` mode keeps the local `configDraft` and JSON editing path for demos and component tests.
+
 The runtime coordinator hydrates devices and debugging parameters after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. A current residual gap is that snapshots created from `/node-debugging` writes are not yet promoted into `/debugging`'s `lastDebugSnapshot` rollback card; the M3 E2E therefore verifies rollback through the API if that UI affordance is disabled.
 
 The M3 API smoke lives in `e2e/debugging.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m3`. Playwright starts the backend with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and the frontend with `VITE_WISEEFF_RUNTIME_MODE=api`.

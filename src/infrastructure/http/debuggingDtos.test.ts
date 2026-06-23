@@ -108,6 +108,29 @@ describe("debugging dto mappers", () => {
     });
   });
 
+  it("preserves runtime admin compatibility fields on debug parameters", () => {
+    expect(
+      debugParameterFromDto({
+        ...parameterDto,
+        minValue: 0,
+        maxValue: 6000,
+        enabled: false,
+        sortOrder: 20,
+        archivedAt: "2026-06-22T00:00:00.000Z",
+        archivedBy: "u-admin",
+        archiveReason: "Deprecated"
+      })
+    ).toMatchObject({
+      minValue: 0,
+      maxValue: 6000,
+      enabled: false,
+      sortOrder: 20,
+      archivedAt: "2026-06-22T00:00:00.000Z",
+      archivedBy: "u-admin",
+      archiveReason: "Deprecated"
+    });
+  });
+
   it("maps protocol binding state into debug parameters", () => {
     expect(
       debugParameterFromDto({

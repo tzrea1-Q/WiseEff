@@ -75,6 +75,10 @@ type DebugParameterRow = {
   current_value: string;
   target_value: string;
   sort_order: number | string;
+  enabled: boolean;
+  archived_at: string | Date | null;
+  archived_by: string | null;
+  archive_reason: string | null;
 };
 
 type DebugSessionRow = {
@@ -210,7 +214,11 @@ function toDebugParameterRecord(row: DebugParameterRow): DebugParameterRecord {
     risk: row.risk,
     currentValue: row.current_value,
     targetValue: row.target_value,
-    sortOrder: Number(row.sort_order)
+    sortOrder: Number(row.sort_order),
+    enabled: row.enabled,
+    archivedAt: dateTimeToIso(row.archived_at),
+    archivedBy: row.archived_by,
+    archiveReason: row.archive_reason
   };
 }
 
@@ -314,7 +322,11 @@ const debugParameterColumns = `
   risk,
   current_value,
   target_value,
-  sort_order
+  sort_order,
+  enabled,
+  archived_at,
+  archived_by,
+  archive_reason
 `;
 
 const debugParameterNodeBindingColumns = `
@@ -353,6 +365,26 @@ const nodeOperationColumns = `
   snapshot_id,
   created_at
 `;
+
+export type WriteDebugParameterInput = {
+  organizationId: string;
+  projectId: string | null;
+  name: string;
+  key: string;
+  description: string;
+  module: string;
+  nodePath: string;
+  accessMode: DebugAccessMode;
+  unit: string;
+  range: string;
+  minValue: number | null;
+  maxValue: number | null;
+  risk: DebugRiskLevel;
+  currentValue: string;
+  targetValue: string;
+  sortOrder: number;
+  enabled: boolean;
+};
 
 export async function listDebugDevices(
   db: Queryable,
@@ -400,7 +432,7 @@ export async function getDebugDevice(
 
 export async function listDebugParameters(
   db: Queryable,
-  input: { organizationId: string; projectId?: string; projectIds?: string[]; module?: string; risk?: string[] }
+  input: { organizationId: string; projectId?: string; projectIds?: string[]; module?: string; risk?: string[]; includeArchived?: boolean }
 ): Promise<DebugParameterRecord[]> {
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
@@ -411,6 +443,10 @@ export async function listDebugParameters(
   }
   if (input.risk?.length) {
     addCondition(where, values, (placeholder) => `risk = any(${placeholder}::text[])`, input.risk);
+  }
+  if (!input.includeArchived) {
+    where.push("enabled = true");
+    where.push("archived_at is null");
   }
 
   const result = await db.query<DebugParameterRow>(
@@ -461,6 +497,171 @@ export async function updateDebugParameterValues(
   );
 }
 
+export async function createDebugParameter(db: Queryable, input: WriteDebugParameterInput): Promise<DebugParameterRecord> {
+  const result = await db.query<DebugParameterRow>(
+    `
+    insert into debugging_parameters (
+      id,
+      organization_id,
+      project_id,
+      name,
+      key,
+      description,
+      module,
+      node_path,
+      access_mode,
+      unit,
+      range_label,
+      min_value,
+      max_value,
+      risk,
+      current_value,
+      target_value,
+      sort_order,
+      enabled
+    )
+    values (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      $7,
+      $8,
+      $9,
+      $10,
+      $11,
+      $12,
+      $13,
+      $14,
+      $15,
+      $16,
+      $17,
+      $18
+    )
+    returning ${debugParameterColumns}
+    `,
+    [
+      randomUUID(),
+      input.organizationId,
+      input.projectId,
+      input.name,
+      input.key,
+      input.description,
+      input.module,
+      input.nodePath,
+      input.accessMode,
+      input.unit,
+      input.range,
+      input.minValue,
+      input.maxValue,
+      input.risk,
+      input.currentValue,
+      input.targetValue,
+      input.sortOrder,
+      input.enabled
+    ]
+  );
+
+  return toDebugParameterRecord(result.rows[0]);
+}
+
+export async function updateDebugParameter(
+  db: Queryable,
+  input: WriteDebugParameterInput & { parameterId: string }
+): Promise<DebugParameterRecord | null> {
+  const result = await db.query<DebugParameterRow>(
+    `
+    update debugging_parameters
+    set project_id = $3,
+      name = $4,
+      key = $5,
+      description = $6,
+      module = $7,
+      node_path = $8,
+      access_mode = $9,
+      unit = $10,
+      range_label = $11,
+      min_value = $12,
+      max_value = $13,
+      risk = $14,
+      current_value = $15,
+      target_value = $16,
+      sort_order = $17,
+      enabled = $18,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    returning ${debugParameterColumns}
+    `,
+    [
+      input.organizationId,
+      input.parameterId,
+      input.projectId,
+      input.name,
+      input.key,
+      input.description,
+      input.module,
+      input.nodePath,
+      input.accessMode,
+      input.unit,
+      input.range,
+      input.minValue,
+      input.maxValue,
+      input.risk,
+      input.currentValue,
+      input.targetValue,
+      input.sortOrder,
+      input.enabled
+    ]
+  );
+
+  return result.rows[0] ? toDebugParameterRecord(result.rows[0]) : null;
+}
+
+export async function archiveDebugParameter(
+  db: Queryable,
+  input: { organizationId: string; parameterId: string; actorUserId: string; reason?: string | null }
+): Promise<DebugParameterRecord | null> {
+  const result = await db.query<DebugParameterRow>(
+    `
+    update debugging_parameters
+    set archived_at = now(),
+      archived_by = $3,
+      archive_reason = $4,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    returning ${debugParameterColumns}
+    `,
+    [input.organizationId, input.parameterId, input.actorUserId, input.reason ?? null]
+  );
+
+  return result.rows[0] ? toDebugParameterRecord(result.rows[0]) : null;
+}
+
+export async function restoreDebugParameter(
+  db: Queryable,
+  input: { organizationId: string; parameterId: string }
+): Promise<DebugParameterRecord | null> {
+  const result = await db.query<DebugParameterRow>(
+    `
+    update debugging_parameters
+    set archived_at = null,
+      archived_by = null,
+      archive_reason = null,
+      updated_at = now()
+    where organization_id = $1
+      and id = $2
+    returning ${debugParameterColumns}
+    `,
+    [input.organizationId, input.parameterId]
+  );
+
+  return result.rows[0] ? toDebugParameterRecord(result.rows[0]) : null;
+}
+
 export async function getDebugParameterNodeBinding(
   db: Queryable,
   input: { organizationId: string; parameterId: string; protocol: DebugConnectionProtocol; includeDisabled?: boolean }
@@ -507,6 +708,92 @@ export async function listDebugParameterNodeBindings(
   );
 
   return result.rows.map(toDebugParameterNodeBindingRecord);
+}
+
+export async function upsertDebugParameterNodeBinding(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string | null;
+    parameterId: string;
+    protocol: DebugConnectionProtocol;
+    nodePath: string;
+    accessMode: DebugAccessMode;
+    enabled: boolean;
+    notes?: string | null;
+  }
+): Promise<DebugParameterNodeBindingRecord | null> {
+  const result = await db.query<DebugParameterNodeBindingRow>(
+    `
+    insert into debugging_parameter_node_bindings (
+      id,
+      organization_id,
+      project_id,
+      parameter_id,
+      protocol,
+      node_path,
+      access_mode,
+      enabled,
+      notes
+    )
+    select
+      $1,
+      p.organization_id,
+      p.project_id,
+      p.id,
+      $5,
+      $6,
+      $7,
+      $8,
+      $9
+    from debugging_parameters p
+    where p.id = $4
+      and p.organization_id = $2
+      and ($3::text is null or p.project_id is null or p.project_id = $3)
+    on conflict (parameter_id, protocol) do update
+    set node_path = excluded.node_path,
+      access_mode = excluded.access_mode,
+      enabled = excluded.enabled,
+      notes = excluded.notes,
+      project_id = excluded.project_id,
+      updated_at = now()
+    where debugging_parameter_node_bindings.organization_id = excluded.organization_id
+    returning ${debugParameterNodeBindingColumns}
+    `,
+    [
+      randomUUID(),
+      input.organizationId,
+      input.projectId,
+      input.parameterId,
+      input.protocol,
+      input.nodePath,
+      input.accessMode,
+      input.enabled,
+      input.notes ?? null
+    ]
+  );
+
+  return result.rows[0] ? toDebugParameterNodeBindingRecord(result.rows[0]) : null;
+}
+
+export async function archiveDebugParameterNodeBinding(
+  db: Queryable,
+  input: { organizationId: string; parameterId: string; protocol: DebugConnectionProtocol }
+): Promise<DebugParameterNodeBindingRecord | null> {
+  const result = await db.query<DebugParameterNodeBindingRow>(
+    `
+    update debugging_parameter_node_bindings
+    set enabled = false,
+      updated_at = now()
+    where organization_id = $1
+      and parameter_id = $2
+      and protocol = $3
+    returning ${debugParameterNodeBindingColumns}
+    `,
+    [input.organizationId, input.parameterId, input.protocol]
+  );
+
+  return result.rows[0] ? toDebugParameterNodeBindingRecord(result.rows[0]) : null;
 }
 
 export async function getDefaultAdbSmokeParameterNodeBinding(

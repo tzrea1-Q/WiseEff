@@ -27,3 +27,7 @@ Parameter requests, log analysis runs, debugging sessions, and Agent approvals s
 Debugging parameters are an organization-level debugging catalog. `debugging_parameters.project_id` and `debugging_parameter_node_bindings.project_id` are nullable; `null` means shared across projects. Parameter management remains project-scoped through the M1 parameter-management tables.
 
 Debugging runtime records are still project-contextual. Sessions, targets, leases, node operations, snapshots, events, and audit rows keep `project_id` so permissions, operation history, and evidence stay tied to the selected project context.
+
+Debugging catalog governance is split from runtime execution. `debugging_parameters.enabled=false` or non-null `archived_at` removes a parameter from runtime lists but keeps audit, snapshot, and operation history understandable. Admin catalog APIs can view and restore archived rows; runtime parameter reads only use enabled, non-archived rows.
+
+HDC and ADB node bindings remain separate rows in `debugging_parameter_node_bindings`, keyed by protocol. Disabling or archiving one binding only affects that protocol and must not hide the other protocol's binding from admin catalog governance.

@@ -223,6 +223,60 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["debugging"],
     responseBody: "DebugParameterListResponse"
   },
+  "debugging.admin.listParameters": {
+    summary: "List debug admin catalog parameters",
+    tags: ["debugging"],
+    responseBody: "DebugAdminParameterListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.createParameter": {
+    summary: "Create debug admin catalog parameter",
+    tags: ["debugging"],
+    requestBody: "DebugAdminParameterRequest",
+    responseBody: "DebugAdminParameterResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.updateParameter": {
+    summary: "Update debug admin catalog parameter",
+    tags: ["debugging"],
+    requestBody: "DebugAdminParameterPatchRequest",
+    responseBody: "DebugAdminParameterResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.archiveParameter": {
+    summary: "Archive debug admin catalog parameter",
+    tags: ["debugging"],
+    requestBody: "DebugAdminArchiveParameterRequest",
+    responseBody: "DebugAdminParameterResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.restoreParameter": {
+    summary: "Restore debug admin catalog parameter",
+    tags: ["debugging"],
+    responseBody: "DebugAdminParameterResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.upsertBinding": {
+    summary: "Upsert debug admin protocol binding",
+    tags: ["debugging"],
+    requestBody: "DebugAdminBindingRequest",
+    responseBody: "DebugAdminBindingResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.patchBinding": {
+    summary: "Update debug admin protocol binding",
+    tags: ["debugging"],
+    requestBody: "DebugAdminBindingRequest",
+    responseBody: "DebugAdminBindingResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.archiveBinding": {
+    summary: "Archive debug admin protocol binding",
+    tags: ["debugging"],
+    responseBody: "DebugAdminBindingResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
   "debugging.createSession": {
     summary: "Create debug session",
     tags: ["debugging"],

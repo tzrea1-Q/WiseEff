@@ -4956,11 +4956,46 @@ td small {
   color: #ba1a1a;
 }
 
+.debug-admin-error {
+  margin: 8px 12px;
+  font-size: 12px;
+  color: #ba1a1a;
+}
+
+.debug-admin-coverage-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface-low);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .debug-admin-editor {
   background: var(--surface);
   border: 1px solid var(--outline);
   border-radius: 12px;
   padding: 20px;
+}
+
+.debug-admin-api-actions,
+.debug-admin-binding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.debug-admin-save-status {
+  color: #047857;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .debug-admin-form-section {
@@ -5013,6 +5048,29 @@ td small {
   width: 100%;
 }
 
+.debug-admin-binding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.debug-admin-binding-panel {
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.debug-admin-binding-panel h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.debug-admin-binding-panel .debug-admin-field {
+  grid-template-columns: 96px 1fr;
+}
+
 .debug-admin-json-section {
   background: var(--surface);
   border: 1px solid var(--outline);
@@ -5060,6 +5118,12 @@ td small {
 
 @media (max-width: 1024px) {
   .debug-admin-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .debug-admin-binding-grid {
     grid-template-columns: 1fr;
   }
 }

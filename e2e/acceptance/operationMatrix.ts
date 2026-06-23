@@ -186,6 +186,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api"]
   },
   {
+    id: "DEBUG-ADMIN-001",
+    priority: "P1",
+    area: "debugging",
+    route: "/debugging-admin",
+    roles: ["Admin"],
+    action: "Create, edit, archive, restore, and protocol-bind a debugging catalog parameter.",
+    coverage: "automated",
+    acceptanceIds: ["DEBUG-ADMIN-001"],
+    specFiles: ["e2e/acceptance/debugging-admin.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit"]
+  },
+  {
     id: "HDC-LAB-001",
     priority: "P1",
     area: "debugging",

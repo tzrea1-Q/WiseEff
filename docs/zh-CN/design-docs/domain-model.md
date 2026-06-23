@@ -163,6 +163,10 @@ M2 implementation notes:
 
 调试运行时记录仍保留项目上下文。Sessions、targets、leases、node operations、snapshots、events 和 audit rows 都保留 `project_id`，确保权限、操作历史和 evidence 绑定到选定项目上下文。
 
+调试 catalog governance 与 runtime execution 分离。`debugging_parameters.enabled=false` 或 `archived_at` 非空会让参数退出 runtime 列表，但保留 audit、snapshot 和 operation history 的可解释性。Admin catalog API 可以查看并恢复 archived 行；runtime 参数读取只使用 enabled 且未 archived 的行。
+
+HDC 和 ADB node bindings 在 `debugging_parameter_node_bindings` 中按 protocol 独立存储。禁用或归档某个 binding 只影响对应 protocol，不能让另一个 protocol 的 binding 从 admin catalog governance 中消失。
+
 M3 implementation notes:
 
 - `debugging_devices` stores simulator or future HDC devices; the M3 seed creates `Aurora Simulator Device`.

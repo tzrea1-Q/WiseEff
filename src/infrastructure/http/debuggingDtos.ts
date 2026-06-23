@@ -55,9 +55,16 @@ export type DebugParameterDto = {
   accessMode?: "RO" | "WO" | "RW";
   unit: string;
   range: string;
+  minValue?: number | null;
+  maxValue?: number | null;
   risk: "Low" | "Medium" | "High";
   currentValue: string;
   targetValue: string;
+  sortOrder?: number;
+  enabled?: boolean;
+  archivedAt?: string | null;
+  archivedBy?: string | null;
+  archiveReason?: string | null;
   selectedBinding?: DebugParameterNodeBindingDto | null;
   bindings?: DebugParameterNodeBindingDto[];
 };
@@ -144,10 +151,17 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
     targetValue: dto.targetValue,
     unit: dto.unit,
     range: dto.range,
+    minValue: dto.minValue,
+    maxValue: dto.maxValue,
     risk: dto.risk,
     status: "已同步",
     nodePath,
     accessMode,
+    sortOrder: dto.sortOrder,
+    enabled: dto.enabled,
+    archivedAt: dto.archivedAt,
+    archivedBy: dto.archivedBy,
+    archiveReason: dto.archiveReason,
     selectedProtocol: selectedBinding?.protocol,
     bindingStatus,
     bindingDisabledReason,

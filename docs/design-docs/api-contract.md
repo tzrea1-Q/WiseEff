@@ -30,9 +30,26 @@ Rules:
 
 ## Debugging Parameter Semantics
 
-`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` returns shared debugging catalog rows plus legacy rows owned by the requested project. The `projectId` query parameter authorizes and contextualizes the request; it is not the ownership boundary for shared debugging catalog rows.
+`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` returns enabled, non-archived shared debugging catalog rows plus legacy rows owned by the requested project. The `projectId` query parameter authorizes and contextualizes the request; it is not the ownership boundary for shared debugging catalog rows.
 
 Read/write node APIs resolve protocol-specific `nodePath` from `debugging_parameter_node_bindings` when `parameterId` is provided. The request does not need to send a raw node path for catalog parameters.
+
+### Debugging Admin Catalog
+
+`/api/v1/debugging/admin/*` is reserved for Admin catalog governance and requires `debugging:admin`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/debugging/admin/parameters` | List the full debugging catalog, including disabled or archived rows when `includeArchived=true`. |
+| `POST` | `/api/v1/debugging/admin/parameters` | Create a debugging parameter and optional HDC/ADB bindings. |
+| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId` | Update debugging parameter metadata. |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/archive` | Archive a parameter without deleting historical references. |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/restore` | Restore an archived parameter. |
+| `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert the HDC or ADB node binding. |
+| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Update the HDC or ADB node binding. |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | Disable one protocol binding. |
+
+Runtime `/api/v1/debugging/parameters?protocol=...` returns only enabled, non-archived parameters with an enabled selected-protocol binding. Admin list APIs can return missing or archived bindings so `/debugging-admin` can show HDC/ADB coverage labels.
 
 ## Governance
 

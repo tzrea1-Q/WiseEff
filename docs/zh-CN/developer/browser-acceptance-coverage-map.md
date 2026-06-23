@@ -17,6 +17,10 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## 当前覆盖重点
+
+- `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding。
+
 ## 同类中文文档
 
 - [docs/zh-CN/developer/README.md](README.md)
