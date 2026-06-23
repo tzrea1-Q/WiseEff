@@ -1,16 +1,24 @@
 import {
   buildRemoteWriteShellCommand,
-  normalizeRemoteReadValue
+  normalizeRemoteReadValue,
+  shellQuote
 } from "@wiseeff/device-command-core/remoteNodeWrite";
 import {
   createDefaultAdbCommandRunner,
   parseAdbDevices,
   type AdbCommandRunner
 } from "@wiseeff/device-command-core/adbRunner";
+import {
+  createDefaultHdcCommandRunner,
+  parseHdcTargets,
+  type HdcCommandRunner
+} from "@wiseeff/device-command-core/hdcRunner";
 
 type RpcMethod = "bridge.getCapabilities" | "debug.detectTargets" | "debug.readNode" | "debug.writeNode";
 
 type RpcMethodResult = Record<string, unknown>;
+
+type DebugProtocol = "adb" | "hdc";
 
 export class RpcRequestError extends Error {
   code: string;
@@ -42,33 +50,102 @@ function readRequiredString(value: unknown, key: string) {
   return text;
 }
 
-function requireAdbProtocol(value: unknown) {
+function requireSupportedProtocol(value: unknown): DebugProtocol {
   const protocol = readRequiredString(value, "protocol");
-  if (protocol !== "adb") {
-    throw new RpcRequestError("UNSUPPORTED_PROTOCOL", `Protocol "${protocol}" is not supported in phase 1.`);
+  if (protocol !== "adb" && protocol !== "hdc") {
+    throw new RpcRequestError("UNSUPPORTED_PROTOCOL", `Protocol "${protocol}" is not supported.`);
   }
   return protocol;
 }
 
+function protocolLabel(protocol: DebugProtocol) {
+  return protocol === "adb" ? "ADB" : "HDC";
+}
+
+function commandFailureMessage(protocol: DebugProtocol, result: { code: number | null; stderr: string; timedOut?: boolean }) {
+  if (result.timedOut) {
+    return `${protocolLabel(protocol)} command timed out.`;
+  }
+  return result.stderr.trim() || `${protocolLabel(protocol)} exited with ${String(result.code)}.`;
+}
+
+function extractVersion(stdout: string) {
+  const line = stdout
+    .split(/\r?\n/)
+    .map((entry) => entry.trim())
+    .find(Boolean);
+  return line ?? undefined;
+}
+
+async function probeProtocolAvailability(
+  runner: AdbCommandRunner | HdcCommandRunner,
+  protocol: DebugProtocol,
+  timeoutMs: number
+) {
+  try {
+    const result = await runner(["version"], { timeoutMs });
+    if (result.code === 0 && !result.timedOut) {
+      return { available: true, version: extractVersion(result.stdout) };
+    }
+    return {
+      available: false,
+      reason: commandFailureMessage(protocol, result)
+    };
+  } catch (error) {
+    return {
+      available: false,
+      reason: toErrorMessage(error)
+    };
+  }
+}
+
 export function createRpcHandlers(options: {
   adbRunner?: AdbCommandRunner;
+  hdcRunner?: HdcCommandRunner;
   adbTimeoutMs?: number;
+  hdcTimeoutMs?: number;
+  capabilityProbeTimeoutMs?: number;
 } = {}) {
   const adbRunner = options.adbRunner ?? createDefaultAdbCommandRunner("adb");
+  const hdcRunner = options.hdcRunner ?? createDefaultHdcCommandRunner("hdc");
   const adbTimeoutMs = options.adbTimeoutMs ?? 5_000;
+  const hdcTimeoutMs = options.hdcTimeoutMs ?? 5_000;
+  const capabilityProbeTimeoutMs = options.capabilityProbeTimeoutMs ?? 2_000;
 
   async function readNode(params: Record<string, unknown>) {
-    requireAdbProtocol(params.protocol);
+    const protocol = requireSupportedProtocol(params.protocol);
     const targetRef = readRequiredString(params.targetRef, "targetRef");
     const nodePath = readRequiredString(params.nodePath, "nodePath");
     const preserveExactRead = readBoolean(params.preserveExactRead, false);
-    const result = await adbRunner(["-s", targetRef, "shell", "cat", nodePath], { timeoutMs: adbTimeoutMs });
+
+    if (protocol === "adb") {
+      const result = await adbRunner(["-s", targetRef, "shell", "cat", nodePath], { timeoutMs: adbTimeoutMs });
+      if (result.code !== 0 || result.timedOut) {
+        return {
+          ok: false,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          error: commandFailureMessage(protocol, result),
+          durationMs: result.durationMs
+        };
+      }
+
+      return {
+        ok: true,
+        value: normalizeRemoteReadValue(result.stdout, preserveExactRead),
+        stdout: result.stdout,
+        stderr: result.stderr,
+        durationMs: result.durationMs
+      };
+    }
+
+    const result = await hdcRunner(["-t", targetRef, "shell", `cat ${shellQuote(nodePath)}`], { timeoutMs: hdcTimeoutMs });
     if (result.code !== 0 || result.timedOut) {
       return {
         ok: false,
         stdout: result.stdout,
         stderr: result.stderr,
-        error: result.timedOut ? "ADB command timed out." : result.stderr.trim() || `ADB exited with ${String(result.code)}.`,
+        error: commandFailureMessage(protocol, result),
         durationMs: result.durationMs
       };
     }
@@ -85,39 +162,62 @@ export function createRpcHandlers(options: {
   return {
     async handle(method: RpcMethod, params: Record<string, unknown>): Promise<RpcMethodResult> {
       switch (method) {
-        case "bridge.getCapabilities":
+        case "bridge.getCapabilities": {
+          const [adb, hdc] = await Promise.all([
+            probeProtocolAvailability(adbRunner, "adb", capabilityProbeTimeoutMs),
+            probeProtocolAvailability(hdcRunner, "hdc", capabilityProbeTimeoutMs)
+          ]);
           return {
-            protocols: {
-              adb: { available: true },
-              hdc: { available: false, reason: "phase1_adb_only" }
-            },
+            protocols: { adb, hdc },
             methods: ["bridge.getCapabilities", "debug.detectTargets", "debug.readNode", "debug.writeNode"]
           };
+        }
         case "debug.detectTargets": {
-          requireAdbProtocol(params.protocol);
-          const result = await adbRunner(["devices"], { timeoutMs: adbTimeoutMs });
+          const protocol = requireSupportedProtocol(params.protocol);
+          if (protocol === "adb") {
+            const result = await adbRunner(["devices"], { timeoutMs: adbTimeoutMs });
+            if (result.code !== 0 || result.timedOut) {
+              return {
+                targets: [],
+                ok: false,
+                stdout: result.stdout,
+                stderr: result.stderr,
+                error: commandFailureMessage(protocol, result),
+                durationMs: result.durationMs
+              };
+            }
+
+            const targets = parseAdbDevices(result.stdout).map((device) => ({
+              targetRef: device.targetRef,
+              label: device.targetRef,
+              online: device.online
+            }));
+            return { targets, ok: true, durationMs: result.durationMs };
+          }
+
+          const result = await hdcRunner(["list", "targets"], { timeoutMs: hdcTimeoutMs });
           if (result.code !== 0 || result.timedOut) {
             return {
               targets: [],
               ok: false,
               stdout: result.stdout,
               stderr: result.stderr,
-              error: result.timedOut ? "ADB command timed out." : result.stderr.trim() || `ADB exited with ${String(result.code)}.`,
+              error: commandFailureMessage(protocol, result),
               durationMs: result.durationMs
             };
           }
 
-          const targets = parseAdbDevices(result.stdout).map((device) => ({
-            targetRef: device.targetRef,
-            label: device.targetRef,
-            online: device.online
+          const targets = parseHdcTargets(result.stdout).map((target) => ({
+            targetRef: target.targetRef,
+            label: target.targetRef,
+            online: target.online
           }));
           return { targets, ok: true, durationMs: result.durationMs };
         }
         case "debug.readNode":
           return readNode(params);
         case "debug.writeNode": {
-          requireAdbProtocol(params.protocol);
+          const protocol = requireSupportedProtocol(params.protocol);
           const targetRef = readRequiredString(params.targetRef, "targetRef");
           const nodePath = readRequiredString(params.nodePath, "nodePath");
           const value = readRequiredString(params.value, "value");
@@ -125,7 +225,13 @@ export function createRpcHandlers(options: {
           const readBack = readBoolean(params.readBack, true);
 
           const remoteCommand = buildRemoteWriteShellCommand(nodePath, value);
-          const writeResult = await adbRunner(["-s", targetRef, "shell", remoteCommand], { timeoutMs: adbTimeoutMs });
+          const writeArgs =
+            protocol === "adb"
+              ? ["-s", targetRef, "shell", remoteCommand]
+              : ["-t", targetRef, "shell", remoteCommand];
+          const runner = protocol === "adb" ? adbRunner : hdcRunner;
+          const timeoutMs = protocol === "adb" ? adbTimeoutMs : hdcTimeoutMs;
+          const writeResult = await runner(writeArgs, { timeoutMs });
           const writePayload = {
             ok: writeResult.code === 0 && !writeResult.timedOut,
             stdout: writeResult.stdout,
@@ -133,9 +239,7 @@ export function createRpcHandlers(options: {
             error:
               writeResult.code === 0 && !writeResult.timedOut
                 ? undefined
-                : writeResult.timedOut
-                  ? "ADB command timed out."
-                  : writeResult.stderr.trim() || `ADB exited with ${String(writeResult.code)}.`,
+                : commandFailureMessage(protocol, writeResult),
             durationMs: writeResult.durationMs
           };
 
@@ -148,7 +252,7 @@ export function createRpcHandlers(options: {
             };
           }
 
-          const readPayload = await readNode({ protocol: "adb", targetRef, nodePath, preserveExactRead });
+          const readPayload = await readNode({ protocol, targetRef, nodePath, preserveExactRead });
           const readValue = typeof readPayload.value === "string" ? readPayload.value : "";
           const expected = preserveExactRead ? value : value.trim();
           const verified = readPayload.ok === true && readValue === expected;
