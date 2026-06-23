@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "packages/device-bridge"
   ],
   "scripts": {
     "dev": "VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 vite --host 127.0.0.1",
@@ -64,7 +65,8 @@
     "db:seed:all": "tsx scripts/seed-all.ts",
     "admin:bootstrap": "tsx scripts/bootstrap-local-admin.ts",
     "preview": "vite preview --host 127.0.0.1",
-    "bridge:test": "vitest run --config vitest.bridge.config.ts"
+    "bridge:test": "vitest run --config vitest.bridge.config.ts",
+    "bridge:build": "tsx scripts/build-device-bridge.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.79.0",
