@@ -5,7 +5,10 @@ export const requiredSelfHostedScripts = ["selfhost:check", "selfhost:smoke", "b
 
 export const requiredSelfHostedServices = ["postgres", "redis", "api", "worker", "web", "proxy"] as const;
 
+export const requiredSelfHostedFiles = ["ops/self-hosted/scripts/compose"] as const;
+
 export const requiredComposeTokens = [
+  'version: "3.8"',
   "wiseeff-postgres-data:/var/lib/postgresql/data",
   "wiseeff-redis-data:/data",
   "env_file: .env",
@@ -128,7 +131,11 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const dockerignoreText = normalize(input.dockerignoreText);
   const caddyfileText = normalize(input.caddyfileText);
   const envKeys = parseEnvKeys(input.envExampleText);
-  const existingFiles = input.existingFiles ?? new Set(requiredSelfHostedStorageFiles.filter((filePath) => existsSync(filePath)));
+  const existingFiles =
+    input.existingFiles ??
+    new Set(
+      [...requiredSelfHostedStorageFiles, ...requiredSelfHostedFiles].filter((filePath) => existsSync(filePath))
+    );
 
   const missingScripts = requiredSelfHostedScripts.filter((script) => !scripts[script]);
   const missingServices = requiredSelfHostedServices.filter((service) => !hasComposeService(composeText, service));
@@ -139,7 +146,9 @@ export function evaluateSelfHostedConfig(input: SelfHostedConfigInput): SelfHost
   const missingDockerignoreTokens = requiredDockerignoreTokens.filter((token) => !dockerignoreText.includes(normalize(token)));
   const missingEnvKeys = requiredEnvKeys.filter((key) => !envKeys.has(key));
   const missingProxyTokens = requiredProxyTokens.filter((token) => !caddyfileText.includes(normalize(token)));
-  const missingFiles = requiredSelfHostedStorageFiles.filter((filePath) => !existingFiles.has(filePath));
+  const missingFiles = [...requiredSelfHostedStorageFiles, ...requiredSelfHostedFiles].filter(
+    (filePath) => !existingFiles.has(filePath)
+  );
 
   return {
     status:

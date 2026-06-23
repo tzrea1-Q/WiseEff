@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+compose_dir="$(cd "${script_dir}/.." && pwd)"
+repo_root="$(cd "${compose_dir}/../.." && pwd)"
+compose_file="${WISEEFF_COMPOSE_FILE:-compose.yaml}"
+
+# shellcheck source=../../../scripts/compose-lib.sh
+source "${repo_root}/scripts/compose-lib.sh"
+wiseeff_compose_exec "${compose_dir}" "${compose_file}" "$@"

@@ -16,10 +16,22 @@ M6.6 release-candidate procedures live in [releases/](releases/). Use them after
 
 ## Start
 
+Server prerequisites: Docker Engine 20.10+, and Docker Compose v2 or standalone `docker-compose` 1.28+. Node.js is not required on the server; the stack runs inside containers.
+
 ```bash
 cp .env.example .env
+chmod 600 .env
 # Fill every blank secret and target endpoint in .env.
-docker compose --env-file .env up -d --build
+./scripts/compose --env-file .env up -d --build
+```
+
+The `./scripts/compose` wrapper accepts either `docker compose` (Compose v2) or `docker-compose` (standalone v1). It passes `-f compose.yaml` automatically when the standalone binary is used and rejects Compose versions that are too old for this stack.
+
+Run metadata and smoke checks from a development machine or CI runner with Node.js 22:
+
+```bash
+npm run selfhost:check
+npm run selfhost:smoke -- --env-file ops/self-hosted/.env --base-url https://wiseeff.example.com
 ```
 
 Then run the metadata gate from the repository root:

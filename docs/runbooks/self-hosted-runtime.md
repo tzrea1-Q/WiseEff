@@ -6,13 +6,15 @@ This runbook covers the M6.1 self-hosted Linux baseline plus the M6.4 durable qu
 
 ## Preconditions
 
-- A Linux server or VM. The baseline expectation is Ubuntu 22.04/24.04 LTS, Debian 12, Rocky Linux 9, or another distribution that can run a supported Docker Engine release.
-- Docker Engine and Docker Compose v2 are installed and usable by the operator account:
+- A Linux server or VM. The baseline expectation is Ubuntu 22.04/24.04 LTS, Debian 12, Rocky Linux 9, or another distribution that can run a supported Docker Engine release. Older hosts such as Ubuntu 18.04 may still work with the standalone `docker-compose` binary through `./scripts/compose`.
+- Docker Engine **20.10+** and a Compose CLI usable by the operator account. Use `./scripts/compose` in this directory; it accepts `docker compose` or standalone `docker-compose` **1.28+** and rejects older versions.
 
 ```bash
 docker version
-docker compose version
+./scripts/compose version || docker compose version || docker-compose --version
 ```
+
+Node.js is **not** required on the runtime server. Run `npm run selfhost:check`, `npm run selfhost:smoke`, and other repository verification commands from a development machine or CI runner with Node.js 22.
 
 - DNS for `WISEEFF_SITE_HOST`.
 - Ports `80` and `443` open to the intended network.
@@ -46,14 +48,14 @@ The separate worker service runs `npm run worker:logs`. In M6.4 durable mode, AP
 
 Do not commit `ops/self-hosted/.env`. The repository `.dockerignore` also excludes `.env` files from image build contexts so operator secrets do not get baked into container layers.
 
-`VITE_WISEEFF_API_BASE_URL` is a build-time frontend value. Set it to the final public WiseEff URL before running `docker compose up -d --build`; rebuilding is required when that URL changes.
+`VITE_WISEEFF_API_BASE_URL` is a build-time frontend value. Set it to the final public WiseEff URL before running `./scripts/compose --env-file .env up -d --build`; rebuilding is required when that URL changes.
 
 ## Start
 
 ```bash
-docker compose --env-file .env up -d --build
-docker compose --env-file .env ps
-docker compose --env-file .env logs --tail=100 api worker proxy
+./scripts/compose --env-file .env up -d --build
+./scripts/compose --env-file .env ps
+./scripts/compose --env-file .env logs --tail=100 api worker proxy
 ```
 
 The API service runs migrations before starting. Do not run seed scripts against customer data.
@@ -98,18 +100,18 @@ Graceful stop:
 
 ```bash
 cd ops/self-hosted
-docker compose --env-file .env stop api worker web proxy
+./scripts/compose --env-file .env stop api worker web proxy
 ```
 
 Emergency stop while preserving PostgreSQL data:
 
 ```bash
 cd ops/self-hosted
-docker compose --env-file .env stop api worker web proxy
-docker compose --env-file .env logs --tail=200 api worker > ../../test-results/self-hosted-emergency.log
+./scripts/compose --env-file .env stop api worker web proxy
+./scripts/compose --env-file .env logs --tail=200 api worker > ../../test-results/self-hosted-emergency.log
 ```
 
-Avoid `docker compose down -v` unless the operator explicitly intends to delete persistent PostgreSQL and Caddy volumes.
+Avoid `./scripts/compose down -v` unless the operator explicitly intends to delete persistent PostgreSQL and Caddy volumes.
 
 ## Upgrade
 
@@ -119,7 +121,7 @@ git checkout <release-commit>
 npm ci
 npm run selfhost:check
 cd ops/self-hosted
-docker compose --env-file .env up -d --build
+./scripts/compose --env-file .env up -d --build
 ```
 
 After upgrade, run self-hosted smoke and review proxy/API/worker logs.
