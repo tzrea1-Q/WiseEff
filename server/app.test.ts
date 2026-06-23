@@ -868,7 +868,11 @@ describe("WiseEff API", () => {
           LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
           LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
           LOG_ANALYSIS_QUEUE_CONCURRENCY: 1,
-          MOCK_RUNTIME_ENABLED: false
+          MOCK_RUNTIME_ENABLED: false,
+          DEVICE_BRIDGE_ARTIFACT_ROOT: "ops/self-hosted/bridge-artifacts",
+          DEVICE_BRIDGE_PAIRING_TTL_SECONDS: 300,
+          DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
+          DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws"
         },
         authVerifierFactory: () => ({
           verify: async () => ({
@@ -972,7 +976,11 @@ describe("WiseEff API", () => {
           LOG_ANALYSIS_QUEUE_ATTEMPTS: 4,
           LOG_ANALYSIS_QUEUE_BACKOFF_MS: 1000,
           LOG_ANALYSIS_QUEUE_CONCURRENCY: 1,
-          MOCK_RUNTIME_ENABLED: false
+          MOCK_RUNTIME_ENABLED: false,
+          DEVICE_BRIDGE_ARTIFACT_ROOT: "ops/self-hosted/bridge-artifacts",
+          DEVICE_BRIDGE_PAIRING_TTL_SECONDS: 300,
+          DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
+          DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws"
         }
       }),
       "/api/v1/me",

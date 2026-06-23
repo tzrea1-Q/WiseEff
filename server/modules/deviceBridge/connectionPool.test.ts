@@ -3,10 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createBridgeConnectionPool } from "./connectionPool";
 import type { BridgeRpcRequest } from "./protocol";
 
-type MockSocket = {
-  send: ReturnType<typeof vi.fn>;
-  close: ReturnType<typeof vi.fn>;
-  readyState: number;
+type BridgeSocket = Parameters<ReturnType<typeof createBridgeConnectionPool>["register"]>[1];
+
+type MockSocket = BridgeSocket & {
   on: ReturnType<typeof vi.fn>;
   emit: (event: string, ...args: unknown[]) => void;
 };
@@ -16,8 +15,8 @@ function createMockSocket(): MockSocket {
   const socket: MockSocket = {
     send: vi.fn((_data: unknown, callback?: (error?: Error) => void) => {
       callback?.();
-    }),
-    close: vi.fn(),
+    }) as BridgeSocket["send"],
+    close: vi.fn() as BridgeSocket["close"],
     readyState: 1,
     on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
       const existing = handlers.get(event) ?? [];

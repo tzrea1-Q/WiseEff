@@ -53,12 +53,12 @@ export function createAdbCommandRunner(options: CreateAdbCommandRunnerOptions = 
         });
       }, runOptions.timeoutMs);
 
-      child.stdout.setEncoding("utf8");
-      child.stderr.setEncoding("utf8");
-      child.stdout.on("data", (chunk) => {
+      child.stdout?.setEncoding("utf8");
+      child.stderr?.setEncoding("utf8");
+      child.stdout?.on("data", (chunk) => {
         stdout += chunk;
       });
-      child.stderr.on("data", (chunk) => {
+      child.stderr?.on("data", (chunk) => {
         stderr += chunk;
       });
       child.on("error", (error) => {

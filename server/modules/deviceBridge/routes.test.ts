@@ -5,6 +5,7 @@ import { createHttpServer } from "../../shared/http/server";
 import { createRouter } from "../../shared/http/router";
 import { requestJson } from "../../test/testClient";
 import type { PairingService } from "./pairingService";
+import type { BridgeReleaseManifest } from "./releaseManifest";
 import * as repository from "./repository";
 import { registerDeviceBridgeRoutes } from "./routes";
 
@@ -69,7 +70,7 @@ function makeServer(options: {
   db?: Database;
   auth?: AuthContext;
   pairingService?: PairingService;
-  loadReleaseManifest?: () => Promise<unknown>;
+  loadReleaseManifest?: () => Promise<BridgeReleaseManifest>;
   now?: () => Date;
 } = {}) {
   const router = createRouter();

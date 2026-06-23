@@ -239,7 +239,9 @@ function resolveDeviceBridgeRuntime(options: {
   const repo = createDeviceBridgeRepository(options.db);
   const pairingTtlMs =
     options.deviceBridge?.pairingTtlMs ??
-    (options.env ? options.env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS * 1000 : undefined);
+    (options.env?.DEVICE_BRIDGE_PAIRING_TTL_SECONDS !== undefined
+      ? options.env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS * 1000
+      : undefined);
   const tokenTtlDays = options.deviceBridge?.tokenTtlDays ?? options.env?.DEVICE_BRIDGE_TOKEN_TTL_DAYS;
 
   return {

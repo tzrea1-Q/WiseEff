@@ -612,7 +612,7 @@ function LocalDeviceBridgePanel({
       }
       return;
     }
-    if (snapshot.nextHealth.connected) {
+    if (snapshot.nextHealth?.connected) {
       onDetect();
     }
   };
