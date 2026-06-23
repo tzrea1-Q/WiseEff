@@ -104,7 +104,37 @@ describe("debugging dto mappers", () => {
       risk: "High",
       currentValue: "3000",
       targetValue: "3100",
-      status: "已同步"
+      status: "已同步",
+      valueKind: "scalar",
+      valueFormat: "raw",
+      normalizationMode: "trim",
+      maxValueBytes: null
+    });
+  });
+
+  it("defaults legacy API parameters to scalar/raw/trim", () => {
+    expect(debugParameterFromDto(parameterDto)).toMatchObject({
+      valueKind: "scalar",
+      valueFormat: "raw",
+      normalizationMode: "trim",
+      maxValueBytes: null
+    });
+  });
+
+  it("maps complex parameter metadata from API dto", () => {
+    expect(
+      debugParameterFromDto({
+        ...parameterDto,
+        valueKind: "complex",
+        valueFormat: "json",
+        normalizationMode: "json-canonical",
+        maxValueBytes: 4096
+      })
+    ).toMatchObject({
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical",
+      maxValueBytes: 4096
     });
   });
 
@@ -272,6 +302,29 @@ describe("debugging dto mappers", () => {
     expect(nodeOperationFromDto(writeOperationDto)).toMatchObject({
       failureReason: "Readback mismatch.",
       snapshotId: "snap-1"
+    });
+  });
+
+  it("maps node operation value metadata", () => {
+    expect(
+      nodeOperationFromDto({
+        ...writeOperationDto,
+        valueKind: "complex",
+        valueFormat: "json",
+        normalizationMode: "json-canonical",
+        requestedValueDigest: "digest-requested",
+        previousValueDigest: "digest-previous",
+        readbackValueDigest: "digest-readback",
+        valuePreview: '{"enabled":false}'
+      })
+    ).toMatchObject({
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical",
+      requestedValueDigest: "digest-requested",
+      previousValueDigest: "digest-previous",
+      readbackValueDigest: "digest-readback",
+      valuePreview: '{"enabled":false}'
     });
   });
 

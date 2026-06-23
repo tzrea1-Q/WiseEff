@@ -54,8 +54,20 @@ import type {
   DebugParameterRecord,
   DebugParameterWithBindingsRecord,
   DebugSessionRecord,
+  DebugSnapshotEntry,
+  DebugValueMetadata,
   NodeOperationRecord
 } from "./types";
+import {
+  buildValueEnvelope,
+  buildValuePreview,
+  compareDebugValues,
+  computeValueDigest,
+  requiresExactRead,
+  resolveDebugValueMetadata,
+  validateWritePayload
+} from "./valueCodec";
+import { DEBUG_VALUE_KIND_COMPLEX } from "./types";
 
 type AuditWriter = typeof defaultCreateAuditEvent;
 
@@ -118,6 +130,10 @@ type AdminParameterWriteInput = {
   sortOrder: number;
   enabled: boolean;
   bindings?: AdminParameterBindingInput[];
+  valueKind?: DebugParameterRecord["valueKind"];
+  valueFormat?: DebugParameterRecord["valueFormat"];
+  normalizationMode?: DebugParameterRecord["normalizationMode"];
+  maxValueBytes?: number | null;
 };
 
 type AdminParameterPatchInput = Partial<AdminParameterWriteInput> & {
@@ -258,20 +274,29 @@ function ensureWritable(
     throw new ApiError("VALIDATION_FAILED", "Parameter is read-only.", 400);
   }
 
-  const hasNumericRange = parameter.minValue !== null || parameter.maxValue !== null;
-  const numericValue = Number(input.value);
-  if (hasNumericRange && !Number.isFinite(numericValue)) {
-    throw new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, {
-      minValue: parameter.minValue,
-      maxValue: parameter.maxValue
-    });
-  }
-  if (hasNumericRange) {
-    if ((parameter.minValue !== null && numericValue < parameter.minValue) || (parameter.maxValue !== null && numericValue > parameter.maxValue)) {
-      throw new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400, {
+  const metadata = resolveDebugValueMetadata(parameter);
+
+  if (metadata.valueKind === DEBUG_VALUE_KIND_COMPLEX) {
+    const validation = validateWritePayload(input.value, metadata);
+    if (!validation.ok) {
+      throw new ApiError("VALIDATION_FAILED", validation.error, 400);
+    }
+  } else {
+    const hasNumericRange = parameter.minValue !== null || parameter.maxValue !== null;
+    const numericValue = Number(input.value);
+    if (hasNumericRange && !Number.isFinite(numericValue)) {
+      throw new ApiError("VALIDATION_FAILED", "Value must be numeric for ranged parameters.", 400, {
         minValue: parameter.minValue,
         maxValue: parameter.maxValue
       });
+    }
+    if (hasNumericRange) {
+      if ((parameter.minValue !== null && numericValue < parameter.minValue) || (parameter.maxValue !== null && numericValue > parameter.maxValue)) {
+        throw new ApiError("VALIDATION_FAILED", "Value is outside the allowed range.", 400, {
+          minValue: parameter.minValue,
+          maxValue: parameter.maxValue
+        });
+      }
     }
   }
 
@@ -420,6 +445,73 @@ function bindingAuditMetadata(binding: DebugParameterNodeBindingRecord, extra: R
     accessMode: binding.accessMode,
     hasNotes: Boolean(binding.notes?.trim()),
     ...extra
+  };
+}
+
+function snapshotEntryFromWrite(
+  parameter: DebugParameterRecord,
+  protocol: DebugConnectionProtocol,
+  nodePath: string,
+  previousValue: string,
+  targetValue: string,
+  metadata: DebugValueMetadata
+): DebugSnapshotEntry {
+  const previousEnvelope = buildValueEnvelope(previousValue, metadata);
+  const targetEnvelope = buildValueEnvelope(targetValue, metadata);
+  return {
+    parameterId: parameter.id,
+    protocol,
+    nodePath,
+    previousValue,
+    targetValue,
+    valueKind: metadata.valueKind,
+    valueFormat: metadata.valueFormat,
+    normalizationMode: metadata.normalizationMode,
+    previousDigest: previousEnvelope.digest,
+    targetDigest: targetEnvelope.digest
+  };
+}
+
+function resolveSnapshotEntryMetadata(entry: DebugSnapshotEntry): DebugValueMetadata {
+  return resolveDebugValueMetadata({
+    valueKind: entry.valueKind,
+    valueFormat: entry.valueFormat,
+    normalizationMode: entry.normalizationMode
+  });
+}
+
+function valueAuditMetadata(raw: string | null | undefined, metadata: DebugValueMetadata) {
+  if (raw === null || raw === undefined) {
+    return {};
+  }
+  const envelope = buildValueEnvelope(raw, metadata);
+  return {
+    valueKind: metadata.valueKind,
+    valueFormat: metadata.valueFormat,
+    normalizationMode: metadata.normalizationMode,
+    preview: envelope.preview,
+    digest: envelope.digest,
+    bytes: envelope.bytes
+  };
+}
+
+function operationValueMetadata(
+  metadata: DebugValueMetadata,
+  values: {
+    requestedValue?: string | null;
+    previousValue?: string | null;
+    readbackValue?: string | null;
+  }
+) {
+  const previewSource = values.requestedValue ?? values.previousValue ?? values.readbackValue ?? "";
+  return {
+    valueKind: metadata.valueKind,
+    valueFormat: metadata.valueFormat,
+    normalizationMode: metadata.normalizationMode,
+    requestedValueDigest: values.requestedValue ? computeValueDigest(values.requestedValue, metadata) : null,
+    previousValueDigest: values.previousValue ? computeValueDigest(values.previousValue, metadata) : null,
+    readbackValueDigest: values.readbackValue ? computeValueDigest(values.readbackValue, metadata) : null,
+    valuePreview: previewSource ? buildValuePreview(previewSource) : null
   };
 }
 
@@ -629,7 +721,11 @@ export function createDebuggingService(options: ServiceOptions) {
           currentValue: input.currentValue,
           targetValue: input.targetValue,
           sortOrder: input.sortOrder,
-          enabled: input.enabled
+          enabled: input.enabled,
+          valueKind: input.valueKind,
+          valueFormat: input.valueFormat,
+          normalizationMode: input.normalizationMode,
+          maxValueBytes: input.maxValueBytes ?? null
         });
         for (const bindingInput of input.bindings ?? []) {
           const binding = await upsertDebugParameterNodeBinding(tx, {
@@ -713,7 +809,11 @@ export function createDebuggingService(options: ServiceOptions) {
           currentValue: input.currentValue ?? existing.currentValue,
           targetValue: input.targetValue ?? existing.targetValue,
           sortOrder: input.sortOrder ?? existing.sortOrder,
-          enabled: input.enabled ?? existing.enabled
+          enabled: input.enabled ?? existing.enabled,
+          valueKind: input.valueKind ?? existing.valueKind,
+          valueFormat: input.valueFormat ?? existing.valueFormat,
+          normalizationMode: input.normalizationMode ?? existing.normalizationMode,
+          maxValueBytes: resolvePatchedNullable(input, "maxValueBytes", existing.maxValueBytes)
         });
         if (!parameter) {
           throw notFound();
@@ -1075,9 +1175,12 @@ export function createDebuggingService(options: ServiceOptions) {
         }
         const gateway = gatewayRegistry.requireGateway(protocol);
 
+        const readMetadata = parameter ? resolveDebugValueMetadata(parameter) : null;
+        const preserveExactRead = readMetadata ? requiresExactRead(readMetadata) : false;
+
         const result = await withGatewaySpan("read", { hasParameterId: Boolean(input.parameterId), protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath });
+            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath, preserveExactRead });
             spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
             return gatewayResult;
           } catch (error) {
@@ -1087,6 +1190,10 @@ export function createDebuggingService(options: ServiceOptions) {
           }
         });
         recordGatewayOperation("read", result.ok ? "succeeded" : "failed");
+        const readValue = result.value ?? result.stdout ?? null;
+        const operationMetadata = readMetadata
+          ? operationValueMetadata(readMetadata, { readbackValue: readValue ?? undefined })
+          : {};
         const operation = await insertNodeOperation(tx, {
           organizationId,
           projectId: session.projectId,
@@ -1096,10 +1203,11 @@ export function createDebuggingService(options: ServiceOptions) {
           nodePath,
           operationType: "read",
           status: result.ok ? "succeeded" : "failed",
-          readValue: result.value ?? result.stdout,
+          readValue: readValue ?? undefined,
           verified: result.ok,
           failureReason: result.ok ? undefined : failureReason(result.error ?? result.stderr, "Node read failed."),
           durationMs: result.durationMs,
+          ...operationMetadata,
           actorUserId: auth.user.id
         });
 
@@ -1119,7 +1227,7 @@ export function createDebuggingService(options: ServiceOptions) {
                 operationId: operation.id,
                 protocol,
                 nodePath,
-                readValue: operation.readValue,
+                ...(readMetadata ? valueAuditMetadata(readValue ?? undefined, readMetadata) : { readValue: operation.readValue }),
                 failureReason: operation.failureReason
               }
             },
@@ -1149,10 +1257,13 @@ export function createDebuggingService(options: ServiceOptions) {
         }
         const gateway = gatewayRegistry.requireGateway(protocol);
         await requireDeviceLease(tx, auth, session);
+        const metadata = resolveDebugValueMetadata(parameter);
+        const preserveExactRead = requiresExactRead(metadata);
+        const compareReadback = (written: string, read: string) => compareDebugValues(written, read, metadata);
 
         const previous = await withGatewaySpan("read", { hasParameterId: true, protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath });
+            const gatewayResult = await gateway.readNode({ targetRef: target.targetRef, nodePath, preserveExactRead });
             spanAttributes.status = gatewayResult.ok ? "succeeded" : "failed";
             return gatewayResult;
           } catch (error) {
@@ -1163,6 +1274,7 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         recordGatewayOperation("read", previous.ok ? "succeeded" : "failed");
         if (!previous.ok) {
+          const operationMetadata = operationValueMetadata(metadata, { requestedValue: input.value });
           const operation = await insertNodeOperation(tx, {
             organizationId,
             projectId: session.projectId,
@@ -1176,6 +1288,7 @@ export function createDebuggingService(options: ServiceOptions) {
             failureReason: failureReason(previous.error ?? previous.stderr, "Pre-write read failed."),
             durationMs: previous.durationMs,
             approvalId: input.approvalId,
+            ...operationMetadata,
             actorUserId: auth.user.id
           });
           await writeAudit(
@@ -1189,7 +1302,14 @@ export function createDebuggingService(options: ServiceOptions) {
                 severity: "High",
                 targetType: "debug-node",
                 targetId: parameter.id,
-                metadata: { sessionId: session.id, operationId: operation.id, protocol, nodePath, failureReason: operation.failureReason }
+                metadata: {
+                  sessionId: session.id,
+                  operationId: operation.id,
+                  protocol,
+                  nodePath,
+                  ...valueAuditMetadata(input.value, metadata),
+                  failureReason: operation.failureReason
+                }
               },
               context
             )
@@ -1203,12 +1323,19 @@ export function createDebuggingService(options: ServiceOptions) {
           projectId: session.projectId,
           sessionId: session.id,
           risk: parameter.risk,
-          entries: [{ parameterId: parameter.id, protocol, nodePath, previousValue, targetValue: input.value }],
+          entries: [snapshotEntryFromWrite(parameter, protocol, nodePath, previousValue, input.value, metadata)],
           createdByUserId: auth.user.id
         });
         const result = await withGatewaySpan("write", { requiresApproval: Boolean(input.approvalId), protocol }, async (spanAttributes) => {
           try {
-            const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath, value: input.value, readBack: true });
+            const gatewayResult = await gateway.writeNode({
+              targetRef: target.targetRef,
+              nodePath,
+              value: input.value,
+              readBack: true,
+              preserveExactRead,
+              compareReadback
+            });
             spanAttributes.status = writeStatus(gatewayResult);
             return gatewayResult;
           } catch (error) {
@@ -1219,6 +1346,12 @@ export function createDebuggingService(options: ServiceOptions) {
         });
         const status = writeStatus(result);
         recordGatewayOperation("write", status);
+        const readbackValue = result.readResult?.value ?? result.readResult?.stdout ?? result.value ?? null;
+        const operationMetadata = operationValueMetadata(metadata, {
+          requestedValue: input.value,
+          previousValue,
+          readbackValue: readbackValue ?? undefined
+        });
         const operation = await insertNodeOperation(tx, {
           organizationId,
           projectId: session.projectId,
@@ -1231,12 +1364,13 @@ export function createDebuggingService(options: ServiceOptions) {
           requestedValue: input.value,
           previousValue,
           readValue: previousValue,
-          readbackValue: result.readResult?.value ?? result.readResult?.stdout ?? result.value,
+          readbackValue: readbackValue ?? undefined,
           verified: result.ok && result.verified,
           failureReason: status === "succeeded" ? undefined : failureReason(result.error ?? result.writeResult.error ?? result.readResult?.error, "Node write failed."),
           durationMs: Math.max(result.writeResult.durationMs, result.readResult?.durationMs ?? 0),
           approvalId: input.approvalId,
           snapshotId: snapshot.id,
+          ...operationMetadata,
           actorUserId: auth.user.id
         });
         await linkOperationSnapshot(tx, { organizationId, operationId: operation.id, snapshotId: snapshot.id });
@@ -1266,9 +1400,9 @@ export function createDebuggingService(options: ServiceOptions) {
                 operationId: operation.id,
                 protocol,
                 nodePath,
-                requestedValue: input.value,
-                previousValue,
-                readbackValue: operation.readbackValue,
+                ...valueAuditMetadata(input.value, metadata),
+                previous: valueAuditMetadata(previousValue, metadata),
+                readback: readbackValue ? valueAuditMetadata(readbackValue, metadata) : undefined,
                 verified: operation.verified,
                 failureReason: operation.failureReason,
                 snapshotId: snapshot.id
@@ -1321,9 +1455,19 @@ export function createDebuggingService(options: ServiceOptions) {
           if (entryProtocol !== protocol) {
             throw new ApiError("VALIDATION_FAILED", "Snapshot protocol does not match the rollback session.", 400);
           }
+          const entryMetadata = resolveSnapshotEntryMetadata(entry);
+          const preserveExactRead = requiresExactRead(entryMetadata);
+          const compareReadback = (written: string, read: string) => compareDebugValues(written, read, entryMetadata);
           const result = await withGatewaySpan("rollback", { entryCount: snapshot.entries.length, protocol }, async (spanAttributes) => {
             try {
-              const gatewayResult = await gateway.writeNode({ targetRef: target.targetRef, nodePath: entry.nodePath, value: entry.previousValue, readBack: true });
+              const gatewayResult = await gateway.writeNode({
+                targetRef: target.targetRef,
+                nodePath: entry.nodePath,
+                value: entry.previousValue,
+                readBack: true,
+                preserveExactRead,
+                compareReadback
+              });
               spanAttributes.status = writeStatus(gatewayResult);
               return gatewayResult;
             } catch (error) {
@@ -1334,6 +1478,7 @@ export function createDebuggingService(options: ServiceOptions) {
           });
           const status = writeStatus(result);
           recordGatewayOperation("rollback", status);
+          const readbackValue = result.readResult?.value ?? result.readResult?.stdout ?? result.value ?? null;
           operations.push(
             await insertNodeOperation(tx, {
               organizationId,
@@ -1345,11 +1490,15 @@ export function createDebuggingService(options: ServiceOptions) {
               operationType: "rollback",
               status,
               requestedValue: entry.previousValue,
-              readbackValue: result.readResult?.value ?? result.readResult?.stdout ?? result.value,
+              readbackValue: readbackValue ?? undefined,
               verified: result.ok && result.verified,
               failureReason: status === "succeeded" ? undefined : failureReason(result.error ?? result.writeResult.error ?? result.readResult?.error, "Rollback write failed."),
               durationMs: Math.max(result.writeResult.durationMs, result.readResult?.durationMs ?? 0),
               snapshotId: snapshot.id,
+              ...operationValueMetadata(entryMetadata, {
+                requestedValue: entry.previousValue,
+                readbackValue: readbackValue ?? undefined
+              }),
               actorUserId: auth.user.id
             })
           );

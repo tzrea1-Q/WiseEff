@@ -548,6 +548,42 @@
       "status": "已同步",
       "nodePath": "/data/local/tmp/wiseeff_nodes/pmic/boost_voltage_mv",
       "accessMode": "RW"
+    },
+    {
+      "id": "dbg-charge-policy-json",
+      "name": "充电策略 JSON 覆盖",
+      "key": "charger.policy_overlay_json",
+      "description": "以 JSON 形式覆盖充电策略节点，包含限流、热降额与分段曲线配置。",
+      "module": "Charging Policy",
+      "currentValue": "{\n  \"inputLimitMa\": 3600,\n  \"thermalFoldback\": true,\n  \"profiles\": [\n    { \"soc\": 0, \"currentMa\": 3000 },\n    { \"soc\": 80, \"currentMa\": 1500 },\n    { \"soc\": 95, \"currentMa\": 500 }\n  ]\n}",
+      "targetValue": "{\n  \"inputLimitMa\": 3700,\n  \"thermalFoldback\": true,\n  \"profiles\": [\n    { \"soc\": 0, \"currentMa\": 3200 },\n    { \"soc\": 80, \"currentMa\": 1600 },\n    { \"soc\": 95, \"currentMa\": 500 }\n  ]\n}",
+      "unit": "",
+      "range": "JSON 对象",
+      "risk": "High",
+      "status": "已同步",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/charger/policy_overlay_json",
+      "accessMode": "RW",
+      "valueKind": "complex",
+      "valueFormat": "json",
+      "normalizationMode": "json-canonical"
+    },
+    {
+      "id": "dbg-battery-health-dts",
+      "name": "电池健康 DTS 片段",
+      "key": "battery.health_dts_fragment",
+      "description": "设备树中电池健康估算相关节点片段，只读供调试检查。",
+      "module": "Battery Health",
+      "currentValue": "/ {\n\tbattery-health {\n\t\timpedance-threshold-mohm = <85>;\n\t\tsample-window-ms = <500>;\n\t\talert-levels = <68 72 78>;\n\t};\n};",
+      "targetValue": "/ {\n\tbattery-health {\n\t\timpedance-threshold-mohm = <85>;\n\t\tsample-window-ms = <500>;\n\t\talert-levels = <68 72 78>;\n\t};\n};",
+      "unit": "",
+      "range": "DTS 片段",
+      "risk": "Low",
+      "status": "下发成功",
+      "nodePath": "/data/local/tmp/wiseeff_nodes/battery/health_dts_fragment",
+      "accessMode": "RO",
+      "valueKind": "complex",
+      "valueFormat": "dts",
+      "normalizationMode": "exact"
     }
   ]
 }

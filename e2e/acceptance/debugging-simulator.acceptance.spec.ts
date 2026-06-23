@@ -14,6 +14,9 @@ const projectId = "aurora";
 const fastChargeParameterId = "dbg-fast-charge-current";
 const cycleCountParameterId = "dbg-cycle-count";
 const mismatchParameterId = "dbg-readback-mismatch";
+const complexJsonParameterId = "dbg-config-json";
+const complexJsonCurrentValue = '{\n  "enabled": true,\n  "limit": 42\n}';
+const complexJsonTargetValue = '{\n  "enabled": true,\n  "limit": 48\n}';
 const readOnlyDebugUserId = "acceptance-debug-readonly";
 const nonWriterDebugUserId = "acceptance-debug-nonwriter";
 
@@ -169,6 +172,94 @@ async function seedReadOnlyDebuggingUser(client: Client) {
   );
 }
 
+async function seedComplexSimulatorParameters(client: Client) {
+  await client.query(
+    `
+    insert into debugging_parameters (
+      id,
+      organization_id,
+      project_id,
+      name,
+      key,
+      description,
+      module,
+      node_path,
+      access_mode,
+      unit,
+      range_label,
+      min_value,
+      max_value,
+      risk,
+      current_value,
+      target_value,
+      sort_order,
+      value_kind,
+      value_format,
+      normalization_mode,
+      updated_at
+    )
+    values (
+      $1,
+      'org-chargelab',
+      $2,
+      'Config JSON overlay',
+      'config_json_overlay',
+      'Simulator complex JSON node for acceptance validation.',
+      'Diagnostics',
+      '/sys/class/debug/config_json',
+      'RW',
+      '',
+      'JSON object',
+      null,
+      null,
+      'Medium',
+      $3,
+      $4,
+      60,
+      'complex',
+      'json',
+      'json-canonical',
+      now()
+    )
+    on conflict (project_id, key) do update set
+      name = excluded.name,
+      description = excluded.description,
+      module = excluded.module,
+      node_path = excluded.node_path,
+      access_mode = excluded.access_mode,
+      unit = excluded.unit,
+      range_label = excluded.range_label,
+      min_value = excluded.min_value,
+      max_value = excluded.max_value,
+      risk = excluded.risk,
+      current_value = excluded.current_value,
+      target_value = excluded.target_value,
+      sort_order = excluded.sort_order,
+      value_kind = excluded.value_kind,
+      value_format = excluded.value_format,
+      normalization_mode = excluded.normalization_mode,
+      updated_at = now()
+    `,
+    [complexJsonParameterId, projectId, complexJsonCurrentValue, complexJsonTargetValue]
+  );
+
+  await client.query(
+    `
+    insert into debugging_parameter_node_bindings (
+      id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
+    )
+    values ($1, 'org-chargelab', $2, $3, 'hdc', '/sys/class/debug/config_json', 'RW', true, 'Seeded complex JSON node binding.', '{}'::jsonb, now())
+    on conflict (parameter_id, protocol) do update set
+      node_path = excluded.node_path,
+      access_mode = excluded.access_mode,
+      enabled = excluded.enabled,
+      notes = excluded.notes,
+      updated_at = now()
+    `,
+    [`${complexJsonParameterId}:hdc`, projectId, complexJsonParameterId]
+  );
+}
+
 async function cleanupDebuggingAcceptanceState(client: Client) {
   await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
   await client.query("delete from debugging_events where project_id = $1", [projectId]);
@@ -190,6 +281,7 @@ async function prepareSimulatorAcceptanceState() {
     await seedM3DebuggingPermissions(client);
     await seedReadOnlyDebuggingUser(client);
     await cleanupDebuggingAcceptanceState(client);
+    await seedComplexSimulatorParameters(client);
   });
 }
 
@@ -269,6 +361,39 @@ async function createDebuggingSessionViaApi(page: Page, userId = "u-xu-yun") {
   return sessionBody.item.id;
 }
 
+async function complexOperationDbSummary() {
+  return withPgClient(async (client) => {
+    const result = await client.query<{
+      value_kind: string | null;
+      value_format: string | null;
+      normalization_mode: string | null;
+      value_preview: string | null;
+      requested_value_digest: string | null;
+      status: string;
+    }>(
+      `
+      select value_kind, value_format, normalization_mode, value_preview, requested_value_digest, status
+      from node_operations
+      where project_id = $1
+        and parameter_id = $2
+      order by created_at desc
+      limit 1
+      `,
+      [projectId, complexJsonParameterId]
+    );
+    const row = result.rows[0];
+
+    return {
+      table: "node_operations",
+      predicate: `projectId=${projectId}; parameterId=${complexJsonParameterId}; latest write`,
+      observed: row
+        ? `status=${row.status}; valueKind=${row.value_kind}; valueFormat=${row.value_format}; normalizationMode=${row.normalization_mode}; preview=${row.value_preview ? "present" : "missing"}; digest=${row.requested_value_digest ? "present" : "missing"}`
+        : "missing",
+      rowCount: result.rowCount ?? result.rows.length
+    };
+  });
+}
+
 async function debuggingDbSummary(snapshotId: string) {
   return withPgClient(async (client) => {
     const result = await client.query<{
@@ -345,6 +470,18 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     await setTargetAndWrite(page, "Readback mismatch probe", "2");
     await expect(parameterRow(page, "Readback mismatch probe")).toContainText(/readback mismatch/i, { timeout: 30_000 });
 
+    const complexJsonRow = parameterRow(page, "Config JSON overlay");
+    await expect(complexJsonRow).toBeVisible({ timeout: 30_000 });
+    await expect(complexJsonRow).toContainText("JSON");
+    const complexSheet = await openParameterSheet(page, "Config JSON overlay");
+    await expect(complexSheet.locator(".node-complex-target-editor")).toBeVisible();
+    await expect(complexSheet.locator(".node-complex-target-editor")).toHaveAttribute("wrap", "off");
+    await complexSheet.locator(".node-target-editor").fill(complexJsonTargetValue);
+    await complexSheet.locator(".debugging-deploy-button").click();
+    await expect(complexSheet.locator(".debugging-deploy-button")).toBeEnabled({ timeout: 30_000 });
+    await closeParameterSheet(page);
+    await expect(complexJsonRow).toContainText("48", { timeout: 30_000 });
+
     const fastChargeSnapshotId = await latestWriteSnapshotId(page, fastChargeParameterId);
     const rollbackResponse = await rollbackSnapshotViaApi(page, fastChargeSnapshotId);
 
@@ -363,6 +500,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
       expect.arrayContaining([
         expect.objectContaining({ kind: "debug-node-write", targetId: fastChargeParameterId }),
         expect.objectContaining({ kind: "debug-node-write", targetId: mismatchParameterId }),
+        expect.objectContaining({ kind: "debug-node-write", targetId: complexJsonParameterId }),
         expect.objectContaining({ kind: "debug-snapshot-rollback", targetId: fastChargeSnapshotId })
       ])
     );
@@ -390,13 +528,14 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
           responseSummary: `audit events=${auditBody.items.length}`
         })
       ],
-      db: [await debuggingDbSummary(fastChargeSnapshotId)],
+      db: [await debuggingDbSummary(fastChargeSnapshotId), await complexOperationDbSummary()],
       audit: [
         auditSummaryFor(auditBody.items, { kind: "debug-node-write", targetId: fastChargeParameterId }),
         auditSummaryFor(auditBody.items, { kind: "debug-node-write", targetId: mismatchParameterId }),
+        auditSummaryFor(auditBody.items, { kind: "debug-node-write", targetId: complexJsonParameterId }),
         auditSummaryFor(auditBody.items, { kind: "debug-snapshot-rollback", targetId: fastChargeSnapshotId })
       ],
-      notes: `Simulator write and mismatch paths produced audit evidence; snapshot ${fastChargeSnapshotId} rolled back to the original safe value.`
+      notes: `Simulator scalar and complex JSON write paths produced audit evidence with value metadata; snapshot ${fastChargeSnapshotId} rolled back to the original safe value.`
     });
   });
 

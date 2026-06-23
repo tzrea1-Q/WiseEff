@@ -51,6 +51,17 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debugging_parame
 
 Runtime `/api/v1/debugging/parameters?protocol=...` returns only enabled, non-archived parameters with an enabled selected-protocol binding. Admin list APIs can return missing or archived bindings so `/debugging-admin` can show HDC/ADB coverage labels.
 
+Runtime and admin debugging parameter DTOs include optional value metadata:
+
+- `valueKind`: `scalar | complex` (defaults to `scalar` for legacy rows)
+- `valueFormat`: `raw | json | dts | line-list | kv-list`
+- `normalizationMode`: `exact | trim | line-ending-normalized | json-canonical`
+- `maxValueBytes`: positive integer cap for write payload size
+
+Admin `POST`/`PATCH` validates combinations: scalar defaults to `raw`/`trim`; `json-canonical` requires `valueFormat=json`; complex JSON targets must parse. Node write requests keep `value: string`; the service resolves format, normalization, digest, preview, and comparison from parameter metadata.
+
+Node operation DTOs may include `valueKind`, `valueFormat`, `normalizationMode`, `valuePreview`, and value digests for complex writes without returning full large payloads in list views.
+
 ## Governance
 
 The backend remains the contract owner. Frontend DTOs must map explicitly and tests must fail on drift. New endpoints should be added to the OpenAPI artifact and reviewed for authz, audit, error envelope, pagination, and evidence impact.

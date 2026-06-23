@@ -5,6 +5,7 @@ import {
 } from "@/debugAdminDraft";
 import type { DebugParameter, DebugParameterNodeBinding } from "@/domain/debugging/types";
 import type { RiskLevel } from "@/domain/parameters/types";
+import type { DebugNormalizationMode, DebugValueFormat, DebugValueKind } from "@/debugValueKind";
 
 export { bindingForProtocol, coverageLabel, isArchivedDebugParameter };
 
@@ -27,6 +28,9 @@ export type DebugParameterLibraryRow = {
   bindings?: DebugParameterNodeBinding[];
   enabled?: boolean;
   archivedAt?: string | null;
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
 };
 
 const riskToFilter = {

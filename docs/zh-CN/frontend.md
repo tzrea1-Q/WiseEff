@@ -83,6 +83,8 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `CreateDebugParameterDialog` — 表格 **新增参数** 打开的空草稿创建弹窗（含默认 binding）。
 - `ArchiveDebugParameterDialog` — 行操作或定义弹窗触发的归档确认弹窗。
 
+复杂调试参数通过 `src/debugValueKind.ts` 在管理端与运行时共享辅助逻辑。`DebugParameterDefinitionDialog` 提供值类型、格式、规范化模式，以及复杂当前值/目标值的多行代码编辑器。`DebugParameterLibraryTable` 显示紧凑格式徽章。`/node-debugging` 以紧凑预览和格式徽章展示复杂值，在宽 sheet 中打开查看/编辑，并在操作历史中显示 preview 与 digest，而不是完整 payload。
+
 筛选与弹窗深链由 `useDebugAdminSearch` 同步 URL。mock mode 在表格下方保留可折叠的 **配置源预览**（`power-management.json` 导出/同步）。
 
 Agent：

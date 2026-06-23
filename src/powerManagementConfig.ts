@@ -50,6 +50,10 @@ export type PowerManagementDebugParameter = {
   status: "已同步" | "待下发" | "下发成功";
   nodePath: string;
   accessMode: NodeAccessMode;
+  valueKind?: "scalar" | "complex";
+  valueFormat?: "raw" | "json" | "dts" | "line-list" | "kv-list";
+  normalizationMode?: "exact" | "trim" | "line-ending-normalized" | "json-canonical";
+  maxValueBytes?: number | null;
 };
 
 export type PowerManagementProject = {

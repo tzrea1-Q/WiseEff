@@ -10,6 +10,50 @@ import type {
 } from "./status";
 import type { DebugConnectionProtocol } from "./protocol";
 
+export const DEBUG_VALUE_KINDS = ["scalar", "complex"] as const;
+export type DebugValueKind = (typeof DEBUG_VALUE_KINDS)[number];
+export const DEBUG_VALUE_KIND_SCALAR: DebugValueKind = "scalar";
+export const DEBUG_VALUE_KIND_COMPLEX: DebugValueKind = "complex";
+
+export const DEBUG_VALUE_FORMATS = ["raw", "json", "dts", "line-list", "kv-list"] as const;
+export type DebugValueFormat = (typeof DEBUG_VALUE_FORMATS)[number];
+export const DEBUG_VALUE_FORMAT_RAW: DebugValueFormat = "raw";
+export const DEBUG_VALUE_FORMAT_JSON: DebugValueFormat = "json";
+export const DEBUG_VALUE_FORMAT_DTS: DebugValueFormat = "dts";
+export const DEBUG_VALUE_FORMAT_LINE_LIST: DebugValueFormat = "line-list";
+export const DEBUG_VALUE_FORMAT_KV_LIST: DebugValueFormat = "kv-list";
+
+export const DEBUG_NORMALIZATION_MODES = [
+  "exact",
+  "trim",
+  "line-ending-normalized",
+  "json-canonical"
+] as const;
+export type DebugNormalizationMode = (typeof DEBUG_NORMALIZATION_MODES)[number];
+export const DEBUG_NORMALIZATION_MODE_EXACT: DebugNormalizationMode = "exact";
+export const DEBUG_NORMALIZATION_MODE_TRIM: DebugNormalizationMode = "trim";
+export const DEBUG_NORMALIZATION_MODE_LINE_ENDING_NORMALIZED: DebugNormalizationMode =
+  "line-ending-normalized";
+export const DEBUG_NORMALIZATION_MODE_JSON_CANONICAL: DebugNormalizationMode = "json-canonical";
+
+export type DebugValueMetadata = {
+  valueKind: DebugValueKind;
+  valueFormat: DebugValueFormat;
+  normalizationMode: DebugNormalizationMode;
+  maxValueBytes?: number | null;
+};
+
+export type DebugValueEnvelope = {
+  kind: DebugValueKind;
+  format: DebugValueFormat;
+  normalization: DebugNormalizationMode;
+  raw: string;
+  canonical?: string;
+  digest: string;
+  bytes: number;
+  preview: string;
+};
+
 export type DebugDeviceRecord = {
   id: string;
   organizationId: string;
@@ -55,6 +99,10 @@ export type DebugParameterRecord = {
   archivedAt: string | null;
   archivedBy: string | null;
   archiveReason: string | null;
+  valueKind: DebugValueKind;
+  valueFormat: DebugValueFormat;
+  normalizationMode: DebugNormalizationMode;
+  maxValueBytes: number | null;
 };
 
 export type DebugParameterNodeBindingRecord = {
@@ -107,6 +155,11 @@ export type DebugSnapshotEntry = {
   nodePath: string;
   previousValue: string;
   targetValue: string;
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  previousDigest?: string;
+  targetDigest?: string;
 };
 
 export type DebugSnapshotRecord = {
@@ -141,4 +194,11 @@ export type NodeOperationRecord = {
   approvalId: string | null;
   snapshotId: string | null;
   createdAt: string;
+  valueKind: DebugValueKind | null;
+  valueFormat: DebugValueFormat | null;
+  normalizationMode: DebugNormalizationMode | null;
+  requestedValueDigest: string | null;
+  previousValueDigest: string | null;
+  readbackValueDigest: string | null;
+  valuePreview: string | null;
 };

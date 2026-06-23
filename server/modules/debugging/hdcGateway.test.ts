@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createHdcDebugDeviceGateway, type HdcCommandRunner } from "./hdcGateway";
+import { compareDebugValues, resolveDebugValueMetadata } from "./valueCodec";
+import { DEBUG_NORMALIZATION_MODE_JSON_CANONICAL, DEBUG_VALUE_FORMAT_JSON, DEBUG_VALUE_KIND_COMPLEX } from "./types";
 
 function makeRunner(results: Awaited<ReturnType<HdcCommandRunner>>[]) {
   const calls: Array<{ command: string; args: string[]; timeoutMs: number }> = [];
@@ -237,6 +239,78 @@ describe("HDC debug device gateway", () => {
         timeoutMs: 1500
       }
     ]);
+  });
+
+  it("uses base64 decode write path for multiline HDC values", async () => {
+    const value = "line1\nline2\n";
+    const nodePath = "/sys/multiline";
+    const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 6 }]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    const result = await gateway.writeNode({
+      targetRef: "AURORA-001",
+      nodePath,
+      value,
+      readBack: false
+    });
+
+    expect(result.ok).toBe(true);
+    expect(calls[0].args[3]).toContain("base64 -d");
+    expect(calls[0].args[3]).toContain(nodePath);
+  });
+
+  it("writes JSON payloads with quotes through the printf path when single-line", async () => {
+    const value = '{"enabled":true,"name":"test"}';
+    const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 6 }]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    await gateway.writeNode({ targetRef: "AURORA-001", nodePath: "/sys/json", value, readBack: false });
+
+    expect(calls[0].args[3]).toContain("printf %s");
+    expect(calls[0].args[3]).toContain(value);
+  });
+
+  it("writes DTS-like payloads containing angle brackets and semicolons", async () => {
+    const value = "node {\n\tcompatible = \"vendor,chip\";\n};";
+    const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 6 }]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    await gateway.writeNode({ targetRef: "AURORA-001", nodePath: "/sys/dts", value, readBack: false });
+
+    expect(calls[0].args[3]).toContain("base64 -d");
+  });
+
+  it("preserves exact read values when preserveExactRead is true", async () => {
+    const { runCommand } = makeRunner([{ code: 0, stdout: "value\n", stderr: "", durationMs: 6 }]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    const result = await gateway.readNode({ targetRef: "AURORA-001", nodePath: "/sys/exact", preserveExactRead: true });
+
+    expect(result).toMatchObject({ ok: true, value: "value\n", stdout: "value\n" });
+  });
+
+  it("uses compareReadback when verifying HDC writes", async () => {
+    const { runCommand } = makeRunner([
+      { code: 0, stdout: "", stderr: "", durationMs: 8 },
+      { code: 0, stdout: '{"b":2,"a":1}', stderr: "", durationMs: 9 }
+    ]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+    const value = '{"a":1,"b":2}';
+    const metadata = resolveDebugValueMetadata({
+      valueKind: DEBUG_VALUE_KIND_COMPLEX,
+      valueFormat: DEBUG_VALUE_FORMAT_JSON,
+      normalizationMode: DEBUG_NORMALIZATION_MODE_JSON_CANONICAL
+    });
+
+    const matched = await gateway.writeNode({
+      targetRef: "AURORA-001",
+      nodePath: "/sys/json",
+      value,
+      readBack: true,
+      compareReadback: (written, read) => compareDebugValues(written, read, metadata)
+    });
+
+    expect(matched.verified).toBe(true);
   });
 
   it("constructs HDC read commands without shell positional parameters", async () => {

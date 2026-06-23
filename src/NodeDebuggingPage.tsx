@@ -12,6 +12,14 @@ import type {
   DebugParameterBindingStatus,
   DebugParameterNodeBinding
 } from "./domain/debugging/types";
+import {
+  buildValuePreview,
+  debugValueEditorRows,
+  debugValuePreview,
+  getDebugNormalizationModeLabel,
+  getDebugValueFormatLabel,
+  isComplexDebugParameter
+} from "./debugValueKind";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 type NodeRuntimeStatus =
@@ -180,23 +188,104 @@ function statusClass(status: NodeRuntimeStatus) {
   return `node-status-badge ${classMap[status]}`;
 }
 
-function displayCurrentValue(row: RuntimeRow) {
+function displayCurrentValue(row: RuntimeRow, context: "table" | "detail" = "detail"): string {
   if (row.accessMode === "WO") return "写入后不可回读";
   if (bindingUnavailableReason(row)) return unsupportedNodeValueLabel;
   if (row.runtimeStatus === "写入失败") {
     if (isUnsupportedParameterError(row.error)) return unsupportedNodeValueLabel;
-    if (row.lastReadValue !== undefined) return row.runtimeCurrentValue;
+    if (row.lastReadValue !== undefined) {
+      return context === "table" && isComplexDebugParameter(row)
+        ? debugValuePreview(row.runtimeCurrentValue, row)
+        : row.runtimeCurrentValue;
+    }
     return row.error || "写入失败";
   }
   if (row.runtimeStatus === "失败") {
     if (isUnsupportedParameterError(row.error)) return unsupportedNodeValueLabel;
     return row.error || "读取失败";
   }
-  if (row.lastReadValue !== undefined) return row.runtimeCurrentValue;
+  if (row.lastReadValue !== undefined) {
+    return context === "table" && isComplexDebugParameter(row)
+      ? debugValuePreview(row.runtimeCurrentValue, row)
+      : row.runtimeCurrentValue;
+  }
   if (row.runtimeStatus === "执行中") {
     return row.activeOperation === "write" ? "写入中..." : "读取中...";
   }
   return "等待读取";
+}
+
+function DebugValueFormatBadge({ row }: { row: Pick<RuntimeRow, "valueKind" | "valueFormat"> }) {
+  if (!isComplexDebugParameter(row)) {
+    return null;
+  }
+
+  return <span className="debug-value-format-badge">{getDebugValueFormatLabel(row)}</span>;
+}
+
+function DebugTableValuePreview({ value, row }: { value: string; row: RuntimeRow }) {
+  if (!isComplexDebugParameter(row)) {
+    return <>{value}</>;
+  }
+
+  return (
+    <span className="debug-value-cell">
+      <span className="debug-value-preview">{debugValuePreview(value, row)}</span>
+      <DebugValueFormatBadge row={row} />
+    </span>
+  );
+}
+
+function DebugCurrentValueCell({ row }: { row: RuntimeRow }) {
+  const text = displayCurrentValue(row, "table");
+  const hasComplexPayload =
+    isComplexDebugParameter(row) &&
+    row.lastReadValue !== undefined &&
+    row.runtimeStatus !== "失败" &&
+    row.runtimeStatus !== "写入失败";
+
+  if (hasComplexPayload) {
+    return <DebugTableValuePreview value={row.runtimeCurrentValue} row={row} />;
+  }
+
+  return <>{text}</>;
+}
+
+function DebugValueCodeBlock({ label, row, value }: { label: string; row: RuntimeRow; value: string }) {
+  return (
+    <div className="debug-value-code-block">
+      <div className="debug-value-code-block__head">
+        <strong>{label}</strong>
+        <DebugValueFormatBadge row={row} />
+      </div>
+      <pre>
+        <code tabIndex={0}>{value || "-"}</code>
+      </pre>
+    </div>
+  );
+}
+
+function complexOperationMetadata(
+  row: RuntimeRow | undefined,
+  operation: NodeOperationSnapshot,
+  stdout?: string
+): Pick<NodeOperationEvent, "valuePreview" | "valueDigest" | "valueFormat"> {
+  const isComplex = row ? isComplexDebugParameter(row) : operation.valueKind === "complex";
+  if (!isComplex) {
+    return {};
+  }
+
+  const previewSource = operation.valuePreview ?? (stdout ? buildValuePreview(stdout) : undefined);
+  const valueDigest =
+    operation.readbackValueDigest ??
+    operation.requestedValueDigest ??
+    operation.previousValueDigest;
+
+  return {
+    valuePreview: previewSource,
+    valueDigest,
+    valueFormat: operation.valueFormat ?? row?.valueFormat
+  };
 }
 
 function readFailureMessage(error: unknown) {
@@ -251,6 +340,9 @@ function findOperationParameter(operation: NodeOperationSnapshot, rows: RuntimeR
 function eventFromOperation(operation: NodeOperationSnapshot, rows: RuntimeRow[]): Omit<PageNodeOperationEvent, "id" | "at"> & { at?: string } {
   const row = findOperationParameter(operation, rows);
   const stdout = operation.readbackValue ?? operation.readValue ?? operation.previousValue ?? operation.requestedValue;
+  const complexMetadata = complexOperationMetadata(row, operation, stdout);
+  const isComplex = row ? isComplexDebugParameter(row) : operation.valueKind === "complex";
+
   return {
     parameterName: row?.name ?? (operation.operationType === "detect" ? `${protocolLabel(operation.protocol ?? "hdc")} 设备` : operation.parameterId ?? operation.nodePath),
     parameterKey: row?.key ?? operation.parameterId ?? operation.nodePath,
@@ -258,11 +350,12 @@ function eventFromOperation(operation: NodeOperationSnapshot, rows: RuntimeRow[]
     action: eventActionFromOperation(operation),
     status: eventStatusFromOperation(operation),
     returncode: returncodeFromOperation(operation),
-    stdout,
+    stdout: isComplex ? undefined : stdout,
     stderr: operation.failureReason,
     nodePath: operation.nodePath,
     durationMs: operation.durationMs,
-    at: operation.createdAt
+    at: operation.createdAt,
+    ...complexMetadata
   };
 }
 
@@ -357,33 +450,65 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   const titleId = `node-write-format-${row.id}`;
   const exampleValue = row.targetValue || row.currentValue || "value";
   const rangeText = `${row.range} ${row.unit}`.trim();
+  const isComplex = isComplexDebugParameter(row);
 
   return (
     <section className="node-write-format-panel" role="region" aria-labelledby={titleId}>
       <div className="node-write-format-head">
-        <h3 id={titleId}>写入格式</h3>
+        <h3 id={titleId}>{isComplex ? "复杂值写入格式" : "写入格式"}</h3>
         <span>{row.accessMode}</span>
       </div>
-      <p>输入内容会作为原始字符串写入设备端调试节点。</p>
+      <p>
+        {isComplex
+          ? "复杂值会按所选格式与规范化模式写入设备端调试节点，写入后按相同规则回读校验。"
+          : "输入内容会作为原始字符串写入设备端调试节点。"}
+      </p>
       <dl>
-        <div>
-          <dt>取值范围</dt>
-          <dd>{rangeText}</dd>
-        </div>
-        <div>
-          <dt>单位</dt>
-          <dd>{row.unit || "无单位"}</dd>
-        </div>
+        {isComplex ? (
+          <>
+            <div>
+              <dt>值类型</dt>
+              <dd>复杂值</dd>
+            </div>
+            <div>
+              <dt>格式</dt>
+              <dd>{getDebugValueFormatLabel(row)}</dd>
+            </div>
+            <div>
+              <dt>规范化模式</dt>
+              <dd>{getDebugNormalizationModeLabel(row.normalizationMode)}</dd>
+            </div>
+            {row.maxValueBytes ? (
+              <div>
+                <dt>最大字节</dt>
+                <dd>{row.maxValueBytes}</dd>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <div>
+              <dt>取值范围</dt>
+              <dd>{rangeText}</dd>
+            </div>
+            <div>
+              <dt>单位</dt>
+              <dd>{row.unit || "无单位"}</dd>
+            </div>
+          </>
+        )}
         <div>
           <dt>写入方式</dt>
           <dd>{row.accessMode === "RW" ? "写入后自动回读并校验" : "仅写入，设备不支持回读确认"}</dd>
         </div>
       </dl>
-      <div className="node-write-format-example">
-        <strong>示例</strong>
-        <code>{exampleValue}</code>
-        <span>例如输入 {exampleValue}，系统会通过 {protocolLabel(protocol)} 将该值写入当前节点。</span>
-      </div>
+      {!isComplex ? (
+        <div className="node-write-format-example">
+          <strong>示例</strong>
+          <code>{exampleValue}</code>
+          <span>例如输入 {exampleValue}，系统会通过 {protocolLabel(protocol)} 将该值写入当前节点。</span>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -604,9 +729,22 @@ export function NodeDebuggingPage({
           action: "read",
           status: result.ok ? "读取成功" : "读取失败",
           returncode: result.returncode,
-          stdout: result.stdout,
+          stdout: isComplexDebugParameter(row) ? undefined : result.stdout,
           stderr: result.stderr || result.error,
-          nodePath: row.nodePath
+          nodePath: row.nodePath,
+          ...complexOperationMetadata(row, {
+            id: "",
+            sessionId: "",
+            nodePath: row.nodePath,
+            operationType: "read",
+            status: result.ok ? "succeeded" : "failed",
+            verified: result.ok,
+            durationMs: result.durationMs ?? 0,
+            createdAt: "",
+            readValue: result.value ?? result.stdout?.trim(),
+            valueKind: row.valueKind,
+            valueFormat: row.valueFormat
+          }, result.value ?? result.stdout?.trim())
         });
       }
     } catch (error) {
@@ -797,9 +935,23 @@ export function NodeDebuggingPage({
           action: readBack ? "write-readback" : "write",
           status: !result.ok ? "写入失败" : readBack ? (result.verified ? "回读一致" : "回读不一致") : "写入成功",
           returncode: (result.writeResult as CommandResultMeta | undefined)?.returncode,
-          stdout: result.readResult?.stdout || result.writeResult?.stdout,
+          stdout: isComplexDebugParameter(row) ? undefined : result.readResult?.stdout || result.writeResult?.stdout,
           stderr: result.readResult?.stderr || result.writeResult?.stderr || result.error,
-          nodePath: row.nodePath
+          nodePath: row.nodePath,
+          ...complexOperationMetadata(row, {
+            id: "",
+            sessionId: "",
+            nodePath: row.nodePath,
+            operationType: "write",
+            status: !result.ok ? "failed" : readBack && !result.verified ? "readback_mismatch" : "succeeded",
+            verified: Boolean(result.verified),
+            durationMs: 0,
+            createdAt: "",
+            requestedValue: row.draftValue,
+            readbackValue: result.value ?? result.readResult?.stdout?.trim(),
+            valueKind: row.valueKind,
+            valueFormat: row.valueFormat
+          }, result.value ?? result.readResult?.stdout?.trim() ?? row.draftValue)
         });
       }
     } catch (error) {
@@ -980,12 +1132,20 @@ export function NodeDebuggingPage({
                       </td>
                       <td data-label="访问模式">{row.accessMode}</td>
                       <td className="mono" data-label="当前值">
-                        {displayCurrentValue(row)}
+                        <DebugCurrentValueCell row={row} />
                         {bindingUnavailableReason(row) ? <small className="node-row-error">{bindingUnavailableReason(row)}</small> : null}
                         {row.error && row.runtimeStatus !== "失败" && row.runtimeStatus !== "写入失败" ? <small className="node-row-error">{row.error}</small> : null}
                       </td>
                       <td data-label="目标写入值">
-                        {canWrite(row) ? row.draftValue : <span>只读</span>}
+                        {canWrite(row) ? (
+                          isComplexDebugParameter(row) ? (
+                            <DebugTableValuePreview value={row.draftValue} row={row} />
+                          ) : (
+                            row.draftValue
+                          )
+                        ) : (
+                          <span>只读</span>
+                        )}
                       </td>
                       <td data-label="范围">{row.range} {row.unit}</td>
                       <td data-label="状态"><span className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
@@ -1030,6 +1190,7 @@ export function NodeDebuggingPage({
       </div>
 
       {editingRow ? (
+        <div className={isComplexDebugParameter(editingRow) ? "node-complex-editor" : undefined}>
         <WorkbenchSheet
           open
           onClose={() => setEditingRowId(null)}
@@ -1083,13 +1244,17 @@ export function NodeDebuggingPage({
                   <span>访问模式</span>
                   <strong>{editingRow.accessMode}</strong>
                 </div>
-                <div className="debug-detail-row">
-                  <span>当前值</span>
-                  <strong className="mono">{displayCurrentValue(editingRow)} {editingRow.lastReadValue !== undefined ? editingRow.unit : ""}</strong>
-                </div>
+                {isComplexDebugParameter(editingRow) && editingRow.lastReadValue !== undefined ? (
+                  <DebugValueCodeBlock label="当前值" row={editingRow} value={editingRow.runtimeCurrentValue} />
+                ) : (
+                  <div className="debug-detail-row">
+                    <span>当前值</span>
+                    <strong className="mono">{displayCurrentValue(editingRow)} {editingRow.lastReadValue !== undefined ? editingRow.unit : ""}</strong>
+                  </div>
+                )}
                 <div className="debug-detail-row">
                   <span>目标写入值</span>
-                  <strong className="mono">{canWrite(editingRow) ? `${editingRow.draftValue} ${editingRow.unit}` : "只读"}</strong>
+                  <strong className="mono">{canWrite(editingRow) ? `${editingRow.draftValue} ${editingRow.unit}`.trim() : "只读"}</strong>
                 </div>
                 <div className="debug-detail-row">
                   <span>有效范围</span>
@@ -1099,6 +1264,18 @@ export function NodeDebuggingPage({
                   <span>模块</span>
                   <strong>{editingRow.module}</strong>
                 </div>
+                {isComplexDebugParameter(editingRow) ? (
+                  <>
+                    <div className="debug-detail-row">
+                      <span>格式</span>
+                      <strong>{getDebugValueFormatLabel(editingRow)}</strong>
+                    </div>
+                    <div className="debug-detail-row">
+                      <span>规范化</span>
+                      <strong>{getDebugNormalizationModeLabel(editingRow.normalizationMode)}</strong>
+                    </div>
+                  </>
+                ) : null}
               </div>
               {editingRow.error ? <p className="node-row-error">{editingRow.error}</p> : null}
               {canWrite(editingRow) ? (
@@ -1108,8 +1285,9 @@ export function NodeDebuggingPage({
                   <textarea
                     id={`node-target-${editingRow.id}`}
                     aria-label="目标写入值"
-                    className="node-target-editor"
-                    rows={8}
+                    className={isComplexDebugParameter(editingRow) ? "node-target-editor node-complex-target-editor" : "node-target-editor"}
+                    rows={isComplexDebugParameter(editingRow) ? debugValueEditorRows(editingRow.draftValue) : 8}
+                    wrap={isComplexDebugParameter(editingRow) ? "off" : undefined}
                     value={editingRow.draftValue}
                     onChange={(event) => updateRow(editingRow.id, { draftValue: event.target.value, runtimeStatus: "待写入" })}
                   />
@@ -1118,6 +1296,7 @@ export function NodeDebuggingPage({
             </div>
           </div>
         </WorkbenchSheet>
+        </div>
       ) : null}
     </div>
   );

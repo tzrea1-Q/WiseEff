@@ -77,6 +77,10 @@ function debugParameterRow(overrides: Partial<Record<string, unknown>> = {}) {
     archived_at: null,
     archived_by: null,
     archive_reason: null,
+    value_kind: "scalar",
+    value_format: "raw",
+    normalization_mode: "trim",
+    max_value_bytes: null,
     ...overrides
   };
 }
@@ -142,7 +146,11 @@ describe("debugging repository", () => {
       "",
       "",
       1,
-      true
+      true,
+      "scalar",
+      "raw",
+      "trim",
+      null
     ]);
     expect(created).toMatchObject({ id: "param-created", projectId: null, enabled: true });
   });
@@ -214,7 +222,11 @@ describe("debugging repository", () => {
       "4500",
       "4600",
       22,
-      false
+      false,
+      "scalar",
+      "raw",
+      "trim",
+      null
     ]);
     expect(updated).toMatchObject({
       id: "param-updated",
@@ -986,6 +998,28 @@ describe("debugging repository", () => {
     expect(lease).toMatchObject({ deviceId: "device-1", sessionId: "session-1" });
   });
 
+  it("maps debugging parameter value metadata with scalar defaults", async () => {
+    const { db } = createFakeDb([
+      [
+        debugParameterRow({
+          value_kind: undefined,
+          value_format: undefined,
+          normalization_mode: undefined,
+          max_value_bytes: null
+        })
+      ]
+    ]);
+
+    const parameters = await listDebugParameters(db, { organizationId: "org-1" });
+
+    expect(parameters[0]).toMatchObject({
+      valueKind: "scalar",
+      valueFormat: "raw",
+      normalizationMode: "trim",
+      maxValueBytes: null
+    });
+  });
+
   it("insertNodeOperation stores read/write status, values, failure reason, duration", async () => {
     const { db, calls } = createFakeDb([
       (call) => [
@@ -1008,7 +1042,14 @@ describe("debugging repository", () => {
           duration_ms: call.values[15],
           approval_id: call.values[16],
           snapshot_id: call.values[17],
-          created_at: timestamp
+          created_at: timestamp,
+          value_kind: call.values[18],
+          value_format: call.values[19],
+          normalization_mode: call.values[20],
+          requested_value_digest: call.values[21],
+          previous_value_digest: call.values[22],
+          readback_value_digest: call.values[23],
+          value_preview: call.values[24]
         }
       ]
     ]);
@@ -1030,6 +1071,13 @@ describe("debugging repository", () => {
       durationMs: 23,
       approvalId: "approval-1",
       snapshotId: "snapshot-1",
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical",
+      requestedValueDigest: "req-digest",
+      previousValueDigest: "prev-digest",
+      readbackValueDigest: "read-digest",
+      valuePreview: "3200",
       actorUserId: "user-1"
     });
 
@@ -1052,6 +1100,13 @@ describe("debugging repository", () => {
       23,
       "approval-1",
       "snapshot-1",
+      "complex",
+      "json",
+      "json-canonical",
+      "req-digest",
+      "prev-digest",
+      "read-digest",
+      "3200",
       "user-1"
     ]);
     expect(operation).toMatchObject({

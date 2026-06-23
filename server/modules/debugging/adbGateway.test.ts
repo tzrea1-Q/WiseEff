@@ -2,6 +2,8 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { createAdbDebugDeviceGateway, createDefaultAdbCommandRunner, type AdbCommandRunner } from "./adbGateway";
+import { compareDebugValues, resolveDebugValueMetadata } from "./valueCodec";
+import { DEBUG_NORMALIZATION_MODE_JSON_CANONICAL, DEBUG_VALUE_FORMAT_JSON, DEBUG_VALUE_KIND_COMPLEX } from "./types";
 
 vi.mock("node:child_process", () => ({
   spawn: vi.fn()
@@ -115,6 +117,70 @@ describe("ADB debug device gateway", () => {
         timeoutMs: 1500
       }
     ]);
+  });
+
+  it("uses base64 decode write path for multiline ADB values", async () => {
+    const value = "line1\nline2\n";
+    const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 7 }]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    await gateway.writeNode({ targetRef: "emulator-5554", nodePath: "/sys/multiline", value, readBack: false });
+
+    expect(calls[0].args[3]).toContain("base64 -d");
+  });
+
+  it("writes JSON payloads with quotes through the printf path when single-line", async () => {
+    const value = '{"enabled":true,"name":"test"}';
+    const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 7 }]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    await gateway.writeNode({ targetRef: "emulator-5554", nodePath: "/sys/json", value, readBack: false });
+
+    expect(calls[0].args[3]).toContain("printf %s");
+    expect(calls[0].args[3]).toContain(value);
+  });
+
+  it("writes DTS-like payloads containing angle brackets and semicolons", async () => {
+    const value = "node {\n\tcompatible = \"vendor,chip\";\n};";
+    const { calls, runCommand } = makeRunner([{ code: 0, stdout: "", stderr: "", durationMs: 7 }]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    await gateway.writeNode({ targetRef: "emulator-5554", nodePath: "/sys/dts", value, readBack: false });
+
+    expect(calls[0].args[3]).toContain("base64 -d");
+  });
+
+  it("preserves exact read values when preserveExactRead is true", async () => {
+    const { runCommand } = makeRunner([{ code: 0, stdout: "value\n", stderr: "", durationMs: 5 }]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    const result = await gateway.readNode({ targetRef: "emulator-5554", nodePath: "/sys/exact", preserveExactRead: true });
+
+    expect(result).toMatchObject({ ok: true, value: "value\n", stdout: "value\n" });
+  });
+
+  it("uses compareReadback when verifying ADB writes", async () => {
+    const { runCommand } = makeRunner([
+      { code: 0, stdout: "", stderr: "", durationMs: 8 },
+      { code: 0, stdout: '{"b":2,"a":1}', stderr: "", durationMs: 9 }
+    ]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+    const value = '{"a":1,"b":2}';
+    const metadata = resolveDebugValueMetadata({
+      valueKind: DEBUG_VALUE_KIND_COMPLEX,
+      valueFormat: DEBUG_VALUE_FORMAT_JSON,
+      normalizationMode: DEBUG_NORMALIZATION_MODE_JSON_CANONICAL
+    });
+
+    const matched = await gateway.writeNode({
+      targetRef: "emulator-5554",
+      nodePath: "/sys/json",
+      value,
+      readBack: true,
+      compareReadback: (written, read) => compareDebugValues(written, read, metadata)
+    });
+
+    expect(matched.verified).toBe(true);
   });
 
   it("constructs argv-safe ADB read commands", async () => {

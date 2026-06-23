@@ -203,6 +203,10 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
     archived_at: null,
     archived_by: null,
     archive_reason: null,
+    value_kind: "scalar",
+    value_format: "raw",
+    normalization_mode: "trim",
+    max_value_bytes: null,
     ...overrides
   };
 }
@@ -261,6 +265,13 @@ function operationRow(call: QueryCall, overrides: Record<string, unknown> = {}) 
     duration_ms: call.values[15],
     approval_id: call.values[16],
     snapshot_id: call.values[17],
+    value_kind: call.values[18] ?? null,
+    value_format: call.values[19] ?? null,
+    normalization_mode: call.values[20] ?? null,
+    requested_value_digest: call.values[21] ?? null,
+    previous_value_digest: call.values[22] ?? null,
+    readback_value_digest: call.values[23] ?? null,
+    value_preview: call.values[24] ?? null,
     created_at: timestamp,
     ...overrides
   };
@@ -1069,7 +1080,7 @@ describe("debugging service", () => {
     );
     const operation = await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1", nodePath: "/frontend/ignored" });
 
-    expect(gateway.readNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current" });
+    expect(gateway.readNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current", preserveExactRead: false });
     expect(operation).toMatchObject({ operationType: "read", status: "succeeded", readValue: "3000", verified: true });
     expect(txCalls.some((call) => call.text.includes("insert into node_operations"))).toBe(true);
     expect(audit.events[0]).toMatchObject({ kind: "debug-node-read", action: "read", targetType: "debug-node" });
@@ -1115,7 +1126,7 @@ describe("debugging service", () => {
       nodePath: "/malicious/frontend/path"
     });
 
-    expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current" });
+    expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current", preserveExactRead: false });
   });
 
   it("reads a shared parameter through the project-scoped session protocol binding", async () => {
@@ -1135,7 +1146,7 @@ describe("debugging service", () => {
 
     await service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1" });
 
-    expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current" });
+    expect(adbGateway.readNode).toHaveBeenCalledWith({ targetRef: "emulator-5554", nodePath: "/sys/adb/current", preserveExactRead: false });
   });
 
   it("readNode rejects inactive sessions and WO parameters before gateway call", async () => {
@@ -1468,7 +1479,18 @@ describe("debugging service", () => {
     expect(callOrder).toEqual(["gateway-read", "snapshot", "gateway-write"]);
     const snapshotCall = txCalls.find((call) => call.text.includes("insert into debugging_snapshots"));
     expect(JSON.parse(String(snapshotCall?.values[7]))).toEqual([
-      { parameterId: "param-1", protocol: "hdc", nodePath: "/sys/current", previousValue: "3000", targetValue: "3200" }
+      expect.objectContaining({
+        parameterId: "param-1",
+        protocol: "hdc",
+        nodePath: "/sys/current",
+        previousValue: "3000",
+        targetValue: "3200",
+        valueKind: "scalar",
+        valueFormat: "raw",
+        normalizationMode: "trim",
+        previousDigest: expect.any(String),
+        targetDigest: expect.any(String)
+      })
     ]);
     expect(operation).toMatchObject({ status: "succeeded", previousValue: "3000", snapshotId: "snapshot-1" });
   });
@@ -1657,13 +1679,14 @@ describe("debugging service", () => {
         sessionId: "session-1",
         operationId: operation.id,
         nodePath: "/sys/current",
-        requestedValue: "3200",
-        previousValue: "3000",
-        readbackValue: "3200",
+        digest: expect.any(String),
+        preview: "3200",
+        bytes: 4,
         verified: true,
         snapshotId: expect.any(String)
       })
     });
+    expect(audit.events[0].metadata).not.toHaveProperty("requestedValue");
     expect(audit.events[0].traceId).toBe("request-debug-write-1");
   });
 
@@ -1896,7 +1919,16 @@ describe("debugging service", () => {
       confirmationToken: "confirm-rollback"
     });
 
-    expect(gateway.writeNode).toHaveBeenCalledWith({ targetRef: "simulator://aurora-1", nodePath: "/sys/current", value: "3000", readBack: true });
+    expect(gateway.writeNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetRef: "simulator://aurora-1",
+        nodePath: "/sys/current",
+        value: "3000",
+        readBack: true,
+        preserveExactRead: false,
+        compareReadback: expect.any(Function)
+      })
+    );
     expect(result.operations).toEqual([expect.objectContaining({ operationType: "rollback", status: "succeeded", requestedValue: "3000" })]);
     expect(result.snapshot).toEqual(expect.objectContaining({ id: "snapshot-1", status: "consumed" }));
     expect(txCalls.findIndex((call) => call.text.includes("rollback_pending"))).toBeLessThan(
@@ -2035,5 +2067,130 @@ describe("debugging service", () => {
     await expect(service.listSessionEvents(otherProjectReadAuth, { sessionId: "session-1" })).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
     );
+  });
+
+  it("writeNode rejects invalid JSON for complex json-format parameters", async () => {
+    const { db } = createFakeDb([[sessionRow()], [parameterRow({ value_kind: "complex", value_format: "json" })], [bindingRow()]]);
+    const gateway = makeGateway();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(
+      service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "{not-json" })
+    ).rejects.toMatchObject({ code: "VALIDATION_FAILED", status: 400, message: expect.stringContaining("valid JSON") });
+    expect(gateway.readNode).not.toHaveBeenCalled();
+    expect(gateway.writeNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode succeeds for complex JSON with metadata-aware readback comparison", async () => {
+    const jsonValue = '{"enabled":true,"limit":42}';
+    const gateway = makeGateway({
+      readNode: vi.fn(async () => ({ ok: true, value: '{"limit":42,"enabled":true}', stdout: '{"limit":42,"enabled":true}', durationMs: 5 })),
+      writeNode: vi.fn(async () => ({
+        ok: true,
+        value: jsonValue,
+        verified: true,
+        writeResult: { ok: true, value: jsonValue, durationMs: 7 },
+        readResult: { ok: true, value: '{"limit":42,"enabled":true}', stdout: '{"limit":42,"enabled":true}', durationMs: 8 }
+      }))
+    });
+    const { db, txCalls } = createFakeDb([
+      [sessionRow()],
+      [
+        parameterRow({
+          value_kind: "complex",
+          value_format: "json",
+          normalization_mode: "json-canonical",
+          min_value: null,
+          max_value: null
+        })
+      ],
+      [bindingRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1", value_kind: "complex", value_format: "json" })],
+      [],
+      []
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: jsonValue });
+
+    expect(gateway.writeNode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: jsonValue,
+        preserveExactRead: false,
+        compareReadback: expect.any(Function)
+      })
+    );
+    expect(operation).toMatchObject({ status: "succeeded", verified: true, valueKind: "complex", valueFormat: "json" });
+    expect(txCalls.some((call) => call.text.includes("update debugging_parameters"))).toBe(true);
+    expect(audit.events[0].metadata).toMatchObject({
+      valueKind: "complex",
+      valueFormat: "json",
+      digest: expect.any(String),
+      preview: jsonValue
+    });
+  });
+
+  it("writeNode stores readback_mismatch for complex values after normalization-aware comparison", async () => {
+    const jsonValue = '{"enabled":true}';
+    const gatewayResult: GatewayWriteResult = {
+      ok: true,
+      value: jsonValue,
+      verified: false,
+      error: "Read-back mismatch after HDC write.",
+      writeResult: { ok: true, value: jsonValue, durationMs: 7 },
+      readResult: { ok: true, value: '{"enabled":false}', stdout: '{"enabled":false}', durationMs: 8 }
+    };
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [parameterRow({ value_kind: "complex", value_format: "json", normalization_mode: "json-canonical", min_value: null, max_value: null })],
+      [bindingRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1", status: "readback_mismatch", value_kind: "complex" })],
+      []
+    ]);
+    const service = createDebuggingService({ db, gateway: makeGateway({ writeNode: vi.fn(async () => gatewayResult) }), createAuditEvent: createAuditSpy().createAuditEvent });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: jsonValue });
+
+    expect(operation).toMatchObject({ status: "readback_mismatch", verified: false, valueKind: "complex" });
+  });
+
+  it("writeNode audit metadata uses digest and preview instead of full raw payload for large complex values", async () => {
+    const largeValue = `{"payload":"${"x".repeat(300)}"}`;
+    const gateway = makeGateway({
+      readNode: vi.fn(async () => ({ ok: true, value: "{}", stdout: "{}", durationMs: 5 })),
+      writeNode: vi.fn(async () => ({
+        ok: true,
+        value: largeValue,
+        verified: true,
+        writeResult: { ok: true, value: largeValue, durationMs: 7 },
+        readResult: { ok: true, value: largeValue, stdout: largeValue, durationMs: 8 }
+      }))
+    });
+    const { db } = createFakeDb([
+      [sessionRow()],
+      [parameterRow({ value_kind: "complex", value_format: "json", min_value: null, max_value: null })],
+      [bindingRow()],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
+      [],
+      []
+    ]);
+    const audit = createAuditSpy();
+    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
+
+    await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: largeValue });
+
+    expect(JSON.stringify(audit.events[0].metadata)).not.toContain(largeValue);
+    expect(audit.events[0].metadata).toMatchObject({
+      digest: expect.any(String),
+      preview: expect.stringMatching(/…$/),
+      bytes: expect.any(Number)
+    });
   });
 });

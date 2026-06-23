@@ -167,6 +167,19 @@ M2 implementation notes:
 
 HDC 和 ADB node bindings 在 `debugging_parameter_node_bindings` 中按 protocol 独立存储。禁用或归档某个 binding 只影响对应 protocol，不能让另一个 protocol 的 binding 从 admin catalog governance 中消失。
 
+### 调试值元数据
+
+调试参数携带与协议 binding 分离的显式值元数据：
+
+- `valueKind`：`scalar | complex`
+- `valueFormat`：`raw | json | dts | line-list | kv-list`
+- `normalizationMode`：`exact | trim | line-ending-normalized | json-canonical`
+- `maxValueBytes`：可选的写入与审计 payload 上限
+
+Phase 1 中，每个复杂参数仍只绑定一个启用的 HDC 或 ADB 节点。复杂值继续沿用现有 session、lease、snapshot、写入、回读、回滚和审计边界；比较与校验按格式感知执行，而不是对所有 payload 做原始字符串相等判断。
+
+`node_operations` 为复杂写入保存值元数据以及 digest 和 preview 字段。精确回滚 payload 仍保存在 `requested_value`、`previous_value` 和 `readback_value` 中；审计与操作历史界面对大 payload 使用 preview 和 digest。
+
 M3 implementation notes:
 
 - `debugging_devices` stores simulator or future HDC devices; the M3 seed creates `Aurora Simulator Device`.

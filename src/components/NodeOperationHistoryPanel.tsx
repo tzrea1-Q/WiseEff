@@ -1,5 +1,7 @@
 import { ChevronRight, Link2, RotateCw, Send, Terminal } from "lucide-react";
 import { useState } from "react";
+import { getDebugValueFormatLabel } from "@/debugValueKind";
+import type { DebugValueFormat } from "@/debugValueKind";
 import type { NodeAccessMode } from "../powerManagementConfig";
 
 export type NodeOperationEvent = {
@@ -14,6 +16,9 @@ export type NodeOperationEvent = {
   stdout?: string;
   stderr?: string;
   nodePath?: string;
+  valuePreview?: string;
+  valueDigest?: string;
+  valueFormat?: DebugValueFormat;
 };
 
 function formatTime(iso: string) {
@@ -32,6 +37,15 @@ function eventIcon(action: NodeOperationEvent["action"]) {
 }
 
 function summarizeOutput(event: NodeOperationEvent) {
+  const preview = event.valuePreview?.trim();
+  if (preview) {
+    const formatLabel = event.valueFormat
+      ? getDebugValueFormatLabel({ valueKind: "complex", valueFormat: event.valueFormat })
+      : "";
+    const digest = event.valueDigest ? ` · ${event.valueDigest.slice(0, 12)}…` : "";
+    return `${preview}${formatLabel ? ` · ${formatLabel}` : ""}${digest}`;
+  }
+
   const stderr = event.stderr?.trim();
   const stdout = event.stdout?.trim();
   if (stderr) return stderr.slice(0, 120);

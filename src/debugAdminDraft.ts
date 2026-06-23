@@ -4,6 +4,11 @@ import type {
   DebugParameter as DomainDebugParameter,
   DebugParameterNodeBinding
 } from "@/domain/debugging/types";
+import {
+  DEBUG_NORMALIZATION_MODE_TRIM,
+  DEBUG_VALUE_FORMAT_RAW,
+  DEBUG_VALUE_KIND_SCALAR
+} from "@/debugValueKind";
 
 export function emptyDebugAdminDraft(index: number): DebugAdminParameterDraft {
   return {
@@ -23,7 +28,11 @@ export function emptyDebugAdminDraft(index: number): DebugAdminParameterDraft {
     accessMode: "RO",
     sortOrder: index,
     enabled: true,
-    bindings: []
+    bindings: [],
+    valueKind: DEBUG_VALUE_KIND_SCALAR,
+    valueFormat: DEBUG_VALUE_FORMAT_RAW,
+    normalizationMode: DEBUG_NORMALIZATION_MODE_TRIM,
+    maxValueBytes: null
   };
 }
 
@@ -46,7 +55,11 @@ export function draftFromDebugParameter(parameter: DomainDebugParameter): DebugA
     accessMode: parameter.accessMode,
     sortOrder: parameter.sortOrder ?? 0,
     enabled: parameter.enabled ?? true,
-    bindings: parameter.bindings ?? []
+    bindings: parameter.bindings ?? [],
+    valueKind: parameter.valueKind ?? DEBUG_VALUE_KIND_SCALAR,
+    valueFormat: parameter.valueFormat ?? DEBUG_VALUE_FORMAT_RAW,
+    normalizationMode: parameter.normalizationMode ?? DEBUG_NORMALIZATION_MODE_TRIM,
+    maxValueBytes: parameter.maxValueBytes ?? null
   };
 }
 

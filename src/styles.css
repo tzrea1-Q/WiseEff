@@ -4771,6 +4771,10 @@ td small {
   width: 72px;
 }
 
+.parameters-table-grid.debug-admin-library-grid col.debug-admin-col-format {
+  width: 88px;
+}
+
 .parameters-table-grid.debug-admin-library-grid col.debug-admin-col-coverage {
   width: 104px;
 }
@@ -4871,6 +4875,20 @@ td small {
   border-radius: 999px;
   background: var(--surface-low);
   color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.debug-admin-format-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
@@ -5021,6 +5039,29 @@ td small {
 .debug-admin-definition-dialog.param-admin-editor-dialog {
   width: min(720px, calc(100vw - 48px));
   max-height: min(88vh, 920px);
+}
+
+.debug-admin-definition-dialog--complex.param-admin-editor-dialog {
+  width: min(960px, calc(100vw - 48px));
+}
+
+.debug-admin-complex-value-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.debug-admin-field--stack {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+@media (max-width: 860px) {
+  .debug-admin-complex-value-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .debug-admin-bindings-dialog.submission-dialog--wide,
@@ -7525,6 +7566,87 @@ td small {
   background: #eef2ff;
   border-radius: 6px;
   overflow-wrap: anywhere;
+}
+
+.debug-value-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.debug-value-preview {
+  display: block;
+  max-width: 100%;
+  color: #0f172a;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.debug-value-format-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+}
+
+.debug-value-code-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.debug-value-code-block__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.debug-value-code-block pre {
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+  padding: 10px 12px;
+  background: #0f172a;
+  border-radius: 6px;
+}
+
+.debug-value-code-block code {
+  display: block;
+  color: #e2e8f0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.node-complex-editor .workbench-sheet {
+  width: min(720px, calc(100vw - var(--sidebar-width) - 40px));
+}
+
+.node-complex-target-editor {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre;
+  overflow: auto;
 }
 
 .node-write-confirm-dialog p {

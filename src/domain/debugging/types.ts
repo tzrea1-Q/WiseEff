@@ -1,4 +1,9 @@
 import type { RiskLevel } from "../parameters/types";
+import type {
+  DebugNormalizationMode,
+  DebugValueFormat,
+  DebugValueKind
+} from "@/debugValueKind";
 
 export type DeviceStatus = "未连接" | "连接中" | "已连接" | "连接失败";
 export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
@@ -52,6 +57,10 @@ export type DebugParameter = {
   bindingStatus?: DebugParameterBindingStatus;
   bindingDisabledReason?: string;
   bindings?: DebugParameterNodeBinding[];
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 export type DebugParameterArchiveState = "active" | "archived";
@@ -75,6 +84,10 @@ export type DebugAdminParameterDraft = {
   sortOrder: number;
   enabled: boolean;
   bindings: DebugParameterNodeBinding[];
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 export type DebugSnapshotEntry = {

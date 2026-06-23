@@ -7,6 +7,12 @@ import type {
   DebugParameterAccessMode,
   DebugParameterNodeBinding
 } from "@/domain/debugging/types";
+import { resolveDebugValueMetadata } from "@/debugValueKind";
+import type {
+  DebugNormalizationMode,
+  DebugValueFormat,
+  DebugValueKind
+} from "@/debugValueKind";
 import type {
   DebugSnapshotSummary,
   DeviceTarget,
@@ -67,6 +73,10 @@ export type DebugParameterDto = {
   archiveReason?: string | null;
   selectedBinding?: DebugParameterNodeBindingDto | null;
   bindings?: DebugParameterNodeBindingDto[];
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 export type NodeOperationDto = {
@@ -86,6 +96,13 @@ export type NodeOperationDto = {
   durationMs: number;
   snapshotId: string | null;
   createdAt: string;
+  valueKind?: DebugValueKind | null;
+  valueFormat?: DebugValueFormat | null;
+  normalizationMode?: DebugNormalizationMode | null;
+  requestedValueDigest?: string | null;
+  previousValueDigest?: string | null;
+  readbackValueDigest?: string | null;
+  valuePreview?: string | null;
 };
 
 export type DebugSnapshotDto = {
@@ -139,6 +156,7 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
   const bindingDisabledReason = selectedBinding && !selectedBinding.enabled
     ? selectedBinding.disabledReason ?? selectedBinding.notes ?? undefined
     : undefined;
+  const valueMetadata = resolveDebugValueMetadata(dto);
 
   return {
     id: dto.id,
@@ -165,7 +183,11 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
     selectedProtocol: selectedBinding?.protocol,
     bindingStatus,
     bindingDisabledReason,
-    bindings
+    bindings,
+    valueKind: valueMetadata.valueKind,
+    valueFormat: valueMetadata.valueFormat,
+    normalizationMode: valueMetadata.normalizationMode,
+    maxValueBytes: valueMetadata.maxValueBytes ?? null
   };
 }
 
@@ -201,7 +223,14 @@ export function nodeOperationFromDto(dto: NodeOperationDto): NodeOperationSnapsh
     failureReason: dto.failureReason ?? undefined,
     durationMs: dto.durationMs,
     snapshotId: dto.snapshotId ?? undefined,
-    createdAt: dto.createdAt
+    createdAt: dto.createdAt,
+    valueKind: dto.valueKind ?? undefined,
+    valueFormat: dto.valueFormat ?? undefined,
+    normalizationMode: dto.normalizationMode ?? undefined,
+    requestedValueDigest: dto.requestedValueDigest ?? undefined,
+    previousValueDigest: dto.previousValueDigest ?? undefined,
+    readbackValueDigest: dto.readbackValueDigest ?? undefined,
+    valuePreview: dto.valuePreview ?? undefined
   };
 }
 

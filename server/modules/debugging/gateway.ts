@@ -12,11 +12,13 @@ export type GatewayTarget = {
 export type GatewayReadInput = {
   targetRef: string;
   nodePath: string;
+  preserveExactRead?: boolean;
 };
 
 export type GatewayWriteInput = GatewayReadInput & {
   value: string;
   readBack: boolean;
+  compareReadback?: (written: string, read: string) => boolean;
 };
 
 export type GatewayNodeResult = {

@@ -218,6 +218,28 @@ describe("debugging admin schemas", () => {
     });
   });
 
+  it("does not downgrade complex value metadata when a patch omits value metadata", () => {
+    expect(
+      patchDebugParameterAdminBodySchema.parse({
+        name: "Renamed only"
+      })
+    ).toEqual({
+      name: "Renamed only"
+    });
+  });
+
+  it("defaults scalar value metadata only when scalar is explicit on admin parameter patches", () => {
+    expect(
+      patchDebugParameterAdminBodySchema.parse({
+        valueKind: "scalar"
+      })
+    ).toEqual({
+      valueKind: "scalar",
+      valueFormat: "raw",
+      normalizationMode: "trim"
+    });
+  });
+
   it("parses route params and archive reasons", () => {
     expect(debugAdminParameterParamsSchema.parse({ parameterId: "param-1" })).toEqual({ parameterId: "param-1" });
     expect(debugAdminBindingParamsSchema.parse({ parameterId: "param-1", protocol: "adb" })).toEqual({
@@ -225,5 +247,54 @@ describe("debugging admin schemas", () => {
       protocol: "adb"
     });
     expect(archiveDebugParameterBodySchema.parse({ reason: "Deprecated" })).toEqual({ reason: "Deprecated" });
+  });
+
+  it("defaults scalar value metadata on admin parameter writes", () => {
+    expect(
+      writeDebugParameterAdminBodySchema.parse({
+        name: "Scalar parameter",
+        key: "debug.scalar",
+        module: "Battery",
+        risk: "Low"
+      })
+    ).toMatchObject({
+      valueKind: "scalar",
+      valueFormat: "raw",
+      normalizationMode: "trim"
+    });
+  });
+
+  it("accepts complex JSON value metadata on admin parameter writes", () => {
+    expect(
+      writeDebugParameterAdminBodySchema.parse({
+        name: "Complex JSON",
+        key: "debug.complex.json",
+        module: "Diagnostics",
+        risk: "Medium",
+        valueKind: "complex",
+        valueFormat: "json",
+        normalizationMode: "json-canonical",
+        maxValueBytes: 8192
+      })
+    ).toMatchObject({
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical",
+      maxValueBytes: 8192
+    });
+  });
+
+  it("rejects json-canonical normalization without json format", () => {
+    expect(() =>
+      writeDebugParameterAdminBodySchema.parse({
+        name: "Invalid combo",
+        key: "debug.invalid",
+        module: "Diagnostics",
+        risk: "Low",
+        valueKind: "complex",
+        valueFormat: "raw",
+        normalizationMode: "json-canonical"
+      })
+    ).toThrow();
   });
 });

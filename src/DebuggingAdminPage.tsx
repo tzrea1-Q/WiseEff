@@ -214,7 +214,11 @@ export function DebuggingAdminPage({
       risk: draft.risk,
       status: "已同步" as const,
       nodePath: hdcBinding.nodePath || draft.nodePath,
-      accessMode: hdcBinding.accessMode || draft.accessMode
+      accessMode: hdcBinding.accessMode || draft.accessMode,
+      valueKind: draft.valueKind,
+      valueFormat: draft.valueFormat,
+      normalizationMode: draft.normalizationMode,
+      maxValueBytes: draft.maxValueBytes ?? null
     };
   };
 
