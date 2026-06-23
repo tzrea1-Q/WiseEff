@@ -10,13 +10,15 @@ import {
   listMyBridges,
   listReleases,
   probeLocalBridgeHealth,
+  renameBridge,
+  revokeBridge,
   type DeviceBridgePairingCode,
   type DeviceBridgeRecord,
   type DeviceBridgeReleaseItem,
   type LocalBridgeHealthState
 } from "./infrastructure/http/deviceBridgeClient";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
-import type { NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
+import type { DeviceTarget, NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type {
   DebugConnectionProtocol,
   DebugParameterBindingStatus,
@@ -60,6 +62,7 @@ type RuntimeRow = ProtocolAwareDebugParameter & {
 };
 
 const unsupportedNodeValueLabel = "该节点不支持";
+const bridgeOnlineWindowMs = 2 * 60 * 1000;
 
 type PageNodeOperationEvent = NodeOperationEvent & {
   durationMs?: number;
@@ -307,6 +310,33 @@ function formatSessionDuration(startedAt: string | null, now: Date) {
   const startTime = new Date(startedAt).getTime();
   if (!Number.isFinite(startTime)) return "—";
   return `${Math.max(0, Math.floor((now.getTime() - startTime) / 60_000))} 分钟`;
+}
+
+function formatBridgeLastSeen(lastSeenAt: string | null) {
+  if (!lastSeenAt) return "从未在线";
+  const timestamp = new Date(lastSeenAt).getTime();
+  if (!Number.isFinite(timestamp)) return "未知";
+  return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
+}
+
+function inferBridgeOnline(bridge: DeviceBridgeRecord, health: LocalBridgeHealthState | null) {
+  if (health?.connected && health.bridgeId === bridge.id) {
+    return true;
+  }
+  if (!bridge.lastSeenAt) {
+    return false;
+  }
+  const lastSeen = new Date(bridge.lastSeenAt).getTime();
+  return Number.isFinite(lastSeen) && Date.now() - lastSeen <= bridgeOnlineWindowMs;
+}
+
+function bridgeTargetLabel(target: Pick<DeviceTarget, "label" | "targetRef" | "bridgeMachineLabel">) {
+  const machineLabel = target.bridgeMachineLabel?.trim();
+  if (!machineLabel) {
+    return target.label;
+  }
+  const targetIdentity = target.targetRef?.trim() || target.label;
+  return `${machineLabel} · ${targetIdentity}`;
 }
 
 function isSuccessfulWriteEvent(event: PageNodeOperationEvent) {
@@ -561,6 +591,9 @@ function LocalDeviceBridgePanel({
   const [windowsRelease, setWindowsRelease] = useState<DeviceBridgeReleaseItem | null>(null);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
   const [panelError, setPanelError] = useState("");
+  const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
+  const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
+  const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
 
   const refreshBridgeState = useCallback(async () => {
     setChecking(true);
@@ -572,6 +605,7 @@ function LocalDeviceBridgePanel({
       ]);
       setHealth(nextHealth);
       setBridges(nextBridges);
+      setRenameDraftById(Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel])));
       if (!nextHealth && nextBridges.length === 0) {
         const manifest = await listReleases().catch(() => null);
         const windowsItem = manifest?.items.find(isWindowsAmd64Release) ?? null;
@@ -617,6 +651,43 @@ function LocalDeviceBridgePanel({
     }
   };
 
+  const handleRenameBridge = async (bridge: DeviceBridgeRecord) => {
+    const draft = (renameDraftById[bridge.id] ?? bridge.machineLabel).trim();
+    if (!draft || draft === bridge.machineLabel || bridge.revokedAt) {
+      return;
+    }
+    setRenamingBridgeId(bridge.id);
+    setPanelError("");
+    try {
+      const updated = await renameBridge(bridge.id, draft);
+      setBridges((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setRenameDraftById((current) => ({ ...current, [updated.id]: updated.machineLabel }));
+    } catch (error) {
+      setPanelError(formatDebuggingRuntimeError(error));
+    } finally {
+      setRenamingBridgeId(null);
+    }
+  };
+
+  const handleRevokeBridge = async (bridge: DeviceBridgeRecord) => {
+    if (bridge.revokedAt) {
+      return;
+    }
+    if (!window.confirm(`确认撤销设备代理「${bridge.machineLabel}」吗？`)) {
+      return;
+    }
+    setRevokingBridgeId(bridge.id);
+    setPanelError("");
+    try {
+      const revoked = await revokeBridge(bridge.id);
+      setBridges((current) => current.map((item) => (item.id === revoked.id ? revoked : item)));
+    } catch (error) {
+      setPanelError(formatDebuggingRuntimeError(error));
+    } finally {
+      setRevokingBridgeId(null);
+    }
+  };
+
   return (
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
       <div className="local-device-bridge-panel__head">
@@ -655,11 +726,60 @@ function LocalDeviceBridgePanel({
           </div>
         ) : null}
         {bridges.length > 0 ? (
-          <div className="local-device-bridge-panel__bridges" aria-label="我的桥接器列表">
-            {bridges.slice(0, 3).map((bridge) => (
-              <span key={bridge.id}>{bridge.machineLabel} · {bridge.platform}/{bridge.arch}</span>
-            ))}
-          </div>
+          <details className="local-device-bridge-panel__management" open>
+            <summary>我的设备代理</summary>
+            <ul className="local-device-bridge-panel__bridge-list" aria-label="我的设备代理列表">
+              {bridges.map((bridge) => {
+                const draft = renameDraftById[bridge.id] ?? bridge.machineLabel;
+                const isRevoked = Boolean(bridge.revokedAt);
+                const saving = renamingBridgeId === bridge.id;
+                const revoking = revokingBridgeId === bridge.id;
+                const online = inferBridgeOnline(bridge, health);
+                return (
+                  <li key={bridge.id} className="local-device-bridge-panel__bridge-item">
+                    <div className="local-device-bridge-panel__bridge-meta">
+                      <label>
+                        <span>设备名</span>
+                        <input
+                          type="text"
+                          value={draft}
+                          maxLength={64}
+                          disabled={isRevoked || saving || revoking}
+                          onChange={(event) => {
+                            const nextValue = event.target.value;
+                            setRenameDraftById((current) => ({ ...current, [bridge.id]: nextValue }));
+                          }}
+                        />
+                      </label>
+                      <small>{bridge.platform}/{bridge.arch} · 最近在线 {formatBridgeLastSeen(bridge.lastSeenAt)}</small>
+                    </div>
+                    <div className="local-device-bridge-panel__bridge-actions">
+                      <span className={online ? "bridge-status-online" : "bridge-status-offline"}>
+                        {online ? "在线" : "离线"}
+                      </span>
+                      {isRevoked ? <span className="bridge-status-revoked">已撤销</span> : null}
+                      <button
+                        className="button subtle"
+                        type="button"
+                        disabled={isRevoked || saving || revoking || draft.trim().length === 0 || draft.trim() === bridge.machineLabel}
+                        onClick={() => void handleRenameBridge(bridge)}
+                      >
+                        {saving ? "保存中..." : "保存名称"}
+                      </button>
+                      <button
+                        className="button subtle"
+                        type="button"
+                        disabled={isRevoked || revoking || saving}
+                        onClick={() => void handleRevokeBridge(bridge)}
+                      >
+                        {revoking ? "撤销中..." : "撤销"}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         ) : null}
         {panelError ? <p className="node-row-error">{panelError}</p> : null}
       </div>
@@ -693,6 +813,8 @@ export function NodeDebuggingPage({
   const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
+  const [bridgeTargetCandidates, setBridgeTargetCandidates] = useState<DeviceTarget[]>([]);
+  const [selectingBridgeTargetId, setSelectingBridgeTargetId] = useState<string | null>(null);
   const autoReadSignatureRef = useRef("");
   const protocolRef = useRef(protocol);
   const detectRequestSeqRef = useRef(0);
@@ -804,6 +926,8 @@ export function NodeDebuggingPage({
     setTarget(undefined);
     setActiveTargetId(undefined);
     setActiveSessionId(undefined);
+    setBridgeTargetCandidates([]);
+    setSelectingBridgeTargetId(null);
     setSessionStartedAt(null);
     setConnectionError("");
     setDetectDiagnosticError("");
@@ -946,6 +1070,15 @@ export function NodeDebuggingPage({
     void readReadableRows(activeTargetId, readableRows, activeSessionId).catch(() => undefined);
   }, [activeSessionId, activeTargetId, debuggingActions, rows]);
 
+  const applyDetectedSession = (session: { id: string; startedAt: string }, detectedTarget: DeviceTarget) => {
+    setActiveSessionId(session.id);
+    setActiveTargetId(detectedTarget.id);
+    setTarget(bridgeTargetLabel(detectedTarget));
+    setBridgeTargetCandidates([]);
+    setConnectionError("");
+    setSessionStartedAt((current) => current ?? session.startedAt);
+  };
+
   const detect = async () => {
     if (!runtimeReady) {
       return;
@@ -959,16 +1092,21 @@ export function NodeDebuggingPage({
 
     setDetecting(true);
     setDetectDiagnosticError("");
+    setSelectingBridgeTargetId(null);
     try {
       if (debuggingActions) {
         const result = await debuggingActions.detectAndStartSession(state.activeProjectId, { protocol: requestProtocol }) as DetectResultWithOperation;
         if (!isCurrentDetectRequest()) return;
+        if ("candidates" in result) {
+          setTarget(undefined);
+          setActiveSessionId(undefined);
+          setActiveTargetId(undefined);
+          setBridgeTargetCandidates(result.candidates);
+          setConnectionError("检测到多个可用设备代理，请选择要调试的设备。");
+          return;
+        }
         const { session, target: detectedTarget } = result;
-        setActiveSessionId(session.id);
-        setActiveTargetId(detectedTarget.id);
-        setTarget(detectedTarget.label);
-        setConnectionError("");
-        setSessionStartedAt((current) => current ?? session.startedAt);
+        applyDetectedSession(session, detectedTarget);
         if (result.operation) {
           appendEvent(eventFromOperation(result.operation, rowsRef.current));
         }
@@ -983,6 +1121,7 @@ export function NodeDebuggingPage({
       if (!isCurrentDetectRequest()) return;
       setTarget(result.activeTarget);
       setActiveTargetId(result.activeTarget);
+      setBridgeTargetCandidates([]);
       setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");
       appendEvent({
         parameterName: `${protocolLabel(requestProtocol)} 设备`,
@@ -1003,6 +1142,7 @@ export function NodeDebuggingPage({
       setTarget(undefined);
       setActiveSessionId(undefined);
       setActiveTargetId(undefined);
+      setBridgeTargetCandidates([]);
       const diagnosticError = error instanceof Error ? error as DiagnosticError : undefined;
       const detectFailureMessage = formatDebuggingRuntimeError(error);
       const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
@@ -1024,6 +1164,38 @@ export function NodeDebuggingPage({
       if (isCurrentDetectRequest()) {
         setDetecting(false);
       }
+    }
+  };
+
+  const selectBridgeTarget = async (selectedTarget: DeviceTarget) => {
+    if (!debuggingActions || detecting || protocol !== "adb") {
+      return;
+    }
+    setSelectingBridgeTargetId(selectedTarget.id);
+    setDetecting(true);
+    setDetectDiagnosticError("");
+    try {
+      const result = await debuggingActions.detectAndStartSession(state.activeProjectId, {
+        protocol,
+        targetId: selectedTarget.id,
+        bridgeId: selectedTarget.bridgeId
+      }) as DetectResultWithOperation;
+      if ("candidates" in result) {
+        setBridgeTargetCandidates(result.candidates);
+        setConnectionError("仍检测到多个设备代理，请重试选择目标。");
+        return;
+      }
+      applyDetectedSession(result.session, result.target);
+      if (result.operation) {
+        appendEvent(eventFromOperation(result.operation, rowsRef.current));
+      }
+    } catch (error) {
+      const message = formatDebuggingRuntimeError(error);
+      setConnectionError(message);
+      setDetectDiagnosticError(message);
+    } finally {
+      setSelectingBridgeTargetId(null);
+      setDetecting(false);
     }
   };
 
@@ -1176,6 +1348,31 @@ export function NodeDebuggingPage({
         </div>
         {debuggingActions && protocol === "adb" ? (
           <LocalDeviceBridgePanel target={target} detecting={detecting} onDetect={() => void detect()} />
+        ) : null}
+        {debuggingActions && protocol === "adb" && bridgeTargetCandidates.length > 1 ? (
+          <section className="bridge-target-picker" aria-label="设备代理目标选择">
+            <div className="bridge-target-picker__head">
+              <strong>检测到多个设备代理目标</strong>
+              <small>请选择要连接的设备后再开始节点调试。</small>
+            </div>
+            <ul className="bridge-target-picker__list">
+              {bridgeTargetCandidates.map((candidate) => {
+                const selecting = selectingBridgeTargetId === candidate.id;
+                return (
+                  <li key={candidate.id}>
+                    <button
+                      type="button"
+                      className="button subtle"
+                      disabled={detecting && !selecting}
+                      onClick={() => void selectBridgeTarget(candidate)}
+                    >
+                      {selecting ? "连接中..." : `连接 ${bridgeTargetLabel(candidate)}`}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         ) : null}
         <NodeSessionSummaryCard
           connected={connected}

@@ -5,7 +5,9 @@ import {
   createPairingCode,
   listMyBridges,
   listReleases,
-  probeLocalBridgeHealth
+  probeLocalBridgeHealth,
+  renameBridge,
+  revokeBridge
 } from "./deviceBridgeClient";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -80,6 +82,68 @@ describe("deviceBridgeClient", () => {
       items: [expect.objectContaining({ platform: "windows" })]
     });
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/device-bridges/releases", expect.objectContaining({ method: "GET" }));
+  });
+
+  it("renames a bridge by id", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        item: {
+          id: "br-1",
+          machineLabel: "Office-PC",
+          platform: "windows",
+          arch: "amd64",
+          clientVersion: "0.1.0",
+          capabilities: {},
+          createdAt: "2026-06-23T00:00:00.000Z",
+          lastSeenAt: "2026-06-23T00:05:00.000Z",
+          revokedAt: null
+        }
+      })
+    );
+    const apiClient = createApi(fetchMock);
+
+    await expect(renameBridge("br-1", "Office-PC", apiClient)).resolves.toMatchObject({
+      id: "br-1",
+      machineLabel: "Office-PC"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/device-bridges/br-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ machineLabel: "Office-PC" })
+      })
+    );
+  });
+
+  it("revokes a bridge by id", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () =>
+      jsonResponse({
+        item: {
+          id: "br-1",
+          machineLabel: "Office-PC",
+          platform: "windows",
+          arch: "amd64",
+          clientVersion: "0.1.0",
+          capabilities: {},
+          createdAt: "2026-06-23T00:00:00.000Z",
+          lastSeenAt: "2026-06-23T00:05:00.000Z",
+          revokedAt: "2026-06-23T00:10:00.000Z"
+        }
+      })
+    );
+    const apiClient = createApi(fetchMock);
+
+    await expect(revokeBridge("br-1", apiClient)).resolves.toMatchObject({
+      id: "br-1",
+      revokedAt: "2026-06-23T00:10:00.000Z"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/device-bridges/br-1/revoke",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({})
+      })
+    );
   });
 
   it("probes local bridge health successfully", async () => {

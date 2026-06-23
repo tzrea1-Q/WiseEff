@@ -8,6 +8,8 @@ import type {
 export type DeviceTarget = {
   id: string;
   deviceId?: string;
+  bridgeId?: string;
+  bridgeMachineLabel?: string;
   protocol?: DebugConnectionProtocol;
   label: string;
   targetRef?: string;
@@ -121,7 +123,13 @@ export interface DebuggingGateway {
   listDevices?(): Promise<DebugDeviceSnapshot[]>;
   listParameters?(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
   detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]>;
-  createSession?(input: { projectId: string; deviceId: string; targetId: string; protocol?: DebugConnectionProtocol }): Promise<DebugSessionSnapshot>;
+  createSession?(input: {
+    projectId: string;
+    deviceId: string;
+    targetId: string;
+    protocol?: DebugConnectionProtocol;
+    bridgeId?: string;
+  }): Promise<DebugSessionSnapshot>;
   getSession?(sessionId: string): Promise<DebugSessionSnapshot | null>;
   listSessionEvents?(sessionId: string): Promise<NodeOperationSnapshot[]>;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;

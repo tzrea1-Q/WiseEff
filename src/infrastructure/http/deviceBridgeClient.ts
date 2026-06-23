@@ -59,6 +59,29 @@ export async function listMyBridges(apiClient: ApiClient = createDefaultApiClien
   return response.items;
 }
 
+export async function renameBridge(
+  bridgeId: string,
+  machineLabel: string,
+  apiClient: ApiClient = createDefaultApiClient()
+) {
+  const response = await apiClient.patch<{ item: DeviceBridgeRecord }>(
+    `/api/v1/device-bridges/${encodeURIComponent(bridgeId)}`,
+    { machineLabel }
+  );
+  return response.item;
+}
+
+export async function revokeBridge(
+  bridgeId: string,
+  apiClient: ApiClient = createDefaultApiClient()
+) {
+  const response = await apiClient.post<{ item: DeviceBridgeRecord }>(
+    `/api/v1/device-bridges/${encodeURIComponent(bridgeId)}/revoke`,
+    {}
+  );
+  return response.item;
+}
+
 export async function listReleases(apiClient: ApiClient = createDefaultApiClient()) {
   return apiClient.get<DeviceBridgeReleaseManifest>("/api/v1/device-bridges/releases");
 }

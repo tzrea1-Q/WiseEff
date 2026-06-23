@@ -34,6 +34,10 @@ export type DebugDeviceDto = {
 export type DebugTargetDto = {
   id: string;
   deviceId: string;
+  bridgeId?: string | null;
+  bridge_id?: string | null;
+  bridgeMachineLabel?: string | null;
+  bridge_machine_label?: string | null;
   protocol?: DebugConnectionProtocol;
   label: string;
   targetRef: string;
@@ -203,7 +207,18 @@ function debugParameterBindingFromDto(dto: DebugParameterNodeBindingDto): DebugP
 }
 
 export function debugTargetFromDto(dto: DebugTargetDto): DeviceTarget {
-  return { ...dto };
+  const bridgeId = dto.bridgeId ?? dto.bridge_id ?? undefined;
+  const bridgeMachineLabel = dto.bridgeMachineLabel ?? dto.bridge_machine_label ?? undefined;
+  return {
+    id: dto.id,
+    deviceId: dto.deviceId,
+    bridgeId: bridgeId ?? undefined,
+    bridgeMachineLabel: bridgeMachineLabel ?? undefined,
+    protocol: dto.protocol,
+    label: dto.label,
+    targetRef: dto.targetRef,
+    status: dto.status
+  };
 }
 
 export function nodeOperationFromDto(dto: NodeOperationDto): NodeOperationSnapshot {

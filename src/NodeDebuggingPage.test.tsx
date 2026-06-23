@@ -765,6 +765,126 @@ describe("/node-debugging", () => {
     );
   });
 
+  it("shows bridge target selection when adb detect returns multiple bridge-backed targets", async () => {
+    const bridgeTargets = [
+      {
+        id: "bridge:br-1:adb:serial-123",
+        deviceId: "bridge:br-1",
+        protocol: "adb" as const,
+        bridgeId: "br-1",
+        bridgeMachineLabel: "MacBook",
+        targetRef: "serial-123",
+        label: "ADB serial-123"
+      },
+      {
+        id: "bridge:br-2:adb:serial-456",
+        deviceId: "bridge:br-2",
+        protocol: "adb" as const,
+        bridgeId: "br-2",
+        bridgeMachineLabel: "Office-PC",
+        targetRef: "serial-456",
+        label: "ADB serial-456"
+      }
+    ];
+    const adbSession = {
+      ...apiSession,
+      id: "api-session-adb-1",
+      protocol: "adb" as const,
+      targetId: bridgeTargets[0].id,
+      deviceId: bridgeTargets[0].deviceId
+    };
+    const detectAndStartSession = vi.fn()
+      .mockResolvedValueOnce({ session: apiSession, target: apiTarget })
+      .mockResolvedValueOnce({ candidates: bridgeTargets })
+      .mockResolvedValueOnce({ session: adbSession, target: bridgeTargets[0] });
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    await screen.findByText(/在线 · API Gateway Target/);
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    const picker = await screen.findByRole("region", { name: "设备代理目标选择" });
+    const selectTargetButton = within(picker).getByRole("button", { name: "连接 MacBook · serial-123" });
+    fireEvent.click(selectTargetButton);
+
+    await waitFor(() => expect(detectAndStartSession).toHaveBeenLastCalledWith(
+      userState.activeProjectId,
+      {
+        protocol: "adb",
+        targetId: "bridge:br-1:adb:serial-123",
+        bridgeId: "br-1"
+      }
+    ));
+    expect(await screen.findByText(/在线 · MacBook · serial-123/)).toBeInTheDocument();
+  });
+
+  it("supports inline bridge rename and revoke in adb bridge management", async () => {
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn()
+        .mockResolvedValueOnce({ session: apiSession, target: apiTarget })
+        .mockResolvedValue({ session: { ...apiSession, protocol: "adb" as const }, target: { ...apiTarget, protocol: "adb" as const } })
+    });
+    let currentBridge = {
+      id: "br-1",
+      machineLabel: "Laptop",
+      platform: "windows",
+      arch: "amd64",
+      clientVersion: "0.1.0",
+      capabilities: {},
+      createdAt: "2026-06-23T00:00:00.000Z",
+      lastSeenAt: "2026-06-23T00:05:00.000Z",
+      revokedAt: null as string | null
+    };
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input, init) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "http://127.0.0.1:18787/health") {
+        return new Response(JSON.stringify({
+          ok: true,
+          paired: true,
+          connected: true,
+          bridgeId: "br-1",
+          updatedAt: "2026-06-23T00:05:30.000Z"
+        }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/mine")) {
+        return new Response(JSON.stringify({ items: [currentBridge] }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/br-1") && method === "PATCH") {
+        currentBridge = { ...currentBridge, machineLabel: "Desk-PC" };
+        return new Response(JSON.stringify({ item: currentBridge }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/br-1/revoke") && method === "POST") {
+        currentBridge = { ...currentBridge, revokedAt: "2026-06-23T00:10:00.000Z" };
+        return new Response(JSON.stringify({ item: currentBridge }));
+      }
+      return new Response(JSON.stringify({ ok: true }));
+    }) as typeof fetch);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    fireEvent.click(await screen.findByRole("button", { name: "ADB" }));
+
+    const renameInput = await screen.findByDisplayValue("Laptop");
+    fireEvent.change(renameInput, { target: { value: "Desk-PC" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存名称" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/device-bridges/br-1"),
+      expect.objectContaining({ method: "PATCH" })
+    ));
+    expect(await screen.findByDisplayValue("Desk-PC")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/device-bridges/br-1/revoke"),
+      expect.objectContaining({ method: "POST" })
+    ));
+    expect(await screen.findByText("已撤销")).toBeInTheDocument();
+  });
+
   it("falls back to local HDC calls when API gateway actions are not supplied", async () => {
     mockFetchSequence([
       { ok: true, targets: ["target-a"], activeTarget: "target-a" },
