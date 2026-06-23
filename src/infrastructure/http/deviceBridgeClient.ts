@@ -22,8 +22,10 @@ export type DeviceBridgeRecord = {
   revokedAt: string | null;
 };
 
+export type DeviceBridgePlatform = "windows" | "darwin" | "linux";
+
 export type DeviceBridgeReleaseItem = {
-  platform: "windows" | "darwin" | "linux";
+  platform: DeviceBridgePlatform;
   arch: string;
   version: string;
   sha256?: string;

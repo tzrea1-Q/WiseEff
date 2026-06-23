@@ -17,6 +17,11 @@ import {
   type DeviceBridgeReleaseItem,
   type LocalBridgeHealthState
 } from "./infrastructure/http/deviceBridgeClient";
+import {
+  bridgeReleaseDownloadLabel,
+  detectBrowserBridgeTarget,
+  pickBridgeReleaseForHost
+} from "./infrastructure/http/bridgeReleaseSelection";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import type { DeviceTarget, NodeOperationSnapshot, NodeReadResult, NodeWriteResult } from "./application/ports/DebuggingGateway";
 import type {
@@ -555,8 +560,18 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
 
 type BridgePanelStatus = "missing_bridge" | "not_paired" | "not_running" | "online_no_device" | "bridges_with_targets";
 
-function isWindowsAmd64Release(item: DeviceBridgeReleaseItem) {
-  return item.platform === "windows" && item.arch === "amd64";
+function listAlternateBridgeReleases(items: DeviceBridgeReleaseItem[], primary: DeviceBridgeReleaseItem | null) {
+  if (!primary) {
+    return items;
+  }
+  return items.filter((item) => item.downloadUrl !== primary.downloadUrl);
+}
+
+function macInstallHint(release: DeviceBridgeReleaseItem | null) {
+  if (!release || release.platform !== "darwin") {
+    return null;
+  }
+  return "解压后执行 chmod +x wiseeff-bridge，然后使用 ./wiseeff-bridge pair ... 与 ./wiseeff-bridge start。";
 }
 
 function deriveBridgePanelStatus(input: {
@@ -588,7 +603,8 @@ function LocalDeviceBridgePanel({
   const [checking, setChecking] = useState(false);
   const [health, setHealth] = useState<LocalBridgeHealthState | null>(null);
   const [bridges, setBridges] = useState<DeviceBridgeRecord[]>([]);
-  const [windowsRelease, setWindowsRelease] = useState<DeviceBridgeReleaseItem | null>(null);
+  const [hostRelease, setHostRelease] = useState<DeviceBridgeReleaseItem | null>(null);
+  const [alternateReleases, setAlternateReleases] = useState<DeviceBridgeReleaseItem[]>([]);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
   const [panelError, setPanelError] = useState("");
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
@@ -608,10 +624,12 @@ function LocalDeviceBridgePanel({
       setRenameDraftById(Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel])));
       if (!nextHealth && nextBridges.length === 0) {
         const manifest = await listReleases().catch(() => null);
-        const windowsItem = manifest?.items.find(isWindowsAmd64Release) ?? null;
-        setWindowsRelease(windowsItem);
+        const primary = manifest ? pickBridgeReleaseForHost(manifest.items, detectBrowserBridgeTarget()) : null;
+        setHostRelease(primary);
+        setAlternateReleases(manifest ? listAlternateBridgeReleases(manifest.items, primary) : []);
       } else {
-        setWindowsRelease(null);
+        setHostRelease(null);
+        setAlternateReleases([]);
       }
       return { nextHealth, nextBridges };
     } finally {
@@ -692,7 +710,7 @@ function LocalDeviceBridgePanel({
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
       <div className="local-device-bridge-panel__head">
         <div>
-          <strong>本地设备桥接（Windows 优先）</strong>
+          <strong>本地设备桥接</strong>
           <small>
             {panelStatus === "bridges_with_targets" ? "Bridge 在线，已连接可调试目标。" :
               panelStatus === "online_no_device" ? "Bridge 在线，但当前未检测到可调试设备。" :
@@ -707,10 +725,23 @@ function LocalDeviceBridgePanel({
         </button>
       </div>
       <div className="local-device-bridge-panel__body">
-        {(panelStatus === "missing_bridge" && windowsRelease) ? (
-          <a className="button subtle" href={windowsRelease.downloadUrl}>
-            下载 Windows Bridge
-          </a>
+        {(panelStatus === "missing_bridge" && hostRelease) ? (
+          <div className="local-device-bridge-panel__downloads">
+            <a className="button subtle" href={hostRelease.downloadUrl}>
+              {bridgeReleaseDownloadLabel(hostRelease)}
+            </a>
+            {macInstallHint(hostRelease) ? <small>{macInstallHint(hostRelease)}</small> : null}
+            {alternateReleases.length > 0 ? (
+              <div className="local-device-bridge-panel__alternate-downloads">
+                <span>其他平台</span>
+                {alternateReleases.map((item) => (
+                  <a key={item.downloadUrl} className="button subtle" href={item.downloadUrl}>
+                    {bridgeReleaseDownloadLabel(item)}
+                  </a>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ) : null}
         {(panelStatus === "missing_bridge" || panelStatus === "not_paired") ? (
           <div className="local-device-bridge-panel__command">

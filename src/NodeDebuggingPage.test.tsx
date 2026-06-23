@@ -758,7 +758,7 @@ describe("/node-debugging", () => {
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
-    const downloadLink = await screen.findByRole("link", { name: "下载 Windows Bridge" });
+    const downloadLink = await screen.findByRole("link", { name: /下载 Windows Bridge/ });
     expect(downloadLink).toHaveAttribute(
       "href",
       "/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"

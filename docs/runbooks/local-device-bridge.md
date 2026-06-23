@@ -6,7 +6,7 @@ This runbook covers WiseEff Local Device Bridge Phase 1–2 operations for self-
 
 ## Scope
 
-- Phase 1–2 supports Windows-first bridge pairing, runtime, and optional Windows service install.
+- Phase 1–2 supports Windows and macOS bridge pairing and runtime; Windows additionally supports optional service install.
 - Bridge RPC supports both `adb` and `hdc` protocols on the engineer's PC; the server keeps governance unchanged.
 - Bridge-backed session execution is governed by backend debugging permissions, lease checks, confirmations, snapshot/rollback, and audit.
 - This runbook focuses on local/self-hosted operator workflows, not managed cloud rollout.
@@ -49,8 +49,34 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 1. Confirm bridge artifacts exist under `DEVICE_BRIDGE_ARTIFACT_ROOT`.
 2. Verify manifest endpoint:
    - `GET /api/v1/device-bridges/releases`
-3. Confirm Windows AMD64 item exists and uses same-origin relative URL:
-   - `/downloads/device-bridge/<version>/windows/amd64/...zip`
+3. Confirm release items exist for the operator platform and use same-origin relative URLs:
+   - Windows: `/downloads/device-bridge/<version>/windows/amd64/...zip`
+   - macOS Apple Silicon: `/downloads/device-bridge/<version>/darwin/arm64/...tar.gz`
+   - macOS Intel: `/downloads/device-bridge/<version>/darwin/amd64/...tar.gz`
+
+## macOS Install (Phase 3)
+
+1. Download the matching macOS artifact from `/node-debugging` or `GET /api/v1/device-bridges/releases`.
+2. Extract the archive:
+
+```bash
+tar -xzf wiseeff-bridge_<version>_darwin_arm64.tar.gz
+chmod +x wiseeff-bridge
+```
+
+3. Pair and start:
+
+```bash
+./wiseeff-bridge pair --server https://<your-wiseeff-origin> --code <6-digit-code>
+./wiseeff-bridge start
+```
+
+Notes:
+
+- The archive contains `cli.js` and a `wiseeff-bridge` launcher script that runs `node cli.js`.
+- Bridge config is stored at `~/.wiseeff/bridge.json`.
+- macOS does not use the Windows `service` commands; keep the bridge running in a terminal session, or use `launchd`/a process manager in your own ops environment.
+- Install `adb` and/or `hdc` on the Mac and authorize the USB device before detecting targets in `/node-debugging`.
 
 ## Pairing Flow
 

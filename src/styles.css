@@ -7446,6 +7446,29 @@ td small {
   gap: 8px;
 }
 
+.local-device-bridge-panel__downloads {
+  display: grid;
+  gap: 8px;
+}
+
+.local-device-bridge-panel__downloads small {
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.local-device-bridge-panel__alternate-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.local-device-bridge-panel__alternate-downloads > span {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .local-device-bridge-panel__command {
   display: grid;
   gap: 4px;

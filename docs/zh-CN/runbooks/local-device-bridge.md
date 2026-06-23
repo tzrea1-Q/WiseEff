@@ -6,7 +6,7 @@
 
 ## 适用范围
 
-- Phase 1–2 以 Windows 优先的 Bridge 配对、运行时与可选 Windows 服务安装为主。
+- Phase 1–2 以 Windows 与 macOS 的 Bridge 配对、运行时为主；Windows 另支持可选服务安装。
 - Bridge RPC 在工程师本机同时支持 `adb` 与 `hdc`；服务端治理边界不变。
 - Bridge-backed 会话仍受后端调试权限、lease、确认 token、快照回滚与审计约束。
 - 本文关注本地/自托管操作流程，不覆盖托管云发布流程。
@@ -49,8 +49,34 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 1. 确认 `DEVICE_BRIDGE_ARTIFACT_ROOT` 下存在 Bridge 制品。
 2. 验证 manifest 接口：
    - `GET /api/v1/device-bridges/releases`
-3. 确认包含 Windows AMD64 条目，且下载地址为同源相对路径：
-   - `/downloads/device-bridge/<version>/windows/amd64/...zip`
+3. 确认 manifest 包含当前运维平台制品，且下载地址为同源相对路径：
+   - Windows：`/downloads/device-bridge/<version>/windows/amd64/...zip`
+   - macOS Apple Silicon：`/downloads/device-bridge/<version>/darwin/arm64/...tar.gz`
+   - macOS Intel：`/downloads/device-bridge/<version>/darwin/amd64/...tar.gz`
+
+## macOS 安装（Phase 3）
+
+1. 从 `/node-debugging` 或 `GET /api/v1/device-bridges/releases` 下载匹配的 macOS 制品。
+2. 解压：
+
+```bash
+tar -xzf wiseeff-bridge_<version>_darwin_arm64.tar.gz
+chmod +x wiseeff-bridge
+```
+
+3. 配对并启动：
+
+```bash
+./wiseeff-bridge pair --server https://<你的-wiseeff-域名> --code <6位配对码>
+./wiseeff-bridge start
+```
+
+说明：
+
+- 压缩包内含 `cli.js` 与 `wiseeff-bridge` 启动脚本（内部执行 `node cli.js`）。
+- 配置保存在 `~/.wiseeff/bridge.json`。
+- macOS 不使用 Windows 的 `service` 子命令；请在终端保持 Bridge 运行，或按需在运维环境使用 `launchd`/进程管理器。
+- 在 Mac 上安装 `adb` 和/或 `hdc`，并完成 USB 授权后，再在 `/node-debugging` 中检测设备。
 
 ## 配对流程
 
