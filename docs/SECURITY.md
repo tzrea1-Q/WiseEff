@@ -151,6 +151,8 @@ The M3 simulator-backed path implements this boundary for local verification. M3
 
 Local device bridge connectivity uses short-lived pairing codes and scoped bridge tokens (`device-bridge:connect`, `device-bridge:execute`) that are validated server-side before WebSocket registration and RPC execution. Browser bridge health probes and pairing UI do not grant device-write authority; only authenticated debugging routes can create bridge-backed sessions and governed writes.
 
+Bridge rename (`PATCH /api/v1/device-bridges/:bridgeId`) and revoke (`POST /api/v1/device-bridges/:bridgeId/revoke`) require `debugging:use`, must target a user-owned bridge, and revoke immediately invalidates the bridge token for new WebSocket connections. Renaming updates display metadata only; it does not rotate credentials or grant additional scopes.
+
 ## References
 
 - `design-docs/security-governance.md`

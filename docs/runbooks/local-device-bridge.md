@@ -2,11 +2,12 @@
 
 > Chinese: [Chinese](../zh-CN/runbooks/local-device-bridge.md)
 
-This runbook covers WiseEff Local Device Bridge Phase 1 operations for self-hosted environments, including pairing, connectivity checks, and conditional acceptance execution.
+This runbook covers WiseEff Local Device Bridge Phase 1–2 operations for self-hosted environments, including pairing, HDC/ADB RPC, Windows service lifecycle, connectivity checks, and conditional acceptance execution.
 
 ## Scope
 
-- Phase 1 supports Windows-first bridge pairing and runtime.
+- Phase 1–2 supports Windows-first bridge pairing, runtime, and optional Windows service install.
+- Bridge RPC supports both `adb` and `hdc` protocols on the engineer's PC; the server keeps governance unchanged.
 - Bridge-backed session execution is governed by backend debugging permissions, lease checks, confirmations, snapshot/rollback, and audit.
 - This runbook focuses on local/self-hosted operator workflows, not managed cloud rollout.
 
@@ -37,6 +38,12 @@ DEVICE_BRIDGE_LAB_WRITE_VALUE=3150
 DEVICE_BRIDGE_LAB_CONFIRM_WRITE=confirm-high-risk-write
 ```
 
+Optional HDC device-lab acceptance (requires a real paired bridge with `hdc` on PATH and a connected device):
+
+```text
+DEVICE_BRIDGE_HDC_AVAILABLE=true
+```
+
 ## Artifact And Manifest Checks
 
 1. Confirm bridge artifacts exist under `DEVICE_BRIDGE_ARTIFACT_ROOT`.
@@ -56,6 +63,20 @@ DEVICE_BRIDGE_LAB_CONFIRM_WRITE=confirm-high-risk-write
 4. Operator verifies bridge ownership/listing:
    - `GET /api/v1/device-bridges/mine`
 
+## HDC And ADB Bridge RPC
+
+The bridge CLI executes `adb` and `hdc` locally using the same argv, timeout, and shell-quoting rules as the server gateway adapters.
+
+- `bridge.getCapabilities` reports whether `adb` and `hdc` binaries are available on the bridge host.
+- `debug.detectTargets` accepts `protocol=adb` or `protocol=hdc` and returns targets from the selected protocol.
+- `debug.readNode` / `debug.writeNode` route through the same protocol and target ref as server-hosted debugging.
+
+Operator checks:
+
+1. Confirm `hdc` or `adb` is on PATH in the same shell context used to start the bridge.
+2. Pair and start the bridge, then verify `GET /api/v1/device-bridges/mine` shows the bridge online.
+3. Call `POST /api/v1/debugging/targets/detect` with `protocol=hdc` or `protocol=adb` and confirm bridge-prefixed target ids (`bridge:<bridgeId>:...`).
+
 ## Debugging Execution Checks
 
 Use `/api/v1/debugging/*` to verify bridge-backed behavior:
@@ -64,6 +85,7 @@ Use `/api/v1/debugging/*` to verify bridge-backed behavior:
 - session creation persists `execution_mode=bridge`
 - high-risk write without confirmation returns validation failure
 - high-risk write with `confirm-high-risk-write` succeeds and creates snapshot metadata
+- when multiple online bridges return targets, the UI requires explicit target selection before session create
 
 ## Conditional Acceptance Run
 
@@ -76,6 +98,8 @@ npm run acceptance:e2e -- e2e/acceptance/local-device-bridge.acceptance.spec.ts
 ```
 
 This spec remains skipped unless `DEVICE_BRIDGE_LAB_AVAILABLE=true`.
+
+A separate HDC device-lab stub in the same file runs only when `DEVICE_BRIDGE_HDC_AVAILABLE=true` and a real paired bridge with HDC is available. CI keeps this path skipped; use it for manual hardware-lab evidence.
 
 ## Windows Service (Phase 2)
 
@@ -101,5 +125,8 @@ Notes:
 - **Manifest missing Windows artifact**: check `DEVICE_BRIDGE_ARTIFACT_ROOT` and artifact layout.
 - **Bridge websocket rejected**: verify token TTL/scopes and server clock skew.
 - **Detect returns only server targets**: confirm bridge is online (`/device-bridges/mine`) and connected to WS path.
+- **HDC detect empty but device is connected**: confirm `hdc list targets` works in the bridge host shell and the bridge was restarted after PATH changes.
+- **ADB/HDC capability false in bridge health**: install the platform tools on the bridge host and restart the bridge process or Windows service.
+- **Multiple bridges, wrong machine selected**: use machine labels in `/node-debugging` bridge management and the multi-bridge target picker before creating a session.
 - **Write rejected**: verify role has `debugging:write` and include `confirm-high-risk-write` for high-risk parameters.
 - **Rollback denied/conflict**: inspect active lease/session ownership and snapshot state.

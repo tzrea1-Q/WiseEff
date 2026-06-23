@@ -328,4 +328,60 @@ test.describe("local device bridge conditional acceptance", () => {
       notes: "This conditional acceptance uses an in-process fake bridge websocket after pairing to verify bridge-backed detect/session/read and optional governed write paths."
     });
   });
+
+  test("real bridge HDC path (device lab stub)", async ({ page, request }, testInfo) => {
+    // @acceptance BRIDGE-HDC-001
+    // Manual device-lab evidence only: requires a pre-paired bridge process, hdc on PATH,
+    // and a USB-connected device. CI keeps this skipped unless DEVICE_BRIDGE_HDC_AVAILABLE=true.
+    test.skip(
+      process.env.DEVICE_BRIDGE_HDC_AVAILABLE !== "true",
+      "HDC bridge acceptance runs only when DEVICE_BRIDGE_HDC_AVAILABLE=true and a real paired bridge with HDC is available."
+    );
+    test.skip(
+      process.env.DEVICE_BRIDGE_LAB_AVAILABLE !== "true",
+      "HDC bridge acceptance also requires DEVICE_BRIDGE_LAB_AVAILABLE=true."
+    );
+    test.skip(!process.env.DATABASE_URL, "DATABASE_URL is required for HDC bridge acceptance.");
+
+    const serverUrl = process.env.DEVICE_BRIDGE_SERVER_URL?.trim();
+    if (!serverUrl) {
+      throw new Error("DEVICE_BRIDGE_SERVER_URL is required when DEVICE_BRIDGE_HDC_AVAILABLE=true.");
+    }
+
+    await page.goto(`/node-debugging?project=${projectId}`);
+    await expect(page.locator("body")).toBeVisible();
+
+    const detectResponse = await postJson<{ items: DebugTargetDto[] }>(
+      request,
+      "/api/v1/debugging/targets/detect",
+      { projectId, protocol: "hdc" },
+      (body) => `targets=${body.items.length}`
+    );
+    const bridgeTarget = detectResponse.body.items.find((item) => item.id.startsWith("bridge:"));
+    expect(
+      bridgeTarget,
+      "Expected a real online bridge to return at least one HDC target. Pair/start the bridge and confirm hdc list targets on the bridge host."
+    ).toBeTruthy();
+
+    await recordOperationEvidence({
+      operationId: "BRIDGE-HDC-001",
+      title: "real bridge hdc detect stub",
+      status: "passed",
+      page,
+      testInfo,
+      route: "/node-debugging",
+      api: [detectResponse.summary],
+      runtime: {
+        mode: process.env.VITE_WISEEFF_RUNTIME_MODE?.trim() || "api",
+        apiBaseUrl: process.env.VITE_WISEEFF_API_BASE_URL?.trim() || process.env.WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787",
+        envSummary: {
+          DEVICE_BRIDGE_HDC_AVAILABLE: process.env.DEVICE_BRIDGE_HDC_AVAILABLE ?? "unset",
+          DEVICE_BRIDGE_LAB_AVAILABLE: process.env.DEVICE_BRIDGE_LAB_AVAILABLE ?? "unset",
+          DEVICE_BRIDGE_SERVER_URL: process.env.DEVICE_BRIDGE_SERVER_URL ? "set" : "unset"
+        }
+      },
+      notes:
+        "Stub for manual HDC device-lab acceptance against a real paired bridge. Extend with session/read/write once lab automation is stable."
+    });
+  });
 });
