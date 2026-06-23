@@ -13,6 +13,12 @@
     reverse_proxy api:8787
   }
 
+  handle /downloads/device-bridge/* {
+    uri strip_prefix /downloads/device-bridge
+    root * /bridge-artifacts
+    file_server
+  }
+
   handle {
     reverse_proxy web:5173
   }
