@@ -1,0 +1,11 @@
+{
+  "name": "@wiseeff/device-command-core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./adbRunner": "./src/adbRunner.ts",
+    "./adbTargets": "./src/adbTargets.ts",
+    "./remoteNodeWrite": "./src/remoteNodeWrite.ts"
+  }
+}
