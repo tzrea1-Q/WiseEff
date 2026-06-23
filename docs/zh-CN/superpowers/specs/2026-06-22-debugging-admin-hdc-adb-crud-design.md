@@ -183,6 +183,8 @@ Admin mutation 应写入审计事件，包含：
 
 ## 前端设计
 
+> **已 superseded（布局）：** 本节描述的左右分栏 + 内联编辑器已被 modal/table 布局取代。当前实现与验收以 [2026-06-23-wiseeff-debugging-admin-modal-layout-redesign.md](../../../exec-plans/active/2026-06-23-wiseeff-debugging-admin-modal-layout-redesign.md) 为准；页面入口见 `src/DebuggingAdminPage.tsx` 与 `docs/FRONTEND.md` 的 Debugging Admin UI 小节。
+
 `/debugging-admin` 使用左右分栏工作台：
 
 - 左侧：参数目录列表。

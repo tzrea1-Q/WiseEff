@@ -1,0 +1,81 @@
+import type {
+  DebugAdminParameterDraft,
+  DebugConnectionProtocol,
+  DebugParameter as DomainDebugParameter,
+  DebugParameterNodeBinding
+} from "@/domain/debugging/types";
+
+export function emptyDebugAdminDraft(index: number): DebugAdminParameterDraft {
+  return {
+    projectId: null,
+    name: `new_debug_parameter_${index}`,
+    key: `debug.new_parameter_${index}`,
+    description: "",
+    module: "Diagnostics",
+    currentValue: "",
+    targetValue: "",
+    unit: "",
+    range: "",
+    minValue: null,
+    maxValue: null,
+    risk: "Low",
+    nodePath: "",
+    accessMode: "RO",
+    sortOrder: index,
+    enabled: true,
+    bindings: []
+  };
+}
+
+export function draftFromDebugParameter(parameter: DomainDebugParameter): DebugAdminParameterDraft {
+  return {
+    id: parameter.id,
+    projectId: parameter.projectId ?? null,
+    name: parameter.name,
+    key: parameter.key,
+    description: parameter.description,
+    module: parameter.module,
+    currentValue: parameter.currentValue,
+    targetValue: parameter.targetValue,
+    unit: parameter.unit,
+    range: parameter.range,
+    minValue: parameter.minValue ?? null,
+    maxValue: parameter.maxValue ?? null,
+    risk: parameter.risk,
+    nodePath: parameter.nodePath,
+    accessMode: parameter.accessMode,
+    sortOrder: parameter.sortOrder ?? 0,
+    enabled: parameter.enabled ?? true,
+    bindings: parameter.bindings ?? []
+  };
+}
+
+export function bindingForProtocol(
+  bindings: DebugParameterNodeBinding[] | undefined,
+  protocol: DebugConnectionProtocol
+): DebugParameterNodeBinding {
+  return (
+    bindings?.find((binding) => binding.protocol === protocol) ?? {
+      protocol,
+      nodePath: "",
+      accessMode: "RO",
+      enabled: false,
+      notes: ""
+    }
+  );
+}
+
+export function isArchivedDebugParameter(parameter: DomainDebugParameter) {
+  return Boolean(parameter.archivedAt);
+}
+
+export function coverageLabel(parameter: DomainDebugParameter) {
+  if (isArchivedDebugParameter(parameter)) return "已归档";
+  if (parameter.enabled === false) return "已停用";
+  const hdc = bindingForProtocol(parameter.bindings, "hdc").enabled;
+  const adb = bindingForProtocol(parameter.bindings, "adb").enabled;
+  if (hdc && adb) return "双协议";
+  if (hdc) return "HDC 已配置";
+  if (adb) return "ADB 已配置";
+  return "缺 HDC / ADB";
+}

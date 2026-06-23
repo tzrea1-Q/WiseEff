@@ -4736,11 +4736,87 @@ td small {
 }
 
 /* Debug Admin Page Redesign */
-.debug-admin-page {
+.debug-admin-shell {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px 24px 32px;
+  min-height: 100%;
+}
+
+.debug-admin-shell.param-admin-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.debug-admin-shell .param-admin-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.parameters-table-grid.debug-admin-library-grid {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 560px;
+}
+
+.parameters-table-grid.debug-admin-library-grid col.debug-admin-col-index {
+  width: 32px;
+}
+
+.parameters-table-grid.debug-admin-library-grid col.debug-admin-col-name {
+  width: 28%;
+}
+
+.parameters-table-grid.debug-admin-library-grid col.debug-admin-col-risk {
+  width: 72px;
+}
+
+.parameters-table-grid.debug-admin-library-grid col.debug-admin-col-coverage {
+  width: 104px;
+}
+
+.parameters-table-grid.debug-admin-library-grid col.debug-admin-col-actions {
+  width: 188px;
+}
+
+.parameters-table-grid.debug-admin-library-grid th,
+.parameters-table-grid.debug-admin-library-grid td {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.parameters-table-grid.debug-admin-library-grid th:first-child,
+.parameters-table-grid.debug-admin-library-grid td:first-child,
+.parameters-table-grid.debug-admin-library-grid th:nth-child(2),
+.parameters-table-grid.debug-admin-library-grid td:nth-child(2),
+.parameters-table-grid.debug-admin-library-grid th:last-child,
+.parameters-table-grid.debug-admin-library-grid td:last-child {
+  position: static;
+  left: auto;
+  right: auto;
+  z-index: auto;
+  box-shadow: none;
+  background: inherit;
+}
+
+.parameters-table-grid.debug-admin-library-grid th:first-child,
+.parameters-table-grid.debug-admin-library-grid td:first-child {
+  padding-inline: 4px;
+  text-align: center;
+}
+
+.parameters-table-grid.debug-admin-library-grid th:last-child,
+.parameters-table-grid.debug-admin-library-grid td:last-child {
+  text-align: left;
+}
+
+.parameters-table-grid.debug-admin-library-grid thead th {
+  background: var(--surface-low);
+}
+
+.parameters-table-grid.debug-admin-library-grid tbody tr:hover td:last-child {
+  background: inherit;
 }
 
 .debug-admin-strip {
@@ -4780,182 +4856,6 @@ td small {
   opacity: 1;
 }
 
-.debug-admin-grid {
-  display: grid;
-  grid-template-columns: 380px 1fr;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.debug-admin-list {
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-}
-
-.debug-admin-list-title-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--outline);
-}
-
-.debug-admin-list-title-row strong {
-  font-size: 13px;
-}
-
-.debug-admin-list-title-row small {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-
-.debug-admin-list-title-row [data-slot="button"] {
-  margin-left: auto;
-}
-
-.debug-admin-list-filters {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--outline);
-}
-
-.debug-admin-list-filters .filter-multi__trigger {
-  font-size: 11px;
-  padding: 3px 8px;
-}
-
-.debug-admin-list-search {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-  padding: 5px 8px;
-  border: 1px solid var(--outline);
-  border-radius: 6px;
-  background: #fff;
-}
-
-.debug-admin-list-search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  outline: 0;
-  font-size: 12px;
-  background: transparent;
-}
-
-.debug-admin-param-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-}
-
-.debug-admin-param-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--outline);
-  cursor: pointer;
-  position: relative;
-}
-
-.debug-admin-param-row:hover {
-  background: rgba(16, 28, 45, 0.03);
-}
-
-.debug-admin-param-row.selected {
-  background: rgba(0, 64, 162, 0.06);
-  box-shadow: inset 3px 0 0 var(--app-primary);
-}
-
-.debug-admin-param-row-main {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-}
-
-.debug-admin-param-row-main strong {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.debug-admin-param-row-main small {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.debug-admin-param-row-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.debug-status-tag {
-  font-size: 10px;
-  padding: 2px 6px;
-  border-radius: 4px;
-  background: #f1f5f9;
-  color: #64748b;
-}
-
-.debug-status-tag.pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.debug-status-tag.success {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.debug-admin-row-delete {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 20px;
-  height: 20px;
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: pointer;
-  border-radius: 4px;
-  opacity: 0;
-  transition: opacity 120ms;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.debug-admin-param-row:hover .debug-admin-row-delete {
-  opacity: 1;
-}
-
-.debug-admin-row-delete:hover {
-  background: #fef2f2;
-  color: #ba1a1a;
-}
-
 .debug-admin-error {
   margin: 8px 12px;
   font-size: 12px;
@@ -4976,14 +4876,6 @@ td small {
   white-space: nowrap;
 }
 
-.debug-admin-editor {
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: 12px;
-  padding: 20px;
-}
-
-.debug-admin-api-actions,
 .debug-admin-binding-actions {
   display: flex;
   flex-wrap: wrap;
@@ -5046,6 +4938,16 @@ td small {
 .debug-admin-field [data-slot="input"],
 .debug-admin-field [data-slot="select-trigger"] {
   width: 100%;
+}
+
+.debug-admin-field input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  justify-self: start;
+  align-self: center;
+  accent-color: var(--app-primary);
+  cursor: pointer;
 }
 
 .debug-admin-binding-grid {
@@ -5116,10 +5018,19 @@ td small {
   background: #f8fafc;
 }
 
-@media (max-width: 1024px) {
-  .debug-admin-grid {
-    grid-template-columns: 1fr;
-  }
+.debug-admin-definition-dialog.param-admin-editor-dialog {
+  width: min(720px, calc(100vw - 48px));
+  max-height: min(88vh, 920px);
+}
+
+.debug-admin-bindings-dialog.submission-dialog--wide,
+.debug-admin-bindings-dialog.param-admin-editor-dialog {
+  width: min(960px, calc(100vw - 48px));
+  max-height: min(88vh, 920px);
+}
+
+.debug-admin-bindings-dialog .param-admin-editor-dialog-body {
+  max-height: min(72vh, 760px);
 }
 
 @media (max-width: 860px) {
@@ -10314,6 +10225,21 @@ td small {
     width: 24%;
     min-width: 120px;
   }
+
+  .parameters-table-grid.debug-admin-library-grid th:nth-child(3),
+  .parameters-table-grid.debug-admin-library-grid td:nth-child(3),
+  .parameters-table-grid.debug-admin-library-grid th:nth-child(5),
+  .parameters-table-grid.debug-admin-library-grid td:nth-child(5) {
+    display: table-cell;
+  }
+
+  .parameters-table-grid.debug-admin-library-grid th:nth-child(2),
+  .parameters-table-grid.debug-admin-library-grid td:nth-child(2),
+  .parameters-table-grid.debug-admin-library-grid th:nth-child(4),
+  .parameters-table-grid.debug-admin-library-grid td:nth-child(4) {
+    width: auto;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 960px) {
@@ -12169,6 +12095,7 @@ td small {
 }
 
 .param-admin-main {
+  flex: 1;
   min-width: 0;
   min-height: 0;
 }

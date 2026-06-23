@@ -76,6 +76,18 @@ Runtime split:
 
 `/debugging-admin` uses API-backed catalog management in `api` mode. It calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, archive, restore, and bind debug parameters. `mock` mode keeps the local `configDraft` and JSON editing path for demos and component tests.
 
+### Debugging Admin UI
+
+Page shell lives in `src/DebuggingAdminPage.tsx` (mirrors the `/parameter-admin` rhythm). The main surface is a full-width catalog table; create/edit/archive flows open modal dialogs instead of a split list-plus-inline-editor layout.
+
+- `DebugParameterLibraryTable` — toolbar search, risk chips, module multi-select, coverage/status filters, and row actions.
+- `DebugParameterDefinitionDialog` — metadata editor opened from the row **Edit** action (save; restore when archived).
+- `DebugParameterBindingsDialog` — HDC and ADB binding panels opened from **Path bindings**.
+- `CreateDebugParameterDialog` — empty draft plus default bindings, opened from the table **Add parameter** action.
+- `ArchiveDebugParameterDialog` — confirm archive from a row action or the definition dialog.
+
+URL-synced filters and dialog deep links use `useDebugAdminSearch`. Mock mode keeps a collapsible config-source preview footer below the table for `power-management.json` export/sync.
+
 The runtime coordinator hydrates devices and debugging parameters after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. A current residual gap is that snapshots created from `/node-debugging` writes are not yet promoted into `/debugging`'s `lastDebugSnapshot` rollback card; the M3 E2E therefore verifies rollback through the API if that UI affordance is disabled.
 
 The M3 API smoke lives in `e2e/debugging.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m3`. Playwright starts the backend with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and the frontend with `VITE_WISEEFF_RUNTIME_MODE=api`.

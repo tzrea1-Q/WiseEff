@@ -10,11 +10,11 @@ afterEach(() => {
 });
 
 describe("ParameterAdminPage · a11y", () => {
-  it("Tab 从搜索向风险 chip、模块下拉、覆盖下拉和排序控件顺序可达", () => {
+  it("Tab 从搜索向风险、模块、覆盖和排序控件顺序可达", () => {
     render(<ParameterAdminPage state={initialState} dispatch={() => {}} onNavigate={() => {}} search="" />);
 
     const search = screen.getByRole("searchbox", { name: "搜索参数" });
-    const highRiskChip = screen.getByRole("button", { name: "高", pressed: false });
+    const riskSelect = screen.getByRole("combobox", { name: "风险等级" });
     const moduleDropdown = screen.getByRole("button", { name: "模块 ▾" });
     const coverageDropdown = screen.getByRole("button", { name: "覆盖 ▾" });
     const sortSelect = screen.getByRole("combobox", { name: "排序" });
@@ -22,8 +22,8 @@ describe("ParameterAdminPage · a11y", () => {
     search.focus();
     expect(document.activeElement).toBe(search);
     fireEvent.keyDown(search, { key: "Tab" });
-    highRiskChip.focus();
-    expect(document.activeElement).toBe(highRiskChip);
+    riskSelect.focus();
+    expect(document.activeElement).toBe(riskSelect);
     moduleDropdown.focus();
     expect(document.activeElement).toBe(moduleDropdown);
     coverageDropdown.focus();
@@ -32,10 +32,10 @@ describe("ParameterAdminPage · a11y", () => {
     expect(document.activeElement).toBe(sortSelect);
   });
 
-  it("风险 chip 激活状态可通过 aria-pressed 读取", () => {
+  it("风险筛选可通过下拉选择", () => {
     render(<ParameterAdminPage state={initialState} dispatch={() => {}} onNavigate={() => {}} search="risk=high" />);
 
-    expect(screen.getByRole("button", { name: "高", pressed: true })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "风险等级" })).toHaveValue("high");
   });
 
   it("闲置视角没有结果时展示庆祝空态", () => {
@@ -68,7 +68,7 @@ describe("ParameterAdminPage · a11y", () => {
     render(<ParameterAdminPage state={emptyState} dispatch={dispatch} onNavigate={() => {}} search="" />);
 
     expect(screen.getByText("还没有任何参数。从下方开始")).toBeInTheDocument();
-    const detailEmpty = document.querySelector(".detail-empty") as HTMLElement;
+    const detailEmpty = document.querySelector(".param-admin-empty") as HTMLElement;
     fireEvent.click(within(detailEmpty).getByRole("button", { name: "新增参数" }));
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_PROJECT_PARAMETER" });
     expect(within(detailEmpty).getByRole("button", { name: "批量导入" })).toBeInTheDocument();

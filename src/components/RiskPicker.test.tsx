@@ -28,7 +28,7 @@ describe("RiskPicker", () => {
     const onChange = vi.fn();
     render(<RiskPicker value="High" onChange={onChange} />);
 
-    fireEvent.keyDown(screen.getByRole("radiogroup", { name: "重要性" }), { key: "ArrowRight" });
+    fireEvent.keyDown(screen.getByRole("radiogroup", { name: "风险" }), { key: "ArrowRight" });
 
     expect(onChange).toHaveBeenCalledWith("Medium");
   });
