@@ -27,7 +27,11 @@ WiseEff's test strategy upgrades the prototype into a product-quality gate. The 
 
 Browser acceptance covers requirement IDs and operation IDs from `docs/developer/browser-acceptance-coverage-map.md` and `docs/developer/user-operation-coverage-matrix.md`. Evidence-grade runs write replayable records under `docs/generated/acceptance-operation-evidence.md` and its index.
 
-Debugging admin catalog changes are covered by `DEBUG-ADMIN-001` in `e2e/acceptance/debugging-admin.acceptance.spec.ts`. The acceptance flow exercises Admin UI, API, DB persistence, and audit evidence for parameter create/edit/archive/restore plus HDC/ADB binding management.
+Debugging admin catalog changes are covered by `DEBUG-ADMIN-001` in `e2e/acceptance/debugging-admin.acceptance.spec.ts`. The acceptance flow exercises Admin UI, API, DB persistence, and audit evidence for parameter create/edit/archive/restore plus HDC/ADB binding management and complex value metadata editing.
+
+Simulator debugging is covered by `DEBUG-SIM-001` in `e2e/acceptance/debugging-simulator.acceptance.spec.ts`, including a complex JSON write path that records `valueKind`, digest, and preview metadata in `node_operations` without leaking full payloads into operation evidence.
+
+Targeted unit coverage includes `server/modules/debugging/valueCodec.test.ts`, gateway preservation tests, admin/runtime UI tests, and DTO mapper tests for legacy scalar defaults.
 
 ## Key Commands
 

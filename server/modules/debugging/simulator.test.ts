@@ -34,6 +34,40 @@ describe("simulator debugging gateway", () => {
     );
   });
 
+  it("reads the complex JSON config node with multiline content", async () => {
+    const gateway = createSimulatorDebugDeviceGateway();
+
+    const result = await gateway.readNode({
+      targetRef: "simulator://aurora-1",
+      nodePath: "/sys/class/debug/config_json"
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        value: '{\n  "enabled": true,\n  "limit": 42\n}',
+        stdout: '{\n  "enabled": true,\n  "limit": 42\n}'
+      })
+    );
+  });
+
+  it("writes and verifies multiline complex values with compareReadback", async () => {
+    const gateway = createSimulatorDebugDeviceGateway();
+    const nodePath = "/sys/class/debug/config_json";
+    const value = '{\n  "enabled": false,\n  "limit": 99\n}';
+
+    const result = await gateway.writeNode({
+      targetRef: "simulator://aurora-1",
+      nodePath,
+      value,
+      readBack: true,
+      compareReadback: (written, read) => written === read
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.verified).toBe(true);
+  });
+
   it("blocks writes to read-only nodes", async () => {
     const gateway = createSimulatorDebugDeviceGateway();
 

@@ -44,7 +44,7 @@ OIDC token 必须包含身份和组织声明。只有当 token 包含 `email_ver
 
 审计记录应包含 actor、target、action、severity、metadata、trace/request id、timestamp，以及项目或组织 scope。
 
-必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、设备读写、Agent tool、管理员变更和导出。调试 catalog metadata 与 binding 变更必须写审计；binding audit metadata 不应暴露 raw node path，除非部署策略明确允许。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
+必须覆盖的事件包括登录/安全事件、参数写入、审阅决策、日志上传/重跑/归档、设备读写、Agent tool、管理员变更和导出。调试 catalog metadata 与 binding 变更必须写审计；binding audit metadata 不应暴露 raw node path，除非部署策略明确允许。复杂调试写入还会在审计与操作记录中附加格式感知元数据：`valueKind`、`valueFormat`、`normalizationMode`、字节长度、digest，以及有大小上限的 `valuePreview`；大 payload 不得重复写入审计或验收 evidence，digest 与 preview 才是可比较的持久证据。`maxValueBytes` 与服务端默认值会在服务端限制写入 payload 大小；设备写入审批、lease、snapshot 与确认边界不变。本地账号路径会写 registration、login、logout 和当前用户 profile update 审计事件；用户治理后台还会记录本地 Committer 注册申请的 approve/reject 审计事件。退出登录必须服务端撤销当前 session token；当前用户资料更新不能修改 email、角色、激活状态或组织。
 
 ## Agent 安全
 

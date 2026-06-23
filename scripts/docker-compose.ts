@@ -101,7 +101,7 @@ export async function resolveDockerCompose(
   if ((await probe("docker-compose", ["version"])) || (await probe("docker-compose", ["--version"]))) {
     let version: ComposeVersion | undefined;
     for (const args of [["version"], ["--version"]] as const) {
-      const versionOutput = await readVersion("docker-compose", args);
+      const versionOutput = await readVersion("docker-compose", [...args]);
       version = versionOutput ? parseComposeVersion(versionOutput) : undefined;
       if (version) {
         break;

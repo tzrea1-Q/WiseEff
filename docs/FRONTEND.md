@@ -86,6 +86,8 @@ Page shell lives in `src/DebuggingAdminPage.tsx` (mirrors the `/parameter-admin`
 - `CreateDebugParameterDialog` — empty draft plus default bindings, opened from the table **Add parameter** action.
 - `ArchiveDebugParameterDialog` — confirm archive from a row action or the definition dialog.
 
+Complex debug parameters use `src/debugValueKind.ts` helpers shared by admin and runtime surfaces. `DebugParameterDefinitionDialog` exposes value kind, format, normalization mode, and multiline code editors for complex current/target values. `DebugParameterLibraryTable` shows a compact format badge. `/node-debugging` renders complex values as compact previews with format badges, opens a wide sheet for inspect/edit, and shows operation-history preview plus digest instead of full payloads.
+
 URL-synced filters and dialog deep links use `useDebugAdminSearch`. Mock mode keeps a collapsible config-source preview footer below the table for `power-management.json` export/sync.
 
 The runtime coordinator hydrates devices and debugging parameters after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. A current residual gap is that snapshots created from `/node-debugging` writes are not yet promoted into `/debugging`'s `lastDebugSnapshot` rollback card; the M3 E2E therefore verifies rollback through the API if that UI affordance is disabled.

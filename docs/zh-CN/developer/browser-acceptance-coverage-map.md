@@ -19,7 +19,8 @@
 
 ## 当前覆盖重点
 
-- `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding。
+- `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
+- `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 
 ## 同类中文文档
 

@@ -31,3 +31,16 @@ Debugging runtime records are still project-contextual. Sessions, targets, lease
 Debugging catalog governance is split from runtime execution. `debugging_parameters.enabled=false` or non-null `archived_at` removes a parameter from runtime lists but keeps audit, snapshot, and operation history understandable. Admin catalog APIs can view and restore archived rows; runtime parameter reads only use enabled, non-archived rows.
 
 HDC and ADB node bindings remain separate rows in `debugging_parameter_node_bindings`, keyed by protocol. Disabling or archiving one binding only affects that protocol and must not hide the other protocol's binding from admin catalog governance.
+
+### Debug Value Metadata
+
+Debugging parameters carry explicit value metadata separate from protocol bindings:
+
+- `valueKind`: `scalar | complex`
+- `valueFormat`: `raw | json | dts | line-list | kv-list`
+- `normalizationMode`: `exact | trim | line-ending-normalized | json-canonical`
+- `maxValueBytes`: optional write and audit payload cap
+
+Phase 1 keeps one enabled HDC or ADB binding per complex parameter. Complex values still use the existing session, lease, snapshot, write, readback, rollback, and audit boundary; comparison and validation are format-aware rather than raw string equality for every payload.
+
+`node_operations` stores value metadata plus digest and preview fields for complex writes. Exact rollback payloads remain in `requested_value`, `previous_value`, and `readback_value`; audit and operation history surfaces use preview and digest for large payloads.

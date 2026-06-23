@@ -1,4 +1,9 @@
 import type { DebugConnectionProtocol, DebugDeviceTransport } from "@/domain/debugging/types";
+import type {
+  DebugNormalizationMode,
+  DebugValueFormat,
+  DebugValueKind
+} from "@/debugValueKind";
 
 export type DeviceTarget = {
   id: string;
@@ -55,6 +60,13 @@ export type NodeOperationSnapshot = {
   durationMs: number;
   snapshotId?: string;
   createdAt: string;
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  requestedValueDigest?: string;
+  previousValueDigest?: string;
+  readbackValueDigest?: string;
+  valuePreview?: string;
 };
 
 export type DetectTargetsInput = {

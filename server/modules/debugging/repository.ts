@@ -3,13 +3,21 @@ import type { Queryable } from "../../shared/database/client";
 import type {
   DebugDeviceRecord,
   DebugDeviceLeaseRecord,
+  DebugNormalizationMode,
   DebugParameterNodeBindingRecord,
   DebugParameterRecord,
   DebugSessionRecord,
   DebugSnapshotEntry,
   DebugSnapshotRecord,
   DebugTargetRecord,
+  DebugValueFormat,
+  DebugValueKind,
   NodeOperationRecord
+} from "./types";
+import {
+  DEBUG_NORMALIZATION_MODE_TRIM,
+  DEBUG_VALUE_FORMAT_RAW,
+  DEBUG_VALUE_KIND_SCALAR
 } from "./types";
 import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
 import type {
@@ -79,6 +87,10 @@ type DebugParameterRow = {
   archived_at: string | Date | null;
   archived_by: string | null;
   archive_reason: string | null;
+  value_kind?: DebugValueKind;
+  value_format?: DebugValueFormat;
+  normalization_mode?: DebugNormalizationMode;
+  max_value_bytes?: number | string | null;
 };
 
 type DebugSessionRow = {
@@ -141,6 +153,13 @@ type NodeOperationRow = {
   approval_id: string | null;
   snapshot_id: string | null;
   created_at: string | Date;
+  value_kind?: DebugValueKind | null;
+  value_format?: DebugValueFormat | null;
+  normalization_mode?: DebugNormalizationMode | null;
+  requested_value_digest?: string | null;
+  previous_value_digest?: string | null;
+  readback_value_digest?: string | null;
+  value_preview?: string | null;
 };
 
 function dateTimeToIso(value: string | Date | null) {
@@ -218,7 +237,11 @@ function toDebugParameterRecord(row: DebugParameterRow): DebugParameterRecord {
     enabled: row.enabled,
     archivedAt: dateTimeToIso(row.archived_at),
     archivedBy: row.archived_by,
-    archiveReason: row.archive_reason
+    archiveReason: row.archive_reason,
+    valueKind: row.value_kind ?? DEBUG_VALUE_KIND_SCALAR,
+    valueFormat: row.value_format ?? DEBUG_VALUE_FORMAT_RAW,
+    normalizationMode: row.normalization_mode ?? DEBUG_NORMALIZATION_MODE_TRIM,
+    maxValueBytes: toNumberOrNull(row.max_value_bytes ?? null)
   };
 }
 
@@ -288,7 +311,14 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
     durationMs: Number(row.duration_ms),
     approvalId: row.approval_id,
     snapshotId: row.snapshot_id,
-    createdAt: dateTimeToIso(row.created_at) ?? ""
+    createdAt: dateTimeToIso(row.created_at) ?? "",
+    valueKind: row.value_kind ?? null,
+    valueFormat: row.value_format ?? null,
+    normalizationMode: row.normalization_mode ?? null,
+    requestedValueDigest: row.requested_value_digest ?? null,
+    previousValueDigest: row.previous_value_digest ?? null,
+    readbackValueDigest: row.readback_value_digest ?? null,
+    valuePreview: row.value_preview ?? null
   };
 }
 
@@ -326,7 +356,11 @@ const debugParameterColumns = `
   enabled,
   archived_at,
   archived_by,
-  archive_reason
+  archive_reason,
+  value_kind,
+  value_format,
+  normalization_mode,
+  max_value_bytes
 `;
 
 const debugParameterNodeBindingColumns = `
@@ -363,7 +397,14 @@ const nodeOperationColumns = `
   duration_ms,
   approval_id,
   snapshot_id,
-  created_at
+  created_at,
+  value_kind,
+  value_format,
+  normalization_mode,
+  requested_value_digest,
+  previous_value_digest,
+  readback_value_digest,
+  value_preview
 `;
 
 export type WriteDebugParameterInput = {
@@ -384,6 +425,10 @@ export type WriteDebugParameterInput = {
   targetValue: string;
   sortOrder: number;
   enabled: boolean;
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 export async function listDebugDevices(
@@ -518,7 +563,11 @@ export async function createDebugParameter(db: Queryable, input: WriteDebugParam
       current_value,
       target_value,
       sort_order,
-      enabled
+      enabled,
+      value_kind,
+      value_format,
+      normalization_mode,
+      max_value_bytes
     )
     values (
       $1,
@@ -538,7 +587,11 @@ export async function createDebugParameter(db: Queryable, input: WriteDebugParam
       $15,
       $16,
       $17,
-      $18
+      $18,
+      $19,
+      $20,
+      $21,
+      $22
     )
     returning ${debugParameterColumns}
     `,
@@ -560,7 +613,11 @@ export async function createDebugParameter(db: Queryable, input: WriteDebugParam
       input.currentValue,
       input.targetValue,
       input.sortOrder,
-      input.enabled
+      input.enabled,
+      input.valueKind ?? DEBUG_VALUE_KIND_SCALAR,
+      input.valueFormat ?? DEBUG_VALUE_FORMAT_RAW,
+      input.normalizationMode ?? DEBUG_NORMALIZATION_MODE_TRIM,
+      input.maxValueBytes ?? null
     ]
   );
 
@@ -590,6 +647,10 @@ export async function updateDebugParameter(
       target_value = $16,
       sort_order = $17,
       enabled = $18,
+      value_kind = $19,
+      value_format = $20,
+      normalization_mode = $21,
+      max_value_bytes = $22,
       updated_at = now()
     where organization_id = $1
       and id = $2
@@ -613,7 +674,11 @@ export async function updateDebugParameter(
       input.currentValue,
       input.targetValue,
       input.sortOrder,
-      input.enabled
+      input.enabled,
+      input.valueKind ?? DEBUG_VALUE_KIND_SCALAR,
+      input.valueFormat ?? DEBUG_VALUE_FORMAT_RAW,
+      input.normalizationMode ?? DEBUG_NORMALIZATION_MODE_TRIM,
+      input.maxValueBytes ?? null
     ]
   );
 
@@ -1064,6 +1129,13 @@ export async function insertNodeOperation(
     durationMs: number;
     approvalId?: string;
     snapshotId?: string;
+    valueKind?: DebugValueKind | null;
+    valueFormat?: DebugValueFormat | null;
+    normalizationMode?: DebugNormalizationMode | null;
+    requestedValueDigest?: string | null;
+    previousValueDigest?: string | null;
+    readbackValueDigest?: string | null;
+    valuePreview?: string | null;
     actorUserId: string;
   }
 ): Promise<NodeOperationRecord> {
@@ -1072,9 +1144,12 @@ export async function insertNodeOperation(
     insert into node_operations (
       id, organization_id, project_id, session_id, parameter_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
-      failure_reason, duration_ms, approval_id, snapshot_id, actor_user_id
+      failure_reason, duration_ms, approval_id, snapshot_id,
+      value_kind, value_format, normalization_mode,
+      requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
+      actor_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
     returning ${nodeOperationColumns}
     `,
     [
@@ -1096,6 +1171,13 @@ export async function insertNodeOperation(
       input.durationMs,
       input.approvalId ?? null,
       input.snapshotId ?? null,
+      input.valueKind ?? null,
+      input.valueFormat ?? null,
+      input.normalizationMode ?? null,
+      input.requestedValueDigest ?? null,
+      input.previousValueDigest ?? null,
+      input.readbackValueDigest ?? null,
+      input.valuePreview ?? null,
       input.actorUserId
     ]
   );

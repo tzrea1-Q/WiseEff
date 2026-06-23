@@ -115,6 +115,17 @@ M6.2 adds OIDC-backed production auth and durable user-governance contract entri
 
 运行时 `/api/v1/debugging/parameters?protocol=...` 只返回启用、未归档，且所选协议 binding 启用的参数。管理列表 API 可返回缺失或已归档的 bindings，供 `/debugging-admin` 展示 HDC/ADB 覆盖标签。
 
+运行时与管理端调试参数 DTO 包含可选值元数据：
+
+- `valueKind`：`scalar | complex`（legacy 行默认为 `scalar`）
+- `valueFormat`：`raw | json | dts | line-list | kv-list`
+- `normalizationMode`：`exact | trim | line-ending-normalized | json-canonical`
+- `maxValueBytes`：正整数，用于限制写入 payload 大小
+
+管理端 `POST`/`PATCH` 会校验组合关系：标量默认 `raw`/`trim`；`json-canonical` 要求 `valueFormat=json`；复杂 JSON 目标值必须可解析。节点写入请求仍使用 `value: string`；服务层根据参数元数据解析格式、规范化、digest、preview 和比较规则。
+
+节点操作 DTO 可包含 `valueKind`、`valueFormat`、`normalizationMode`、`valuePreview` 以及值 digest，用于复杂写入的列表视图，而不返回完整大 payload。
+
 ## 3. Auth 与用户
 
 | 方法 | 路径 | 说明 |

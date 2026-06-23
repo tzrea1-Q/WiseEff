@@ -84,7 +84,11 @@ MVP 必须覆盖：
 
 M5.10 之后，浏览器 E2E 还承担审计级证据生成职责。每个自动化 operation 必须写入 `docs/generated/acceptance-operation-evidence.md` 和 `docs/generated/acceptance-operation-evidence/index.json` 可复核记录；当 operation matrix 声明 `api`、`db` 或 `audit` 断言时，证据必须包含对应的 API 请求/响应、数据库状态和审计事件摘要。缺少这些摘要时，`npm run acceptance:evidence` 应失败。
 
-调试管理 catalog 变更由 `e2e/acceptance/debugging-admin.acceptance.spec.ts` 中的 `DEBUG-ADMIN-001` 覆盖。该验收流程覆盖管理界面、API、数据库持久化和审计证据，验证参数新增、编辑、归档、恢复以及 HDC/ADB binding 管理。
+调试管理 catalog 变更由 `e2e/acceptance/debugging-admin.acceptance.spec.ts` 中的 `DEBUG-ADMIN-001` 覆盖。该验收流程覆盖管理界面、API、数据库持久化和审计证据，验证参数新增、编辑、归档、恢复、HDC/ADB binding 管理，以及复杂值元数据编辑。
+
+模拟器调试由 `e2e/acceptance/debugging-simulator.acceptance.spec.ts` 中的 `DEBUG-SIM-001` 覆盖，包含复杂 JSON 写入路径，并在 `node_operations` 中记录 `valueKind`、digest 和 preview 元数据，同时避免在 operation evidence 中泄露完整 payload。
+
+定向单元测试覆盖 `server/modules/debugging/valueCodec.test.ts`、gateway 保真测试、管理端/运行时 UI 测试，以及 legacy 标量默认值的 DTO mapper 测试。
 
 M5.11 之后，浏览器质量门禁还包括无障碍、视觉回归和响应式可用性检查。脚本入口包括 `npm run acceptance:quality`、`npm run acceptance:a11y`、`npm run acceptance:visual` 和 `npm run acceptance:responsive`，分别覆盖脚本/spec wiring、WCAG A/AA 扫描、稳定区域截图和 desktop/tablet/mobile overflow/usable state。这些门禁补充 A-H browser acceptance，不替代 operation evidence 或人工视觉判断。
 

@@ -9,6 +9,7 @@ import {
   type DebugParameterLibraryRow
 } from "@/debugAdminLibraryFilters";
 import { coverageLabel, isArchivedDebugParameter } from "@/debugAdminDraft";
+import { getDebugValueFormatLabel } from "@/debugValueKind";
 import type { DebugParameter as DomainDebugParameter } from "@/domain/debugging/types";
 
 const RISK_LABEL = {
@@ -182,6 +183,7 @@ export function DebugParameterLibraryTable({
             <col className="debug-admin-col-index" />
             <col className="debug-admin-col-name" />
             <col className="debug-admin-col-risk" />
+            <col className="debug-admin-col-format" />
             <col className="debug-admin-col-coverage" />
             <col className="debug-admin-col-actions" />
           </colgroup>
@@ -190,6 +192,7 @@ export function DebugParameterLibraryTable({
               <th scope="col">#</th>
               <th scope="col">参数名</th>
               <th scope="col">风险</th>
+              <th scope="col">格式</th>
               <th scope="col">覆盖</th>
               <th scope="col">操作</th>
             </tr>
@@ -197,7 +200,7 @@ export function DebugParameterLibraryTable({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={5}>加载中…</td>
+                <td colSpan={6}>加载中…</td>
               </tr>
             ) : (
               filtered.map((parameter, index) => {
@@ -211,6 +214,11 @@ export function DebugParameterLibraryTable({
                     </td>
                     <td data-label="风险">
                       <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
+                    </td>
+                    <td data-label="格式">
+                      <span className="debug-admin-format-badge">
+                        {getDebugValueFormatLabel(parameter)}
+                      </span>
                     </td>
                     <td data-label="覆盖">
                       <span className="debug-admin-coverage-badge">

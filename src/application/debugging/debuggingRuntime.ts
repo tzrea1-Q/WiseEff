@@ -182,8 +182,24 @@ function resolveProjectDebugDevice(
 
 function dispatchOperation(dispatch: DebuggingRuntimeOptions["dispatch"], operation?: NodeOperationSnapshot) {
   if (operation) {
-    dispatch({ type: "UPSERT_DEBUG_NODE_OPERATION", operation });
+    dispatch({
+      type: "UPSERT_DEBUG_NODE_OPERATION",
+      operation: preserveNodeOperationMetadata(operation)
+    });
   }
+}
+
+function preserveNodeOperationMetadata(operation: NodeOperationSnapshot): NodeOperationSnapshot {
+  return {
+    ...operation,
+    valueKind: operation.valueKind,
+    valueFormat: operation.valueFormat,
+    normalizationMode: operation.normalizationMode,
+    requestedValueDigest: operation.requestedValueDigest,
+    previousValueDigest: operation.previousValueDigest,
+    readbackValueDigest: operation.readbackValueDigest,
+    valuePreview: operation.valuePreview
+  };
 }
 
 function dispatchSnapshot(dispatch: DebuggingRuntimeOptions["dispatch"], snapshot?: DebugSnapshotSummary) {

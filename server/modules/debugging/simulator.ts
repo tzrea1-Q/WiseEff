@@ -36,7 +36,8 @@ const defaultSimulatorState: SimulatorState = {
         "/sys/class/power_supply/battery/input_current_limit": "2800",
         "/sys/class/power_supply/battery/temp_limit": "45",
         "/sys/class/power_supply/battery/cycle_count": "128",
-        "/sys/class/power_supply/battery/readback_mismatch": "1"
+        "/sys/class/power_supply/battery/readback_mismatch": "1",
+        "/sys/class/debug/config_json": '{\n  "enabled": true,\n  "limit": 42\n}'
       },
       readOnlyNodes: ["/sys/class/power_supply/battery/cycle_count"],
       readbackMismatchNodes: ["/sys/class/power_supply/battery/readback_mismatch"]
@@ -192,13 +193,17 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
         nodeValues.get(input.targetRef)?.set(input.nodePath, "1");
       }
 
-      const readResult = readNodeValue(input, startedAt);
+      const readResult = readNodeValue({ ...input, preserveExactRead: input.preserveExactRead ?? false }, startedAt);
+
+      const readbackMatches = input.compareReadback
+        ? input.compareReadback(input.value, readResult.value ?? "")
+        : readResult.ok && readResult.stdout === input.value;
 
       return {
         ok: true,
         value: input.value,
-        verified: readResult.ok && readResult.stdout === input.value,
-        error: readResult.ok && readResult.stdout === input.value ? undefined : "Readback mismatch.",
+        verified: readbackMatches,
+        error: readbackMatches ? undefined : "Readback mismatch.",
         writeResult,
         readResult
       };

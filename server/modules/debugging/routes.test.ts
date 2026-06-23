@@ -161,6 +161,10 @@ function parameterRecord(overrides: Partial<DebugParameterRecord> = {}): DebugPa
     archivedAt: null,
     archivedBy: null,
     archiveReason: null,
+    valueKind: "scalar",
+    valueFormat: "raw",
+    normalizationMode: "trim",
+    maxValueBytes: null,
     ...overrides
   };
 }
@@ -230,6 +234,13 @@ function operationRecord(overrides: Partial<NodeOperationRecord> = {}): NodeOper
     approvalId: null,
     snapshotId: null,
     createdAt: timestamp,
+    valueKind: null,
+    valueFormat: null,
+    normalizationMode: null,
+    requestedValueDigest: null,
+    previousValueDigest: null,
+    readbackValueDigest: null,
+    valuePreview: null,
     ...overrides
   };
 }
@@ -463,7 +474,7 @@ describe("debugging routes", () => {
     );
   });
 
-  it("PATCH /api/v1/debugging/admin/parameters/:parameterId preserves explicit nullable and falsey fields", async () => {
+  it("PATCH /api/v1/debugging/admin/parameters/:parameterId preserves explicit nullable and falsey fields without injecting value metadata defaults", async () => {
     const db = makeDb();
     const gateway = makeGateway();
     const item = parameterWithBindingsRecord({

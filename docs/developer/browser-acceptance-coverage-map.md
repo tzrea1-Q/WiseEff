@@ -17,8 +17,8 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PARAM-HAPPY-001` | B | Yes | Parameter search, draft, submit, review, merge, persistence, and audit happy path works. | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-001` | C | Yes | Parameter admin import preview and audit drawer remain available to Admin. | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `LOG-HAPPY-001` | D | Yes | Log upload, analysis progress, evidence, feedback, archive, and unsupported-file path work. | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
-| `DEBUG-SIM-001` | E | Yes | Simulator read, write, mismatch, rollback, and audit path work. | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
-| `DEBUG-ADMIN-001` | E | Yes | Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode. | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
+| `DEBUG-SIM-001` | E | Yes | Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata. | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
+| `DEBUG-ADMIN-001` | E | Yes | Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata. | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
 | `HDC-LAB-001` | F | No | Real HDC device lab read/write smoke runs when explicitly enabled. | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `AGENT-APPROVAL-001` | G | Yes | Agent context, approval, rejection, execution, and evidence path work. | `e2e/acceptance/agent.acceptance.spec.ts` |
 | `PERM-GOV-001` | H | Yes | User governance page is Admin-only and the active Admin cannot disable itself. | `e2e/acceptance/permissions.acceptance.spec.ts` |

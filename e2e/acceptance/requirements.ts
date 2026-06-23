@@ -83,7 +83,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "DEBUG-SIM-001",
     workflow: "E",
-    title: "Simulator read, write, mismatch, rollback, and audit path work.",
+    title: "Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata.",
     required: true
   },
   {
@@ -95,7 +95,7 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
   {
     id: "DEBUG-ADMIN-001",
     workflow: "E",
-    title: "Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode.",
+    title: "Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata.",
     required: true
   },
   {

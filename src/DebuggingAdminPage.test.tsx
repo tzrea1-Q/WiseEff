@@ -92,6 +92,7 @@ describe("/debugging-admin API mode", () => {
     expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
     expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/parameters?includeArchived=true");
     expect(screen.getByText("双协议")).toBeInTheDocument();
+    expect(screen.getByText("标量")).toBeInTheDocument();
 
     fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "修改" }));
     fireEvent.change(screen.getByLabelText("参数名称"), { target: { value: "Fast charge current edited" } });
@@ -100,11 +101,53 @@ describe("/debugging-admin API mode", () => {
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalled());
     expect(apiClient.patch.mock.calls[0][0]).toBe("/api/v1/debugging/admin/parameters/param-1");
     expect(apiClient.patch.mock.calls[0][1]).toEqual(expect.objectContaining({ name: "Fast charge current edited" }));
+    expect(apiClient.patch.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        valueKind: "scalar",
+        valueFormat: "raw",
+        normalizationMode: "trim"
+      })
+    );
     expect(apiClient.patch.mock.calls[0][1].bindings).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true }),
         expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: true })
       ])
+    );
+  });
+
+  it("edits a complex JSON debug parameter and saves metadata through PATCH", async () => {
+    window.history.replaceState(null, "", "/debugging-admin");
+    const apiClient = createDebuggingAdminApiMock();
+    apiClient.get.mockResolvedValue({
+      items: [{
+        ...apiClient.seedParameter,
+        valueKind: "complex",
+        valueFormat: "json",
+        normalizationMode: "json-canonical",
+        currentValue: '{"enabled":true}',
+        targetValue: '{"enabled":false}'
+      }]
+    });
+    renderDebuggingAdminPage(apiClient);
+
+    expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
+    expect(screen.getByText("JSON")).toBeInTheDocument();
+
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "修改" }));
+    fireEvent.change(screen.getByLabelText("调试目标值"), {
+      target: { value: '{\n  "enabled": false,\n  "mode": "safe"\n}' }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(apiClient.patch).toHaveBeenCalled());
+    expect(apiClient.patch.mock.calls[0][1]).toEqual(
+      expect.objectContaining({
+        valueKind: "complex",
+        valueFormat: "json",
+        normalizationMode: "json-canonical",
+        targetValue: '{\n  "enabled": false,\n  "mode": "safe"\n}'
+      })
     );
   });
 
@@ -124,7 +167,10 @@ describe("/debugging-admin API mode", () => {
         "/api/v1/debugging/admin/parameters",
         expect.objectContaining({
           key: "debug.thermal.throttle_limit",
-          name: "Thermal throttle limit"
+          name: "Thermal throttle limit",
+          valueKind: "scalar",
+          valueFormat: "raw",
+          normalizationMode: "trim"
         })
       )
     );

@@ -437,6 +437,7 @@ Key columns:
 - `key`, `name`, `module`, `node_path`, `access_mode`
 - `risk`, `current_value`, `target_value`, `sort_order`
 - `description`, `unit`, `range_label`, `min_value`, `max_value`
+- `value_kind`, `value_format`, `normalization_mode`, `max_value_bytes` (migration `0020`; scalar defaults: `scalar`, `raw`, `trim`)
 - `created_at`, `updated_at`
 
 Archive/runtime columns:
@@ -530,6 +531,7 @@ Key columns:
 - `parameter_id` references `debugging_parameters(id)`, nullable for raw node operations
 - `node_path`, `operation_type`, `status`
 - `requested_value`, `previous_value`, `read_value`, `readback_value`
+- `value_kind`, `value_format`, `normalization_mode`, `requested_value_digest`, `previous_value_digest`, `readback_value_digest`, `value_preview` (migration `0020`)
 - `verified`, `failure_reason`, `duration_ms`, `approval_id`
 - `snapshot_id` references `debugging_snapshots(id)` via `node_operations_snapshot_fk`, deferrable initially deferred
 - `actor_user_id` references `users(id)`

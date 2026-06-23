@@ -19,6 +19,26 @@ const apiSession = {
 };
 const apiTarget = { id: "api-target-1", deviceId: "api-device-1", protocol: "hdc" as const, label: "API Gateway Target" };
 
+const complexJsonAutoRead = {
+  ok: true,
+  value: '{"inputLimitMa": 3600',
+  returncode: 0,
+  stdout: '{"inputLimitMa": 3600,\n',
+  stderr: ""
+};
+
+const complexDtsAutoRead = {
+  ok: true,
+  value: "/ {",
+  returncode: 0,
+  stdout: "/ {\n",
+  stderr: ""
+};
+
+function withComplexDebugAutoReads(responses: unknown[]) {
+  return [...responses, complexJsonAutoRead, complexDtsAutoRead];
+}
+
 function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
   return {
     refresh: vi.fn().mockResolvedValue(undefined),
@@ -644,7 +664,7 @@ describe("/node-debugging", () => {
       }
     });
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("8 条"));
+    await waitFor(() => expect(screen.getByRole("button", { name: /节点操作记录/ })).toHaveTextContent("10 条"));
     expect(row).toHaveTextContent("readback mismatch: expected 3700, got 3600");
     expect(within(row).getByText(/^失败$/)).toBeInTheDocument();
     expect(within(row).queryByText(/^成功$/)).not.toBeInTheDocument();
@@ -716,6 +736,8 @@ describe("/node-debugging", () => {
       { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead,
       {
         ok: true,
         verified: true,
@@ -786,14 +808,16 @@ describe("/node-debugging", () => {
       { ok: true, value: "69", returncode: 0, stdout: "69\n", stderr: "" },
       { ok: true, value: "80", returncode: 0, stdout: "80\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
-      { ok: true, value: "5100", returncode: 0, stdout: "5100\n", stderr: "" }
+      { ok: true, value: "5100", returncode: 0, stdout: "5100\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead
     ]);
     render(<App initialAppState={userState} />);
 
     await screen.findByText(/已连接：target-a/);
     const rwRow = await within(findRowByText("charger.input_current_limit_ma")).findByText("3651");
     expect(rwRow).toBeInTheDocument();
-    expect(fetch).toHaveBeenCalledTimes(8);
+    expect(fetch).toHaveBeenCalledTimes(10);
     expect(fetch).toHaveBeenLastCalledWith("/api/hdc/read-node", expect.objectContaining({ method: "POST" }));
   });
 
@@ -807,6 +831,8 @@ describe("/node-debugging", () => {
       { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead,
       {
         ok: true,
         verified: true,
@@ -847,7 +873,9 @@ describe("/node-debugging", () => {
       { ok: true, value: "69", returncode: 0, stdout: "69\n", stderr: "" },
       { ok: true, value: "80", returncode: 0, stdout: "80\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
-      { ok: true, value: "5100", returncode: 0, stdout: "5100\n", stderr: "" }
+      { ok: true, value: "5100", returncode: 0, stdout: "5100\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead
     ]);
     render(<App initialAppState={userState} />);
 
@@ -960,7 +988,9 @@ describe("/node-debugging", () => {
       { ok: true, value: "68", returncode: 0, stdout: "68\n", stderr: "" },
       { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
-      { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" }
+      { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead
     ]);
     render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
@@ -985,6 +1015,8 @@ describe("/node-debugging", () => {
       { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead,
       {
         ok: true,
         verified: true,
@@ -1018,6 +1050,8 @@ describe("/node-debugging", () => {
       { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead,
       {
         ok: true,
         verified: true,
@@ -1100,20 +1134,107 @@ describe("/node-debugging", () => {
   });
 
   it("uses a multiline target value editor for complex writes", async () => {
-    mockFetchSequence([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]);
+    mockFetchSequence(withComplexDebugAutoReads([{ ok: true, targets: ["target-a"], activeTarget: "target-a" }]));
     render(<App initialAppState={userState} />);
     await screen.findByText(/已连接：target-a/);
 
-    const row = findRowByText("charger.input_current_limit_ma");
+    const row = findRowByText("charger.policy_overlay_json");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
 
     const dialog = screen.getByRole("dialog", { name: /节点详情/ });
+    expect(dialog.closest(".node-complex-editor")).toBeInTheDocument();
     const targetEditor = within(dialog).getByLabelText("目标写入值");
-    const multilineValue = "limit=3700\nenable=1";
+    const multilineValue = "{\n  \"inputLimitMa\": 3700\n}";
 
     expect(targetEditor.tagName).toBe("TEXTAREA");
+    expect(targetEditor).toHaveAttribute("wrap", "off");
     fireEvent.change(targetEditor, { target: { value: multilineValue } });
     expect(targetEditor).toHaveValue(multilineValue);
+  });
+
+  it("shows compact preview for complex read-only parameters in the table", async () => {
+    const complexRo = userState.debugParameters.find((parameter) => parameter.id === "dbg-battery-health-dts");
+    if (!complexRo) {
+      throw new Error("missing complex read-only debug parameter");
+    }
+
+    const fullDts = complexRo.currentValue;
+    const debuggingActions = createDebuggingActions({
+      readNode: vi.fn(async (input) => ({
+        ok: true,
+        value: input.parameterId === "dbg-battery-health-dts" ? fullDts : "12",
+        stdout: `${input.parameterId === "dbg-battery-health-dts" ? fullDts : "12"}\n`,
+        operation: {
+          id: `op-read-${input.parameterId}`,
+          sessionId: apiSession.id,
+          parameterId: input.parameterId,
+          nodePath: input.nodePath,
+          operationType: "read",
+          status: "succeeded",
+          readValue: input.parameterId === "dbg-battery-health-dts" ? fullDts : "12",
+          verified: true,
+          durationMs: 7,
+          createdAt: "2026-05-27T09:00:01.000Z",
+          valueKind: input.parameterId === "dbg-battery-health-dts" ? "complex" : undefined,
+          valueFormat: input.parameterId === "dbg-battery-health-dts" ? "dts" : undefined,
+          valuePreview: input.parameterId === "dbg-battery-health-dts" ? `${fullDts.slice(0, 80)}…` : undefined
+        }
+      }))
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/API Gateway Target/);
+
+    const row = findRowByText("battery.health_dts_fragment");
+    await waitFor(() => expect(within(row).getByText("DTS")).toBeInTheDocument());
+    expect(currentValueCell(row).querySelector(".debug-value-preview")).toBeInTheDocument();
+    expect(currentValueCell(row)).toHaveTextContent("…");
+    expect(currentValueCell(row)).not.toHaveTextContent("alert-levels");
+  });
+
+  it("shows preview and digest for complex write events in operation history", async () => {
+    const complexJson = userState.debugParameters.find((parameter) => parameter.id === "dbg-charge-policy-json")?.targetValue ?? "";
+    const digest = "abc123deadbeef0123456789abcdef0123456789abcdef0123456789ab";
+    const preview = '{"inputLimitMa": 3700';
+    const debuggingActions = createDebuggingActions({
+      writeNode: vi.fn().mockResolvedValue({
+        ok: true,
+        value: complexJson,
+        verified: true,
+        writeResult: { ok: true, stdout: "write ok\n", durationMs: 8 },
+        readResult: { ok: true, value: complexJson, stdout: complexJson, durationMs: 9 },
+        operation: {
+          id: "op-write-complex",
+          sessionId: apiSession.id,
+          parameterId: "dbg-charge-policy-json",
+          nodePath: "/data/local/tmp/wiseeff_nodes/charger/policy_overlay_json",
+          operationType: "write",
+          status: "succeeded",
+          requestedValue: complexJson,
+          readbackValue: complexJson,
+          verified: true,
+          durationMs: 17,
+          createdAt: "2026-05-27T09:00:02.000Z",
+          valueKind: "complex",
+          valueFormat: "json",
+          valuePreview: preview,
+          requestedValueDigest: digest,
+          readbackValueDigest: digest
+        }
+      })
+    });
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    await screen.findByText(/API Gateway Target/);
+
+    const row = findRowByText("charger.policy_overlay_json");
+    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: /节点详情/ })).getByRole("button", { name: /写入并回读/ }));
+
+    await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: /节点操作记录/ }));
+    const events = await screen.findByRole("list", { name: "节点操作事件列表" });
+    expect(events).toHaveTextContent(preview);
+    expect(events).toHaveTextContent("abc123deadbe");
+    expect(events).toHaveTextContent("JSON");
   });
 
   it("marks RW readback mismatch", async () => {
@@ -1126,6 +1247,8 @@ describe("/node-debugging", () => {
       { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
       { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
       { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
+      complexJsonAutoRead,
+      complexDtsAutoRead,
       {
         ok: true,
         verified: false,

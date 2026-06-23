@@ -7,6 +7,11 @@ import type {
   GatewayWriteInput,
   GatewayWriteResult
 } from "./gateway";
+import {
+  buildRemoteWriteShellCommand,
+  normalizeRemoteReadValue,
+  shellQuote
+} from "./remoteNodeWrite";
 
 export type HdcCommandResult = {
   code: number | null;
@@ -53,11 +58,12 @@ function remoteShellDiagnostic(result: HdcCommandResult) {
   return diagnosticLine?.trim();
 }
 
-function shellQuote(value: string) {
-  return `'${value.replaceAll("'", "'\\''")}'`;
-}
-
-function nodeResultFromCommand(result: HdcCommandResult, timeoutMs: number, value?: string): GatewayNodeResult {
+function nodeResultFromCommand(
+  result: HdcCommandResult,
+  timeoutMs: number,
+  value?: string,
+  preserveExact = false
+): GatewayNodeResult {
   const diagnostic = remoteShellDiagnostic(result);
   if (result.timedOut || result.code !== 0 || diagnostic) {
     return {
@@ -69,7 +75,7 @@ function nodeResultFromCommand(result: HdcCommandResult, timeoutMs: number, valu
     };
   }
 
-  const stdoutValue = value ?? result.stdout.trim();
+  const stdoutValue = value ?? normalizeRemoteReadValue(result.stdout, preserveExact);
   return {
     ok: true,
     value: stdoutValue,
@@ -168,7 +174,7 @@ export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): De
       `cat ${shellQuote(input.nodePath)}`
     ]);
 
-    return nodeResultFromCommand(result, timeoutMs);
+    return nodeResultFromCommand(result, timeoutMs, undefined, input.preserveExactRead ?? false);
   }
 
   return {
@@ -210,7 +216,7 @@ export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): De
         "-t",
         input.targetRef,
         "shell",
-        `printf %s ${shellQuote(input.value)} > ${shellQuote(input.nodePath)}`
+        buildRemoteWriteShellCommand(input.nodePath, input.value)
       ]);
       const writeResult = nodeResultFromCommand(writeCommand, timeoutMs, input.value);
 
@@ -245,7 +251,11 @@ export function createHdcDebugDeviceGateway(options: HdcGatewayOptions = {}): De
         };
       }
 
-      if (readResult.value !== input.value) {
+      const readbackMatches = input.compareReadback
+        ? input.compareReadback(input.value, readResult.value ?? "")
+        : readResult.value === input.value;
+
+      if (!readbackMatches) {
         return {
           ok: false,
           value: input.value,

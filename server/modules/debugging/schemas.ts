@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { debugConnectionProtocols, defaultDebugConnectionProtocol } from "./protocol";
 import { debugAccessModes, debugRiskLevels } from "./status";
+import {
+  DEBUG_NORMALIZATION_MODES,
+  DEBUG_VALUE_FORMATS,
+  DEBUG_VALUE_KINDS,
+  DEBUG_VALUE_FORMAT_RAW,
+  DEBUG_VALUE_KIND_SCALAR,
+  DEBUG_NORMALIZATION_MODE_TRIM
+} from "./types";
 
 const nonEmptyString = z.string().trim().min(1);
 const optionalTrimmedString = z.string().trim().optional();
@@ -17,12 +25,72 @@ const nodePathSchema = z
   .startsWith("/")
   .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), { message: "Node path must not contain control characters." });
 
+export const debugValueKindSchema = z.enum(DEBUG_VALUE_KINDS);
+export const debugValueFormatSchema = z.enum(DEBUG_VALUE_FORMATS);
+export const debugNormalizationModeSchema = z.enum(DEBUG_NORMALIZATION_MODES);
+
+const debugValueMetadataFields = {
+  valueKind: debugValueKindSchema.default(DEBUG_VALUE_KIND_SCALAR),
+  valueFormat: debugValueFormatSchema.default(DEBUG_VALUE_FORMAT_RAW),
+  normalizationMode: debugNormalizationModeSchema.default(DEBUG_NORMALIZATION_MODE_TRIM),
+  maxValueBytes: z.number().int().positive().nullable().optional()
+};
+
+function applyScalarValueDefaults<T extends { valueKind?: (typeof DEBUG_VALUE_KINDS)[number] }>(value: T) {
+  if (value.valueKind === DEBUG_VALUE_KIND_SCALAR || value.valueKind === undefined) {
+    return {
+      ...value,
+      valueKind: DEBUG_VALUE_KIND_SCALAR,
+      valueFormat: DEBUG_VALUE_FORMAT_RAW,
+      normalizationMode: DEBUG_NORMALIZATION_MODE_TRIM
+    };
+  }
+  return value;
+}
+
+function applyExplicitScalarPatchDefaults<T extends { valueKind?: (typeof DEBUG_VALUE_KINDS)[number] }>(value: T) {
+  if (value.valueKind === DEBUG_VALUE_KIND_SCALAR) {
+    return {
+      ...value,
+      valueFormat: DEBUG_VALUE_FORMAT_RAW,
+      normalizationMode: DEBUG_NORMALIZATION_MODE_TRIM
+    };
+  }
+  return value;
+}
+
+function requireJsonFormatForCanonicalNormalization(value: {
+  valueFormat?: (typeof DEBUG_VALUE_FORMATS)[number];
+  normalizationMode?: (typeof DEBUG_NORMALIZATION_MODES)[number];
+}) {
+  return value.normalizationMode !== "json-canonical" || value.valueFormat === "json";
+}
+
 export const debugParameterNodeBindingSchema = z.object({
   protocol: z.enum(debugConnectionProtocols),
   nodePath: nodePathSchema,
   accessMode: z.enum(debugAccessModes),
   enabled: z.boolean().default(true),
   notes: z.string().trim().optional()
+});
+
+const debugParameterAdminBaseSchema = z.object({
+  projectId: nullableProjectIdSchema,
+  name: nonEmptyString,
+  key: nonEmptyString,
+  description: z.string().trim().default(""),
+  module: nonEmptyString,
+  risk: z.enum(debugRiskLevels),
+  unit: z.string().trim().default(""),
+  range: z.string().trim().default(""),
+  minValue: z.number().nullable().optional(),
+  maxValue: z.number().nullable().optional(),
+  currentValue: z.string().trim().default(""),
+  targetValue: z.string().trim().default(""),
+  sortOrder: z.number().int().default(0),
+  enabled: z.boolean().default(true),
+  bindings: z.array(debugParameterNodeBindingSchema).default([]),
+  ...debugValueMetadataFields
 });
 
 export const listDebuggingParametersQuerySchema = z.object({
@@ -66,27 +134,23 @@ export const upsertDebugParameterNodeBindingBodySchema = z.object({
   notes: optionalTrimmedString
 });
 
-export const writeDebugParameterAdminBodySchema = z.object({
-  projectId: nullableProjectIdSchema,
-  name: nonEmptyString,
-  key: nonEmptyString,
-  description: z.string().trim().default(""),
-  module: nonEmptyString,
-  risk: z.enum(debugRiskLevels),
-  unit: z.string().trim().default(""),
-  range: z.string().trim().default(""),
-  minValue: z.number().nullable().optional(),
-  maxValue: z.number().nullable().optional(),
-  currentValue: z.string().trim().default(""),
-  targetValue: z.string().trim().default(""),
-  sortOrder: z.number().int().default(0),
-  enabled: z.boolean().default(true),
-  bindings: z.array(debugParameterNodeBindingSchema).default([])
-});
+export const writeDebugParameterAdminBodySchema = debugParameterAdminBaseSchema
+  .refine(requireJsonFormatForCanonicalNormalization, {
+    message: "json-canonical normalization requires json value format.",
+    path: ["normalizationMode"]
+  })
+  .transform(applyScalarValueDefaults);
 
-export const patchDebugParameterAdminBodySchema = writeDebugParameterAdminBodySchema.partial().extend({
-  bindings: z.array(debugParameterNodeBindingSchema).optional()
-});
+export const patchDebugParameterAdminBodySchema = debugParameterAdminBaseSchema
+  .partial()
+  .extend({
+    bindings: z.array(debugParameterNodeBindingSchema).optional()
+  })
+  .refine(requireJsonFormatForCanonicalNormalization, {
+    message: "json-canonical normalization requires json value format.",
+    path: ["normalizationMode"]
+  })
+  .transform((value) => applyExplicitScalarPatchDefaults(value));
 
 export const archiveDebugParameterBodySchema = z.object({
   reason: z.string().trim().max(500).optional()

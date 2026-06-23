@@ -5,6 +5,12 @@ import type {
   DebugParameterAccessMode,
   DebugParameterNodeBinding
 } from "@/domain/debugging/types";
+import { resolveDebugValueMetadata } from "@/debugValueKind";
+import type {
+  DebugNormalizationMode,
+  DebugValueFormat,
+  DebugValueKind
+} from "@/debugValueKind";
 import type { RiskLevel } from "@/domain/parameters/types";
 
 export type DebugAdminBindingDto = {
@@ -39,6 +45,10 @@ export type DebugAdminParameterDto = {
   archiveReason?: string | null;
   selectedBinding?: DebugAdminBindingDto | null;
   bindings?: DebugAdminBindingDto[];
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 export type DebugAdminBindingWriteDto = {
@@ -70,6 +80,10 @@ export type DebugAdminParameterWriteDto = {
   sortOrder: number;
   enabled: boolean;
   bindings: DebugAdminParameterBindingWriteDto[];
+  valueKind?: DebugValueKind;
+  valueFormat?: DebugValueFormat;
+  normalizationMode?: DebugNormalizationMode;
+  maxValueBytes?: number | null;
 };
 
 function preferredBinding(dto: DebugAdminParameterDto) {
@@ -80,6 +94,7 @@ function preferredBinding(dto: DebugAdminParameterDto) {
 
 export function debugAdminParameterFromDto(dto: DebugAdminParameterDto): DebugParameter {
   const binding = preferredBinding(dto);
+  const valueMetadata = resolveDebugValueMetadata(dto);
 
   return {
     id: dto.id,
@@ -104,7 +119,11 @@ export function debugAdminParameterFromDto(dto: DebugAdminParameterDto): DebugPa
     archivedBy: dto.archivedBy,
     archiveReason: dto.archiveReason,
     selectedProtocol: binding?.protocol,
-    bindings: dto.bindings?.map(debugAdminBindingFromDto) ?? []
+    bindings: dto.bindings?.map(debugAdminBindingFromDto) ?? [],
+    valueKind: valueMetadata.valueKind,
+    valueFormat: valueMetadata.valueFormat,
+    normalizationMode: valueMetadata.normalizationMode,
+    maxValueBytes: valueMetadata.maxValueBytes ?? null
   };
 }
 
@@ -120,6 +139,8 @@ export function debugAdminBindingFromDto(dto: DebugAdminBindingDto): DebugParame
 }
 
 export function debugAdminParameterToDto(draft: DebugAdminParameterDraft): DebugAdminParameterWriteDto {
+  const valueMetadata = resolveDebugValueMetadata(draft);
+
   return {
     projectId: draft.projectId ?? null,
     name: draft.name,
@@ -137,6 +158,10 @@ export function debugAdminParameterToDto(draft: DebugAdminParameterDraft): Debug
     targetValue: draft.targetValue,
     sortOrder: draft.sortOrder,
     enabled: draft.enabled,
+    valueKind: valueMetadata.valueKind,
+    valueFormat: valueMetadata.valueFormat,
+    normalizationMode: valueMetadata.normalizationMode,
+    maxValueBytes: valueMetadata.maxValueBytes ?? null,
     bindings: draft.bindings.map((binding) => ({
       protocol: binding.protocol,
       nodePath: binding.nodePath,

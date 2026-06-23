@@ -17,6 +17,9 @@ type AdminParameterDto = {
   name: string;
   enabled: boolean;
   archivedAt: string | null;
+  valueKind?: string;
+  valueFormat?: string;
+  normalizationMode?: string;
   bindings: Array<{ protocol: string; nodePath: string; enabled: boolean }>;
 };
 
@@ -94,6 +97,9 @@ async function debuggingAdminDbSummary(parameterKey: string) {
       id: string;
       enabled: boolean;
       archived_at: string | null;
+      value_kind: string | null;
+      value_format: string | null;
+      normalization_mode: string | null;
       protocols: string[];
       enabled_protocols: string[];
       disabled_protocols: string[];
@@ -104,6 +110,9 @@ async function debuggingAdminDbSummary(parameterKey: string) {
         p.id,
         p.enabled,
         p.archived_at,
+        p.value_kind,
+        p.value_format,
+        p.normalization_mode,
         array_remove(array_agg(b.protocol order by b.protocol), null) as protocols,
         array_remove(array_agg(b.protocol order by b.protocol) filter (where b.enabled = true), null) as enabled_protocols,
         array_remove(array_agg(b.protocol order by b.protocol) filter (where b.enabled = false), null) as disabled_protocols,
@@ -112,7 +121,7 @@ async function debuggingAdminDbSummary(parameterKey: string) {
       left join debugging_parameter_node_bindings b on b.parameter_id = p.id
       where p.organization_id = 'org-chargelab'
         and p.key = $1
-      group by p.id, p.enabled, p.archived_at
+      group by p.id, p.enabled, p.archived_at, p.value_kind, p.value_format, p.normalization_mode
       `,
       [parameterKey]
     );
@@ -122,6 +131,9 @@ async function debuggingAdminDbSummary(parameterKey: string) {
     expect(row).toMatchObject({
       enabled: true,
       archived_at: null,
+      value_kind: "complex",
+      value_format: "json",
+      normalization_mode: "json-canonical",
       protocols: ["adb", "hdc"],
       enabled_protocols: ["hdc"],
       disabled_protocols: ["adb"],
@@ -132,7 +144,7 @@ async function debuggingAdminDbSummary(parameterKey: string) {
       table: "debugging_parameters/debugging_parameter_node_bindings",
       predicate: `key=${parameterKey}`,
       observed: row
-        ? `enabled=${row.enabled}; archived=${Boolean(row.archived_at)}; bindingCount=${row.binding_count}; enabledProtocols=${row.enabled_protocols.join(",")}; disabledProtocols=${row.disabled_protocols.join(",")}`
+        ? `enabled=${row.enabled}; archived=${Boolean(row.archived_at)}; valueKind=${row.value_kind}; valueFormat=${row.value_format}; normalizationMode=${row.normalization_mode}; bindingCount=${row.binding_count}; enabledProtocols=${row.enabled_protocols.join(",")}; disabledProtocols=${row.disabled_protocols.join(",")}`
         : "missing",
       rowCount: result.rowCount ?? result.rows.length
     };
@@ -218,9 +230,18 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     await parameterRow(page, parameterName).getByRole("button", { name: "修改" }).click();
     const definitionDialog = page.getByRole("dialog", { name: "调试参数定义编辑" });
     await definitionDialog.getByLabel("参数名称").fill(editedName);
+    await definitionDialog.getByRole("combobox", { name: "值类型" }).click();
+    await page.getByRole("option", { name: "复杂配置" }).click();
+    await definitionDialog.getByRole("combobox", { name: "值格式" }).click();
+    await page.getByRole("option", { name: "JSON" }).click();
+    await definitionDialog.getByRole("combobox", { name: "规范化模式" }).click();
+    await page.getByRole("option", { name: "JSON 规范化" }).click();
+    await definitionDialog.getByLabel("当前值").fill('{\n  "enabled": true,\n  "mode": "safe"\n}');
+    await definitionDialog.getByLabel("调试目标值").fill('{\n  "enabled": false,\n  "mode": "safe"\n}');
     await definitionDialog.getByRole("button", { name: "保存" }).click();
     await expect(page.getByText("已保存")).toBeVisible({ timeout: 30_000 });
     await definitionDialog.getByRole("button", { name: "取消" }).click();
+    await expect(parameterRow(page, editedName)).toContainText("JSON");
 
     const listResponse = await page.request.get(apiRoute("/api/v1/debugging/admin/parameters?includeArchived=true"), {
       headers: smokeHeaders()
@@ -229,7 +250,14 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
     const listBody = (await listResponse.json()) as { items: AdminParameterDto[] };
     const created = listBody.items.find((item) => item.key === parameterKey);
     expect(created).toBeTruthy();
-    expect(created).toMatchObject({ name: editedName, enabled: true, archivedAt: null });
+    expect(created).toMatchObject({
+      name: editedName,
+      enabled: true,
+      archivedAt: null,
+      valueKind: "complex",
+      valueFormat: "json",
+      normalizationMode: "json-canonical"
+    });
     expect(created!.bindings.some((binding) => binding.protocol === "hdc" && binding.enabled)).toBe(true);
     expect(created!.bindings.some((binding) => binding.protocol === "adb" && binding.enabled)).toBe(true);
 
@@ -324,7 +352,7 @@ test.describe("DEBUG-ADMIN-001 debugging admin catalog governance", () => {
         auditSummaryFor(auditBody.items, "debug-parameter-admin-restore", created!.id),
         auditSummaryFor(auditBody.items, "debug-parameter-binding-admin-archive", `${created!.id}:adb`)
       ],
-      notes: "Admin UI created, edited, and row-archived a catalog parameter via modal layout; path bindings configured in 路径绑定 dialog; ADB binding archive and parameter restore verified through admin API."
+      notes: "Admin UI created, edited complex JSON metadata, and row-archived a catalog parameter via modal layout; path bindings configured in 路径绑定 dialog; ADB binding archive and parameter restore verified through admin API."
     });
   });
 });
