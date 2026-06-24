@@ -129,6 +129,22 @@ async function postXiaoze(
   };
 }
 
+async function resetOpenChangeRequestsForParameter() {
+  await withPgClient(async (client) => {
+    await client.query(
+      `
+      update parameter_change_requests
+      set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
+      where organization_id = 'org-chargelab'
+        and project_id = $1
+        and project_parameter_value_id = $2
+        and status not in ('merged', 'rejected')
+      `,
+      [projectId, parameterId]
+    );
+  });
+}
+
 async function countOpenChangeRequests() {
   return withPgClient(async (client) => {
     const result = await client.query<{ count: string }>(
@@ -138,7 +154,7 @@ async function countOpenChangeRequests() {
       where organization_id = 'org-chargelab'
         and project_id = $1
         and project_parameter_value_id = $2
-        and status not in ('merged', 'rejected', 'cancelled')
+        and status not in ('merged', 'rejected')
       `,
       [projectId, parameterId]
     );
@@ -189,7 +205,22 @@ test.beforeAll(async () => {
       `,
       [projectId]
     );
+    await client.query(
+      `
+      update parameter_change_requests
+      set status = 'rejected', reject_reason = 'xiaoze acceptance reset', updated_at = now()
+      where organization_id = 'org-chargelab'
+        and project_id = $1
+        and project_parameter_value_id = $2
+        and status not in ('merged', 'rejected')
+      `,
+      [projectId, parameterId]
+    );
   });
+});
+
+test.beforeEach(async () => {
+  await resetOpenChangeRequestsForParameter();
 });
 
 test.describe("Xiaoze P1 action", () => {
@@ -230,6 +261,20 @@ test.describe("Xiaoze P1 action", () => {
     expect(parseSseEvents(resumed.body).some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
     expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
 
+    const followUp = await postXiaoze(request, adminHeaders(), {
+      threadId,
+      runId: `run-follow-up-${Date.now()}`,
+      messages: [{ id: "m-follow-up", role: "user", content: "summarize project aurora" }],
+      context: [
+        {
+          description: "wiseeff.page",
+          value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+        }
+      ]
+    });
+    expect(followUp.status).toBe(200);
+    expect(followUp.events.some((event) => event.type === "RUN_ERROR")).toBe(false);
+
     const auditRows = await latestAgentAuditForSession(threadId);
     expect(auditRows.some((row) => row.action === "approval-executed" && row.actor_type === "agent")).toBe(true);
 
@@ -252,6 +297,107 @@ test.describe("Xiaoze P1 action", () => {
         })
       ],
       notes: "Xiaoze action approval executed a parameter change request with agent audit evidence."
+    });
+  });
+
+  test("resumes with AG-UI native resume entries after interrupt", async ({ request }, testInfo) => {
+    // @acceptance XIAOZE-ACTION-RESUME-001
+    const openBefore = await countOpenChangeRequests();
+    const thread = `${threadId}-native-resume`;
+    const started = await postXiaoze(request, adminHeaders(), {
+      threadId: thread,
+      runId: `run-action-native-${Date.now()}`,
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to 19A` }],
+      context: [
+        {
+          description: "wiseeff.page",
+          value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+        }
+      ]
+    });
+
+    expect(started.status).toBe(200);
+    const interruptValue = readInterruptValue(started.events);
+    const approvalId = String(interruptValue?.approvalId ?? "");
+    expect(approvalId).toBeTruthy();
+
+    const finished = started.events.find((event) => event.type === "RUN_FINISHED");
+    const outcome = finished?.outcome as { interrupts?: Array<{ id?: string }> } | undefined;
+    expect(outcome?.interrupts?.[0]?.id).toBe(approvalId);
+
+    const resumed = await postXiaoze(request, adminHeaders(), {
+      threadId: thread,
+      runId: `run-resume-native-${Date.now()}`,
+      messages: [{ id: "m-resume", role: "user", content: "approve" }],
+      resume: [
+        {
+          interruptId: approvalId,
+          status: "resolved",
+          payload: {
+            approvalId,
+            decision: "approve"
+          }
+        }
+      ]
+    });
+
+    expect(resumed.status).toBe(200);
+    expect(parseSseEvents(resumed.body).some((event) => event.type === "TEXT_MESSAGE_CONTENT")).toBe(true);
+    expect(await countOpenChangeRequests()).toBeGreaterThan(openBefore);
+
+    const rejectStarted = await postXiaoze(request, adminHeaders(), {
+      threadId: `${thread}-reject`,
+      runId: `run-action-native-reject-${Date.now()}`,
+      messages: [{ id: "m-user", role: "user", content: `set ${parameterId} to 15A` }],
+      context: [
+        {
+          description: "wiseeff.page",
+          value: { pageKey: "parameters", projectId, path: `/parameters?project=${projectId}` }
+        }
+      ]
+    });
+    const rejectInterrupt = readInterruptValue(rejectStarted.events);
+    const rejectApprovalId = String(rejectInterrupt?.approvalId ?? "");
+    const openAfterApprove = await countOpenChangeRequests();
+    const rejected = await postXiaoze(request, adminHeaders(), {
+      threadId: `${thread}-reject`,
+      runId: `run-resume-native-reject-${Date.now()}`,
+      messages: [{ id: "m-resume", role: "user", content: "reject" }],
+      resume: [
+        {
+          interruptId: rejectApprovalId,
+          status: "cancelled",
+          payload: {
+            approvalId: rejectApprovalId,
+            decision: "reject",
+            reason: "Not now"
+          }
+        }
+      ]
+    });
+
+    expect(rejected.status).toBe(200);
+    expect(await countOpenChangeRequests()).toBe(openAfterApprove);
+
+    await recordOperationEvidence({
+      operationId: "XIAOZE-ACTION-RESUME-001",
+      title: "xiaoze AG-UI native resume",
+      status: "passed",
+      route: "/parameters",
+      testInfo,
+      api: [
+        summarizeApiResponse(resumed.response, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: "native-resume-approved"
+        }),
+        summarizeApiResponse(rejected.response, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: "native-resume-rejected"
+        })
+      ],
+      notes: "AG-UI native resume entries clear the interrupt path and preserve approve/reject semantics."
     });
   });
 
