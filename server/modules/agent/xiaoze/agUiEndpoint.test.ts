@@ -28,6 +28,126 @@ describe("createXiaozeAgUiHandler", () => {
     });
   });
 
+  it("emits reasoning and answer events separately when reasoning is present", async () => {
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn().mockResolvedValue({
+          reasoning: "The user asked who I am.",
+          text: "我是小泽，WiseEff 的感知与行动助手。",
+          citations: []
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: { threadId: "thread-reasoning", runId: "run-reasoning", messages: [{ role: "user", content: "你是谁" }] },
+      requestId: "req-reasoning"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const runStartedIndex = events.findIndex((event) => event.event === EventType.RUN_STARTED);
+    const reasoningStartIndex = events.findIndex((event) => event.event === EventType.REASONING_MESSAGE_START);
+    expect(runStartedIndex).toBeGreaterThanOrEqual(0);
+    expect(reasoningStartIndex).toBeGreaterThan(runStartedIndex);
+    expect(events.some((event) => event.event === EventType.REASONING_MESSAGE_CONTENT)).toBe(true);
+    const answerEvent = events.find((event) => event.event === EventType.TEXT_MESSAGE_CONTENT);
+    expect((answerEvent?.data as { delta?: string }).delta).toBe("我是小泽，WiseEff 的感知与行动助手。");
+  });
+
+  it("emits a prompt debug custom event when requested in debug mode", async () => {
+    const handler = createXiaozeAgUiHandler({
+      allowPromptDebug: true,
+      resolveModelLabel: () => "test-model",
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn().mockResolvedValue({
+          text: "Answer",
+          citations: [],
+          promptDebug: {
+            threadId: "thread-debug",
+            userMessage: "hello",
+            context: {},
+            system: { policy: "policy", toolCatalog: "tools" },
+            llmMessages: [{ role: "system", content: "policy" }],
+            tools: []
+          }
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-debug",
+        runId: "run-debug",
+        messages: [{ role: "user", content: "hello" }],
+        context: [{ description: "wiseeff.debug", value: { promptDebug: true } }]
+      },
+      requestId: "req-debug"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const custom = events.find((event) => event.event === EventType.CUSTOM);
+    expect((custom?.data as { name?: string }).name).toBe("xiaoze_prompt_debug");
+    expect((custom?.data as { value?: { snapshot?: { model?: string } } }).value?.snapshot?.model).toBe("test-model");
+  });
+
+  it("emits prompt debug when wiseeff.debug context is JSON-stringified like CopilotKit sends", async () => {
+    const handler = createXiaozeAgUiHandler({
+      allowPromptDebug: true,
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn().mockResolvedValue({
+          text: "Answer",
+          citations: [],
+          promptDebug: {
+            threadId: "thread-debug",
+            userMessage: "hello",
+            context: {},
+            system: { policy: "policy", toolCatalog: "tools" },
+            llmMessages: [{ role: "system", content: "policy" }],
+            tools: []
+          }
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-debug",
+        runId: "run-debug",
+        messages: [{ role: "user", content: "hello" }],
+        context: [{ description: "wiseeff.debug", value: JSON.stringify({ promptDebug: true }) }]
+      },
+      requestId: "req-debug-string"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const custom = events.find((event) => event.event === EventType.CUSTOM);
+    expect((custom?.data as { name?: string }).name).toBe("xiaoze_prompt_debug");
+  });
+
   it("emits RUN_STARTED and RUN_FINISHED for authenticated runs", async () => {
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () =>

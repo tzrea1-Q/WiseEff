@@ -220,6 +220,13 @@ export const routeManifest = [
     module: "agent",
     stability: "mvp"
   },
+  { id: "xiaoze.run", method: "POST", path: "/api/v1/agent/xiaoze", module: "agent", stability: "mvp" },
+  { id: "xiaoze.suggest", method: "POST", path: "/api/v1/agent/xiaoze/suggest", module: "agent", stability: "mvp" },
+  { id: "xiaoze.listThreads", method: "GET", path: "/api/v1/agent/xiaoze/threads", module: "agent", stability: "mvp" },
+  { id: "xiaoze.createThread", method: "POST", path: "/api/v1/agent/xiaoze/threads", module: "agent", stability: "mvp" },
+  { id: "xiaoze.getThread", method: "GET", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
+  { id: "xiaoze.patchThread", method: "PATCH", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
+  { id: "xiaoze.deleteThread", method: "DELETE", path: "/api/v1/agent/xiaoze/threads/:threadId", module: "agent", stability: "mvp" },
 
   { id: "operations.live", method: "GET", path: "/health/live", module: "operations", stability: "commercial-readiness" },
   { id: "operations.ready", method: "GET", path: "/health/ready", module: "operations", stability: "commercial-readiness" },

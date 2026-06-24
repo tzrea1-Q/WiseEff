@@ -32,10 +32,13 @@ describe("AgentInsightBar", () => {
       />
     );
 
+    expect(screen.getByText("Agent 建议")).toBeInTheDocument();
     expect(screen.getByText(/高风险闲置参数/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "查看闲置参数" }));
+    const action = screen.getByRole("button", { name: "查看闲置参数" });
+    expect(action).toHaveClass("insight-action", "insight-action--primary");
+    fireEvent.click(action);
     expect(onAction).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "今天先不看" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "今天先不看" })).toHaveClass("insight-action--ghost");
   });
 
   it("removes a dismissed insight and persists it in session storage", () => {

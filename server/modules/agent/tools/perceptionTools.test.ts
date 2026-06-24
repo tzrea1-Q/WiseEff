@@ -44,6 +44,37 @@ describe("createPerceptionTools", () => {
     expect(result.summary).toContain("p1");
     expect(result.citations[0]?.type).toBe("parameter");
   });
+
+  it("searchParameters returns description and explanation for grounding", async () => {
+    const searchDb = {
+      query: async <Row,>(_text: string, _values?: unknown[]) =>
+        ({
+          rows: [
+            {
+              id: "battery-temp-target",
+              name: "battery_temp_target_c",
+              description: "电池快充过程中的目标温度区间。",
+              explanation: "配合散热策略控制电芯温度。",
+              module: "Battery Safety",
+              default_range: "30 - 42",
+              unit: "°C",
+              project_id: "aurora",
+              current_value: "38",
+              recommended_value: "35",
+              risk: "Medium"
+            }
+          ] as Row[],
+          rowCount: 1
+        }) as { rows: Row[]; rowCount: number | null }
+    };
+    const tool = createPerceptionTools({ db: searchDb }).find((t) => t.name === "perception.searchParameters")!;
+    const result = await tool.run(adminContext as any, { projectId: "aurora", query: "battery_temp_target_c" });
+    const parameter = (result.data as { parameters?: Array<Record<string, unknown>> }).parameters?.[0];
+    expect(parameter?.description).toBe("电池快充过程中的目标温度区间。");
+    expect(parameter?.explanation).toBe("配合散热策略控制电芯温度。");
+    expect(parameter?.recommended_value).toBe("35");
+    expect(result.citations[0]?.snippet).toContain("电池快充");
+  });
 });
 
 describe("perception authz boundary", () => {

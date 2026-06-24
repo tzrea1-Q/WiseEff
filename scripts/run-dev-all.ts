@@ -119,7 +119,7 @@ function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
     DEBUG_DEVICE_GATEWAY_MODE: "simulator",
     DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
     ...env,
-    ...(missingLiveAgentSettings ? { AGENT_PROVIDER: "deterministic" } : {})
+    ...(missingLiveAgentSettings ? { AGENT_PROVIDER: "deterministic", XIAOZE_DETERMINISTIC: "true" } : {})
   };
 }
 
@@ -380,7 +380,8 @@ function stopServices(children: ChildProcess[]) {
 }
 
 async function runDevAll() {
-  await import("dotenv/config");
+  const { loadDotenvFiles } = await import("../server/config/loadDotenv");
+  loadDotenvFiles();
   const dockerCompose = await resolveDockerCompose({ composeFile: "compose.yaml" });
   const plan = buildDevAllPlan(process.env, process.platform, dockerCompose);
   const apiPort = Number(plan.services[0].env?.PORT ?? process.env.PORT ?? 8787);

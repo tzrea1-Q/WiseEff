@@ -335,6 +335,23 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "AgentApprovalRequest",
     responseBody: "AgentTurnResponse"
   },
+  "xiaoze.run": { summary: "Run Xiaoze AG-UI agent", tags: ["agent"], responseBody: "GenericObjectResponse" },
+  "xiaoze.suggest": { summary: "Run Xiaoze proactive suggest pass", tags: ["agent"], responseBody: "GenericObjectResponse" },
+  "xiaoze.listThreads": { summary: "List Xiaoze chat threads", tags: ["agent"], responseBody: "GenericObjectResponse" },
+  "xiaoze.createThread": {
+    summary: "Create Xiaoze chat thread id",
+    tags: ["agent"],
+    responseBody: "GenericObjectResponse",
+    successStatus: 201
+  },
+  "xiaoze.getThread": { summary: "Get Xiaoze chat thread", tags: ["agent"], responseBody: "GenericObjectResponse" },
+  "xiaoze.patchThread": {
+    summary: "Update Xiaoze chat thread title",
+    tags: ["agent"],
+    requestBody: "GenericObjectRequest",
+    responseBody: "GenericObjectResponse"
+  },
+  "xiaoze.deleteThread": { summary: "Archive Xiaoze chat thread", tags: ["agent"], responseBody: "GenericObjectResponse" },
 
   "operations.live": { summary: "Liveness check", tags: ["operations"], responseBody: "LiveHealthResponse" },
   "operations.ready": { summary: "Readiness check", tags: ["operations"], responseBody: "ReadyHealthResponse" },

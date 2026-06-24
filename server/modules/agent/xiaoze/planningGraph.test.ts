@@ -88,6 +88,101 @@ describe("createPlanningAgent", () => {
     expect(resumed.text).toContain("cr-1");
   });
 
+  it("answers a fresh turn on the same thread without reusing prior text", async () => {
+    const model = fakeModelSequence([
+      { content: "I am Xiaoze.", reasoning: "The user asked who I am." },
+      { content: "WiseEff supports parameters, logs, and debugging.", reasoning: "The user asked about platform capabilities." }
+    ]);
+    const agent = createPlanningAgent({
+      model,
+      runTool: vi.fn(),
+      listTools: () => [],
+      checkpointer: createXiaozeCheckpointer()
+    });
+
+    const first = await agent.run({ message: "你是谁？", context: {}, threadId: "t-multi" });
+    expect(first.text).toBe("I am Xiaoze.");
+    expect(first.reasoning).toBe("The user asked who I am.");
+
+    const second = await agent.run({
+      message: "请告诉我本平台有什么能力",
+      context: {},
+      threadId: "t-multi"
+    });
+    expect(second.text).toBe("WiseEff supports parameters, logs, and debugging.");
+    expect(second.reasoning).toBe("The user asked about platform capabilities.");
+  });
+
+  it("includes prompt debug snapshot when includePromptDebug is enabled", async () => {
+    const tools = [{ name: "perception.getProjectOverview", description: "Project overview", schema: { type: "object" } }];
+    const agent = createPlanningAgent({
+      model: fakeModelSequence([{ content: "Answer" }]),
+      runTool: vi.fn(),
+      listTools: () => tools,
+      checkpointer: createXiaozeCheckpointer()
+    });
+
+    const result = await agent.run({
+      message: "hello",
+      context: { projectId: "aurora" },
+      threadId: "prompt-debug-turn",
+      includePromptDebug: true
+    });
+
+    expect(result.promptDebug?.userMessage).toBe("hello");
+    expect(result.promptDebug?.context.projectId).toBe("aurora");
+    expect(result.promptDebug?.tools).toEqual(tools);
+    expect(result.promptDebug?.llmMessages).toHaveLength(3);
+    expect(result.promptDebug?.llmMessages.at(-1)).toMatchObject({ role: "assistant", content: "Answer" });
+  });
+
+  it("includes expanded llm message trace after tool calls", async () => {
+    const tools = [{ name: "perception.getProjectOverview", description: "Project overview", schema: { type: "object" } }];
+    const agent = createPlanningAgent({
+      model: fakeModelSequence([
+        { toolCalls: [toolCall("perception.getProjectOverview", { projectId: "aurora" })] },
+        { content: "Answer" }
+      ]),
+      runTool: vi.fn().mockResolvedValue({ summary: "ok", data: {}, citations: [] }),
+      listTools: () => tools,
+      checkpointer: createXiaozeCheckpointer()
+    });
+
+    const result = await agent.run({
+      message: "summarize aurora",
+      context: { projectId: "aurora" },
+      threadId: "prompt-debug-trace",
+      includePromptDebug: true
+    });
+
+    expect(result.promptDebug?.llmMessages.length).toBeGreaterThan(2);
+    expect(result.promptDebug?.llmMessages.some((message) => (message as { role?: string }).role === "tool")).toBe(true);
+  });
+
+  it("includes the final assistant message in prompt debug trace after tool grounding", async () => {
+    const tools = [{ name: "perception.getProjectOverview", description: "Project overview", schema: { type: "object" } }];
+    const agent = createPlanningAgent({
+      model: fakeModelSequence([
+        { toolCalls: [toolCall("perception.getProjectOverview", { projectId: "aurora" })] },
+        { content: "Aurora has 12 parameters." }
+      ]),
+      runTool: vi.fn().mockResolvedValue({ summary: "ok", data: {}, citations: [] }),
+      listTools: () => tools,
+      checkpointer: createXiaozeCheckpointer()
+    });
+
+    const result = await agent.run({
+      message: "summarize aurora",
+      context: { projectId: "aurora" },
+      threadId: "prompt-debug-final-assistant",
+      includePromptDebug: true
+    });
+
+    expect(result.text).toBe("Aurora has 12 parameters.");
+    expect(result.promptDebug?.llmMessages.length).toBeGreaterThanOrEqual(5);
+    expect(result.promptDebug?.llmMessages.at(-1)).toMatchObject({ role: "assistant", content: "Aurora has 12 parameters." });
+  });
+
   it("halts gracefully on reject without mutation", async () => {
     const checkpointer = createXiaozeCheckpointer();
     const approvalBridge = {

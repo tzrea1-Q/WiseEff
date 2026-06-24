@@ -4,6 +4,7 @@ export type XiaozePageContextInput = {
   path: string;
   pageKey: string;
   projectId?: string;
+  projectName?: string;
   roleId?: string;
   visibleRecords?: unknown[];
 };

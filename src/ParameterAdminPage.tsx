@@ -88,10 +88,11 @@ export function ParameterAdminPage({
             headline: `参数库里有 ${highRiskOrphans.length} 个高风险闲置参数，建议复核`,
             meta: `闲置合计 ${orphanCount} · 其中高风险 ${highRiskOrphans.length}`,
             actions: [
-              { id: "view-orphans", label: "查看闲置参数", onClick: () => updateSearch({ coverage: "orphan" }) },
+              { id: "view-orphans", label: "查看闲置参数", variant: "secondary", onClick: () => updateSearch({ coverage: "orphan" }) },
               {
                 id: "draft-cleanup",
                 label: "生成清理建议",
+                variant: "primary",
                 onClick: () =>
                   dispatch({
                     type: "AGENT_ACTION_EXECUTED",
@@ -287,6 +288,7 @@ export function ParameterAdminPage({
       <KpiStrip items={kpiItems} />
       <AgentInsightBar
         dismissedIds={state.insightDismissedIds}
+        eyebrow="管理洞察"
         items={insights}
         persistKey="parameter-admin-insights"
         onDismiss={(insightId) => dispatch({ type: "DISMISS_INSIGHT", insightId })}

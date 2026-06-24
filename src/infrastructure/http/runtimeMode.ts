@@ -32,5 +32,17 @@ export function parseXiaozeProactiveEnabled(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
 }
 
+export function parseXiaozeReasoningDevExpanded(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
+export function parseXiaozePromptDebugEnabled(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
 export const xiaozeEnabled = parseXiaozeEnabled(import.meta.env.VITE_XIAOZE_ENABLED);
 export const xiaozeProactiveEnabled = parseXiaozeProactiveEnabled(import.meta.env.VITE_XIAOZE_PROACTIVE_ENABLED);
+export const xiaozeReasoningDevExpanded =
+  import.meta.env.MODE !== "production" && parseXiaozeReasoningDevExpanded(import.meta.env.VITE_XIAOZE_REASONING_DEV_EXPANDED);
+export const xiaozePromptDebugEnabled =
+  import.meta.env.MODE !== "production" && parseXiaozePromptDebugEnabled(import.meta.env.VITE_XIAOZE_PROMPT_DEBUG);

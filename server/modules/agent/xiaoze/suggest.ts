@@ -3,6 +3,7 @@ import type { AgentCitation, AgentToolResult } from "../types";
 
 export type XiaozeSuggestContext = {
   projectId?: string;
+  projectName?: string;
   pageKey?: string;
   path?: string;
 };
@@ -22,11 +23,120 @@ export type XiaozeSuggestResult = {
 const PAGE_SUGGEST_TOOLS: Record<string, string> = {
   "parameter-review": "perception.getProjectOverview",
   parameters: "perception.getProjectOverview",
-  "log-analysis": "perception.getProjectOverview"
+  logs: "perception.getRecentLogConclusions"
+};
+
+type LogInsightRow = {
+  status?: string;
+  conclusion?: string | null;
+  severity?: string;
 };
 
 function isForbiddenError(error: unknown) {
   return error instanceof ApiError && error.code === "FORBIDDEN";
+}
+
+function formatProjectMeta(projectId: string, projectName?: string) {
+  const trimmedName = projectName?.trim();
+  if (trimmedName) {
+    return `项目：${trimmedName}`;
+  }
+  return `项目 ID：${projectId}`;
+}
+
+function truncateText(value: string, maxLength = 48) {
+  const trimmed = value.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength)}…`;
+}
+
+function buildParameterSuggestion(options: {
+  pageKey: string;
+  projectId: string;
+  projectName?: string;
+  result: AgentToolResult;
+}): XiaozeSuggestionItem | null {
+  const overviewData = options.result.data as { open_change_requests?: number } | undefined;
+  const openChangeRequests = overviewData?.open_change_requests ?? 0;
+  if (openChangeRequests <= 0) {
+    return null;
+  }
+
+  const headline =
+    options.pageKey === "parameter-review"
+      ? `当前有 ${openChangeRequests} 条参数变更待审阅`
+      : `有 ${openChangeRequests} 条参数变更待审阅`;
+
+  return {
+    id: `suggest-${options.pageKey}-${options.projectId}`,
+    tone: "warning",
+    headline,
+    meta: formatProjectMeta(options.projectId, options.projectName),
+    citations: options.result.citations
+  };
+}
+
+function buildLogSuggestion(options: {
+  projectId: string;
+  projectName?: string;
+  result: AgentToolResult;
+}): XiaozeSuggestionItem | null {
+  const logs = ((options.result.data as { logs?: LogInsightRow[] } | undefined)?.logs ?? []).filter(Boolean);
+  if (logs.length === 0) {
+    return null;
+  }
+
+  const failedCount = logs.filter((row) => row.status === "Failed").length;
+  if (failedCount > 0) {
+    return {
+      id: `suggest-logs-${options.projectId}`,
+      tone: "danger",
+      headline: `有 ${failedCount} 条日志分析失败，建议优先查看`,
+      meta: formatProjectMeta(options.projectId, options.projectName),
+      citations: options.result.citations
+    };
+  }
+
+  const processingCount = logs.filter((row) => row.status === "Processing").length;
+  if (processingCount > 0) {
+    return {
+      id: `suggest-logs-${options.projectId}`,
+      tone: "warning",
+      headline: `有 ${processingCount} 条日志仍在分析中，可稍后回来查看结论`,
+      meta: formatProjectMeta(options.projectId, options.projectName),
+      citations: options.result.citations
+    };
+  }
+
+  const latestConclusion = logs.find((row) => row.conclusion?.trim())?.conclusion?.trim();
+  if (!latestConclusion) {
+    return null;
+  }
+
+  return {
+    id: `suggest-logs-${options.projectId}`,
+    tone: "neutral",
+    headline: `最近日志结论：${truncateText(latestConclusion)}`,
+    meta: formatProjectMeta(options.projectId, options.projectName),
+    citations: options.result.citations
+  };
+}
+
+function buildSuggestion(options: {
+  pageKey: string;
+  projectId: string;
+  projectName?: string;
+  result: AgentToolResult;
+}): XiaozeSuggestionItem | null {
+  if (options.pageKey === "logs") {
+    return buildLogSuggestion(options);
+  }
+  if (options.pageKey === "parameters" || options.pageKey === "parameter-review") {
+    return buildParameterSuggestion(options);
+  }
+  return null;
 }
 
 export async function runXiaozeSuggest(options: {
@@ -39,10 +149,9 @@ export async function runXiaozeSuggest(options: {
     return { suggestions: [] };
   }
 
-  const pageKey = options.context.pageKey ?? "parameters";
+  const pageKey = options.context.pageKey ?? "";
   const preferredTool = PAGE_SUGGEST_TOOLS[pageKey];
-  const toolName = preferredTool && readTools.includes(preferredTool) ? preferredTool : readTools[0];
-  if (!toolName || toolName.startsWith("action.")) {
+  if (!preferredTool || !readTools.includes(preferredTool)) {
     return { suggestions: [] };
   }
 
@@ -51,32 +160,19 @@ export async function runXiaozeSuggest(options: {
   }
 
   try {
-    const result = await options.runTool(toolName, { projectId: options.context.projectId });
+    const result = await options.runTool(preferredTool, { projectId: options.context.projectId });
     if (!result.summary?.trim()) {
       return { suggestions: [] };
     }
 
-    const overviewData = result.data as { open_change_requests?: number; parameter_count?: number } | undefined;
-    let headline = result.summary;
-    if (typeof overviewData?.open_change_requests === "number" && overviewData.open_change_requests > 0) {
-      headline = `${overviewData.open_change_requests} open change requests pending review`;
-    }
+    const suggestion = buildSuggestion({
+      pageKey,
+      projectId: options.context.projectId,
+      projectName: options.context.projectName,
+      result
+    });
 
-    const tone: XiaozeSuggestionItem["tone"] = /high-risk|pending review|warning/i.test(headline)
-      ? "warning"
-      : "neutral";
-
-    return {
-      suggestions: [
-        {
-          id: `suggest-${pageKey}-${options.context.projectId}`,
-          tone,
-          headline,
-          meta: options.context.projectId ? `Project ${options.context.projectId}` : undefined,
-          citations: result.citations
-        }
-      ]
-    };
+    return { suggestions: suggestion ? [suggestion] : [] };
   } catch (error) {
     if (isForbiddenError(error)) {
       return { suggestions: [] };

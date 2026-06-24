@@ -13,8 +13,14 @@ type OverviewRow = {
 type ParameterSearchRow = {
   id: string;
   name: string;
+  description: string;
+  explanation: string;
+  module: string;
+  default_range: string;
+  unit: string;
   project_id: string;
   current_value: string | null;
+  recommended_value: string | null;
   risk: string | null;
 };
 
@@ -83,8 +89,14 @@ select $2::text as project_id,
           `
 select pd.id,
        pd.name,
+       pd.description,
+       pd.explanation,
+       pd.module,
+       pd.default_range,
+       pd.unit,
        ppv.project_id,
        ppv.current_value,
+       ppv.recommended_value,
        pd.risk
 from parameter_definitions pd
 join project_parameter_values ppv
@@ -92,7 +104,7 @@ join project_parameter_values ppv
  and ppv.organization_id = pd.organization_id
 where pd.organization_id = $1
   and ($2::text is null or ppv.project_id = $2)
-  and ($3::text = '%' or pd.name ilike $3)
+  and ($3::text = '%' or pd.name ilike $3 or pd.description ilike $3 or pd.explanation ilike $3)
 order by pd.name asc
 limit 20
           `,
@@ -103,13 +115,27 @@ limit 20
             rows.length > 0
               ? `Found ${rows.length} parameters${query ? ` matching "${query}"` : ""}.`
               : `No parameters found${query ? ` matching "${query}"` : ""}.`,
-          data: { parameters: rows },
+          data: {
+            parameters: rows.map((row) => ({
+              id: row.id,
+              name: row.name,
+              description: row.description,
+              explanation: row.explanation,
+              module: row.module,
+              range: row.default_range,
+              unit: row.unit,
+              project_id: row.project_id,
+              current_value: row.current_value,
+              recommended_value: row.recommended_value,
+              risk: row.risk
+            }))
+          },
           citations: rows.map((row) => ({
             type: "parameter" as const,
             id: row.id,
             label: row.name,
             href: `/parameters?parameterId=${encodeURIComponent(row.id)}`,
-            snippet: row.current_value ?? undefined
+            snippet: row.description || row.explanation || row.current_value || undefined
           }))
         };
       }

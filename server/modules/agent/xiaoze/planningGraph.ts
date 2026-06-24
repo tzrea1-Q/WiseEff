@@ -20,6 +20,9 @@ import type {
   PerceptionModelToolCall,
   PerceptionToolDescriptor
 } from "./perceptionAgent";
+import { normalizeModelResponse } from "./perceptionAgent";
+import { formatToolCatalogForSystemPrompt } from "./toolCatalog";
+import { buildXiaozePromptDebugSnapshot } from "./promptDebug";
 
 export type PlanningResumeDecision = Pick<
   ApprovalBridgeResumeInput,
@@ -62,7 +65,7 @@ const PlanningState = Annotation.Root({
     default: () => 0
   }),
   perceivedCitations: Annotation<AgentToolResult["citations"]>({
-    reducer: (left, update) => [...left, ...(update ?? [])],
+    reducer: (_, update) => update ?? [],
     default: () => []
   }),
   context: Annotation<PerceptionAgentContext>({
@@ -73,12 +76,16 @@ const PlanningState = Annotation.Root({
     reducer: (_, update) => update,
     default: () => undefined
   }),
-  interrupt: Annotation<PerceptionAgentRunResult["interrupt"]>({
+  reasoning: Annotation<string | undefined>({
     reducer: (_, update) => update,
     default: () => undefined
   }),
+  interrupt: Annotation<PerceptionAgentRunResult["interrupt"]>({
+    reducer: (_, update) => (update === null ? undefined : update),
+    default: () => undefined
+  }),
   pendingMutatingCall: Annotation<PerceptionModelToolCall | undefined>({
-    reducer: (_, update) => update,
+    reducer: (_, update) => (update === null ? undefined : update),
     default: () => undefined
   }),
   turnCount: Annotation<number>({
@@ -107,9 +114,23 @@ function mergeToolPayload(
   };
 }
 
-function buildInitialMessages(input: PlanningAgentRunInput): unknown[] {
+function beginTurnState(): Partial<PlanningGraphState> {
+  return {
+    step: 0,
+    turnCount: 0,
+    text: "",
+    reasoning: "",
+    halted: false,
+    pendingMutatingCall: null as unknown as undefined,
+    interrupt: null as unknown as undefined,
+    perceivedCitations: []
+  };
+}
+
+function buildPlanningLlmMessages(input: PlanningAgentRunInput, tools: PerceptionToolDescriptor[]): unknown[] {
+  const toolCatalog = formatToolCatalogForSystemPrompt(tools);
   return [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: [SYSTEM_PROMPT, toolCatalog].join("\n\n") },
     {
       role: "user",
       content: [
@@ -119,6 +140,10 @@ function buildInitialMessages(input: PlanningAgentRunInput): unknown[] {
       ].join("")
     }
   ];
+}
+
+function buildInitialMessages(input: PlanningAgentRunInput, tools: PerceptionToolDescriptor[]): unknown[] {
+  return buildPlanningLlmMessages(input, tools);
 }
 
 function extractInterruptFromState(finalState: PlanningGraphState & { __interrupt__?: Array<{ value?: unknown }> }): PerceptionAgentRunResult["interrupt"] | undefined {
@@ -145,18 +170,18 @@ export function createPlanningAgent(options: {
   const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
 
   function intentNode(state: PlanningGraphState): Partial<PlanningGraphState> {
-    if (state.messages.length > 0) {
-      return {};
-    }
     return {
-      planSteps: ["Understand user intent", "Perceive relevant data", "Plan and act with approval"],
-      step: 0,
-      turnCount: 0
+      ...beginTurnState(),
+      ...(state.planSteps.length === 0
+        ? {
+            planSteps: ["Understand user intent", "Perceive relevant data", "Plan and act with approval"]
+          }
+        : {})
     };
   }
 
   async function perceiveNode(state: PlanningGraphState): Promise<Partial<PlanningGraphState>> {
-    if (state.halted || state.text) {
+    if (state.halted || state.text?.trim()) {
       return {};
     }
     if (state.turnCount >= MAX_TURNS) {
@@ -165,7 +190,14 @@ export function createPlanningAgent(options: {
 
     const response = await options.model.invoke(state.messages);
     if (!response.toolCalls?.length) {
-      return { text: response.content ?? "", step: state.step + 1 };
+      const normalized = normalizeModelResponse(response);
+      const answer = normalized.answer?.trim();
+      return {
+        text: normalized.answer,
+        reasoning: normalized.reasoning,
+        messages: answer ? [...state.messages, { role: "assistant", content: answer }] : state.messages,
+        step: state.step + 1
+      };
     }
 
     const messages = [...state.messages, { role: "assistant", tool_calls: response.toolCalls }];
@@ -285,8 +317,13 @@ export function createPlanningAgent(options: {
       return {};
     }
     const response = await options.model.invoke(state.messages);
-    if (response.content) {
-      return { text: response.content, step: state.step + 1 };
+    if (response.content || response.reasoning) {
+      const normalized = normalizeModelResponse(response);
+      return {
+        text: normalized.answer,
+        reasoning: normalized.reasoning,
+        step: state.step + 1
+      };
     }
     return { turnCount: state.turnCount };
   }
@@ -346,6 +383,18 @@ export function createPlanningAgent(options: {
     listTools: options.listTools,
     async run(input: PlanningAgentRunInput): Promise<PerceptionAgentRunResult & { threadId: string }> {
       const config = { configurable: { thread_id: input.threadId } };
+      const tools = options.listTools();
+      const buildPromptDebug = (llmMessages: unknown[]) =>
+        input.includePromptDebug
+          ? buildXiaozePromptDebugSnapshot({
+              threadId: input.threadId,
+              message: input.message,
+              context: input.context,
+              llmMessages,
+              tools,
+              systemPolicy: SYSTEM_PROMPT
+            })
+          : undefined;
 
       await checkpointer.put(input.threadId, {
         planSteps: ["Understand user intent", "Perceive relevant data", "Plan and act with approval"],
@@ -353,12 +402,9 @@ export function createPlanningAgent(options: {
       });
 
       const initialState: Partial<PlanningGraphState> = {
-        messages: buildInitialMessages(input),
-        context: input.context,
-        perceivedCitations: [],
-        turnCount: 0,
-        step: 0,
-        halted: false
+        ...beginTurnState(),
+        messages: buildInitialMessages(input, tools),
+        context: input.context
       };
 
       try {
@@ -370,6 +416,7 @@ export function createPlanningAgent(options: {
           return {
             threadId: input.threadId,
             text: finalState.text ?? "",
+            reasoning: finalState.reasoning || undefined,
             citations: finalState.perceivedCitations,
             interrupt: interruptResult ?? finalState.interrupt
           };
@@ -379,10 +426,14 @@ export function createPlanningAgent(options: {
           __interrupt__?: Array<{ value?: unknown }>;
         };
         const interruptResult = extractInterruptFromState(finalState);
+        const llmMessages =
+          finalState.messages?.length > 0 ? finalState.messages : buildPlanningLlmMessages(input, tools);
         return {
           threadId: input.threadId,
           text: finalState.text ?? "",
+          reasoning: finalState.reasoning || undefined,
           citations: finalState.perceivedCitations,
+          promptDebug: buildPromptDebug(llmMessages),
           interrupt: interruptResult ?? finalState.interrupt
         };
       } catch (error) {
@@ -391,10 +442,16 @@ export function createPlanningAgent(options: {
             | { toolName?: string; payload?: Record<string, unknown>; citations?: AgentToolResult["citations"] }
             | undefined;
           if (value?.toolName && value.payload) {
+            const checkpoint = await graph.getState(config);
+            const llmMessages =
+              checkpoint.values.messages?.length > 0
+                ? checkpoint.values.messages
+                : buildPlanningLlmMessages(input, tools);
             return {
               threadId: input.threadId,
               text: "",
               citations: value.citations ?? [],
+              promptDebug: buildPromptDebug(llmMessages),
               interrupt: {
                 toolName: value.toolName,
                 payload: value.payload,
@@ -409,7 +466,9 @@ export function createPlanningAgent(options: {
   };
 }
 
-export function fakeModelSequence(responses: Array<{ toolCalls?: PerceptionModelToolCall[]; content?: string }>): PerceptionChatModel {
+export function fakeModelSequence(
+  responses: Array<{ toolCalls?: PerceptionModelToolCall[]; content?: string; reasoning?: string }>
+): PerceptionChatModel {
   let index = 0;
   return {
     async invoke() {
