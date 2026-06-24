@@ -30,6 +30,7 @@ export type DeviceBridgeReleaseItem = {
   version: string;
   sha256?: string;
   downloadUrl: string;
+  artifactKind?: "portable" | "installer";
 };
 
 export type DeviceBridgeReleaseManifest = {

@@ -12,7 +12,8 @@ const manifestItemSchema = z.object({
   version: z.string().min(1),
   artifact: z.string().min(1),
   sha256: z.string().min(1).optional(),
-  downloadUrl: z.string().min(1).optional()
+  downloadUrl: z.string().min(1).optional(),
+  artifactKind: z.enum(["portable", "installer"]).optional()
 });
 
 const manifestFileSchema = z.object({
@@ -27,6 +28,7 @@ export type BridgeReleaseItem = {
   version: string;
   downloadUrl: string;
   sha256?: string;
+  artifactKind?: "portable" | "installer";
 };
 
 export type BridgeReleaseManifest = {
@@ -106,6 +108,7 @@ export async function loadBridgeReleaseManifest(manifestPath: string): Promise<B
       arch: item.arch,
       version: item.version,
       downloadUrl: normalizeDownloadUrl(item),
+      artifactKind: item.artifactKind ?? "portable",
       ...(item.sha256 ? { sha256: item.sha256 } : {})
     }))
   );

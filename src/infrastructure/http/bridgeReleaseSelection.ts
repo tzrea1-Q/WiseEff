@@ -19,21 +19,31 @@ export function detectBrowserBridgeTarget(userAgent = typeof navigator === "unde
   return { platform: "linux", arch: "amd64" };
 }
 
+function pickPreferredRelease(items: DeviceBridgeReleaseItem[]) {
+  if (items.length === 0) {
+    return null;
+  }
+  const installer = items.find((item) => item.artifactKind === "installer");
+  return installer ?? items[0] ?? null;
+}
+
 export function pickBridgeReleaseForHost(
   items: DeviceBridgeReleaseItem[],
   target: BrowserBridgeTarget = detectBrowserBridgeTarget()
 ): DeviceBridgeReleaseItem | null {
-  const exact = items.find((item) => item.platform === target.platform && item.arch === target.arch);
+  const exactMatches = items.filter((item) => item.platform === target.platform && item.arch === target.arch);
+  const exact = pickPreferredRelease(exactMatches);
   if (exact) {
     return exact;
   }
 
-  const samePlatform = items.find((item) => item.platform === target.platform);
-  if (samePlatform) {
-    return samePlatform;
+  const samePlatform = items.filter((item) => item.platform === target.platform);
+  const platformMatch = pickPreferredRelease(samePlatform);
+  if (platformMatch) {
+    return platformMatch;
   }
 
-  return items[0] ?? null;
+  return pickPreferredRelease(items);
 }
 
 export function bridgePlatformLabel(platform: DeviceBridgePlatform) {
@@ -48,6 +58,29 @@ export function bridgePlatformLabel(platform: DeviceBridgePlatform) {
 }
 
 export function bridgeReleaseDownloadLabel(item: DeviceBridgeReleaseItem) {
+  if (item.artifactKind === "installer") {
+    if (item.platform === "windows") {
+      return "安装 Bridge（Windows）";
+    }
+    if (item.platform === "darwin") {
+      return item.arch === "arm64" ? "安装 Bridge（macOS Apple Silicon）" : "安装 Bridge（macOS Intel）";
+    }
+    return `安装 Bridge（${bridgePlatformLabel(item.platform)}）`;
+  }
+
   const archLabel = item.arch === "arm64" ? "Apple Silicon" : item.arch === "amd64" ? "x64" : item.arch;
   return `下载 ${bridgePlatformLabel(item.platform)} Bridge（${archLabel}）`;
+}
+
+export function listPortableBridgeReleases(items: DeviceBridgeReleaseItem[], primary: DeviceBridgeReleaseItem | null) {
+  return items.filter((item) => {
+    if (primary && item.downloadUrl === primary.downloadUrl) {
+      return false;
+    }
+    return item.artifactKind !== "installer";
+  });
+}
+
+export function listAlternateBridgeReleases(items: DeviceBridgeReleaseItem[], primary: DeviceBridgeReleaseItem | null) {
+  return items.filter((item) => !primary || item.downloadUrl !== primary.downloadUrl);
 }
