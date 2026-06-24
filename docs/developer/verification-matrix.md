@@ -57,6 +57,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M3.5 commercial readiness | `npm run test:m3-5` | PostgreSQL, object-store root, simulator gateway | Readiness, production config, leases, request/audit correlation. |
 | M4 Agent | `npm run test:m4` | PostgreSQL, M0/M1 seeds | Agent API, tool, approval, provider, or frontend Agent changes. |
 | Xiaoze P0 perception | `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts` plus `npm run test:server -- perceptionTools perceptionAgent agUiEndpoint` | PostgreSQL, M0/M1 seeds, `XIAOZE_RUNTIME_ENABLED=true`, `XIAOZE_DETERMINISTIC=true` for acceptance | CopilotKit/AG-UI perception surface, read-only `perception.*` tools, authz boundary, and SSE endpoint. |
+| Xiaoze P1 action | `npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts` plus `npm run test:server -- actionTools approvalBridge agUiEndpoint` and `npm test -- src/features/agent` | Same as P0 plus approval-chain persistence | Mutating `action.submitParameterChange`, AG-UI interrupt/resume, HITL approval card, reject/authz paths. |
 | M5 smoke | `npm run smoke:m5` | Live API URL by default; admin smoke token for pilot-readiness | Operations smoke against a running API. |
 | Manual acceptance preflight | `npm run acceptance:preflight` | `.env`, running API, worker, frontend, PostgreSQL/object store dependencies | Automates manual acceptance steps through runtime health checks. |
 | Browser acceptance | `npm run acceptance:browser` | `.env`, API-mode frontend/backend, PostgreSQL, object store, worker dependencies | Automates manual browser workflows A-H and writes generated evidence. |
@@ -103,17 +104,15 @@ M5.12 CI/synthetic rule: `.github/workflows/ci.yml` must keep a local non-HDC ac
 
 M6.2 identity rule: production `NODE_ENV=production` must use `AUTH_PROVIDER=oidc`. Local HMAC smoke is valid for deterministic local gates only. `npm run identity:local-oidc-drill` writes `docs/generated/m6-local-oidc-identity-evidence.md` with a temporary issuer/JWKS service, RS256 tokens, `/api/v1/me`, issuer/audience/expiry negative checks, and browser token-provider proof; this proves the implementation chain without requiring Keycloak. Target OIDC evidence must still be redacted and must prove discovery/JWKS, token expiry/issuer/audience negative checks, browser token acquisition/refresh/logout, `/api/v1/me`, WiseEff DB-backed active/role authorization, and Admin user-governance API/DB/audit evidence against the deployed IdP/API. `npm run identity:check` writes `docs/generated/m6-identity-evidence.md`; it cannot pass unless discovery, Admin `/api/v1/me`, wrong issuer, wrong audience, expired token, and browser runtime evidence statuses are all recorded as passed. Final M6 completion also requires `docs/generated/acceptance-operation-evidence/index.json` to contain target, non-local `PERM-USER-MGMT-001` evidence with `ui`, `api`, `db`, and `audit` assertions, including a successful Admin user-governance mutation and a non-Admin 401/403 rejection on the user-governance API.
 
-Pi-backed Agent provider changes should run the focused provider gate before broader M4 verification:
+Live Agent provider changes should run the focused provider gate before broader M4 verification:
 
 ```bash
-npm run agent:pi-eval
-npm test -- scripts/run-pi-agent-smoke.test.ts
-npm run test:server -- server/modules/agent/piProvider.test.ts server/modules/agent/providerRegistry.test.ts server/modules/agent/orchestrator.test.ts
+npm run test:server -- server/modules/agent/providerRegistry.test.ts server/modules/agent/orchestrator.test.ts
 npm run test:m4
 npm run build
 ```
 
-The M4 browser smoke remains deterministic unless a test explicitly configures a live provider. Pi adapter tests prove backend provider mapping, safety rejection, registry wiring, and WiseEff approval/audit boundaries. `npm run agent:pi-smoke` is optional and live-key dependent; run it only in an environment intentionally configured with `AGENT_API_FORMAT=pi`, `AGENT_PI_PROVIDER`, `AGENT_MODEL`, and `AGENT_API_KEY`.
+The M4 browser smoke remains deterministic unless a test explicitly configures a live provider. Live provider registry tests prove backend provider mapping, safety rejection, registry wiring, and WiseEff approval/audit boundaries for `wiseeff` / `openai` formats.
 
 ## Documentation-Only Changes
 

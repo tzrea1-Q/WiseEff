@@ -285,6 +285,42 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api"]
   },
   {
+    id: "XIAOZE-ACTION-APPROVE-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Approve a Xiaoze parameter change and persist agent-audited change request.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-APPROVE-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api", "audit"]
+  },
+  {
+    id: "XIAOZE-ACTION-REJECT-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Reject a Xiaoze parameter change without creating a change request.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-REJECT-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "XIAOZE-ACTION-AUTHZ-001",
+    priority: "P1",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Guest"],
+    action: "Deny Xiaoze mutating approval for users without parameter edit permission.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-ACTION-AUTHZ-001"],
+    specFiles: ["e2e/acceptance/xiaoze-action.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
     id: "PERM-GOV-001",
     priority: "P0",
     area: "permissions",

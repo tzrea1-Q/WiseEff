@@ -135,6 +135,24 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-ACTION-APPROVE-001",
+    workflow: "G",
+    title: "Xiaoze parameter change approval executes through the agent audit chain.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-REJECT-001",
+    workflow: "G",
+    title: "Rejecting a Xiaoze action approval does not mutate parameter state.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-AUTHZ-001",
+    workflow: "G",
+    title: "Users without edit permission cannot approve Xiaoze mutating actions.",
+    required: true
+  },
+  {
     id: "PERM-GOV-001",
     workflow: "H",
     title: "User governance page is Admin-only and active Admin cannot disable itself.",

@@ -3,6 +3,11 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: process.env.WISEEFF_ACCEPTANCE_ENV_FILE ?? ".env" });
 
+if (process.env.AGENT_API_FORMAT === "pi") {
+  process.env.AGENT_API_FORMAT = "wiseeff";
+  delete process.env.AGENT_PI_PROVIDER;
+}
+
 const baseURL = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL ?? "http://127.0.0.1:5173";
 const apiURL = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const apiAuthorization =
@@ -21,6 +26,7 @@ const webServers = [
     env: {
       PORT: apiPort,
       AGENT_PROVIDER: "deterministic",
+      AGENT_API_FORMAT: "wiseeff",
       AUTH_MODE: process.env.AUTH_MODE ?? "production",
       AUTH_PROVIDER: apiAuthProvider,
       ...(process.env.AUTH_TOKEN_ISSUER ? { AUTH_TOKEN_ISSUER: process.env.AUTH_TOKEN_ISSUER } : {}),

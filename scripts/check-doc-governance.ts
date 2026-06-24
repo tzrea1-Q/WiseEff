@@ -57,7 +57,6 @@ export const requiredEnvExampleKeys = [
   "HDC_TIMEOUT_MS",
   "AGENT_PROVIDER",
   "AGENT_API_FORMAT",
-  "AGENT_PI_PROVIDER",
   "AGENT_API_BASE_URL",
   "AGENT_MODEL",
   "AGENT_API_KEY",
