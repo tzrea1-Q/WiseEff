@@ -31,7 +31,7 @@ The product is suitable for controlled staging and pilot evidence collection. It
 
 ## Active Plans
 
-- [Xiaoze P0 Perception](2026-06-24-xiaoze-p0-perception.md): CopilotKit + AG-UI read-only perception agent; foundation for P1 action and P2 planning.
+- Xiaoze general agent: P0 perception is complete ([completed plan](../completed/2026-06-24-xiaoze-p0-perception.md)); P1 action and P2 planning are the next phases per the [design spec](../../superpowers/specs/2026-06-24-xiaoze-agent-design.md).
 
 ## Current Active Focus
 
