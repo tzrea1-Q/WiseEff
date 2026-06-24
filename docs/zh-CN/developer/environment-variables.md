@@ -91,6 +91,15 @@
 | `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | 请求超时。 |
 | `AGENT_PROMPT_VERSION` | `m7-pi-agent-v1` | traces | 写入 provider trace metadata。 |
 
+## Xiaoze 感知（P0）
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `XIAOZE_RUNTIME_ENABLED` | `false` | Xiaoze AG-UI 端点 | 设为 `true` 注册 `POST /api/v1/agent/xiaoze`。 |
+| `XIAOZE_DETERMINISTIC` | `false` | 验收/离线测试 | 注入 fake 模型，不依赖真实 LLM。 |
+| `XIAOZE_MODEL` | 空（回退 `AGENT_MODEL`） | live Xiaoze | LangChain `ChatOpenAI` 模型名。 |
+| `VITE_XIAOZE_ENABLED` | `false` | 前端 Xiaoze UI | 挂载 CopilotKit 聊天面板。非 deterministic 时复用 `AGENT_API_*`。 |
+
 ## 队列和 Worker
 
 | 变量 | 本地默认值 | 用途 | 说明 |

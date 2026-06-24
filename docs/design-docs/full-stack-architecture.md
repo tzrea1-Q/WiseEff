@@ -22,6 +22,12 @@ PostgreSQL is the source of truth. Object storage holds log/file bytes through a
 
 Agent providers produce plans and tool requests; WiseEff owns tool execution, approval, authorization, and audit. Safe provider evidence flows through provider metadata, `/health/ready`, pilot-readiness, `/metrics`, and trace fields without exposing keys or raw prompts. Device writes use simulator or HDC gateway seams and require guarded write behavior.
 
+### Xiaoze P0 Perception Seam
+
+When `XIAOZE_RUNTIME_ENABLED=true`, the backend exposes `POST /api/v1/agent/xiaoze` as an AG-UI SSE endpoint. A LangGraph.js perceive/answer agent (LangChain `ChatOpenAI` against the OpenAI-compatible `AGENT_API_*` endpoint, or a deterministic fake model in tests) calls read-only perception tools registered in the existing `ToolRegistry`. Each tool passes through `ToolRegistry.authorize` (`requireAgentPermission` + project scope); out-of-scope access returns `FORBIDDEN` and the agent surfaces a safe non-data answer.
+
+The frontend mounts CopilotKit V2 with a self-managed `@ag-ui/client` `HttpAgent` when `VITE_XIAOZE_ENABLED=true`. Per-page `useAgentContext` declares current-page visible state under the `wiseeff.page` description. P0 is read-only perception only; mutating tools, HITL approval UI, and proactive autonomy are deferred to P1/P2. The legacy Pi provider files remain in the repository but are not used by the Xiaoze runtime (Pi removal is tracked for P1).
+
 ## Operations
 
 Operations modules expose liveness, readiness, metrics, pilot readiness, and release readiness. Self-hosted runtime uses separate web, API, worker, PostgreSQL, Redis, object storage, and reverse proxy services.

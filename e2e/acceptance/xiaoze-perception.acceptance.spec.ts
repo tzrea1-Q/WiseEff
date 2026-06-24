@@ -71,13 +71,6 @@ function adminHeaders() {
 }
 
 function limitedProjectHeaders() {
-  if (process.env.AUTH_PROVIDER === "local" || !process.env.AUTH_TOKEN_HMAC_SECRET?.trim()) {
-    return {
-      ...smokeHeaders(),
-      Accept: "text/event-stream",
-      "x-wiseeff-user": "acceptance-xiaoze-limited"
-    };
-  }
   const authorization = bearerTokenFor({
     userId: "acceptance-xiaoze-limited",
     roleId: "guest",
@@ -87,7 +80,11 @@ function limitedProjectHeaders() {
   if (authorization) {
     return { "Content-Type": "application/json", Authorization: authorization, Accept: "text/event-stream" };
   }
-  return { ...smokeHeaders(), Accept: "text/event-stream", "x-wiseeff-user": "acceptance-xiaoze-limited" };
+  return {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+    "x-wiseeff-user": "acceptance-xiaoze-limited"
+  };
 }
 
 function readSseText(responseBody: string) {
@@ -109,7 +106,7 @@ function readSseText(responseBody: string) {
 }
 
 async function postXiaozeQuestion(
-  request: { post: (url: string, options?: object) => Promise<{ status: () => number; text: () => Promise<string> }> },
+  request: { post: (url: string, options?: object) => Promise<{ status: () => number; text: () => Promise<string>; headers: () => Record<string, string> }> },
   headers: Record<string, string>,
   message: string,
   projectIdValue = projectId
@@ -130,6 +127,7 @@ async function postXiaozeQuestion(
   });
 
   return {
+    response,
     status: response.status(),
     body: await response.text()
   };
@@ -176,11 +174,20 @@ test.describe("Xiaoze P0 perception", () => {
     const answer = readSseText(result.body);
     expect(answer.toLowerCase()).toMatch(/project|parameter|parameters/);
 
-    recordOperationEvidence(testInfo, {
+    await recordOperationEvidence({
       operationId: "XIAOZE-PERCEPTION-001",
+      title: "xiaoze grounded in-scope answer",
+      status: "passed",
       route: "/parameters",
-      action: "ask grounded xiaoze question",
-      apiSummary: summarizeApiResponse({ status: result.status, body: answer.slice(0, 240) })
+      testInfo,
+      api: [
+        summarizeApiResponse(result.response, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: answer.slice(0, 240)
+        })
+      ],
+      notes: "Xiaoze returned a grounded read-only answer for an in-scope project question."
     });
   });
 
@@ -198,11 +205,20 @@ test.describe("Xiaoze P0 perception", () => {
     expect(answer.toLowerCase()).toMatch(/not permitted|cannot|无权限|forbidden/);
     expect(answer.toLowerCase()).not.toMatch(/secret-project: \d+ parameters/);
 
-    recordOperationEvidence(testInfo, {
+    await recordOperationEvidence({
       operationId: "XIAOZE-PERCEPTION-AUTHZ-001",
+      title: "xiaoze out-of-scope safe answer",
+      status: "passed",
       route: "/parameters",
-      action: "ask out-of-scope xiaoze question",
-      apiSummary: summarizeApiResponse({ status: result.status, body: answer.slice(0, 240) })
+      testInfo,
+      api: [
+        summarizeApiResponse(result.response, {
+          method: "POST",
+          path: "/api/v1/agent/xiaoze",
+          responseSummary: answer.slice(0, 240)
+        })
+      ],
+      notes: "Xiaoze returned a safe non-data answer for an out-of-scope project question."
     });
   });
 

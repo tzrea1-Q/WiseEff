@@ -56,6 +56,7 @@ Use the narrowest command that proves the change while developing. Before finish
 | M3 debugging | `npm run test:m3` | PostgreSQL, simulator gateway, M0/M1/M3 seeds | Debugging service/gateway/runtime changes. |
 | M3.5 commercial readiness | `npm run test:m3-5` | PostgreSQL, object-store root, simulator gateway | Readiness, production config, leases, request/audit correlation. |
 | M4 Agent | `npm run test:m4` | PostgreSQL, M0/M1 seeds | Agent API, tool, approval, provider, or frontend Agent changes. |
+| Xiaoze P0 perception | `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts` plus `npm run test:server -- perceptionTools perceptionAgent agUiEndpoint` | PostgreSQL, M0/M1 seeds, `XIAOZE_RUNTIME_ENABLED=true`, `XIAOZE_DETERMINISTIC=true` for acceptance | CopilotKit/AG-UI perception surface, read-only `perception.*` tools, authz boundary, and SSE endpoint. |
 | M5 smoke | `npm run smoke:m5` | Live API URL by default; admin smoke token for pilot-readiness | Operations smoke against a running API. |
 | Manual acceptance preflight | `npm run acceptance:preflight` | `.env`, running API, worker, frontend, PostgreSQL/object store dependencies | Automates manual acceptance steps through runtime health checks. |
 | Browser acceptance | `npm run acceptance:browser` | `.env`, API-mode frontend/backend, PostgreSQL, object store, worker dependencies | Automates manual browser workflows A-H and writes generated evidence. |

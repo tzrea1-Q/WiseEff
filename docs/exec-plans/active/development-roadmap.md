@@ -29,6 +29,10 @@ The product is suitable for controlled staging and pilot evidence collection. It
 - M5: commercial pilot readiness and evidence governance.
 - M6: self-hosted production hardening, including identity, storage/backup, queue, observability, release, rollback, capacity, and target evidence.
 
+## Active Plans
+
+- [Xiaoze P0 Perception](2026-06-24-xiaoze-p0-perception.md): CopilotKit + AG-UI read-only perception agent; foundation for P1 action and P2 planning.
+
 ## Current Active Focus
 
 Active plans under `docs/exec-plans/active/` track remaining target evidence and self-hosted hardening. Do not move a plan to completed until its Documentation Update Gate and verification commands pass.

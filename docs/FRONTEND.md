@@ -12,7 +12,7 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/infrastructure/mock/`: mock state and mock implementations for demos/tests.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
-- `src/features/agent/`: unified Agent UI.
+- `src/features/agent/`: unified Agent UI and Xiaoze CopilotKit perception surface (`XiaozeProvider`, `useXiaozePageContext`).
 - `src/test/setup.ts`: Vitest DOM setup.
 
 ## Runtime Modes
@@ -115,6 +115,17 @@ Runtime split:
 `UnifiedAgent` renders API assistant confidence as a percentage and shows citations from returned messages. Approval-required tool calls open the existing confirmation dialog and call `approveToolCall` or `rejectToolCall`; mutating tools remain backend-gated by approval state, authz, and audit.
 
 The frontend contract is unchanged by the Pi-backed live provider. `AGENT_API_FORMAT=pi` is selected on the backend, and `AgentGateway` continues to call the same `/api/v1/agent` endpoints without loading Pi client code, Pi tools, or streaming UI behavior.
+
+## Xiaoze Perception (P0)
+
+When `VITE_XIAOZE_ENABLED=true`, the app mounts `XiaozeProvider` (`@copilotkit/react-core/v2` + `@ag-ui/client` `HttpAgent`) and streams AG-UI events from `POST /api/v1/agent/xiaoze`. `UnifiedAgent` stops rendering the legacy WiseAgent FAB and instead registers page-visible state through `XiaozePageContextRegistrar` (`useAgentContext` with description `wiseeff.page`). P0 is read-only: no mutating tools, frontend actions, or HITL approval UI.
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `VITE_XIAOZE_ENABLED` | `false` | Enables CopilotKit Xiaoze chat and page-context registration. |
+| `XIAOZE_RUNTIME_ENABLED` (API) | `false` | Registers the AG-UI SSE endpoint and LangGraph perception agent. |
+| `XIAOZE_DETERMINISTIC` (API) | `false` | Offline deterministic model for acceptance/tests (no live LLM). |
+| `XIAOZE_MODEL` (API) | falls back to `AGENT_MODEL` | Model name for LangChain `ChatOpenAI`. |
 
 The M4 API smoke lives in `e2e/agent.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 

@@ -53,14 +53,14 @@ Rules:
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
-- `server/modules/agent/`: M4 Agent sessions, tools, approvals, and provider boundary.
+- `server/modules/agent/`: M4 Agent sessions, tools, approvals, provider boundary, and Xiaoze P0 perception (`server/modules/agent/xiaoze/`: LangGraph read-only agent + AG-UI SSE endpoint).
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
 - `server/observability/`: correlation context, structured log helpers, metrics registry, and tracing boundary.
 - `server/migrations/`: SQL schema baseline.
 
 The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
 
-The live Agent provider boundary supports `AGENT_API_FORMAT=wiseeff`, `openai`, and `pi`. The Pi path uses `@earendil-works/pi-ai` only inside the backend provider adapter; WiseEff still owns tool execution, authorization, approval records, and audit. Pi Coding Agent CLI, Pi filesystem tools, Pi shell tools, and project-local `.pi` extensions are not part of the WiseEff product runtime.
+The live Agent provider boundary supports `AGENT_API_FORMAT=wiseeff`, `openai`, and `pi`. Xiaoze P0 adds a parallel AG-UI/CopilotKit perception seam (`/api/v1/agent/xiaoze`) that reuses `ToolRegistry` authorization and read-only `perception.*` tools; LangGraph uses LangChain `ChatOpenAI` against the existing OpenAI-compatible endpoint. Pi removal is deferred to P1 (see `docs/exec-plans/tech-debt-tracker.md` TD-027).
 
 ## Data And Governance
 
