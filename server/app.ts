@@ -1,5 +1,6 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerAgentRoutes } from "./modules/agent/routes";
+import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
 import type { AgentProvider } from "./modules/agent/provider";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createLocalAuthService } from "./modules/auth/localAuth";
@@ -148,6 +149,11 @@ export function createWiseEffServer(
     provider: options.agentProvider,
     metrics,
     tracing
+  });
+  registerXiaozeRoutes(router, {
+    db: options.db,
+    env: options.env as ServerEnv | undefined,
+    getCurrentAuthContext: authResolver
   });
 
   router.get("/metrics", async () => {

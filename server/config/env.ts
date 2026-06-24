@@ -51,7 +51,16 @@ const rawEnvSchema = z.object({
   DEVICE_BRIDGE_ARTIFACT_ROOT: z.string().default("ops/self-hosted/bridge-artifacts"),
   DEVICE_BRIDGE_PAIRING_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
   DEVICE_BRIDGE_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
-  DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws")
+  DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws"),
+  XIAOZE_RUNTIME_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  XIAOZE_MODEL: z.string().optional(),
+  XIAOZE_DETERMINISTIC: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true")
 });
 
 export type ServerEnv = z.infer<typeof rawEnvSchema>;

@@ -8,7 +8,7 @@ import { loadServerEnv } from "./env";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const envExamplePath = path.join(projectRoot, ".env.example");
 const gitignorePath = path.join(projectRoot, ".gitignore");
-const allowedBlankKeys = new Set(["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_API_KEY"]);
+const allowedBlankKeys = new Set(["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_API_KEY", "XIAOZE_MODEL"]);
 
 function parseEnvExample(contents: string) {
   return Object.fromEntries(
