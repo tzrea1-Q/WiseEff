@@ -8,6 +8,7 @@ describe("deriveWizardStep", () => {
     { status: "not_paired", step: 2 },
     { status: "not_running", step: 2 },
     { status: "not_connected", step: 2 },
+    { status: "tools_missing", step: 3 },
     { status: "online_no_device", step: 3 },
     { status: "bridges_with_targets", step: "done" }
   ];

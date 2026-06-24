@@ -80,6 +80,8 @@ Runtime split:
 
 Primary connect flow: click the connect-local-device CTA → optional first-run confirm (`wiseeff.bridgeSchemeConfirm`) → `launchBridgeConnect()` opens `wiseeff-bridge://connect?server=<origin>&code=<6-digit>` → `pollLocalBridgeHealth()` probes `http://127.0.0.1:18787/health` for up to 30s → auto-detect when `connected: true`. Helpers live in `src/infrastructure/http/bridgeConnectLauncher.ts`.
 
+Phase B (Step 3 tools): health JSON includes `tools.adb` / `tools.hdc`. When the selected protocol tool is missing, `deriveBridgePanelStatus()` returns `tools_missing` and `LocalDeviceBridgeToolsPanel` shows an install-tools CTA via `bridgeToolInstallLauncher.ts` (`wiseeff-bridge://install-tools`, 120s poll). Detect failures mentioning missing adb/hdc map to the tools install CTA instead of the bridge-missing copy.
+
 CLI `pair` / `start` / `connect` commands are collapsed under **Advanced · CLI**. Portable zip/tar artifacts remain under **Other platforms** when installers are the primary CTA.
 
 The browser health probe is UI guidance only; bridge-backed device execution remains server-authorized through debugging sessions and audit.

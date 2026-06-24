@@ -18,6 +18,7 @@ import { createDeviceBridgeRepository } from "./modules/deviceBridge/repository"
 import type { BridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { createPairingService } from "./modules/deviceBridge/pairingService";
 import { loadLatestBridgeReleaseManifest } from "./modules/deviceBridge/releaseManifest";
+import { loadLatestBridgeToolReleaseManifest } from "./modules/deviceBridge/toolReleaseManifest";
 import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
 import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
@@ -63,7 +64,11 @@ function createEnvLocalAuthService(db: Database, env?: PilotReadinessEnv) {
 
 type DeviceBridgeEnv = Pick<
   ServerEnv,
-  "DEVICE_BRIDGE_ARTIFACT_ROOT" | "DEVICE_BRIDGE_PAIRING_TTL_SECONDS" | "DEVICE_BRIDGE_TOKEN_TTL_DAYS" | "DEVICE_BRIDGE_WS_PATH"
+  | "DEVICE_BRIDGE_ARTIFACT_ROOT"
+  | "DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT"
+  | "DEVICE_BRIDGE_PAIRING_TTL_SECONDS"
+  | "DEVICE_BRIDGE_TOKEN_TTL_DAYS"
+  | "DEVICE_BRIDGE_WS_PATH"
 >;
 
 export function createWiseEffServer(
@@ -213,12 +218,14 @@ function buildDeviceBridgeRouteOptions(
     db: options.db,
     getCurrentAuthContext,
     pairingService: runtime.pairingService,
-    loadReleaseManifest: runtime.loadReleaseManifest
+    loadReleaseManifest: runtime.loadReleaseManifest,
+    loadToolReleaseManifest: runtime.loadToolReleaseManifest
   };
 }
 
 type DeviceBridgeRuntimeOptions = {
   artifactRoot?: string;
+  toolArtifactRoot?: string;
   pairingTtlMs?: number;
   tokenTtlDays?: number;
   wsPath?: string;
@@ -233,13 +240,18 @@ function resolveDeviceBridgeRuntime(options: {
   deviceBridge?: DeviceBridgeRuntimeOptions;
 }) {
   const artifactRoot = options.deviceBridge?.artifactRoot ?? options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT;
-  if (!artifactRoot) {
+  const toolArtifactRoot = options.deviceBridge?.toolArtifactRoot ?? options.env?.DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT;
+  if (!artifactRoot && !toolArtifactRoot) {
     return undefined;
   }
 
-  const loadReleaseManifest = () => loadLatestBridgeReleaseManifest(artifactRoot);
+  const loadReleaseManifest = artifactRoot ? () => loadLatestBridgeReleaseManifest(artifactRoot) : undefined;
+  const loadToolReleaseManifest = toolArtifactRoot
+    ? () => loadLatestBridgeToolReleaseManifest(toolArtifactRoot)
+    : undefined;
+
   if (!options.db) {
-    return { loadReleaseManifest };
+    return { loadReleaseManifest, loadToolReleaseManifest };
   }
 
   const repo = createDeviceBridgeRepository(options.db);
@@ -252,6 +264,7 @@ function resolveDeviceBridgeRuntime(options: {
 
   return {
     loadReleaseManifest,
+    loadToolReleaseManifest,
     pairingService: createPairingService({
       repo,
       ...(pairingTtlMs !== undefined ? { pairingTtlMs } : {}),

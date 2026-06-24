@@ -14,6 +14,8 @@ import {
   type HdcCommandRunner
 } from "@wiseeff/device-command-core/hdcRunner";
 
+import { probeTools } from "./toolProbe";
+
 type RpcMethod = "bridge.getCapabilities" | "debug.detectTargets" | "debug.readNode" | "debug.writeNode";
 
 type RpcMethodResult = Record<string, unknown>;
@@ -30,13 +32,6 @@ export class RpcRequestError extends Error {
 }
 
 export type BridgeRpcHandlers = ReturnType<typeof createRpcHandlers>;
-
-function toErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-  return "RPC execution failed.";
-}
 
 function readBoolean(value: unknown, fallback: boolean) {
   return typeof value === "boolean" ? value : fallback;
@@ -69,45 +64,21 @@ function commandFailureMessage(protocol: DebugProtocol, result: { code: number |
   return result.stderr.trim() || `${protocolLabel(protocol)} exited with ${String(result.code)}.`;
 }
 
-function extractVersion(stdout: string) {
-  const line = stdout
-    .split(/\r?\n/)
-    .map((entry) => entry.trim())
-    .find(Boolean);
-  return line ?? undefined;
-}
-
-async function probeProtocolAvailability(
-  runner: AdbCommandRunner | HdcCommandRunner,
-  protocol: DebugProtocol,
-  timeoutMs: number
-) {
-  try {
-    const result = await runner(["version"], { timeoutMs });
-    if (result.code === 0 && !result.timedOut) {
-      return { available: true, version: extractVersion(result.stdout) };
-    }
-    return {
-      available: false,
-      reason: commandFailureMessage(protocol, result)
-    };
-  } catch (error) {
-    return {
-      available: false,
-      reason: toErrorMessage(error)
-    };
-  }
-}
-
 export function createRpcHandlers(options: {
   adbRunner?: AdbCommandRunner;
   hdcRunner?: HdcCommandRunner;
+  adbCommand?: string;
+  hdcCommand?: string;
+  adbSource?: "managed" | "system";
+  hdcSource?: "managed" | "system";
   adbTimeoutMs?: number;
   hdcTimeoutMs?: number;
   capabilityProbeTimeoutMs?: number;
 } = {}) {
-  const adbRunner = options.adbRunner ?? createDefaultAdbCommandRunner("adb");
-  const hdcRunner = options.hdcRunner ?? createDefaultHdcCommandRunner("hdc");
+  const adbCommand = options.adbCommand ?? "adb";
+  const hdcCommand = options.hdcCommand ?? "hdc";
+  const adbRunner = options.adbRunner ?? createDefaultAdbCommandRunner(adbCommand);
+  const hdcRunner = options.hdcRunner ?? createDefaultHdcCommandRunner(hdcCommand);
   const adbTimeoutMs = options.adbTimeoutMs ?? 5_000;
   const hdcTimeoutMs = options.hdcTimeoutMs ?? 5_000;
   const capabilityProbeTimeoutMs = options.capabilityProbeTimeoutMs ?? 2_000;
@@ -163,12 +134,15 @@ export function createRpcHandlers(options: {
     async handle(method: RpcMethod, params: Record<string, unknown>): Promise<RpcMethodResult> {
       switch (method) {
         case "bridge.getCapabilities": {
-          const [adb, hdc] = await Promise.all([
-            probeProtocolAvailability(adbRunner, "adb", capabilityProbeTimeoutMs),
-            probeProtocolAvailability(hdcRunner, "hdc", capabilityProbeTimeoutMs)
-          ]);
+          const tools = await probeTools({
+            adbRunner,
+            hdcRunner,
+            adbSource: options.adbSource,
+            hdcSource: options.hdcSource,
+            timeoutMs: capabilityProbeTimeoutMs
+          });
           return {
-            protocols: { adb, hdc },
+            protocols: tools,
             methods: ["bridge.getCapabilities", "debug.detectTargets", "debug.readNode", "debug.writeNode"]
           };
         }
@@ -273,7 +247,10 @@ export function createRpcHandlers(options: {
       if (error instanceof RpcRequestError) {
         return { code: error.code, message: error.message };
       }
-      return { code: "INTERNAL_ERROR", message: toErrorMessage(error) };
+      if (error instanceof Error && error.message.trim()) {
+        return { code: "INTERNAL_ERROR", message: error.message };
+      }
+      return { code: "INTERNAL_ERROR", message: "RPC execution failed." };
     }
   };
 }

@@ -136,6 +136,7 @@ services:
     volumes:
       - ./Caddyfile.example:/etc/caddy/Caddyfile:ro
       - ./bridge-artifacts:/bridge-artifacts:ro
+      - ./bridge-tool-artifacts:/bridge-tool-artifacts:ro
       - wiseeff-caddy-data:/data
       - wiseeff-caddy-config:/config
     healthcheck:

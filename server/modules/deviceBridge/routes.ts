@@ -7,6 +7,8 @@ import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import { createPairingService, type PairingService } from "./pairingService";
 import { createDeviceBridgeRepository } from "./repository";
 import type { BridgeReleaseManifest } from "./releaseManifest";
+import type { BridgeToolReleaseManifest } from "./toolReleaseManifest";
+import { registerDeviceBridgeToolRoutes } from "./toolRoutes";
 import { bridgeIdParamsSchema, pairWithCodeBodySchema, renameBridgeBodySchema } from "./schemas";
 import type { DeviceBridgeRecord } from "./types";
 
@@ -58,10 +60,15 @@ export function registerDeviceBridgeRoutes(
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     pairingService?: PairingService;
     loadReleaseManifest?: () => Promise<BridgeReleaseManifest>;
+    loadToolReleaseManifest?: () => Promise<BridgeToolReleaseManifest>;
     now?: () => Date;
   }
 ) {
   const now = options.now ?? (() => new Date());
+
+  registerDeviceBridgeToolRoutes(router, {
+    loadToolReleaseManifest: options.loadToolReleaseManifest
+  });
 
   router.get("/api/v1/device-bridges/releases", async () => {
     if (!options.loadReleaseManifest) {

@@ -17,6 +17,7 @@ Server/runtime env:
 
 ```text
 DEVICE_BRIDGE_ARTIFACT_ROOT=ops/self-hosted/bridge-artifacts
+DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT=ops/self-hosted/bridge-tool-artifacts
 DEVICE_BRIDGE_PAIRING_TTL_SECONDS=300
 DEVICE_BRIDGE_TOKEN_TTL_DAYS=90
 DEVICE_BRIDGE_WS_PATH=/api/v1/device-bridges/ws
@@ -47,9 +48,11 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 ## Artifact And Manifest Checks
 
 1. Confirm bridge artifacts exist under `DEVICE_BRIDGE_ARTIFACT_ROOT`.
-2. Verify manifest endpoint:
+2. Confirm tool artifacts exist under `DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT`.
+3. Verify manifest endpoints:
    - `GET /api/v1/device-bridges/releases`
-3. Confirm release items exist for the operator platform and use same-origin relative URLs:
+   - `GET /api/v1/device-bridges/tool-releases`
+4. Confirm release items exist for the operator platform and use same-origin relative URLs:
    - Windows installer (primary): `/downloads/device-bridge/<version>/windows/amd64/WiseEffBridgeSetup_<version>.exe`
    - macOS installer (primary): `/downloads/device-bridge/<version>/darwin/<arch>/WiseEffBridge_<version>_darwin_<arch>.pkg`
    - Portable archives remain available for advanced/CLI workflows (`artifactKind: "portable"`).
@@ -63,7 +66,17 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 5. Bridge runs `connect` locally (pair if needed, then non-blocking start). Health at `http://127.0.0.1:18787/health` should report `connected: true` within 30 seconds.
 6. Insert the USB device, authorize debugging, and click **重新检测设备**.
 
-Fallback: expand **高级 · 命令行方式** for `wiseeff-bridge connect`, `pair`, and `start` commands, or launch Bridge from the tray/menu bar.
+### Tool install (Phase B)
+
+When health reports `tools.adb.available: false` or `tools.hdc.available: false`, Step ③ shows **缺少 ADB/HDC 调试工具** (not “Bridge 未安装”). Click **安装调试工具** to open `wiseeff-bridge://install-tools?server=<origin>&protocol=adb|hdc|all`. Bridge downloads pinned artifacts from `/downloads/device-bridge-tools/...` into a private directory:
+
+- Windows: `%LOCALAPPDATA%\WiseEff\tools\`
+- macOS: `~/Library/Application Support/WiseEff/tools/`
+- Linux: `~/.wiseeff/tools/`
+
+Fallback CLI: `wiseeff-bridge tools install --protocol all`.
+
+Advanced: expand **高级 · 命令行方式** for `wiseeff-bridge connect`, `pair`, `start`, or launch Bridge from the tray/menu bar.
 
 Build installers on a build machine:
 

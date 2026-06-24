@@ -792,6 +792,39 @@ describe("/node-debugging", () => {
     });
   });
 
+  it("shows tools install CTA when bridge is connected but adb is missing", async () => {
+    // @acceptance BRIDGE-TOOLS-001
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === "http://127.0.0.1:18787/health") {
+        return new Response(JSON.stringify({
+          ok: true,
+          paired: true,
+          connected: true,
+          updatedAt: "2026-06-25T00:00:00.000Z",
+          tools: {
+            adb: { available: false, reason: "adb not found" },
+            hdc: { available: true, version: "hdc version 2.0.0", source: "system" }
+          }
+        }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/mine")) {
+        return new Response(JSON.stringify({ items: [{ id: "br-1", machineLabel: "Desk", platform: "darwin", arch: "arm64" }] }));
+      }
+      return new Response(JSON.stringify({ ok: true }));
+    }) as typeof fetch);
+
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    fireEvent.click(screen.getByRole("button", { name: "ADB" }));
+
+    expect(await screen.findByText(/缺少 ADB 调试工具/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /安装调试工具/i })).toBeInTheDocument();
+    expect(screen.queryByText(/未检测到本地 Bridge/)).not.toBeInTheDocument();
+  });
+
   it("shows bridge target selection when adb detect returns multiple bridge-backed targets", async () => {
     const bridgeTargets = [
       {

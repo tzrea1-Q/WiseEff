@@ -19,6 +19,12 @@
     file_server
   }
 
+  handle /downloads/device-bridge-tools/* {
+    uri strip_prefix /downloads/device-bridge-tools
+    root * /bridge-tool-artifacts
+    file_server
+  }
+
   handle {
     reverse_proxy web:5173
   }

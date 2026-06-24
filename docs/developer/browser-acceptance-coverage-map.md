@@ -20,6 +20,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `DEBUG-SIM-001` | E | Yes | Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata. | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | E | Yes | Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata. | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |
 | `BRIDGE-WIN-001` | E | No | Node debugging Windows-first local bridge panel can show bridge-missing, pairing, startup, and online states with the same-origin Windows download CTA. | `e2e/acceptance/debugging-local-bridge.acceptance.spec.ts` |
+| `BRIDGE-TOOLS-001` | C | No | Connected bridge with `tools.adb.available: false` shows tools-missing copy and install-tools CTA (not bridge-missing copy). | `src/NodeDebuggingPage.test.tsx` |
 | `HDC-LAB-001` | F | No | Real HDC device lab read/write smoke runs when explicitly enabled. | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `AGENT-APPROVAL-001` | G | Yes | Agent context, approval, rejection, execution, and evidence path work. | `e2e/acceptance/agent.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-001` | G | Yes | Xiaoze answers grounded read-only questions using page context and perception tools. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |

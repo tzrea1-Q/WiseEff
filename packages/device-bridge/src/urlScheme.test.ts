@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildConnectUrl, parseConnectUrl } from "./urlScheme";
+import { buildConnectUrl, parseConnectUrl, buildInstallToolsUrl, parseInstallToolsUrl, parseBridgeUrl } from "./urlScheme";
 
 describe("urlScheme", () => {
   it("builds connect URL with encoded params", () => {
@@ -44,5 +44,27 @@ describe("urlScheme", () => {
     expect(() =>
       parseConnectUrl("wiseeff-bridge://connect?server=https%3A%2F%2Ftzrea1.com&code=abc")
     ).toThrow("Pairing code must be a 6-digit number");
+  });
+
+  it("builds and parses install-tools URL", () => {
+    expect(
+      buildInstallToolsUrl({
+        server: "https://wiseeff.example.com",
+        protocol: "adb"
+      })
+    ).toBe("wiseeff-bridge://install-tools?server=https%3A%2F%2Fwiseeff.example.com&protocol=adb");
+    expect(
+      parseInstallToolsUrl("wiseeff-bridge://install-tools?server=https%3A%2F%2Fwiseeff.example.com&protocol=hdc")
+    ).toEqual({
+      server: "https://wiseeff.example.com",
+      protocol: "hdc"
+    });
+    expect(
+      parseBridgeUrl("wiseeff-bridge://install-tools?server=https%3A%2F%2Fwiseeff.example.com&protocol=all")
+    ).toEqual({
+      kind: "install-tools",
+      server: "https://wiseeff.example.com",
+      protocol: "all"
+    });
   });
 });

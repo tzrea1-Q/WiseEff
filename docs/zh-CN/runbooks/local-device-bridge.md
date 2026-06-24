@@ -17,6 +17,7 @@
 
 ```text
 DEVICE_BRIDGE_ARTIFACT_ROOT=ops/self-hosted/bridge-artifacts
+DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT=ops/self-hosted/bridge-tool-artifacts
 DEVICE_BRIDGE_PAIRING_TTL_SECONDS=300
 DEVICE_BRIDGE_TOKEN_TTL_DAYS=90
 DEVICE_BRIDGE_WS_PATH=/api/v1/device-bridges/ws

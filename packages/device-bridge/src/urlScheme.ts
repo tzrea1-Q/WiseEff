@@ -7,6 +7,50 @@ export function buildConnectUrl(input: { server: string; code?: string }) {
   return url.toString();
 }
 
+export function buildInstallToolsUrl(input: { server: string; protocol?: "adb" | "hdc" | "all" }) {
+  const url = new URL("wiseeff-bridge://install-tools");
+  url.searchParams.set("server", normalizeConnectServerUrl(input.server));
+  url.searchParams.set("protocol", input.protocol ?? "all");
+  return url.toString();
+}
+
+function isInstallProtocol(value: string | null): value is "adb" | "hdc" | "all" {
+  return value === "adb" || value === "hdc" || value === "all";
+}
+
+export function parseInstallToolsUrl(raw: string) {
+  const url = new URL(raw);
+  if (url.protocol !== "wiseeff-bridge:" || url.hostname !== "install-tools") {
+    throw new Error("Unsupported bridge URL");
+  }
+  const server = url.searchParams.get("server");
+  const protocol = url.searchParams.get("protocol") ?? "all";
+  if (!server) {
+    throw new Error("Missing server");
+  }
+  if (!isAllowedConnectServerUrl(server)) {
+    throw new Error("Server URL must use https or local http");
+  }
+  if (!isInstallProtocol(protocol)) {
+    throw new Error("Protocol must be adb, hdc, or all");
+  }
+  return { server: normalizeConnectServerUrl(server), protocol };
+}
+
+export function parseBridgeUrl(raw: string) {
+  const url = new URL(raw);
+  if (url.protocol !== "wiseeff-bridge:") {
+    throw new Error("Unsupported bridge URL");
+  }
+  if (url.hostname === "connect") {
+    return { kind: "connect" as const, ...parseConnectUrl(raw) };
+  }
+  if (url.hostname === "install-tools") {
+    return { kind: "install-tools" as const, ...parseInstallToolsUrl(raw) };
+  }
+  throw new Error("Unsupported bridge URL");
+}
+
 function isPairingCode(code: string) {
   return /^\d{6}$/.test(code);
 }
