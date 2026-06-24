@@ -31,7 +31,7 @@ The product is suitable for controlled staging and pilot evidence collection. It
 
 ## Active Plans
 
-- Xiaoze general agent: P0 perception complete ([P0](../completed/2026-06-24-xiaoze-p0-perception.md)); P1 action complete at the backend/approval-chain and acceptance layer ([P1](../completed/2026-06-24-xiaoze-p1-action.md)) with the in-browser HITL resume loop tracked as TD-028; P2 planning follows, per the [design spec](../../superpowers/specs/2026-06-24-xiaoze-agent-design.md).
+- Xiaoze general agent: P0 perception complete ([P0](../completed/2026-06-24-xiaoze-p0-perception.md)); P1 action complete including the in-browser HITL resume loop ([P1](../completed/2026-06-24-xiaoze-p1-action.md), TD-028 closed 2026-06-24); P2 planning follows, per the [design spec](../../superpowers/specs/2026-06-24-xiaoze-agent-design.md).
 
 ## Current Active Focus
 
