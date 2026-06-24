@@ -13,7 +13,8 @@ export type AgentToolName =
   | "perception.getProjectOverview"
   | "perception.searchParameters"
   | "perception.getNodeSnapshot"
-  | "perception.getRecentLogConclusions";
+  | "perception.getRecentLogConclusions"
+  | "action.submitParameterChange";
 
 export type AgentContext = {
   path: string;

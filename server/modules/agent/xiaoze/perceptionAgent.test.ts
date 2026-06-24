@@ -38,6 +38,24 @@ describe("createPerceptionAgent", () => {
     expect(result.text).toContain("12 parameters");
   });
 
+  it("returns an interrupt for approval-gated tools instead of executing", async () => {
+    const runTool = vi.fn();
+    const fakeModel = makeFakeModelThatCalls("action.submitParameterChange", {
+      projectId: "p1",
+      parameterId: "pd1",
+      targetValue: "42",
+      reason: "x"
+    });
+    const agent = createPerceptionAgent({
+      model: fakeModel,
+      runTool,
+      listTools: () => [{ name: "action.submitParameterChange", description: "x", schema: {}, requiresApproval: true }]
+    });
+    const result = await agent.run({ message: "set pd1 to 42", context: { projectId: "p1" } });
+    expect(runTool).not.toHaveBeenCalled();
+    expect(result.interrupt?.toolName).toBe("action.submitParameterChange");
+  });
+
   it("surfaces a safe answer when a tool is forbidden", async () => {
     const runTool = vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "Agent project access is required.", 403));
     const model: PerceptionChatModel = {

@@ -484,7 +484,7 @@ describe("WiseEff API", () => {
     expect(adbGateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
   });
 
-  it("renders labeled Pi Agent provider readiness metrics when evidence is available", async () => {
+  it("renders labeled live Agent provider readiness metrics when evidence is available", async () => {
     const response = await requestJson(
       createWiseEffServer({
         db: createObservabilityDb(),
@@ -495,13 +495,12 @@ describe("WiseEff API", () => {
           metadata: () => ({
             provider: "live" as const,
             model: "model-a",
-            promptVersion: "m7-pi-agent-v1",
+            promptVersion: "m5-agent-v1",
             evidence: {
               provider: "live" as const,
-              format: "pi" as const,
-              piProvider: "minimax",
+              format: "openai" as const,
               model: "model-a",
-              promptVersion: "m7-pi-agent-v1"
+              promptVersion: "m5-agent-v1"
             }
           }),
           planTurn: async () => ({
@@ -509,7 +508,7 @@ describe("WiseEff API", () => {
             toolRequests: [],
             provider: "live" as const,
             model: "model-a",
-            promptVersion: "m7-pi-agent-v1"
+            promptVersion: "m5-agent-v1"
           }),
           checkHealth: async () => ({ ok: true as const, status: "ready" as const })
         }
@@ -519,7 +518,7 @@ describe("WiseEff API", () => {
 
     expect(response.status).toBe(200);
     expect(response.bodyText).toContain("wiseeff_agent_provider_ready 1");
-    expect(response.bodyText).toContain('wiseeff_agent_provider_ready{provider="live",format="pi",piProvider="minimax"} 1');
+    expect(response.bodyText).toContain('wiseeff_agent_provider_ready{provider="live",format="openai"} 1');
     expect(response.bodyText).not.toContain("model-a");
     expect(response.bodyText).not.toContain("m7-pi-agent-v1");
   });

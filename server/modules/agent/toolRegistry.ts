@@ -7,6 +7,7 @@ import { createAuditTools } from "./tools/auditTools";
 import { createDebuggingTools } from "./tools/debuggingTools";
 import { createLogTools } from "./tools/logTools";
 import { createPerceptionTools } from "./tools/perceptionTools";
+import { createActionTools } from "./tools/actionTools";
 import { createParameterTools } from "./tools/parameterTools";
 
 export type AgentToolExecutionContext = {
@@ -49,7 +50,8 @@ export function createAgentToolRegistry(options: { db: Database | { query: Datab
     ...createLogTools(options),
     ...createAuditTools(options),
     ...createDebuggingTools(options),
-    ...createPerceptionTools(options)
+    ...createPerceptionTools(options),
+    ...createActionTools(options)
   ];
   const byName = new Map<string, AgentToolDefinition>(tools.map((tool) => [tool.name, tool]));
 

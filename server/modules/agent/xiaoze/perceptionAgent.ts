@@ -5,6 +5,7 @@ export type PerceptionToolDescriptor = {
   name: string;
   description: string;
   schema: Record<string, unknown>;
+  requiresApproval?: boolean;
 };
 
 export type PerceptionAgentContext = {
@@ -20,6 +21,11 @@ export type PerceptionAgentRunInput = {
 export type PerceptionAgentRunResult = {
   text: string;
   citations: AgentToolResult["citations"];
+  interrupt?: {
+    toolName: string;
+    payload: Record<string, unknown>;
+    citations: AgentToolResult["citations"];
+  };
 };
 
 export type PerceptionModelToolCall = {
@@ -38,9 +44,9 @@ export type PerceptionChatModel = {
 };
 
 const SYSTEM_PROMPT = [
-  "You are Xiaoze (小泽), WiseEff's read-only perception assistant.",
-  "Use only the provided WiseEff perception tools to ground answers.",
-  "Never claim a write, merge, or device action occurred.",
+  "You are Xiaoze (小泽), WiseEff's perception and action assistant.",
+  "Use only the provided WiseEff tools to ground answers and proposed actions.",
+  "Never claim a write occurred unless an approved mutating tool executed successfully.",
   "Cite sources from tool results when summarizing.",
   "If a tool returns FORBIDDEN or access is denied, answer that the user is not permitted and do not reveal protected data."
 ].join(" ");
@@ -85,6 +91,18 @@ export function createPerceptionAgent(options: {
           messages.push({ role: "assistant", tool_calls: response.toolCalls });
           for (const call of response.toolCalls) {
             const payload = mergeToolPayload(call.args, input.context);
+            const toolDefinition = options.listTools().find((tool) => tool.name === call.name);
+            if (toolDefinition?.requiresApproval) {
+              return {
+                text: "",
+                citations,
+                interrupt: {
+                  toolName: call.name,
+                  payload,
+                  citations
+                }
+              };
+            }
             try {
               const result = await options.runTool(call.name, payload);
               citations.push(...result.citations);
