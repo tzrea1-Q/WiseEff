@@ -727,7 +727,7 @@ describe("/node-debugging", () => {
     }));
   });
 
-  it("shows a Windows download CTA when the local bridge is missing", async () => {
+  it("shows a Windows install CTA when the local bridge is missing", async () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
@@ -749,6 +749,14 @@ describe("/node-debugging", () => {
               platform: "windows",
               arch: "amd64",
               version: "0.1.0",
+              artifactKind: "installer",
+              downloadUrl: "/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe"
+            },
+            {
+              platform: "windows",
+              arch: "amd64",
+              version: "0.1.0",
+              artifactKind: "portable",
               downloadUrl: "/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
             }
           ]
@@ -763,13 +771,14 @@ describe("/node-debugging", () => {
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
-    const downloadLink = await screen.findByRole("link", { name: /下载 Windows Bridge/ });
+    const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
       "href",
-      "/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
+      "/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe"
     );
-    expect(downloadLink.className).toContain("button");
+    expect(screen.getByText("安装 Bridge")).toBeInTheDocument();
 
+    fireEvent.click(screen.getByText("高级 · 命令行方式"));
     const pairCommand = await screen.findByText(
       `wiseeff-bridge pair --server ${window.location.origin} --code 123456`
     );

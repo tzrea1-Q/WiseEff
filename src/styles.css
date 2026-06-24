@@ -7517,6 +7517,54 @@ td small {
   border-radius: 12px;
 }
 
+.local-device-bridge-wizard__steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.local-device-bridge-wizard__steps li {
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--muted-foreground);
+  background: #fff;
+}
+
+.local-device-bridge-wizard__steps li[data-active="true"] {
+  color: var(--app-primary);
+  border-color: color-mix(in srgb, var(--app-primary) 40%, var(--outline));
+  background: color-mix(in srgb, var(--app-primary) 8%, #fff);
+  font-weight: 600;
+}
+
+.local-device-bridge-wizard__steps li[data-done="true"] {
+  color: #166534;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.local-device-bridge-panel__advanced {
+  margin-top: 4px;
+}
+
+.local-device-bridge-panel__advanced > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.local-device-bridge-panel__error {
+  margin: 0;
+  font-size: 12px;
+  color: #b42318;
+}
+
 .local-device-bridge-panel__head {
   display: flex;
   flex-wrap: wrap;
