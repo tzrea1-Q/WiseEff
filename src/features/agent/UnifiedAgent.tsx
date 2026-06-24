@@ -23,6 +23,7 @@ import type { PrototypeState } from "@/mockData";
 import type { AgentApproval, AgentMessage, AgentSession, AgentToolCall, AgentTurn } from "@/domain/agent/types";
 import { WiseEffApiError } from "@/infrastructure/http/apiClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { XiaozePageContextRegistrar } from "./useXiaozePageContext";
 
 const agentFabSize = 56;
 const agentPanelDesktopWidth = 430;
@@ -65,6 +66,7 @@ type UnifiedAgentProps = {
   plan: ReturnType<typeof createAgentPlan>;
   state: PrototypeState;
   dispatch: Dispatch<AppAction>;
+  xiaozeEnabled?: boolean;
 };
 
 function clampAgentOffset(value: number, viewportSize: number) {
@@ -131,7 +133,8 @@ export function UnifiedAgent({
   gateway,
   plan,
   state,
-  dispatch
+  dispatch,
+  xiaozeEnabled = false
 }: UnifiedAgentProps) {
   const [open, setOpen] = useState(false);
   const [agentPosition, setAgentPosition] = useState<AgentPosition>({ right: 24, bottom: 24 });
@@ -550,6 +553,18 @@ export function UnifiedAgent({
       void startApiSession();
     }
   };
+
+  if (xiaozeEnabled) {
+    return (
+      <XiaozePageContextRegistrar
+        path={path}
+        pageKey={pageKey}
+        projectId={projectId}
+        roleId={roleId}
+        visibleRecords={plan.contextSummary ? [{ summary: plan.contextSummary }] : undefined}
+      />
+    );
+  }
 
   if (!open) {
     return (

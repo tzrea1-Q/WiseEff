@@ -1,6 +1,10 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("./useXiaozePageContext", () => ({
+  XiaozePageContextRegistrar: () => null
+}));
+
 import { UnifiedAgent } from "./UnifiedAgent";
 import type { createAgentPlan } from "@/appConfig";
 import type { AgentSession, AgentTurn } from "@/domain/agent/types";
