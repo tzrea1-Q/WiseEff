@@ -20,6 +20,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-06-02-wiseeff-m6-4-durable-queue.md`: Redis/BullMQ or equivalent durable queue.
 - `exec-plans/active/2026-06-02-wiseeff-m6-5-observability-operations.md`: self-hosted observability, alerts, and operations runbooks.
 - `exec-plans/active/2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`: release, rollback, capacity, and target synthetic gates.
+- `exec-plans/active/2026-06-24-wiseeff-device-bridge-zero-friction-phase-a.md`: Device Bridge graphical installers, URL scheme connect, and 3-step `/node-debugging` wizard (Phase A).
 
 ## Completed Plans
 
