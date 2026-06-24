@@ -128,18 +128,18 @@ describe("device bridge cli", () => {
       arch: "x64",
       pairedAt: "2026-06-23T00:00:00.000Z"
     };
-    const startBridge = vi.fn(async () => ({ exitCode: 0, statusLine: "connected" }));
+    const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
 
     const exitCode = await runCli(
       ["--handle-url", "wiseeff-bridge://connect?server=https%3A%2F%2Fwiseeff.example.com&code=123456"],
       {
         loadConfig: async () => config,
         stdout: capture.stdout,
-        startBridge
+        ensureBridgeRunning
       }
     );
 
     expect(exitCode).toBe(0);
-    expect(startBridge).toHaveBeenCalledWith(config);
+    expect(ensureBridgeRunning).toHaveBeenCalled();
   });
 });

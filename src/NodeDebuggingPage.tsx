@@ -570,7 +570,10 @@ function deriveBridgePanelStatus(input: {
   if (!input.health.paired) {
     return "not_paired";
   }
-  if (!input.health.connected || !input.target) {
+  if (!input.health.connected) {
+    return "not_connected";
+  }
+  if (!input.target) {
     return "online_no_device";
   }
   return "bridges_with_targets";

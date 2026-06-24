@@ -58,9 +58,9 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 
 1. 登录后打开 `/node-debugging`。
 2. 点击 **安装 Bridge**，下载与浏览器平台匹配的安装包。
-3. 以默认选项运行安装包；会注册 `wiseeff-bridge://`、安装 Bridge 并启动后台服务/LaunchAgent。
+3. 以默认选项运行安装包；会注册 `wiseeff-bridge://`、安装 Bridge，并启动 Windows 后台服务或 macOS `.pkg` postinstall 注册的 LaunchAgent。
 4. 回到 `/node-debugging`，点击 **连接本地设备**；页面生成配对码并打开 `wiseeff-bridge://connect?server=<origin>&code=<6位码>`。
-5. Bridge 本地执行 `connect`（必要时 pair 再 start）；30 秒内 `http://127.0.0.1:18787/health` 应出现 `connected: true`。
+5. Bridge 本地执行 `connect`（必要时 pair，然后非阻塞启动）；30 秒内 `http://127.0.0.1:18787/health` 应出现 `connected: true`。
 6. 插入 USB 设备、授权调试，点击 **重新检测设备**。
 
 兜底：展开 **高级 · 命令行方式** 使用 `wiseeff-bridge connect` / `pair` / `start`，或从托盘/菜单栏启动 Bridge。
@@ -95,7 +95,8 @@ chmod +x wiseeff-bridge
 
 - 压缩包内含 `cli.js` 与 `wiseeff-bridge` 启动脚本（内部执行 `node cli.js`）。
 - 配置保存在 `~/.wiseeff/bridge.json`。
-- macOS 不使用 Windows 的 `service` 子命令；请在终端保持 Bridge 运行，或按需在运维环境使用 `launchd`/进程管理器。
+- macOS `.pkg` 安装包通过 postinstall 注册 `~/Library/LaunchAgents/com.wiseeff.bridge.plist`；便携包需手动用 `launchd` 或终端保持运行。
+- macOS 不使用 Windows 的 `service` 子命令。
 - 在 Mac 上安装 `adb` 和/或 `hdc`，并完成 USB 授权后，再在 `/node-debugging` 中检测设备。
 
 ## 配对流程
@@ -168,6 +169,7 @@ wiseeff-bridge service uninstall
 
 ## 排障建议
 
+- **Scheme 本地 connect 被拒绝**：`wiseeff-bridge` 仅接受 `https` 服务端 URL（本地开发可用 `http://localhost` / `127.0.0.1`）及 6 位配对码。
 - **Manifest 缺少 Windows 制品**：检查 `DEVICE_BRIDGE_ARTIFACT_ROOT` 与制品目录结构。
 - **Bridge WebSocket 被拒绝**：检查 token TTL/scope 与服务器时间偏差。
 - **detect 只有服务端目标**：确认 Bridge 在线（`/device-bridges/mine`）且已连接 WS 路径。

@@ -5,7 +5,7 @@ VERSION="${1:-0.1.0}"
 ARCH="${2:-arm64}"
 STAGING_DIR="${3:-}"
 
-ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
 if [[ -z "$STAGING_DIR" ]]; then
   STAGING_DIR="$ROOT/ops/self-hosted/bridge-installer/staging"
 fi
@@ -38,24 +38,14 @@ exec "$DIR/wiseeff-bridge" "$@"
 LAUNCHER
 chmod +x "$MACOS_BIN"
 
-pkgbuild --root "$APP_DIR" --identifier com.wiseeff.bridge --version "$VERSION" --install-location "/Applications/$APP_NAME" "$PKG_PATH"
-echo "Created macOS installer: $PKG_PATH"
+SCRIPTS_DIR="$ROOT/ops/self-hosted/bridge-installer/macos/scripts"
+chmod +x "$SCRIPTS_DIR/postinstall"
 
-LAUNCH_AGENT="$HOME/Library/LaunchAgents/com.wiseeff.bridge.plist"
-mkdir -p "$(dirname "$LAUNCH_AGENT")"
-cat > "$LAUNCH_AGENT" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.wiseeff.bridge</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/Applications/$APP_NAME/Contents/Resources/wiseeff-bridge</string>
-    <string>start</string>
-  </array>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-</dict>
-</plist>
-PLIST
+pkgbuild \
+  --root "$APP_DIR" \
+  --identifier com.wiseeff.bridge \
+  --version "$VERSION" \
+  --install-location "/Applications/$APP_NAME" \
+  --scripts "$SCRIPTS_DIR" \
+  "$PKG_PATH"
+echo "Created macOS installer: $PKG_PATH"
