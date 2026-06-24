@@ -79,6 +79,7 @@ const manifestItems: Array<{
   version: string;
   artifact: string;
   sha256: string;
+  artifactKind: "portable" | "installer";
 }> = [];
 
 for (const target of ARTIFACT_TARGETS) {
@@ -107,7 +108,8 @@ for (const target of ARTIFACT_TARGETS) {
     arch: target.arch,
     version: VERSION,
     artifact: artifactName,
-    sha256
+    sha256,
+    artifactKind: "portable"
   });
 
   console.log(`Created artifact: ${artifactPath}`);
@@ -116,8 +118,22 @@ for (const target of ARTIFACT_TARGETS) {
 const manifest = {
   recommendedVersion: VERSION,
   minCompatibleVersion: VERSION,
-  items: manifestItems
+  items: [
+    ...manifestItems,
+    ...((await readExistingInstallerItems()) ?? [])
+  ]
 };
+
+async function readExistingInstallerItems() {
+  try {
+    const existing = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      items?: Array<{ artifactKind?: string }>;
+    };
+    return existing.items?.filter((item) => item.artifactKind === "installer") ?? [];
+  } catch {
+    return [];
+  }
+}
 
 await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 console.log(`Updated manifest: ${manifestPath}`);

@@ -66,7 +66,8 @@
     "admin:bootstrap": "tsx scripts/bootstrap-local-admin.ts",
     "preview": "vite preview --host 127.0.0.1",
     "bridge:test": "vitest run --config vitest.bridge.config.ts",
-    "bridge:build": "tsx scripts/build-device-bridge.ts"
+    "bridge:build": "tsx scripts/build-device-bridge.ts",
+    "build:bridge-installers": "tsx scripts/build-bridge-installers.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.79.0",
