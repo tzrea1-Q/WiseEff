@@ -47,12 +47,12 @@ P2 excludes:
 
 ## Success Criteria
 
-- [ ] Given a goal like "project X charges slowly", Xiaoze perceives (multiple read tools), proposes a plan, requests approval for the parameter change, and after approval continues to observe and report — all in one conversational task.
-- [ ] A multi-step task with one approval resumes the same plan after approval (the run does not restart from scratch; prior perceived context is retained via the checkpoint).
-- [ ] Rejecting a step halts the plan gracefully with a clear message and no mutation.
-- [ ] With proactive suggestions enabled, entering a page can surface a grounded `AgentInsightBar` suggestion (e.g. "3 high-risk parameters pending review") bounded by the user's permissions; with the setting off, nothing is surfaced.
-- [ ] Proactive perception is read-only and authz-bounded: it never proposes data the user cannot access and never writes.
-- [ ] `npm run test:server`, `npm test -- src/features/agent`, `npm run build`, `npm run docs:check` pass; multi-step + proactive acceptance passes with new operation/requirement IDs.
+- [x] Given a goal like "project X charges slowly", Xiaoze perceives (multiple read tools), proposes a plan, requests approval for the parameter change, and after approval continues to observe and report — all in one conversational task.
+- [x] A multi-step task with one approval resumes the same plan after approval (the run does not restart from scratch; prior perceived context is retained via the checkpoint).
+- [x] Rejecting a step halts the plan gracefully with a clear message and no mutation.
+- [x] With proactive suggestions enabled, entering a page can surface a grounded `AgentInsightBar` suggestion (e.g. "3 high-risk parameters pending review") bounded by the user's permissions; with the setting off, nothing is surfaced.
+- [x] Proactive perception is read-only and authz-bounded: it never proposes data the user cannot access and never writes.
+- [x] `npm run test:server`, `npm test -- src/features/agent`, `npm run build`, `npm run docs:check` pass; multi-step + proactive acceptance passes with new operation/requirement IDs.
 
 ## Expected File Structure
 

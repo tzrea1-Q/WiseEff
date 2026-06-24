@@ -31,7 +31,7 @@ The product is suitable for controlled staging and pilot evidence collection. It
 
 ## Active Plans
 
-- Xiaoze general agent: P0 perception complete ([P0](../completed/2026-06-24-xiaoze-p0-perception.md)); P1 action complete including the in-browser HITL resume loop ([P1](../completed/2026-06-24-xiaoze-p1-action.md), TD-028 closed 2026-06-24); [P2 planning](2026-06-24-xiaoze-p2-planning.md) (multi-step plan-act-observe, checkpoint resume, opt-in proactive suggestions) is active, per the [design spec](../../superpowers/specs/2026-06-24-xiaoze-agent-design.md).
+- Xiaoze general agent: P0 perception complete ([P0](../completed/2026-06-24-xiaoze-p0-perception.md)); P1 action complete including the in-browser HITL resume loop ([P1](../completed/2026-06-24-xiaoze-p1-action.md), TD-028 closed 2026-06-24); P2 planning complete ([P2](../completed/2026-06-24-xiaoze-p2-planning.md): LangGraph plan-act-observe loop, `MemorySaver` checkpoint resume, opt-in proactive suggestions; durable checkpointing deferred as TD-029), per the [design spec](../../superpowers/specs/2026-06-24-xiaoze-agent-design.md).
 
 ## Current Active Focus
 

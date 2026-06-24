@@ -101,12 +101,13 @@ Agent：
 - mutating tool 必须走后端 approval 和 audit。
 - live provider 使用 `AGENT_API_FORMAT=wiseeff` 或 `openai`（URL-backed transport）；Pi provider 已在 P1 移除（TD-027）。
 
-Xiaoze（P0 感知 + P1 行动）：
+Xiaoze（P0 感知 + P1 行动 + P2 规划）：
 
 - `VITE_XIAOZE_ENABLED=true` 时挂载 `XiaozeProvider`（CopilotKit V2 + `HttpAgent`），SSE 对接 `POST /api/v1/agent/xiaoze`。
 - `UnifiedAgent` 在启用 Xiaoze 时隐藏旧 FAB，通过 `XiaozePageContextRegistrar` 声明 `wiseeff.page` 上下文。
 - P0：`perception.*` 只读工具。
 - P1：`XiaozeApprovalCard`（`useInterrupt`）处理 mutating `action.submitParameterChange` 提案（批准 / 拒绝 / 改值）；低风险前端工具 `navigateTo`、`prefillParameterValue`（`useFrontendTool`，不写库）。
+- P2：后端 LangGraph 规划循环（intent → perceive → plan → act → observe）与 checkpoint resume；`VITE_XIAOZE_PROACTIVE_ENABLED=true`（且 API `XIAOZE_PROACTIVE_ENABLED=true`）时，`useXiaozeSuggestions` 调用 `POST /api/v1/agent/xiaoze/suggest`，在 `AgentInsightBar` 展示只读主动建议；点击建议可预填打开小泽聊天。
 
 用户和身份：
 

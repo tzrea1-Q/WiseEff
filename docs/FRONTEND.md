@@ -116,7 +116,7 @@ Runtime split:
 
 The frontend contract for WiseAgent is unchanged. Xiaoze uses CopilotKit/AG-UI directly against `/api/v1/agent/xiaoze`.
 
-## Xiaoze (P0 perception + P1 action)
+## Xiaoze (P0 perception + P1 action + P2 planning)
 
 When `VITE_XIAOZE_ENABLED=true`, the app mounts `XiaozeProvider` (`@copilotkit/react-core/v2` + `@ag-ui/client` `HttpAgent`) and streams AG-UI events from `POST /api/v1/agent/xiaoze`. `UnifiedAgent` registers page-visible state through `XiaozePageContextRegistrar` (`useAgentContext` with description `wiseeff.page`).
 
@@ -124,10 +124,14 @@ P0: read-only `perception.*` tools.
 
 P1 adds `XiaozeApprovalCard` (`useInterrupt`) for mutating `action.submitParameterChange` proposals (approve / reject / edit target value) and low-risk frontend tools (`navigateTo`, `prefillParameterValue`) via `useFrontendTool`.
 
+P2 adds a LangGraph planning loop on the backend (intent → perceive → plan → act → observe) with checkpoint resume after approval, and opt-in proactive suggestions via `useXiaozeSuggestions` mounted in `AgentInsightBar`. When `VITE_XIAOZE_PROACTIVE_ENABLED=true` (and the API flag is on), the hook calls `POST /api/v1/agent/xiaoze/suggest` for the current page context; insight actions can open Xiaoze chat pre-seeded with the suggestion headline.
+
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `VITE_XIAOZE_ENABLED` | `false` | Enables CopilotKit Xiaoze chat and page-context registration. |
-| `XIAOZE_RUNTIME_ENABLED` (API) | `false` | Registers the AG-UI SSE endpoint and LangGraph agent. |
+| `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | Enables proactive read-only suggestions in `AgentInsightBar` via `useXiaozeSuggestions`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. |
+| `XIAOZE_RUNTIME_ENABLED` (API) | `false` | Registers the AG-UI SSE endpoint and LangGraph planning agent. |
+| `XIAOZE_PROACTIVE_ENABLED` (API) | `false` | Registers `POST /api/v1/agent/xiaoze/suggest` for read-only proactive suggestions. |
 | `XIAOZE_DETERMINISTIC` (API) | `false` | Offline deterministic model for acceptance/tests (no live LLM). |
 | `XIAOZE_MODEL` (API) | falls back to `AGENT_MODEL` | Model name for LangChain `ChatOpenAI`. |
 

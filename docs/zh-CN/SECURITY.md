@@ -62,6 +62,8 @@ Agent tool 分为：
 
 **Xiaoze P1 行动：** `action.submitParameterChange` 为 mutating 且 approval-gated。AG-UI runtime 持久化 orchestrator tool-call + approval 记录、发出 interrupt，且仅通过 `approveToolCall` / `rejectToolCall` 恢复，并在事务内重新鉴权、审计 `actorType=agent`。`editedArgs` 在批准前完整替换 tool payload。设备写闸门在 P1 仍由调试界面与后端拥有，不在小泽内执行。
 
+**Xiaoze P2 规划：** 多步计划使用 LangGraph `StateGraph` 与按 `threadId` 的 checkpointer，使 mutating 步骤在批准后能从计划中途恢复而不丢失已感知上下文。主动建议为只读、受 authz 限制且 opt-in（`XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED`，默认关闭）。suggest 通道仅通过 `POST /api/v1/agent/xiaoze/suggest` 调用 `perception.*` 工具，不写库且不提出调用方权限外的数据。计划中的 mutating 写入仍须逐步经 orchestrator approval 链人工批准；拒绝某步则安全终止计划且不产生 mutation。
+
 ## 设备安全
 
 设备访问必须经过 gateway boundary。写请求需要 request id、用户和权限上下文、设备和 node target、access mode、目标值、风险等级、确认或 approval id、写前快照，以及 readback 结果或失败原因。

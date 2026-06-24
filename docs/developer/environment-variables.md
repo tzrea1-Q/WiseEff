@@ -108,14 +108,16 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | Request timeout. |
 | `AGENT_PROMPT_VERSION` | `m5-agent-v1` | traces | Include in provider trace metadata. |
 
-## Xiaoze (P0 perception + P1 action)
+## Xiaoze (P0 perception + P1 action + P2 planning)
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `XIAOZE_RUNTIME_ENABLED` | `false` | Xiaoze AG-UI endpoint | Set `true` to register `POST /api/v1/agent/xiaoze`. |
+| `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
 | `XIAOZE_DETERMINISTIC` | `false` | acceptance/offline tests | Injects a fake chat model; no live LLM. |
 | `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | LangChain `ChatOpenAI` model id. |
 | `VITE_XIAOZE_ENABLED` | `false` | frontend Xiaoze UI | Mounts CopilotKit provider + chat popup. Reuses `AGENT_API_BASE_URL` / `AGENT_API_KEY` for the model when deterministic mode is off. |
+| `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
 
 ## M5 Evidence
 

@@ -28,6 +28,10 @@ When `XIAOZE_RUNTIME_ENABLED=true`, the backend exposes `POST /api/v1/agent/xiao
 
 P1 adds mutating `action.submitParameterChange` (`kind: mutating`, `requiresApproval: true`). The AG-UI runtime persists orchestrator tool-call + approval records, emits an AG-UI interrupt, and resumes only through `approveToolCall` / `rejectToolCall` with transactional re-authorization and audit `actorType=agent`. The frontend mounts CopilotKit V2 with `XiaozeApprovalCard` (`useInterrupt`) and low-risk frontend tools (`navigateTo`, `prefillParameterValue`). Device write guards remain outside Xiaoze in P1.
 
+### Xiaoze P2 Planning
+
+P2 replaces the single-turn loop with a LangGraph `StateGraph` planning loop: intent → perceive → plan → act → observe, looping until the plan completes or a step is rejected. A `MemorySaver` checkpointer keyed by `threadId` retains perceived context across mutating interrupts. After human approval, `agUiEndpoint` delegates resume to the planning agent via `Command({ resume })` so the graph continues from the suspended `act` node, observes execution results, and may proceed to further steps. Opt-in proactive suggestions call `POST /api/v1/agent/xiaoze/suggest` (read-only perception tools only), gated by `XIAOZE_PROACTIVE_ENABLED` and `VITE_XIAOZE_PROACTIVE_ENABLED` (default off). The frontend surfaces suggestions through `useXiaozeSuggestions` in `AgentInsightBar`. Process-local checkpointing is acceptable for P2 v1; durable Postgres checkpointing is tracked as TD-029.
+
 ## Operations
 
 Operations modules expose liveness, readiness, metrics, pilot readiness, and release readiness. Self-hosted runtime uses separate web, API, worker, PostgreSQL, Redis, object storage, and reverse proxy services.
