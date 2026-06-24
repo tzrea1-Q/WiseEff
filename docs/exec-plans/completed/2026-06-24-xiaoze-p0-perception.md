@@ -46,13 +46,13 @@ P0 excludes:
 
 ## Success Criteria
 
-- [ ] A user can open the Xiaoze chat in any workflow page and ask a question; the agent answers grounded in the current page's declared context.
-- [ ] The agent can proactively pull cross-page data the user is permitted to see (e.g. from the parameters page, read node/log data) via perception tools.
-- [ ] Perception tools reject out-of-scope access: a request for a project the user cannot access returns `FORBIDDEN` and the agent surfaces a safe "not permitted" answer instead of data.
-- [ ] No perception tool can mutate state (all are `kind: "read"`).
-- [ ] The AG-UI endpoint authenticates every request using the existing auth context; unauthenticated requests are rejected.
-- [ ] `npm run test:server`, frontend focused tests, `npm run build`, and `npm run docs:check` pass.
-- [ ] Perception acceptance spec passes; operation/requirement IDs added.
+- [x] A user can open the Xiaoze chat in any workflow page and ask a question; the agent answers grounded in the current page's declared context.
+- [x] The agent can proactively pull cross-page data the user is permitted to see (e.g. from the parameters page, read node/log data) via perception tools.
+- [x] Perception tools reject out-of-scope access: a request for a project the user cannot access returns `FORBIDDEN` and the agent surfaces a safe "not permitted" answer instead of data.
+- [x] No perception tool can mutate state (all are `kind: "read"`).
+- [x] The AG-UI endpoint authenticates every request using the existing auth context; unauthenticated requests are rejected.
+- [x] `npm run test:server`, frontend focused tests, `npm run build`, and `npm run docs:check` pass.
+- [x] Perception acceptance spec passes; operation/requirement IDs added.
 
 ## Expected File Structure
 
