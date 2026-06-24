@@ -29,6 +29,7 @@ Resume on the same `threadId`:
 
 - CopilotKit: `forwardedProps.command.resume` + `interruptEvent` (from `useInterrupt` resolve).
 - AG-UI native: `resume: [{ interruptId, status: "resolved"|"cancelled", payload: { approvalId, decision, editedArgs? } }]`.
+- WiseEff frontend: `XiaozeHttpAgent` maps CopilotKit command resume into AG-UI `resume[]` using `interruptEvent.approvalId` as `interruptId` (must match `RUN_FINISHED outcome.interrupts[].id`).
 
 Bridge maps `decision: "approve"|"reject"` → `approveToolCall` / `rejectToolCall`.
 

@@ -1,7 +1,12 @@
-import { HttpAgent } from "@ag-ui/client";
+import { HttpAgent, type AgentSubscriber, type RunAgentResult } from "@ag-ui/client";
+import type { RunAgentParameters } from "@ag-ui/client";
 import { createDefaultOidcAuthProvider } from "@/infrastructure/auth/oidcAuthProvider";
 import { readLocalAuthToken } from "@/infrastructure/http/authClient";
 import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
+import { buildXiaozeResumeEntries, readCopilotKitResumeCommand } from "./xiaozeResumeBridge";
+
+export { buildXiaozeResumeEntries, readCopilotKitResumeCommand };
+export type { CopilotKitResumeCommand, CopilotKitInterruptEvent } from "./xiaozeResumeBridge";
 
 export function resolveXiaozeAgentUrl(agentUrl?: string) {
   if (agentUrl) {
@@ -37,8 +42,21 @@ export function createAuthenticatedFetch(fetchImpl: typeof fetch = fetch): typeo
   };
 }
 
+type RunHttpAgentParameters = RunAgentParameters & { abortController?: AbortController };
+
+class XiaozeHttpAgent extends HttpAgent {
+  override runAgent(parameters?: RunHttpAgentParameters, subscriber?: AgentSubscriber): Promise<RunAgentResult> {
+    const bridgedResume =
+      parameters?.resume ?? buildXiaozeResumeEntries(readCopilotKitResumeCommand(parameters?.forwardedProps));
+    if (!bridgedResume) {
+      return super.runAgent(parameters, subscriber);
+    }
+    return super.runAgent({ ...parameters, resume: bridgedResume }, subscriber);
+  }
+}
+
 export function createXiaozeHttpAgent(options: { agentUrl?: string; fetchImpl?: typeof fetch } = {}) {
-  return new HttpAgent({
+  return new XiaozeHttpAgent({
     agentId: "default",
     url: resolveXiaozeAgentUrl(options.agentUrl),
     fetch: createAuthenticatedFetch(options.fetchImpl)
