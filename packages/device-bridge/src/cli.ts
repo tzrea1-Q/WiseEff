@@ -12,6 +12,7 @@ import {
   type CliDependencies,
   type StartBridgeFn
 } from "./connectCommand";
+import { ensureBridgeRunning } from "./ensureBridgeRunning";
 import { parseConnectUrl } from "./urlScheme";
 
 const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
@@ -147,7 +148,13 @@ async function runStatusCommand(deps: CliDependencies, config: BridgeConfig): Pr
 
 export async function runCli(
   argv = process.argv.slice(2),
-  overrides: Partial<CliDependencies> & { startBridge?: StartBridgeFn } = {}
+  overrides: Partial<CliDependencies> & {
+    startBridge?: StartBridgeFn;
+    ensureBridgeRunning?: typeof ensureBridgeRunning;
+    execPath?: string;
+    cliPath?: string;
+    platform?: NodeJS.Platform;
+  } = {}
 ) {
   const deps: CliDependencies = {
     fetchImpl: overrides.fetchImpl ?? fetch,
@@ -156,6 +163,13 @@ export async function runCli(
     stdout: overrides.stdout ?? console
   };
   const startBridge = overrides.startBridge ?? ((config) => runStartCommand(deps, config));
+  const connectDeps = {
+    ...deps,
+    ensureBridgeRunning: overrides.ensureBridgeRunning ?? ensureBridgeRunning,
+    execPath: overrides.execPath ?? process.execPath,
+    cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+    platform: overrides.platform ?? process.platform
+  };
 
   const parsed = parseArgs(argv);
 
@@ -163,13 +177,7 @@ export async function runCli(
   if (handleUrl) {
     try {
       const parsedUrl = parseConnectUrl(handleUrl);
-      const result = await runConnectCommand(
-        {
-          ...deps,
-          startBridge
-        },
-        parsedUrl
-      );
+      const result = await runConnectCommand(connectDeps, parsedUrl);
       return result.exitCode;
     } catch (error) {
       deps.stdout.error(error instanceof Error ? error.message : "Invalid bridge URL");
@@ -190,13 +198,7 @@ export async function runCli(
       deps.stdout.log(usage());
       return 1;
     }
-    const result = await runConnectCommand(
-      {
-        ...deps,
-        startBridge
-      },
-      { server, code }
-    );
+    const result = await runConnectCommand(connectDeps, { server, code });
     return result.exitCode;
   }
 

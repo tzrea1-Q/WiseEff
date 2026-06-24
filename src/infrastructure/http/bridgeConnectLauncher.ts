@@ -1,9 +1,11 @@
 import type { LocalBridgeHealthState } from "./deviceBridgeClient";
 
-export function buildBridgeConnectUrl(origin: string, code: string) {
+export function buildBridgeConnectUrl(origin: string, code?: string) {
   const url = new URL("wiseeff-bridge://connect");
   url.searchParams.set("server", origin);
-  url.searchParams.set("code", code);
+  if (code) {
+    url.searchParams.set("code", code);
+  }
   return url.toString();
 }
 

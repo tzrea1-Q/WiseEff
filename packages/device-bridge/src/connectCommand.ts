@@ -1,6 +1,7 @@
 import os from "node:os";
 
 import { detectBridgePlatform, type BridgeConfig } from "./config";
+import { ensureBridgeRunning, type EnsureBridgeRunningDependencies } from "./ensureBridgeRunning";
 
 const BRIDGE_VERSION = "0.1.0";
 
@@ -25,6 +26,11 @@ export function normalizeServerUrl(raw: string) {
 
 function isPairingCode(code: string) {
   return /^\d{6}$/.test(code);
+}
+
+export function isBridgeTokenExpired(tokenExpiresAt: string, now = Date.now()) {
+  const expires = new Date(tokenExpiresAt);
+  return Number.isNaN(expires.getTime()) || expires.getTime() <= now;
 }
 
 export async function runPairCommand(
@@ -105,7 +111,10 @@ export function waitForTerminationSignal() {
 export type StartBridgeFn = (config: BridgeConfig) => Promise<{ exitCode: number; statusLine: string }>;
 
 export type ConnectCommandDependencies = CliDependencies & {
-  startBridge: StartBridgeFn;
+  ensureBridgeRunning: (deps: EnsureBridgeRunningDependencies) => Promise<{ exitCode: number }>;
+  execPath: string;
+  cliPath: string;
+  platform: NodeJS.Platform;
 };
 
 export async function runConnectCommand(
@@ -113,11 +122,17 @@ export async function runConnectCommand(
   input: { server: string; code?: string }
 ): Promise<{ exitCode: number }> {
   const existing = await deps.loadConfig();
-  const serverMatches = existing?.serverUrl === normalizeServerUrl(input.server);
+  const normalizedServer = normalizeServerUrl(input.server);
+  const serverMatches = existing?.serverUrl === normalizedServer;
+  const tokenValid = existing && !isBridgeTokenExpired(existing.tokenExpiresAt);
 
-  if (!existing || !serverMatches) {
+  if (!existing || !serverMatches || !tokenValid) {
     if (!input.code) {
-      deps.stdout.error("Pairing code required. Pass --code with a 6-digit pairing code.");
+      if (existing && serverMatches && !tokenValid) {
+        deps.stdout.error("Bridge token expired. Pass --code with a new 6-digit pairing code to re-pair.");
+      } else {
+        deps.stdout.error("Pairing code required. Pass --code with a 6-digit pairing code.");
+      }
       return { exitCode: 1 };
     }
     const pairResult = await runPairCommand(
@@ -140,6 +155,11 @@ export async function runConnectCommand(
     return { exitCode: 1 };
   }
 
-  const startResult = await deps.startBridge(config);
-  return { exitCode: startResult.exitCode };
+  return deps.ensureBridgeRunning({
+    fetchImpl: deps.fetchImpl,
+    platform: deps.platform,
+    execPath: deps.execPath,
+    cliPath: deps.cliPath,
+    stdout: deps.stdout
+  });
 }

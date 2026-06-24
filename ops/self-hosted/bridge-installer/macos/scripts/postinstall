@@ -1,0 +1,53 @@
+#!/bin/bash
+set -euo pipefail
+
+APP_NAME="WiseEff Bridge.app"
+PLIST_LABEL="com.wiseeff.bridge"
+BRIDGE_BIN="/Applications/${APP_NAME}/Contents/Resources/wiseeff-bridge"
+
+if [[ ! -x "$BRIDGE_BIN" ]]; then
+  echo "WiseEff Bridge binary not found at $BRIDGE_BIN" >&2
+  exit 1
+fi
+
+CONSOLE_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
+if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
+  echo "Could not determine console user for LaunchAgent install." >&2
+  exit 1
+fi
+
+USER_HOME="$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
+if [[ -z "$USER_HOME" ]]; then
+  USER_HOME="/Users/$CONSOLE_USER"
+fi
+
+LAUNCH_AGENTS="$USER_HOME/Library/LaunchAgents"
+PLIST_PATH="$LAUNCH_AGENTS/${PLIST_LABEL}.plist"
+
+mkdir -p "$LAUNCH_AGENTS"
+cat > "$PLIST_PATH" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${PLIST_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${BRIDGE_BIN}</string>
+    <string>start</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+</dict>
+</plist>
+PLIST
+
+chown "$CONSOLE_USER" "$PLIST_PATH"
+
+UID="$(id -u "$CONSOLE_USER")"
+launchctl bootout "gui/${UID}/${PLIST_LABEL}" 2>/dev/null || true
+launchctl bootstrap "gui/${UID}" "$PLIST_PATH"
+launchctl enable "gui/${UID}/${PLIST_LABEL}"
+launchctl kickstart -k "gui/${UID}/${PLIST_LABEL}"
+
+echo "Registered LaunchAgent for $CONSOLE_USER at $PLIST_PATH"
