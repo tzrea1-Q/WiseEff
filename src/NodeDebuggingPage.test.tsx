@@ -680,7 +680,8 @@ describe("/node-debugging", () => {
     });
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
 
-    await screen.findByText(/gateway session create failed/);
+    await screen.findByText("检测失败，请检查 HDC 环境");
+    expect(screen.queryByText(/gateway session create failed/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /节点操作记录/ }));
 
     const events = await screen.findByRole("list", { name: "节点操作事件列表" });
@@ -730,8 +731,9 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
-    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input) => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      const method = (init?.method ?? "GET").toUpperCase();
       if (url === "http://127.0.0.1:18787/health") {
         throw new Error("bridge offline");
       }
@@ -752,6 +754,9 @@ describe("/node-debugging", () => {
           ]
         }));
       }
+      if (url.endsWith("/api/v1/device-bridges/pairing-codes") && method === "POST") {
+        return new Response(JSON.stringify({ code: "123456", expiresAt: "2026-06-24T12:00:00.000Z" }));
+      }
       return new Response(JSON.stringify({ ok: true }));
     }) as typeof fetch);
 
@@ -763,6 +768,19 @@ describe("/node-debugging", () => {
       "href",
       "/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
     );
+    expect(downloadLink.className).toContain("button");
+
+    const pairCommand = await screen.findByText(
+      `wiseeff-bridge pair --server ${window.location.origin} --code 123456`
+    );
+    expect(pairCommand.tagName).toBe("CODE");
+
+    fireEvent.click(screen.getByRole("button", { name: "复制配对命令" }));
+    await waitFor(() => {
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        `wiseeff-bridge pair --server ${window.location.origin} --code 123456`
+      );
+    });
   });
 
   it("shows bridge target selection when adb detect returns multiple bridge-backed targets", async () => {

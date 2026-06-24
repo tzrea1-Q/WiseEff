@@ -5,7 +5,7 @@ import {
   type DeviceBridgeTokenScope
 } from "./types";
 
-export const DEVICE_BRIDGE_PAIRING_TTL_MS = 5 * 60 * 1000;
+export const DEVICE_BRIDGE_PAIRING_TTL_MS = 30 * 60 * 1000;
 export const DEVICE_BRIDGE_TOKEN_TTL_DAYS = 90;
 export const DEVICE_BRIDGE_TOKEN_PREFIX = "wb_";
 export const DEVICE_BRIDGE_ID_PREFIX = "br_";

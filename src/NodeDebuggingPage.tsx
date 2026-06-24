@@ -1,4 +1,4 @@
-import { Eye, Link2, Pencil, RotateCw, Search, Send } from "lucide-react";
+import { Check, Copy, Eye, Link2, Pencil, RotateCw, Search, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
@@ -324,6 +324,23 @@ function formatBridgeLastSeen(lastSeenAt: string | null) {
   return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
 }
 
+function formatPairingCodeExpiry(expiresAt: string) {
+  const date = new Date(expiresAt);
+  if (Number.isNaN(date.getTime())) {
+    return expiresAt;
+  }
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+    timeZoneName: "short"
+  });
+}
+
 function inferBridgeOnline(bridge: DeviceBridgeRecord, health: LocalBridgeHealthState | null) {
   if (health?.connected && health.bridgeId === bridge.id) {
     return true;
@@ -591,6 +608,50 @@ function deriveBridgePanelStatus(input: {
   return "bridges_with_targets";
 }
 
+function BridgeCommandBlock({
+  label,
+  command,
+  loading,
+  loadingText,
+  hint,
+  copyKey,
+  copiedKey,
+  onCopy
+}: {
+  label: string;
+  command: string;
+  loading?: boolean;
+  loadingText?: string;
+  hint?: string;
+  copyKey: "pair" | "start";
+  copiedKey: "pair" | "start" | null;
+  onCopy: (key: "pair" | "start", command: string) => void;
+}) {
+  const displayCommand = loading ? (loadingText ?? "正在生成命令...") : command;
+
+  return (
+    <div className="local-device-bridge-panel__command">
+      <div className="local-device-bridge-panel__command-head">
+        <span>{label}</span>
+      </div>
+      <div className="local-device-bridge-panel__command-box">
+        <button
+          type="button"
+          className="local-device-bridge-panel__copy-button"
+          disabled={loading || !command.trim()}
+          aria-label={copiedKey === copyKey ? `已复制${label}` : `复制${label}`}
+          title={copiedKey === copyKey ? "已复制" : "复制"}
+          onClick={() => onCopy(copyKey, command)}
+        >
+          {copiedKey === copyKey ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+        </button>
+        <code>{displayCommand}</code>
+      </div>
+      {hint ? <small>{hint}</small> : null}
+    </div>
+  );
+}
+
 function LocalDeviceBridgePanel({
   target,
   detecting,
@@ -606,6 +667,8 @@ function LocalDeviceBridgePanel({
   const [hostRelease, setHostRelease] = useState<DeviceBridgeReleaseItem | null>(null);
   const [alternateReleases, setAlternateReleases] = useState<DeviceBridgeReleaseItem[]>([]);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
+  const [pairingCodeLoading, setPairingCodeLoading] = useState(false);
+  const [copiedCommandKey, setCopiedCommandKey] = useState<"pair" | "start" | null>(null);
   const [panelError, setPanelError] = useState("");
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
   const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
@@ -650,17 +713,61 @@ function LocalDeviceBridgePanel({
   const startCommand = "wiseeff-bridge start";
   const pairCommand = pairingCode
     ? `wiseeff-bridge pair --server ${window.location.origin} --code ${pairingCode.code}`
-    : "wiseeff-bridge pair --server <当前域名> --code <6位配对码>";
+    : "";
+
+  useEffect(() => {
+    if (panelStatus !== "missing_bridge" && panelStatus !== "not_paired") {
+      return;
+    }
+
+    let cancelled = false;
+    setPairingCodeLoading(true);
+    void createPairingCode()
+      .then((code) => {
+        if (!cancelled) {
+          setPairingCode(code);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPanelError(formatDebuggingRuntimeError(error));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPairingCodeLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [panelStatus]);
+
+  const copyCommand = async (key: "pair" | "start", command: string) => {
+    if (!command.trim()) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedCommandKey(key);
+      window.setTimeout(() => setCopiedCommandKey(null), 2000);
+    } catch {
+      setPanelError("无法复制命令，请手动选择复制。");
+    }
+  };
 
   const handleConnect = async () => {
     const snapshot = await refreshBridgeState();
     const needsPairingCode = !snapshot.nextHealth || !snapshot.nextHealth.paired;
     if (needsPairingCode) {
-      try {
-        const code = await createPairingCode();
-        setPairingCode(code);
-      } catch (error) {
-        setPanelError(formatDebuggingRuntimeError(error));
+      if (!pairingCode && !pairingCodeLoading) {
+        try {
+          const code = await createPairingCode();
+          setPairingCode(code);
+        } catch (error) {
+          setPanelError(formatDebuggingRuntimeError(error));
+        }
       }
       return;
     }
@@ -744,17 +851,25 @@ function LocalDeviceBridgePanel({
           </div>
         ) : null}
         {(panelStatus === "missing_bridge" || panelStatus === "not_paired") ? (
-          <div className="local-device-bridge-panel__command">
-            <span>配对命令</span>
-            <code>{pairCommand}</code>
-            {pairingCode ? <small>配对码有效期至 {pairingCode.expiresAt}</small> : null}
-          </div>
+          <BridgeCommandBlock
+            label="配对命令"
+            command={pairCommand}
+            loading={pairingCodeLoading}
+            loadingText="正在生成配对码..."
+            hint={pairingCode ? `配对码有效期至 ${formatPairingCodeExpiry(pairingCode.expiresAt)}` : undefined}
+            copyKey="pair"
+            copiedKey={copiedCommandKey}
+            onCopy={copyCommand}
+          />
         ) : null}
         {panelStatus === "not_running" ? (
-          <div className="local-device-bridge-panel__command">
-            <span>启动命令</span>
-            <code>{startCommand}</code>
-          </div>
+          <BridgeCommandBlock
+            label="启动命令"
+            command={startCommand}
+            copyKey="start"
+            copiedKey={copiedCommandKey}
+            onCopy={copyCommand}
+          />
         ) : null}
         {bridges.length > 0 ? (
           <details className="local-device-bridge-panel__management" open>
@@ -834,7 +949,6 @@ export function NodeDebuggingPage({
   const [target, setTarget] = useState<string | undefined>();
   const [detecting, setDetecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
-  const [detectDiagnosticError, setDetectDiagnosticError] = useState("");
   const [events, setEvents] = useState<PageNodeOperationEvent[]>([]);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -869,7 +983,6 @@ export function NodeDebuggingPage({
   const isLatestRowOperation = (rowId: string, operationSeq: number) =>
     rowOperationSeqRef.current[rowId] === operationSeq;
 
-  const diagnosticConnectionError = detectDiagnosticError.trim();
   const connected = Boolean(target);
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -961,7 +1074,6 @@ export function NodeDebuggingPage({
     setSelectingBridgeTargetId(null);
     setSessionStartedAt(null);
     setConnectionError("");
-    setDetectDiagnosticError("");
     autoReadSignatureRef.current = "";
     rowOperationSeqRef.current = {};
     setSelectedIds(new Set());
@@ -1122,7 +1234,6 @@ export function NodeDebuggingPage({
       detectRequestSeqRef.current === requestSeq && protocolRef.current === requestProtocol;
 
     setDetecting(true);
-    setDetectDiagnosticError("");
     setSelectingBridgeTargetId(null);
     try {
       if (debuggingActions) {
@@ -1178,7 +1289,6 @@ export function NodeDebuggingPage({
       const detectFailureMessage = formatDebuggingRuntimeError(error);
       const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
       setConnectionError(detectFailureMessage);
-      setDetectDiagnosticError(detectFailureMessage);
       if (debuggingActions) {
         appendEvent({
           parameterName: `${protocolLabel(requestProtocol)} 设备`,
@@ -1199,12 +1309,11 @@ export function NodeDebuggingPage({
   };
 
   const selectBridgeTarget = async (selectedTarget: DeviceTarget) => {
-    if (!debuggingActions || detecting || protocol !== "adb") {
+    if (!debuggingActions || detecting) {
       return;
     }
     setSelectingBridgeTargetId(selectedTarget.id);
     setDetecting(true);
-    setDetectDiagnosticError("");
     try {
       const result = await debuggingActions.detectAndStartSession(state.activeProjectId, {
         protocol,
@@ -1223,7 +1332,6 @@ export function NodeDebuggingPage({
     } catch (error) {
       const message = formatDebuggingRuntimeError(error);
       setConnectionError(message);
-      setDetectDiagnosticError(message);
     } finally {
       setSelectingBridgeTargetId(null);
       setDetecting(false);
@@ -1364,23 +1472,25 @@ export function NodeDebuggingPage({
   return (
     <div className="workbench-page node-debugging-page">
       <div className="workbench-one-col">
-        <div className="protocol-switch" role="group" aria-label="连接协议">
-          {(["hdc", "adb"] as const).map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
-              aria-pressed={protocol === item}
-              onClick={() => switchProtocol(item)}
-            >
-              {protocolLabel(item)}
-            </button>
-          ))}
+        <div className="node-debugging-controls">
+          <div className="protocol-switch" role="group" aria-label="连接协议">
+            {(["hdc", "adb"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={protocol === item ? "protocol-switch-button active" : "protocol-switch-button"}
+                aria-pressed={protocol === item}
+                onClick={() => switchProtocol(item)}
+              >
+                {protocolLabel(item)}
+              </button>
+            ))}
+          </div>
         </div>
-        {debuggingActions && protocol === "adb" ? (
+        {debuggingActions ? (
           <LocalDeviceBridgePanel target={target} detecting={detecting} onDetect={() => void detect()} />
         ) : null}
-        {debuggingActions && protocol === "adb" && bridgeTargetCandidates.length > 1 ? (
+        {debuggingActions && bridgeTargetCandidates.length > 1 ? (
           <section className="bridge-target-picker" aria-label="设备代理目标选择">
             <div className="bridge-target-picker__head">
               <strong>检测到多个设备代理目标</strong>
@@ -1419,9 +1529,6 @@ export function NodeDebuggingPage({
           protocol={protocol}
           onDetect={() => void detect()}
         />
-        {diagnosticConnectionError ? (
-          <p className="node-row-error">{diagnosticConnectionError}</p>
-        ) : null}
 
         <section className="debug-table">
           <div className="panel-header">

@@ -48,7 +48,7 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(true);
     expect(env.DEVICE_BRIDGE_ARTIFACT_ROOT).toBe("ops/self-hosted/bridge-artifacts");
-    expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(300);
+    expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(1800);
     expect(env.DEVICE_BRIDGE_TOKEN_TTL_DAYS).toBe(90);
     expect(env.DEVICE_BRIDGE_WS_PATH).toBe("/api/v1/device-bridges/ws");
   });

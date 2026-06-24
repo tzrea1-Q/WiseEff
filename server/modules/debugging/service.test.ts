@@ -1005,6 +1005,50 @@ describe("debugging service", () => {
     });
   });
 
+  it("detectTargets succeeds when bridge targets are available even if server gateway detection fails", async () => {
+    const bridgeRpcClient = {
+      call: vi.fn().mockResolvedValueOnce({ targets: [{ targetRef: "serial-1", online: true, label: "HDC serial-1" }] })
+    };
+    const bridgeConnectionPool = {
+      isConnected: vi.fn((bridgeId: string) => bridgeId === "br-1")
+    };
+    const { db, txCalls } = createFakeDb([
+      [bridgeRow({ id: "br-1", machine_label: "Laptop" })],
+      (call) => [
+        targetRow({
+          id: call.values[3],
+          device_id: call.values[2],
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8]
+        })
+      ]
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({
+        detectTargets: vi.fn(async () => ({ ok: false, targets: [], error: "HDC target detection requires deviceId so detected targets can be persisted against a known debugging device." }))
+      }),
+      bridgeConnectionPool,
+      bridgeRpcClient,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const targets = await service.detectTargets(readAuth, { projectId: "aurora", protocol: "hdc" });
+
+    expect(targets).toEqual([
+      expect.objectContaining({
+        id: "bridge:br-1:hdc:serial-1",
+        bridgeId: "br-1",
+        deviceId: "bridge:br-1",
+        targetRef: "serial-1"
+      })
+    ]);
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[4] === "br-1")).toBe(true);
+  });
+
   it("detectTargets merges bridge-backed targets from online bridges", async () => {
     const bridgeRpcClient = {
       call: vi

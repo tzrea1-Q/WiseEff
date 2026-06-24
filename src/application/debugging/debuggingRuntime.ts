@@ -156,6 +156,10 @@ function isBridgeBackedTarget(target: Pick<DeviceTarget, "id" | "bridgeId">) {
   return Boolean(target.bridgeId) || target.id.startsWith("bridge:");
 }
 
+function isSimulatorTarget(target: Pick<DeviceTarget, "targetRef">) {
+  return target.targetRef?.startsWith("simulator://") ?? false;
+}
+
 function findProtocolDebugDevice(
   devices: Device[],
   projectId: string,
@@ -299,7 +303,7 @@ export function createDebuggingRuntimeActions({
           }
         }
         device ??= resolveProjectDebugDevice(state, projectId, protocol);
-        const detectedTargets = await api.detectTargets({ projectId, protocol, deviceId: device.id });
+        const detectedTargets = await api.detectTargets({ projectId, protocol });
         if (detectedTargets.length === 0) {
           throw new Error("No debug target detected.");
         }
@@ -310,8 +314,13 @@ export function createDebuggingRuntimeActions({
           throw new Error("Selected debug target was not found.");
         }
         const bridgeTargets = detectedTargets.filter(isBridgeBackedTarget);
+        const nonSimulatorTargets = detectedTargets.filter((candidate) => !isSimulatorTarget(candidate));
         if (!target && bridgeTargets.length > 1) {
           return { candidates: bridgeTargets };
+        }
+        target ??= bridgeTargets[0] ?? nonSimulatorTargets[0];
+        if (!target && detectedTargets.every(isSimulatorTarget)) {
+          throw new Error("未检测到本地 Bridge 或真实设备，请先安装并配对 Device Bridge。");
         }
         target ??= detectedTargets[0];
         if (!api.createSession) {
