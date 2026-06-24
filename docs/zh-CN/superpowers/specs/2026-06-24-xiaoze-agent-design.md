@@ -41,6 +41,7 @@ WiseEff 已有一个受控的、后端编排的 Agent（WiseAgent / `UnifiedAgen
 - **执行模型（假设，实施规划时需确认）：** 小泽在用户同意后**确实执行**动作。高风险写（参数合入/提交、设备写、回滚）仍由显式人工审批 + 审计门控，遵循现有安全模型。只读/低风险感知经 authz 后自动执行。
 - **感知是跨页且受权限约束的：** 小泽既感知当前页实时状态，也能通过后端感知工具读取**用户权限**允许的其他页面/领域数据。其可感知范围等于用户授权范围，绝不越权。
 - 小泽的每个动作都映射到**显式注册的工具或前端动作**，绝不自由点击 DOM。可控、可审计、可测试。
+- **模型后端：LangChain `ChatOpenAI` 指向现有 OpenAI 兼容端点。** Pi（`@earendil-works/pi-ai`）属于 LLM 客户端层而非规划层，与 LangGraph 不冲突——但由于生产环境使用 OpenAI 兼容端点，**弃用并移除 Pi**，避免冗余的模型客户端。现有 `openai` / `wiseeff` HTTP live-provider transport 已覆盖这条路，无需 Pi。
 - 保留 `deterministic` provider 作为离线测试替身；生产环境继续强制 live provider。
 
 ## 目标
@@ -59,6 +60,7 @@ WiseEff 已有一个受控的、后端编排的 Agent（WiseAgent / `UnifiedAgen
 - 将所有平台能力做成完整 MCP server 暴露（延后，作为可选层）。
 - 本期不做多 Agent（A2A）协作。
 - 移除 deterministic provider（保留为测试替身）。
+- 保留 Pi provider（`@earendil-works/pi-ai`）——它将被移除，见"模型后端"一节。
 
 ## 架构
 
@@ -143,11 +145,26 @@ LangGraph 的 `interrupt` 在 act 前暂停；`checkpoint` 保证多步任务可
 
 各单元经明确定义的接口通信（AG-UI 事件、`AgentProvider` seam、`ToolRegistry` 契约），可独立测试。
 
+## 模型后端与 Pi 评估
+
+Pi（`@earendil-works/pi-ai`）是 LLM 客户端 / 模型接入层（completion、模型解析、tool-call 格式、token/成本核算），是 `live` provider 三种可互换格式（`wiseeff` / `openai` / `pi`）之一。它**不是**规划器，与 LangGraph 不重叠。
+
+决策：**弃用并移除 Pi。** 生产环境使用 OpenAI 兼容端点，故 LangGraph 用 LangChain `ChatOpenAI` 指向该端点。这移除了冗余的模型客户端，也省去为 Pi 维护自定义 LangChain `BaseChatModel` 适配器。
+
+移除范围：
+
+- 移除 `server/modules/agent/piProvider.ts` 及 `providerRegistry.ts` 中的 `pi` 分支。
+- 移除 `@earendil-works/pi-ai` 依赖、`AGENT_API_FORMAT=pi` / `AGENT_PI_PROVIDER` 环境变量、Pi smoke 脚本（`scripts/run-pi-agent-smoke.ts`、`npm run agent:pi-smoke`）及 Pi runbook/证据文档。
+- 保留 `openai` / `wiseeff` HTTP transport 作为非 LangGraph 的兜底 live path。
+
+若未来某部署需要仅 Pi 良好支持的 provider，文档化的兜底方案是用薄 LangChain `BaseChatModel` 适配器包一层 Pi——但当前不在范围内。
+
 ## 复用 / 新增依赖
 
 - **复用：** Orchestrator、ToolRegistry、`agent_approvals` 审批链、审计 `actorType=agent`、`AgentProvider` seam、`AgentInsightBar`、各 module service authz。
 - **新增（前端）：** `@copilotkit/react-core`、`@copilotkit/react-ui`（AG-UI 客户端）。
-- **新增（后端）：** `@langchain/langgraph` 与 `@ag-ui/*` runtime 适配器；LangGraph 复用现有 OpenAI 兼容 / Pi 端点作为 chat model。
+- **新增（后端）：** `@langchain/langgraph`、`@langchain/openai`（`ChatOpenAI`）与 `@ag-ui/*` runtime 适配器；LangGraph 的 chat model 为指向现有 OpenAI 兼容端点的 `ChatOpenAI`。
+- **移除：** `@earendil-works/pi-ai`（Pi provider），见"模型后端"一节。
 
 ## 分期
 

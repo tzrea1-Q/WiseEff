@@ -41,6 +41,7 @@ This is not an incremental tweak. The vision requires expanding the agent's capa
 - **Execution model (assumption, flagged for confirmation during planning):** Xiaoze **does execute** actions after user consent. High-risk writes (parameter merge/submit, device writes, rollback) remain gated by explicit human approval + audit, honoring the existing security model. Read/low-risk perception runs automatically after authz.
 - **Perception is cross-page and permission-bounded:** Xiaoze perceives both the current page's live state and, through backend perception tools, any other page/domain data the **user's permissions** allow. Its perceivable scope equals the user's authorized scope — never more.
 - Every Xiaoze action maps to an **explicitly registered tool or frontend action**, never free-form DOM clicking. This keeps actions controllable, auditable, and testable.
+- **Model backend: LangChain `ChatOpenAI` against the existing OpenAI-compatible endpoint.** Pi (`@earendil-works/pi-ai`) occupies the LLM-client layer, not the planning layer, so it does not conflict with LangGraph — but since production targets an OpenAI-compatible endpoint, Pi is **deprecated and removed** to avoid a redundant model client. The existing `openai` / `wiseeff` HTTP live-provider transports already cover this path without Pi.
 - The `deterministic` provider is retained as an offline test double; production continues to enforce a live provider.
 
 ## Goals
@@ -59,6 +60,7 @@ This is not an incremental tweak. The vision requires expanding the agent's capa
 - A full MCP server exposure of all platform capabilities (deferred; optional later layer).
 - Multi-agent (A2A) collaboration in this iteration.
 - Removing the deterministic provider (kept as a test double).
+- Retaining the Pi provider (`@earendil-works/pi-ai`) — it is removed; see the Model Backend section.
 
 ## Architecture
 
@@ -143,11 +145,26 @@ Reuses existing assets with no compromise:
 
 Each unit communicates through well-defined interfaces (AG-UI events, the `AgentProvider` seam, the `ToolRegistry` contract) and can be tested independently.
 
+## Model Backend and Pi Evaluation
+
+Pi (`@earendil-works/pi-ai`) is the LLM-client / model-access layer (completion, model resolution, tool-call format, token/cost accounting), one of three interchangeable `live` provider formats (`wiseeff` / `openai` / `pi`). It is **not** a planner, so it does not overlap with LangGraph.
+
+Decision: **deprecate and remove Pi.** Production targets an OpenAI-compatible endpoint, so LangGraph uses LangChain `ChatOpenAI` pointed at that endpoint. This removes a redundant model client and avoids maintaining a custom LangChain `BaseChatModel` adapter for Pi.
+
+Removal scope:
+
+- Remove `server/modules/agent/piProvider.ts` and the `pi` branch in `providerRegistry.ts`.
+- Remove the `@earendil-works/pi-ai` dependency, `AGENT_API_FORMAT=pi` / `AGENT_PI_PROVIDER` env, the Pi smoke script (`scripts/run-pi-agent-smoke.ts`, `npm run agent:pi-smoke`), and the Pi runbook/evidence docs.
+- Keep the `openai` / `wiseeff` HTTP transports as the non-LangGraph fallback live path.
+
+If a future deployment needs a provider only well-supported by Pi, the documented fallback is a thin LangChain `BaseChatModel` adapter wrapping Pi — but this is out of scope now.
+
 ## Reuse / New Dependencies
 
 - **Reuse:** Orchestrator, ToolRegistry, `agent_approvals` approval chain, audit `actorType=agent`, the `AgentProvider` seam, `AgentInsightBar`, per-module service authz.
 - **New (frontend):** `@copilotkit/react-core`, `@copilotkit/react-ui` (AG-UI client).
-- **New (backend):** `@langchain/langgraph` and `@ag-ui/*` runtime adapter; LangGraph reuses the existing OpenAI-compatible / Pi endpoint as its chat model.
+- **New (backend):** `@langchain/langgraph`, `@langchain/openai` (`ChatOpenAI`), and `@ag-ui/*` runtime adapter; LangGraph's chat model is `ChatOpenAI` pointed at the existing OpenAI-compatible endpoint.
+- **Removed:** `@earendil-works/pi-ai` (Pi provider), per the Model Backend section.
 
 ## Phasing
 
