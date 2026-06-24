@@ -9,7 +9,11 @@ export type AgentToolName =
   | "log.generateChecklist"
   | "debugging.recommendTargetValues"
   | "debugging.prepareRollback"
-  | "audit.summarizeRecentEvents";
+  | "audit.summarizeRecentEvents"
+  | "perception.getProjectOverview"
+  | "perception.searchParameters"
+  | "perception.getNodeSnapshot"
+  | "perception.getRecentLogConclusions";
 
 export type AgentContext = {
   path: string;

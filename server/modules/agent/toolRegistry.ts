@@ -6,6 +6,7 @@ import { requireAgentPermission, requireAgentProjectAccess } from "./policy";
 import { createAuditTools } from "./tools/auditTools";
 import { createDebuggingTools } from "./tools/debuggingTools";
 import { createLogTools } from "./tools/logTools";
+import { createPerceptionTools } from "./tools/perceptionTools";
 import { createParameterTools } from "./tools/parameterTools";
 
 export type AgentToolExecutionContext = {
@@ -47,7 +48,8 @@ export function createAgentToolRegistry(options: { db: Database | { query: Datab
     ...createParameterTools(options),
     ...createLogTools(options),
     ...createAuditTools(options),
-    ...createDebuggingTools(options)
+    ...createDebuggingTools(options),
+    ...createPerceptionTools(options)
   ];
   const byName = new Map<string, AgentToolDefinition>(tools.map((tool) => [tool.name, tool]));
 

@@ -114,6 +114,30 @@ const TOOL_METADATA: Record<AgentToolName, ToolMetadata> = {
     writeAdjacent: false,
     mutating: false,
     normalize: optionalProjectPayload
+  },
+  "perception.getProjectOverview": {
+    label: "Get project overview",
+    writeAdjacent: false,
+    mutating: false,
+    normalize: optionalProjectPayload
+  },
+  "perception.searchParameters": {
+    label: "Search parameters",
+    writeAdjacent: false,
+    mutating: false,
+    normalize: optionalProjectPayload
+  },
+  "perception.getNodeSnapshot": {
+    label: "Get node snapshot",
+    writeAdjacent: false,
+    mutating: false,
+    normalize: optionalProjectPayload
+  },
+  "perception.getRecentLogConclusions": {
+    label: "Get recent log conclusions",
+    writeAdjacent: false,
+    mutating: false,
+    normalize: optionalProjectPayload
   }
 };
 
