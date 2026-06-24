@@ -32,7 +32,9 @@ const webServers = [
       VITE_WISEEFF_API_BASE_URL: apiURL,
       DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",
       OBJECT_STORE_ROOT: process.env.OBJECT_STORE_ROOT ?? ".wiseeff-object-store",
-      ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {})
+      ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
+      XIAOZE_RUNTIME_ENABLED: "true",
+      XIAOZE_DETERMINISTIC: "true"
     },
     url: `${apiURL}/api/v1/health`,
     reuseExistingServer,
@@ -43,6 +45,7 @@ const webServers = [
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: apiURL,
+      VITE_XIAOZE_ENABLED: "true",
       ...(apiAuthorization ? { VITE_WISEEFF_API_AUTHORIZATION: apiAuthorization } : {})
     },
     url: baseURL,

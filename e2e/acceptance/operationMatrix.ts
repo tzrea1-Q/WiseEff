@@ -261,6 +261,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api", "audit"]
   },
   {
+    id: "XIAOZE-PERCEPTION-001",
+    priority: "P0",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Ask Xiaoze a grounded read-only question on a workflow page.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-PERCEPTION-001"],
+    specFiles: ["e2e/acceptance/xiaoze-perception.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "XIAOZE-PERCEPTION-AUTHZ-001",
+    priority: "P0",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Guest"],
+    action: "Reject out-of-scope Xiaoze questions without leaking protected data.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-PERCEPTION-AUTHZ-001"],
+    specFiles: ["e2e/acceptance/xiaoze-perception.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
     id: "PERM-GOV-001",
     priority: "P0",
     area: "permissions",

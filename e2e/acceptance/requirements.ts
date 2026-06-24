@@ -123,6 +123,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-PERCEPTION-001",
+    workflow: "G",
+    title: "Xiaoze answers grounded read-only questions using page context and perception tools.",
+    required: true
+  },
+  {
+    id: "XIAOZE-PERCEPTION-AUTHZ-001",
+    workflow: "G",
+    title: "Out-of-scope Xiaoze questions return a safe non-data answer.",
+    required: true
+  },
+  {
     id: "PERM-GOV-001",
     workflow: "H",
     title: "User governance page is Admin-only and active Admin cannot disable itself.",
