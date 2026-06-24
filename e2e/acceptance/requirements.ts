@@ -153,6 +153,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-PLAN-MULTISTEP-001",
+    workflow: "G",
+    title: "Xiaoze resumes a multi-step plan after approval and reports the observed execution result.",
+    required: true
+  },
+  {
+    id: "XIAOZE-PROACTIVE-001",
+    workflow: "G",
+    title: "Opt-in Xiaoze proactive suggestions are read-only, authz-bounded, and absent when disabled.",
+    required: true
+  },
+  {
     id: "PERM-GOV-001",
     workflow: "H",
     title: "User governance page is Admin-only and active Admin cannot disable itself.",

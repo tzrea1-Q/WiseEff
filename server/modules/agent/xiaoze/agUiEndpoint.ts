@@ -10,7 +10,8 @@ import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName } from "../types";
 import { createOrchestratorApprovalBridge, type ApprovalBridgeBeginResult } from "./approvalBridge";
 import { createXiaozeCheckpointer } from "./checkpointer";
-import { createPerceptionAgent, type PerceptionAgentRunResult, wrapLangChainChatModel } from "./perceptionAgent";
+import { type PerceptionAgentRunResult, wrapLangChainChatModel } from "./perceptionAgent";
+import { createPlanningAgent } from "./planningGraph";
 import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
 import { ChatOpenAI } from "@langchain/openai";
 
@@ -440,23 +441,41 @@ export function createXiaozeAgentFactory(options: {
   const modelFactory = options.modelFactory ?? createProductionModel;
   const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db, toolRegistry: registry });
+  const executionContextRef: { current: AgentToolExecutionContext | null } = { current: null };
+  const planningAgent = createPlanningAgent({
+    model: options.env.XIAOZE_DETERMINISTIC ? createDeterministicPerceptionModel() : modelFactory(options.env),
+    runTool: (name, payload) => {
+      if (!executionContextRef.current) {
+        throw new Error("Xiaoze execution context is not bound for this request.");
+      }
+      return registry.run(name as never, executionContextRef.current, payload);
+    },
+    listTools: () =>
+      [...perceptionTools, ...actionTools].map((tool) => ({
+        name: tool.name,
+        description: tool.label,
+        schema: { type: "object", properties: { projectId: { type: "string" } } },
+        requiresApproval: tool.requiresApproval
+      })),
+    checkpointer,
+    approvalBridge
+  });
 
   return (executionContext: AgentToolExecutionContext): XiaozePerceptionAgent => {
-    const model = options.env.XIAOZE_DETERMINISTIC ? createDeterministicPerceptionModel() : modelFactory(options.env);
-    const agent = createPerceptionAgent({
-      model,
-      runTool: (name, payload) => registry.run(name as never, executionContext, payload),
-      listTools: () =>
-        [...perceptionTools, ...actionTools].map((tool) => ({
-          name: tool.name,
-          description: tool.label,
-          schema: { type: "object", properties: { projectId: { type: "string" } } },
-          requiresApproval: tool.requiresApproval
-        })),
-      checkpointer,
-      approvalBridge
-    });
-    return agent;
+    executionContextRef.current = executionContext;
+    return {
+      async run(input) {
+        const result = await planningAgent.run({
+          ...input,
+          threadId: input.threadId
+        });
+        return {
+          text: result.text,
+          citations: result.citations,
+          interrupt: result.interrupt
+        };
+      }
+    };
   };
 }
 

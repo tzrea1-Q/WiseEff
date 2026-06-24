@@ -873,7 +873,8 @@ describe("WiseEff API", () => {
           DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
           DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws",
           XIAOZE_RUNTIME_ENABLED: false,
-          XIAOZE_DETERMINISTIC: false
+          XIAOZE_DETERMINISTIC: false,
+          XIAOZE_PROACTIVE_ENABLED: false
         },
         authVerifierFactory: () => ({
           verify: async () => ({
@@ -983,7 +984,8 @@ describe("WiseEff API", () => {
           DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
           DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws",
           XIAOZE_RUNTIME_ENABLED: false,
-          XIAOZE_DETERMINISTIC: false
+          XIAOZE_DETERMINISTIC: false,
+          XIAOZE_PROACTIVE_ENABLED: false
         }
       }),
       "/api/v1/me",

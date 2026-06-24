@@ -321,6 +321,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["api"]
   },
   {
+    id: "XIAOZE-PLAN-MULTISTEP-001",
+    priority: "P2",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Complete a multi-step Xiaoze plan through approval and checkpoint resume.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-PLAN-MULTISTEP-001"],
+    specFiles: ["e2e/acceptance/xiaoze-planning.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
+    id: "XIAOZE-PROACTIVE-001",
+    priority: "P2",
+    area: "agent",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Surface opt-in grounded proactive suggestions on a workflow page.",
+    coverage: "automated",
+    acceptanceIds: ["XIAOZE-PROACTIVE-001"],
+    specFiles: ["e2e/acceptance/xiaoze-planning.acceptance.spec.ts"],
+    assertions: ["api"]
+  },
+  {
     id: "PERM-GOV-001",
     priority: "P0",
     area: "permissions",
