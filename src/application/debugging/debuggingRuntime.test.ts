@@ -209,8 +209,7 @@ describe("createDebuggingRuntimeActions", () => {
 
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       projectId: "api-project",
-      protocol: "hdc",
-      deviceId: apiDevice.id
+      protocol: "hdc"
     });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
@@ -238,8 +237,7 @@ describe("createDebuggingRuntimeActions", () => {
 
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       projectId: "api-project",
-      protocol: "adb",
-      deviceId: adbDevice.id
+      protocol: "adb"
     });
     expect(gateway.createSession).toHaveBeenCalledWith({
       projectId: "api-project",
@@ -283,8 +281,7 @@ describe("createDebuggingRuntimeActions", () => {
 
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       projectId: "api-project",
-      protocol: "hdc",
-      deviceId: hdcDevice.id
+      protocol: "hdc"
     });
     expect(gateway.createSession).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -315,9 +312,65 @@ describe("createDebuggingRuntimeActions", () => {
     expect(gateway.listDevices).toHaveBeenCalledTimes(1);
     expect(gateway.detectTargets).toHaveBeenCalledWith({
       projectId: "aurora",
-      protocol: "hdc",
-      deviceId: hdcDevice.id
+      protocol: "hdc"
     });
+  });
+
+  it("prefers bridge-backed targets over simulator targets during detection", async () => {
+    const dispatch = vi.fn();
+    const bridgeTarget = {
+      ...apiTarget,
+      id: "bridge:br-1:hdc:serial-1",
+      deviceId: "bridge:br-1",
+      bridgeId: "br-1",
+      targetRef: "serial-1",
+      label: "Lab Phone"
+    };
+    const simulatorTarget = {
+      ...apiTarget,
+      id: "sim-target-aurora-1",
+      targetRef: "simulator://aurora-1",
+      label: "Aurora Simulator 1"
+    };
+    const gateway = createGateway({
+      detectTargets: vi.fn().mockResolvedValue([simulatorTarget, bridgeTarget]),
+      createSession: vi.fn().mockResolvedValue({ ...apiSession, targetId: bridgeTarget.id, deviceId: bridgeTarget.deviceId })
+    });
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+
+    const result = await actions.detectAndStartSession("api-project", { protocol: "hdc" });
+
+    expect(gateway.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetId: bridgeTarget.id,
+        deviceId: bridgeTarget.deviceId,
+        bridgeId: "br-1",
+        protocol: "hdc"
+      })
+    );
+    expect("candidates" in result).toBe(false);
+    if ("target" in result) {
+      expect(result.target).toEqual(bridgeTarget);
+    }
+  });
+
+  it("rejects simulator-only targets when no bridge or real device is available", async () => {
+    const dispatch = vi.fn();
+    const gateway = createGateway({
+      detectTargets: vi.fn().mockResolvedValue([
+        {
+          ...apiTarget,
+          id: "sim-target-aurora-1",
+          targetRef: "simulator://aurora-1",
+          label: "Aurora Simulator 1"
+        }
+      ])
+    });
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+
+    await expect(actions.detectAndStartSession("api-project", { protocol: "hdc" })).rejects.toThrow(
+      "未检测到本地 Bridge 或真实设备，请先安装并配对 Device Bridge。"
+    );
   });
 
   it("reads an API node, returns the read result, and dispatches the operation event", async () => {

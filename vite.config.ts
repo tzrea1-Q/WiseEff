@@ -11,6 +11,31 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const isNestedWorktree = /[\\/]\.worktrees[\\/]/.test(projectRoot);
 const siblingWorktreeExclude = isNestedWorktree ? [] : [".worktrees/**"];
 
+function resolvePreviewAllowedHosts(): string[] | true {
+  const configured = process.env.VITE_WISEEFF_ALLOWED_HOSTS?.split(",").map((value) => value.trim()).filter(Boolean);
+  if (configured?.length) {
+    return configured;
+  }
+
+  const apiBase = process.env.VITE_WISEEFF_API_BASE_URL?.trim();
+  if (!apiBase) {
+    return ["127.0.0.1", "localhost"];
+  }
+
+  try {
+    const hostname = new URL(apiBase).hostname;
+    const hosts = new Set(["127.0.0.1", "localhost", hostname]);
+    if (hostname.startsWith("www.")) {
+      hosts.add(hostname.slice(4));
+    } else {
+      hosts.add(`www.${hostname}`);
+    }
+    return [...hosts];
+  } catch {
+    return true;
+  }
+}
+
 function powerManagementConfigWriter(): Plugin {
   return {
     name: "power-management-config-writer",
@@ -56,6 +81,10 @@ function powerManagementConfigWriter(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), powerManagementConfigWriter(), hdcApiBridge()],
+  preview: {
+    host: "0.0.0.0",
+    allowedHosts: resolvePreviewAllowedHosts()
+  },
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "./src")

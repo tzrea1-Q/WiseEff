@@ -627,22 +627,9 @@ export function createDebuggingService(options: ServiceOptions) {
         }
       });
       recordGatewayOperation("detect", gatewayResult.ok ? "succeeded" : "failed");
-      if (!gatewayResult.ok) {
-        await db.transaction(async (tx) => {
-          await insertDebugEvent(tx, {
-            organizationId,
-            projectId: input.projectId,
-            kind: "target-detect-failed",
-            severity: "error",
-            message: failureReason(gatewayResult.error, "Debug target detection failed."),
-            metadata: { deviceId: input.deviceId, protocol, error: gatewayResult.error }
-          });
-        });
-        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(gatewayResult.error, "Debug target detection failed."), 409);
-      }
 
       const bridgeTargets =
-        !input.deviceId && options.bridgeRpcClient && options.bridgeConnectionPool
+        options.bridgeRpcClient && options.bridgeConnectionPool
           ? await detectTargetsAcrossBridges({
               rpc: options.bridgeRpcClient,
               bridges: (
@@ -661,15 +648,31 @@ export function createDebuggingService(options: ServiceOptions) {
             })
           : [];
 
+      if (!gatewayResult.ok && bridgeTargets.length === 0) {
+        await db.transaction(async (tx) => {
+          await insertDebugEvent(tx, {
+            organizationId,
+            projectId: input.projectId,
+            kind: "target-detect-failed",
+            severity: "error",
+            message: failureReason(gatewayResult.error, "Debug target detection failed."),
+            metadata: { deviceId: input.deviceId, protocol, error: gatewayResult.error }
+          });
+        });
+        throw new ApiError("DEVICE_UNAVAILABLE", failureReason(gatewayResult.error, "Debug target detection failed."), 409);
+      }
+
       const persistedTargets = [
-        ...gatewayResult.targets.map((target) => ({
-          id: target.id,
-          deviceId: target.deviceId,
-          protocol,
-          targetRef: target.targetRef,
-          label: target.label,
-          online: target.online
-        })),
+        ...(gatewayResult.ok
+          ? gatewayResult.targets.map((target) => ({
+              id: target.id,
+              deviceId: target.deviceId,
+              protocol,
+              targetRef: target.targetRef,
+              label: target.label,
+              online: target.online
+            }))
+          : []),
         ...bridgeTargets
       ];
 
@@ -693,7 +696,7 @@ export function createDebuggingService(options: ServiceOptions) {
               targetId: input.deviceId ?? null,
               metadata: {
                 targetCount: targets.length,
-                serverTargetCount: gatewayResult.targets.length,
+                serverTargetCount: gatewayResult.ok ? gatewayResult.targets.length : 0,
                 bridgeTargetCount: bridgeTargets.length,
                 deviceId: input.deviceId,
                 protocol
