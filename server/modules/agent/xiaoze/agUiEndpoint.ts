@@ -9,13 +9,26 @@ import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName } from "../types";
 import { createOrchestratorApprovalBridge, type ApprovalBridgeBeginResult } from "./approvalBridge";
+import { createXiaozeCheckpointer } from "./checkpointer";
 import { createPerceptionAgent, type PerceptionAgentRunResult, wrapLangChainChatModel } from "./perceptionAgent";
 import { ChatOpenAI } from "@langchain/openai";
 
 export type XiaozeAgUiRequest = Pick<RouteRequest, "headers" | "body" | "requestId">;
 
 export type XiaozePerceptionAgent = {
-  run(input: { message: string; context: { projectId?: string; pageKey?: string } }): Promise<PerceptionAgentRunResult>;
+  run(input: {
+    message: string;
+    context: { projectId?: string; pageKey?: string };
+    threadId: string;
+    resume?: {
+      auth: AuthContext;
+      requestId: string;
+      approvalId: string;
+      decision: "approve" | "reject";
+      editedArgs?: Record<string, unknown>;
+      reason?: string;
+    };
+  }): Promise<PerceptionAgentRunResult>;
 };
 
 type AgUiStreamEvent = { event: string; data: Record<string, unknown> };
@@ -180,13 +193,21 @@ export function createXiaozeAgUiHandler(options: {
       try {
         if (resumeDecision && approvalBridge) {
           try {
-            const resumed = await approvalBridge.resume({
-              auth: verifiedAuth,
-              requestId: request.requestId,
-              approvalId: resumeDecision.approvalId,
-              decision: resumeDecision.decision,
-              editedArgs: resumeDecision.editedArgs,
-              reason: resumeDecision.reason
+            const resumed = await agent.run({
+              message: "",
+              context: {
+                projectId: pageContext.projectId,
+                pageKey: pageContext.pageKey
+              },
+              threadId,
+              resume: {
+                auth: verifiedAuth,
+                requestId: request.requestId,
+                approvalId: resumeDecision.approvalId,
+                decision: resumeDecision.decision,
+                editedArgs: resumeDecision.editedArgs,
+                reason: resumeDecision.reason
+              }
             });
             yield {
               event: EventType.TEXT_MESSAGE_START,
@@ -235,7 +256,8 @@ export function createXiaozeAgUiHandler(options: {
           context: {
             projectId: pageContext.projectId,
             pageKey: pageContext.pageKey
-          }
+          },
+          threadId
         });
 
         if (result.interrupt && approvalBridge) {
@@ -408,11 +430,15 @@ export function createXiaozeAgentFactory(options: {
   db: Database;
   env: Pick<ServerEnv, "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL" | "XIAOZE_DETERMINISTIC">;
   modelFactory?: typeof createProductionModel;
+  checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
+  approvalBridge?: ReturnType<typeof createOrchestratorApprovalBridge>;
 }) {
   const registry = createAgentToolRegistry({ db: options.db });
   const perceptionTools = registry.list().filter((tool) => tool.name.startsWith("perception."));
   const actionTools = registry.list().filter((tool) => tool.name.startsWith("action."));
   const modelFactory = options.modelFactory ?? createProductionModel;
+  const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
+  const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db, toolRegistry: registry });
 
   return (executionContext: AgentToolExecutionContext): XiaozePerceptionAgent => {
     const model = options.env.XIAOZE_DETERMINISTIC ? createDeterministicPerceptionModel() : modelFactory(options.env);
@@ -425,7 +451,9 @@ export function createXiaozeAgentFactory(options: {
           description: tool.label,
           schema: { type: "object", properties: { projectId: { type: "string" } } },
           requiresApproval: tool.requiresApproval
-        }))
+        })),
+      checkpointer,
+      approvalBridge
     });
     return agent;
   };

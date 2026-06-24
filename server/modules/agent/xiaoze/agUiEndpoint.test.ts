@@ -100,11 +100,11 @@ describe("createXiaozeAgUiHandler", () => {
   });
 
   it("reads AG-UI native resume entries produced by the browser agent bridge", async () => {
-    const resume = vi.fn().mockResolvedValue({ text: "Change submitted." });
-    const approvalBridge = { begin: vi.fn(), resume };
+    const run = vi.fn().mockResolvedValue({ text: "Change submitted.", citations: [] });
+    const approvalBridge = { begin: vi.fn(), resume: vi.fn() };
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () => anyAuth,
-      createAgent: () => ({ run: vi.fn() }),
+      createAgent: () => ({ run }),
       approvalBridge: approvalBridge as never
     });
 
@@ -130,11 +130,14 @@ describe("createXiaozeAgUiHandler", () => {
     });
 
     const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
-    expect(resume).toHaveBeenCalledWith(
+    expect(run).toHaveBeenCalledWith(
       expect.objectContaining({
-        approvalId: "approval-addr-1",
-        decision: "approve",
-        editedArgs: expect.objectContaining({ targetValue: "20A" })
+        threadId: "thread-resume",
+        resume: expect.objectContaining({
+          approvalId: "approval-addr-1",
+          decision: "approve",
+          editedArgs: expect.objectContaining({ targetValue: "20A" })
+        })
       })
     );
     expect(events.some((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)).toBe(true);
