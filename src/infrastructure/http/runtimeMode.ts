@@ -28,4 +28,9 @@ export function parseXiaozeEnabled(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
 }
 
+export function parseXiaozeProactiveEnabled(value: string | undefined) {
+  return value?.trim().toLowerCase() === "true";
+}
+
 export const xiaozeEnabled = parseXiaozeEnabled(import.meta.env.VITE_XIAOZE_ENABLED);
+export const xiaozeProactiveEnabled = parseXiaozeProactiveEnabled(import.meta.env.VITE_XIAOZE_PROACTIVE_ENABLED);
