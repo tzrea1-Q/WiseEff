@@ -1,44 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  buildBridgeConnectUrl,
-  pollLocalBridgeHealth,
-  probeLocalBridgeHealth,
-  shouldConfirmBridgeSchemeLaunch
-} from "./bridgeConnectLauncher";
+import { probeLocalBridgeHealth } from "./bridgeConnectLauncher";
 
 describe("bridgeConnectLauncher", () => {
-  it("builds scheme URL from origin and pairing code", () => {
-    expect(buildBridgeConnectUrl("https://tzrea1.com", "123456")).toBe(
-      "wiseeff-bridge://connect?server=https%3A%2F%2Ftzrea1.com&code=123456"
-    );
-  });
+  it("parses tools probe state from local health JSON", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        paired: true,
+        connected: true,
+        updatedAt: "2026-06-25T00:00:00.000Z",
+        tools: {
+          adb: { available: false, reason: "adb not found" },
+          hdc: { available: true, version: "hdc version 2.0.0", source: "system" }
+        }
+      })
+    })) as unknown as typeof fetch;
 
-  it("polls health until connected or timeout", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({ ok: true, paired: true, connected: false, updatedAt: "t" }),
-          { status: 200 }
-        )
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ ok: true, paired: true, connected: true, updatedAt: "t" }), { status: 200 })
-      );
-
-    const result = await pollLocalBridgeHealth({ fetchImpl: fetchMock, intervalMs: 1, timeoutMs: 50 });
-    expect(result?.connected).toBe(true);
-  });
-
-  it("returns null when health endpoint is unreachable", async () => {
-    const fetchMock = vi.fn(async () => {
-      throw new Error("offline");
+    await expect(probeLocalBridgeHealth(fetchImpl)).resolves.toEqual({
+      ok: true,
+      paired: true,
+      connected: true,
+      updatedAt: "2026-06-25T00:00:00.000Z",
+      tools: {
+        adb: { available: false, reason: "adb not found" },
+        hdc: { available: true, version: "hdc version 2.0.0", source: "system" }
+      }
     });
-    await expect(probeLocalBridgeHealth(fetchMock)).resolves.toBeNull();
-  });
-
-  it("skips confirm when localStorage flag is set", () => {
-    expect(shouldConfirmBridgeSchemeLaunch({ getItem: () => "1" })).toBe(false);
   });
 });

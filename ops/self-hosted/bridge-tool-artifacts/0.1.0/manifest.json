@@ -1,0 +1,54 @@
+{
+  "recommendedVersion": "0.1.0",
+  "minCompatibleVersion": "0.1.0",
+  "items": [
+    {
+      "platform": "windows",
+      "arch": "amd64",
+      "protocol": "adb",
+      "version": "0.1.0",
+      "artifact": "adb-platform-tools.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "protocol": "adb",
+      "version": "0.1.0",
+      "artifact": "adb-platform-tools.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+    },
+    {
+      "platform": "darwin",
+      "arch": "amd64",
+      "protocol": "adb",
+      "version": "0.1.0",
+      "artifact": "adb-platform-tools.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000003"
+    },
+    {
+      "platform": "windows",
+      "arch": "amd64",
+      "protocol": "hdc",
+      "version": "0.1.0",
+      "artifact": "hdc.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000004"
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "protocol": "hdc",
+      "version": "0.1.0",
+      "artifact": "hdc.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000005"
+    },
+    {
+      "platform": "darwin",
+      "arch": "amd64",
+      "protocol": "hdc",
+      "version": "0.1.0",
+      "artifact": "hdc.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000006"
+    }
+  ]
+}
