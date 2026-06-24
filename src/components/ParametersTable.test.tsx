@@ -202,6 +202,21 @@ describe("ParametersTable", () => {
     expect(within(dtsRow!).queryByText(/"0", "5000"/)).not.toBeInTheDocument();
   });
 
+  it("summarizes multiline values even when valueKind is still scalar", () => {
+    setup({
+      rows: [
+        {
+          ...complexRow,
+          valueKind: "scalar"
+        }
+      ],
+      onViewRow: vi.fn()
+    });
+
+    expect(screen.getByText("复杂配置")).toBeInTheDocument();
+    expect(screen.queryByText(/"0", "5000"/)).not.toBeInTheDocument();
+  });
+
   it("adds modified row styling and module badge hooks", () => {
     setup({ modifiedIds: new Set(["p1"]) });
     const modifiedRow = screen.getByRole("checkbox", { name: /fast_charge/ }).closest("tr");

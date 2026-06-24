@@ -10,6 +10,7 @@ import {
   PARAMETER_COVERAGE_LABEL,
   sortParameterLibrary
 } from "@/parameterAdminLibraryFilters";
+import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/parameterValueKind";
 import type { PowerManagementParameterTemplate, PowerManagementProject } from "@/powerManagementConfig";
 
 const RISK_LABEL = {
@@ -182,8 +183,27 @@ export function ParameterLibraryTable({
                     <span className={`risk-badge ${parameter.risk.toLowerCase()}`}>{RISK_LABEL[parameter.risk]}</span>
                   </td>
                   <td data-label="推荐值">
-                    {getParameterRecommendedValue(parameter, projects)}
-                    {parameter.unit ? <small>{parameter.unit}</small> : null}
+                    {(() => {
+                      const recommendedValue = getParameterRecommendedValue(parameter, projects);
+                      const hasComplexValue = shouldSummarizeComplexParameter(parameter, recommendedValue);
+                      if (!hasComplexValue) {
+                        return (
+                          <>
+                            {recommendedValue}
+                            {parameter.unit ? <small>{parameter.unit}</small> : null}
+                          </>
+                        );
+                      }
+
+                      const summary = getParameterValueSummary(recommendedValue || parameter.configFormat);
+                      return (
+                        <span className="parameter-value-summary" title={recommendedValue}>
+                          <span>复杂配置</span>
+                          <strong>{summary.propertyName}</strong>
+                          <small>{summary.lineCount} 行</small>
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td data-label="覆盖">{PARAMETER_COVERAGE_LABEL[coverage]}</td>
                   <td data-label="操作">

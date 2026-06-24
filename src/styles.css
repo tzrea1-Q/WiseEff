@@ -8484,6 +8484,17 @@ td small {
   display: none;
 }
 
+.parameter-draft-diff-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.parameter-draft-diff-panel > strong {
+  color: #334155;
+  font-size: 12px;
+}
+
 .parameter-draft-code-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -9663,6 +9674,10 @@ td small {
   font-size: 12px;
   line-height: 1.55;
   word-break: normal;
+}
+
+.parameter-draft-diff-panel .submission-preview-diff {
+  max-height: 220px;
 }
 
 .submission-preview-diff-row {

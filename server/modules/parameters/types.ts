@@ -33,6 +33,7 @@ export type ParameterRecordDto = {
   description: string;
   explanation: string;
   configFormat: string;
+  valueKind?: "scalar" | "complex";
   module: string;
   projectId: string;
   currentValue: string;

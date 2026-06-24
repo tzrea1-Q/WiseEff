@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { initialState } from "./mockData";
-import { complexEditorRows, isComplexParameter } from "./parameterValueKind";
+import {
+  complexEditorRows,
+  getParameterValueSummary,
+  isComplexParameter,
+  isComplexParameterValue,
+  shouldSummarizeComplexParameter
+} from "./parameterValueKind";
 
 describe("parameterValueKind", () => {
   it("uses valueKind to detect complex parameters", () => {
@@ -13,6 +19,13 @@ describe("parameterValueKind", () => {
     expect(complex!.valueKind).toBe("complex");
     expect(isComplexParameter(scalar!)).toBe(false);
     expect(isComplexParameter(complex!)).toBe(true);
+  });
+
+  it("falls back to multiline content when valueKind is missing", () => {
+    const multiline = "battery-thermal-derate-curve = <\n  0 38 3800 4350\n>;";
+    expect(isComplexParameterValue(multiline)).toBe(true);
+    expect(shouldSummarizeComplexParameter({ valueKind: "scalar" }, multiline)).toBe(true);
+    expect(getParameterValueSummary(multiline).propertyName).toBe("battery-thermal-derate-curve");
   });
 
   it("caps complex editor row height", () => {

@@ -27,6 +27,7 @@ export type PowerManagementParameter = {
   range: string;
   unit: string;
   risk: string;
+  valueKind?: "scalar" | "complex";
   values: Record<string, PowerManagementParameterValue | undefined>;
 };
 
@@ -59,6 +60,7 @@ const powerManagementConfigSchema = z.object({
       range: z.string(),
       unit: z.string(),
       risk: z.string(),
+      valueKind: z.enum(["scalar", "complex"]).optional(),
       values: z.record(
         z.object({
           currentValue: z.string(),
@@ -168,9 +170,10 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
           module,
           default_range,
           unit,
-          risk
+          risk,
+          value_kind
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         on conflict (id) do update set
           organization_id = excluded.organization_id,
           name = excluded.name,
@@ -181,6 +184,7 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
           default_range = excluded.default_range,
           unit = excluded.unit,
           risk = excluded.risk,
+          value_kind = excluded.value_kind,
           updated_at = now()
         `,
         [
@@ -193,7 +197,12 @@ export async function seedM1Parameters(db: Database, config: PowerManagementConf
           parameter.module,
           parameter.range,
           parameter.unit,
-          parameter.risk
+          parameter.risk,
+          parameter.valueKind ??
+            (parameter.configFormat.trim().startsWith("DTS:") ||
+            parameter.configFormat.toLowerCase().includes("string-list")
+              ? "complex"
+              : "scalar")
         ]
       );
 

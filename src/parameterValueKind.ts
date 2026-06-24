@@ -1,16 +1,43 @@
-import type { ParameterValueKind, PowerManagementParameterTemplate } from "./powerManagementConfig";
+import type { ParameterValueKind } from "./powerManagementConfig";
 
 export type { ParameterValueKind };
 
-export function isComplexParameter(parameter: { valueKind: ParameterValueKind }) {
+export function isComplexParameterValue(value: string) {
+  return value.includes("\n") || value.length > 80;
+}
+
+export function isComplexParameter(parameter: { valueKind?: ParameterValueKind }) {
   return parameter.valueKind === "complex";
+}
+
+export function shouldSummarizeComplexParameter(
+  parameter: { valueKind?: ParameterValueKind; configFormat?: string },
+  ...values: string[]
+) {
+  if (parameter.valueKind === "complex") {
+    return true;
+  }
+
+  const format = parameter.configFormat?.trim() ?? "";
+  if (format.startsWith("DTS:") || format.includes("string-list")) {
+    return true;
+  }
+
+  return values.some((value) => value.trim().length > 0 && isComplexParameterValue(value));
+}
+
+export function getParameterValueSummary(value: string) {
+  const firstLine = value.split("\n")[0]?.trim() ?? "";
+  const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
+  const lineCount = value.split("\n").filter((line) => line.trim()).length;
+  return { propertyName, lineCount };
 }
 
 export function getComplexParameterLineCount(value: string) {
   return value ? value.split(/\r?\n/).length : 0;
 }
 
-export function getComplexParameterKindLabel(parameter: PowerManagementParameterTemplate) {
+export function getComplexParameterKindLabel(parameter: { configFormat: string }) {
   const format = parameter.configFormat.trim();
   if (format.startsWith("DTS")) {
     return "DTS";
