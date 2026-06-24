@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Insight } from "@/components/AgentInsightBar";
 import { resolveXiaozeAuthorizationHeader } from "./xiaozeHttpAgent";
+import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
 import { wiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
 
@@ -18,8 +19,10 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
 
+  const pageKeySupported = pageContext?.pageKey ? supportsXiaozeProactiveInsightPage(pageContext.pageKey) : false;
+
   const fetchSuggestions = useCallback(async () => {
-    if (!options.enabled || !pageContext?.projectId) {
+    if (!options.enabled || !pageContext?.projectId || !pageKeySupported) {
       setInsights([]);
       return;
     }
@@ -35,7 +38,8 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         context: {
           path: pageContext.path,
           pageKey: pageContext.pageKey,
-          projectId: pageContext.projectId
+          projectId: pageContext.projectId,
+          projectName: pageContext.projectName
         }
       })
     });
@@ -55,7 +59,8 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         actions: [
           {
             id: `${item.id}-ask`,
-            label: "Ask Xiaoze",
+            label: "问小泽",
+            variant: "primary",
             onClick: () => {
               document.querySelector<HTMLButtonElement>('[aria-label="打开小泽"]')?.click();
             }
@@ -63,7 +68,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
         ]
       }))
     );
-  }, [options.enabled, pageContext?.path, pageContext?.pageKey, pageContext?.projectId]);
+  }, [options.enabled, pageContext?.path, pageContext?.pageKey, pageContext?.projectId, pageKeySupported]);
 
   useEffect(() => {
     void fetchSuggestions();

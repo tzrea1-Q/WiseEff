@@ -1,4 +1,6 @@
-import "dotenv/config";
+import { loadDotenvFiles } from "./config/loadDotenv";
+
+loadDotenvFiles();
 import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
 import { createAgentProviderFromEnv } from "./modules/agent/providerRegistry";

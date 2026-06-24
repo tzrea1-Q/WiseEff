@@ -30,26 +30,43 @@ describe("useXiaozeSuggestions", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ suggestions: [{ id: "s1", tone: "warning", headline: "3 pending review", meta: "Project p1" }] })
+        json: async () => ({
+          suggestions: [{ id: "s1", tone: "warning", headline: "有 3 条参数变更待审阅", meta: "项目：Demo 项目" }]
+        })
       })
     );
   });
 
   it("fetches suggestions when enabled", async () => {
     render(
-      <XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+      <XiaozePageContext.Provider
+        value={{ path: "/parameters", pageKey: "parameters", projectId: "p1", projectName: "Demo 项目" }}
+      >
         <SuggestionsProbe enabled />
       </XiaozePageContext.Provider>
     );
 
-    await waitFor(() => expect(screen.getByText("3 pending review")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("有 3 条参数变更待审阅")).toBeInTheDocument());
     expect(fetch).toHaveBeenCalled();
   });
 
   it("fetches nothing when disabled", async () => {
     render(
-      <XiaozePageContext.Provider value={{ path: "/parameters", pageKey: "parameters", projectId: "p1" }}>
+      <XiaozePageContext.Provider
+        value={{ path: "/parameters", pageKey: "parameters", projectId: "p1", projectName: "Demo 项目" }}
+      >
         <SuggestionsProbe enabled={false} />
+      </XiaozePageContext.Provider>
+    );
+
+    await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("0"));
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("fetches nothing when the page does not support proactive insights", async () => {
+    render(
+      <XiaozePageContext.Provider value={{ path: "/parameter-home", pageKey: "parameter-home", projectId: "p1" }}>
+        <SuggestionsProbe enabled />
       </XiaozePageContext.Provider>
     );
 

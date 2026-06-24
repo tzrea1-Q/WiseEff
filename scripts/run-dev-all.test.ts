@@ -155,10 +155,12 @@ describe("buildDevAllPlan", () => {
     );
 
     expect(plan.prepare[2].env).toMatchObject({
-      AGENT_PROVIDER: "deterministic"
+      AGENT_PROVIDER: "deterministic",
+      XIAOZE_DETERMINISTIC: "true"
     });
     expect(plan.services[0].env).toMatchObject({
-      AGENT_PROVIDER: "deterministic"
+      AGENT_PROVIDER: "deterministic",
+      XIAOZE_DETERMINISTIC: "true"
     });
   });
 

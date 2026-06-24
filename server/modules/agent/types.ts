@@ -38,7 +38,7 @@ export type AgentToolKind = "read" | "preparation" | "mutating";
 
 export type AgentMessageDto = {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "reasoning";
   content: string;
   citations?: AgentCitation[];
   confidence?: number;

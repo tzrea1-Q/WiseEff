@@ -1,4 +1,3 @@
-import { Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
@@ -12,11 +11,9 @@ import { projects } from "./mockData";
 import type { ParameterRecord, PrototypeState } from "./mockData";
 import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
-import { ParameterInsightBar } from "./components/ParameterInsightBar";
 import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
 import { ParameterValueDiff } from "./components/ParameterValueDiff";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
-import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
 import { shouldSummarizeComplexParameter } from "./parameterValueKind";
 import { useTopBarActions } from "./components/layout";
 import type { ParameterPageActions } from "./app/routes";
@@ -124,11 +121,7 @@ export function ParametersPage({
   const [submittingRound, setSubmittingRound] = useState(false);
   const [stashingRound, setStashingRound] = useState(false);
   const previousUserIdRef = useRef(state.currentUserId);
-  const todayKey = new Date().toISOString().slice(0, 10);
   const resolvedProjectId = effectiveProjectId || state.activeProjectId;
-  const insightStorageKey = `parameter-workbench-insight:${resolvedProjectId}:${todayKey}`;
-  const [insightDismissed, setInsightDismissed] = useState(() => sessionStorage.getItem(insightStorageKey) === "dismissed");
-  const [insightCollapsed, setInsightCollapsed] = useState(false);
   const selectedProjectParameters = useMemo(
     () => state.parameters.filter((parameter) => parameter.projectId === resolvedProjectId),
     [resolvedProjectId, state.parameters]
@@ -227,10 +220,6 @@ export function ParametersPage({
     : !canEdit
       ? "需要 User 角色才能编辑、暂存或提交参数变更。"
       : undefined;
-  const insightSnapshot = useMemo(
-    () => deriveParameterWorkbenchInsightSnapshot(state, resolvedProjectId),
-    [state, resolvedProjectId]
-  );
   const pendingSubmissionItems = useMemo(
     () =>
       Array.from(selectedIds)
@@ -373,11 +362,6 @@ export function ParametersPage({
       setModuleFilters(new Set([contextQuery.module]));
     }
   }, [contextQuery.module, moduleOptions]);
-
-  useEffect(() => {
-    setInsightDismissed(sessionStorage.getItem(insightStorageKey) === "dismissed");
-    setInsightCollapsed(false);
-  }, [insightStorageKey]);
 
   useEffect(() => {
     if (!contextQuery.parameterId) {
@@ -764,15 +748,6 @@ export function ParametersPage({
     }
   };
   const previewItems = pendingSubmissionItems;
-  const handleAiAuditClick = () => {
-    sessionStorage.removeItem(insightStorageKey);
-    setInsightDismissed(false);
-    setInsightCollapsed(false);
-    document.querySelector(".parameter-insight-bar, .parameter-insight-collapsed")?.scrollIntoView({
-      block: "nearest",
-      behavior: "smooth"
-    });
-  };
   const submitButtonText = selectedIds.size > 0 ? `提交本轮 (${selectedIds.size} 项)` : "提交本轮";
   const roundActions =
     modifiedParameters.length > 0 ? (
@@ -790,42 +765,6 @@ export function ParametersPage({
     setRiskFilters(new Set());
     setModuleFilters(new Set());
   };
-  const dismissInsightForToday = () => {
-    sessionStorage.setItem(insightStorageKey, "dismissed");
-    setInsightDismissed(true);
-  };
-  const viewHighRiskFromInsight = () => {
-    setRiskFilters(new Set(["High"]));
-    setInsightCollapsed(true);
-    document.querySelector(".parameters-table")?.scrollIntoView({ block: "start", behavior: "smooth" });
-  };
-  const addInsightItemsToDraft = () => {
-    if (!effectiveCanEdit) {
-      return;
-    }
-    const insightIds = insightSnapshot.topParameters.map((parameter) => parameter.id);
-    if (insightIds.length === 0) {
-      return;
-    }
-    setDrafts((items) => {
-      const nextDrafts = { ...items };
-      insightSnapshot.topParameters.forEach((item) => {
-        const parameter = parameterById.get(item.id);
-        if (!parameter) {
-          return;
-        }
-        nextDrafts[item.id] = {
-          targetValue: nextDrafts[item.id]?.targetValue ?? parameter.recommendedValue,
-          reason: nextDrafts[item.id]?.reason || `参考 Agent 巡检建议（${item.driftLabel}）`
-        };
-      });
-      return nextDrafts;
-    });
-    setFocusedId(insightIds[0]);
-    setSelectedId(insightIds[0]);
-    setSheetOpen(true);
-    setInsightCollapsed(true);
-  };
   useTopBarActions(
     <>
       <button className="button subtle" type="button" onClick={() => exportProjectParametersAsExcel(filteredParameters, activeProject.code)}>
@@ -836,10 +775,6 @@ export function ParametersPage({
           历史提交
         </button>
       ) : null}
-      <button className="button primary" type="button" onClick={handleAiAuditClick}>
-        <Sparkles size={16} />
-        AI 巡检
-      </button>
     </>,
     [activeProject.code, filteredParameters]
   );
@@ -849,17 +784,6 @@ export function ParametersPage({
       title="项目参数用户工作台"
     >
       <div className="parameters-page-layout">
-        {!insightDismissed ? (
-          <ParameterInsightBar
-            snapshot={insightSnapshot}
-            collapsed={insightCollapsed}
-            onExpand={() => setInsightCollapsed(false)}
-            onViewHighRisk={viewHighRiskFromInsight}
-            onAddToDraft={addInsightItemsToDraft}
-            canAddToDraft={effectiveCanEdit}
-            onDismiss={dismissInsightForToday}
-          />
-        ) : null}
         {initializationLocked ? (
           <div className="permission-inline-note" role="status">
             <strong>初始化待审阅</strong>

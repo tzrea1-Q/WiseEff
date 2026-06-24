@@ -74,7 +74,7 @@ describe("ParametersPage read-only access", () => {
     expect(topbar).not.toBeNull();
     expect(within(topbar as HTMLElement).getByRole("button", { name: "导出 Excel" })).toBeInTheDocument();
     expect(within(topbar as HTMLElement).queryByRole("button", { name: "历史提交" })).not.toBeInTheDocument();
-    expect(within(topbar as HTMLElement).getByRole("button", { name: "AI 巡检" })).toBeInTheDocument();
+    expect(within(topbar as HTMLElement).queryByRole("button", { name: "AI 巡检" })).not.toBeInTheDocument();
   });
 
   it("does not retain a log-linked draft created while read-only after editing becomes available", async () => {
@@ -444,10 +444,8 @@ describe("ParametersPage parameter detail modal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "查看 fast_charge_current_limit_ma" }));
     const dialog = screen.getByRole("dialog", { name: "fast_charge_current_limit_ma" });
-    const insight = screen.getByRole("status", { name: "Agent 参数洞察" });
 
     expect(dialog.querySelector(".parameter-detail-disabled-reason")).toHaveTextContent("初始化通过前暂不可提交普通参数变更。");
-    expect(within(insight).queryByText("初始化通过前暂不可提交普通参数变更。")).not.toBeInTheDocument();
     expect(screen.getByText("该项目可查看，初始化通过前暂不可提交普通参数变更。")).toBeInTheDocument();
     expect(screen.queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
   });
@@ -487,7 +485,7 @@ describe("ParametersPage (抽出后的模块)", () => {
   it("可以从独立模块引入并渲染工作台根节点", () => {
     renderPage();
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: "Agent 参数洞察" })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Agent 参数洞察" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("参数筛选")).not.toBeInTheDocument();
   });
 
@@ -551,7 +549,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(document.querySelector(".page-header")).not.toBeInTheDocument();
   });
 
-  it("uses subtle-style topbar actions with AI audit as the only primary action", () => {
+  it("uses subtle-style topbar actions without a dedicated AI audit primary action", () => {
     const { container } = renderPage();
     const topbar = container.querySelector(".topbar");
 
@@ -563,50 +561,7 @@ describe("ParametersPage draft edge cases", () => {
     expect(within(topbar as HTMLElement).queryByRole("button", { name: /跨项目对比/ })).not.toBeInTheDocument();
 
     const primaryActions = Array.from(topbar!.querySelectorAll<HTMLButtonElement>(".button.primary"));
-    expect(primaryActions).toHaveLength(1);
-    expect(primaryActions[0]).toHaveAccessibleName("AI 巡检");
-  });
-
-  it("keeps the Guest Agent insight compact without readonly helper copy", () => {
-    render(
-      <TopBarActionsHarness>
-        <ParametersPage
-          state={{ ...initialState, activeRoleId: "guest" }}
-          dispatch={vi.fn()}
-          onNavigate={vi.fn()}
-          search=""
-          canEdit={false}
-        />
-      </TopBarActionsHarness>
-    );
-
-    const insight = screen.getByRole("status", { name: "Agent 参数洞察" });
-    expect(within(insight).getByRole("button", { name: "查看高风险" })).toBeInTheDocument();
-    expect(within(insight).getByRole("button", { name: "今天先不看" })).toBeInTheDocument();
-    expect(within(insight).queryByRole("button", { name: "一键加入草稿" })).not.toBeInTheDocument();
-    expect(within(insight).queryByText("需要 User 角色才能编辑、暂存或提交参数变更。")).not.toBeInTheDocument();
-  });
-
-  it("reopens the Agent insight when AI audit is clicked after dismissal", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "关闭洞察" }));
-    expect(screen.queryByRole("status", { name: "Agent 参数洞察" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "AI 巡检" }));
-
-    expect(screen.getByRole("status", { name: "Agent 参数洞察" })).toBeInTheDocument();
-  });
-
-  it("filters to high-risk rows from the Agent insight", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "查看高风险" }));
-
-    expect(screen.getByRole("button", { name: "筛选重要性" })).toHaveClass("active");
-    const table = screen.getByRole("table");
-    expect(within(table).getByText("fast_charge_current_limit_ma")).toBeInTheDocument();
-    expect(within(table).queryByText("battery_temp_target_c")).not.toBeInTheDocument();
+    expect(primaryActions).toHaveLength(0);
   });
 
   it("keeps search separate while moving module and importance filters into table headers", () => {
@@ -630,16 +585,6 @@ describe("ParametersPage draft edge cases", () => {
     const riskHeader = within(searchTable).getByRole("columnheader", { name: /重要性/ });
     fireEvent.click(within(riskHeader).getByRole("button", { name: "筛选重要性" }));
     expect(within(riskHeader).getByRole("group", { name: "重要性筛选" })).toBeInTheDocument();
-  });
-
-  it("adds insight parameters to the draft sheet in one click", () => {
-    renderPage();
-
-    fireEvent.click(screen.getByRole("button", { name: "一键加入草稿" }));
-
-    expect(screen.getByRole("dialog", { name: "修改草稿" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /提交本轮/ })).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue("参考 Agent 巡检建议（-16.9%）")).toBeInTheDocument();
   });
 
   it("does not show the old hard-coded timeline inside the draft sheet", () => {

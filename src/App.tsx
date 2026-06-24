@@ -83,8 +83,10 @@ import {
   type PlatformRoleId
 } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
-import { XiaozeProvider } from "@/features/agent/XiaozeProvider";
-import { xiaozeEnabled } from "@/infrastructure/http/runtimeMode";
+import { XiaozePageContext } from "@/features/agent/useXiaozePageContext";
+import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
+import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
+import { xiaozeEnabled, xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
@@ -2001,20 +2003,18 @@ function App({
 }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <XiaozeProvider enabled={xiaozeEnabled}>
-        <AppShell
-          agentGateway={agentGateway}
-          authClient={authClient}
-          debuggingAdminClient={debuggingAdminClient}
-          debuggingGateway={debuggingGateway}
-          initialAppState={initialAppState}
-          key={mockDataFingerprint}
-          logAnalysisRepository={logAnalysisRepository}
-          parameterRepository={parameterRepository}
-          runtimeMode={runtimeMode}
-          userGovernanceActions={userGovernanceActions}
-        />
-      </XiaozeProvider>
+      <AppShell
+        agentGateway={agentGateway}
+        authClient={authClient}
+        debuggingAdminClient={debuggingAdminClient}
+        debuggingGateway={debuggingGateway}
+        initialAppState={initialAppState}
+        key={mockDataFingerprint}
+        logAnalysisRepository={logAnalysisRepository}
+        parameterRepository={parameterRepository}
+        runtimeMode={runtimeMode}
+        userGovernanceActions={userGovernanceActions}
+      />
     </TooltipProvider>
   );
 }
@@ -2060,6 +2060,16 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const xiaozePageContext = useMemo(
+    () => ({
+      path,
+      pageKey: page.key,
+      projectId: state.activeProjectId,
+      projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name,
+      roleId: currentRoleId
+    }),
+    [path, page.key, state.activeProjectId, state.configDraft.projects, currentRoleId]
+  );
   const agentGatewayClient = useMemo(
     () => agentGateway ?? (runtimeMode === "api" ? createHttpAgentGateway() : undefined),
     [agentGateway, runtimeMode]
@@ -2365,17 +2375,30 @@ function AppShell({
     );
   }
 
-  return (
+  const enableXiaozeInspector = canPerform(currentRoleId, "admin.access");
+  const showXiaozeProactiveInsights =
+    xiaozeEnabled &&
+    xiaozeProactiveEnabled &&
+    !isPlatformHome &&
+    canAccessCurrentPage &&
+    supportsXiaozeProactiveInsights(page.key);
+  const proactiveInsightsBanner = showXiaozeProactiveInsights ? (
+    <div className="xiaoze-proactive-insights">
+      <XiaozeProactiveInsights enabled />
+    </div>
+  ) : null;
+
+  const appShell = (
     <div className={appShellClassName}>
-      {!isPlatformHome ? (
-        <Sidebar
-          activePath={page.path}
-          currentRoleId={currentRoleId}
-          isCollapsed={sidebarCollapsed}
-          onNavigate={navigate}
-          onToggleCollapsed={toggleSidebarCollapsed}
-        />
-      ) : null}
+        {!isPlatformHome ? (
+          <Sidebar
+            activePath={page.path}
+            currentRoleId={currentRoleId}
+            isCollapsed={sidebarCollapsed}
+            onNavigate={navigate}
+            onToggleCollapsed={toggleSidebarCollapsed}
+          />
+        ) : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
         {!isPlatformHome ? (
           <TopBar
@@ -2395,6 +2418,7 @@ function AppShell({
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
           {isPlatformHome ? (
             <div className="main-content home-content">
+              {proactiveInsightsBanner}
               <PageRouter
                 page={page}
                 state={state}
@@ -2420,6 +2444,7 @@ function AppShell({
             </div>
           ) : (
             <main className="main-content" aria-label={isParameterHome ? "参数管理首页" : undefined}>
+              {proactiveInsightsBanner}
               <PageRouter
                 page={page}
                 state={state}
@@ -2460,14 +2485,22 @@ function AppShell({
           xiaozeEnabled={xiaozeEnabled}
         />
       ) : null}
-      {projectInitOpen ? (
-        <ProjectParameterInitializationWizard
-          state={state}
-          dispatch={dispatch}
-          onClose={() => setProjectInitOpen(false)}
-        />
-      ) : null}
-    </div>
+        {projectInitOpen ? (
+          <ProjectParameterInitializationWizard
+            state={state}
+            dispatch={dispatch}
+            onClose={() => setProjectInitOpen(false)}
+          />
+        ) : null}
+      </div>
+  );
+
+  return xiaozeEnabled ? (
+    <XiaozeProvider enabled={xiaozeEnabled} enableInspector={enableXiaozeInspector}>
+      <XiaozePageContext.Provider value={xiaozePageContext}>{appShell}</XiaozePageContext.Provider>
+    </XiaozeProvider>
+  ) : (
+    appShell
   );
 }
 

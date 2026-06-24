@@ -1,9 +1,11 @@
+import { AlertTriangle, Info, Lightbulb, Sparkles, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export type InsightAction = {
   id: string;
   label: string;
   onClick: () => void;
+  variant?: "primary" | "secondary";
 };
 
 export type Insight = {
@@ -14,16 +16,38 @@ export type Insight = {
   actions: InsightAction[];
 };
 
+function resolveActionVariant(action: InsightAction, index: number, total: number): "primary" | "secondary" {
+  if (action.variant) {
+    return action.variant;
+  }
+  if (total === 1) {
+    return "primary";
+  }
+  return index === total - 1 ? "primary" : "secondary";
+}
+
+function InsightToneIcon({ tone }: { tone: Insight["tone"] }) {
+  if (tone === "danger") {
+    return <AlertTriangle aria-hidden="true" size={18} />;
+  }
+  if (tone === "warning") {
+    return <Lightbulb aria-hidden="true" size={18} />;
+  }
+  return <Info aria-hidden="true" size={18} />;
+}
+
 export function AgentInsightBar({
   items,
   persistKey,
   dismissedIds,
-  onDismiss
+  onDismiss,
+  eyebrow = "Agent 建议"
 }: {
   items: Insight[];
   persistKey?: string;
   dismissedIds?: string[];
   onDismiss?: (id: string) => void;
+  eyebrow?: string;
 }) {
   const [sessionDismissed, setSessionDismissed] = useState<Set<string>>(() => {
     if (!persistKey) {
@@ -55,26 +79,41 @@ export function AgentInsightBar({
     <section className="insight-bar" role="status" aria-live="polite">
       {effectiveItems.map((insight) => (
         <div className="insight-item" data-tone={insight.tone} key={insight.id}>
+          <div className="insight-item__icon" aria-hidden="true">
+            <InsightToneIcon tone={insight.tone} />
+          </div>
           <div className="insight-content">
+            <span className="insight-eyebrow">{eyebrow}</span>
             <strong>{insight.headline}</strong>
             {insight.meta ? <span className="insight-meta">{insight.meta}</span> : null}
           </div>
           <div className="insight-actions">
-            {insight.actions.map((action) => (
-              <button className="button subtle" key={action.id} type="button" onClick={action.onClick}>
-                {action.label}
-              </button>
-            ))}
+            {insight.actions.map((action, index) => {
+              const variant = resolveActionVariant(action, index, insight.actions.length);
+              const isPrimaryAsk = variant === "primary" && /小泽|xiaoze/i.test(action.label);
+              return (
+                <button
+                  className={`insight-action insight-action--${variant}`}
+                  key={action.id}
+                  type="button"
+                  onClick={action.onClick}
+                >
+                  {isPrimaryAsk ? <Sparkles aria-hidden="true" size={14} /> : null}
+                  {action.label}
+                </button>
+              );
+            })}
             <button
               aria-label="今天先不看"
-              className="insight-dismiss"
+              className="insight-action insight-action--ghost insight-dismiss"
               type="button"
               onClick={() => {
                 setSessionDismissed((previous) => new Set(previous).add(insight.id));
                 onDismiss?.(insight.id);
               }}
             >
-              ×
+              <X aria-hidden="true" size={14} />
+              <span>今天先不看</span>
             </button>
           </div>
         </div>
