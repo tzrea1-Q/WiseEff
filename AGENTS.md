@@ -11,6 +11,7 @@ This file is the short map for agents working in this repository. Keep it small.
 - Prefer simple, testable changes over speculative abstractions.
 - Define success criteria before multi-step work, then verify them with commands or file checks.
 - Preserve user changes. Never revert unrelated edits in the worktree.
+- **Branch & PR:** Implementation subagents work on a feature branch from `main` only; they do not open or merge GitHub PRs. The parent agent reviews, opens the PR, merges, and syncs local `main`. See `docs/PLANS.md` § Git Branch & PR Workflow.
 - For searches, prefer `rg` and `rg --files`.
 - For code edits, use `apply_patch`; do not rewrite files with ad hoc shell output.
 

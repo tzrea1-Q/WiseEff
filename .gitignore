@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+ops/self-hosted/bridge-installer/staging/
+ops/self-hosted/bridge-installer/macos/build/
 
 # Local test and browser artifacts
 coverage/
