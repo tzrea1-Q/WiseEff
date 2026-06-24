@@ -11,6 +11,7 @@ import type { AgentToolName } from "../types";
 import { createOrchestratorApprovalBridge, type ApprovalBridgeBeginResult } from "./approvalBridge";
 import { createXiaozeCheckpointer } from "./checkpointer";
 import { createPerceptionAgent, type PerceptionAgentRunResult, wrapLangChainChatModel } from "./perceptionAgent";
+import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
 import { ChatOpenAI } from "@langchain/openai";
 
 export type XiaozeAgUiRequest = Pick<RouteRequest, "headers" | "body" | "requestId">;
@@ -465,7 +466,7 @@ export function registerXiaozeRoutes(
     db?: Database;
     env?: Pick<
       ServerEnv,
-      "XIAOZE_RUNTIME_ENABLED" | "XIAOZE_DETERMINISTIC" | "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL"
+      "XIAOZE_RUNTIME_ENABLED" | "XIAOZE_DETERMINISTIC" | "XIAOZE_PROACTIVE_ENABLED" | "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL"
     >;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
@@ -500,6 +501,40 @@ export function registerXiaozeRoutes(
   });
 
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));
+
+  const registry = createAgentToolRegistry({ db: options.db });
+  router.post("/api/v1/agent/xiaoze/suggest", async (request) => {
+    if (!options.env?.XIAOZE_PROACTIVE_ENABLED) {
+      return { status: 200, body: { suggestions: [] } };
+    }
+
+    let auth: AuthContext;
+    try {
+      auth = await options.getCurrentAuthContext(request);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "UNAUTHENTICATED") {
+        throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze suggestions.", 401);
+      }
+      throw error;
+    }
+
+    const body = request.body as { context?: XiaozeSuggestContext };
+    const context = body.context ?? {};
+    const executionContext: AgentToolExecutionContext = {
+      auth,
+      requestId: request.requestId,
+      sessionId: `suggest-${request.requestId}`,
+      projectId: context.projectId
+    };
+
+    const result = await runXiaozeSuggest({
+      context,
+      runTool: (name, payload) => registry.run(name as never, executionContext, payload),
+      listReadTools: () => registry.list().filter((tool) => tool.name.startsWith("perception.")).map((tool) => tool.name)
+    });
+
+    return { status: 200, body: result };
+  });
 }
 
 export { readBearerUserId };

@@ -59,6 +59,10 @@ const rawEnvSchema = z.object({
   XIAOZE_DETERMINISTIC: z
     .enum(["true", "false"])
     .default("false")
+    .transform((value) => value === "true"),
+  XIAOZE_PROACTIVE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
     .transform((value) => value === "true")
 });
 
