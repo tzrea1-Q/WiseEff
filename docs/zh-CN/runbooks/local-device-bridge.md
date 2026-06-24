@@ -50,11 +50,31 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 2. 验证 manifest 接口：
    - `GET /api/v1/device-bridges/releases`
 3. 确认 manifest 包含当前运维平台制品，且下载地址为同源相对路径：
-   - Windows：`/downloads/device-bridge/<version>/windows/amd64/...zip`
-   - macOS Apple Silicon：`/downloads/device-bridge/<version>/darwin/arm64/...tar.gz`
-   - macOS Intel：`/downloads/device-bridge/<version>/darwin/amd64/...tar.gz`
+   - Windows 安装包（主路径）：`/downloads/device-bridge/<version>/windows/amd64/WiseEffBridgeSetup_<version>.exe`
+   - macOS 安装包（主路径）：`/downloads/device-bridge/<version>/darwin/<arch>/WiseEffBridge_<version>_darwin_<arch>.pkg`
+   - 便携包仍可用于高级/命令行流程（`artifactKind: "portable"`）。
 
-## macOS 安装（Phase 3）
+## 主路径（Phase A — 零摩擦）
+
+1. 登录后打开 `/node-debugging`。
+2. 点击 **安装 Bridge**，下载与浏览器平台匹配的安装包。
+3. 以默认选项运行安装包；会注册 `wiseeff-bridge://`、安装 Bridge 并启动后台服务/LaunchAgent。
+4. 回到 `/node-debugging`，点击 **连接本地设备**；页面生成配对码并打开 `wiseeff-bridge://connect?server=<origin>&code=<6位码>`。
+5. Bridge 本地执行 `connect`（必要时 pair 再 start）；30 秒内 `http://127.0.0.1:18787/health` 应出现 `connected: true`。
+6. 插入 USB 设备、授权调试，点击 **重新检测设备**。
+
+兜底：展开 **高级 · 命令行方式** 使用 `wiseeff-bridge connect` / `pair` / `start`，或从托盘/菜单栏启动 Bridge。
+
+构建机生成安装包：
+
+```bash
+npm run bridge:build
+npm run build:bridge-installers
+```
+
+详见 `ops/self-hosted/bridge-installer/README.zh-CN.md`。
+
+## macOS 安装（便携包 — 高级）
 
 1. 从 `/node-debugging` 或 `GET /api/v1/device-bridges/releases` 下载匹配的 macOS 制品。
 2. 解压：

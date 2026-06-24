@@ -105,4 +105,41 @@ describe("device bridge cli", () => {
       Object.defineProperty(process, "platform", { value: originalPlatform });
     }
   });
+
+  it("connect command requires server flag", async () => {
+    const capture = createStdoutCapture();
+    const exitCode = await runCli(["connect"], {
+      stdout: capture.stdout
+    });
+
+    expect(exitCode).toBe(1);
+    expect(capture.errors.some((line) => line.includes("--server"))).toBe(true);
+  });
+
+  it("handle-url flag parses scheme and invokes connect flow", async () => {
+    const capture = createStdoutCapture();
+    const config: BridgeConfig = {
+      bridgeId: "bridge_123",
+      bridgeToken: "wb_123",
+      tokenExpiresAt: "2026-07-01T00:00:00.000Z",
+      serverUrl: "https://wiseeff.example.com",
+      machineLabel: "machine",
+      platform: "windows",
+      arch: "x64",
+      pairedAt: "2026-06-23T00:00:00.000Z"
+    };
+    const startBridge = vi.fn(async () => ({ exitCode: 0, statusLine: "connected" }));
+
+    const exitCode = await runCli(
+      ["--handle-url", "wiseeff-bridge://connect?server=https%3A%2F%2Fwiseeff.example.com&code=123456"],
+      {
+        loadConfig: async () => config,
+        stdout: capture.stdout,
+        startBridge
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(startBridge).toHaveBeenCalledWith(config);
+  });
 });

@@ -1,7 +1,8 @@
-import { Check, Copy, Eye, Link2, Pencil, RotateCw, Search, Send } from "lucide-react";
+import { Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
+import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -18,8 +19,8 @@ import {
   type LocalBridgeHealthState
 } from "./infrastructure/http/deviceBridgeClient";
 import {
-  bridgeReleaseDownloadLabel,
   detectBrowserBridgeTarget,
+  listAlternateBridgeReleases,
   pickBridgeReleaseForHost
 } from "./infrastructure/http/bridgeReleaseSelection";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
@@ -324,23 +325,6 @@ function formatBridgeLastSeen(lastSeenAt: string | null) {
   return new Date(timestamp).toLocaleString("zh-CN", { hour12: false });
 }
 
-function formatPairingCodeExpiry(expiresAt: string) {
-  const date = new Date(expiresAt);
-  if (Number.isNaN(date.getTime())) {
-    return expiresAt;
-  }
-  return date.toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZoneName: "short"
-  });
-}
-
 function inferBridgeOnline(bridge: DeviceBridgeRecord, health: LocalBridgeHealthState | null) {
   if (health?.connected && health.bridgeId === bridge.id) {
     return true;
@@ -575,22 +559,6 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   );
 }
 
-type BridgePanelStatus = "missing_bridge" | "not_paired" | "not_running" | "online_no_device" | "bridges_with_targets";
-
-function listAlternateBridgeReleases(items: DeviceBridgeReleaseItem[], primary: DeviceBridgeReleaseItem | null) {
-  if (!primary) {
-    return items;
-  }
-  return items.filter((item) => item.downloadUrl !== primary.downloadUrl);
-}
-
-function macInstallHint(release: DeviceBridgeReleaseItem | null) {
-  if (!release || release.platform !== "darwin") {
-    return null;
-  }
-  return "解压后执行 chmod +x wiseeff-bridge，然后使用 ./wiseeff-bridge pair ... 与 ./wiseeff-bridge start。";
-}
-
 function deriveBridgePanelStatus(input: {
   health: LocalBridgeHealthState | null;
   bridgeCount: number;
@@ -606,50 +574,6 @@ function deriveBridgePanelStatus(input: {
     return "online_no_device";
   }
   return "bridges_with_targets";
-}
-
-function BridgeCommandBlock({
-  label,
-  command,
-  loading,
-  loadingText,
-  hint,
-  copyKey,
-  copiedKey,
-  onCopy
-}: {
-  label: string;
-  command: string;
-  loading?: boolean;
-  loadingText?: string;
-  hint?: string;
-  copyKey: "pair" | "start";
-  copiedKey: "pair" | "start" | null;
-  onCopy: (key: "pair" | "start", command: string) => void;
-}) {
-  const displayCommand = loading ? (loadingText ?? "正在生成命令...") : command;
-
-  return (
-    <div className="local-device-bridge-panel__command">
-      <div className="local-device-bridge-panel__command-head">
-        <span>{label}</span>
-      </div>
-      <div className="local-device-bridge-panel__command-box">
-        <button
-          type="button"
-          className="local-device-bridge-panel__copy-button"
-          disabled={loading || !command.trim()}
-          aria-label={copiedKey === copyKey ? `已复制${label}` : `复制${label}`}
-          title={copiedKey === copyKey ? "已复制" : "复制"}
-          onClick={() => onCopy(copyKey, command)}
-        >
-          {copiedKey === copyKey ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-        </button>
-        <code>{displayCommand}</code>
-      </div>
-      {hint ? <small>{hint}</small> : null}
-    </div>
-  );
 }
 
 function LocalDeviceBridgePanel({
@@ -668,8 +592,8 @@ function LocalDeviceBridgePanel({
   const [alternateReleases, setAlternateReleases] = useState<DeviceBridgeReleaseItem[]>([]);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
   const [pairingCodeLoading, setPairingCodeLoading] = useState(false);
-  const [copiedCommandKey, setCopiedCommandKey] = useState<"pair" | "start" | null>(null);
   const [panelError, setPanelError] = useState("");
+  const [connectError, setConnectError] = useState("");
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
   const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
@@ -694,7 +618,7 @@ function LocalDeviceBridgePanel({
         setHostRelease(null);
         setAlternateReleases([]);
       }
-      return { nextHealth, nextBridges };
+      return { nextHealth, nextBridges, connected: Boolean(nextHealth?.connected) };
     } finally {
       setChecking(false);
     }
@@ -713,6 +637,9 @@ function LocalDeviceBridgePanel({
   const startCommand = "wiseeff-bridge start";
   const pairCommand = pairingCode
     ? `wiseeff-bridge pair --server ${window.location.origin} --code ${pairingCode.code}`
+    : "";
+  const connectCommand = pairingCode
+    ? `wiseeff-bridge connect --server ${window.location.origin} --code ${pairingCode.code}`
     : "";
 
   useEffect(() => {
@@ -743,38 +670,6 @@ function LocalDeviceBridgePanel({
       cancelled = true;
     };
   }, [panelStatus]);
-
-  const copyCommand = async (key: "pair" | "start", command: string) => {
-    if (!command.trim()) {
-      return;
-    }
-    try {
-      await navigator.clipboard.writeText(command);
-      setCopiedCommandKey(key);
-      window.setTimeout(() => setCopiedCommandKey(null), 2000);
-    } catch {
-      setPanelError("无法复制命令，请手动选择复制。");
-    }
-  };
-
-  const handleConnect = async () => {
-    const snapshot = await refreshBridgeState();
-    const needsPairingCode = !snapshot.nextHealth || !snapshot.nextHealth.paired;
-    if (needsPairingCode) {
-      if (!pairingCode && !pairingCodeLoading) {
-        try {
-          const code = await createPairingCode();
-          setPairingCode(code);
-        } catch (error) {
-          setPanelError(formatDebuggingRuntimeError(error));
-        }
-      }
-      return;
-    }
-    if (snapshot.nextHealth?.connected) {
-      onDetect();
-    }
-  };
 
   const handleRenameBridge = async (bridge: DeviceBridgeRecord) => {
     const draft = (renameDraftById[bridge.id] ?? bridge.machineLabel).trim();
@@ -815,63 +710,28 @@ function LocalDeviceBridgePanel({
 
   return (
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
-      <div className="local-device-bridge-panel__head">
-        <div>
-          <strong>本地设备桥接</strong>
-          <small>
-            {panelStatus === "bridges_with_targets" ? "Bridge 在线，已连接可调试目标。" :
-              panelStatus === "online_no_device" ? "Bridge 在线，但当前未检测到可调试设备。" :
-              panelStatus === "not_running" ? "已配对 Bridge，但本地服务未运行。" :
-              panelStatus === "not_paired" ? "Bridge 已启动但尚未配对，请先完成配对。" :
-              "未检测到本地 Bridge，请先下载安装。"}
-          </small>
-        </div>
-        <button className="button subtle" type="button" disabled={checking || detecting} onClick={() => void handleConnect()}>
-          <Link2 size={14} aria-hidden="true" />
-          {checking ? "检查中..." : "连接本地设备"}
-        </button>
-      </div>
-      <div className="local-device-bridge-panel__body">
-        {(panelStatus === "missing_bridge" && hostRelease) ? (
-          <div className="local-device-bridge-panel__downloads">
-            <a className="button subtle" href={hostRelease.downloadUrl}>
-              {bridgeReleaseDownloadLabel(hostRelease)}
-            </a>
-            {macInstallHint(hostRelease) ? <small>{macInstallHint(hostRelease)}</small> : null}
-            {alternateReleases.length > 0 ? (
-              <div className="local-device-bridge-panel__alternate-downloads">
-                <span>其他平台</span>
-                {alternateReleases.map((item) => (
-                  <a key={item.downloadUrl} className="button subtle" href={item.downloadUrl}>
-                    {bridgeReleaseDownloadLabel(item)}
-                  </a>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        {(panelStatus === "missing_bridge" || panelStatus === "not_paired") ? (
-          <BridgeCommandBlock
-            label="配对命令"
-            command={pairCommand}
-            loading={pairingCodeLoading}
-            loadingText="正在生成配对码..."
-            hint={pairingCode ? `配对码有效期至 ${formatPairingCodeExpiry(pairingCode.expiresAt)}` : undefined}
-            copyKey="pair"
-            copiedKey={copiedCommandKey}
-            onCopy={copyCommand}
-          />
-        ) : null}
-        {panelStatus === "not_running" ? (
-          <BridgeCommandBlock
-            label="启动命令"
-            command={startCommand}
-            copyKey="start"
-            copiedKey={copiedCommandKey}
-            onCopy={copyCommand}
-          />
-        ) : null}
-        {bridges.length > 0 ? (
+      <LocalDeviceBridgeWizard
+        panelStatus={panelStatus}
+        hostRelease={hostRelease}
+        alternateReleases={alternateReleases}
+        pairingCode={pairingCode}
+        pairingCodeLoading={pairingCodeLoading}
+        checking={checking}
+        detecting={detecting}
+        connectError={connectError}
+        onConnectError={setConnectError}
+        onRefresh={async () => {
+          const snapshot = await refreshBridgeState();
+          return { connected: snapshot.connected };
+        }}
+        onDetect={onDetect}
+        advancedCommands={{
+          connect: connectCommand,
+          pair: pairCommand,
+          start: startCommand
+        }}
+      />
+      {bridges.length > 0 ? (
           <details className="local-device-bridge-panel__management" open>
             <summary>我的设备代理</summary>
             <ul className="local-device-bridge-panel__bridge-list" aria-label="我的设备代理列表">
@@ -927,8 +787,7 @@ function LocalDeviceBridgePanel({
             </ul>
           </details>
         ) : null}
-        {panelError ? <p className="node-row-error">{panelError}</p> : null}
-      </div>
+      {panelError ? <p className="node-row-error">{panelError}</p> : null}
     </section>
   );
 }

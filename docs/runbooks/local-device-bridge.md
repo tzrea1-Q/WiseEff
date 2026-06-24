@@ -50,11 +50,31 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 2. Verify manifest endpoint:
    - `GET /api/v1/device-bridges/releases`
 3. Confirm release items exist for the operator platform and use same-origin relative URLs:
-   - Windows: `/downloads/device-bridge/<version>/windows/amd64/...zip`
-   - macOS Apple Silicon: `/downloads/device-bridge/<version>/darwin/arm64/...tar.gz`
-   - macOS Intel: `/downloads/device-bridge/<version>/darwin/amd64/...tar.gz`
+   - Windows installer (primary): `/downloads/device-bridge/<version>/windows/amd64/WiseEffBridgeSetup_<version>.exe`
+   - macOS installer (primary): `/downloads/device-bridge/<version>/darwin/<arch>/WiseEffBridge_<version>_darwin_<arch>.pkg`
+   - Portable archives remain available for advanced/CLI workflows (`artifactKind: "portable"`).
 
-## macOS Install (Phase 3)
+## Primary Operator Path (Phase A — Zero Friction)
+
+1. Open `/node-debugging` while signed in.
+2. Click **安装 Bridge** to download the platform-matched installer (Windows or macOS).
+3. Run the installer with default options. It registers `wiseeff-bridge://`, installs Bridge under the user profile, and starts the background service/LaunchAgent.
+4. Return to `/node-debugging` and click **连接本地设备**. The page creates a pairing code and opens `wiseeff-bridge://connect?server=<origin>&code=<6-digit>`.
+5. Bridge runs `connect` locally (pair if needed, then start). Health at `http://127.0.0.1:18787/health` should report `connected: true` within 30 seconds.
+6. Insert the USB device, authorize debugging, and click **重新检测设备**.
+
+Fallback: expand **高级 · 命令行方式** for `wiseeff-bridge connect`, `pair`, and `start` commands, or launch Bridge from the tray/menu bar.
+
+Build installers on a build machine:
+
+```bash
+npm run bridge:build
+npm run build:bridge-installers
+```
+
+See `ops/self-hosted/bridge-installer/README.md` for Inno Setup / pkgbuild prerequisites.
+
+## macOS Install (Portable — Advanced)
 
 1. Download the matching macOS artifact from `/node-debugging` or `GET /api/v1/device-bridges/releases`.
 2. Extract the archive:

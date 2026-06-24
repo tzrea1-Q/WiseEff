@@ -74,13 +74,17 @@ Runtime split:
 - Local HDC helpers remain available for non-API `/node-debugging` experiments.
 - `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
 
-### Local Device Bridge (Phase 1–2)
+### Local Device Bridge (Phase A)
 
-`/node-debugging` includes a Windows-first local bridge connect panel for self-hosted API mode. The frontend reads bridge release metadata from `/api/v1/device-bridges/releases`, creates pairing codes from `/api/v1/device-bridges/pairing-codes`, and lists user-owned bridges from `/api/v1/device-bridges/mine` through `src/infrastructure/http/deviceBridgeClient.ts`. The browser bridge-health probe (`http://127.0.0.1:18787/health`) is UI guidance only; bridge-backed device execution remains server-authorized through debugging sessions and audit.
+`/node-debugging` shows a three-step wizard (install Bridge, connect locally, plug in USB) in `src/components/LocalDeviceBridgeWizard.tsx`. The panel reads release metadata from `/api/v1/device-bridges/releases`, prefers `artifactKind: "installer"` downloads via `pickBridgeReleaseForHost()`, creates pairing codes from `/api/v1/device-bridges/pairing-codes`, and lists user-owned bridges from `/api/v1/device-bridges/mine` through `src/infrastructure/http/deviceBridgeClient.ts`.
 
-Phase 2 adds bridge management in the same panel: operators can rename a bridge machine label (`PATCH /api/v1/device-bridges/:bridgeId`), revoke a bridge token (`POST /api/v1/device-bridges/:bridgeId/revoke`), and view last-seen/online status. Rename and revoke require `debugging:use` and only affect bridges owned by the authenticated user.
+Primary connect flow: click the connect-local-device CTA → optional first-run confirm (`wiseeff.bridgeSchemeConfirm`) → `launchBridgeConnect()` opens `wiseeff-bridge://connect?server=<origin>&code=<6-digit>` → `pollLocalBridgeHealth()` probes `http://127.0.0.1:18787/health` for up to 30s → auto-detect when `connected: true`. Helpers live in `src/infrastructure/http/bridgeConnectLauncher.ts`.
 
-When detect returns targets from more than one online bridge, `/node-debugging` shows a bridge target picker with `machineLabel · targetRef` labels and requires an explicit selection before `detectAndStartSession` creates the debugging session. Single-bridge detect still auto-starts the session. Bridge RPC supports both `adb` and `hdc`; the connect panel and multi-bridge picker appear when the page protocol is `adb` (the default bridge-backed path in API mode).
+CLI `pair` / `start` / `connect` commands are collapsed under **Advanced · CLI**. Portable zip/tar artifacts remain under **Other platforms** when installers are the primary CTA.
+
+The browser health probe is UI guidance only; bridge-backed device execution remains server-authorized through debugging sessions and audit.
+
+Bridge management (rename/revoke, multi-bridge target picker) behavior is unchanged from Phase 2.
 
 `/debugging-admin` uses API-backed catalog management in `api` mode. It calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, archive, restore, and bind debug parameters. `mock` mode keeps the local `configDraft` and JSON editing path for demos and component tests.
 

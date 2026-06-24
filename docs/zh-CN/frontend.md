@@ -73,13 +73,15 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `/debugging`：保留参数调试工作台和 rollback 入口。
 - `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 
-### 本地 Device Bridge（Phase 1–2）
+### 本地 Device Bridge（Phase A）
 
-`/node-debugging` 现已提供 Windows 优先的本地 Bridge 连接面板（自托管 API mode）。前端通过 `src/infrastructure/http/deviceBridgeClient.ts` 调用 `/api/v1/device-bridges/releases` 获取同源下载信息，调用 `/api/v1/device-bridges/pairing-codes` 生成配对码，并调用 `/api/v1/device-bridges/mine` 列出当前用户 Bridge。浏览器侧 `http://127.0.0.1:18787/health` 仅用于 UI 引导，不构成写入安全边界；Bridge 设备执行仍由后端 debugging session、授权和审计控制。
+`/node-debugging` 使用三步向导（**安装 Bridge → 连接本机 → 插入 USB 设备**），组件位于 `src/components/LocalDeviceBridgeWizard.tsx`。面板通过 `deviceBridgeClient` 读取 `/api/v1/device-bridges/releases`，经 `pickBridgeReleaseForHost()` 优先选择 `artifactKind: "installer"` 的安装包；配对码来自 `/api/v1/device-bridges/pairing-codes`；设备代理列表来自 `/api/v1/device-bridges/mine`。
 
-Phase 2 在同一面板增加设备代理管理：可重命名机器标签（`PATCH /api/v1/device-bridges/:bridgeId`）、撤销 Bridge token（`POST /api/v1/device-bridges/:bridgeId/revoke`），并查看最近在线/在线状态。重命名与撤销需要 `debugging:use`，且只能操作当前认证用户拥有的 Bridge。
+主连接流程：点击 **连接本地设备** → 首次可选确认（`wiseeff.bridgeSchemeConfirm`）→ `launchBridgeConnect()` 打开 `wiseeff-bridge://connect?...` → `pollLocalBridgeHealth()` 最多 30 秒轮询 `http://127.0.0.1:18787/health` → `connected: true` 后自动 detect。工具函数在 `src/infrastructure/http/bridgeConnectLauncher.ts`。
 
-当 detect 从多个在线 Bridge 返回目标时，`/node-debugging` 会展示 `机器名 · targetRef` 格式的目标选择器，要求用户显式选择后再调用 `detectAndStartSession` 创建调试 session；单 Bridge detect 仍自动建 session。Bridge RPC 同时支持 `adb` 与 `hdc`；连接面板与多 Bridge 选择器在页面协议为 `adb` 时显示（API mode 下默认的 bridge-backed 路径）。
+`pair` / `start` / `connect` 命令行说明折叠在 **高级 · 命令行方式**；便携包下载在 **其他平台**。
+
+浏览器 health 探测仅作 UI 引导；Bridge 设备执行仍由后端 session 与审计控制。Phase 2 的重命名/撤销与多 Bridge 目标选择行为不变。
 
 ### 调试管理后台 UI
 
