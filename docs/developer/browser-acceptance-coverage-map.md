@@ -22,6 +22,13 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `BRIDGE-WIN-001` | E | No | Node debugging Windows-first local bridge panel can show bridge-missing, pairing, startup, and online states with the same-origin Windows download CTA. | `e2e/acceptance/debugging-local-bridge.acceptance.spec.ts` |
 | `HDC-LAB-001` | F | No | Real HDC device lab read/write smoke runs when explicitly enabled. | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `AGENT-APPROVAL-001` | G | Yes | Agent context, approval, rejection, execution, and evidence path work. | `e2e/acceptance/agent.acceptance.spec.ts` |
+| `XIAOZE-PERCEPTION-001` | G | Yes | Xiaoze answers grounded read-only questions using page context and perception tools. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
+| `XIAOZE-PERCEPTION-AUTHZ-001` | G | Yes | Out-of-scope Xiaoze questions return a safe non-data answer. | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
+| `XIAOZE-ACTION-APPROVE-001` | G | Yes | Xiaoze parameter change approval executes through the agent audit chain. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-ACTION-REJECT-001` | G | Yes | Rejecting a Xiaoze action approval does not mutate parameter state. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-ACTION-AUTHZ-001` | G | Yes | Users without edit permission cannot approve Xiaoze mutating actions. | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
+| `XIAOZE-PLAN-MULTISTEP-001` | G | Yes | Xiaoze resumes a multi-step plan after approval and reports the observed execution result. | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
+| `XIAOZE-PROACTIVE-001` | G | Yes | Opt-in Xiaoze proactive suggestions are read-only, authz-bounded, and absent when disabled. | `e2e/acceptance/xiaoze-planning.acceptance.spec.ts` |
 | `PERM-GOV-001` | H | Yes | User governance page is Admin-only and the active Admin cannot disable itself. | `e2e/acceptance/permissions.acceptance.spec.ts` |
 | `PERM-MATRIX-001` | H | Yes | Role inclusion rules are enforced for visible UI operations. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PERM-MATRIX-002` | H | Yes | Role inclusion and project-scoped workflow eligibility are enforced by API-backed operations. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
@@ -33,3 +40,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 - Coverage markers use comments in acceptance specs: `// @acceptance PARAM-REASON-001`.
 - A workflow-level pass does not imply every row above is covered. The generated browser evidence must report requirement-level coverage before this map can be treated as satisfied.
 - Operation markers use comments in acceptance specs: `// @operation PARAM-REASON-001`. Automated P0/P1 operation IDs must produce operation evidence under `docs/generated/acceptance-operation-evidence.md`.
+
+## Supplemental Manual Evidence (Xiaoze P2)
+
+Playwright acceptance covers `XIAOZE-PLAN-MULTISTEP-001` and `XIAOZE-PROACTIVE-001` at the API/SSE layer. Real-auth browser screenshots (development session, deterministic provider) are archived under `work/ui-checks/xiaoze-p2-*` and indexed in `docs/exec-plans/completed/2026-06-24-xiaoze-p2-planning.md` (Manual Browser Evidence).

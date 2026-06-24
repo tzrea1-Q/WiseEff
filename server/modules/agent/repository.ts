@@ -151,6 +151,7 @@ export type CreateAgentToolCallInput = {
 
 export type UpdateAgentToolCallInput = {
   status?: AgentToolStatus;
+  payload?: Record<string, unknown>;
   result?: AgentToolResult;
   errorMessage?: string;
   auditEventId?: string;
@@ -420,6 +421,7 @@ export async function updateAgentToolCall(
     `
     update agent_tool_calls
     set status = coalesce($3::text, status),
+      payload = coalesce($7::jsonb, payload),
       result = coalesce($4::jsonb, result),
       error_message = coalesce($5, error_message),
       audit_event_id = coalesce($6, audit_event_id),
@@ -438,7 +440,8 @@ export async function updateAgentToolCall(
       input.status ?? null,
       input.result === undefined ? null : JSON.stringify(input.result),
       input.errorMessage ?? null,
-      input.auditEventId ?? null
+      input.auditEventId ?? null,
+      input.payload === undefined ? null : JSON.stringify(input.payload)
     ]
   );
 

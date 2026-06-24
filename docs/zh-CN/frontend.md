@@ -14,7 +14,7 @@ WiseEff 前端是 Vite、React、TypeScript 单页应用。它同时支持 mock 
 - `src/infrastructure/mock/`：mock state 和 mock repository/gateway。
 - `src/infrastructure/http/`：HTTP API client、DTO、auth client、runtime mode。
 - `src/components/`：复用 UI、表格、弹窗、过滤器、图表。
-- `src/features/agent/`：统一 Agent 面板。
+- `src/features/agent/`：统一 Agent 面板与 Xiaoze（小泽）CopilotKit 感知层（`XiaozeProvider`、`useXiaozePageContext`）。
 - `src/test/setup.ts`：Vitest DOM 初始化。
 
 ## Runtime 模式
@@ -101,7 +101,15 @@ Agent：
 
 - `UnifiedAgent` 根据当前 path、pageKey、project、role 和 auth context 创建 API session。
 - mutating tool 必须走后端 approval 和 audit。
-- Pi-backed live provider 只是后端 `AGENT_API_FORMAT=pi` 选项；`AgentGateway` 前端契约不变，不引入 Pi client、Pi filesystem/shell tools 或 streaming UI。
+- live provider 使用 `AGENT_API_FORMAT=wiseeff` 或 `openai`（URL-backed transport）；Pi provider 已在 P1 移除（TD-027）。
+
+Xiaoze（P0 感知 + P1 行动 + P2 规划）：
+
+- `VITE_XIAOZE_ENABLED=true` 时挂载 `XiaozeProvider`（CopilotKit V2 + `HttpAgent`），SSE 对接 `POST /api/v1/agent/xiaoze`。
+- `UnifiedAgent` 在启用 Xiaoze 时隐藏旧 FAB，通过 `XiaozePageContextRegistrar` 声明 `wiseeff.page` 上下文。
+- P0：`perception.*` 只读工具。
+- P1：`XiaozeApprovalCard`（`useInterrupt`）处理 mutating `action.submitParameterChange` 提案（批准 / 拒绝 / 改值）；低风险前端工具 `navigateTo`、`prefillParameterValue`（`useFrontendTool`，不写库）。
+- P2：后端 LangGraph 规划循环（intent → perceive → plan → act → observe）与 checkpoint resume；`VITE_XIAOZE_PROACTIVE_ENABLED=true`（且 API `XIAOZE_PROACTIVE_ENABLED=true`）时，`useXiaozeSuggestions` 调用 `POST /api/v1/agent/xiaoze/suggest`，在 `AgentInsightBar` 展示只读主动建议；点击建议可预填打开小泽聊天。
 
 用户和身份：
 

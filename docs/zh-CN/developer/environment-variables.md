@@ -83,13 +83,23 @@
 | 变量 | 本地默认值 | 用途 | 说明 |
 | --- | --- | --- | --- |
 | `AGENT_PROVIDER` | `.env.example` 为 `live` | live provider path | 无 API key 的稳定本地测试可设 `deterministic`。 |
-| `AGENT_API_FORMAT` | `pi` | live provider path | `pi` 使用 `@earendil-works/pi-ai`；`openai` 和 `wiseeff` 使用 URL-backed legacy transport。 |
-| `AGENT_PI_PROVIDER` | `minimax` | Pi live provider | 传给 `getModel` 的 Pi provider id。 |
-| `AGENT_API_BASE_URL` | 空 | URL-backed live provider | `AGENT_API_FORMAT=openai` 或 `wiseeff` 时必填；`pi` 不需要。 |
+| `AGENT_API_FORMAT` | `wiseeff` | live provider path | `openai` 和 `wiseeff` 使用 URL-backed legacy transport。P1 已移除 `pi`（TD-027）；遗留 `.env` 中的 `pi` 会在服务端启动时迁移为 `wiseeff`。 |
+| `AGENT_API_BASE_URL` | 空 | URL-backed live provider | `AGENT_API_FORMAT=openai` 或 `wiseeff` 时必填。 |
 | `AGENT_MODEL` | 空 | live provider path | 本地填写。 |
 | `AGENT_API_KEY` | 空 | live provider path | secret。 |
 | `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | 请求超时。 |
-| `AGENT_PROMPT_VERSION` | `m7-pi-agent-v1` | traces | 写入 provider trace metadata。 |
+| `AGENT_PROMPT_VERSION` | `m5-agent-v1` | traces | 写入 provider trace metadata。 |
+
+## Xiaoze（P0 感知 + P1 行动 + P2 规划）
+
+| 变量 | 本地默认值 | 用途 | 说明 |
+| --- | --- | --- | --- |
+| `XIAOZE_RUNTIME_ENABLED` | `false` | Xiaoze AG-UI 端点 | 设为 `true` 注册 `POST /api/v1/agent/xiaoze`。 |
+| `XIAOZE_PROACTIVE_ENABLED` | `false` | 主动 suggest API | 设为 `true` 注册只读 `POST /api/v1/agent/xiaoze/suggest`。默认关闭，须 opt-in。 |
+| `XIAOZE_DETERMINISTIC` | `false` | 验收/离线测试 | 注入 fake 模型，不依赖真实 LLM。 |
+| `XIAOZE_MODEL` | 空（回退 `AGENT_MODEL`） | live Xiaoze | LangChain `ChatOpenAI` 模型名。 |
+| `VITE_XIAOZE_ENABLED` | `false` | 前端 Xiaoze UI | 挂载 CopilotKit 聊天面板。非 deterministic 时复用 `AGENT_API_*`。 |
+| `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | 主动建议 UI | 在 `AgentInsightBar` 挂载 `useXiaozeSuggestions`。须 API `XIAOZE_PROACTIVE_ENABLED=true`。默认关闭。 |
 
 ## 队列和 Worker
 

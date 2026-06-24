@@ -101,13 +101,23 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `AGENT_PROVIDER` | `live` in `.env.example` | live provider path | Set `deterministic` for stable local tests without an API key. |
-| `AGENT_API_FORMAT` | `pi` | live provider path | `pi` uses `@earendil-works/pi-ai`; `openai` and `wiseeff` use URL-backed legacy transports. |
-| `AGENT_PI_PROVIDER` | `minimax` | Pi live provider path | Pi provider id passed to `getModel`, for example `minimax`. Required only when `AGENT_API_FORMAT=pi`. |
-| `AGENT_API_BASE_URL` | blank | URL-backed live provider path | Required for `AGENT_API_FORMAT=openai` or `wiseeff`; not required for `pi`. Never commit secrets or private endpoints. |
+| `AGENT_API_FORMAT` | `wiseeff` | live provider path | `openai` and `wiseeff` use URL-backed legacy transports. `pi` was removed in P1 (TD-027). |
+| `AGENT_API_BASE_URL` | blank | URL-backed live provider path | Required for `AGENT_API_FORMAT=openai` or `wiseeff`. Never commit secrets or private endpoints. |
 | `AGENT_MODEL` | blank | live provider path | Fill locally. |
 | `AGENT_API_KEY` | blank | live provider path | Secret. |
 | `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | Request timeout. |
 | `AGENT_PROMPT_VERSION` | `m5-agent-v1` | traces | Include in provider trace metadata. |
+
+## Xiaoze (P0 perception + P1 action + P2 planning)
+
+| Variable | Local default | Required for | Notes |
+| --- | --- | --- | --- |
+| `XIAOZE_RUNTIME_ENABLED` | `false` | Xiaoze AG-UI endpoint | Set `true` to register `POST /api/v1/agent/xiaoze`. |
+| `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
+| `XIAOZE_DETERMINISTIC` | `false` | acceptance/offline tests | Injects a fake chat model; no live LLM. |
+| `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | LangChain `ChatOpenAI` model id. |
+| `VITE_XIAOZE_ENABLED` | `false` | frontend Xiaoze UI | Mounts CopilotKit provider + chat popup. Reuses `AGENT_API_BASE_URL` / `AGENT_API_KEY` for the model when deterministic mode is off. |
+| `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
 
 ## M5 Evidence
 

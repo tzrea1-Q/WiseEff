@@ -3,6 +3,11 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: process.env.WISEEFF_ACCEPTANCE_ENV_FILE ?? ".env" });
 
+if (process.env.AGENT_API_FORMAT === "pi") {
+  process.env.AGENT_API_FORMAT = "wiseeff";
+  delete process.env.AGENT_PI_PROVIDER;
+}
+
 const baseURL = process.env.WISEEFF_ACCEPTANCE_FRONTEND_URL ?? "http://127.0.0.1:5173";
 const apiURL = process.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 const apiAuthorization =
@@ -21,6 +26,7 @@ const webServers = [
     env: {
       PORT: apiPort,
       AGENT_PROVIDER: "deterministic",
+      AGENT_API_FORMAT: "wiseeff",
       AUTH_MODE: process.env.AUTH_MODE ?? "production",
       AUTH_PROVIDER: apiAuthProvider,
       ...(process.env.AUTH_TOKEN_ISSUER ? { AUTH_TOKEN_ISSUER: process.env.AUTH_TOKEN_ISSUER } : {}),
@@ -32,7 +38,10 @@ const webServers = [
       VITE_WISEEFF_API_BASE_URL: apiURL,
       DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",
       OBJECT_STORE_ROOT: process.env.OBJECT_STORE_ROOT ?? ".wiseeff-object-store",
-      ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {})
+      ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
+      XIAOZE_RUNTIME_ENABLED: "true",
+      XIAOZE_DETERMINISTIC: "true",
+      XIAOZE_PROACTIVE_ENABLED: process.env.XIAOZE_PROACTIVE_ENABLED ?? "true"
     },
     url: `${apiURL}/api/v1/health`,
     reuseExistingServer,
@@ -43,6 +52,8 @@ const webServers = [
     env: {
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: apiURL,
+      VITE_XIAOZE_ENABLED: "true",
+      VITE_XIAOZE_PROACTIVE_ENABLED: process.env.VITE_XIAOZE_PROACTIVE_ENABLED ?? "true",
       ...(apiAuthorization ? { VITE_WISEEFF_API_AUTHORIZATION: apiAuthorization } : {})
     },
     url: baseURL,

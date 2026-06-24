@@ -8,7 +8,7 @@ import { loadServerEnv } from "./env";
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const envExamplePath = path.join(projectRoot, ".env.example");
 const gitignorePath = path.join(projectRoot, ".gitignore");
-const allowedBlankKeys = new Set(["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_API_KEY"]);
+const allowedBlankKeys = new Set(["AGENT_API_BASE_URL", "AGENT_MODEL", "AGENT_API_KEY", "XIAOZE_MODEL"]);
 
 function parseEnvExample(contents: string) {
   return Object.fromEntries(
@@ -56,10 +56,9 @@ describe(".env.example", () => {
       HDC_TIMEOUT_MS: "5000",
       ADB_TIMEOUT_MS: "5000",
       AGENT_PROVIDER: "live",
-      AGENT_API_FORMAT: "pi",
-      AGENT_PI_PROVIDER: "minimax",
+      AGENT_API_FORMAT: "wiseeff",
       AGENT_API_TIMEOUT_MS: "30000",
-      AGENT_PROMPT_VERSION: "m7-pi-agent-v1",
+      AGENT_PROMPT_VERSION: "m5-agent-v1",
       M5_CONTRACT_CHECK_PASSED: "true",
       M5_SMOKE_ALLOW_NO_API: "false"
     });
@@ -78,8 +77,9 @@ describe(".env.example", () => {
 
     const filled = {
       ...parsed,
-      AGENT_MODEL: "MiniMax-M2.7",
-      AGENT_API_KEY: "local-pi-api-key"
+      AGENT_MODEL: "pilot-model",
+      AGENT_API_KEY: "local-agent-api-key",
+      AGENT_API_BASE_URL: "https://agent.example.com"
     };
     const serverEnv = loadServerEnv(filled);
 

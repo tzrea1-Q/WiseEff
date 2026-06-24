@@ -4,7 +4,7 @@
 
 WiseEff is organized as a React frontend plus a TypeScript backend foundation. The product direction is a modular monolith API, PostgreSQL persistence, async workers, an isolated device gateway, and a governed Agent layer. The detailed architecture lives in `docs/design-docs/`; this file is the high-level map.
 
-Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, live Agent provider seam with WiseEff HTTP, OpenAI-compatible, and Pi-backed formats, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
+Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, live Agent provider seam with WiseEff HTTP and OpenAI-compatible formats, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
 
 ## Runtime Shape
 
@@ -53,14 +53,14 @@ Rules:
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
-- `server/modules/agent/`: M4 Agent sessions, tools, approvals, and provider boundary.
+- `server/modules/agent/`: M4 Agent sessions, tools, approvals, provider boundary, and Xiaoze (`server/modules/agent/xiaoze/`: LangGraph agent + AG-UI SSE endpoint + orchestrator approval bridge).
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
 - `server/observability/`: correlation context, structured log helpers, metrics registry, and tracing boundary.
 - `server/migrations/`: SQL schema baseline.
 
 The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
 
-The live Agent provider boundary supports `AGENT_API_FORMAT=wiseeff`, `openai`, and `pi`. The Pi path uses `@earendil-works/pi-ai` only inside the backend provider adapter; WiseEff still owns tool execution, authorization, approval records, and audit. Pi Coding Agent CLI, Pi filesystem tools, Pi shell tools, and project-local `.pi` extensions are not part of the WiseEff product runtime.
+The live Agent provider boundary supports `AGENT_API_FORMAT=wiseeff` and `openai`. Xiaoze adds a parallel AG-UI/CopilotKit seam (`/api/v1/agent/xiaoze`) that reuses `ToolRegistry` authorization; read tools run automatically, while mutating tools (`action.submitParameterChange`) pause on AG-UI interrupts and execute only through the existing orchestrator approval chain (`approveToolCall` / `rejectToolCall`) with audit `actorType=agent`. P2 migrates the agent to a LangGraph `StateGraph` planning loop (intent → perceive → plan → act → observe) with a `MemorySaver` checkpointer keyed by `threadId`; approval resume re-enters the graph via `Command({ resume })` rather than a one-shot tool execution. Opt-in proactive suggestions use read-only `POST /api/v1/agent/xiaoze/suggest`, gated by `XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED` (default off). Checkpoint durability across process restarts is deferred (TD-029). LangGraph uses LangChain `ChatOpenAI` against the OpenAI-compatible endpoint. The redundant Pi provider was removed in P1 (TD-027 closed).
 
 ## Data And Governance
 

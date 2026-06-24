@@ -191,81 +191,16 @@ describe("agent provider registry", () => {
     expect(fetchImpl).toHaveBeenCalledWith(new URL("https://api.openai.com/v1/chat/completions"), expect.any(Object));
   });
 
-  it("creates a Pi-backed live provider when requested without a base URL", async () => {
-    const complete = vi.fn(async () => ({
-      role: "assistant" as const,
-      provider: "minimax",
-      model: "MiniMax-M2.7",
-      api: "openai-completions",
-      content: [{ type: "text" as const, text: "Ready from Pi." }],
-      usage: {
-        input: 1,
-        output: 1,
-        cacheRead: 0,
-        cacheWrite: 0,
-        totalTokens: 2,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.001 }
-      },
-      stopReason: "stop" as const,
-      timestamp: Date.now()
-    }));
-    const provider = createAgentProviderFromEnv(
-      {
-        NODE_ENV: "development",
-        AGENT_PROVIDER: "live",
-        AGENT_API_FORMAT: "pi",
-        AGENT_PI_PROVIDER: "minimax",
-        AGENT_MODEL: "MiniMax-M2.7",
-        AGENT_API_KEY: "secret",
-        AGENT_PROMPT_VERSION: "m7-pi-agent-v1"
-      } as any,
-      {
-        pi: {
-          resolveModel: vi.fn(() => ({
-            provider: "minimax",
-            id: "MiniMax-M2.7",
-            api: "openai-completions",
-            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            input: ["text"],
-            output: ["text"]
-          })),
-          complete
-        }
-      } as any
-    );
-
-    await expect(
-      provider.planTurn({
-        context: { path: "/parameters", pageKey: "parameters", projectId: "aurora", roleId: "admin" },
-        message: "Summarize"
-      })
-    ).resolves.toMatchObject({
-      provider: "live",
-      model: "MiniMax-M2.7",
-      promptVersion: "m7-pi-agent-v1",
-      assistantDraft: { content: "Ready from Pi." }
-    });
-    expect(provider.metadata()).toMatchObject({
-      evidence: {
-        provider: "live",
-        format: "pi",
-        piProvider: "minimax",
-        model: "MiniMax-M2.7",
-        promptVersion: "m7-pi-agent-v1"
-      }
-    });
-    expect(complete).toHaveBeenCalled();
-  });
-
-  it("requires a Pi provider id for Pi-backed live provider registry wiring", () => {
+  it("rejects the removed Pi provider format", () => {
     expect(() =>
       createAgentProviderFromEnv({
         NODE_ENV: "development",
         AGENT_PROVIDER: "live",
         AGENT_API_FORMAT: "pi" as never,
         AGENT_MODEL: "MiniMax-M2.7",
-        AGENT_API_KEY: "secret"
+        AGENT_API_KEY: "secret",
+        AGENT_API_BASE_URL: "https://agent.example.com"
       })
-    ).toThrow("AGENT_PI_PROVIDER is required when AGENT_API_FORMAT=pi");
+    ).toThrow("AGENT_API_FORMAT=pi is no longer supported");
   });
 });

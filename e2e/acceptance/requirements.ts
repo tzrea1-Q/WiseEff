@@ -123,6 +123,48 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "XIAOZE-PERCEPTION-001",
+    workflow: "G",
+    title: "Xiaoze answers grounded read-only questions using page context and perception tools.",
+    required: true
+  },
+  {
+    id: "XIAOZE-PERCEPTION-AUTHZ-001",
+    workflow: "G",
+    title: "Out-of-scope Xiaoze questions return a safe non-data answer.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-APPROVE-001",
+    workflow: "G",
+    title: "Xiaoze parameter change approval executes through the agent audit chain.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-REJECT-001",
+    workflow: "G",
+    title: "Rejecting a Xiaoze action approval does not mutate parameter state.",
+    required: true
+  },
+  {
+    id: "XIAOZE-ACTION-AUTHZ-001",
+    workflow: "G",
+    title: "Users without edit permission cannot approve Xiaoze mutating actions.",
+    required: true
+  },
+  {
+    id: "XIAOZE-PLAN-MULTISTEP-001",
+    workflow: "G",
+    title: "Xiaoze resumes a multi-step plan after approval and reports the observed execution result.",
+    required: true
+  },
+  {
+    id: "XIAOZE-PROACTIVE-001",
+    workflow: "G",
+    title: "Opt-in Xiaoze proactive suggestions are read-only, authz-bounded, and absent when disabled.",
+    required: true
+  },
+  {
     id: "PERM-GOV-001",
     workflow: "H",
     title: "User governance page is Admin-only and active Admin cannot disable itself.",

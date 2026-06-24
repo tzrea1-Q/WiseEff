@@ -83,6 +83,8 @@ import {
   type PlatformRoleId
 } from "@/domain/users/types";
 import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
+import { XiaozeProvider } from "@/features/agent/XiaozeProvider";
+import { xiaozeEnabled } from "@/infrastructure/http/runtimeMode";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
@@ -1999,18 +2001,20 @@ function App({
 }: AppProps = {}) {
   return (
     <TooltipProvider delayDuration={0}>
-      <AppShell
-        agentGateway={agentGateway}
-        authClient={authClient}
-        debuggingAdminClient={debuggingAdminClient}
-        debuggingGateway={debuggingGateway}
-        initialAppState={initialAppState}
-        key={mockDataFingerprint}
-        logAnalysisRepository={logAnalysisRepository}
-        parameterRepository={parameterRepository}
-        runtimeMode={runtimeMode}
-        userGovernanceActions={userGovernanceActions}
-      />
+      <XiaozeProvider enabled={xiaozeEnabled}>
+        <AppShell
+          agentGateway={agentGateway}
+          authClient={authClient}
+          debuggingAdminClient={debuggingAdminClient}
+          debuggingGateway={debuggingGateway}
+          initialAppState={initialAppState}
+          key={mockDataFingerprint}
+          logAnalysisRepository={logAnalysisRepository}
+          parameterRepository={parameterRepository}
+          runtimeMode={runtimeMode}
+          userGovernanceActions={userGovernanceActions}
+        />
+      </XiaozeProvider>
     </TooltipProvider>
   );
 }
@@ -2453,6 +2457,7 @@ function AppShell({
           plan={agentPlan}
           state={state}
           dispatch={dispatch}
+          xiaozeEnabled={xiaozeEnabled}
         />
       ) : null}
       {projectInitOpen ? (

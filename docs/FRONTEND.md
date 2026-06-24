@@ -12,7 +12,7 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/infrastructure/mock/`: mock state and mock implementations for demos/tests.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
-- `src/features/agent/`: unified Agent UI.
+- `src/features/agent/`: unified Agent UI and Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
 - `src/test/setup.ts`: Vitest DOM setup.
 
 ## Runtime Modes
@@ -118,7 +118,26 @@ Runtime split:
 
 `UnifiedAgent` renders API assistant confidence as a percentage and shows citations from returned messages. Approval-required tool calls open the existing confirmation dialog and call `approveToolCall` or `rejectToolCall`; mutating tools remain backend-gated by approval state, authz, and audit.
 
-The frontend contract is unchanged by the Pi-backed live provider. `AGENT_API_FORMAT=pi` is selected on the backend, and `AgentGateway` continues to call the same `/api/v1/agent` endpoints without loading Pi client code, Pi tools, or streaming UI behavior.
+The frontend contract for WiseAgent is unchanged. Xiaoze uses CopilotKit/AG-UI directly against `/api/v1/agent/xiaoze`.
+
+## Xiaoze (P0 perception + P1 action + P2 planning)
+
+When `VITE_XIAOZE_ENABLED=true`, the app mounts `XiaozeProvider` (`@copilotkit/react-core/v2` + `@ag-ui/client` `HttpAgent`) and streams AG-UI events from `POST /api/v1/agent/xiaoze`. `UnifiedAgent` registers page-visible state through `XiaozePageContextRegistrar` (`useAgentContext` with description `wiseeff.page`).
+
+P0: read-only `perception.*` tools.
+
+P1 adds `XiaozeApprovalCard` (`useInterrupt`) for mutating `action.submitParameterChange` proposals (approve / reject / edit target value) and low-risk frontend tools (`navigateTo`, `prefillParameterValue`) via `useFrontendTool`.
+
+P2 adds a LangGraph planning loop on the backend (intent → perceive → plan → act → observe) with checkpoint resume after approval, and opt-in proactive suggestions via `useXiaozeSuggestions` mounted in `AgentInsightBar`. When `VITE_XIAOZE_PROACTIVE_ENABLED=true` (and the API flag is on), the hook calls `POST /api/v1/agent/xiaoze/suggest` for the current page context; insight actions can open Xiaoze chat pre-seeded with the suggestion headline.
+
+| Flag | Default | Purpose |
+| --- | --- | --- |
+| `VITE_XIAOZE_ENABLED` | `false` | Enables CopilotKit Xiaoze chat and page-context registration. |
+| `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | Enables proactive read-only suggestions in `AgentInsightBar` via `useXiaozeSuggestions`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. |
+| `XIAOZE_RUNTIME_ENABLED` (API) | `false` | Registers the AG-UI SSE endpoint and LangGraph planning agent. |
+| `XIAOZE_PROACTIVE_ENABLED` (API) | `false` | Registers `POST /api/v1/agent/xiaoze/suggest` for read-only proactive suggestions. |
+| `XIAOZE_DETERMINISTIC` (API) | `false` | Offline deterministic model for acceptance/tests (no live LLM). |
+| `XIAOZE_MODEL` (API) | falls back to `AGENT_MODEL` | Model name for LangChain `ChatOpenAI`. |
 
 The M4 API smoke lives in `e2e/agent.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 

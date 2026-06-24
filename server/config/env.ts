@@ -27,8 +27,7 @@ const rawEnvSchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   AGENT_PROVIDER: z.enum(["deterministic", "live"]).default("deterministic"),
-  AGENT_API_FORMAT: z.enum(["wiseeff", "openai", "pi"]).default("wiseeff"),
-  AGENT_PI_PROVIDER: z.string().optional(),
+  AGENT_API_FORMAT: z.enum(["wiseeff", "openai"]).default("wiseeff"),
   AGENT_MODEL: z.string().optional(),
   AGENT_API_KEY: z.string().optional(),
   AGENT_API_BASE_URL: z.string().optional(),
@@ -51,13 +50,31 @@ const rawEnvSchema = z.object({
   DEVICE_BRIDGE_ARTIFACT_ROOT: z.string().default("ops/self-hosted/bridge-artifacts"),
   DEVICE_BRIDGE_PAIRING_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
   DEVICE_BRIDGE_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
-  DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws")
+  DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws"),
+  XIAOZE_RUNTIME_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  XIAOZE_MODEL: z.string().optional(),
+  XIAOZE_DETERMINISTIC: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  XIAOZE_PROACTIVE_ENABLED: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true")
 });
 
 export type ServerEnv = z.infer<typeof rawEnvSchema>;
 
 export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
-  const env = rawEnvSchema.parse(raw);
+  const normalized: NodeJS.ProcessEnv = { ...raw };
+  if (normalized.AGENT_API_FORMAT === "pi") {
+    normalized.AGENT_API_FORMAT = "wiseeff";
+    delete normalized.AGENT_PI_PROVIDER;
+  }
+  const env = rawEnvSchema.parse(normalized);
 
   if (env.NODE_ENV === "production" && env.MOCK_RUNTIME_ENABLED) {
     throw new Error("MOCK_RUNTIME_ENABLED cannot be true in production");
@@ -115,10 +132,7 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   if (env.AGENT_PROVIDER === "live" && !env.AGENT_API_KEY?.trim()) {
     throw new Error("AGENT_API_KEY is required when AGENT_PROVIDER=live");
   }
-  if (env.AGENT_PROVIDER === "live" && env.AGENT_API_FORMAT === "pi" && !env.AGENT_PI_PROVIDER?.trim()) {
-    throw new Error("AGENT_PI_PROVIDER is required when AGENT_API_FORMAT=pi");
-  }
-  if (env.AGENT_PROVIDER === "live" && env.AGENT_API_FORMAT !== "pi" && !env.AGENT_API_BASE_URL?.trim()) {
+  if (env.AGENT_PROVIDER === "live" && !env.AGENT_API_BASE_URL?.trim()) {
     throw new Error(`AGENT_API_BASE_URL is required when AGENT_API_FORMAT=${env.AGENT_API_FORMAT}`);
   }
 
