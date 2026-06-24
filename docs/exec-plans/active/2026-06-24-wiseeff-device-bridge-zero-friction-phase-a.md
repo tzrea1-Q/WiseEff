@@ -81,7 +81,7 @@
 - Create: `packages/device-bridge/src/urlScheme.ts`, `urlScheme.test.ts`, `connectCommand.ts`, `connectCommand.test.ts`
 - Modify: `packages/device-bridge/src/cli.ts`, `cli.test.ts`
 
-- [ ] **Step 1: Write failing URL scheme tests**
+- [x] **Step 1: Write failing URL scheme tests**
 
 ```typescript
 // packages/device-bridge/src/urlScheme.test.ts
@@ -105,11 +105,11 @@ describe("urlScheme", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests (expect FAIL)**
+- [x] **Step 2: Run tests (expect FAIL)**
 
 Run: `npm test -- packages/device-bridge/src/urlScheme.test.ts`
 
-- [ ] **Step 3: Implement `urlScheme.ts`**
+- [x] **Step 3: Implement `urlScheme.ts`**
 
 ```typescript
 export function buildConnectUrl(input: { server: string; code?: string }) {
@@ -133,7 +133,7 @@ export function parseConnectUrl(raw: string) {
 
 Note: use `wiseeff-bridge://connect?...` with `hostname=connect` (standard URL parser shape).
 
-- [ ] **Step 4: Write failing connect command tests**
+- [x] **Step 4: Write failing connect command tests**
 
 ```typescript
 // packages/device-bridge/src/connectCommand.test.ts
@@ -147,7 +147,7 @@ it("starts without re-pair when config server matches and token valid", async ()
 });
 ```
 
-- [ ] **Step 5: Implement `runConnectCommand`**
+- [x] **Step 5: Implement `runConnectCommand`**
 
 Extract pair/start orchestration from `cli.ts` into `connectCommand.ts`:
 
@@ -175,7 +175,7 @@ export async function runConnectCommand(deps: CliDependencies, input: {
 
 Adjust `runStartCommand` to return after background start when invoked from protocol handler (see Task 2).
 
-- [ ] **Step 6: Wire CLI**
+- [x] **Step 6: Wire CLI**
 
 Add to `parseArgs` / `runCli`:
 
@@ -193,11 +193,11 @@ if (parsed.flags.get("handle-url")) {
 }
 ```
 
-- [ ] **Step 7: Run package tests**
+- [x] **Step 7: Run package tests**
 
 Run: `npm test -- packages/device-bridge/src/cli.test.ts packages/device-bridge/src/urlScheme.test.ts packages/device-bridge/src/connectCommand.test.ts`
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add packages/device-bridge/src/urlScheme.ts packages/device-bridge/src/urlScheme.test.ts \
@@ -215,15 +215,15 @@ git commit -m "feat(device-bridge): add connect command and URL scheme parsing"
 - Modify: `ops/self-hosted/bridge-installer/windows/WiseEffBridge.iss` (stub registry)
 - Modify: `ops/self-hosted/bridge-installer/macos/Info.plist.template`
 
-- [ ] **Step 1: Add `--handle-url` integration test in `cli.test.ts`**
+- [x] **Step 1: Add `--handle-url` integration test in `cli.test.ts`**
 
 Expect `runConnectCommand` invoked with parsed `{ server, code }`.
 
-- [ ] **Step 2: Ensure protocol activation keeps process alive**
+- [x] **Step 2: Ensure protocol activation keeps process alive**
 
 When `--handle-url` is used, after `runStartCommand` begins WSS + health server, CLI must **not exit** until signal. Reuse existing `waitForTerminationSignal()` path from `start`.
 
-- [ ] **Step 3: Windows registry in Inno Setup**
+- [x] **Step 3: Windows registry in Inno Setup**
 
 Register URL protocol:
 
@@ -234,7 +234,7 @@ Root: HKCU; Subkey: "Software\\Classes\\wiseeff-bridge\\URL Protocol"; ValueType
 Root: HKCU; Subkey: "Software\\Classes\\wiseeff-bridge\\shell\\open\\command"; ValueType: string; ValueData: "\"{app}\\wiseeff-bridge.exe\" --handle-url \"%1\""
 ```
 
-- [ ] **Step 4: macOS `CFBundleURLTypes`**
+- [x] **Step 4: macOS `CFBundleURLTypes`**
 
 In app bundle `Info.plist`:
 
@@ -250,7 +250,7 @@ In app bundle `Info.plist`:
 
 App executable forwards open URL to bundled CLI `--handle-url`.
 
-- [ ] **Step 5: Run CLI tests + commit**
+- [x] **Step 5: Run CLI tests + commit**
 
 ```bash
 git commit -m "feat(device-bridge): support protocol handler entry via --handle-url"
@@ -265,7 +265,7 @@ git commit -m "feat(device-bridge): support protocol handler entry via --handle-
 - Modify: `src/infrastructure/http/deviceBridgeClient.ts` (type)
 - Modify: `src/infrastructure/http/bridgeReleaseSelection.ts`, `.test.ts`
 
-- [ ] **Step 1: Write failing selection test**
+- [x] **Step 1: Write failing selection test**
 
 ```typescript
 it("prefers installer artifact over portable zip for primary CTA", () => {
@@ -277,19 +277,19 @@ it("prefers installer artifact over portable zip for primary CTA", () => {
 });
 ```
 
-- [ ] **Step 2: Extend manifest schema**
+- [x] **Step 2: Extend manifest schema**
 
 Add optional `artifactKind?: "portable" | "installer"` defaulting to `"portable"` for backward compatibility.
 
-- [ ] **Step 3: Update `bridgeReleaseDownloadLabel`**
+- [x] **Step 3: Update `bridgeReleaseDownloadLabel`**
 
 Return **安装 Bridge（Windows）** / **安装 Bridge（macOS Apple Silicon）** when `artifactKind === "installer"`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run: `npm test -- src/infrastructure/http/bridgeReleaseSelection.test.ts server/modules/deviceBridge/schemas.test.ts server/modules/deviceBridge/releaseManifest.test.ts`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
@@ -299,17 +299,17 @@ Run: `npm test -- src/infrastructure/http/bridgeReleaseSelection.test.ts server/
 - Create: `scripts/build-bridge-installers.ts`, `ops/self-hosted/bridge-installer/**`
 - Modify: `scripts/build-device-bridge.ts`, `package.json` scripts
 
-- [ ] **Step 1: Add npm script**
+- [x] **Step 1: Add npm script**
 
 ```json
 "build:bridge-installers": "tsx scripts/build-bridge-installers.ts"
 ```
 
-- [ ] **Step 2: Build portable baseline**
+- [x] **Step 2: Build portable baseline**
 
 Reuse `npm run build:device-bridge` output (`cli.js` + launchers) into `bridge-installer/staging/`.
 
-- [ ] **Step 3: Windows installer**
+- [x] **Step 3: Windows installer**
 
 `build.ps1` invokes Inno Setup CLI (`iscc`) when available; output:
 
@@ -317,7 +317,7 @@ Reuse `npm run build:device-bridge` output (`cli.js` + launchers) into `bridge-i
 
 Bundle a **portable Node win-x64** zip downloaded at build time (pin version in script constants).
 
-- [ ] **Step 4: macOS installer**
+- [x] **Step 4: macOS installer**
 
 `build-macos-installer.sh` creates `WiseEff Bridge.app` with launcher script + `Info.plist`, then `productbuild` pkg:
 
@@ -325,15 +325,15 @@ Bundle a **portable Node win-x64** zip downloaded at build time (pin version in 
 
 Repeat for amd64 when building on Intel or universal script branch.
 
-- [ ] **Step 5: Regenerate manifest.json**
+- [x] **Step 5: Regenerate manifest.json**
 
 Append installer items with sha256 + `artifactKind: "installer"`. Keep portable items for advanced section.
 
-- [ ] **Step 6: Document manual build prerequisites**
+- [x] **Step 6: Document manual build prerequisites**
 
 In `ops/self-hosted/bridge-installer/README.md`: Inno Setup 6, macOS pkgbuild, Node redistributable download URLs.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git commit -m "feat: add Windows and macOS bridge installer build pipeline"
@@ -346,7 +346,7 @@ git commit -m "feat: add Windows and macOS bridge installer build pipeline"
 **Files:**
 - Create: `src/infrastructure/http/bridgeConnectLauncher.ts`, `.test.ts`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```typescript
 import { describe, expect, it, vi } from "vitest";
@@ -368,7 +368,7 @@ describe("bridgeConnectLauncher", () => {
 });
 ```
 
-- [ ] **Step 2: Implement launcher**
+- [x] **Step 2: Implement launcher**
 
 ```typescript
 export function buildBridgeConnectUrl(origin: string, code: string) {
@@ -400,7 +400,7 @@ export async function pollLocalBridgeHealth(options: {
 }
 ```
 
-- [ ] **Step 3: Run tests + commit**
+- [x] **Step 3: Run tests + commit**
 
 ---
 
@@ -410,7 +410,7 @@ export async function pollLocalBridgeHealth(options: {
 - Create: `src/components/LocalDeviceBridgeWizard.tsx`
 - Modify: `src/NodeDebuggingPage.tsx`, `src/styles.css`, `src/NodeDebuggingPage.test.tsx`
 
-- [ ] **Step 1: Write failing wizard tests in `NodeDebuggingPage.test.tsx`**
+- [x] **Step 1: Write failing wizard tests in `NodeDebuggingPage.test.tsx`**
 
 Cases:
 - missing bridge → step ① active, **single** install link, alternate platforms hidden behind `<details>其他平台</details>`
@@ -418,7 +418,7 @@ Cases:
 - connected health → step ③ or auto-detect path
 - pair/start commands only visible when advanced `<details open>` toggled
 
-- [ ] **Step 2: Implement wizard component**
+- [x] **Step 2: Implement wizard component**
 
 Props:
 
@@ -456,19 +456,19 @@ await pollLocalBridgeHealth({});
 onDetect();
 ```
 
-- [ ] **Step 3: Slim `LocalDeviceBridgePanel` to compose wizard + bridge management**
+- [x] **Step 3: Slim `LocalDeviceBridgePanel` to compose wizard + bridge management**
 
 Keep rename/revoke list for paired bridges.
 
-- [ ] **Step 4: CSS for steps and collapsed advanced section**
+- [x] **Step 4: CSS for steps and collapsed advanced section**
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `npm test -- src/NodeDebuggingPage.test.tsx src/infrastructure/http/bridgeConnectLauncher.test.ts`
 
 Run: `npm run build`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git commit -m "feat: add Device Bridge 3-step wizard with URL scheme connect flow"
@@ -482,7 +482,7 @@ git commit -m "feat: add Device Bridge 3-step wizard with URL scheme connect flo
 - Modify: `e2e/acceptance/local-device-bridge.acceptance.spec.ts`
 - Modify: `docs/developer/browser-acceptance-coverage-map.md` (if BRIDGE-WIN-001 text needs wizard wording)
 
-- [ ] **Step 1: Update acceptance spec assertions**
+- [x] **Step 1: Update acceptance spec assertions**
 
 Verify:
 - Primary CTA label **安装 Bridge** when health unreachable
@@ -491,17 +491,17 @@ Verify:
 
 Keep `test.skip` guards when Windows/macOS installer runtime unavailable; document skip reason.
 
-- [ ] **Step 2: Run targeted e2e**
+- [x] **Step 2: Run targeted e2e**
 
 Run: `npm run test:e2e -- e2e/acceptance/local-device-bridge.acceptance.spec.ts` (or project equivalent)
 
-- [ ] **Step 3: Manual pilot checklist (self-hosted)**
+- [x] **Step 3: Manual pilot checklist (self-hosted)**
 
 1. Build installers on a build machine; upload artifacts to `bridge-artifacts/`
 2. Fresh VM: install → open `/node-debugging` → connect without terminal
 3. Confirm detect finds USB device when adb/hdc preinstalled
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ---
 
@@ -511,19 +511,19 @@ Run: `npm run test:e2e -- e2e/acceptance/local-device-bridge.acceptance.spec.ts`
 - Modify runbooks + FRONTEND docs (EN + zh-CN)
 - Modify `docs/PLANS.md` active plan list
 
-- [ ] **Step 1: Update runbooks primary path**
+- [x] **Step 1: Update runbooks primary path**
 
 Replace terminal-first instructions with: install → browser connect → USB.
 
-- [ ] **Step 2: Update FRONTEND.md bridge panel section**
+- [x] **Step 2: Update FRONTEND.md bridge panel section**
 
 Document wizard steps, scheme launch, advanced CLI collapse, installer vs portable artifacts.
 
-- [ ] **Step 3: Run docs check**
+- [x] **Step 3: Run docs check**
 
 Run: `npm run docs:check`
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git commit -m "docs: document zero-friction Device Bridge install and connect flow"
@@ -550,9 +550,9 @@ git commit -m "docs: document zero-friction Device Bridge install and connect fl
 
 Plan cannot move to `completed/` until:
 
-- [ ] All `Update` rows above are committed or explicitly recorded unchanged with reason in plan PR notes
-- [ ] `npm run docs:check` passes
-- [ ] Browser acceptance impact recorded for wizard UI (`BRIDGE-WIN-001` or successor ID)
+- [x] All `Update` rows above are committed or explicitly recorded unchanged with reason in plan PR notes
+- [x] `npm run docs:check` passes
+- [x] Browser acceptance impact recorded for wizard UI (`BRIDGE-WIN-001` or successor ID)
 
 ## Browser Acceptance Coverage
 

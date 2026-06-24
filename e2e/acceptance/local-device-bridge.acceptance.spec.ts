@@ -196,6 +196,8 @@ test.describe("local device bridge conditional acceptance", () => {
     const apiSummaries: OperationEvidenceApiSummary[] = [];
     await page.goto(`/node-debugging?project=${projectId}`);
     await expect(page.locator("body")).toBeVisible();
+    await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
+    await expect(page.getByText("高级 · 命令行方式")).toBeVisible();
 
     const manifestResponse = await request.get(apiRoute("/api/v1/device-bridges/releases"), { headers: smokeHeaders() });
     expect(manifestResponse.ok()).toBe(true);
@@ -350,6 +352,8 @@ test.describe("local device bridge conditional acceptance", () => {
 
     await page.goto(`/node-debugging?project=${projectId}`);
     await expect(page.locator("body")).toBeVisible();
+    await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
+    await expect(page.getByText("高级 · 命令行方式")).toBeVisible();
 
     const detectResponse = await postJson<{ items: DebugTargetDto[] }>(
       request,
