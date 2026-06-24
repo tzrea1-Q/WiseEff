@@ -65,6 +65,7 @@ type ParameterRow = {
   description: string;
   explanation: string;
   config_format: string;
+  value_kind?: string | null;
   module: string;
   default_range: string;
   unit: string;
@@ -284,6 +285,19 @@ function dateTimeToIso(value: string | Date) {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+function resolveParameterValueKind(row: { value_kind?: string | null; config_format: string }) {
+  if (row.value_kind === "complex" || row.value_kind === "scalar") {
+    return row.value_kind;
+  }
+
+  const format = row.config_format.trim();
+  if (format.startsWith("DTS:") || format.toLowerCase().includes("string-list")) {
+    return "complex";
+  }
+
+  return "scalar";
+}
+
 function toProjectDto(row: ProjectRow): ProjectDto {
   return {
     id: row.id,
@@ -310,6 +324,7 @@ function toParameterDto(row: ParameterRow, history: ParameterHistoryEntryDto[] =
     description: row.description,
     explanation: row.explanation,
     configFormat: row.config_format,
+    valueKind: resolveParameterValueKind(row),
     module: row.module,
     projectId: row.project_id,
     currentValue: row.current_value,
@@ -616,6 +631,7 @@ export async function listParameters(db: Queryable, query: ListParametersQuery) 
       pd.description,
       pd.explanation,
       pd.config_format,
+      pd.value_kind,
       pd.module,
       pd.default_range,
       pd.unit,
@@ -645,6 +661,7 @@ export async function getParameterById(db: Queryable, query: { organizationId: s
       pd.description,
       pd.explanation,
       pd.config_format,
+      pd.value_kind,
       pd.module,
       pd.default_range,
       pd.unit,
@@ -1601,6 +1618,7 @@ export async function listParameterDefinitionsForImport(
       pd.description,
       pd.explanation,
       pd.config_format,
+      pd.value_kind,
       pd.module,
       pd.default_range,
       pd.unit,

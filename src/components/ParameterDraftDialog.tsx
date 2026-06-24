@@ -1,7 +1,13 @@
 import { ArrowRight, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { ParameterValueDiff } from "@/components/ParameterValueDiff";
 import type { ParameterRecord } from "@/domain/parameters/types";
 import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
+import {
+  getComplexParameterLineCount,
+  getComplexParameterKindLabel,
+  shouldSummarizeComplexParameter
+} from "@/parameterValueKind";
 import { RiskBadge, riskLabels } from "../workbenchUi";
 
 export type ParameterDraftDialogItem = {
@@ -62,7 +68,7 @@ function getRangeWarning(parameter: ParameterRecord, targetValue: string) {
 }
 
 function getLineCount(value: string) {
-  return value ? value.split(/\r?\n/).length : 0;
+  return getComplexParameterLineCount(value);
 }
 
 export function ParameterDraftDialog({
@@ -157,7 +163,9 @@ export function ParameterDraftDialog({
 
   const draftCount = drafts.length;
   const allDraftsAreSubmittable = drafts.length > 0 && drafts.every((item) => item.targetValue.trim() && item.reason.trim());
-  const hasComplexDraft = drafts.some((item) => item.parameter.valueKind === "complex");
+  const hasComplexDraft = drafts.some((item) =>
+    shouldSummarizeComplexParameter(item.parameter, item.parameter.currentValue, item.targetValue)
+  );
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={title}>
@@ -195,7 +203,11 @@ export function ParameterDraftDialog({
               const warning = getRangeWarning(item.parameter, item.targetValue);
               const warningId = `target-warning-${item.parameterId}`;
               const isFocusedCard = focusedParameterId === item.parameterId;
-              const isComplexCard = item.parameter.valueKind === "complex";
+              const isComplexCard = shouldSummarizeComplexParameter(
+                item.parameter,
+                item.parameter.currentValue,
+                item.targetValue
+              );
 
               return (
                 <article
@@ -221,33 +233,29 @@ export function ParameterDraftDialog({
                         <span className="parameter-draft-meta-pill">复杂配置</span>
                         <span>当前 {getLineCount(item.parameter.currentValue)} 行</span>
                         <span>目标 {getLineCount(item.targetValue)} 行</span>
-                        <span>{item.parameter.configFormat.startsWith("DTS") ? "DTS" : "多行参数"}</span>
+                        <span>{getComplexParameterKindLabel(item.parameter)}</span>
                       </div>
-                      <div className="parameter-draft-code-grid">
-                        <section className="parameter-draft-code-panel" aria-label={`${item.parameter.name} 当前配置`}>
-                          <strong>当前配置</strong>
-                          <pre className="parameter-draft-code">{item.parameter.currentValue || "-"}</pre>
-                        </section>
-                        <section className="parameter-draft-code-panel" aria-label={`${item.parameter.name} 目标配置`}>
-                          <label className="field-label" htmlFor={targetInputId}>
-                            目标配置
-                          </label>
-                          <textarea
-                            id={targetInputId}
-                            aria-label={isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
-                            className="parameter-target-editor parameter-draft-code-editor"
-                            value={item.targetValue}
-                            rows={8}
-                            wrap="off"
-                            aria-describedby={warning ? warningId : undefined}
-                            aria-invalid={warning ? true : undefined}
-                            disabled={!canEdit}
-                            onChange={(event) => {
-                              onUpdateDraft(item.parameter, { targetValue: event.target.value });
-                            }}
-                          />
-                        </section>
-                      </div>
+                      <section className="parameter-draft-diff-panel" aria-label={`${item.parameter.name} 变更 diff`}>
+                        <strong>变更 diff</strong>
+                        <ParameterValueDiff baseValue={item.parameter.currentValue} targetValue={item.targetValue} />
+                      </section>
+                      <label className="field-label" htmlFor={targetInputId}>
+                        目标配置
+                      </label>
+                      <textarea
+                        id={targetInputId}
+                        aria-label={isFocusedCard ? "目标值" : `目标值 ${item.parameter.name}`}
+                        className="parameter-target-editor parameter-draft-code-editor"
+                        value={item.targetValue}
+                        rows={8}
+                        wrap="off"
+                        aria-describedby={warning ? warningId : undefined}
+                        aria-invalid={warning ? true : undefined}
+                        disabled={!canEdit}
+                        onChange={(event) => {
+                          onUpdateDraft(item.parameter, { targetValue: event.target.value });
+                        }}
+                      />
                     </>
                   ) : (
                     <>

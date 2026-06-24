@@ -111,10 +111,11 @@ describe("ParameterDraftDialog", () => {
     expect(simpleCard).toHaveClass("parameter-draft-card--simple");
     expect(complexCard).toHaveClass("parameter-draft-card--complex");
     expect(dialog.querySelector(".parameter-draft-dialog")).toHaveClass("parameter-draft-dialog--wide");
-    expect(within(complexCard as HTMLElement).getByText("当前配置")).toBeInTheDocument();
+    expect(within(complexCard as HTMLElement).getByText("变更 diff")).toBeInTheDocument();
     expect(within(complexCard as HTMLElement).getByText("目标配置")).toBeInTheDocument();
     expect(within(complexCard as HTMLElement).getByText("复杂配置")).toBeInTheDocument();
-    expect(within(complexCard as HTMLElement).getAllByText(/"0", "5000", "1500", "40", "entry"/).length).toBeGreaterThan(0);
+    expect(within(complexCard as HTMLElement).queryByText("当前配置")).not.toBeInTheDocument();
+    expect(complexCard!.querySelector(".submission-preview-diff")).toBeInTheDocument();
     expect(within(complexCard as HTMLElement).getByLabelText("目标值 dts_fast_charge_profile_matrix")).toHaveAttribute("wrap", "off");
     expect(within(complexCard as HTMLElement).queryByText(/Agent 建议调整/)).not.toBeInTheDocument();
   });

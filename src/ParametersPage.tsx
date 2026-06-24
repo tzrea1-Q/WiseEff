@@ -14,8 +14,10 @@ import { roleCanBeAssignedToWorkflowSlot } from "@/domain/users/types";
 import { ParametersTable } from "./components/ParametersTable";
 import { ParameterInsightBar } from "./components/ParameterInsightBar";
 import { ParameterDetailDialog } from "./components/ParameterDetailDialog";
+import { ParameterValueDiff } from "./components/ParameterValueDiff";
 import { ParameterDraftDialog } from "./components/ParameterDraftDialog";
 import { deriveParameterWorkbenchInsightSnapshot } from "./parameterWorkbenchInsights";
+import { shouldSummarizeComplexParameter } from "./parameterValueKind";
 import { useTopBarActions } from "./components/layout";
 import type { ParameterPageActions } from "./app/routes";
 import type { ProjectInitializationStatus } from "./domain/parameters/types";
@@ -1007,93 +1009,11 @@ export function ParametersPage({
 }
 
 function isComplexSubmissionItem(item: ParameterDraftItem & { parameter: ParameterRecord }) {
-  return item.parameter.valueKind === "complex";
+  return shouldSummarizeComplexParameter(item.parameter, item.parameter.currentValue, item.targetValue);
 }
 
 function getSubmissionLineCount(value: string) {
   return value ? value.split(/\r?\n/).length : 0;
-}
-
-type SubmissionPreviewDiffLineKind = "equal" | "remove" | "add";
-
-type SubmissionPreviewDiffLine = {
-  kind: SubmissionPreviewDiffLineKind;
-  leftLineNumber: number | null;
-  rightLineNumber: number | null;
-  value: string;
-};
-
-function splitSubmissionDiffLines(value: string) {
-  const lines = value.split(/\r?\n/);
-  return lines.length === 0 ? [""] : lines;
-}
-
-function buildSubmissionPreviewDiffLines(baseValue: string, targetValue: string): SubmissionPreviewDiffLine[] {
-  const baseLines = splitSubmissionDiffLines(baseValue);
-  const targetLines = splitSubmissionDiffLines(targetValue);
-  const lineCount = Math.max(baseLines.length, targetLines.length);
-  const diffLines: SubmissionPreviewDiffLine[] = [];
-
-  for (let index = 0; index < lineCount; index += 1) {
-    const baseLine = baseLines[index];
-    const targetLine = targetLines[index];
-    const baseLineNumber = baseLine === undefined ? null : index + 1;
-    const targetLineNumber = targetLine === undefined ? null : index + 1;
-
-    if (baseLine === targetLine) {
-      diffLines.push({
-        kind: "equal",
-        leftLineNumber: baseLineNumber,
-        rightLineNumber: targetLineNumber,
-        value: baseLine ?? ""
-      });
-      continue;
-    }
-
-    if (baseLine !== undefined) {
-      diffLines.push({
-        kind: "remove",
-        leftLineNumber: baseLineNumber,
-        rightLineNumber: null,
-        value: baseLine
-      });
-    }
-
-    if (targetLine !== undefined) {
-      diffLines.push({
-        kind: "add",
-        leftLineNumber: null,
-        rightLineNumber: targetLineNumber,
-        value: targetLine
-      });
-    }
-  }
-
-  return diffLines;
-}
-
-function SubmissionPreviewDiff({ baseValue, targetValue }: { baseValue: string; targetValue: string }) {
-  const diffLines = buildSubmissionPreviewDiffLines(baseValue, targetValue);
-
-  return (
-    <div className="submission-preview-diff" role="list">
-      {diffLines.map((line, index) => (
-        <div
-          className="submission-preview-diff-row"
-          data-kind={line.kind}
-          key={`${line.kind}-${line.leftLineNumber ?? "-"}-${line.rightLineNumber ?? "-"}-${index}`}
-          role="listitem"
-        >
-          <span className="submission-preview-diff-row__marker" aria-hidden="true">
-            {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
-          </span>
-          <span className="submission-preview-diff-row__line-number">{line.leftLineNumber ?? ""}</span>
-          <span className="submission-preview-diff-row__line-number">{line.rightLineNumber ?? ""}</span>
-          <code>{line.value || " "}</code>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function ParameterSubmissionDialog({
@@ -1190,7 +1110,7 @@ function ParameterSubmissionDialog({
                       <span>当前 {getSubmissionLineCount(item.parameter.currentValue)} 行</span>
                       <span>目标 {getSubmissionLineCount(item.targetValue)} 行</span>
                     </div>
-                    <SubmissionPreviewDiff baseValue={item.parameter.currentValue || "-"} targetValue={item.targetValue || "-"} />
+                    <ParameterValueDiff baseValue={item.parameter.currentValue || "-"} targetValue={item.targetValue || "-"} />
                   </>
                 ) : (
                   <>

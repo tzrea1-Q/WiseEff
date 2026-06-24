@@ -1,7 +1,8 @@
 import { Eye, Pencil, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { ParameterRecord } from "../mockData";
+import type { ParameterRecord } from "@/domain/parameters/types";
+import { getParameterValueSummary, shouldSummarizeComplexParameter } from "@/parameterValueKind";
 import { ColumnFilter } from "./ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./tableFilterUtils";
 
@@ -121,11 +122,8 @@ function getValueDiffIcon(row: ParameterRecord) {
   return "→";
 }
 
-function getParameterValueSummary(value: string) {
-  const firstLine = value.split("\n")[0]?.trim() ?? "";
-  const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
-  const lineCount = value.split("\n").filter((line) => line.trim()).length;
-  return { propertyName, lineCount };
+function getParameterValueSummaryForRow(row: ParameterRecord) {
+  return getParameterValueSummary(row.currentValue || row.recommendedValue);
 }
 
 function getModuleToneIndex(module: string) {
@@ -392,8 +390,8 @@ export function ParametersTable({
             {visibleRows.map((row) => {
               const isModified = modifiedIds ? modifiedIds.has(row.id) : false;
               const isStashed = stashedIds ? stashedIds.has(row.id) : false;
-              const hasComplexValue = row.valueKind === "complex";
-              const valueSummary = getParameterValueSummary(row.currentValue || row.recommendedValue);
+              const hasComplexValue = shouldSummarizeComplexParameter(row, row.currentValue, row.recommendedValue);
+              const valueSummary = getParameterValueSummaryForRow(row);
               const displayedUpdatedAt = formatUpdatedAtForTable(row.updatedAt);
               return (
               <tr
