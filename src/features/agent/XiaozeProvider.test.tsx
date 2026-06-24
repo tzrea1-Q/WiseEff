@@ -5,7 +5,9 @@ import { XiaozeProvider } from "./XiaozeProvider";
 vi.mock("@copilotkit/react-core/v2", () => ({
   CopilotKit: ({ children }: { children: React.ReactNode }) => <div data-testid="copilot-kit">{children}</div>,
   CopilotPopup: () => null,
-  useAgentContext: vi.fn()
+  useAgentContext: vi.fn(),
+  useFrontendTool: vi.fn(),
+  useInterrupt: vi.fn()
 }));
 
 vi.mock("@ag-ui/client", () => ({

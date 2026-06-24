@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { HttpAgent } from "@ag-ui/client";
 import { CopilotKit, CopilotPopup } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
-import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
+import { createXiaozeHttpAgent } from "./xiaozeHttpAgent";
+import { XiaozeApprovalCard } from "./XiaozeApprovalCard";
+import { useXiaozeFrontendTools } from "./xiaozeFrontendTools";
 
 export type XiaozeProviderProps = {
   children: ReactNode;
@@ -10,16 +11,9 @@ export type XiaozeProviderProps = {
   enabled?: boolean;
 };
 
-function resolveAgentUrl(agentUrl?: string) {
-  if (agentUrl) {
-    return agentUrl;
-  }
-  const base = wiseEffApiBaseUrl.replace(/\/+$/, "");
-  return `${base}/api/v1/agent/xiaoze`;
-}
-
-function buildAuthHeaders(): Record<string, string> {
-  return wiseEffApiAuthorization ? { Authorization: wiseEffApiAuthorization } : {};
+function XiaozeRuntimeTools() {
+  useXiaozeFrontendTools();
+  return <XiaozeApprovalCard />;
 }
 
 export function XiaozeProvider({ children, agentUrl, enabled = true }: XiaozeProviderProps) {
@@ -27,18 +21,17 @@ export function XiaozeProvider({ children, agentUrl, enabled = true }: XiaozePro
     return children;
   }
 
-  const url = resolveAgentUrl(agentUrl);
-  const headers = buildAuthHeaders();
-  const xiaozeAgent = new HttpAgent({ agentId: "default", url, headers });
+  const xiaozeAgent = createXiaozeHttpAgent({ agentUrl });
 
   return (
     <CopilotKit selfManagedAgents={{ default: xiaozeAgent }}>
       {children}
+      <XiaozeRuntimeTools />
       <CopilotPopup
         agentId="default"
         labels={{
           modalHeaderTitle: "小泽",
-          welcomeMessageText: "我是小泽，可以基于当前页面和您有权限的数据只读答疑。",
+          welcomeMessageText: "我是小泽，可以基于当前页面和您有权限的数据答疑，并在您批准后协助提交参数变更。",
           chatToggleOpenLabel: "打开小泽"
         }}
       />
