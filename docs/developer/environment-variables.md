@@ -101,15 +101,14 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
 | `AGENT_PROVIDER` | `live` in `.env.example` | live provider path | Set `deterministic` for stable local tests without an API key. |
-| `AGENT_API_FORMAT` | `pi` | live provider path | `pi` uses `@earendil-works/pi-ai`; `openai` and `wiseeff` use URL-backed legacy transports. |
-| `AGENT_PI_PROVIDER` | `minimax` | Pi live provider path | Pi provider id passed to `getModel`, for example `minimax`. Required only when `AGENT_API_FORMAT=pi`. |
-| `AGENT_API_BASE_URL` | blank | URL-backed live provider path | Required for `AGENT_API_FORMAT=openai` or `wiseeff`; not required for `pi`. Never commit secrets or private endpoints. |
+| `AGENT_API_FORMAT` | `wiseeff` | live provider path | `openai` and `wiseeff` use URL-backed legacy transports. `pi` was removed in P1 (TD-027). |
+| `AGENT_API_BASE_URL` | blank | URL-backed live provider path | Required for `AGENT_API_FORMAT=openai` or `wiseeff`. Never commit secrets or private endpoints. |
 | `AGENT_MODEL` | blank | live provider path | Fill locally. |
 | `AGENT_API_KEY` | blank | live provider path | Secret. |
 | `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | Request timeout. |
 | `AGENT_PROMPT_VERSION` | `m5-agent-v1` | traces | Include in provider trace metadata. |
 
-## Xiaoze Perception (P0)
+## Xiaoze (P0 perception + P1 action)
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |

@@ -12,7 +12,7 @@ WiseEff frontend is a Vite, React, TypeScript SPA. It supports a rich mock-backe
 - `src/infrastructure/mock/`: mock state and mock implementations for demos/tests.
 - `src/infrastructure/http/`: API client, DTOs, auth client, runtime mode.
 - `src/components/`: reusable UI, layout, tables, dialogs, filters, charts.
-- `src/features/agent/`: unified Agent UI and Xiaoze CopilotKit perception surface (`XiaozeProvider`, `useXiaozePageContext`).
+- `src/features/agent/`: unified Agent UI and Xiaoze CopilotKit surface (`XiaozeProvider`, `useXiaozePageContext`, `XiaozeApprovalCard`, frontend tools).
 - `src/test/setup.ts`: Vitest DOM setup.
 
 ## Runtime Modes
@@ -114,16 +114,20 @@ Runtime split:
 
 `UnifiedAgent` renders API assistant confidence as a percentage and shows citations from returned messages. Approval-required tool calls open the existing confirmation dialog and call `approveToolCall` or `rejectToolCall`; mutating tools remain backend-gated by approval state, authz, and audit.
 
-The frontend contract is unchanged by the Pi-backed live provider. `AGENT_API_FORMAT=pi` is selected on the backend, and `AgentGateway` continues to call the same `/api/v1/agent` endpoints without loading Pi client code, Pi tools, or streaming UI behavior.
+The frontend contract for WiseAgent is unchanged. Xiaoze uses CopilotKit/AG-UI directly against `/api/v1/agent/xiaoze`.
 
-## Xiaoze Perception (P0)
+## Xiaoze (P0 perception + P1 action)
 
-When `VITE_XIAOZE_ENABLED=true`, the app mounts `XiaozeProvider` (`@copilotkit/react-core/v2` + `@ag-ui/client` `HttpAgent`) and streams AG-UI events from `POST /api/v1/agent/xiaoze`. `UnifiedAgent` stops rendering the legacy WiseAgent FAB and instead registers page-visible state through `XiaozePageContextRegistrar` (`useAgentContext` with description `wiseeff.page`). P0 is read-only: no mutating tools, frontend actions, or HITL approval UI.
+When `VITE_XIAOZE_ENABLED=true`, the app mounts `XiaozeProvider` (`@copilotkit/react-core/v2` + `@ag-ui/client` `HttpAgent`) and streams AG-UI events from `POST /api/v1/agent/xiaoze`. `UnifiedAgent` registers page-visible state through `XiaozePageContextRegistrar` (`useAgentContext` with description `wiseeff.page`).
+
+P0: read-only `perception.*` tools.
+
+P1 adds `XiaozeApprovalCard` (`useInterrupt`) for mutating `action.submitParameterChange` proposals (approve / reject / edit target value) and low-risk frontend tools (`navigateTo`, `prefillParameterValue`) via `useFrontendTool`.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `VITE_XIAOZE_ENABLED` | `false` | Enables CopilotKit Xiaoze chat and page-context registration. |
-| `XIAOZE_RUNTIME_ENABLED` (API) | `false` | Registers the AG-UI SSE endpoint and LangGraph perception agent. |
+| `XIAOZE_RUNTIME_ENABLED` (API) | `false` | Registers the AG-UI SSE endpoint and LangGraph agent. |
 | `XIAOZE_DETERMINISTIC` (API) | `false` | Offline deterministic model for acceptance/tests (no live LLM). |
 | `XIAOZE_MODEL` (API) | falls back to `AGENT_MODEL` | Model name for LangChain `ChatOpenAI`. |
 

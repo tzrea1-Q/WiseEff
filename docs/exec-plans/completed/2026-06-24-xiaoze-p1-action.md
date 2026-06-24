@@ -350,3 +350,7 @@ P1 adds approval-gated mutating actions initiated from the Xiaoze chat.
 - Confirmation that `action.submitParameterChange` should create a change request for review (not a direct merge) in P1.
 - Which roles may trigger Xiaoze actions in P1 (all permitted users vs a pilot role).
 - Whether `editedArgs` editing should be limited to the target value or allow editing the reason too.
+
+## Known Limitation (tracked as TD-028)
+
+The backend approval chain (approve / reject / authz-denied) is verified by `e2e/acceptance/xiaoze-action.acceptance.spec.ts` (3/3 pass). However, the in-browser CopilotKit `useInterrupt` resolve → AG-UI `resume` round-trip intermittently leaves `Thread has pending interrupt(s) not addressed by resume`, so the end-to-end approve/reject round-trip in the browser does not reliably complete. This is tracked as TD-028 and must be fixed before the in-UI action loop is considered production-ready. The API-layer execution path itself is unaffected.
