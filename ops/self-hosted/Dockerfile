@@ -2,6 +2,7 @@ FROM node:22.21.1-alpine AS deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
+COPY packages/ ./packages/
 RUN npm ci
 
 FROM node:22.21.1-alpine AS runtime
