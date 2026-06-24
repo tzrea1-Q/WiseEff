@@ -1,5 +1,6 @@
-import { ApiError } from "../../../shared/http/errors";
 import type { AgentToolResult } from "../types";
+import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
+import { createPlanningAgent, type PlanningApprovalBridge } from "./planningGraph";
 
 export type PerceptionToolDescriptor = {
   name: string;
@@ -16,6 +17,7 @@ export type PerceptionAgentContext = {
 export type PerceptionAgentRunInput = {
   message: string;
   context: PerceptionAgentContext;
+  threadId?: string;
 };
 
 export type PerceptionAgentRunResult = {
@@ -43,101 +45,28 @@ export type PerceptionChatModel = {
   invoke(messages: unknown[]): Promise<PerceptionModelResponse>;
 };
 
-const SYSTEM_PROMPT = [
-  "You are Xiaoze (小泽), WiseEff's perception and action assistant.",
-  "Use only the provided WiseEff tools to ground answers and proposed actions.",
-  "Never claim a write occurred unless an approved mutating tool executed successfully.",
-  "Cite sources from tool results when summarizing.",
-  "If a tool returns FORBIDDEN or access is denied, answer that the user is not permitted and do not reveal protected data."
-].join(" ");
-
-function isForbiddenError(error: unknown) {
-  return error instanceof ApiError && error.code === "FORBIDDEN";
-}
-
-function mergeToolPayload(
-  args: Record<string, unknown>,
-  context: PerceptionAgentContext
-): Record<string, unknown> {
-  return {
-    ...args,
-    ...(typeof args.projectId === "string" ? {} : context.projectId ? { projectId: context.projectId } : {})
-  };
-}
-
 export function createPerceptionAgent(options: {
   model: PerceptionChatModel;
   runTool: (name: string, payload: Record<string, unknown>) => Promise<AgentToolResult>;
   listTools: () => PerceptionToolDescriptor[];
+  checkpointer?: XiaozeCheckpointer;
+  approvalBridge?: PlanningApprovalBridge;
 }) {
+  const planningAgent = createPlanningAgent(options);
+
   return {
     async run(input: PerceptionAgentRunInput): Promise<PerceptionAgentRunResult> {
-      const messages: unknown[] = [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: [
-            input.message,
-            input.context.pageKey ? `\nCurrent page: ${input.context.pageKey}` : "",
-            input.context.projectId ? `\nCurrent project: ${input.context.projectId}` : ""
-          ].join("")
-        }
-      ];
-      const citations: AgentToolResult["citations"] = [];
-
-      for (let turn = 0; turn < 6; turn += 1) {
-        const response = await options.model.invoke(messages);
-        if (response.toolCalls?.length) {
-          messages.push({ role: "assistant", tool_calls: response.toolCalls });
-          for (const call of response.toolCalls) {
-            const payload = mergeToolPayload(call.args, input.context);
-            const toolDefinition = options.listTools().find((tool) => tool.name === call.name);
-            if (toolDefinition?.requiresApproval) {
-              return {
-                text: "",
-                citations,
-                interrupt: {
-                  toolName: call.name,
-                  payload,
-                  citations
-                }
-              };
-            }
-            try {
-              const result = await options.runTool(call.name, payload);
-              citations.push(...result.citations);
-              messages.push({
-                role: "tool",
-                tool_call_id: call.id,
-                content: JSON.stringify({ summary: result.summary, data: result.data, citations: result.citations })
-              });
-            } catch (error) {
-              if (isForbiddenError(error)) {
-                messages.push({
-                  role: "tool",
-                  tool_call_id: call.id,
-                  content: JSON.stringify({ error: "FORBIDDEN", message: "You are not permitted to access this data." })
-                });
-              } else {
-                throw error;
-              }
-            }
-          }
-          continue;
-        }
-
-        return {
-          text: response.content ?? "",
-          citations
-        };
-      }
-
+      const result = await planningAgent.run({
+        ...input,
+        threadId: input.threadId ?? "default"
+      });
       return {
-        text: "I could not complete the request within the allowed tool turns.",
-        citations
+        text: result.text,
+        citations: result.citations,
+        interrupt: result.interrupt
       };
     },
-    listTools: options.listTools
+    listTools: planningAgent.listTools
   };
 }
 
