@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { CopilotKit, CopilotPopup } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import { AgentInsightBar } from "@/components/AgentInsightBar";
-import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { createXiaozeHttpAgent } from "./xiaozeHttpAgent";
 import { XiaozeApprovalCard } from "./XiaozeApprovalCard";
 import { useXiaozeFrontendTools } from "./xiaozeFrontendTools";
@@ -12,7 +11,6 @@ export type XiaozeProviderProps = {
   children: ReactNode;
   agentUrl?: string;
   enabled?: boolean;
-  proactiveEnabled?: boolean;
 };
 
 function XiaozeRuntimeTools() {
@@ -20,7 +18,7 @@ function XiaozeRuntimeTools() {
   return <XiaozeApprovalCard />;
 }
 
-function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
+export function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
   const { insights, dismissedIds, dismiss } = useXiaozeSuggestions({ enabled });
   return (
     <AgentInsightBar
@@ -35,8 +33,7 @@ function XiaozeProactiveInsights({ enabled }: { enabled: boolean }) {
 export function XiaozeProvider({
   children,
   agentUrl,
-  enabled = true,
-  proactiveEnabled = xiaozeProactiveEnabled
+  enabled = true
 }: XiaozeProviderProps) {
   if (!enabled) {
     return children;
@@ -47,7 +44,6 @@ export function XiaozeProvider({
   return (
     <CopilotKit selfManagedAgents={{ default: xiaozeAgent }}>
       {children}
-      <XiaozeProactiveInsights enabled={proactiveEnabled} />
       <XiaozeRuntimeTools />
       <CopilotPopup
         agentId="default"

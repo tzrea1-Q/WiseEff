@@ -258,7 +258,7 @@ git commit -m "test(agent): xiaoze multi-step planning and proactive acceptance"
 - [ ] **Step 3:** Run: `npm run build` — Expected: PASS.
 - [ ] **Step 4:** Update `ARCHITECTURE.md`, `docs/design-docs/full-stack-architecture.md`, `docs/SECURITY.md` (+ zh), `docs/FRONTEND.md` (+ zh), `docs/developer/environment-variables.md` (+ zh), and the roadmap.
 - [ ] **Step 5:** Run: `npm run docs:check` — Expected: PASS (keep English docs free of Chinese characters).
-- [ ] **Step 6:** Frontend browser verification with `playwright-cli` (desktop/tablet/mobile): run a multi-step task through approval to completion; verify a proactive suggestion appears (enabled) and is absent (disabled); capture screenshots under `work/ui-checks/`; check console/network. Record evidence.
+- [x] **Step 6:** Frontend browser verification with `playwright-cli` (desktop/tablet/mobile): run a multi-step task through approval to completion; verify a proactive suggestion appears (enabled) and is absent (disabled); capture screenshots under `work/ui-checks/`; check console/network. Record evidence.
 - [ ] **Step 7:** Commit docs and `git diff --check`.
 
 ```bash
@@ -304,3 +304,18 @@ P2 adds a multi-step in-chat task flow and a proactive suggestion surface.
 - Whether proactive suggestions default off (recommended) and whether the opt-in is per-user, per-role, or org-level.
 - Whether the checkpointer must be durable (Postgres) for the first pilot or in-memory is acceptable for P2 v1.
 - Any limit on how many proactive suggestions may surface per page.
+
+## Known Limitations
+
+- **Real-auth browser screenshots:** Completed on 2026-06-24. Evidence captured with `AUTH_MODE=development` (auto-authorized seed admin `u-xu-yun`), `XIAOZE_DETERMINISTIC=true`, proactive flags enabled on both server and Vite (`XIAOZE_PROACTIVE_ENABLED=true`, `VITE_XIAOZE_PROACTIVE_ENABLED=true`), project `aurora` on `/parameters?project=aurora`, via `npm run dev:all` + `playwright-cli` at desktop `1440x900`, tablet `768x1024`, and mobile `390x844`. Console errors: 0 on verified flows (CopilotKit license and Lit dev-mode warnings only).
+- **Proactive insight placement fix:** `XiaozeProactiveInsights` must render under `XiaozePageContext.Provider` (via `XiaozePageContextRegistrar`) so the hook receives page `projectId`; mounting it as a sibling of `AppShell` in `XiaozeProvider` left suggestions empty in the browser.
+
+## Manual Browser Evidence (P2)
+
+| Requirement | Screenshots | Interactions verified |
+| --- | --- | --- |
+| `XIAOZE-PROACTIVE-001` (enabled) | `work/ui-checks/xiaoze-p2-proactive-enabled-{desktop,tablet,mobile}.png` | Grounded headline `1 open change requests pending review`; `Ask Xiaoze` opens chat; dismiss hides bar; `POST /api/v1/agent/xiaoze/suggest` 200 |
+| `XIAOZE-PROACTIVE-001` (disabled) | `work/ui-checks/xiaoze-p2-proactive-disabled-desktop.png` | No insight bar with `VITE_XIAOZE_PROACTIVE_ENABLED=false` |
+| `XIAOZE-PROACTIVE-001` (authz) | API only | `x-wiseeff-user: u-liu-min` + `projectId=secret-project` returns `{ "suggestions": [] }` |
+| `XIAOZE-PLAN-MULTISTEP-001` (approve) | `work/ui-checks/xiaoze-p2-multistep-approve-{desktop,tablet,mobile}.png` | Prompt → HITL card → Approve → checkpoint resume → message cites new change request UUID |
+| `XIAOZE-PLAN-MULTISTEP-001` (reject) | `work/ui-checks/xiaoze-p2-multistep-reject-desktop.png` | Reject → `Tool request rejected: Rejected in Xiaoze chat.` with no write |

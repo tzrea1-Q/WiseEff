@@ -40,3 +40,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 - Coverage markers use comments in acceptance specs: `// @acceptance PARAM-REASON-001`.
 - A workflow-level pass does not imply every row above is covered. The generated browser evidence must report requirement-level coverage before this map can be treated as satisfied.
 - Operation markers use comments in acceptance specs: `// @operation PARAM-REASON-001`. Automated P0/P1 operation IDs must produce operation evidence under `docs/generated/acceptance-operation-evidence.md`.
+
+## Supplemental Manual Evidence (Xiaoze P2)
+
+Playwright acceptance covers `XIAOZE-PLAN-MULTISTEP-001` and `XIAOZE-PROACTIVE-001` at the API/SSE layer. Real-auth browser screenshots (development session, deterministic provider) are archived under `work/ui-checks/xiaoze-p2-*` and indexed in `docs/exec-plans/completed/2026-06-24-xiaoze-p2-planning.md` (Manual Browser Evidence).

@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 import { useAgentContext, type JsonSerializable } from "@copilotkit/react-core/v2";
+import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
+import { XiaozeProactiveInsights } from "./XiaozeProvider";
 import { XiaozePageContext, type XiaozePageContextInput } from "./xiaozePageContext";
 
 export type { XiaozePageContextInput } from "./xiaozePageContext";
@@ -23,5 +25,9 @@ export function XiaozePageContextRegistrar(input: XiaozePageContextInput) {
     value: toPageContextValue(value)
   });
 
-  return <XiaozePageContext.Provider value={value} />;
+  return (
+    <XiaozePageContext.Provider value={value}>
+      <XiaozeProactiveInsights enabled={xiaozeProactiveEnabled} />
+    </XiaozePageContext.Provider>
+  );
 }
