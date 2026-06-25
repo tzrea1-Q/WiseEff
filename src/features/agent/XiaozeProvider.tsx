@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import {
   CopilotChatConfigurationProvider,
   CopilotChatMessageView,
+  CopilotChatView,
   CopilotKit,
   CopilotPopup
 } from "@copilotkit/react-core/v2";
@@ -13,6 +14,7 @@ import { XiaozeApprovalCard } from "./XiaozeApprovalCard";
 import { useXiaozeFrontendTools } from "./xiaozeFrontendTools";
 import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
 import { XiaozeChatHeader } from "./XiaozeChatHeader";
+import { XiaozeChatScrollView } from "./XiaozeChatScrollView";
 import { XiaozeMessageView } from "./XiaozeMessageView";
 import { XiaozeRunTimingCapture } from "./XiaozeRunTimingCapture";
 import { XiaozeRunTimingProvider } from "./XiaozeRunTimingContext";
@@ -42,6 +44,7 @@ function XiaozeCopilotPopup() {
     <CopilotChatConfigurationProvider threadId={activeThreadId} hasExplicitThreadId>
       <CopilotPopup
         agentId="default"
+        throttleMs={16}
         width={420}
         height={680}
         header={{
@@ -56,6 +59,7 @@ function XiaozeCopilotPopup() {
           chatDisclaimerText: "AI 可能会出错，重要决策请自行核实。"
         }}
         messageView={XiaozeMessageView as typeof CopilotChatMessageView}
+        scrollView={XiaozeChatScrollView as typeof CopilotChatView.ScrollView}
       />
     </CopilotChatConfigurationProvider>
   );

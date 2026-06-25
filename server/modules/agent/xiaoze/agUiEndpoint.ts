@@ -56,17 +56,34 @@ export type XiaozePerceptionAgent = {
   }): Promise<PerceptionAgentRunResult>;
 };
 
+function* maybeYieldReasoningEnd(
+  event: { type: string },
+  flags: { streamedReasoning: boolean; reasoningEnded: boolean },
+  reasoningMessageId: string
+) {
+  if (flags.reasoningEnded || !flags.streamedReasoning || event.type !== "answer_delta") {
+    return;
+  }
+  flags.reasoningEnded = true;
+  yield reasoningEndEvent(reasoningMessageId);
+}
+
 async function* yieldMappedSinkEvents(
   sink: RunEventSink,
   context: RunTimelineContext,
-  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean }
+  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean; reasoningEnded: boolean }
 ) {
   const events = await sink.drain();
   for (const event of events) {
     if (event.type === "reasoning_delta") {
       flags.streamedReasoning = true;
     }
-    if ((event.type === "tool_call" || event.type === "answer_delta") && !flags.assistantShellStarted) {
+    yield* maybeYieldReasoningEnd(event, flags, context.reasoningMessageId);
+    if (
+      (event.type === "tool_call" ||
+        (event.type === "answer_delta" && (flags.reasoningEnded || !flags.streamedReasoning))) &&
+      !flags.assistantShellStarted
+    ) {
       flags.assistantShellStarted = true;
       yield assistantShellStartEvent(context.assistantMessageId);
     }
@@ -83,7 +100,7 @@ async function* pumpAgentRun(input: {
   sink: RunEventSink;
   context: RunTimelineContext;
   run: () => Promise<PerceptionAgentRunResult>;
-  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean };
+  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean; reasoningEnded: boolean };
   outcome: { result?: PerceptionAgentRunResult; error?: unknown };
 }) {
   let settled = false;
@@ -110,7 +127,12 @@ async function* pumpAgentRun(input: {
           if (event.type === "reasoning_delta") {
             input.flags.streamedReasoning = true;
           }
-          if ((event.type === "tool_call" || event.type === "answer_delta") && !input.flags.assistantShellStarted) {
+          yield* maybeYieldReasoningEnd(event, input.flags, input.context.reasoningMessageId);
+          if (
+            (event.type === "tool_call" ||
+              (event.type === "answer_delta" && (input.flags.reasoningEnded || !input.flags.streamedReasoning))) &&
+            !input.flags.assistantShellStarted
+          ) {
             input.flags.assistantShellStarted = true;
             yield assistantShellStartEvent(input.context.assistantMessageId);
           }
@@ -141,11 +163,11 @@ function* finalizeTurnReply(input: {
   reply: { text: string; reasoning?: string };
   reasoningMessageId: string;
   messageId: string;
-  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean };
+  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean; reasoningEnded: boolean };
 }) {
   if (input.reply.reasoning && !input.flags.streamedReasoning) {
     yield* yieldReasoningTurn({ reasoningMessageId: input.reasoningMessageId, reasoning: input.reply.reasoning });
-  } else {
+  } else if (!input.flags.reasoningEnded) {
     yield reasoningEndEvent(input.reasoningMessageId);
   }
 
@@ -513,7 +535,12 @@ export function createXiaozeAgUiHandler(options: {
         }
 
         const sink = createRunEventSink();
-        const streamFlags = { streamedReasoning: false, streamedAnswer: false, assistantShellStarted: false };
+        const streamFlags = {
+          streamedReasoning: false,
+          streamedAnswer: false,
+          assistantShellStarted: false,
+          reasoningEnded: false
+        };
         const outcome: { result?: PerceptionAgentRunResult; error?: unknown } = {};
         yield* pumpAgentRun({
           sink,

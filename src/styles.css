@@ -12565,6 +12565,49 @@ td small {
   padding: 8px 16px 120px;
 }
 
+.copilotKitPopup .xiaoze-chat-scroll {
+  overflow-anchor: none;
+  scroll-behavior: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 24px;
+}
+
+.xiaoze-streaming-markdown {
+  display: inline;
+  color: #1e293b;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.xiaoze-streaming-markdown__text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.xiaoze-streaming-markdown__cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: rgba(0, 104, 123, 0.85);
+  animation: xiaoze-streaming-cursor 1s steps(1) infinite;
+}
+
+@keyframes xiaoze-streaming-cursor {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
 .copilotKitPopup [data-testid="copilot-input-overlay"] {
   padding: 0 14px 14px !important;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.92) 28%, #ffffff 100%);
@@ -12969,6 +13012,7 @@ td small {
   display: grid;
   gap: 8px;
   margin: 14px 0 6px;
+  contain: layout style;
 }
 
 .xiaoze-assistant-message__meta {
@@ -13008,7 +13052,6 @@ td small {
 .xiaoze-reasoning-message.is-streaming {
   border-color: rgba(0, 104, 123, 0.32);
   box-shadow: 0 0 0 1px rgba(0, 104, 123, 0.08);
-  animation: xiaoze-reasoning-glow 2.4s ease-in-out infinite;
 }
 
 .xiaoze-reasoning-message__toggle {
@@ -13039,7 +13082,7 @@ td small {
 }
 
 .xiaoze-reasoning-message.is-streaming .xiaoze-reasoning-message__icon {
-  animation: xiaoze-icon-pulse 1.4s ease-in-out infinite;
+  color: var(--xiaoze-accent);
 }
 
 .xiaoze-reasoning-message__label {
@@ -13066,6 +13109,28 @@ td small {
   white-space: pre-wrap;
   max-height: 220px;
   overflow: auto;
+}
+
+.xiaoze-reasoning-message__cursor {
+  display: inline-block;
+  width: 6px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: rgba(0, 104, 123, 0.72);
+  animation: xiaoze-reasoning-cursor 1s steps(1) infinite;
+}
+
+@keyframes xiaoze-reasoning-cursor {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 /* ── Prompt debug (dev) ── */
