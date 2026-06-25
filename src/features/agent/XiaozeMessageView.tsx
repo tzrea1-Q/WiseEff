@@ -10,6 +10,7 @@ import { XiaozeReasoningMessage } from "./XiaozeReasoningMessage";
 import { XiaozeUserMessage } from "./XiaozeUserMessage";
 import { XiaozeThinkingIndicator } from "./XiaozeThinkingIndicator";
 import { XiaozeWelcomePanel } from "./XiaozeWelcomePanel";
+import { renderXiaozeTurnBlocks } from "./XiaozeTurnBlock";
 import { shouldShowXiaozeThinkingFallback } from "./xiaozeThinkingState";
 import { shouldShowXiaozeWelcomePanel } from "./xiaozeWelcomeRules";
 
@@ -25,13 +26,13 @@ export function XiaozeMessageView(props: XiaozeMessageViewProps) {
       reasoningMessage={XiaozeReasoningMessage as typeof CopilotChatReasoningMessage}
       assistantMessage={XiaozeAssistantMessage as typeof CopilotChatAssistantMessage}
     >
-      {({ messageElements, messages, interruptElement, isRunning }) => {
+      {({ messages, interruptElement, isRunning }) => {
         const showWelcome = shouldShowXiaozeWelcomePanel(messages.length);
         const showThinkingFallback = shouldShowXiaozeThinkingFallback(messages, isRunning);
         return (
           <div className="xiaoze-message-view" data-empty={showWelcome ? "true" : "false"}>
             {showWelcome ? <XiaozeWelcomePanel /> : null}
-            {messageElements}
+            {renderXiaozeTurnBlocks(messages, isRunning)}
             {showThinkingFallback ? <XiaozeThinkingIndicator /> : null}
             {interruptElement}
           </div>

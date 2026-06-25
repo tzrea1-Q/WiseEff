@@ -52,7 +52,7 @@ export function XiaozeChatScrollView({
     >
       <div
         ref={scrollRef}
-        className="cpk:flex-1 cpk:min-h-0 cpk:overflow-y-auto cpk:overflow-x-auto xiaoze-chat-scroll"
+        className="cpk:flex-1 cpk:min-h-0 cpk:overflow-y-auto cpk:overflow-x-hidden xiaoze-chat-scroll"
       >
         <div
           ref={contentRef}

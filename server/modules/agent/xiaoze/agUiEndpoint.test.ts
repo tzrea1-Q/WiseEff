@@ -28,7 +28,7 @@ describe("createXiaozeAgUiHandler", () => {
     });
   });
 
-  it("ends reasoning before answer content when both are streamed", async () => {
+  it("keeps reasoning open while streaming and ends it when the turn is finalized", async () => {
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () =>
         ({
@@ -55,8 +55,192 @@ describe("createXiaozeAgUiHandler", () => {
     const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
     const reasoningEndIndex = events.findIndex((event) => event.event === EventType.REASONING_MESSAGE_END);
     const answerIndex = events.findIndex((event) => event.event === EventType.TEXT_MESSAGE_CONTENT);
+    const runFinishedIndex = events.findIndex((event) => event.event === EventType.RUN_FINISHED);
     expect(reasoningEndIndex).toBeGreaterThanOrEqual(0);
-    expect(answerIndex).toBeGreaterThan(reasoningEndIndex);
+    expect(answerIndex).toBeGreaterThanOrEqual(0);
+    expect(reasoningEndIndex).toBeGreaterThan(answerIndex);
+    expect(runFinishedIndex).toBeGreaterThan(reasoningEndIndex);
+  });
+
+  it("emits the final answer when only non-user-facing text was streamed as answer deltas", async () => {
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void } }) => {
+          sink?.push({ type: "reasoning_delta", delta: "The user asked about charge parameters." });
+          sink?.push({ type: "answer_delta", delta: "The user asked about charge parameters." });
+          return {
+            text: "aurora 项目里与 charge 相关的参数有 3 个。",
+            reasoning: "The user asked about charge parameters.",
+            citations: []
+          };
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-reroute",
+        runId: "run-reroute",
+        messages: [{ role: "user", content: "charge 参数有哪些？" }]
+      },
+      requestId: "req-reroute"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const assistantDeltas = events
+      .filter((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => (event.data as { delta?: string }).delta ?? "")
+      .join("");
+    expect(assistantDeltas).toContain("aurora 项目里与 charge 相关的参数有 3 个。");
+    expect(events.some((event) => event.event === EventType.STEP_STARTED)).toBe(false);
+  });
+
+  it("streams tool steps and emits the final answer after tool execution", async () => {
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void; close?: () => void } }) => {
+          sink?.push({ type: "reasoning_delta", delta: "Need to search parameters." });
+          sink?.push({
+            type: "step_started",
+            step: {
+              id: "step-1",
+              kind: "tool",
+              label: "搜索参数定义",
+              toolName: "perception.searchParameters",
+              startedAtMs: Date.now()
+            }
+          });
+          sink?.push({
+            type: "tool_call",
+            toolCallId: "tool-1",
+            toolName: "perception.searchParameters",
+            args: { projectId: "aurora", query: "charge" }
+          });
+          sink?.push({
+            type: "tool_result",
+            toolCallId: "tool-1",
+            toolName: "perception.searchParameters",
+            summary: "3 parameters",
+            status: "succeeded"
+          });
+          sink?.push({
+            type: "step_finished",
+            stepId: "step-1",
+            status: "succeeded",
+            summary: "3 parameters",
+            durationMs: 12
+          });
+          sink?.push({ type: "answer_delta", delta: "找到 3 个 charge 相关参数。" });
+          return {
+            text: "找到 3 个 charge 相关参数。",
+            reasoning: "Need to search parameters.",
+            citations: []
+          };
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-tool",
+        runId: "run-tool",
+        messages: [{ role: "user", content: "charge 参数有哪些？" }]
+      },
+      requestId: "req-tool"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    expect(events.some((event) => event.event === EventType.STEP_STARTED)).toBe(true);
+    expect(events.some((event) => event.event === EventType.TOOL_CALL_START)).toBe(true);
+    const assistantDeltas = events
+      .filter((event) => event.event === EventType.TEXT_MESSAGE_CONTENT)
+      .map((event) => (event.data as { delta?: string }).delta ?? "")
+      .join("");
+    expect(assistantDeltas).toContain("找到 3 个 charge 相关参数。");
+    const turnReply = events.find(
+      (event) =>
+        event.event === EventType.CUSTOM &&
+        (event.data as { name?: string }).name === "xiaoze_turn_reply"
+    );
+    expect((turnReply?.data as { value?: { text?: string } }).value?.text).toContain("找到 3 个");
+  });
+
+  it("emits xiaoze_turn_state with phase done after tool execution", async () => {
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void } }) => {
+          sink?.push({
+            type: "step_started",
+            step: {
+              id: "step-1",
+              kind: "tool",
+              label: "搜索参数定义",
+              toolName: "perception.searchParameters",
+              startedAtMs: Date.now()
+            }
+          });
+          sink?.push({
+            type: "step_finished",
+            stepId: "step-1",
+            status: "succeeded",
+            summary: "3 parameters",
+            durationMs: 8
+          });
+          sink?.push({ type: "answer_delta", delta: "找到 3 个 charge 相关参数。" });
+          return {
+            text: "找到 3 个 charge 相关参数。",
+            reasoning: "Need to search parameters.",
+            citations: []
+          };
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: {
+        threadId: "thread-state",
+        runId: "run-state",
+        messages: [{ role: "user", content: "charge 参数有哪些？" }]
+      },
+      requestId: "req-state"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const turnStates = events.filter(
+      (event) =>
+        event.event === EventType.CUSTOM && (event.data as { name?: string }).name === "xiaoze_turn_state"
+    );
+    expect(turnStates.length).toBeGreaterThan(0);
+    const finalState = turnStates[turnStates.length - 1]?.data as {
+      value?: { phase?: string; text?: string; steps?: Array<{ label?: string }> };
+    };
+    expect(finalState.value?.phase).toBe("done");
+    expect(finalState.value?.text).toContain("找到 3 个");
+    expect(finalState.value?.steps?.[0]?.label).toBe("搜索参数定义");
   });
 
   it("emits reasoning and answer events separately when reasoning is present", async () => {
@@ -132,7 +316,10 @@ describe("createXiaozeAgUiHandler", () => {
     });
 
     const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
-    const custom = events.find((event) => event.event === EventType.CUSTOM);
+    const custom = events.find(
+      (event) =>
+        event.event === EventType.CUSTOM && (event.data as { name?: string }).name === "xiaoze_prompt_debug"
+    );
     expect((custom?.data as { name?: string }).name).toBe("xiaoze_prompt_debug");
     expect((custom?.data as { value?: { snapshot?: { model?: string } } }).value?.snapshot?.model).toBe("test-model");
   });
@@ -175,7 +362,10 @@ describe("createXiaozeAgUiHandler", () => {
     });
 
     const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
-    const custom = events.find((event) => event.event === EventType.CUSTOM);
+    const custom = events.find(
+      (event) =>
+        event.event === EventType.CUSTOM && (event.data as { name?: string }).name === "xiaoze_prompt_debug"
+    );
     expect((custom?.data as { name?: string }).name).toBe("xiaoze_prompt_debug");
   });
 

@@ -15,9 +15,11 @@ import { registerXiaozeThreadRoutes } from "./threadRoutes";
 import { type PerceptionAgentRunResult, type PerceptionToolDescriptor, wrapLangChainChatModel } from "./perceptionAgent";
 import { createPlanningAgent } from "./planningGraph";
 import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
-import { splitAssistantContent } from "./splitAssistantContent";
+import { isLikelyUserFacingAnswerDelta } from "./perceptionAgent";
+import { splitAssistantContent, mergeReasoningText } from "./splitAssistantContent";
 import {
   createReasoningMessageId,
+  reasoningContentEvent,
   reasoningEndEvent,
   reasoningStartEvent,
   yieldReasoningTurn,
@@ -25,7 +27,13 @@ import {
 } from "./streamAssistantReply";
 import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
 import { XIAOZE_PROMPT_DEBUG_EVENT } from "./promptDebug";
-import { createRunEventSink, type RunEventSink } from "./runEventSink";
+import { XIAOZE_TURN_REPLY_EVENT } from "./xiaozeTurnReply";
+import {
+  turnStateCustomEvent,
+  XiaozeTurnStateTracker,
+  type XiaozeTurnStateStep
+} from "./xiaozeTurnState";
+import { createRunEventSink, type RunEventSink, type RunEventSinkEvent } from "./runEventSink";
 import {
   assistantShellStartEvent,
   mapSinkEventToAgUi,
@@ -56,42 +64,145 @@ export type XiaozePerceptionAgent = {
   }): Promise<PerceptionAgentRunResult>;
 };
 
-function* maybeYieldReasoningEnd(
-  event: { type: string },
-  flags: { streamedReasoning: boolean; reasoningEnded: boolean },
-  reasoningMessageId: string
-) {
-  if (flags.reasoningEnded || !flags.streamedReasoning || event.type !== "answer_delta") {
-    return;
+type TurnStreamFlags = {
+  streamedReasoning: boolean;
+  streamedReasoningText: string;
+  streamedAnswer: boolean;
+  streamedAnswerText: string;
+  assistantShellStarted: boolean;
+  reasoningEnded: boolean;
+};
+
+function createTurnStreamFlags(): TurnStreamFlags {
+  return {
+    streamedReasoning: false,
+    streamedReasoningText: "",
+    streamedAnswer: false,
+    streamedAnswerText: "",
+    assistantShellStarted: false,
+    reasoningEnded: false
+  };
+}
+
+function normalizeSinkEventForAgUi(event: RunEventSinkEvent, flags: TurnStreamFlags): RunEventSinkEvent {
+  if (event.type === "reasoning_delta") {
+    flags.streamedReasoning = true;
+    flags.streamedReasoningText += event.delta;
+    return event;
   }
-  flags.reasoningEnded = true;
-  yield reasoningEndEvent(reasoningMessageId);
+  if (event.type !== "answer_delta") {
+    return event;
+  }
+  if (isLikelyUserFacingAnswerDelta(event.delta, flags.streamedReasoningText)) {
+    flags.streamedAnswer = true;
+    flags.streamedAnswerText += event.delta;
+    return event;
+  }
+  flags.streamedReasoning = true;
+  flags.streamedReasoningText += event.delta;
+  return { type: "reasoning_delta", delta: event.delta };
+}
+
+function normalizeStreamText(text: string) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function hasStreamedCompleteAnswer(finalText: string, streamedText: string) {
+  const final = normalizeStreamText(finalText);
+  const streamed = normalizeStreamText(streamedText);
+  if (!final || !streamed) {
+    return false;
+  }
+  if (final === streamed) {
+    return true;
+  }
+  return final.startsWith(streamed) && streamed.length >= final.length * 0.9;
+}
+
+function computeRemainingStreamText(finalText: string, streamedText: string) {
+  if (!finalText.trim()) {
+    return "";
+  }
+  if (!streamedText) {
+    return finalText;
+  }
+  if (finalText.startsWith(streamedText)) {
+    return finalText.slice(streamedText.length);
+  }
+  return finalText;
+}
+
+function needsFullAnswerResync(finalText: string, streamedText: string) {
+  return Boolean(finalText.trim() && streamedText && !finalText.startsWith(streamedText));
+}
+
+function turnReplyCustomEvent(input: {
+  runId: string;
+  messageId: string;
+  reasoningMessageId: string;
+  text: string;
+  reasoning?: string;
+  runSteps?: ReturnType<typeof serializeTurnSteps>;
+}): AgUiStreamEvent {
+  return {
+    event: EventType.CUSTOM,
+    data: {
+      type: EventType.CUSTOM,
+      name: XIAOZE_TURN_REPLY_EVENT,
+      value: {
+        runId: input.runId,
+        messageId: input.messageId,
+        reasoningMessageId: input.reasoningMessageId,
+        text: input.text,
+        reasoning: input.reasoning,
+        runSteps: input.runSteps
+      }
+    }
+  };
 }
 
 async function* yieldMappedSinkEvents(
   sink: RunEventSink,
   context: RunTimelineContext,
-  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean; reasoningEnded: boolean }
+  flags: TurnStreamFlags,
+  turnStateTracker?: XiaozeTurnStateTracker
 ) {
   const events = await sink.drain();
   for (const event of events) {
-    if (event.type === "reasoning_delta") {
-      flags.streamedReasoning = true;
+    const normalized = normalizeSinkEventForAgUi(event, flags);
+    if (turnStateTracker) {
+      if (normalized.type === "step_started") {
+        turnStateTracker.onSinkEvent({ type: "step_started", step: normalized.step as XiaozeTurnStateStep });
+      } else if (normalized.type === "step_finished") {
+        turnStateTracker.onSinkEvent({
+          type: "step_finished",
+          stepId: normalized.stepId,
+          status: normalized.status,
+          summary: normalized.summary,
+          durationMs: normalized.durationMs
+        });
+      } else if (normalized.type === "answer_delta") {
+        turnStateTracker.onSinkEvent({ type: "answer_delta", delta: normalized.delta });
+      } else if (normalized.type === "reasoning_delta") {
+        turnStateTracker.onSinkEvent({ type: "reasoning_delta", delta: normalized.delta });
+      }
     }
-    yield* maybeYieldReasoningEnd(event, flags, context.reasoningMessageId);
     if (
-      (event.type === "tool_call" ||
-        (event.type === "answer_delta" && (flags.reasoningEnded || !flags.streamedReasoning))) &&
+      (normalized.type === "tool_call" || normalized.type === "answer_delta") &&
       !flags.assistantShellStarted
     ) {
       flags.assistantShellStarted = true;
       yield assistantShellStartEvent(context.assistantMessageId);
     }
-    if (event.type === "answer_delta") {
-      flags.streamedAnswer = true;
-    }
-    for (const mapped of mapSinkEventToAgUi(event, context)) {
+    for (const mapped of mapSinkEventToAgUi(normalized, context)) {
       yield mapped;
+    }
+    if (turnStateTracker) {
+      const custom = turnStateCustomEvent(turnStateTracker.snapshot());
+      yield {
+        event: EventType.CUSTOM,
+        data: { type: EventType.CUSTOM, ...custom }
+      };
     }
   }
 }
@@ -100,8 +211,9 @@ async function* pumpAgentRun(input: {
   sink: RunEventSink;
   context: RunTimelineContext;
   run: () => Promise<PerceptionAgentRunResult>;
-  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean; reasoningEnded: boolean };
+  flags: TurnStreamFlags;
   outcome: { result?: PerceptionAgentRunResult; error?: unknown };
+  turnStateTracker?: XiaozeTurnStateTracker;
 }) {
   let settled = false;
 
@@ -119,29 +231,12 @@ async function* pumpAgentRun(input: {
     });
 
   while (true) {
-    yield* yieldMappedSinkEvents(input.sink, input.context, input.flags);
+    yield* yieldMappedSinkEvents(input.sink, input.context, input.flags, input.turnStateTracker);
     if (settled) {
       const leftover = await input.sink.drain(0);
       if (leftover.length > 0) {
         for (const event of leftover) {
-          if (event.type === "reasoning_delta") {
-            input.flags.streamedReasoning = true;
-          }
-          yield* maybeYieldReasoningEnd(event, input.flags, input.context.reasoningMessageId);
-          if (
-            (event.type === "tool_call" ||
-              (event.type === "answer_delta" && (input.flags.reasoningEnded || !input.flags.streamedReasoning))) &&
-            !input.flags.assistantShellStarted
-          ) {
-            input.flags.assistantShellStarted = true;
-            yield assistantShellStartEvent(input.context.assistantMessageId);
-          }
-          if (event.type === "answer_delta") {
-            input.flags.streamedAnswer = true;
-          }
-          for (const mapped of mapSinkEventToAgUi(event, input.context)) {
-            yield mapped;
-          }
+          input.sink.push(event);
         }
         continue;
       }
@@ -151,10 +246,11 @@ async function* pumpAgentRun(input: {
 }
 
 function buildAssistantReply(result: Pick<PerceptionAgentRunResult, "text" | "reasoning">) {
-  const fallback = splitAssistantContent(result.text);
-  const reasoning = result.reasoning?.trim() || fallback.reasoning || undefined;
+  const raw = result.text.trim();
+  const fallback = splitAssistantContent(raw);
+  const reasoning = mergeReasoningText(result.reasoning, fallback.reasoning) || undefined;
   return {
-    text: fallback.answer || result.text.trim(),
+    text: fallback.answer || raw,
     reasoning
   };
 }
@@ -163,29 +259,76 @@ function* finalizeTurnReply(input: {
   reply: { text: string; reasoning?: string };
   reasoningMessageId: string;
   messageId: string;
-  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean; reasoningEnded: boolean };
+  runId: string;
+  runSteps?: ReturnType<typeof serializeTurnSteps>;
+  flags: TurnStreamFlags;
+  turnStateTracker?: XiaozeTurnStateTracker;
 }) {
   if (input.reply.reasoning && !input.flags.streamedReasoning) {
     yield* yieldReasoningTurn({ reasoningMessageId: input.reasoningMessageId, reasoning: input.reply.reasoning });
-  } else if (!input.flags.reasoningEnded) {
+  } else if (input.reply.reasoning) {
+    const remainingReasoning = computeRemainingStreamText(
+      input.reply.reasoning,
+      input.flags.streamedReasoningText
+    );
+    if (remainingReasoning) {
+      yield reasoningContentEvent(input.reasoningMessageId, remainingReasoning);
+    }
+  }
+  if (!input.flags.reasoningEnded) {
     yield reasoningEndEvent(input.reasoningMessageId);
+    input.flags.reasoningEnded = true;
   }
 
-  if (input.reply.text && !input.flags.streamedAnswer) {
+  const resyncAnswer =
+    needsFullAnswerResync(input.reply.text, input.flags.streamedAnswerText) &&
+    !hasStreamedCompleteAnswer(input.reply.text, input.flags.streamedAnswerText);
+  const remainingAnswer = resyncAnswer
+    ? input.reply.text
+    : computeRemainingStreamText(input.reply.text, input.flags.streamedAnswerText);
+  if (remainingAnswer && !hasStreamedCompleteAnswer(input.reply.text, input.flags.streamedAnswerText)) {
     if (!input.flags.assistantShellStarted) {
       yield assistantShellStartEvent(input.messageId);
       input.flags.assistantShellStarted = true;
     }
     yield {
       event: EventType.TEXT_MESSAGE_CONTENT,
-      data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId: input.messageId, delta: input.reply.text }
+      data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId: input.messageId, delta: remainingAnswer }
     };
+    if (!resyncAnswer) {
+      input.flags.streamedAnswerText += remainingAnswer;
+      input.flags.streamedAnswer = true;
+    }
   }
   if (input.reply.text || input.flags.streamedAnswer) {
     yield {
       event: EventType.TEXT_MESSAGE_END,
       data: { type: EventType.TEXT_MESSAGE_END, messageId: input.messageId }
     };
+  }
+  if (input.reply.text.trim()) {
+    yield turnReplyCustomEvent({
+      runId: input.runId,
+      messageId: input.messageId,
+      reasoningMessageId: input.reasoningMessageId,
+      text: input.reply.text,
+      reasoning: input.reply.reasoning,
+      runSteps: input.runSteps
+    });
+    if (input.turnStateTracker) {
+      input.turnStateTracker.markDone({
+        text: input.reply.text,
+        reasoning: input.reply.reasoning,
+        steps: input.runSteps as XiaozeTurnStateStep[] | undefined
+      });
+      const custom = turnStateCustomEvent(
+        input.turnStateTracker.snapshot({ text: input.reply.text, reasoning: input.reply.reasoning })
+      );
+      yield {
+        event: EventType.CUSTOM,
+        data: { type: EventType.CUSTOM, ...custom }
+      };
+    }
   }
 }
 
@@ -446,6 +589,18 @@ export function createXiaozeAgUiHandler(options: {
 
       yield runStartedEvent({ threadId, runId, runStartedAtMs });
       yield reasoningStartEvent(reasoningMessageId);
+      const streamFlags = createTurnStreamFlags();
+      const turnStateTracker = new XiaozeTurnStateTracker({
+        runId,
+        messageId,
+        reasoningMessageId
+      });
+      yield {
+        event: EventType.CUSTOM,
+        data: { type: EventType.CUSTOM, ...turnStateCustomEvent(turnStateTracker.snapshot()) }
+      };
+      yield assistantShellStartEvent(messageId);
+      streamFlags.assistantShellStarted = true;
 
       try {
         if (resumeDecision && approvalBridge) {
@@ -535,18 +690,13 @@ export function createXiaozeAgUiHandler(options: {
         }
 
         const sink = createRunEventSink();
-        const streamFlags = {
-          streamedReasoning: false,
-          streamedAnswer: false,
-          assistantShellStarted: false,
-          reasoningEnded: false
-        };
         const outcome: { result?: PerceptionAgentRunResult; error?: unknown } = {};
         yield* pumpAgentRun({
           sink,
           context: timelineContext,
           flags: streamFlags,
           outcome,
+          turnStateTracker,
           run: () =>
             agent.run({
               message,
@@ -654,13 +804,16 @@ export function createXiaozeAgUiHandler(options: {
             }
           };
         }
+        const runSteps = result.runSteps ? serializeTurnSteps(result.runSteps) : undefined;
         yield* finalizeTurnReply({
           reply,
           reasoningMessageId,
           messageId,
-          flags: streamFlags
+          runId,
+          runSteps,
+          flags: streamFlags,
+          turnStateTracker
         });
-        const runSteps = result.runSteps ? serializeTurnSteps(result.runSteps) : undefined;
         await persistSuccessfulTurn({
           userMessage: userMessageEntry,
           assistantMessage: reply.text

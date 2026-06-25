@@ -64,6 +64,14 @@ export function useXiaozePromptDebugSnapshotForTurn(userMessage: string, runId: 
   }, [runId, store, userMessage]);
 }
 
+export function useXiaozeLatestPromptDebugSnapshot() {
+  const store = useSyncExternalStore(subscribePromptDebugStore, () => promptDebugStore, () => emptyStore);
+  return useMemo(() => {
+    const entries = [...store.values()];
+    return entries.length > 0 ? entries[entries.length - 1] : undefined;
+  }, [store]);
+}
+
 export function readXiaozePromptDebugSnapshot(runId: string) {
   return getPromptDebugSnapshot(runId);
 }
