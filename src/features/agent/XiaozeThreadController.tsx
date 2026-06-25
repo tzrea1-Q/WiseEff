@@ -49,7 +49,8 @@ export function XiaozeThreadController() {
                   ({
                     id: message.id,
                     role: message.role,
-                    content: message.content
+                    content: message.content,
+                    ...(message.metadata ? { metadata: message.metadata } : {})
                   }) as Message
               )
           );

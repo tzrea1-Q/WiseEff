@@ -14,6 +14,8 @@ import { useXiaozeFrontendTools } from "./xiaozeFrontendTools";
 import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
 import { XiaozeChatHeader } from "./XiaozeChatHeader";
 import { XiaozeMessageView } from "./XiaozeMessageView";
+import { XiaozeRunTimingCapture } from "./XiaozeRunTimingCapture";
+import { XiaozeRunTimingProvider } from "./XiaozeRunTimingContext";
 import { XiaozePromptDebugCapture } from "./XiaozePromptDebugCapture";
 import { XiaozePromptDebugProvider } from "./XiaozePromptDebugContext";
 import { XiaozePromptDebugRequestRegistrar } from "./XiaozePromptDebugRegistrar";
@@ -88,12 +90,15 @@ export function XiaozeProvider({
     <XiaozePromptDebugProvider>
       <CopilotKit enableInspector={enableInspector} selfManagedAgents={{ default: xiaozeAgent }}>
         <XiaozeThreadProvider>
-          {children}
-          <XiaozeRuntimeTools />
-          <XiaozeThreadController />
-          <XiaozePromptDebugRequestRegistrar />
-          <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
-          <XiaozeCopilotPopup />
+          <XiaozeRunTimingProvider>
+            {children}
+            <XiaozeRuntimeTools />
+            <XiaozeThreadController />
+            <XiaozePromptDebugRequestRegistrar />
+            <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
+            <XiaozeRunTimingCapture />
+            <XiaozeCopilotPopup />
+          </XiaozeRunTimingProvider>
         </XiaozeThreadProvider>
       </CopilotKit>
     </XiaozePromptDebugProvider>

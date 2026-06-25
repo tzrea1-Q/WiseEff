@@ -1,6 +1,14 @@
 import type { AgentToolDefinition } from "../toolRegistry";
 import type { PerceptionToolDescriptor } from "./perceptionAgent";
 
+const TOOL_LABELS_ZH: Record<string, string> = {
+  "perception.getProjectOverview": "查询项目概览",
+  "perception.searchParameters": "搜索参数定义",
+  "perception.getNodeSnapshot": "读取节点快照",
+  "perception.getRecentLogConclusions": "查看日志结论",
+  "action.submitParameterChange": "提交参数变更"
+};
+
 const TOOL_DESCRIPTIONS: Record<string, string> = {
   "perception.getProjectOverview":
     "Read a project overview: parameter count and open change requests. Use when summarizing project status.",
@@ -56,6 +64,10 @@ const TOOL_SCHEMAS: Record<string, Record<string, unknown>> = {
     additionalProperties: false
   }
 };
+
+export function getXiaozeToolLabel(toolName: string) {
+  return TOOL_LABELS_ZH[toolName] ?? toolName;
+}
 
 export function buildXiaozePlanningToolDescriptors(tools: AgentToolDefinition[]): PerceptionToolDescriptor[] {
   return tools.map((tool) => ({

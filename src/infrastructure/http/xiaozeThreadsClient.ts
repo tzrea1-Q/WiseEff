@@ -17,6 +17,7 @@ export type XiaozeThreadMessageDto = {
   role: "user" | "assistant" | "reasoning" | "system";
   content: string;
   citations?: unknown[];
+  metadata?: Record<string, unknown>;
   createdAt: string;
 };
 

@@ -20,9 +20,11 @@ import type {
   PerceptionModelToolCall,
   PerceptionToolDescriptor
 } from "./perceptionAgent";
-import { normalizeModelResponse } from "./perceptionAgent";
-import { formatToolCatalogForSystemPrompt } from "./toolCatalog";
+import { invokeModelTurnWithStreaming, invokeModelWithStreaming } from "./perceptionAgent";
+import { formatToolCatalogForSystemPrompt, getXiaozeToolLabel } from "./toolCatalog";
 import { buildXiaozePromptDebugSnapshot } from "./promptDebug";
+import { startRunStep, type RunEventSink } from "./runEventSink";
+import { createToolCallId } from "./runTimelineEvents";
 
 export type PlanningResumeDecision = Pick<
   ApprovalBridgeResumeInput,
@@ -35,6 +37,7 @@ export type PlanningResumeDecision = Pick<
 export type PlanningAgentRunInput = PerceptionAgentRunInput & {
   threadId: string;
   resume?: PlanningResumeDecision;
+  sink?: RunEventSink;
 };
 
 export type PlanningApprovalBridge = {
@@ -168,6 +171,22 @@ export function createPlanningAgent(options: {
   approvalBridge?: PlanningApprovalBridge;
 }) {
   const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
+  let activeSink: RunEventSink | undefined;
+
+  function pushSink(event: Parameters<RunEventSink["push"]>[0]) {
+    activeSink?.push(event);
+  }
+
+  async function invokeModel(messages: unknown[]) {
+    return invokeModelWithStreaming(options.model, messages, (chunk) => {
+      if (chunk.reasoningDelta) {
+        pushSink({ type: "reasoning_delta", delta: chunk.reasoningDelta });
+      }
+      if (chunk.answerDelta) {
+        pushSink({ type: "answer_delta", delta: chunk.answerDelta });
+      }
+    });
+  }
 
   function intentNode(state: PlanningGraphState): Partial<PlanningGraphState> {
     return {
@@ -188,13 +207,19 @@ export function createPlanningAgent(options: {
       return { text: "I could not complete the request within the allowed tool turns." };
     }
 
-    const response = await options.model.invoke(state.messages);
+    const response = await invokeModelTurnWithStreaming(options.model, state.messages, (chunk) => {
+      if (chunk.reasoningDelta) {
+        pushSink({ type: "reasoning_delta", delta: chunk.reasoningDelta });
+      }
+      if (chunk.answerDelta) {
+        pushSink({ type: "answer_delta", delta: chunk.answerDelta });
+      }
+    });
     if (!response.toolCalls?.length) {
-      const normalized = normalizeModelResponse(response);
-      const answer = normalized.answer?.trim();
+      const answer = response.content?.trim();
       return {
-        text: normalized.answer,
-        reasoning: normalized.reasoning,
+        text: response.content,
+        reasoning: response.reasoning,
         messages: answer ? [...state.messages, { role: "assistant", content: answer }] : state.messages,
         step: state.step + 1
       };
@@ -211,6 +236,11 @@ export function createPlanningAgent(options: {
         break;
       }
       const payload = mergeToolPayload(call.args, state.context);
+      const toolCallId = call.id || createToolCallId();
+      const label = getXiaozeToolLabel(call.name);
+      const { step, finish } = startRunStep({ kind: "tool", label, toolName: call.name });
+      pushSink({ type: "step_started", step });
+      pushSink({ type: "tool_call", toolCallId, toolName: call.name, args: payload });
       try {
         const result = await options.runTool(call.name, payload);
         citations.push(...result.citations);
@@ -219,14 +249,32 @@ export function createPlanningAgent(options: {
           tool_call_id: call.id,
           content: JSON.stringify({ summary: result.summary, data: result.data, citations: result.citations })
         });
+        pushSink({
+          type: "tool_result",
+          toolCallId,
+          toolName: call.name,
+          summary: result.summary,
+          status: "succeeded"
+        });
+        pushSink(finish({ status: "succeeded", summary: result.summary }));
       } catch (error) {
         if (isForbiddenError(error)) {
+          const summary = "You are not permitted to access this data.";
           messages.push({
             role: "tool",
             tool_call_id: call.id,
-            content: JSON.stringify({ error: "FORBIDDEN", message: "You are not permitted to access this data." })
+            content: JSON.stringify({ error: "FORBIDDEN", message: summary })
           });
+          pushSink({
+            type: "tool_result",
+            toolCallId,
+            toolName: call.name,
+            summary,
+            status: "forbidden"
+          });
+          pushSink(finish({ status: "forbidden", summary }));
         } else {
+          pushSink(finish({ status: "failed", summary: error instanceof Error ? error.message : "Tool failed." }));
           throw error;
         }
       }
@@ -316,9 +364,11 @@ export function createPlanningAgent(options: {
     if (state.halted || state.text) {
       return {};
     }
-    const response = await options.model.invoke(state.messages);
-    if (response.content || response.reasoning) {
-      const normalized = normalizeModelResponse(response);
+    const { step, finish } = startRunStep({ kind: "model", label: "生成回复" });
+    pushSink({ type: "step_started", step });
+    const normalized = await invokeModel(state.messages);
+    pushSink(finish({ status: "succeeded", summary: normalized.answer ? "Reply ready" : undefined }));
+    if (normalized.answer || normalized.reasoning) {
       return {
         text: normalized.answer,
         reasoning: normalized.reasoning,
@@ -408,6 +458,7 @@ export function createPlanningAgent(options: {
       };
 
       try {
+        activeSink = input.sink;
         if (input.resume) {
           const finalState = (await graph.invoke(new Command({ resume: input.resume }), config)) as PlanningGraphState & {
             __interrupt__?: Array<{ value?: unknown }>;
@@ -418,7 +469,8 @@ export function createPlanningAgent(options: {
             text: finalState.text ?? "",
             reasoning: finalState.reasoning || undefined,
             citations: finalState.perceivedCitations,
-            interrupt: interruptResult ?? finalState.interrupt
+            interrupt: interruptResult ?? finalState.interrupt,
+            runSteps: activeSink?.getSteps()
           };
         }
 
@@ -434,7 +486,8 @@ export function createPlanningAgent(options: {
           reasoning: finalState.reasoning || undefined,
           citations: finalState.perceivedCitations,
           promptDebug: buildPromptDebug(llmMessages),
-          interrupt: interruptResult ?? finalState.interrupt
+          interrupt: interruptResult ?? finalState.interrupt,
+          runSteps: activeSink?.getSteps()
         };
       } catch (error) {
         if (isGraphInterrupt(error)) {
@@ -456,11 +509,14 @@ export function createPlanningAgent(options: {
                 toolName: value.toolName,
                 payload: value.payload,
                 citations: value.citations ?? []
-              }
+              },
+              runSteps: activeSink?.getSteps()
             };
           }
         }
         throw error;
+      } finally {
+        activeSink = undefined;
       }
     }
   };
@@ -475,6 +531,24 @@ export function fakeModelSequence(
       const response = responses[index] ?? responses.at(-1)!;
       index += 1;
       return response;
+    },
+    async *stream() {
+      const response = responses[index] ?? responses.at(-1)!;
+      index += 1;
+      if (response.toolCalls?.length) {
+        yield { toolCalls: response.toolCalls };
+        return;
+      }
+      if (response.reasoning) {
+        for (const char of response.reasoning) {
+          yield { reasoningDelta: char };
+        }
+      }
+      if (response.content) {
+        for (const char of response.content) {
+          yield { answerDelta: char };
+        }
+      }
     }
   };
 }

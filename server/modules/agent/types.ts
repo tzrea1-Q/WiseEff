@@ -42,6 +42,7 @@ export type AgentMessageDto = {
   content: string;
   citations?: AgentCitation[];
   confidence?: number;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 };
 

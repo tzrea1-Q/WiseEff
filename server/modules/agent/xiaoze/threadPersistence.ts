@@ -17,7 +17,12 @@ export type PersistXiaozeTurnInput = {
   runId: string;
   pageContext: { projectId?: string; pageKey?: string; path?: string; roleId?: string };
   userMessage?: { id: string; content: string };
-  assistantMessage?: { id: string; content: string; citations?: AgentCitation[] };
+  assistantMessage?: {
+    id: string;
+    content: string;
+    citations?: AgentCitation[];
+    runSteps?: Record<string, unknown>[];
+  };
   reasoningMessage?: { id: string; content: string };
 };
 
@@ -34,7 +39,10 @@ function buildPersistMessages(input: PersistXiaozeTurnInput): XiaozePersistableM
       id: input.assistantMessage.id,
       role: "assistant",
       content: input.assistantMessage.content,
-      citations: input.assistantMessage.citations
+      citations: input.assistantMessage.citations,
+      metadata: input.assistantMessage.runSteps?.length
+        ? { runSteps: input.assistantMessage.runSteps, runId: input.runId }
+        : undefined
     });
   }
   return messages;
