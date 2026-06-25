@@ -103,6 +103,7 @@ describe("XiaozeTurnBlock", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /已思考/ }));
     expect(screen.getByText(/The user is asking/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("hides partial streamed answer while tool steps are still running", () => {
