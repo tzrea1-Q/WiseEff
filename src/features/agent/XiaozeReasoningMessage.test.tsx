@@ -35,12 +35,12 @@ describe("XiaozeReasoningMessage", () => {
     const { rerender } = renderReasoning({ content: "step" });
 
     expect(screen.getByRole("button", { name: "思考中…" })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("step")).not.toBeInTheDocument();
+    expect(document.querySelector(".xiaoze-reasoning-message__body-shell")).not.toHaveClass("is-open");
 
     fireEvent.click(screen.getByRole("button", { name: "思考中…" }));
 
     expect(screen.getByRole("button", { name: "思考中…" })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("step")).toBeInTheDocument();
+    expect(document.querySelector(".xiaoze-reasoning-message__body-shell")).toHaveClass("is-open");
 
     rerender(
       <XiaozeReasoningMessage
@@ -88,11 +88,11 @@ describe("XiaozeReasoningMessage", () => {
     );
 
     expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByText("full thinking trace")).not.toBeInTheDocument();
+    expect(document.querySelector(".xiaoze-reasoning-message__body-shell")).not.toHaveClass("is-open");
 
     fireEvent.click(screen.getByRole("button", { name: /已思考/ }));
 
     expect(screen.getByRole("button", { name: /已思考/ })).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("full thinking trace")).toBeInTheDocument();
+    expect(document.querySelector(".xiaoze-reasoning-message__body-shell")).toHaveClass("is-open");
   });
 });

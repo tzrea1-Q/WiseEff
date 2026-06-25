@@ -70,7 +70,11 @@ export function XiaozeThreadHistoryPanel({ activeThreadId, onSelectThread, onDel
                   className="xiaoze-thread-history__delete"
                   aria-label={`删除对话：${thread.title}`}
                   data-testid={`xiaoze-thread-delete-${thread.id}`}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                  }}
                   onClick={(event) => {
+                    event.preventDefault();
                     event.stopPropagation();
                     onDeleteThread(thread.id);
                   }}

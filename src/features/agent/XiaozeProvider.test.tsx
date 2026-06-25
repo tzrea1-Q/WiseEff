@@ -2,6 +2,14 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { XiaozeProvider } from "./XiaozeProvider";
 
+vi.mock("./XiaozeCopilotPopup", () => ({
+  XiaozeCopilotPopup: () => null
+}));
+
+vi.mock("./XiaozePopupOpenPolicy", () => ({
+  XiaozePopupOpenPolicy: () => null
+}));
+
 vi.mock("@copilotkit/react-core/v2", () => ({
   CopilotKit: ({
     children,
@@ -15,6 +23,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
     </div>
   ),
   CopilotChatConfigurationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  CopilotChat: () => null,
   CopilotPopup: () => null,
   UseAgentUpdate: {
     OnMessagesChanged: "OnMessagesChanged"

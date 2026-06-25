@@ -4,14 +4,17 @@ import { listXiaozeThreads as fetchXiaozeThreads, archiveXiaozeThread } from "@/
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import {
   areStoredMessagesEqual,
-  createEmptyThreadSnapshot,
+  createApiThreadSnapshot,
   createThreadId,
   finalizeActiveThread,
+  hasPersistedThreadContent,
   listHistoricalThreads,
+  mergeApiThreadList,
+  planThreadDeletion,
   readXiaozeThreadStore,
-  removeThreadFromSnapshot,
   serializeXiaozeMessages,
   upsertThreadRecord,
+  writeApiActiveThreadId,
   writeXiaozeThreadStore
 } from "./xiaozeThreadStorage";
 import type { XiaozeThreadRecord, XiaozeThreadStoreSnapshot } from "./xiaozeThreadTypes";
@@ -19,6 +22,7 @@ import type { XiaozeThreadRecord, XiaozeThreadStoreSnapshot } from "./xiaozeThre
 type XiaozeThreadContextValue = {
   activeThreadId: string;
   threads: XiaozeThreadRecord[];
+  threadsHydrated: boolean;
   historyOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
   createNewThread: (currentMessages: Message[]) => string;
@@ -31,7 +35,8 @@ type XiaozeThreadContextValue = {
 const XiaozeThreadContext = createContext<XiaozeThreadContextValue | null>(null);
 const isApiRuntime = wiseEffRuntimeMode === "api";
 
-let threadStoreSnapshot: XiaozeThreadStoreSnapshot = isApiRuntime ? createEmptyThreadSnapshot() : readXiaozeThreadStore();
+let threadStoreSnapshot: XiaozeThreadStoreSnapshot = isApiRuntime ? createApiThreadSnapshot() : readXiaozeThreadStore();
+let threadStoreGeneration = 0;
 const listeners = new Set<() => void>();
 
 function emitThreadStoreChange() {
@@ -54,38 +59,46 @@ export function readActiveXiaozeThreadStoreSnapshot() {
 }
 
 function commitThreadStore(next: XiaozeThreadStoreSnapshot) {
+  threadStoreGeneration += 1;
   if (!isApiRuntime) {
     threadStoreSnapshot = writeXiaozeThreadStore(next);
   } else {
     threadStoreSnapshot = next;
+    writeApiActiveThreadId(next.activeThreadId);
   }
   emitThreadStoreChange();
 }
 
-function mapApiThread(item: Awaited<ReturnType<typeof fetchXiaozeThreads>>[number]): XiaozeThreadRecord {
-  return {
-    id: item.id,
-    title: item.title,
-    preview: item.preview,
-    createdAt: item.createdAt,
-    updatedAt: item.updatedAt,
-    messages: []
-  };
+type SyncThreadsOptions = {
+  force?: boolean;
+  activeThreadId?: string;
+  requestGeneration?: number;
+};
+
+async function syncThreadsFromApi(options: SyncThreadsOptions = {}) {
+  const requestGeneration = options.requestGeneration ?? threadStoreGeneration;
+  const activeThreadId = options.activeThreadId ?? threadStoreSnapshot.activeThreadId;
+  const items = await fetchXiaozeThreads();
+  if (!options.force && requestGeneration !== threadStoreGeneration) {
+    return;
+  }
+  commitThreadStore(mergeApiThreadList(items, activeThreadId));
 }
 
 export function XiaozeThreadProvider({ children }: { children: ReactNode }) {
   const store = useSyncExternalStore(subscribeThreadStore, getThreadStoreSnapshot, getThreadStoreSnapshot);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [threadsHydrated, setThreadsHydrated] = useState(!isApiRuntime);
 
   const refreshThreads = useCallback(async () => {
     if (!isApiRuntime) {
       return;
     }
-    const items = await fetchXiaozeThreads();
-    commitThreadStore({
-      activeThreadId: threadStoreSnapshot.activeThreadId,
-      threads: items.map(mapApiThread)
-    });
+    try {
+      await syncThreadsFromApi({ requestGeneration: threadStoreGeneration });
+    } finally {
+      setThreadsHydrated(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -99,17 +112,18 @@ export function XiaozeThreadProvider({ children }: { children: ReactNode }) {
     const snapshot = threadStoreSnapshot;
     const serialized = serializeXiaozeMessages(messages);
     const existing = snapshot.threads.find((thread) => thread.id === snapshot.activeThreadId);
-    if (serialized.length === 0 && (!existing || existing.messages.length === 0)) {
+    if (serialized.length === 0 && !hasPersistedThreadContent(existing)) {
       return;
     }
     if (existing && areStoredMessagesEqual(existing.messages, serialized)) {
       return;
     }
+    const requestGeneration = threadStoreGeneration;
     commitThreadStore(upsertThreadRecord(snapshot, snapshot.activeThreadId, serialized));
     if (isApiRuntime) {
-      refreshThreads().catch(() => undefined);
+      syncThreadsFromApi({ requestGeneration }).catch(() => undefined);
     }
-  }, [refreshThreads]);
+  }, []);
 
   const createNewThread = useCallback((currentMessages: Message[]) => {
     const persisted = finalizeActiveThread(threadStoreSnapshot, currentMessages);
@@ -134,35 +148,36 @@ export function XiaozeThreadProvider({ children }: { children: ReactNode }) {
 
   const deleteThread = useCallback(async (threadId: string, currentMessages: Message[]) => {
     const snapshot = threadStoreSnapshot;
-    const deletingActive = threadId === snapshot.activeThreadId;
-    const persisted =
-      deletingActive ? removeThreadFromSnapshot(snapshot, threadId) : removeThreadFromSnapshot(finalizeActiveThread(snapshot, currentMessages), threadId);
-    const nextActiveId = deletingActive ? createThreadId() : persisted.activeThreadId;
+    const { deletingActive, next } = planThreadDeletion(snapshot, threadId, currentMessages);
 
-    commitThreadStore({
-      activeThreadId: nextActiveId,
-      threads: persisted.threads
-    });
+    commitThreadStore(next);
 
-    if (isApiRuntime) {
-      try {
-        await archiveXiaozeThread(threadId);
-      } catch {
-        await refreshThreads();
-        return;
+    if (!isApiRuntime) {
+      if (deletingActive) {
+        setHistoryOpen(false);
       }
-      await refreshThreads();
+      return;
+    }
+
+    try {
+      await archiveXiaozeThread(threadId);
+      await syncThreadsFromApi({ force: true, activeThreadId: threadStoreSnapshot.activeThreadId });
+    } catch (error) {
+      commitThreadStore(snapshot);
+      console.error("Failed to archive Xiaoze thread.", error);
+      return;
     }
 
     if (deletingActive) {
       setHistoryOpen(false);
     }
-  }, [refreshThreads]);
+  }, []);
 
   const value = useMemo<XiaozeThreadContextValue>(
     () => ({
       activeThreadId: store.activeThreadId,
       threads: listHistoricalThreads(store.threads),
+      threadsHydrated,
       historyOpen,
       setHistoryOpen,
       createNewThread,
@@ -171,7 +186,7 @@ export function XiaozeThreadProvider({ children }: { children: ReactNode }) {
       persistActiveThread,
       refreshThreads
     }),
-    [createNewThread, deleteThread, historyOpen, persistActiveThread, refreshThreads, selectThread, store]
+    [createNewThread, deleteThread, historyOpen, persistActiveThread, refreshThreads, selectThread, store, threadsHydrated]
   );
 
   return <XiaozeThreadContext.Provider value={value}>{children}</XiaozeThreadContext.Provider>;
@@ -187,5 +202,6 @@ export function useXiaozeThreads() {
 
 export function resetXiaozeThreadStoreForTests(snapshot = readXiaozeThreadStore()) {
   threadStoreSnapshot = snapshot;
+  threadStoreGeneration += 1;
   emitThreadStoreChange();
 }

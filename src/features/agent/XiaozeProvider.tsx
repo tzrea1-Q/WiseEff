@@ -1,10 +1,10 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { useMemo } from "react";
 import {
   CopilotChatConfigurationProvider,
   CopilotChatMessageView,
   CopilotChatView,
-  CopilotKit,
-  CopilotPopup
+  CopilotKit
 } from "@copilotkit/react-core/v2";
 import "@copilotkit/react-core/v2/styles.css";
 import { AgentInsightBar } from "@/components/AgentInsightBar";
@@ -15,6 +15,10 @@ import { useXiaozeFrontendTools } from "./xiaozeFrontendTools";
 import { useXiaozeSuggestions } from "./useXiaozeSuggestions";
 import { XiaozeChatHeader } from "./XiaozeChatHeader";
 import { XiaozeChatScrollView } from "./XiaozeChatScrollView";
+import { XiaozeCopilotPopup } from "./XiaozeCopilotPopup";
+import { readXiaozePopupOpenSession } from "./xiaozePopupOpenState";
+import { readStoredXiaozePopupSize } from "./xiaozePopupLayout";
+import { XiaozePopupOpenPolicy } from "./XiaozePopupOpenPolicy";
 import { XiaozeMessageView } from "./XiaozeMessageView";
 import { XiaozeRunTimingCapture } from "./XiaozeRunTimingCapture";
 import { XiaozeRunTimingProvider } from "./XiaozeRunTimingContext";
@@ -23,6 +27,24 @@ import { XiaozePromptDebugProvider } from "./XiaozePromptDebugContext";
 import { XiaozePromptDebugRequestRegistrar } from "./XiaozePromptDebugRegistrar";
 import { XiaozeThreadController } from "./XiaozeThreadController";
 import { useXiaozeThreads, XiaozeThreadProvider } from "./XiaozeThreadContext";
+
+const XIAOZE_POPUP_LABELS = {
+  modalHeaderTitle: "小泽",
+  welcomeMessageText:
+    "我是小泽，可以基于当前页面和您有权限的平台数据答疑；涉及变更、提交或设备写入等操作，会在您批准后再协助执行。",
+  chatToggleOpenLabel: "打开小泽",
+  chatToggleCloseLabel: "关闭小泽",
+  chatInputPlaceholder: "",
+  chatDisclaimerText: "AI 可能会出错，重要决策请自行核实。"
+} as const;
+
+function renderXiaozePopupHeader(headerProps: ComponentProps<typeof XiaozeChatHeader>) {
+  return <XiaozeChatHeader {...headerProps} />;
+}
+
+const XIAOZE_POPUP_HEADER = {
+  children: renderXiaozePopupHeader
+} as const;
 
 export type XiaozeProviderProps = {
   children: ReactNode;
@@ -37,27 +59,26 @@ function XiaozeRuntimeTools() {
   return <XiaozeApprovalCard />;
 }
 
-function XiaozeCopilotPopup() {
+function XiaozeCopilotPopupHost() {
   const { activeThreadId } = useXiaozeThreads();
+  const popupSize = useMemo(() => readStoredXiaozePopupSize(), []);
+  const popupDefaultOpen = useMemo(() => readXiaozePopupOpenSession(), []);
 
   return (
-    <CopilotChatConfigurationProvider threadId={activeThreadId} hasExplicitThreadId>
-      <CopilotPopup
+    <CopilotChatConfigurationProvider
+      threadId={activeThreadId}
+      hasExplicitThreadId
+      isModalDefaultOpen={popupDefaultOpen}
+    >
+      <XiaozePopupOpenPolicy />
+      <XiaozeCopilotPopup
         agentId="default"
         throttleMs={16}
-        width={420}
-        height={680}
-        header={{
-          children: (headerProps) => <XiaozeChatHeader {...headerProps} />
-        }}
-        labels={{
-          modalHeaderTitle: "小泽",
-          welcomeMessageText: "我是小泽，可以基于当前页面和您有权限的平台数据答疑；涉及变更、提交或设备写入等操作，会在您批准后再协助执行。",
-          chatToggleOpenLabel: "打开小泽",
-          chatToggleCloseLabel: "关闭小泽",
-          chatInputPlaceholder: "",
-          chatDisclaimerText: "AI 可能会出错，重要决策请自行核实。"
-        }}
+        defaultOpen={popupDefaultOpen}
+        width={popupSize.width}
+        height={popupSize.height}
+        header={XIAOZE_POPUP_HEADER}
+        labels={XIAOZE_POPUP_LABELS}
         messageView={XiaozeMessageView as typeof CopilotChatMessageView}
         scrollView={XiaozeChatScrollView as typeof CopilotChatView.ScrollView}
       />
@@ -101,7 +122,7 @@ export function XiaozeProvider({
             <XiaozePromptDebugRequestRegistrar />
             <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
             <XiaozeRunTimingCapture />
-            <XiaozeCopilotPopup />
+            <XiaozeCopilotPopupHost />
           </XiaozeRunTimingProvider>
         </XiaozeThreadProvider>
       </CopilotKit>
