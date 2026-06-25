@@ -3,6 +3,7 @@ import type { Message, ReasoningMessage } from "@ag-ui/core";
 import { ChevronDown, Sparkles } from "lucide-react";
 import { xiaozeReasoningDevExpanded } from "@/infrastructure/http/runtimeMode";
 import { isXiaozeReasoningStreaming } from "./xiaozeThinkingState";
+import { useXiaozeRunTiming } from "./XiaozeRunTimingContext";
 
 type XiaozeReasoningMessageProps = {
   message: ReasoningMessage;
@@ -25,6 +26,7 @@ function formatDuration(seconds: number) {
 
 export function XiaozeReasoningMessage({ message, messages, isRunning, className }: XiaozeReasoningMessageProps) {
   const isStreaming = isXiaozeReasoningStreaming(message, messages, isRunning);
+  const serverTiming = useXiaozeRunTiming(message.id);
   const hasContent = !!(message.content && message.content.length > 0);
   const startTimeRef = useRef<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -32,6 +34,9 @@ export function XiaozeReasoningMessage({ message, messages, isRunning, className
   const [isOpen, setIsOpen] = useState(isStreaming || (xiaozeReasoningDevExpanded && hasContent));
 
   useEffect(() => {
+    if (serverTiming) {
+      return;
+    }
     if (isStreaming && startTimeRef.current === null) {
       startTimeRef.current = Date.now();
     }
@@ -47,7 +52,7 @@ export function XiaozeReasoningMessage({ message, messages, isRunning, className
       }
     }, 1000);
     return () => clearInterval(timer);
-  }, [isStreaming]);
+  }, [isStreaming, serverTiming]);
 
   useEffect(() => {
     if (isStreaming) {
@@ -64,7 +69,8 @@ export function XiaozeReasoningMessage({ message, messages, isRunning, className
     return null;
   }
 
-  const label = isStreaming ? "思考中…" : `已思考 ${formatDuration(elapsed)}`;
+  const completedSeconds = serverTiming ? serverTiming.durationMs / 1000 : elapsed;
+  const label = isStreaming ? "思考中…" : `已思考 ${formatDuration(completedSeconds)}`;
 
   return (
     <section

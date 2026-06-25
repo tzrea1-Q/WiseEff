@@ -42,6 +42,7 @@ export type XiaozePersistableMessage = {
   role: AgentMessageDto["role"] | "reasoning";
   content: string;
   citations?: AgentCitation[];
+  metadata?: Record<string, unknown>;
 };
 
 export type PersistXiaozeTurnMessagesInput = {
@@ -303,9 +304,9 @@ async function appendAgentMessageIdempotent(db: Queryable, input: XiaozePersista
   await db.query(
     `
     insert into agent_messages (
-      id, session_id, organization_id, role, content, citations, confidence
+      id, session_id, organization_id, role, content, citations, confidence, metadata
     )
-    values ($1, $2, $3, $4, $5, $6::jsonb, $7)
+    values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb)
     on conflict (id) do nothing
     `,
     [
@@ -315,7 +316,8 @@ async function appendAgentMessageIdempotent(db: Queryable, input: XiaozePersista
       input.role,
       input.content,
       JSON.stringify(input.citations ?? []),
-      null
+      null,
+      JSON.stringify(input.metadata ?? {})
     ]
   );
 }

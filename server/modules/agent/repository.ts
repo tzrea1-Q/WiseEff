@@ -31,6 +31,7 @@ type AgentMessageRow = {
   content: string;
   citations: unknown;
   confidence: number | string | null;
+  metadata?: unknown;
   created_at: string | Date;
 };
 
@@ -218,12 +219,14 @@ function toAgentSessionRecord(row: AgentSessionRow): AgentSessionRecord {
 }
 
 function toAgentMessageDto(row: AgentMessageRow): AgentMessageDto {
+  const metadata = jsonObject(row.metadata);
   return {
     id: row.id,
     role: row.role,
     content: row.content,
     citations: jsonArray<AgentCitation>(row.citations),
     confidence: row.confidence === null ? undefined : Number(row.confidence),
+    metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
     createdAt: dateTimeToIso(row.created_at)
   };
 }
@@ -344,7 +347,7 @@ export async function listAgentMessages(
 ): Promise<AgentMessageDto[]> {
   const result = await db.query<AgentMessageRow>(
     `
-    select id, role, content, citations, confidence, created_at
+    select id, role, content, citations, confidence, metadata, created_at
     from agent_messages
     where organization_id = $1
       and session_id = $2

@@ -20,12 +20,20 @@ import {
   createReasoningMessageId,
   reasoningEndEvent,
   reasoningStartEvent,
-  yieldAssistantReply,
   yieldReasoningTurn,
   type AgUiStreamEvent
 } from "./streamAssistantReply";
 import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
 import { XIAOZE_PROMPT_DEBUG_EVENT } from "./promptDebug";
+import { createRunEventSink, type RunEventSink } from "./runEventSink";
+import {
+  assistantShellStartEvent,
+  mapSinkEventToAgUi,
+  runStartedEvent,
+  runTimingEvent,
+  serializeTurnSteps,
+  type RunTimelineContext
+} from "./runTimelineEvents";
 import { ChatOpenAI } from "@langchain/openai";
 
 export type XiaozeAgUiRequest = Pick<RouteRequest, "headers" | "body" | "requestId">;
@@ -36,6 +44,7 @@ export type XiaozePerceptionAgent = {
     context: { projectId?: string; pageKey?: string };
     threadId: string;
     includePromptDebug?: boolean;
+    sink?: RunEventSink;
     resume?: {
       auth: AuthContext;
       requestId: string;
@@ -47,6 +56,78 @@ export type XiaozePerceptionAgent = {
   }): Promise<PerceptionAgentRunResult>;
 };
 
+async function* yieldMappedSinkEvents(
+  sink: RunEventSink,
+  context: RunTimelineContext,
+  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean }
+) {
+  const events = await sink.drain();
+  for (const event of events) {
+    if (event.type === "reasoning_delta") {
+      flags.streamedReasoning = true;
+    }
+    if ((event.type === "tool_call" || event.type === "answer_delta") && !flags.assistantShellStarted) {
+      flags.assistantShellStarted = true;
+      yield assistantShellStartEvent(context.assistantMessageId);
+    }
+    if (event.type === "answer_delta") {
+      flags.streamedAnswer = true;
+    }
+    for (const mapped of mapSinkEventToAgUi(event, context)) {
+      yield mapped;
+    }
+  }
+}
+
+async function* pumpAgentRun(input: {
+  sink: RunEventSink;
+  context: RunTimelineContext;
+  run: () => Promise<PerceptionAgentRunResult>;
+  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean };
+  outcome: { result?: PerceptionAgentRunResult; error?: unknown };
+}) {
+  let settled = false;
+
+  void input
+    .run()
+    .then((value) => {
+      input.outcome.result = value;
+    })
+    .catch((error) => {
+      input.outcome.error = error;
+    })
+    .finally(() => {
+      settled = true;
+      input.sink.close();
+    });
+
+  while (true) {
+    yield* yieldMappedSinkEvents(input.sink, input.context, input.flags);
+    if (settled) {
+      const leftover = await input.sink.drain(0);
+      if (leftover.length > 0) {
+        for (const event of leftover) {
+          if (event.type === "reasoning_delta") {
+            input.flags.streamedReasoning = true;
+          }
+          if ((event.type === "tool_call" || event.type === "answer_delta") && !input.flags.assistantShellStarted) {
+            input.flags.assistantShellStarted = true;
+            yield assistantShellStartEvent(input.context.assistantMessageId);
+          }
+          if (event.type === "answer_delta") {
+            input.flags.streamedAnswer = true;
+          }
+          for (const mapped of mapSinkEventToAgUi(event, input.context)) {
+            yield mapped;
+          }
+        }
+        continue;
+      }
+      break;
+    }
+  }
+}
+
 function buildAssistantReply(result: Pick<PerceptionAgentRunResult, "text" | "reasoning">) {
   const fallback = splitAssistantContent(result.text);
   const reasoning = result.reasoning?.trim() || fallback.reasoning || undefined;
@@ -54,6 +135,36 @@ function buildAssistantReply(result: Pick<PerceptionAgentRunResult, "text" | "re
     text: fallback.answer || result.text.trim(),
     reasoning
   };
+}
+
+function* finalizeTurnReply(input: {
+  reply: { text: string; reasoning?: string };
+  reasoningMessageId: string;
+  messageId: string;
+  flags: { streamedReasoning: boolean; streamedAnswer: boolean; assistantShellStarted: boolean };
+}) {
+  if (input.reply.reasoning && !input.flags.streamedReasoning) {
+    yield* yieldReasoningTurn({ reasoningMessageId: input.reasoningMessageId, reasoning: input.reply.reasoning });
+  } else {
+    yield reasoningEndEvent(input.reasoningMessageId);
+  }
+
+  if (input.reply.text && !input.flags.streamedAnswer) {
+    if (!input.flags.assistantShellStarted) {
+      yield assistantShellStartEvent(input.messageId);
+      input.flags.assistantShellStarted = true;
+    }
+    yield {
+      event: EventType.TEXT_MESSAGE_CONTENT,
+      data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId: input.messageId, delta: input.reply.text }
+    };
+  }
+  if (input.reply.text || input.flags.streamedAnswer) {
+    yield {
+      event: EventType.TEXT_MESSAGE_END,
+      data: { type: EventType.TEXT_MESSAGE_END, messageId: input.messageId }
+    };
+  }
 }
 
 type ResumeDecision = {
@@ -276,7 +387,12 @@ export function createXiaozeAgUiHandler(options: {
 
     async function persistSuccessfulTurn(persistInput: {
       userMessage?: { id: string; content: string };
-      assistantMessage?: { id: string; content: string; citations?: AgentCitation[] };
+      assistantMessage?: {
+        id: string;
+        content: string;
+        citations?: AgentCitation[];
+        runSteps?: ReturnType<typeof serializeTurnSteps>;
+      };
       reasoningMessage?: { id: string; content: string };
     }) {
       if (!options.persistTurn) {
@@ -295,14 +411,20 @@ export function createXiaozeAgUiHandler(options: {
     }
 
     async function* streamEvents(): AsyncIterable<AgUiStreamEvent> {
-      yield {
-        event: EventType.RUN_STARTED,
-        data: { type: EventType.RUN_STARTED, threadId, runId }
-      };
-
+      const runStartedAtMs = Date.now();
       const messageId = randomUUID();
       const reasoningMessageId = createReasoningMessageId();
+      const timelineContext: RunTimelineContext = {
+        threadId,
+        runId,
+        assistantMessageId: messageId,
+        reasoningMessageId,
+        runStartedAtMs
+      };
+
+      yield runStartedEvent({ threadId, runId, runStartedAtMs });
       yield reasoningStartEvent(reasoningMessageId);
+
       try {
         if (resumeDecision && approvalBridge) {
           try {
@@ -324,10 +446,34 @@ export function createXiaozeAgUiHandler(options: {
             });
             const reply = buildAssistantReply(resumed);
             yield* yieldReasoningTurn({ reasoningMessageId, reasoning: reply.reasoning });
-            yield* yieldAssistantReply({ text: reply.text, messageId });
+            if (reply.text) {
+              yield {
+                event: EventType.TEXT_MESSAGE_CONTENT,
+                data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: reply.text }
+              };
+              yield {
+                event: EventType.TEXT_MESSAGE_END,
+                data: { type: EventType.TEXT_MESSAGE_END, messageId }
+              };
+            }
             await persistSuccessfulTurn({
-              assistantMessage: reply.text ? { id: messageId, content: reply.text, citations: resumed.citations } : undefined,
+              assistantMessage: reply.text
+                ? {
+                    id: messageId,
+                    content: reply.text,
+                    citations: resumed.citations,
+                    runSteps: resumed.runSteps ? serializeTurnSteps(resumed.runSteps) : undefined
+                  }
+                : undefined,
               reasoningMessage: reply.reasoning ? { id: reasoningMessageId, content: reply.reasoning } : undefined
+            });
+            const durationMs = Math.max(0, Date.now() - runStartedAtMs);
+            yield runTimingEvent({
+              runId,
+              reasoningMessageId,
+              startedAt: runStartedAtMs,
+              durationMs,
+              phase: "finished"
             });
             yield {
               event: EventType.RUN_FINISHED,
@@ -337,9 +483,23 @@ export function createXiaozeAgUiHandler(options: {
             if (error instanceof ApiError && error.code === "FORBIDDEN") {
               const safeMessage = "You are not permitted to perform that action.";
               yield reasoningEndEvent(reasoningMessageId);
-              yield* yieldAssistantReply({ text: safeMessage, messageId });
+              yield {
+                event: EventType.TEXT_MESSAGE_CONTENT,
+                data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: safeMessage }
+              };
+              yield {
+                event: EventType.TEXT_MESSAGE_END,
+                data: { type: EventType.TEXT_MESSAGE_END, messageId }
+              };
               await persistSuccessfulTurn({
                 assistantMessage: { id: messageId, content: safeMessage }
+              });
+              yield runTimingEvent({
+                runId,
+                reasoningMessageId,
+                startedAt: runStartedAtMs,
+                durationMs: Math.max(0, Date.now() - runStartedAtMs),
+                phase: "finished"
               });
               yield {
                 event: EventType.RUN_FINISHED,
@@ -352,15 +512,31 @@ export function createXiaozeAgUiHandler(options: {
           return;
         }
 
-        const result = await agent.run({
-          message,
-          context: {
-            projectId: pageContext.projectId,
-            pageKey: pageContext.pageKey
-          },
-          threadId,
-          includePromptDebug
+        const sink = createRunEventSink();
+        const streamFlags = { streamedReasoning: false, streamedAnswer: false, assistantShellStarted: false };
+        const outcome: { result?: PerceptionAgentRunResult; error?: unknown } = {};
+        yield* pumpAgentRun({
+          sink,
+          context: timelineContext,
+          flags: streamFlags,
+          outcome,
+          run: () =>
+            agent.run({
+              message,
+              context: {
+                projectId: pageContext.projectId,
+                pageKey: pageContext.pageKey
+              },
+              threadId,
+              includePromptDebug,
+              sink
+            })
         });
+
+        if (outcome.error) {
+          throw outcome.error;
+        }
+        const result = outcome.result!;
 
         if (result.interrupt && approvalBridge) {
           yield reasoningEndEvent(reasoningMessageId);
@@ -402,6 +578,13 @@ export function createXiaozeAgUiHandler(options: {
             event: EventType.CUSTOM,
             data: { type: EventType.CUSTOM, name: XIAOZE_INTERRUPT_EVENT, value: interruptValue }
           };
+          yield runTimingEvent({
+            runId,
+            reasoningMessageId,
+            startedAt: runStartedAtMs,
+            durationMs: Math.max(0, Date.now() - runStartedAtMs),
+            phase: "finished"
+          });
           yield {
             event: EventType.RUN_FINISHED,
             data: {
@@ -444,12 +627,26 @@ export function createXiaozeAgUiHandler(options: {
             }
           };
         }
-        yield* yieldReasoningTurn({ reasoningMessageId, reasoning: reply.reasoning });
-        yield* yieldAssistantReply({ text: reply.text, messageId });
+        yield* finalizeTurnReply({
+          reply,
+          reasoningMessageId,
+          messageId,
+          flags: streamFlags
+        });
+        const runSteps = result.runSteps ? serializeTurnSteps(result.runSteps) : undefined;
         await persistSuccessfulTurn({
           userMessage: userMessageEntry,
-          assistantMessage: reply.text ? { id: messageId, content: reply.text, citations: result.citations } : undefined,
+          assistantMessage: reply.text
+            ? { id: messageId, content: reply.text, citations: result.citations, runSteps }
+            : undefined,
           reasoningMessage: reply.reasoning ? { id: reasoningMessageId, content: reply.reasoning } : undefined
+        });
+        yield runTimingEvent({
+          runId,
+          reasoningMessageId,
+          startedAt: runStartedAtMs,
+          durationMs: Math.max(0, Date.now() - runStartedAtMs),
+          phase: "finished"
         });
         yield {
           event: EventType.RUN_FINISHED,
@@ -459,10 +656,24 @@ export function createXiaozeAgUiHandler(options: {
         if (error instanceof ApiError && error.code === "FORBIDDEN") {
           const safeMessage = "You are not permitted to perform that action.";
           yield reasoningEndEvent(reasoningMessageId);
-          yield* yieldAssistantReply({ text: safeMessage, messageId });
+          yield {
+            event: EventType.TEXT_MESSAGE_CONTENT,
+            data: { type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: safeMessage }
+          };
+          yield {
+            event: EventType.TEXT_MESSAGE_END,
+            data: { type: EventType.TEXT_MESSAGE_END, messageId }
+          };
           await persistSuccessfulTurn({
             userMessage: userMessageEntry,
             assistantMessage: { id: messageId, content: safeMessage }
+          });
+          yield runTimingEvent({
+            runId,
+            reasoningMessageId,
+            startedAt: runStartedAtMs,
+            durationMs: Math.max(0, Date.now() - runStartedAtMs),
+            phase: "finished"
           });
           yield {
             event: EventType.RUN_FINISHED,
@@ -472,6 +683,13 @@ export function createXiaozeAgUiHandler(options: {
         }
 
         yield reasoningEndEvent(reasoningMessageId);
+        yield runTimingEvent({
+          runId,
+          reasoningMessageId,
+          startedAt: runStartedAtMs,
+          durationMs: Math.max(0, Date.now() - runStartedAtMs),
+          phase: "error"
+        });
         yield {
           event: EventType.RUN_ERROR,
           data: {
@@ -581,7 +799,8 @@ export function createXiaozeAgentFactory(options: {
           reasoning: result.reasoning,
           citations: result.citations,
           promptDebug: result.promptDebug,
-          interrupt: result.interrupt
+          interrupt: result.interrupt,
+          runSteps: result.runSteps
         };
       }
     };
