@@ -7,9 +7,11 @@ Branch: `feat/device-bridge-dev`
 
 Phase A delivers zero-friction Bridge install/connect on Windows and macOS:
 
-- CLI: `wiseeff-bridge connect --server <url> [--code <code>]` and `--handle-url` for OS protocol activation
-- URL scheme: `wiseeff-bridge://connect?server=<origin>&code=<6-digit>`
-- Frontend 3-step wizard on `/node-debugging` with installer-first download, scheme launch, and 30s health polling
+- CLI: `wiseeff-bridge connect --server <url> [--code <code]` and `--handle-url` for OS protocol activation (non-blocking; skips start when health already `connected: true`)
+- Token expiry triggers re-pair when `--code` is supplied
+- URL scheme: `wiseeff-bridge://connect?server=<origin>&code=<6-digit>` with https/local-http and 6-digit code validation
+- Frontend 3-step wizard on `/node-debugging` with installer-first download, scheme launch, 30s health polling, and explicit timeout errors
+- macOS `.pkg` postinstall registers LaunchAgent for end users (not on build machine)
 - Release manifest `artifactKind: "installer" | "portable"` with installer build pipeline scripts
 
 ## Build installers (build machine)

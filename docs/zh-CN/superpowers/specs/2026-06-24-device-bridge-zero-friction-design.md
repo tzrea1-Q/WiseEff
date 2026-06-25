@@ -1,7 +1,5 @@
 # Device Bridge 零摩擦安装与连接设计
 
-> English: [English](../../../superpowers/specs/2026-06-24-device-bridge-zero-friction-design.md)
-
 日期：2026-06-24  
 状态：已认可，可进入实施计划  
 前置：[本地设备代理（Device Bridge）设计](./2026-06-23-local-device-bridge-design.md)
@@ -207,10 +205,9 @@ v1 安装包 **不内置** `adb`/`hdc`。缺失时分阶段补齐：
 
 | 阶段 | 交付物 |
 | --- | --- |
-| **A — MVP** | 图形安装包（Win+Mac）；URL scheme；`connect` 命令；前端 3 步向导；CLI 收至高级区 |
-| **B1** | health/capabilities 工具检测 + 网页提示 |
-| **B2** | 一键下载依赖到私有目录 |
-| **C** | 内置 adb/hdc；自动更新；企业静默部署 |
+| **A — MVP** | 图形安装包（Win+Mac）；URL scheme；`connect` 命令；前端 3 步向导；CLI 收至高级区 **（已实现，含 2026-06-25 Phase A 修复）** |
+| **B — 工具依赖** | B1/B2 **已实现**（2026-06-25）：health/capabilities 工具检测 + 网页 `tools_missing`；一键下载到私有目录 + `install-tools` scheme |
+| **C** | 安装包内置 adb/hdc（设计 B3）；自动更新；企业静默部署 |
 
 ## 文档影响
 

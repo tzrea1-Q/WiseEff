@@ -22,6 +22,7 @@ npm run build:bridge-installers
 
 - Windows 注册表：`wiseeff-bridge://` → `wiseeff-bridge.exe --handle-url "%1"`
 - macOS `Info.plist`：`CFBundleURLSchemes` = `wiseeff-bridge`
+- macOS `.pkg` postinstall 为安装用户注册 `~/Library/LaunchAgents/com.wiseeff.bridge.plist` 并通过 `launchctl` 加载
 
 ## 说明
 

@@ -9,14 +9,11 @@ import {
   shouldConfirmBridgeSchemeLaunch
 } from "../infrastructure/http/bridgeConnectLauncher";
 import { bridgeReleaseDownloadLabel } from "../infrastructure/http/bridgeReleaseSelection";
-import type { DeviceBridgePairingCode, DeviceBridgeReleaseItem } from "../infrastructure/http/deviceBridgeClient";
+import type { DeviceBridgePairingCode, DeviceBridgeReleaseItem, LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
+import { bridgePanelStatusHint, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
+import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
 
-export type BridgePanelStatus =
-  | "missing_bridge"
-  | "not_paired"
-  | "not_running"
-  | "online_no_device"
-  | "bridges_with_targets";
+export type { BridgePanelStatus } from "./bridgePanelStatus";
 
 export function deriveWizardStep(panelStatus: BridgePanelStatus): 1 | 2 | 3 | "done" {
   switch (panelStatus) {
@@ -24,7 +21,9 @@ export function deriveWizardStep(panelStatus: BridgePanelStatus): 1 | 2 | 3 | "d
       return 1;
     case "not_paired":
     case "not_running":
+    case "not_connected":
       return 2;
+    case "tools_missing":
     case "online_no_device":
       return 3;
     case "bridges_with_targets":
@@ -34,6 +33,8 @@ export function deriveWizardStep(panelStatus: BridgePanelStatus): 1 | 2 | 3 | "d
 
 type LocalDeviceBridgeWizardProps = {
   panelStatus: BridgePanelStatus;
+  protocol: DebugConnectionProtocol;
+  health: LocalBridgeHealthState | null;
   hostRelease: DeviceBridgeReleaseItem | null;
   alternateReleases: DeviceBridgeReleaseItem[];
   pairingCode: DeviceBridgePairingCode | null;
@@ -105,6 +106,8 @@ function AdvancedCommandRow({
 
 export function LocalDeviceBridgeWizard({
   panelStatus,
+  protocol,
+  health,
   hostRelease,
   alternateReleases,
   pairingCode,
@@ -144,7 +147,7 @@ export function LocalDeviceBridgeWizard({
       return;
     }
 
-    if (!pairingCode) {
+    if (!pairingCode && panelStatus !== "not_connected" && panelStatus !== "not_running") {
       onConnectError("配对码尚未就绪，请稍后重试。");
       return;
     }
@@ -157,13 +160,19 @@ export function LocalDeviceBridgeWizard({
     setConnecting(true);
     onConnectError("");
     try {
-      launchBridgeConnect(buildBridgeConnectUrl(window.location.origin, pairingCode.code));
+      const connectUrl =
+        panelStatus === "not_connected" || panelStatus === "not_running"
+          ? buildBridgeConnectUrl(window.location.origin)
+          : buildBridgeConnectUrl(window.location.origin, pairingCode!.code);
+      launchBridgeConnect(connectUrl);
       const health = await pollLocalBridgeHealth({});
       await onRefresh();
       if (health?.connected) {
         onDetect();
       } else if (!health) {
         onConnectError("30 秒内未检测到 Bridge 上线。请从托盘或菜单栏打开 WiseEff Bridge 后重试。");
+      } else {
+        onConnectError("30 秒内 Bridge 未能连接到服务器。请检查网络后重试，或从托盘/菜单栏重新启动 Bridge。");
       }
     } finally {
       setConnecting(false);
@@ -176,21 +185,16 @@ export function LocalDeviceBridgeWizard({
       : step === 2
         ? panelStatus === "not_running"
           ? "启动 Bridge 并连接"
-          : "连接本地设备"
+          : panelStatus === "not_connected"
+            ? "重新连接"
+            : "连接本地设备"
         : step === 3
-          ? "重新检测设备"
+          ? panelStatus === "tools_missing"
+            ? "安装调试工具"
+            : "重新检测设备"
           : "连接本地设备";
 
-  const statusHint =
-    panelStatus === "bridges_with_targets"
-      ? "Bridge 在线，已连接可调试目标。"
-      : panelStatus === "online_no_device"
-        ? "Bridge 在线，请插入 USB 设备并授权调试。"
-        : panelStatus === "not_running"
-          ? "已配对 Bridge，但本地服务未运行。"
-          : panelStatus === "not_paired"
-            ? "Bridge 已启动但尚未配对，请点击连接。"
-            : "未检测到本地 Bridge，请先安装。";
+  const statusHint = bridgePanelStatusHint(panelStatus, protocol);
 
   return (
     <>
@@ -242,9 +246,30 @@ export function LocalDeviceBridgeWizard({
 
         {connectError ? <p className="local-device-bridge-panel__error">{connectError}</p> : null}
 
+        {step === 3 && health?.tools ? (
+          <LocalDeviceBridgeToolsPanel
+            health={health}
+            protocol={protocol}
+            panelStatus={
+              panelStatus === "tools_missing"
+                ? "tools_missing"
+                : panelStatus === "bridges_with_targets"
+                  ? "bridges_with_targets"
+                  : "online_no_device"
+            }
+            onInstallError={onConnectError}
+            onInstallComplete={async () => {
+              await onRefresh();
+            }}
+          />
+        ) : null}
+
         <details className="local-device-bridge-panel__advanced">
           <summary>高级 · 命令行方式</summary>
-          {(panelStatus === "missing_bridge" || panelStatus === "not_paired" || panelStatus === "not_running") &&
+          {(panelStatus === "missing_bridge" ||
+            panelStatus === "not_paired" ||
+            panelStatus === "not_running" ||
+            panelStatus === "not_connected") &&
           advancedCommands.connect ? (
             <AdvancedCommandRow
               label="连接命令"
@@ -266,7 +291,9 @@ export function LocalDeviceBridgeWizard({
               onCopy={copyCommand}
             />
           ) : null}
-          {panelStatus === "not_running" || panelStatus === "not_paired" ? (
+          {panelStatus === "not_running" ||
+          panelStatus === "not_paired" ||
+          panelStatus === "not_connected" ? (
             <AdvancedCommandRow
               label="启动命令"
               command={advancedCommands.start}

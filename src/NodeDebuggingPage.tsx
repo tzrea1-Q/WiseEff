@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
+import { deriveBridgePanelStatus, formatDetectFailureMessage } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -559,30 +560,24 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
   );
 }
 
-function deriveBridgePanelStatus(input: {
+function deriveBridgePanelStatusFromHealth(input: {
   health: LocalBridgeHealthState | null;
   bridgeCount: number;
   target?: string;
+  protocol: DebugConnectionProtocol;
 }): BridgePanelStatus {
-  if (!input.health) {
-    return input.bridgeCount > 0 ? "not_running" : "missing_bridge";
-  }
-  if (!input.health.paired) {
-    return "not_paired";
-  }
-  if (!input.health.connected || !input.target) {
-    return "online_no_device";
-  }
-  return "bridges_with_targets";
+  return deriveBridgePanelStatus(input);
 }
 
 function LocalDeviceBridgePanel({
   target,
   detecting,
+  protocol,
   onDetect
 }: {
   target?: string;
   detecting: boolean;
+  protocol: DebugConnectionProtocol;
   onDetect: () => void;
 }) {
   const [checking, setChecking] = useState(false);
@@ -628,10 +623,11 @@ function LocalDeviceBridgePanel({
     void refreshBridgeState();
   }, [refreshBridgeState]);
 
-  const panelStatus = deriveBridgePanelStatus({
+  const panelStatus = deriveBridgePanelStatusFromHealth({
     health,
     bridgeCount: bridges.length,
-    target
+    target,
+    protocol
   });
 
   const startCommand = "wiseeff-bridge start";
@@ -712,6 +708,8 @@ function LocalDeviceBridgePanel({
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
       <LocalDeviceBridgeWizard
         panelStatus={panelStatus}
+        protocol={protocol}
+        health={health}
         hostRelease={hostRelease}
         alternateReleases={alternateReleases}
         pairingCode={pairingCode}
@@ -1145,7 +1143,13 @@ export function NodeDebuggingPage({
       setActiveTargetId(undefined);
       setBridgeTargetCandidates([]);
       const diagnosticError = error instanceof Error ? error as DiagnosticError : undefined;
-      const detectFailureMessage = formatDebuggingRuntimeError(error);
+      const healthSnapshot = await probeLocalBridgeHealth().catch(() => null);
+      const detectFailureMessage = formatDetectFailureMessage({
+        error,
+        health: healthSnapshot,
+        protocol: requestProtocol,
+        formatError: formatDebuggingRuntimeError
+      });
       const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
       setConnectionError(detectFailureMessage);
       if (debuggingActions) {
@@ -1347,7 +1351,12 @@ export function NodeDebuggingPage({
           </div>
         </div>
         {debuggingActions ? (
-          <LocalDeviceBridgePanel target={target} detecting={detecting} onDetect={() => void detect()} />
+          <LocalDeviceBridgePanel
+            target={target}
+            detecting={detecting}
+            protocol={protocol}
+            onDetect={() => void detect()}
+          />
         ) : null}
         {debuggingActions && bridgeTargetCandidates.length > 1 ? (
           <section className="bridge-target-picker" aria-label="设备代理目标选择">

@@ -17,6 +17,7 @@ Server/runtime env:
 
 ```text
 DEVICE_BRIDGE_ARTIFACT_ROOT=ops/self-hosted/bridge-artifacts
+DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT=ops/self-hosted/bridge-tool-artifacts
 DEVICE_BRIDGE_PAIRING_TTL_SECONDS=300
 DEVICE_BRIDGE_TOKEN_TTL_DAYS=90
 DEVICE_BRIDGE_WS_PATH=/api/v1/device-bridges/ws
@@ -47,9 +48,11 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 ## Artifact And Manifest Checks
 
 1. Confirm bridge artifacts exist under `DEVICE_BRIDGE_ARTIFACT_ROOT`.
-2. Verify manifest endpoint:
+2. Confirm tool artifacts exist under `DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT`.
+3. Verify manifest endpoints:
    - `GET /api/v1/device-bridges/releases`
-3. Confirm release items exist for the operator platform and use same-origin relative URLs:
+   - `GET /api/v1/device-bridges/tool-releases`
+4. Confirm release items exist for the operator platform and use same-origin relative URLs:
    - Windows installer (primary): `/downloads/device-bridge/<version>/windows/amd64/WiseEffBridgeSetup_<version>.exe`
    - macOS installer (primary): `/downloads/device-bridge/<version>/darwin/<arch>/WiseEffBridge_<version>_darwin_<arch>.pkg`
    - Portable archives remain available for advanced/CLI workflows (`artifactKind: "portable"`).
@@ -58,12 +61,22 @@ DEVICE_BRIDGE_HDC_AVAILABLE=true
 
 1. Open `/node-debugging` while signed in.
 2. Click **安装 Bridge** to download the platform-matched installer (Windows or macOS).
-3. Run the installer with default options. It registers `wiseeff-bridge://`, installs Bridge under the user profile, and starts the background service/LaunchAgent.
+3. Run the installer with default options. It registers `wiseeff-bridge://`, installs Bridge under the user profile, and starts the background service (Windows) or LaunchAgent (macOS `.pkg` postinstall).
 4. Return to `/node-debugging` and click **连接本地设备**. The page creates a pairing code and opens `wiseeff-bridge://connect?server=<origin>&code=<6-digit>`.
-5. Bridge runs `connect` locally (pair if needed, then start). Health at `http://127.0.0.1:18787/health` should report `connected: true` within 30 seconds.
+5. Bridge runs `connect` locally (pair if needed, then non-blocking start). Health at `http://127.0.0.1:18787/health` should report `connected: true` within 30 seconds.
 6. Insert the USB device, authorize debugging, and click **重新检测设备**.
 
-Fallback: expand **高级 · 命令行方式** for `wiseeff-bridge connect`, `pair`, and `start` commands, or launch Bridge from the tray/menu bar.
+### Tool install (Phase B)
+
+When health reports `tools.adb.available: false` or `tools.hdc.available: false`, Step ③ shows **缺少 ADB/HDC 调试工具** (not “Bridge 未安装”). Click **安装调试工具** to open `wiseeff-bridge://install-tools?server=<origin>&protocol=adb|hdc|all`. Bridge downloads pinned artifacts from `/downloads/device-bridge-tools/...` into a private directory:
+
+- Windows: `%LOCALAPPDATA%\WiseEff\tools\`
+- macOS: `~/Library/Application Support/WiseEff/tools/`
+- Linux: `~/.wiseeff/tools/`
+
+Fallback CLI: `wiseeff-bridge tools install --protocol all`.
+
+Advanced: expand **高级 · 命令行方式** for `wiseeff-bridge connect`, `pair`, `start`, or launch Bridge from the tray/menu bar.
 
 Build installers on a build machine:
 
@@ -95,7 +108,8 @@ Notes:
 
 - The archive contains `cli.js` and a `wiseeff-bridge` launcher script that runs `node cli.js`.
 - Bridge config is stored at `~/.wiseeff/bridge.json`.
-- macOS does not use the Windows `service` commands; keep the bridge running in a terminal session, or use `launchd`/a process manager in your own ops environment.
+- The macOS `.pkg` installer registers `~/Library/LaunchAgents/com.wiseeff.bridge.plist` via postinstall; portable installs require manual `launchd` or a terminal session.
+- macOS does not use the Windows `service` commands.
 - Install `adb` and/or `hdc` on the Mac and authorize the USB device before detecting targets in `/node-debugging`.
 
 ## Pairing Flow
@@ -168,7 +182,7 @@ Notes:
 
 ## Troubleshooting
 
-- **Manifest missing Windows artifact**: check `DEVICE_BRIDGE_ARTIFACT_ROOT` and artifact layout.
+- **Scheme connect rejected locally**: `wiseeff-bridge` only accepts `https` server URLs (or `http://localhost` / `127.0.0.1` for local dev) and 6-digit pairing codes in `wiseeff-bridge://connect` URLs.
 - **Bridge websocket rejected**: verify token TTL/scopes and server clock skew.
 - **Detect returns only server targets**: confirm bridge is online (`/device-bridges/mine`) and connected to WS path.
 - **HDC detect empty but device is connected**: confirm `hdc list targets` works in the bridge host shell and the bridge was restarted after PATH changes.

@@ -1,7 +1,8 @@
 import { fileURLToPath } from "node:url";
 
 import { loadBridgeConfig, saveBridgeConfig, type BridgeConfig } from "./config";
-import { createRpcHandlers } from "./rpcHandlers";
+import { createResolvedRpcHandlers } from "./createResolvedRpcHandlers";
+import { createToolProbeCache, type BridgeHealthState } from "./healthServer";
 import { startHealthServer } from "./healthServer";
 import { createBridgeWsClient } from "./wsClient";
 import { runWindowsServiceCommand, type ServiceAction } from "./windowsService";
@@ -12,12 +13,15 @@ import {
   type CliDependencies,
   type StartBridgeFn
 } from "./connectCommand";
-import { parseConnectUrl } from "./urlScheme";
+import { ensureBridgeRunning } from "./ensureBridgeRunning";
+import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
+import { parseBridgeUrl } from "./urlScheme";
 
 const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
 
 type ParsedArgs = {
-  command?: "pair" | "start" | "status" | "service" | "connect";
+  command?: "pair" | "start" | "status" | "service" | "connect" | "tools";
+  toolsAction?: "install";
   serviceAction?: ServiceAction;
   flags: Map<string, string>;
 };
@@ -62,6 +66,14 @@ function parseArgs(argv: string[]): ParsedArgs {
     return { command: "service", flags: parseFlags(rest) };
   }
 
+  if (command === "tools") {
+    const [toolsAction, ...toolsRest] = rest;
+    if (toolsAction === "install") {
+      return { command: "tools", toolsAction: "install", flags: parseFlags(toolsRest) };
+    }
+    return { command: "tools", flags: parseFlags(rest) };
+  }
+
   if (command === "pair" || command === "start" || command === "status" || command === "connect") {
     return { command, flags: parseFlags(rest) };
   }
@@ -81,6 +93,7 @@ function usage() {
     "  service start     Start installed service (Windows only)",
     "  service stop      Stop installed service (Windows only)",
     "  service uninstall Remove installed service (Windows only)",
+    "  tools install --protocol adb|hdc|all [--server <url>] [--force]",
     "",
     "Options:",
     "  --handle-url <wiseeff-bridge://...>  Handle URL scheme activation"
@@ -91,20 +104,28 @@ async function runStartCommand(
   deps: CliDependencies,
   config: BridgeConfig
 ): Promise<{ exitCode: number; statusLine: string }> {
-  const rpc = createRpcHandlers();
-  let status = {
+  const runtime = await createResolvedRpcHandlers();
+  const toolProbeCache = createToolProbeCache({
+    probe: () => runtime.probeTools()
+  });
+
+  await toolProbeCache.refreshTools(true);
+
+  let status: BridgeHealthState = {
     paired: true,
     connected: false,
     bridgeId: config.bridgeId,
     serverUrl: config.serverUrl,
-    lastError: undefined as string | undefined,
-    updatedAt: new Date().toISOString()
+    lastError: undefined,
+    updatedAt: new Date().toISOString(),
+    tools: toolProbeCache.getTools(),
+    toolsInstall: toolProbeCache.getToolsInstall()
   };
 
   const wsClient = createBridgeWsClient({
     serverUrl: config.serverUrl,
     bridgeToken: config.bridgeToken,
-    rpc,
+    rpc: runtime.rpc,
     onStatusChange: (next) => {
       status = {
         paired: true,
@@ -112,13 +133,66 @@ async function runStartCommand(
         bridgeId: next.bridgeId ?? config.bridgeId,
         serverUrl: config.serverUrl,
         lastError: next.lastError,
-        updatedAt: next.updatedAt
+        updatedAt: next.updatedAt,
+        tools: toolProbeCache.getTools(),
+        toolsInstall: toolProbeCache.getToolsInstall()
       };
     }
   });
 
   const health = await startHealthServer({
-    getState: () => status
+    getState: () => status,
+    allowedOrigin: config.serverUrl,
+    onHealthRead: async () => {
+      await toolProbeCache.refreshTools();
+      status = {
+        ...status,
+        tools: toolProbeCache.getTools(),
+        toolsInstall: toolProbeCache.getToolsInstall(),
+        updatedAt: new Date().toISOString()
+      };
+    },
+    onToolsInstall: async (protocol) => {
+      toolProbeCache.setToolsInstall({
+        status: "running",
+        protocol,
+        updatedAt: new Date().toISOString()
+      });
+      status = {
+        ...status,
+        toolsInstall: toolProbeCache.getToolsInstall(),
+        updatedAt: new Date().toISOString()
+      };
+      kickOffInstallTools({
+        serverUrl: config.serverUrl,
+        protocol,
+        fetchImpl: deps.fetchImpl,
+        onStatus: (next) => {
+          toolProbeCache.setToolsInstall({
+            status: next.status,
+            protocol: next.protocol,
+            error: next.error,
+            updatedAt: new Date().toISOString()
+          });
+          if (next.status === "succeeded") {
+            void toolProbeCache.refreshTools(true).then((tools) => {
+              status = {
+                ...status,
+                tools,
+                toolsInstall: toolProbeCache.getToolsInstall(),
+                updatedAt: new Date().toISOString()
+              };
+            });
+            return;
+          }
+          status = {
+            ...status,
+            toolsInstall: toolProbeCache.getToolsInstall(),
+            updatedAt: new Date().toISOString()
+          };
+        }
+      });
+    }
   });
 
   wsClient.start();
@@ -147,7 +221,13 @@ async function runStatusCommand(deps: CliDependencies, config: BridgeConfig): Pr
 
 export async function runCli(
   argv = process.argv.slice(2),
-  overrides: Partial<CliDependencies> & { startBridge?: StartBridgeFn } = {}
+  overrides: Partial<CliDependencies> & {
+    startBridge?: StartBridgeFn;
+    ensureBridgeRunning?: typeof ensureBridgeRunning;
+    execPath?: string;
+    cliPath?: string;
+    platform?: NodeJS.Platform;
+  } = {}
 ) {
   const deps: CliDependencies = {
     fetchImpl: overrides.fetchImpl ?? fetch,
@@ -156,21 +236,42 @@ export async function runCli(
     stdout: overrides.stdout ?? console
   };
   const startBridge = overrides.startBridge ?? ((config) => runStartCommand(deps, config));
+  const connectDeps = {
+    ...deps,
+    ensureBridgeRunning: overrides.ensureBridgeRunning ?? ensureBridgeRunning,
+    execPath: overrides.execPath ?? process.execPath,
+    cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+    platform: overrides.platform ?? process.platform
+  };
 
   const parsed = parseArgs(argv);
 
   const handleUrl = parsed.flags.get("handle-url");
   if (handleUrl) {
     try {
-      const parsedUrl = parseConnectUrl(handleUrl);
-      const result = await runConnectCommand(
-        {
-          ...deps,
-          startBridge
-        },
-        parsedUrl
-      );
-      return result.exitCode;
+      const parsedUrl = parseBridgeUrl(handleUrl);
+      if (parsedUrl.kind === "connect") {
+        const result = await runConnectCommand(connectDeps, parsedUrl);
+        return result.exitCode;
+      }
+      const config = await deps.loadConfig();
+      const serverUrl = parsedUrl.server ?? config?.serverUrl;
+      if (!serverUrl) {
+        deps.stdout.error("Bridge is not paired yet. Pair before installing tools.");
+        return 1;
+      }
+      kickOffInstallTools({
+        serverUrl,
+        protocol: parsedUrl.protocol,
+        fetchImpl: deps.fetchImpl,
+        onStatus: (status) => {
+          if (status.status === "failed") {
+            deps.stdout.error(status.error ?? "Tool install failed.");
+          }
+        }
+      });
+      deps.stdout.log(`Installing ${parsedUrl.protocol} tools from ${serverUrl}...`);
+      return 0;
     } catch (error) {
       deps.stdout.error(error instanceof Error ? error.message : "Invalid bridge URL");
       return 1;
@@ -190,13 +291,7 @@ export async function runCli(
       deps.stdout.log(usage());
       return 1;
     }
-    const result = await runConnectCommand(
-      {
-        ...deps,
-        startBridge
-      },
-      { server, code }
-    );
+    const result = await runConnectCommand(connectDeps, { server, code });
     return result.exitCode;
   }
 
@@ -215,6 +310,24 @@ export async function runCli(
       cliPath: CLI_ENTRY_PATH,
       log: (message) => deps.stdout.log(message),
       error: (message) => deps.stdout.error(message)
+    });
+  }
+
+  if (parsed.command === "tools") {
+    if (parsed.toolsAction !== "install") {
+      deps.stdout.error("Missing tools action.");
+      deps.stdout.log(usage());
+      return 1;
+    }
+    const protocol = parsed.flags.get("protocol") ?? "all";
+    if (protocol !== "adb" && protocol !== "hdc" && protocol !== "all") {
+      deps.stdout.error("Protocol must be adb, hdc, or all.");
+      return 1;
+    }
+    return runToolsInstallCliCommand(deps, {
+      server: parsed.flags.get("server"),
+      protocol,
+      force: parsed.flags.get("force") === "true"
     });
   }
 

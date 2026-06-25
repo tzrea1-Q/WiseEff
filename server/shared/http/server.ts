@@ -287,6 +287,13 @@ export function createHttpServer(
       response.setHeader("X-Request-Id", requestId);
       if ("sse" in routeResponse) {
         await sendSse(response, routeResponse.sse);
+      } else if ("bytes" in routeResponse) {
+        response.statusCode = routeResponse.status;
+        response.setHeader("Content-Type", routeResponse.contentType);
+        if (routeResponse.fileName) {
+          response.setHeader("Content-Disposition", `attachment; filename="${routeResponse.fileName}"`);
+        }
+        response.end(routeResponse.bytes);
       } else if ("text" in routeResponse) {
         sendText(response, routeResponse.status, routeResponse.contentType, routeResponse.text);
       } else {

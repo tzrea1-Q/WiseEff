@@ -7623,6 +7623,39 @@ td small {
   font-size: 12px;
 }
 
+.local-device-bridge-tools-panel {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle, rgba(15, 23, 42, 0.12));
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.local-device-bridge-tools-panel__ok {
+  color: var(--status-success, #15803d);
+}
+
+.local-device-bridge-tools-panel__missing {
+  color: var(--status-danger, #b91c1c);
+}
+
+.local-device-bridge-tools-panel__details {
+  margin-top: 4px;
+}
+
+.local-device-bridge-tools-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.local-device-bridge-tools-panel__cli {
+  display: block;
+  margin-top: 8px;
+}
+
 .local-device-bridge-panel__management {
   border: 1px solid var(--outline);
   border-radius: 10px;
@@ -13131,6 +13164,47 @@ td small {
   100% {
     opacity: 0;
   }
+}
+
+.xiaoze-turn-timeline {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.xiaoze-turn-timeline__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 8px;
+  padding: 8px 10px;
+  border-radius: var(--xiaoze-radius-sm);
+  background: rgba(0, 104, 123, 0.06);
+  font-size: 12px;
+}
+
+.xiaoze-turn-timeline__label {
+  color: #0f172a;
+  font-weight: 600;
+}
+
+.xiaoze-turn-timeline__status {
+  color: #64748b;
+}
+
+.xiaoze-turn-timeline__summary {
+  grid-column: 1 / -1;
+  color: #475569;
+}
+
+.xiaoze-turn-timeline__item.is-running {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.xiaoze-turn-timeline__item.is-failed,
+.xiaoze-turn-timeline__item.is-forbidden {
+  background: rgba(239, 68, 68, 0.08);
 }
 
 /* ── Prompt debug (dev) ── */
