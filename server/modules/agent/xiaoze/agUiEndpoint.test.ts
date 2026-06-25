@@ -28,6 +28,37 @@ describe("createXiaozeAgUiHandler", () => {
     });
   });
 
+  it("ends reasoning before answer content when both are streamed", async () => {
+    const handler = createXiaozeAgUiHandler({
+      resolveAuth: async () =>
+        ({
+          organization: { id: "org1" },
+          user: { id: "u1", isActive: true },
+          permissions: [],
+          roles: []
+        }) as never,
+      createAgent: () => ({
+        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void } }) => {
+          sink?.push({ type: "reasoning_delta", delta: "thinking" });
+          sink?.push({ type: "answer_delta", delta: "hello" });
+          return { text: "hello", reasoning: "thinking", citations: [] };
+        })
+      })
+    });
+
+    const response = await handler({
+      headers: { authorization: "Bearer test" },
+      body: { threadId: "thread-stream", runId: "run-stream", messages: [{ role: "user", content: "你好" }] },
+      requestId: "req-stream"
+    });
+
+    const events = await collectSseEvents(response as { sse: AsyncIterable<{ event: string; data: unknown }> });
+    const reasoningEndIndex = events.findIndex((event) => event.event === EventType.REASONING_MESSAGE_END);
+    const answerIndex = events.findIndex((event) => event.event === EventType.TEXT_MESSAGE_CONTENT);
+    expect(reasoningEndIndex).toBeGreaterThanOrEqual(0);
+    expect(answerIndex).toBeGreaterThan(reasoningEndIndex);
+  });
+
   it("emits reasoning and answer events separately when reasoning is present", async () => {
     const handler = createXiaozeAgUiHandler({
       resolveAuth: async () =>

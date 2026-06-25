@@ -27,11 +27,22 @@ function formatDuration(seconds: number) {
 export function XiaozeReasoningMessage({ message, messages, isRunning, className }: XiaozeReasoningMessageProps) {
   const isStreaming = isXiaozeReasoningStreaming(message, messages, isRunning);
   const serverTiming = useXiaozeRunTiming(message.id);
-  const hasContent = !!(message.content && message.content.length > 0);
+  const content = typeof message.content === "string" ? message.content : "";
+  const hasContent = content.length > 0;
   const startTimeRef = useRef<number | null>(null);
+  const prevStreamingRef = useRef(isStreaming);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const userToggledRef = useRef(false);
-  const [isOpen, setIsOpen] = useState(isStreaming || (xiaozeReasoningDevExpanded && hasContent));
+  const [isOpen, setIsOpen] = useState(xiaozeReasoningDevExpanded && hasContent);
+
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      setIsOpen(false);
+      userToggledRef.current = false;
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming]);
 
   useEffect(() => {
     if (serverTiming) {
@@ -56,14 +67,19 @@ export function XiaozeReasoningMessage({ message, messages, isRunning, className
 
   useEffect(() => {
     if (isStreaming) {
-      userToggledRef.current = false;
-      setIsOpen(true);
       return;
     }
     if (!userToggledRef.current) {
       setIsOpen(xiaozeReasoningDevExpanded && hasContent);
     }
   }, [hasContent, isStreaming]);
+
+  useEffect(() => {
+    if (!isOpen || !isStreaming || !bodyRef.current) {
+      return;
+    }
+    bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
+  }, [content, isOpen, isStreaming]);
 
   if (!hasContent && !isStreaming) {
     return null;
@@ -98,7 +114,12 @@ export function XiaozeReasoningMessage({ message, messages, isRunning, className
         <span className="xiaoze-reasoning-message__label">{label}</span>
         <ChevronDown size={16} className={isOpen ? "xiaoze-reasoning-message__chevron is-open" : "xiaoze-reasoning-message__chevron"} />
       </button>
-      {isOpen ? <div className="xiaoze-reasoning-message__body">{message.content}</div> : null}
+      {isOpen ? (
+        <div ref={bodyRef} className="xiaoze-reasoning-message__body">
+          {hasContent ? content : null}
+          {isStreaming ? <span className="xiaoze-reasoning-message__cursor" aria-hidden="true" /> : null}
+        </div>
+      ) : null}
     </section>
   );
 }

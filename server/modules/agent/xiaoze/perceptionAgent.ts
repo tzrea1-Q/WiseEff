@@ -1,5 +1,7 @@
 import type { AgentToolResult } from "../types";
-import { mergeReasoningText, splitAssistantContent } from "./splitAssistantContent";
+import { classifyStreamingModelContent, looksLikeInternalReasoning, mergeReasoningText, splitAssistantContent } from "./splitAssistantContent";
+
+export { looksLikeInternalReasoning } from "./splitAssistantContent";
 import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
 import { createPlanningAgent, type PlanningApprovalBridge } from "./planningGraph";
 import type { XiaozePromptDebugSnapshot } from "./promptDebug";
@@ -154,6 +156,64 @@ export function normalizeModelResponse(response: Pick<PerceptionModelResponse, "
   };
 }
 
+export function appendStreamText(previous: string, incoming: string): { next: string; delta: string } {
+  if (!incoming) {
+    return { next: previous, delta: "" };
+  }
+  if (previous && incoming.startsWith(previous)) {
+    return { next: incoming, delta: incoming.slice(previous.length) };
+  }
+  if (previous && previous.startsWith(incoming)) {
+    return { next: previous, delta: "" };
+  }
+  return { next: previous + incoming, delta: incoming };
+}
+
+export function isLikelyUserFacingAnswerDelta(delta: string, reasoningSoFar: string) {
+  const trimmed = delta.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (!reasoningSoFar.trim()) {
+    return !looksLikeInternalReasoning(trimmed);
+  }
+  if (looksLikeInternalReasoning(reasoningSoFar) && /[\u4e00-\u9fff]/.test(trimmed)) {
+    return true;
+  }
+  if (/^(你好|您好|我是|Hi[!.]?|Hello)/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+export function shouldBeginAnswerPhase(input: {
+  answerPhase: boolean;
+  sawReasoningMetadata: boolean;
+  chunkHasReasoningMetadata: boolean;
+  reasoningFromContent: string;
+  rawContent: string;
+  delta: string;
+}) {
+  if (input.answerPhase) {
+    return true;
+  }
+  if (input.chunkHasReasoningMetadata) {
+    return false;
+  }
+  if (input.sawReasoningMetadata && input.rawContent) {
+    return true;
+  }
+  if (
+    input.reasoningFromContent &&
+    input.rawContent &&
+    !input.rawContent.startsWith(input.reasoningFromContent) &&
+    input.rawContent.length < input.reasoningFromContent.length
+  ) {
+    return true;
+  }
+  return isLikelyUserFacingAnswerDelta(input.delta, input.reasoningFromContent);
+}
+
 function readReasoningFromLangChainResponse(response: {
   content?: unknown;
   additional_kwargs?: Record<string, unknown>;
@@ -244,8 +304,10 @@ export function wrapLangChainChatModel(model: {
         return;
       }
 
-      let reasoning = "";
-      let answer = "";
+      let contentBuffer = "";
+      let emittedReasoningLength = 0;
+      let emittedAnswerLength = 0;
+      let reasoningFromMetadata = "";
       let latestToolCalls: PerceptionModelToolCall[] | undefined;
       const stream = await model.stream(messages);
       for await (const chunk of stream) {
@@ -253,22 +315,40 @@ export function wrapLangChainChatModel(model: {
         if (mappedToolCalls?.length) {
           latestToolCalls = mappedToolCalls;
         }
-        const chunkReasoning = readReasoningFromLangChainResponse(chunk);
-        if (chunkReasoning) {
-          const delta = chunkReasoning.startsWith(reasoning)
-            ? chunkReasoning.slice(reasoning.length)
-            : chunkReasoning;
+
+        const chunkReasoningFull = readReasoningFromLangChainResponse(chunk);
+        if (chunkReasoningFull) {
+          const { next, delta } = appendStreamText(reasoningFromMetadata, chunkReasoningFull);
           if (delta) {
-            reasoning = chunkReasoning;
-            yield { reasoningDelta: delta };
+            reasoningFromMetadata = next;
           }
         }
+
         const rawContent = typeof chunk.content === "string" ? chunk.content : "";
         if (rawContent) {
-          const delta = rawContent.startsWith(answer) ? rawContent.slice(answer.length) : rawContent;
-          if (delta) {
-            answer += delta;
-            yield { answerDelta: delta };
+          contentBuffer = appendStreamText(contentBuffer, rawContent).next;
+        }
+
+        if (!chunkReasoningFull && !rawContent) {
+          continue;
+        }
+
+        const split = classifyStreamingModelContent(contentBuffer);
+        const combinedReasoning = mergeReasoningText(reasoningFromMetadata, split.reasoning);
+
+        if (combinedReasoning.length > emittedReasoningLength) {
+          const reasoningDelta = combinedReasoning.slice(emittedReasoningLength);
+          emittedReasoningLength = combinedReasoning.length;
+          if (reasoningDelta) {
+            yield { reasoningDelta };
+          }
+        }
+
+        if (split.answer.length > emittedAnswerLength) {
+          const answerDelta = split.answer.slice(emittedAnswerLength);
+          emittedAnswerLength = split.answer.length;
+          if (answerDelta) {
+            yield { answerDelta };
           }
         }
       }
