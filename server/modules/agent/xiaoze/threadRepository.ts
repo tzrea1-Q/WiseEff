@@ -1,4 +1,5 @@
 import type { Queryable } from "../../../shared/database/client";
+import { serializePostgresJsonb } from "../../../shared/database/jsonb";
 import type { AgentCitation, AgentContext, AgentMessageDto } from "../types";
 import { getAgentSession, listAgentMessages } from "../repository";
 
@@ -315,9 +316,9 @@ async function appendAgentMessageIdempotent(db: Queryable, input: XiaozePersista
       input.organizationId,
       input.role,
       input.content,
-      JSON.stringify(input.citations ?? []),
+      serializePostgresJsonb(input.citations ?? [], "array"),
       null,
-      JSON.stringify(input.metadata ?? {})
+      serializePostgresJsonb(input.metadata ?? {})
     ]
   );
 }
@@ -362,7 +363,7 @@ export async function persistXiaozeTurnMessages(db: Queryable, input: PersistXia
         input.actorUserId,
         XIAOZE_PAGE_KEY,
         input.pageContext.roleId ?? null,
-        JSON.stringify(context),
+        serializePostgresJsonb(context),
         title
       ]
     );
@@ -388,7 +389,7 @@ export async function persistXiaozeTurnMessages(db: Queryable, input: PersistXia
       and page_key = $6
       and status = 'active'
     `,
-    [title, JSON.stringify(context), input.organizationId, input.actorUserId, input.threadId, XIAOZE_PAGE_KEY]
+    [title, serializePostgresJsonb(context), input.organizationId, input.actorUserId, input.threadId, XIAOZE_PAGE_KEY]
   );
 
   return true;

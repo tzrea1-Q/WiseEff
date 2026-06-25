@@ -137,6 +137,33 @@ describe("xiaoze threadRepository", () => {
     expect(calls.some((call) => call.text.includes("update agent_sessions"))).toBe(true);
   });
 
+  it("sanitizes lone surrogate citations before persisting jsonb", async () => {
+    const { db, calls } = createRecordingDb();
+
+    await persistXiaozeTurnMessages(db, {
+      organizationId: "org-1",
+      actorUserId: "user-1",
+      threadId: "thread-surrogate",
+      runId: "run-1",
+      pageContext: { pageKey: "parameters", projectId: "aurora", path: "/parameters" },
+      messages: [
+        { id: "msg-user", role: "user", content: "search params" },
+        {
+          id: "msg-assistant",
+          role: "assistant",
+          content: "found one",
+          citations: [{ type: "parameter", id: "p-1", label: "Battery", snippet: "\uD800" }],
+          metadata: { runSteps: [{ id: "s1", summary: "done\uDFFF" }] }
+        }
+      ]
+    });
+
+    const insertMessages = calls.filter((call) => call.text.includes("insert into agent_messages"));
+    const assistantInsert = insertMessages.find((call) => call.values[3] === "assistant");
+    expect(assistantInsert?.values[5]).toBe('[{"type":"parameter","id":"p-1","label":"Battery","snippet":"\uFFFD"}]');
+    expect(assistantInsert?.values[7]).toContain('"summary":"done\uFFFD"');
+  });
+
   it("archives and renames owned threads", async () => {
     const { db: archiveDb, calls: archiveCalls } = createRecordingDb([], 1);
     await expect(archiveXiaozeThread(archiveDb, "org-1", "user-1", "thread-1")).resolves.toBe(true);

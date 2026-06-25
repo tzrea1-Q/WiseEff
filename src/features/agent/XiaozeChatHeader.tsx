@@ -65,13 +65,13 @@ export function XiaozeChatHeader({ closeButton }: XiaozeChatHeaderProps) {
         </div>
         <div className="xiaoze-chat-header__actions xiaoze-chat-header__actions--end">{closeButton}</div>
       </header>
-      {historyOpen ? (
+      <div className={`xiaoze-thread-history-shell${historyOpen ? " is-open" : ""}`} aria-hidden={!historyOpen}>
         <XiaozeThreadHistoryPanel
           activeThreadId={activeThreadId}
           onSelectThread={handleSelectThread}
           onDeleteThread={handleDeleteThread}
         />
-      ) : null}
+      </div>
     </div>
   );
 }

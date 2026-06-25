@@ -5,15 +5,30 @@ import { getXiaozeThread } from "@/infrastructure/http/xiaozeThreadsClient";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { clearXiaozePromptDebugStore } from "./XiaozePromptDebugContext";
 import { readActiveXiaozeThreadStoreSnapshot, useXiaozeThreads } from "./XiaozeThreadContext";
+import { isKnownPersistedThread } from "./xiaozeThreadStorage";
 
 const isApiRuntime = wiseEffRuntimeMode === "api";
+
+function mapThreadMessages(messages: Awaited<ReturnType<typeof getXiaozeThread>>["messages"]): Message[] {
+  return messages
+    .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "reasoning")
+    .map(
+      (message) =>
+        ({
+          id: message.id,
+          role: message.role,
+          content: message.content,
+          ...(message.metadata ? { metadata: message.metadata } : {})
+        }) as Message
+    );
+}
 
 export function XiaozeThreadController() {
   const { agent } = useAgent({
     agentId: "default",
     updates: [UseAgentUpdate.OnMessagesChanged]
   });
-  const { activeThreadId, persistActiveThread } = useXiaozeThreads();
+  const { activeThreadId, persistActiveThread, threads, threadsHydrated } = useXiaozeThreads();
   const persistActiveThreadRef = useRef(persistActiveThread);
   const loadedThreadRef = useRef<string | null>(null);
   const skipNextPersistRef = useRef(false);
@@ -24,36 +39,28 @@ export function XiaozeThreadController() {
     if (loadedThreadRef.current === activeThreadId) {
       return;
     }
+    if (isApiRuntime && !threadsHydrated) {
+      return;
+    }
+
     skipNextPersistRef.current = true;
 
     if (isApiRuntime) {
-      let cancelled = false;
-      const knownThread = readActiveXiaozeThreadStoreSnapshot().threads.some((thread) => thread.id === activeThreadId);
-      if (!knownThread) {
+      if (!isKnownPersistedThread(threads, activeThreadId)) {
         agent.setMessages([]);
         loadedThreadRef.current = activeThreadId;
         clearXiaozePromptDebugStore();
         return;
       }
 
+      let cancelled = false;
+
       getXiaozeThread(activeThreadId)
         .then((thread) => {
           if (cancelled) {
             return;
           }
-          agent.setMessages(
-            thread.messages
-              .filter((message) => message.role === "user" || message.role === "assistant" || message.role === "reasoning")
-              .map(
-                (message) =>
-                  ({
-                    id: message.id,
-                    role: message.role,
-                    content: message.content,
-                    ...(message.metadata ? { metadata: message.metadata } : {})
-                  }) as Message
-              )
-          );
+          agent.setMessages(mapThreadMessages(thread.messages));
           loadedThreadRef.current = activeThreadId;
           clearXiaozePromptDebugStore();
         })
@@ -75,7 +82,7 @@ export function XiaozeThreadController() {
     agent.setMessages(savedMessages as Message[]);
     loadedThreadRef.current = activeThreadId;
     clearXiaozePromptDebugStore();
-  }, [activeThreadId, agent]);
+  }, [activeThreadId, agent, threads, threadsHydrated]);
 
   useEffect(() => {
     if (loadedThreadRef.current !== activeThreadId) {

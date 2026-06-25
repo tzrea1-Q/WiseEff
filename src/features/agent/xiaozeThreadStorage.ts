@@ -1,11 +1,21 @@
 import type { Message } from "@ag-ui/core";
 import {
+  XIAOZE_ACTIVE_THREAD_SESSION_KEY,
   XIAOZE_THREAD_MAX_COUNT,
   XIAOZE_THREAD_STORAGE_KEY,
   type XiaozeStoredMessage,
   type XiaozeThreadRecord,
   type XiaozeThreadStoreSnapshot
 } from "./xiaozeThreadTypes";
+
+export type XiaozeApiThreadListItem = {
+  id: string;
+  title: string;
+  preview: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+};
 
 const PERSISTABLE_ROLES = new Set(["user", "assistant", "reasoning"]);
 
@@ -79,12 +89,64 @@ export function buildThreadRecord(threadId: string, messages: XiaozeStoredMessag
     preview: deriveThreadPreview(messages),
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    messages
+    messages,
+    messageCount: messages.length > 0 ? messages.length : existing?.messageCount
   };
 }
 
 export function isHistoricalThread(thread: XiaozeThreadRecord) {
-  return thread.messages.length > 0;
+  return thread.messages.length > 0 || (thread.messageCount ?? 0) > 0;
+}
+
+export function hasPersistedThreadContent(thread: XiaozeThreadRecord | undefined) {
+  if (!thread) {
+    return false;
+  }
+  return isHistoricalThread(thread);
+}
+
+export function isKnownPersistedThread(threads: XiaozeThreadRecord[], threadId: string) {
+  return hasPersistedThreadContent(threads.find((thread) => thread.id === threadId));
+}
+
+export function mapApiThreadListItem(item: XiaozeApiThreadListItem): XiaozeThreadRecord {
+  return {
+    id: item.id,
+    title: item.title,
+    preview: item.preview,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    messages: [],
+    messageCount: item.messageCount
+  };
+}
+
+export function mergeApiThreadList(items: XiaozeApiThreadListItem[], activeThreadId: string): XiaozeThreadStoreSnapshot {
+  return {
+    activeThreadId,
+    threads: items.map(mapApiThreadListItem)
+  };
+}
+
+export function readApiActiveThreadId(storage: Pick<Storage, "getItem"> = sessionStorage): string | null {
+  try {
+    const value = storage.getItem(XIAOZE_ACTIVE_THREAD_SESSION_KEY)?.trim();
+    return value || null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeApiActiveThreadId(threadId: string, storage: Pick<Storage, "setItem"> = sessionStorage) {
+  try {
+    storage.setItem(XIAOZE_ACTIVE_THREAD_SESSION_KEY, threadId);
+  } catch {
+    // Ignore storage failures; in-memory state still works for the current tab.
+  }
+}
+
+export function createApiThreadSnapshot(activeThreadId = readApiActiveThreadId() ?? createThreadId()): XiaozeThreadStoreSnapshot {
+  return createEmptyThreadSnapshot(activeThreadId);
 }
 
 export function listHistoricalThreads(threads: XiaozeThreadRecord[]) {
@@ -165,5 +227,26 @@ export function removeThreadFromSnapshot(snapshot: XiaozeThreadStoreSnapshot, th
   return {
     activeThreadId: snapshot.activeThreadId,
     threads: snapshot.threads.filter((thread) => thread.id !== threadId)
+  };
+}
+
+export function planThreadDeletion(
+  snapshot: XiaozeThreadStoreSnapshot,
+  threadId: string,
+  currentMessages: Message[],
+  createId = createThreadId
+): { next: XiaozeThreadStoreSnapshot; deletingActive: boolean } {
+  const deletingActive = threadId === snapshot.activeThreadId;
+  const persisted = deletingActive
+    ? removeThreadFromSnapshot(snapshot, threadId)
+    : removeThreadFromSnapshot(finalizeActiveThread(snapshot, currentMessages), threadId);
+  const nextActiveId = deletingActive ? createId() : persisted.activeThreadId;
+
+  return {
+    deletingActive,
+    next: {
+      activeThreadId: nextActiveId,
+      threads: persisted.threads
+    }
   };
 }

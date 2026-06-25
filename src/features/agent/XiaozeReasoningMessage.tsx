@@ -114,12 +114,12 @@ export function XiaozeReasoningMessage({ message, messages, isRunning, className
         <span className="xiaoze-reasoning-message__label">{label}</span>
         <ChevronDown size={16} className={isOpen ? "xiaoze-reasoning-message__chevron is-open" : "xiaoze-reasoning-message__chevron"} />
       </button>
-      {isOpen ? (
+      <div className={`xiaoze-reasoning-message__body-shell${isOpen ? " is-open" : ""}`} aria-hidden={!isOpen}>
         <div ref={bodyRef} className="xiaoze-reasoning-message__body">
           {hasContent ? content : null}
           {isStreaming ? <span className="xiaoze-reasoning-message__cursor" aria-hidden="true" /> : null}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

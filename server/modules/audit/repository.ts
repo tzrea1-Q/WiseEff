@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { serializePostgresJsonb } from "../../shared/database/jsonb";
 import type { CreateAuditEventInput } from "./types";
 import type { AuditEventListItemDto, ListAuditEventsQuery, ListAuditEventsResult } from "./listTypes";
 
@@ -61,7 +62,7 @@ export async function createAuditEvent(db: Queryable, input: CreateAuditEventInp
       input.severity,
       input.targetType,
       input.targetId,
-      JSON.stringify(input.metadata),
+      serializePostgresJsonb(input.metadata ?? {}),
       input.traceId
     ]
   );

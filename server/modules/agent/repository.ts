@@ -1,4 +1,5 @@
 import type { Queryable } from "../../shared/database/client";
+import { serializePostgresJsonb } from "../../shared/database/jsonb";
 import type {
   AgentApprovalDto,
   AgentApprovalStatus,
@@ -295,7 +296,7 @@ export async function createAgentSession(db: Queryable, input: CreateAgentSessio
       input.actorUserId,
       input.pageKey,
       input.roleId ?? null,
-      JSON.stringify(input.context),
+      serializePostgresJsonb(input.context),
       input.title
     ]
   );
@@ -334,7 +335,7 @@ export async function appendAgentMessage(db: Queryable, input: AppendAgentMessag
       input.organizationId,
       input.role,
       input.content,
-      JSON.stringify(input.citations ?? []),
+      serializePostgresJsonb(input.citations ?? [], "array"),
       input.confidence ?? null
     ]
   );
@@ -386,7 +387,7 @@ export async function createAgentRunTrace(db: Queryable, input: CreateAgentRunTr
       input.outputTokens ?? null,
       input.estimatedCostUsd ?? null,
       input.safetyStatus ?? null,
-      input.safetyReasons ? JSON.stringify(input.safetyReasons) : null,
+      input.safetyReasons ? serializePostgresJsonb(input.safetyReasons, "array") : null,
       input.fallbackReason ?? null
     ]
   );
@@ -407,7 +408,7 @@ export async function createAgentToolCall(db: Queryable, input: CreateAgentToolC
       input.projectId ?? null,
       input.name,
       input.label,
-      JSON.stringify(input.payload ?? {}),
+      serializePostgresJsonb(input.payload ?? {}),
       input.requiresApproval,
       input.status
     ]
@@ -441,10 +442,10 @@ export async function updateAgentToolCall(
       organizationId,
       toolCallId,
       input.status ?? null,
-      input.result === undefined ? null : JSON.stringify(input.result),
+      input.result === undefined ? null : serializePostgresJsonb(input.result),
       input.errorMessage ?? null,
       input.auditEventId ?? null,
-      input.payload === undefined ? null : JSON.stringify(input.payload)
+      input.payload === undefined ? null : serializePostgresJsonb(input.payload)
     ]
   );
 
