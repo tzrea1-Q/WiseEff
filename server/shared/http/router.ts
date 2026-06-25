@@ -20,6 +20,11 @@ export type RouteResponse = {
   text: string;
   contentType: string;
 } | {
+  status: number;
+  bytes: Buffer;
+  contentType: string;
+  fileName?: string;
+} | {
   status: 200;
   sse: AsyncIterable<{ event: string; data: unknown }>;
 };

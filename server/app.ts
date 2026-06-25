@@ -20,6 +20,7 @@ import { createPairingService } from "./modules/deviceBridge/pairingService";
 import { loadLatestBridgeReleaseManifest } from "./modules/deviceBridge/releaseManifest";
 import { loadLatestBridgeToolReleaseManifest } from "./modules/deviceBridge/toolReleaseManifest";
 import { registerDeviceBridgeRoutes } from "./modules/deviceBridge/routes";
+import { registerDeviceBridgeDownloadRoutes } from "./modules/deviceBridge/downloadRoutes";
 import type { DeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modules/deviceBridge/wsHandler";
 import { registerLogRoutes } from "./modules/logs/routes";
@@ -148,6 +149,10 @@ export function createWiseEffServer(
     getCurrentAuthContext: authResolver
   });
   registerDeviceBridgeRoutes(router, buildDeviceBridgeRouteOptions(options, authResolver));
+  registerDeviceBridgeDownloadRoutes(router, {
+    artifactRoot: options.deviceBridge?.artifactRoot ?? options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT,
+    toolArtifactRoot: options.deviceBridge?.toolArtifactRoot ?? options.env?.DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT
+  });
   registerAgentRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver,
