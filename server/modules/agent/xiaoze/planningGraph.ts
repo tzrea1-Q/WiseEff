@@ -21,6 +21,7 @@ import type {
   PerceptionToolDescriptor
 } from "./perceptionAgent";
 import { invokeModelTurnWithStreaming, invokeModelWithStreaming } from "./perceptionAgent";
+import { mergeReasoningText } from "./splitAssistantContent";
 import { formatToolCatalogForSystemPrompt, getXiaozeToolLabel } from "./toolCatalog";
 import { buildXiaozePromptDebugSnapshot } from "./promptDebug";
 import { startRunStep, type RunEventSink } from "./runEventSink";
@@ -211,15 +212,15 @@ export function createPlanningAgent(options: {
       if (chunk.reasoningDelta) {
         pushSink({ type: "reasoning_delta", delta: chunk.reasoningDelta });
       }
-      if (chunk.answerDelta) {
-        pushSink({ type: "answer_delta", delta: chunk.answerDelta });
-      }
     });
     if (!response.toolCalls?.length) {
       const answer = response.content?.trim();
+      if (answer) {
+        pushSink({ type: "answer_delta", delta: answer });
+      }
       return {
         text: response.content,
-        reasoning: response.reasoning,
+        reasoning: mergeReasoningText(state.reasoning, response.reasoning),
         messages: answer ? [...state.messages, { role: "assistant", content: answer }] : state.messages,
         step: state.step + 1
       };
@@ -285,6 +286,7 @@ export function createPlanningAgent(options: {
         messages,
         perceivedCitations: citations,
         pendingMutatingCall: pendingMutating,
+        reasoning: mergeReasoningText(state.reasoning, response.reasoning),
         turnCount: state.turnCount + 1
       };
     }
@@ -292,6 +294,7 @@ export function createPlanningAgent(options: {
     return {
       messages,
       perceivedCitations: citations,
+      reasoning: mergeReasoningText(state.reasoning, response.reasoning),
       turnCount: state.turnCount + 1
     };
   }
@@ -371,7 +374,7 @@ export function createPlanningAgent(options: {
     if (normalized.answer || normalized.reasoning) {
       return {
         text: normalized.answer,
-        reasoning: normalized.reasoning,
+        reasoning: mergeReasoningText(state.reasoning, normalized.reasoning),
         step: state.step + 1
       };
     }

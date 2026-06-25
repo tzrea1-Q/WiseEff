@@ -119,3 +119,58 @@ describe("invokeModelTurnWithStreaming", () => {
     expect(response.toolCalls?.[0]?.name).toBe("perception.getProjectOverview");
   });
 });
+
+describe("planningGraph perceive answer streaming", () => {
+  it("does not stream perceive answer deltas when the model chooses tools", async () => {
+    const sink = createRunEventSink();
+    const runTool = vi.fn().mockResolvedValue({ summary: "4 parameters", data: {}, citations: [] });
+    const model: PerceptionChatModel = {
+      async invoke() {
+        return {
+          content: "我来帮您搜索参数。",
+          toolCalls: [{ id: "tc-1", name: "perception.searchParameters", args: { projectId: "aurora", query: "charge" } }]
+        };
+      },
+      async *stream() {
+        yield { answerDelta: "我来帮您搜索参数。" };
+        yield { toolCalls: [{ id: "tc-1", name: "perception.searchParameters", args: { projectId: "aurora", query: "charge" } }] };
+      }
+    };
+    const agent = createPlanningAgent({
+      model,
+      runTool,
+      listTools: () => [{ name: "perception.searchParameters", description: "x", schema: {} }],
+      checkpointer: createXiaozeCheckpointer()
+    });
+
+    const answerDeltas: string[] = [];
+    const resultPromise = agent.run({
+      message: "charge 参数有哪些？",
+      context: { projectId: "aurora" },
+      threadId: "t-no-perceive-answer",
+      sink
+    });
+
+    while (true) {
+      const events = await sink.drain(20);
+      for (const event of events) {
+        if (event.type === "answer_delta") {
+          answerDeltas.push(event.delta);
+        }
+      }
+      if (
+        await Promise.race([
+          resultPromise.then(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), events.length === 0 ? 80 : 0))
+        ])
+      ) {
+        sink.close();
+        await sink.drain(0);
+        break;
+      }
+    }
+
+    await resultPromise;
+    expect(answerDeltas.join("")).not.toContain("我来帮您");
+  });
+});

@@ -13039,6 +13039,15 @@ body.xiaoze-popup-resize-active {
 
 .copilotKitPopup .copilotKitMessages {
   padding: 8px 16px 120px;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.copilotKitPopup .xiaoze-chat-scroll > div {
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .copilotKitPopup .xiaoze-chat-scroll {
@@ -13047,24 +13056,47 @@ body.xiaoze-popup-resize-active {
   overscroll-behavior: contain;
   scroll-padding-bottom: 24px;
   -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+}
+
+.copilotKitPopup .xiaoze-md-root,
+.copilotKitPopup .xiaoze-assistant-markdown,
+.copilotKitPopup .xiaoze-streaming-markdown,
+.copilotKitPopup .xiaoze-chat-scroll .copilotKitMarkdown {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.copilotKitPopup .xiaoze-assistant-markdown [data-streamdown="list-item"],
+.copilotKitPopup .xiaoze-assistant-markdown [data-streamdown="ordered-list"],
+.copilotKitPopup .xiaoze-assistant-markdown [data-streamdown="unordered-list"],
+.copilotKitPopup .xiaoze-assistant-markdown p {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.copilotKitPopup .xiaoze-assistant-markdown [data-streamdown="list-item"] > p {
+  display: inline;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .copilotKitPopup .xiaoze-chat-scroll .copilotKitMarkdown pre,
-.copilotKitPopup .xiaoze-chat-scroll .copilotKitMarkdown table,
-.copilotKitPopup .xiaoze-streaming-markdown pre,
-.copilotKitPopup .xiaoze-streaming-markdown table {
+.copilotKitPopup .xiaoze-streaming-markdown pre {
   display: block;
   max-width: 100%;
   overflow-x: auto;
-}
-
-.copilotKitPopup .xiaoze-chat-scroll .copilotKitMarkdown table {
-  width: max-content;
-  min-width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .xiaoze-streaming-markdown {
-  display: inline;
+  display: block;
   color: #1e293b;
   font-size: 14px;
   line-height: 1.65;
@@ -13114,6 +13146,8 @@ body.xiaoze-popup-resize-active {
 .xiaoze-message-view {
   display: grid;
   gap: 12px;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .xiaoze-message-view[data-empty="true"] {
@@ -13242,9 +13276,11 @@ body.xiaoze-popup-resize-active {
 }
 
 .xiaoze-chat-header__brand {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-self: center;
+  gap: 4px;
 }
 
 .xiaoze-chat-header__title {
@@ -13550,18 +13586,30 @@ body.xiaoze-popup-resize-active {
   font-weight: 700;
 }
 
+.xiaoze-turn-block__steps-inline {
+  margin-left: 8px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .xiaoze-assistant-message.copilotKitAssistantMessage {
   padding: 12px 14px;
   border: 1px solid var(--xiaoze-border);
   border-radius: 4px 18px 18px 18px;
   background: rgba(255, 255, 255, 0.88);
   box-shadow: var(--xiaoze-shadow-soft);
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .xiaoze-assistant-message.copilotKitAssistantMessage .copilotKitMarkdown {
   color: #1e293b;
   font-size: 14px;
   line-height: 1.65;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* ── Reasoning ── */
@@ -13684,6 +13732,169 @@ body.xiaoze-popup-resize-active {
   100% {
     opacity: 0;
   }
+}
+
+.xiaoze-reasoning-message__timeline {
+  margin-top: 8px;
+}
+
+.xiaoze-turn-block {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.xiaoze-turn-block__answer {
+  display: grid;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.xiaoze-turn-block__steps--live {
+  margin-top: 0;
+}
+
+.xiaoze-turn-block__steps-panel {
+  margin-top: 2px;
+}
+
+.xiaoze-turn-block__steps-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 104, 123, 0.12);
+  border-radius: var(--xiaoze-radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+  color: #475569;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.xiaoze-turn-block__steps-toggle svg {
+  transition: transform 180ms ease;
+}
+
+.xiaoze-turn-block__steps-toggle svg.is-open {
+  transform: rotate(180deg);
+}
+
+.xiaoze-turn-block__steps-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 220ms ease;
+}
+
+.xiaoze-turn-block__steps-panel.is-open .xiaoze-turn-block__steps-body {
+  grid-template-rows: 1fr;
+}
+
+.xiaoze-turn-block__steps-body > .xiaoze-turn-timeline {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.xiaoze-turn-block__steps-panel.is-open .xiaoze-turn-block__steps-body > .xiaoze-turn-timeline {
+  margin-top: 8px;
+}
+
+.xiaoze-turn-block__dev-reasoning {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: var(--xiaoze-radius-sm);
+  background: rgba(248, 250, 252, 0.9);
+  color: #64748b;
+  font-size: 12px;
+}
+
+.xiaoze-turn-block__prompt-debug {
+  margin-top: 6px;
+}
+
+.xiaoze-turn-block__reasoning {
+  margin-top: 6px;
+}
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--xiaoze-radius-sm);
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.xiaoze-turn-phase-strip__status {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.xiaoze-turn-phase-strip__steps {
+  margin: 0;
+}
+
+.xiaoze-dev-tools {
+  margin-left: 8px;
+}
+
+.xiaoze-dev-tools__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.8);
+  color: #64748b;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.xiaoze-dev-tools__chevron {
+  transition: transform 160ms ease;
+}
+
+.xiaoze-dev-tools__chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.xiaoze-dev-tools__body {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 12px;
+  z-index: 30;
+  width: min(420px, calc(100vw - 24px));
+  max-height: 50vh;
+  overflow: auto;
+  padding: 8px;
+  border-radius: var(--xiaoze-radius-sm);
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+}
+
+.xiaoze-dev-tools__reasoning {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.xiaoze-dev-tools__reasoning pre {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.xiaoze-turn-block__dev-reasoning pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .xiaoze-turn-timeline {

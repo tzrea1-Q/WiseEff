@@ -22,6 +22,12 @@ import { XiaozePopupOpenPolicy } from "./XiaozePopupOpenPolicy";
 import { XiaozeMessageView } from "./XiaozeMessageView";
 import { XiaozeRunTimingCapture } from "./XiaozeRunTimingCapture";
 import { XiaozeRunTimingProvider } from "./XiaozeRunTimingContext";
+import { XiaozeRunStepsCapture } from "./XiaozeRunStepsCapture";
+import { XiaozeRunStepsProvider } from "./XiaozeRunStepsContext";
+import { XiaozeTurnReplyCapture } from "./XiaozeTurnReplyCapture";
+import { XiaozeTurnReplyProvider } from "./XiaozeTurnReplyContext";
+import { XiaozeTurnStateProvider } from "./XiaozeTurnStateContext";
+import { XiaozeTurnStateCapture } from "./XiaozeTurnStateCapture";
 import { XiaozePromptDebugCapture } from "./XiaozePromptDebugCapture";
 import { XiaozePromptDebugProvider } from "./XiaozePromptDebugContext";
 import { XiaozePromptDebugRequestRegistrar } from "./XiaozePromptDebugRegistrar";
@@ -116,13 +122,22 @@ export function XiaozeProvider({
       <CopilotKit enableInspector={enableInspector} selfManagedAgents={{ default: xiaozeAgent }}>
         <XiaozeThreadProvider>
           <XiaozeRunTimingProvider>
-            {children}
-            <XiaozeRuntimeTools />
-            <XiaozeThreadController />
-            <XiaozePromptDebugRequestRegistrar />
-            <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
-            <XiaozeRunTimingCapture />
-            <XiaozeCopilotPopupHost />
+            <XiaozeRunStepsProvider>
+              <XiaozeTurnReplyProvider>
+                <XiaozeTurnStateProvider>
+                  {children}
+                  <XiaozeRuntimeTools />
+                  <XiaozeThreadController />
+                  <XiaozePromptDebugRequestRegistrar />
+                  <XiaozePromptDebugCapture enabled={xiaozePromptDebugEnabled} />
+                  <XiaozeRunTimingCapture />
+                  <XiaozeRunStepsCapture />
+                  <XiaozeTurnReplyCapture />
+                  <XiaozeTurnStateCapture />
+                  <XiaozeCopilotPopupHost />
+                </XiaozeTurnStateProvider>
+              </XiaozeTurnReplyProvider>
+            </XiaozeRunStepsProvider>
           </XiaozeRunTimingProvider>
         </XiaozeThreadProvider>
       </CopilotKit>

@@ -1,15 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { stripEmbeddedThinking, stripEmbeddedThinkingForStream } from "./xiaozeMessageContent";
+import { dedupeRepeatedAnswerText } from "./xiaozeMessageContent";
 
-const OPEN = `<${"redacted"}_${"thinking"}>`;
-const CLOSE = `</${"redacted"}_${"thinking"}>`;
+describe("dedupeRepeatedAnswerText", () => {
+  it("removes a repeated Chinese answer body", () => {
+    const intro = "我来帮您搜索参数。";
+    const body =
+      "在 aurora 项目中，搜索 charge 关键词共找到 4 个相关参数，分布在两个模块下。\n\n## Charging Policy\n\n表格内容省略。";
+    const duplicate = `${intro}${body}\n\n${body}`;
 
-describe("stripEmbeddedThinking", () => {
-  it("removes redacted thinking blocks from assistant text", () => {
-    expect(stripEmbeddedThinking(`${OPEN}internal${CLOSE}\n我是小泽。`)).toBe("我是小泽。");
-  });
-
-  it("keeps streaming text stable without trimming whitespace", () => {
-    expect(stripEmbeddedThinkingForStream("  第一行\n")).toBe("  第一行\n");
+    const result = dedupeRepeatedAnswerText(duplicate);
+    expect(result).toContain("在 aurora 项目中");
+    expect(result).not.toMatch(/在 aurora 项目中[\s\S]*在 aurora 项目中/);
+    expect(result.length).toBeLessThan(duplicate.length);
   });
 });

@@ -1,0 +1,104 @@
+/* Scoped markdown table layout for the Xiaoze popup (overrides global `table { min-width: 780px }`). */
+
+.copilotKitPopup .xiaoze-md-table-wrapper {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0 !important;
+  box-sizing: border-box;
+  overflow-x: clip;
+}
+
+.copilotKitPopup .xiaoze-md-table {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  table-layout: fixed !important;
+  border-collapse: collapse;
+  box-sizing: border-box;
+}
+
+.copilotKitPopup .xiaoze-turn-block,
+.copilotKitPopup .xiaoze-turn-block__answer,
+.copilotKitPopup .xiaoze-assistant-message.copilotKitAssistantMessage,
+.copilotKitPopup .xiaoze-assistant-markdown,
+.copilotKitPopup .xiaoze-assistant-markdown .copilotKitMarkdown {
+  min-width: 0 !important;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.copilotKitPopup .xiaoze-md-table__header,
+.copilotKitPopup .xiaoze-md-table__cell,
+.copilotKitPopup .xiaoze-md-table th,
+.copilotKitPopup .xiaoze-md-table td {
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+  padding: 6px 8px;
+  font-size: 13px;
+  box-sizing: border-box;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) th,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) td {
+  min-width: 0 !important;
+}
+
+.copilotKitPopup .xiaoze-md-table__header,
+.copilotKitPopup .xiaoze-md-table th {
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Two-column tables: fit popup width with a readable split. */
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) .xiaoze-md-table__header:first-child,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) .xiaoze-md-table__cell:first-child,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) th:first-child,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) td:first-child {
+  width: 38%;
+}
+
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) .xiaoze-md-table__header:last-child,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) .xiaoze-md-table__cell:last-child,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) th:last-child,
+.copilotKitPopup .xiaoze-md-table-wrapper:not(:has([data-streamdown="table-header-cell"]:nth-child(3))) td:last-child {
+  width: 62%;
+}
+
+/* Three or more columns: scroll inside the bubble with readable column widths. */
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) .xiaoze-md-table {
+  width: max-content !important;
+  min-width: 100% !important;
+  table-layout: auto !important;
+}
+
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) th:nth-child(1),
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) td:nth-child(1) {
+  min-width: 108px !important;
+}
+
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) th:nth-child(2),
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) td:nth-child(2) {
+  min-width: 120px !important;
+}
+
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) th:nth-child(n + 3),
+.copilotKitPopup .xiaoze-md-table-wrapper:has([data-streamdown="table-header-cell"]:nth-child(3)) td:nth-child(n + 3) {
+  min-width: 72px !important;
+}
+
+.copilotKitPopup .xiaoze-assistant-markdown [data-streamdown="table-header-cell"] code,
+.copilotKitPopup .xiaoze-assistant-markdown [data-streamdown="table-cell"] code,
+.copilotKitPopup .xiaoze-md-table__header code,
+.copilotKitPopup .xiaoze-md-table__cell code {
+  white-space: normal;
+  word-break: break-all;
+}

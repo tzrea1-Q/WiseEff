@@ -23,6 +23,7 @@ describe("XiaozeAssistantMarkdown", () => {
     render(<XiaozeAssistantMarkdown content="你好，我是小泽。" isStreaming />);
 
     expect(screen.getByTestId("streamdown-streaming")).toHaveTextContent("你好，我是小泽。");
+    expect(screen.getByTestId("streamdown-streaming")).toHaveClass("xiaoze-md-root");
     expect(document.querySelector(".xiaoze-streaming-markdown__cursor")).toBeInTheDocument();
   });
 
