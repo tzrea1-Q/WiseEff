@@ -8,7 +8,7 @@
       "protocol": "adb",
       "version": "0.1.0",
       "artifact": "adb-platform-tools.zip",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000001"
+      "sha256": "4fe305812db074cea32903a489d061eb4454cbc90a49e8fea677f4b7af764918"
     },
     {
       "platform": "darwin",
@@ -16,7 +16,7 @@
       "protocol": "adb",
       "version": "0.1.0",
       "artifact": "adb-platform-tools.zip",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000002"
+      "sha256": "094a1395683c509fd4d48667da0d8b5ef4d42b2abfcd29f2e8149e2f989357c7"
     },
     {
       "platform": "darwin",
@@ -24,7 +24,7 @@
       "protocol": "adb",
       "version": "0.1.0",
       "artifact": "adb-platform-tools.zip",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000003"
+      "sha256": "094a1395683c509fd4d48667da0d8b5ef4d42b2abfcd29f2e8149e2f989357c7"
     },
     {
       "platform": "windows",
@@ -40,7 +40,7 @@
       "protocol": "hdc",
       "version": "0.1.0",
       "artifact": "hdc.zip",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000005"
+      "sha256": "43a1730815598d44b7c4c7ae21224d6cbaf6b545065cfbda329f998b80c6856f"
     },
     {
       "platform": "darwin",
@@ -48,7 +48,7 @@
       "protocol": "hdc",
       "version": "0.1.0",
       "artifact": "hdc.zip",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000006"
+      "sha256": "43a1730815598d44b7c4c7ae21224d6cbaf6b545065cfbda329f998b80c6856f"
     }
   ]
 }
