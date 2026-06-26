@@ -1,5 +1,15 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/features/agent/XiaozeProvider", () => ({
+  XiaozeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  XiaozeProactiveInsights: () => null
+}));
+
+vi.mock("@copilotkit/react-core/v2", () => ({
+  useAgentContext: vi.fn()
+}));
+
 import { existsSync, readFileSync } from "node:fs";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
@@ -283,6 +293,14 @@ describe("WiseEff app shell", () => {
     expect(fullIcon).toContain("wiseeff-icon-bolt");
     expect(fullIcon).toContain("wiseeff-icon-marsh-wave-tertiary");
     expect(fullIcon).toContain("#50DCFF");
+  });
+
+  it("does not render WiseAgent FAB in api mode", () => {
+    window.history.replaceState(null, "", "/parameters");
+
+    render(<App authClient={createResolvedAuthClient()} runtimeMode="api" />);
+
+    expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
   });
 
   it("renders the WiseEff platform homepage on the home route", () => {
@@ -746,23 +764,6 @@ describe("WiseEff app shell", () => {
     expect(parameterRepository.listChangeRequests).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listSubmissionRounds).toHaveBeenCalledTimes(1);
     expect(parameterRepository.listDrafts).toHaveBeenCalledTimes(1);
-  });
-
-  it("passes the API Agent gateway into UnifiedAgent in api mode", async () => {
-    window.history.replaceState(null, "", "/parameters");
-    const agentGateway = {
-      startSession: vi.fn(async () => ({ id: "agent-session-1", context: { path: "/parameters", pageKey: "parameters" }, messages: [] })),
-      sendMessage: vi.fn(),
-      runAction: vi.fn(),
-      approveToolCall: vi.fn(),
-      rejectToolCall: vi.fn()
-    };
-
-    render(<App runtimeMode="api" agentGateway={agentGateway} authClient={createResolvedAuthClient()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "打开 WiseAgent" }));
-
-    expect(await screen.findByText(/项目参数巡检 Agent/)).toBeInTheDocument();
-    expect(agentGateway.startSession).toHaveBeenCalled();
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {
@@ -1313,7 +1314,7 @@ describe("WiseEff app shell", () => {
     expect(screen.getByText("Driven by AI")).toBeInTheDocument();
     expect(screen.queryByText("AI 驱动的企业业务效率平台")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
-    expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
+    expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "项目参数用户工作台" })).toBeInTheDocument();
   });
 
@@ -1948,18 +1949,7 @@ describe("WiseEff app shell", () => {
     expect(window.location.pathname).toBe("/parameter-comparison");
     expect(screen.getByRole("region", { name: "页面不可用" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "页面不可用" })).toBeInTheDocument();
-    expect(screen.getByLabelText("打开 WiseAgent")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
-
-    const agentPanel = document.querySelector<HTMLElement>(".agent-panel");
-    expect(agentPanel).toBeInTheDocument();
-    expect(agentPanel).not.toHaveTextContent("项目差异风险");
-    expect(agentPanel).not.toHaveTextContent("参数值对照");
-    expect(agentPanel).not.toHaveTextContent("风险阈值漂移");
-    expect(agentPanel).not.toHaveTextContent("生成差异摘要");
-    expect(agentPanel).not.toHaveTextContent("同步选中差异");
-    fireEvent.click(within(agentPanel!).getByRole("button", { name: "最小化 WiseAgent" }));
+    expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "参数工作台" }));
 
@@ -2610,7 +2600,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameters",
-        present: ["Agent 发现", "重要性", "参数名称", "当前 → 推荐", "范围 / 单位", "更新时间"],
+        present: ["重要性", "参数名称", "当前 → 推荐", "范围 / 单位", "更新时间"],
         absent: ["Filters", "All", "Current", "Range / Unit", "Importance", "Updated"]
       },
       {
@@ -2683,15 +2673,13 @@ describe("WiseEff app shell", () => {
     });
   });
 
-  it("uses Chinese helper copy in the global chrome and WiseAgent panel", () => {
+  it("uses Chinese helper copy in the global chrome", () => {
     window.history.replaceState(null, "", "/parameters");
 
     renderAppForCurrentPath();
 
-    fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
-
-    expect(document.body).toHaveTextContent("上下文洞察");
-    expect(screen.getByPlaceholderText("询问 WiseAgent...")).toBeInTheDocument();
+    expect(screen.getByText("雷泽")).toBeInTheDocument();
+    expect(screen.getByText("Driven by AI")).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("Context-Aware Insight");
     expect(screen.queryByPlaceholderText("Ask OpsAgent...")).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent("OpsAgent");
@@ -3016,23 +3004,12 @@ describe("WiseEff app shell", () => {
     expect(nameBlock).toContain("white-space: normal;");
   });
 
-  it("runs parameter admin Agent actions against the current page", () => {
+  it("does not render WiseAgent actions on parameter admin in mock mode", () => {
     window.history.replaceState(null, "", "/parameter-admin");
 
     renderAppForCurrentPath();
 
-    fireEvent.click(screen.getByLabelText("打开 WiseAgent"));
-    const agentActions = document.querySelector(".agent-actions") as HTMLElement;
-    fireEvent.click(within(agentActions).getByRole("button", { name: /扫描闲置参数/ }));
-
-    expect(window.location.search).toContain("coverage=orphan");
-    expect(document.body).toHaveTextContent("WiseAgent 已切换到闲置参数视角");
-
-    fireEvent.click(within(agentActions).getByRole("button", { name: /生成清理建议/ }));
-    fireEvent.click(screen.getByRole("button", { name: /确认执行/ }));
-
-    expect(window.location.search).toContain("coverage=orphan");
-    expect(document.body).toHaveTextContent("WiseAgent 已生成闲置清理建议");
+    expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
   });
 
   it("does not expose local JSON save actions on parameter admin", () => {
@@ -3086,21 +3063,24 @@ describe("WiseEff app shell", () => {
 
   it("adds and deletes debug parameters from the debugging admin config", () => {
     window.history.replaceState(null, "", "/debugging-admin");
+    const nextIndex = adminState.configDraft.debugParameters.length + 1;
+    const nextName = `new_debug_parameter_${nextIndex}`;
+    const nextKey = `debug.new_parameter_${nextIndex}`;
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
     fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
 
-    expect(screen.getByDisplayValue("new_debug_parameter_9")).toBeInTheDocument();
+    expect(screen.getByDisplayValue(nextName)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "创建" }));
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
-    expect(document.body).toHaveTextContent('"key": "debug.new_parameter_9"');
+    expect(document.body).toHaveTextContent(`"key": "${nextKey}"`);
 
-    const createdRow = screen.getByRole("row", { name: /new_debug_parameter_9/ });
-    fireEvent.click(within(createdRow).getByRole("button", { name: /归档 new_debug_parameter_9/ }));
+    const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });
+    fireEvent.click(within(createdRow).getByRole("button", { name: new RegExp(`归档 ${nextName}`) }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "归档" }));
 
-    expect(screen.queryByDisplayValue("new_debug_parameter_9")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue(nextName)).not.toBeInTheDocument();
   });
 
   it("renders the debugging admin context in a normalized workspace header", () => {
