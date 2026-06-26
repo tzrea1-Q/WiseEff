@@ -303,6 +303,13 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
   });
 
+  it("does not render Xiaoze or WiseAgent controls in mock mode", () => {
+    render(<App initialAppState={userState} runtimeMode="mock" />);
+
+    expect(screen.queryByLabelText("打开 WiseAgent")).not.toBeInTheDocument();
+    expect(document.querySelector(".xiaoze-chat-toggle-anchor")).not.toBeInTheDocument();
+  });
+
   it("renders the WiseEff platform homepage on the home route", () => {
     window.history.replaceState(null, "", "/");
 
