@@ -45,7 +45,6 @@ import {
   type UpsertDebugNodeOperationAction,
   type UpsertDebugSnapshotAction
 } from "@/application/debugging/debuggingRuntime";
-import type { AgentGateway } from "@/application/ports/AgentGateway";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
@@ -1981,7 +1980,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 export const appReducer = reducer;
 
 type AppProps = {
-  agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
@@ -1993,7 +1991,6 @@ type AppProps = {
 };
 
 function App({
-  agentGateway: _agentGateway,
   authClient,
   debuggingAdminClient,
   debuggingGateway,
@@ -2003,7 +2000,6 @@ function App({
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
-  void _agentGateway;
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
