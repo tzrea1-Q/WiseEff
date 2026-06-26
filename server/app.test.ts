@@ -158,10 +158,11 @@ function createDebuggingDetectDb() {
               organization_id: values[0],
               project_id: values[1],
               device_id: values[2],
-              protocol: values[4],
-              target_ref: values[5],
-              label: values[6],
-              status: values[7],
+              bridge_id: values[4],
+              protocol: values[5],
+              target_ref: values[6],
+              label: values[7],
+              status: values[8],
               detected_at: "2026-05-27T10:00:00.000Z"
             }
           ] as Row[],
@@ -425,16 +426,9 @@ describe("WiseEff API", () => {
         objectStoreHealth: {
           checkHealth: async () => ({ ok: true as const, status: "ready" as const })
         },
-        agentProvider: {
-          metadata: () => ({ provider: "live" as const, model: "pilot", promptVersion: "m6" }),
-          planTurn: async () => ({
-            assistantDraft: { content: "ready", citations: [], confidence: 0.9 },
-            toolRequests: [],
-            provider: "live" as const,
-            model: "pilot",
-            promptVersion: "m6"
-          }),
-          checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_KEY: "test-key"
         }
       }),
       "/metrics"
@@ -445,7 +439,7 @@ describe("WiseEff API", () => {
     expect(response.bodyText).toContain('wiseeff_dependency_health{dependency="database"} 1');
     expect(response.bodyText).toContain('wiseeff_database_ready 1');
     expect(response.bodyText).toContain('wiseeff_object_store_ready 1');
-    expect(response.bodyText).toContain('wiseeff_agent_provider_ready 1');
+    expect(response.bodyText).toContain('wiseeff_xiaoze_llm_ready 1');
     expect(response.bodyText).toContain('wiseeff_queue_backlog{queue="log-analysis"} 3');
   });
 
@@ -484,43 +478,27 @@ describe("WiseEff API", () => {
     expect(adbGateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
   });
 
-  it("renders labeled live Agent provider readiness metrics when evidence is available", async () => {
+  it("renders Xiaoze LLM readiness metrics when env is configured", async () => {
     const response = await requestJson(
       createWiseEffServer({
         db: createObservabilityDb(),
         objectStoreHealth: {
           checkHealth: async () => ({ ok: true as const, status: "ready" as const })
         },
-        agentProvider: {
-          metadata: () => ({
-            provider: "live" as const,
-            model: "model-a",
-            promptVersion: "m5-agent-v1",
-            evidence: {
-              provider: "live" as const,
-              format: "openai" as const,
-              model: "model-a",
-              promptVersion: "m5-agent-v1"
-            }
-          }),
-          planTurn: async () => ({
-            assistantDraft: { content: "ready", citations: [], confidence: 0.9 },
-            toolRequests: [],
-            provider: "live" as const,
-            model: "model-a",
-            promptVersion: "m5-agent-v1"
-          }),
-          checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_KEY: "test-key",
+          XIAOZE_MODEL: "model-a"
         }
       }),
       "/metrics"
     );
 
     expect(response.status).toBe(200);
-    expect(response.bodyText).toContain("wiseeff_agent_provider_ready 1");
-    expect(response.bodyText).toContain('wiseeff_agent_provider_ready{provider="live",format="openai"} 1');
+    expect(response.bodyText).toContain("wiseeff_xiaoze_llm_ready 1");
+    expect(response.bodyText).toContain('wiseeff_dependency_health{dependency="xiaozeLlm"} 1');
     expect(response.bodyText).not.toContain("model-a");
-    expect(response.bodyText).not.toContain("m7-pi-agent-v1");
+    expect(response.bodyText).not.toContain("test-key");
   });
 
   it("parses query strings with repeated params", async () => {
@@ -854,13 +832,10 @@ describe("WiseEff API", () => {
           HDC_TIMEOUT_MS: 5000,
           ADB_TIMEOUT_MS: 5000,
           DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: true,
-          AGENT_PROVIDER: "live",
-          AGENT_API_FORMAT: "openai",
           AGENT_MODEL: "pilot-model",
           AGENT_API_KEY: "agent-key",
           AGENT_API_BASE_URL: "https://agent.example.com",
           AGENT_API_TIMEOUT_MS: 5000,
-          AGENT_PROMPT_VERSION: "m5-agent-v1",
           LOG_WORKER_ENABLED: false,
           LOG_ANALYSIS_QUEUE_MODE: "polling",
           LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -873,7 +848,6 @@ describe("WiseEff API", () => {
           DEVICE_BRIDGE_PAIRING_TTL_SECONDS: 300,
           DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
           DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws",
-          XIAOZE_RUNTIME_ENABLED: false,
           XIAOZE_DETERMINISTIC: false,
           XIAOZE_PROACTIVE_ENABLED: false
         },
@@ -966,13 +940,10 @@ describe("WiseEff API", () => {
           HDC_TIMEOUT_MS: 5000,
           ADB_TIMEOUT_MS: 5000,
           DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: true,
-          AGENT_PROVIDER: "live",
-          AGENT_API_FORMAT: "openai",
           AGENT_MODEL: "pilot-model",
           AGENT_API_KEY: "agent-key",
           AGENT_API_BASE_URL: "https://agent.example.com",
           AGENT_API_TIMEOUT_MS: 5000,
-          AGENT_PROMPT_VERSION: "m5-agent-v1",
           LOG_WORKER_ENABLED: false,
           LOG_ANALYSIS_QUEUE_MODE: "polling",
           LOG_ANALYSIS_QUEUE_PREFIX: "wiseeff",
@@ -985,7 +956,6 @@ describe("WiseEff API", () => {
           DEVICE_BRIDGE_PAIRING_TTL_SECONDS: 300,
           DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
           DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws",
-          XIAOZE_RUNTIME_ENABLED: false,
           XIAOZE_DETERMINISTIC: false,
           XIAOZE_PROACTIVE_ENABLED: false
         }

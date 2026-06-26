@@ -20,7 +20,7 @@ const webServers = [
     command: "npm run dev:api",
     env: {
       PORT: apiPort,
-      AGENT_PROVIDER: "deterministic",
+      XIAOZE_DETERMINISTIC: "true",
       AUTH_MODE: process.env.AUTH_MODE ?? "production",
       AUTH_PROVIDER: apiAuthProvider,
       ...(process.env.AUTH_TOKEN_ISSUER ? { AUTH_TOKEN_ISSUER: process.env.AUTH_TOKEN_ISSUER } : {}),

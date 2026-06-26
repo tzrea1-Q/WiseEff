@@ -55,10 +55,7 @@ describe(".env.example", () => {
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
       HDC_TIMEOUT_MS: "5000",
       ADB_TIMEOUT_MS: "5000",
-      AGENT_PROVIDER: "live",
-      AGENT_API_FORMAT: "wiseeff",
       AGENT_API_TIMEOUT_MS: "30000",
-      AGENT_PROMPT_VERSION: "m5-agent-v1",
       M5_CONTRACT_CHECK_PASSED: "true",
       M5_SMOKE_ALLOW_NO_API: "false"
     });
@@ -87,7 +84,7 @@ describe(".env.example", () => {
     expect(serverEnv.OBJECT_STORE_MODE).toBe("local");
     expect(serverEnv.DEBUG_DEVICE_GATEWAY_MODE).toBe("multi");
     expect(serverEnv.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(true);
-    expect(serverEnv.AGENT_PROVIDER).toBe("live");
+    expect(serverEnv.AGENT_API_TIMEOUT_MS).toBe(30000);
   });
 
   it("keeps generated local storage and restore artifacts out of git", async () => {

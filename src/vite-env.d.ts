@@ -23,7 +23,6 @@ interface ImportMetaEnv {
   readonly VITE_WISEEFF_API_AUTHORIZATION?: string;
   readonly VITE_WISEEFF_API_BASE_URL?: string;
   readonly VITE_WISEEFF_RUNTIME_MODE?: string;
-  readonly VITE_XIAOZE_ENABLED?: string;
   readonly VITE_XIAOZE_PROACTIVE_ENABLED?: string;
   readonly VITE_XIAOZE_REASONING_DEV_EXPANDED?: string;
   readonly VITE_XIAOZE_PROMPT_DEBUG?: string;

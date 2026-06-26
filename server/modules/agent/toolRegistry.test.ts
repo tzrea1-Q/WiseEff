@@ -4,12 +4,12 @@ import { ApiError } from "../../shared/http/errors";
 import { createAgentToolRegistry } from "./toolRegistry";
 
 describe("agent tool registry", () => {
-  it("registers the M4 tool surface with approval classification", () => {
+  it("registers the Xiaoze tool surface with approval classification", () => {
     const registry = createAgentToolRegistry({ db: { query: async () => ({ rows: [], rowCount: 0 }) } });
 
-    expect(registry.get("parameter.summarizeReviewQueue")?.requiresApproval).toBe(false);
-    expect(registry.get("audit.summarizeRecentEvents")?.permission).toBe("admin:access");
-    expect(registry.get("parameter.submitChangeDraft")?.requiresApproval).toBe(true);
+    expect(registry.get("perception.getProjectOverview")?.requiresApproval).toBe(false);
+    expect(registry.get("perception.searchParameters")?.permission).toBe("parameter:view");
+    expect(registry.get("action.submitParameterChange")?.requiresApproval).toBe(true);
   });
 
   it("rejects unknown tools", async () => {
@@ -23,12 +23,12 @@ describe("agent tool registry", () => {
     const auth = {
       ...developmentAuthContext,
       roles: [{ roleId: "hardware-user" as const, projectId: "aurora" }],
-      permissions: ["parameter:review" as const]
+      permissions: ["parameter:view" as const]
     };
 
     await expect(
       registry.run(
-        "parameter.summarizeReviewQueue",
+        "perception.getProjectOverview",
         { auth, requestId: "req-1", sessionId: "agent-session-1", projectId: "aurora" },
         { projectId: "zephyr" }
       )
@@ -40,12 +40,12 @@ describe("agent tool registry", () => {
     const auth = {
       ...developmentAuthContext,
       roles: [{ roleId: "hardware-user" as const, projectId: "aurora" }],
-      permissions: ["parameter:review" as const]
+      permissions: ["parameter:view" as const]
     };
 
     await expect(
       registry.run(
-        "parameter.summarizeReviewQueue",
+        "perception.getProjectOverview",
         { auth, requestId: "req-1", sessionId: "agent-session-1" },
         { projectId: "zephyr" }
       )
@@ -57,12 +57,12 @@ describe("agent tool registry", () => {
     const auth = {
       ...developmentAuthContext,
       roles: [{ roleId: "hardware-user" as const, projectId: "aurora" }],
-      permissions: ["parameter:review" as const]
+      permissions: ["parameter:view" as const]
     };
 
     await expect(
       registry.run(
-        "parameter.summarizeReviewQueue",
+        "perception.getProjectOverview",
         { auth, requestId: "req-1", sessionId: "agent-session-1" },
         {}
       )
@@ -74,12 +74,12 @@ describe("agent tool registry", () => {
 
     await expect(
       registry.run(
-        "parameter.summarizeReviewQueue",
+        "perception.getProjectOverview",
         { auth: developmentAuthContext, requestId: "req-1", sessionId: "agent-session-1" },
         {}
       )
     ).resolves.toMatchObject({
-      summary: "0 parameter change requests are waiting in the review queue."
+      summary: expect.stringMatching(/parameters/)
     });
   });
 });

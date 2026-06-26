@@ -3,12 +3,8 @@ import type { Database } from "../../shared/database/client";
 import type { AuthContext } from "../auth/types";
 import type { AgentToolName, AgentToolResult } from "./types";
 import { requireAgentPermission, requireAgentProjectAccess } from "./policy";
-import { createAuditTools } from "./tools/auditTools";
-import { createDebuggingTools } from "./tools/debuggingTools";
-import { createLogTools } from "./tools/logTools";
 import { createPerceptionTools } from "./tools/perceptionTools";
 import { createActionTools } from "./tools/actionTools";
-import { createParameterTools } from "./tools/parameterTools";
 
 export type AgentToolExecutionContext = {
   auth: AuthContext;
@@ -45,14 +41,7 @@ function authorizeTool(tool: AgentToolDefinition, context: AgentToolExecutionCon
 }
 
 export function createAgentToolRegistry(options: { db: Database | { query: Database["query"] } }) {
-  const tools = [
-    ...createParameterTools(options),
-    ...createLogTools(options),
-    ...createAuditTools(options),
-    ...createDebuggingTools(options),
-    ...createPerceptionTools(options),
-    ...createActionTools(options)
-  ];
+  const tools = [...createPerceptionTools(options), ...createActionTools(options)];
   const byName = new Map<string, AgentToolDefinition>(tools.map((tool) => [tool.name, tool]));
 
   return {

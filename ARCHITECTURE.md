@@ -4,7 +4,7 @@
 
 WiseEff is organized as a React frontend plus a TypeScript backend foundation. The product direction is a modular monolith API, PostgreSQL persistence, async workers, an isolated device gateway, and a governed Agent layer. The detailed architecture lives in `docs/design-docs/`; this file is the high-level map.
 
-Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, live Agent provider seam with WiseEff HTTP and OpenAI-compatible formats, and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
+Current baseline: M0-M6.2 productization work is in progress. The system has working mock/API frontend runtimes, a modular API, PostgreSQL migrations, OpenAPI contract artifact/check, OIDC-capable production auth boundary, backend user-governance APIs, worker/object-store seams, HDC gateway seam, Xiaoze as the sole Agent seam (CopilotKit/AG-UI + LangGraph + shared ToolRegistry), and an admin-gated M5 pilot-readiness endpoint. It is ready for controlled staging/pilot evidence collection, not broad enterprise production rollout.
 
 ## Runtime Shape
 
@@ -22,7 +22,7 @@ flowchart LR
   Queue --> Worker
   Worker --> Db
   Worker --> ObjectStore["Local or S3/OSS object store seam"]
-  Api --> Agent["Agent orchestrator/provider seam"]
+  Api --> Agent["Xiaoze Agent seam (AG-UI + ToolRegistry)"]
   Api --> Gateway["Simulator or HDC device gateway seam"]
 ```
 
@@ -53,14 +53,14 @@ Rules:
 - `server/modules/parameters/`: M1 parameter workflow routes and services.
 - `server/modules/logs/`: M2 log upload, analysis records, object storage, and worker boundary.
 - `server/modules/debugging/`: M3 simulator/HDC gateway boundary and debugging routes.
-- `server/modules/agent/`: M4 Agent sessions, tools, approvals, provider boundary, and Xiaoze (`server/modules/agent/xiaoze/`: LangGraph agent + AG-UI SSE endpoint + orchestrator approval bridge).
+- `server/modules/agent/`: Xiaoze AG-UI endpoint, LangGraph planning agent, tool registry, orchestrator approval bridge, and persisted thread metadata (`server/modules/agent/xiaoze/`).
 - `server/modules/operations/`: liveness, readiness, and pilot readiness checks for release operations.
 - `server/observability/`: correlation context, structured log helpers, metrics registry, and tracing boundary.
 - `server/migrations/`: SQL schema baseline.
 
-The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent provider boundaries explicit instead of dissolving them into page or route logic.
+The backend remains a modular monolith. New modules should keep auth, audit, database, object-store, worker, device, and Agent boundaries explicit instead of dissolving them into page or route logic.
 
-The live Agent provider boundary supports `AGENT_API_FORMAT=wiseeff` and `openai`. Xiaoze adds a parallel AG-UI/CopilotKit seam (`/api/v1/agent/xiaoze`) that reuses `ToolRegistry` authorization; read tools run automatically, while mutating tools (`action.submitParameterChange`) pause on AG-UI interrupts and execute only through the existing orchestrator approval chain (`approveToolCall` / `rejectToolCall`) with audit `actorType=agent`. P2 migrates the agent to a LangGraph `StateGraph` planning loop (intent → perceive → plan → act → observe) with a `MemorySaver` checkpointer keyed by `threadId`; approval resume re-enters the graph via `Command({ resume })` rather than a one-shot tool execution. Opt-in proactive suggestions use read-only `POST /api/v1/agent/xiaoze/suggest`, gated by `XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED` (default off). Checkpoint durability across process restarts is deferred (TD-029). LangGraph uses LangChain `ChatOpenAI` against the OpenAI-compatible endpoint. The redundant Pi provider was removed in P1 (TD-027 closed).
+Xiaoze is the sole Agent surface. API mode mounts CopilotKit against `POST /api/v1/agent/xiaoze`; mock mode has no Agent UI. The backend reuses `ToolRegistry` authorization: read tools run automatically, while mutating tools (`action.submitParameterChange`) pause on AG-UI interrupts and execute only through the orchestrator approval chain (`approveToolCall` / `rejectToolCall`) with audit `actorType=agent`. P2 uses a LangGraph `StateGraph` planning loop (intent → perceive → plan → act → observe) with a `MemorySaver` checkpointer keyed by `threadId`; approval resume re-enters the graph via `Command({ resume })`. Opt-in proactive suggestions use read-only `POST /api/v1/agent/xiaoze/suggest`, gated by `XIAOZE_PROACTIVE_ENABLED` / `VITE_XIAOZE_PROACTIVE_ENABLED` (default off). Live runs use LangChain `ChatOpenAI` against the OpenAI-compatible `AGENT_API_*` endpoint unless `XIAOZE_DETERMINISTIC` is set. Checkpoint durability across process restarts is deferred (TD-029).
 
 ## Data And Governance
 
@@ -77,7 +77,7 @@ All production write paths should follow this pattern:
 
 Agent and device workflows are higher-risk variants of the same pattern. Agent write tools create approval records before execution. Device writes require device state checks, range checks, snapshots, and audit.
 
-Release operations add a pilot gate on top of the basic health checks. `GET /api/v1/operations/pilot-readiness` is admin-gated and aggregates the route contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence into a single `pilot_ready` or `blocked` result. The companion `npm run smoke:m5` check requires a live API URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs. Target-environment identity evidence must use OIDC/JWKS tokens, not static local HMAC smoke tokens.
+Release operations add a pilot gate on top of the basic health checks. `GET /api/v1/operations/pilot-readiness` is admin-gated and aggregates the route contract, auth, database, object storage, worker, device gateway, Xiaoze LLM config, and backup/restore evidence into a single `pilot_ready` or `blocked` result. The companion `npm run smoke:m5` check requires a live API URL by default and only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs. Target-environment identity evidence must use OIDC/JWKS tokens, not static local HMAC smoke tokens.
 
 ## Self-Hosted Runtime
 

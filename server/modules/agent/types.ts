@@ -1,20 +1,17 @@
 import type { BackendPermission } from "../auth/types";
 
 export type AgentToolName =
-  | "parameter.scanOrphans"
-  | "parameter.draftCleanupPlan"
-  | "parameter.summarizeReviewQueue"
-  | "parameter.submitChangeDraft"
-  | "log.explainRootCause"
-  | "log.generateChecklist"
-  | "debugging.recommendTargetValues"
-  | "debugging.prepareRollback"
-  | "audit.summarizeRecentEvents"
   | "perception.getProjectOverview"
   | "perception.searchParameters"
   | "perception.getNodeSnapshot"
   | "perception.getRecentLogConclusions"
   | "action.submitParameterChange";
+
+export type AgentToolRequest = {
+  name: AgentToolName;
+  label: string;
+  payload: Record<string, unknown>;
+};
 
 export type AgentContext = {
   path: string;

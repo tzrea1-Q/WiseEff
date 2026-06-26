@@ -12,7 +12,7 @@ export type PilotReadinessGateKey =
   | "objectStore"
   | "worker"
   | "deviceGateway"
-  | "agentProvider"
+  | "xiaozeLlm"
   | "backups";
 
 export type PilotReadinessInput = Record<PilotReadinessGateKey, PilotReadinessGateStatus>;
@@ -31,7 +31,7 @@ const gateOrder: PilotReadinessGateKey[] = [
   "objectStore",
   "worker",
   "deviceGateway",
-  "agentProvider",
+  "xiaozeLlm",
   "backups"
 ];
 

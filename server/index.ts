@@ -3,7 +3,6 @@ import { loadDotenvFiles } from "./config/loadDotenv";
 loadDotenvFiles();
 import { createWiseEffServerFromEnv } from "./app";
 import { loadServerEnv } from "./config/env";
-import { createAgentProviderFromEnv } from "./modules/agent/providerRegistry";
 import { createAdbDebugDeviceGateway } from "./modules/debugging/adbGateway";
 import { createDebugDeviceGatewayRegistry } from "./modules/debugging/gatewayRegistry";
 import { createHdcDebugDeviceGateway } from "./modules/debugging/hdcGateway";
@@ -21,7 +20,6 @@ const env = loadServerEnv(process.env);
 const db = env.DATABASE_URL ? createPostgresDatabase(env.DATABASE_URL, { tracing: defaultTracingBoundary }) : undefined;
 const objectStore = db ? createObjectStoreFromEnv(env, { tracing: defaultTracingBoundary }) : undefined;
 const metrics = createMetricsRegistry({ serviceName: "wiseeff-api" });
-const agentProvider = createAgentProviderFromEnv(env);
 const hdcGateway = createHdcDebugDeviceGateway({ timeoutMs: env.HDC_TIMEOUT_MS });
 const adbGateway = createAdbDebugDeviceGateway({ timeoutMs: env.ADB_TIMEOUT_MS });
 const simulatorGateway = createSimulatorDebugDeviceGateway();
@@ -66,7 +64,6 @@ const server = createWiseEffServerFromEnv({
   logAnalysisQueue: logAnalysisQueueRuntime?.queue,
   debugGateway,
   debugGatewayRegistry,
-  agentProvider,
   durableQueue: logAnalysisQueueRuntime?.queue,
   env,
   metrics,

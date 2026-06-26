@@ -309,32 +309,6 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DebugRollbackResponse"
   },
 
-  "agent.createSession": {
-    summary: "Create Agent session",
-    tags: ["agent"],
-    requestBody: "CreateAgentSessionRequest",
-    responseBody: "AgentTurnResponse",
-    successStatus: 201
-  },
-  "agent.sendMessage": {
-    summary: "Send Agent message",
-    tags: ["agent"],
-    requestBody: "SendAgentMessageRequest",
-    responseBody: "AgentTurnResponse"
-  },
-  "agent.runToolCall": { summary: "Run Agent tool call", tags: ["agent"], responseBody: "AgentTurnResponse" },
-  "agent.approveToolCall": {
-    summary: "Approve Agent tool call",
-    tags: ["agent"],
-    requestBody: "AgentApprovalRequest",
-    responseBody: "AgentTurnResponse"
-  },
-  "agent.rejectToolCall": {
-    summary: "Reject Agent tool call",
-    tags: ["agent"],
-    requestBody: "AgentApprovalRequest",
-    responseBody: "AgentTurnResponse"
-  },
   "xiaoze.run": { summary: "Run Xiaoze AG-UI agent", tags: ["agent"], responseBody: "GenericObjectResponse" },
   "xiaoze.suggest": { summary: "Run Xiaoze proactive suggest pass", tags: ["agent"], responseBody: "GenericObjectResponse" },
   "xiaoze.listThreads": { summary: "List Xiaoze chat threads", tags: ["agent"], responseBody: "GenericObjectResponse" },

@@ -22,7 +22,7 @@ Debugging supports target discovery, node reads, guarded writes, readback, snaps
 
 ## Agent Prototype
 
-The Agent panel can provide contextual help and propose actions. Productized Agent behavior must route through backend sessions, tool registries, approvals, and audit.
+The Agent panel can provide contextual help and propose actions. Productized Agent behavior routes through Xiaoze (CopilotKit/AG-UI), backend tool registries, approvals, and audit. API mode always mounts Xiaoze; mock mode has no Agent UI.
 
 ## Compatibility Rule
 

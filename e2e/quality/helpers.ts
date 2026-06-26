@@ -23,19 +23,25 @@ export async function expectUsablePage(page: Page) {
   await expect(page.locator("body")).not.toContainText(runtimeCrashPattern);
 }
 
-export async function openAgentPanel(page: Page) {
-  await page.getByRole("button", { name: "打开 WiseAgent" }).click();
-  const panel = page.locator(".agent-panel");
-  await expect(panel).toBeVisible();
-  return panel;
+export async function openXiaozePopup(page: Page, route = "/parameters?project=aurora") {
+  await page.goto(route);
+  const popup = page.getByTestId("xiaoze-popup-layer");
+  const toggle = page.getByTestId("copilot-chat-toggle");
+  await expect(toggle).toBeVisible();
+
+  if (!(await popup.isVisible())) {
+    await toggle.click();
+  }
+
+  await expect(popup).toBeVisible();
+  return popup;
 }
 
 export function stableMasks(page: Page, routePath = ""): Locator[] {
   const masks = [
     page.locator(".topbar-user-menu"),
-    page.locator(".agent-panel .agent-message"),
-    page.locator(".agent-panel .agent-context"),
-    page.locator(".agent-panel .agent-toolbar"),
+    page.locator(".xiaoze-popup-window"),
+    page.locator(".xiaoze-toggle-hint"),
     page.locator(".operation-history-list"),
     page.locator(".audit-column"),
     page.locator(".review-detail"),

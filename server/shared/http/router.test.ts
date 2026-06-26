@@ -346,13 +346,13 @@ describe("createHttpServer", () => {
       }
     });
     const router = createRouter();
-    router.post("/api/v1/agent/sessions/:sessionId/messages", async () => ({
+    router.post("/api/v1/agent/xiaoze", async () => ({
       status: 200,
       body: { ok: true }
     }));
     const server = createHttpServer(router, { tracing });
 
-    const { response, text } = await requestText(server, "/api/v1/agent/sessions/session-123/messages", {
+    const { response, text } = await requestText(server, "/api/v1/agent/xiaoze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ message: "Hello" })
@@ -366,7 +366,7 @@ describe("createHttpServer", () => {
         attributes: expect.objectContaining({
           service: "wiseeff-api",
           method: "POST",
-          route: "/api/v1/agent/sessions/:sessionId/messages",
+          route: "/api/v1/agent/xiaoze",
           status: 200
         })
       })

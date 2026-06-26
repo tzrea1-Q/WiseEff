@@ -16,10 +16,10 @@ describe("quality snapshot configuration", () => {
     expect(e2eConfig).toMatch(/testIgnore:.*quality.*\.quality\.spec\.ts/s);
   });
 
-  it("keeps default E2E Agent flows on the deterministic provider", () => {
+  it("keeps default E2E Xiaoze flows on deterministic mode", () => {
     const e2eConfig = readFileSync("playwright.config.ts", "utf8");
 
-    expect(e2eConfig).toMatch(/AGENT_PROVIDER:\s*"deterministic"/);
+    expect(e2eConfig).toMatch(/XIAOZE_DETERMINISTIC:\s*"true"/);
   });
 
   it("fails fast instead of reusing an unknown local E2E runtime by default", () => {

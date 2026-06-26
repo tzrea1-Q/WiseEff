@@ -1,5 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/features/agent/XiaozeProvider", () => ({
+  XiaozeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  XiaozeProactiveInsights: () => null
+}));
+
+vi.mock("@copilotkit/react-core/v2", () => ({
+  useAgentContext: vi.fn()
+}));
 import { readFileSync } from "node:fs";
 import { canAccessPage } from "./app/permissions";
 import App, { appReducer } from "./App";
@@ -95,13 +104,14 @@ describe("permission-aware routing", () => {
     expect(screen.getByText(/Required role: Admin/)).toBeInTheDocument();
   });
 
-  it("does not render WiseAgent on permission denied pages", () => {
+  it("does not render WiseAgent or Xiaoze on permission denied pages", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
-    render(<App initialAppState={{ ...initialState, activeRoleId: "user" }} />);
+    render(<App initialAppState={{ ...initialState, activeRoleId: "user" }} runtimeMode="mock" />);
 
     expect(screen.getByRole("heading", { name: "Permission denied" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "打开 WiseAgent" })).not.toBeInTheDocument();
+    expect(document.querySelector(".xiaoze-chat-toggle-anchor")).not.toBeInTheDocument();
   });
 
   it("uses a stable permission denied layout", () => {

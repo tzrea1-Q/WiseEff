@@ -119,7 +119,7 @@ export function planRuntimeServices(options: PreflightOptions, env: RuntimeEnv):
       env: {
         ...env,
         PORT: apiPort,
-        AGENT_PROVIDER: "deterministic",
+        XIAOZE_DETERMINISTIC: "true",
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiBaseUrl
       }
@@ -247,7 +247,7 @@ const testGateEnvDenylist = [
   "M5_DEVICE_GATEWAY_EVIDENCE",
   "DEBUG_DEVICE_GATEWAY_MODE",
   "HDC_DEVICE_LAB_AVAILABLE",
-  "AGENT_PROVIDER"
+  "XIAOZE_DETERMINISTIC"
 ] as const;
 
 export function buildTestGateEnv(env: RuntimeEnv = process.env): RuntimeEnv {

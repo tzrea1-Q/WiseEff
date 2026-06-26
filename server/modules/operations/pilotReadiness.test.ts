@@ -11,7 +11,7 @@ describe("pilot readiness", () => {
         objectStore: { ok: true, status: "ready" },
         worker: { ok: true, status: "ready" },
         deviceGateway: { ok: true, status: "ready" },
-        agentProvider: { ok: true, status: "ready" },
+        xiaozeLlm: { ok: true, status: "ready" },
         backups: { ok: true, status: "ready" }
       })
     ).toMatchObject({ ok: true, status: "pilot_ready", blockedBy: [] });
@@ -26,7 +26,7 @@ describe("pilot readiness", () => {
         objectStore: { ok: true, status: "ready" },
         worker: { ok: true, status: "ready" },
         deviceGateway: { ok: true, status: "ready" },
-        agentProvider: { ok: true, status: "ready" },
+        xiaozeLlm: { ok: true, status: "ready" },
         backups: { ok: false, status: "missing", message: "Restore drill not recorded." }
       })
     ).toMatchObject({

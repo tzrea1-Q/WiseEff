@@ -45,11 +45,9 @@ import {
   type UpsertDebugNodeOperationAction,
   type UpsertDebugSnapshotAction
 } from "@/application/debugging/debuggingRuntime";
-import type { AgentGateway } from "@/application/ports/AgentGateway";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import { createHttpDebuggingGateway } from "@/infrastructure/http/debuggingClient";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
-import { createHttpAgentGateway } from "@/infrastructure/http/agentClient";
 import {
   createLogRuntimeActions,
   type HydrateLogRuntimeAction,
@@ -82,11 +80,10 @@ import {
   roleSupportsWorkflowSlot,
   type PlatformRoleId
 } from "@/domain/users/types";
-import { UnifiedAgent } from "@/features/agent/UnifiedAgent";
-import { XiaozePageContext } from "@/features/agent/useXiaozePageContext";
+import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
-import { xiaozeEnabled, xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
+import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 
 function isStaticDownloadPath(pathname: string) {
@@ -1983,7 +1980,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
 export const appReducer = reducer;
 
 type AppProps = {
-  agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
@@ -1995,7 +1991,6 @@ type AppProps = {
 };
 
 function App({
-  agentGateway,
   authClient,
   debuggingAdminClient,
   debuggingGateway,
@@ -2008,7 +2003,6 @@ function App({
   return (
     <TooltipProvider delayDuration={0}>
       <AppShell
-        agentGateway={agentGateway}
         authClient={authClient}
         debuggingAdminClient={debuggingAdminClient}
         debuggingGateway={debuggingGateway}
@@ -2024,7 +2018,6 @@ function App({
 }
 
 function AppShell({
-  agentGateway,
   authClient,
   debuggingAdminClient,
   debuggingGateway,
@@ -2034,7 +2027,6 @@ function AppShell({
   runtimeMode,
   userGovernanceActions
 }: {
-  agentGateway?: AgentGateway;
   authClient?: WiseEffAuthClient;
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   debuggingGateway?: DebuggingGateway;
@@ -2073,10 +2065,6 @@ function AppShell({
       roleId: currentRoleId
     }),
     [path, page.key, state.activeProjectId, state.configDraft.projects, currentRoleId]
-  );
-  const agentGatewayClient = useMemo(
-    () => agentGateway ?? (runtimeMode === "api" ? createHttpAgentGateway() : undefined),
-    [agentGateway, runtimeMode]
   );
   const parameterRepositoryClient = useMemo(
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
@@ -2388,7 +2376,7 @@ function AppShell({
 
   const enableXiaozeInspector = canPerform(currentRoleId, "admin.access");
   const showXiaozeProactiveInsights =
-    xiaozeEnabled &&
+    runtimeMode === "api" &&
     xiaozeProactiveEnabled &&
     !isPlatformHome &&
     canAccessCurrentPage &&
@@ -2482,18 +2470,13 @@ function AppShell({
           )}
         </TopBarActionsContext.Provider>
       </div>
-      {!isPlatformHome && canAccessCurrentPage ? (
-        <UnifiedAgent
+      {runtimeMode === "api" && !isPlatformHome && canAccessCurrentPage ? (
+        <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
           projectId={state.activeProjectId}
           roleId={currentRoleId}
-          runtimeMode={runtimeMode}
-          gateway={agentGatewayClient}
-          plan={agentPlan}
-          state={state}
-          dispatch={dispatch}
-          xiaozeEnabled={xiaozeEnabled}
+          visibleRecords={agentPlan.contextSummary ? [{ summary: agentPlan.contextSummary }] : undefined}
         />
       ) : null}
         {projectInitOpen ? (
@@ -2506,8 +2489,8 @@ function AppShell({
       </div>
   );
 
-  return xiaozeEnabled ? (
-    <XiaozeProvider enabled={xiaozeEnabled} enableInspector={enableXiaozeInspector}>
+  return runtimeMode === "api" ? (
+    <XiaozeProvider enableInspector={enableXiaozeInspector}>
       <XiaozePageContext.Provider value={xiaozePageContext}>{appShell}</XiaozePageContext.Provider>
     </XiaozeProvider>
   ) : (
@@ -4783,8 +4766,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   };
 
   const onAskAgent = () => {
-    document.querySelector<HTMLButtonElement>(".agent-fab")?.click();
-    dispatch({ type: "ADD_NOTIFICATION", message: "WiseAgent 已展开" });
+    document.querySelector<HTMLButtonElement>(".xiaoze-chat-toggle-anchor button")?.click();
   };
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;

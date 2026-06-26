@@ -90,8 +90,7 @@ jobs:
       OBJECT_STORE_ROOT: .wiseeff-object-store
       DEBUG_DEVICE_GATEWAY_MODE: simulator
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
-      AGENT_PROVIDER: deterministic
-      AGENT_API_FORMAT: wiseeff
+      XIAOZE_DETERMINISTIC: "true"
       AUTH_MODE: production
       AUTH_PROVIDER: hmac
       M5_CONTRACT_CHECK_PASSED: "true"
@@ -121,8 +120,7 @@ jobs:
             echo "DATABASE_URL=${DATABASE_URL}"
             echo "AUTH_MODE=production"
             echo "AUTH_PROVIDER=hmac"
-            echo "AGENT_PROVIDER=deterministic"
-            echo "AGENT_API_FORMAT=wiseeff"
+            echo "XIAOZE_DETERMINISTIC=true"
             echo "AGENT_API_BASE_URL=http://127.0.0.1:8787"
             echo "AGENT_MODEL=wiseeff-rules-m4"
             echo "AGENT_API_KEY=local-ci-deterministic"

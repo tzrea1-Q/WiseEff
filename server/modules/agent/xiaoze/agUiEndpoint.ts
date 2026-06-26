@@ -993,14 +993,14 @@ export function registerXiaozeRoutes(
     db?: Database;
     env?: Pick<
       ServerEnv,
-      "XIAOZE_RUNTIME_ENABLED" | "XIAOZE_DETERMINISTIC" | "XIAOZE_PROACTIVE_ENABLED" | "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL"
+      "XIAOZE_DETERMINISTIC" | "XIAOZE_PROACTIVE_ENABLED" | "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL"
     >;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
     approvalBridge?: ReturnType<typeof createOrchestratorApprovalBridge>;
   }
 ) {
-  if (!options.env?.XIAOZE_RUNTIME_ENABLED || !options.db) {
+  if (!options.db) {
     return;
   }
 
@@ -1013,7 +1013,7 @@ export function registerXiaozeRoutes(
     options.createAgent ??
     createXiaozeAgentFactory({
       db: options.db,
-      env: options.env
+      env: options.env ?? { XIAOZE_DETERMINISTIC: true }
     });
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db });
   const persistTurn = createXiaozeTurnPersister({ db: options.db });

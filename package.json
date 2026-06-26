@@ -21,7 +21,6 @@
     "test:m2": "npm run test:all && npm run build && npm run test:e2e",
     "test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "test:m3-5": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
-    "test:m4": "npm run test:all && npm run build && npm run test:e2e -- e2e/agent.api.spec.ts",
     "smoke:m5": "tsx scripts/run-m5-smoke.ts",
     "acceptance:preflight": "tsx -- scripts/run-acceptance-preflight.ts",
     "acceptance:e2e": "playwright test --config playwright.acceptance.config.ts",

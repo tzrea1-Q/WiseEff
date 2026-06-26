@@ -10,7 +10,7 @@ This guide gets WiseEff running locally for API-mode development and acceptance 
 - npm 11 or a compatible npm version.
 - Docker Desktop or Docker Engine for the one-command local PostgreSQL path.
 - PostgreSQL reachable from `DATABASE_URL` if you run the services manually.
-- Optional: a live Pi-backed Agent provider if you are testing `AGENT_PROVIDER=live`.
+- Optional: live Xiaoze LLM credentials (`AGENT_API_*`) if you are testing non-deterministic Agent behavior.
 
 ## First Setup
 
@@ -19,22 +19,15 @@ npm ci
 copy .env.example .env
 ```
 
-On PowerShell, edit `.env` and fill only these blank values for the default Pi-backed live Agent provider checks:
+On PowerShell, edit `.env` and fill only these blank values when testing live Xiaoze LLM behavior:
 
 ```text
+AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
 
-The default live profile uses `AGENT_API_FORMAT=pi` and `AGENT_PI_PROVIDER=minimax`. Set `AGENT_API_FORMAT=openai` plus `AGENT_API_BASE_URL` only when checking the legacy OpenAI-compatible transport.
-
-If you are not testing live Agent provider behavior, set:
-
-```text
-AGENT_PROVIDER=deterministic
-```
-
-`npm run dev:all` also falls back to the deterministic Agent provider when `.env` keeps `AGENT_PROVIDER=live` but the live provider model, key, or required URL-backed transport setting is blank.
+For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
 
 ## One-Command Local Stack
 
@@ -163,10 +156,11 @@ Debugging workflow:
 npm run test:e2e -- e2e/debugging.api.spec.ts
 ```
 
-Agent workflow:
+Xiaoze workflow:
 
 ```bash
-npm run test:e2e -- e2e/agent.api.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
 Use [verification-matrix.md](verification-matrix.md) before finishing work.

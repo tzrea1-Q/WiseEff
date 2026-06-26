@@ -1,7 +1,5 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
-import { registerAgentRoutes } from "./modules/agent/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
-import type { AgentProvider } from "./modules/agent/provider";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";
@@ -26,7 +24,6 @@ import { attachDeviceBridgeWebSocket, createDeviceBridgeWsHandler } from "./modu
 import { registerLogRoutes } from "./modules/logs/routes";
 import { buildReadyHealth, type DurableQueueHealthCheck } from "./modules/operations/health";
 import { registerOperationsRoutes, type PilotReadinessEnv } from "./modules/operations/routes";
-import { sanitizeAgentProviderEvidence } from "./modules/agent/providerEvidence";
 import { createMetricsRegistry, type MetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary, type TracingBoundary } from "./observability/tracing";
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
@@ -80,7 +77,6 @@ export function createWiseEffServer(
     logAnalysisQueue?: LogAnalysisQueue;
     debugGateway?: DebugDeviceGateway;
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
-    agentProvider?: AgentProvider;
     durableQueue?: DurableQueueHealthCheck;
     env?: PilotReadinessEnv & Partial<DeviceBridgeEnv>;
     auth?: { mode: "development" | "production"; verifier?: TokenVerifier };
@@ -106,7 +102,6 @@ export function createWiseEffServer(
   registerOperationsRoutes(router, {
     db: options.db,
     objectStore: options.objectStoreHealth,
-    agentProvider: options.agentProvider,
     debugGateway: options.debugGateway,
     debugGatewayRegistry: options.debugGatewayRegistry,
     durableQueue: options.durableQueue,
@@ -153,13 +148,6 @@ export function createWiseEffServer(
     artifactRoot: options.deviceBridge?.artifactRoot ?? options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT,
     toolArtifactRoot: options.deviceBridge?.toolArtifactRoot ?? options.env?.DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT
   });
-  registerAgentRoutes(router, {
-    db: options.db,
-    getCurrentAuthContext: authResolver,
-    provider: options.agentProvider,
-    metrics,
-    tracing
-  });
   registerXiaozeRoutes(router, {
     db: options.db,
     env: options.env as ServerEnv | undefined,
@@ -171,17 +159,14 @@ export function createWiseEffServer(
       db: options.db,
       objectStore: options.objectStoreHealth,
       includeWorkerQueue: true,
-      agentProvider: options.agentProvider
+      env: options.env
     });
     const readiness = readyHealth.body.status === "ready" ? "ready" : "not_ready";
     metrics.setReadinessStatus(readiness);
     metrics.setDependencyHealth({ dependency: "database", ok: readyHealth.body.dependencies.database.ok });
     metrics.setDependencyHealth({ dependency: "objectStore", ok: readyHealth.body.dependencies.objectStore.ok });
-    if (readyHealth.body.dependencies.agentProvider) {
-      metrics.setAgentProviderHealth({
-        ok: readyHealth.body.dependencies.agentProvider.ok,
-        evidence: sanitizeAgentProviderEvidence(readyHealth.body.dependencies.agentProvider.details)
-      });
+    if (readyHealth.body.dependencies.xiaozeLlm) {
+      metrics.setXiaozeLlmHealth({ ok: readyHealth.body.dependencies.xiaozeLlm.ok });
     }
     if (readyHealth.body.dependencies.workerQueue) {
       metrics.setQueueStats({
@@ -315,7 +300,6 @@ export function createWiseEffServerFromEnv(
     logAnalysisQueue?: LogAnalysisQueue;
     debugGateway?: DebugDeviceGateway;
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
-    agentProvider?: AgentProvider;
     durableQueue?: DurableQueueHealthCheck;
     env: ServerEnv;
     authVerifierFactory?: (env: ServerEnv) => TokenVerifier;

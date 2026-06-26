@@ -26,13 +26,10 @@ const rawEnvSchema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
-  AGENT_PROVIDER: z.enum(["deterministic", "live"]).default("deterministic"),
-  AGENT_API_FORMAT: z.enum(["wiseeff", "openai"]).default("wiseeff"),
   AGENT_MODEL: z.string().optional(),
   AGENT_API_KEY: z.string().optional(),
   AGENT_API_BASE_URL: z.string().optional(),
   AGENT_API_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
-  AGENT_PROMPT_VERSION: z.string().default("m5-agent-v1"),
   LOG_WORKER_ENABLED: z
     .enum(["true", "false"])
     .default("true")
@@ -52,10 +49,6 @@ const rawEnvSchema = z.object({
   DEVICE_BRIDGE_PAIRING_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
   DEVICE_BRIDGE_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
   DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws"),
-  XIAOZE_RUNTIME_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
   XIAOZE_MODEL: z.string().optional(),
   XIAOZE_DETERMINISTIC: z
     .enum(["true", "false"])
@@ -70,12 +63,7 @@ const rawEnvSchema = z.object({
 export type ServerEnv = z.infer<typeof rawEnvSchema>;
 
 export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
-  const normalized: NodeJS.ProcessEnv = { ...raw };
-  if (normalized.AGENT_API_FORMAT === "pi") {
-    normalized.AGENT_API_FORMAT = "wiseeff";
-    delete normalized.AGENT_PI_PROVIDER;
-  }
-  const env = rawEnvSchema.parse(normalized);
+  const env = rawEnvSchema.parse(raw);
 
   if (env.NODE_ENV === "production" && env.MOCK_RUNTIME_ENABLED) {
     throw new Error("MOCK_RUNTIME_ENABLED cannot be true in production");
@@ -121,20 +109,8 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   if (env.AUTH_MODE === "production" && env.AUTH_PROVIDER === "oidc" && (!env.AUTH_OIDC_ISSUER?.trim() || !env.AUTH_OIDC_AUDIENCE?.trim())) {
     throw new Error("AUTH_OIDC_ISSUER and AUTH_OIDC_AUDIENCE are required when AUTH_PROVIDER=oidc");
   }
-  if (env.NODE_ENV === "production" && env.AGENT_PROVIDER !== "live") {
-    throw new Error("AGENT_PROVIDER=live is required when NODE_ENV=production");
-  }
   if (env.LOG_ANALYSIS_QUEUE_MODE === "durable" && !env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable");
-  }
-  if (env.AGENT_PROVIDER === "live" && !env.AGENT_MODEL?.trim()) {
-    throw new Error("AGENT_MODEL is required when AGENT_PROVIDER=live");
-  }
-  if (env.AGENT_PROVIDER === "live" && !env.AGENT_API_KEY?.trim()) {
-    throw new Error("AGENT_API_KEY is required when AGENT_PROVIDER=live");
-  }
-  if (env.AGENT_PROVIDER === "live" && !env.AGENT_API_BASE_URL?.trim()) {
-    throw new Error(`AGENT_API_BASE_URL is required when AGENT_API_FORMAT=${env.AGENT_API_FORMAT}`);
   }
 
   return env;

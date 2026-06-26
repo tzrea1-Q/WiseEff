@@ -17,7 +17,7 @@ flowchart LR
   Api --> Audit["Audit"]
   Api --> Logs["Log worker"]
   Logs --> ObjectStore["local 或 S3/OSS object store"]
-  Api --> Agent["Agent orchestrator/provider"]
+  Api --> Agent["小泽 Agent seam（AG-UI + ToolRegistry）"]
   Api --> Gateway["Simulator 或 HDC gateway"]
 ```
 
@@ -42,7 +42,7 @@ flowchart LR
 - `server/modules/parameters/`：M1 参数管理。
 - `server/modules/logs/`：M2 日志上传、分析记录、对象存储、worker。
 - `server/modules/debugging/`：M3 调试服务、simulator/HDC gateway。
-- `server/modules/agent/`：M4 Agent session、tool、approval、provider。
+- `server/modules/agent/`：小泽 AG-UI 端点、LangGraph 规划 agent、tool registry、orchestrator approval bridge 与持久化 thread 元数据。
 - `server/modules/operations/`：health、readiness、pilot-readiness。
 - `server/migrations/`：PostgreSQL schema baseline。
 

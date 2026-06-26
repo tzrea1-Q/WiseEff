@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type TestInfo } from "playwright/test";
-import { seedQualityRuntime } from "./helpers";
+import { openXiaozePopup, seedQualityRuntime } from "./helpers";
 
 const wcagTags = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 const coreRoutes = [
@@ -46,11 +46,9 @@ test.describe("M5.11 accessibility quality gate", () => {
     });
   }
 
-  test("scans key modal, drawer, and Agent interaction states", async ({ page }, testInfo) => {
-    await page.goto("/parameters");
-    await page.getByRole("button", { name: "打开 WiseAgent" }).click();
-    await expect(page.locator(".agent-panel")).toBeVisible();
-    await scan(page, testInfo, "agent-panel-open");
+  test("scans key modal, drawer, and Xiaoze interaction states", async ({ page }, testInfo) => {
+    await openXiaozePopup(page);
+    await scan(page, testInfo, "xiaoze-popup-open");
 
     await page.goto("/parameters");
     const firstDetailButton = page.getByRole("button", { name: /^查看 / }).first();

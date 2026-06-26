@@ -25,7 +25,7 @@ export default defineConfig({
       command: "npm run dev:api",
       env: {
         PORT: "8787",
-        AGENT_PROVIDER: "deterministic",
+        XIAOZE_DETERMINISTIC: "true",
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiURL,
         DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",
