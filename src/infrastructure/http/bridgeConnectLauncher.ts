@@ -1,10 +1,14 @@
 import type { LocalBridgeHealthState, ToolProbeState } from "./deviceBridgeClient";
-import { resolveBridgeServerUrl } from "./bridgeServerUrl";
+import { resolveBridgeServerUrl, resolveBridgeWebOrigin } from "./bridgeServerUrl";
 import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
 
-export function buildBridgeConnectUrl(serverUrl?: string, code?: string) {
+export function buildBridgeConnectUrl(serverUrl?: string, code?: string, webOrigin?: string) {
   const url = new URL("wiseeff-bridge://connect");
   url.searchParams.set("server", serverUrl ?? resolveBridgeServerUrl());
+  const origin = webOrigin ?? resolveBridgeWebOrigin();
+  if (origin) {
+    url.searchParams.set("webOrigin", origin);
+  }
   if (code) {
     url.searchParams.set("code", code);
   }

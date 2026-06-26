@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveBridgeServerUrl } from "./bridgeServerUrl";
+import { resolveBridgeServerUrl, resolveBridgeWebOrigin } from "./bridgeServerUrl";
 
 describe("resolveBridgeServerUrl", () => {
   it("uses the API origin when the page and API run on different ports", () => {
@@ -13,5 +13,9 @@ describe("resolveBridgeServerUrl", () => {
     vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "https://wiseeff.example.com");
     expect(resolveBridgeServerUrl("https://wiseeff.example.com")).toBe("https://wiseeff.example.com");
     vi.unstubAllEnvs();
+  });
+
+  it("returns the page origin for bridge web CORS", () => {
+    expect(resolveBridgeWebOrigin("https://tzrea1.com")).toBe("https://tzrea1.com");
   });
 });

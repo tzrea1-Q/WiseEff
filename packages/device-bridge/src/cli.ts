@@ -146,7 +146,7 @@ async function runStartCommand(
 
   const health = await startHealthServer({
     getState: () => status,
-    allowedOrigin: config.serverUrl,
+    allowedOrigin: [config.webOrigin, config.serverUrl].filter(Boolean),
     onHealthRead: async () => {
       await toolProbeCache.refreshTools();
       status = {

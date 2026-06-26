@@ -2,6 +2,8 @@ import os from "node:os";
 
 import { detectBridgePlatform, type BridgeConfig } from "./config";
 import { ensureBridgeRunning, type EnsureBridgeRunningDependencies } from "./ensureBridgeRunning";
+import { normalizeCorsOrigin } from "./healthServer";
+import { stopLocalBridgeHealthListener } from "./localBridgeProcess";
 
 const BRIDGE_VERSION = "0.1.0";
 
@@ -39,6 +41,7 @@ export async function runPairCommand(
 ): Promise<{ exitCode: number; config?: BridgeConfig }> {
   const server = parsed.flags.get("server");
   const code = parsed.flags.get("code");
+  const webOrigin = parsed.flags.get("webOrigin");
   if (!server || !code) {
     deps.stdout.error("Missing required flags for pair.");
     return { exitCode: 1 };
@@ -85,6 +88,7 @@ export async function runPairCommand(
     bridgeToken: payload.bridgeToken,
     tokenExpiresAt: payload.tokenExpiresAt,
     serverUrl: normalizedServerUrl,
+    webOrigin: webOrigin ? normalizeCorsOrigin(webOrigin) : undefined,
     machineLabel: requestBody.machineLabel,
     platform: requestBody.platform,
     arch: requestBody.arch,
@@ -119,20 +123,25 @@ export type ConnectCommandDependencies = CliDependencies & {
 
 export async function runConnectCommand(
   deps: ConnectCommandDependencies,
-  input: { server: string; code?: string }
+  input: { server: string; code?: string; webOrigin?: string }
 ): Promise<{ exitCode: number }> {
   const existing = await deps.loadConfig();
   const normalizedServer = normalizeServerUrl(input.server);
+  const normalizedWebOrigin = input.webOrigin ? normalizeCorsOrigin(input.webOrigin) : undefined;
   const serverMatches = existing?.serverUrl === normalizedServer;
   const tokenValid = existing && !isBridgeTokenExpired(existing.tokenExpiresAt);
 
   if (input.code) {
+    const pairFlags = new Map([
+      ["server", input.server],
+      ["code", input.code]
+    ]);
+    if (normalizedWebOrigin) {
+      pairFlags.set("webOrigin", normalizedWebOrigin);
+    }
     const pairResult = await runPairCommand(
       {
-        flags: new Map([
-          ["server", input.server],
-          ["code", input.code]
-        ])
+        flags: pairFlags
       },
       deps
     );
@@ -148,10 +157,16 @@ export async function runConnectCommand(
     return { exitCode: 1 };
   }
 
-  const config = await deps.loadConfig();
+  let config = await deps.loadConfig();
   if (!config) {
     deps.stdout.error("Bridge is not paired.");
     return { exitCode: 1 };
+  }
+
+  if (normalizedWebOrigin && config.webOrigin !== normalizedWebOrigin) {
+    config = { ...config, webOrigin: normalizedWebOrigin };
+    await deps.saveConfig(config);
+    await stopLocalBridgeHealthListener(deps.platform);
   }
 
   return deps.ensureBridgeRunning({

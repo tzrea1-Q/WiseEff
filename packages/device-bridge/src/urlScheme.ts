@@ -1,6 +1,9 @@
-export function buildConnectUrl(input: { server: string; code?: string }) {
+export function buildConnectUrl(input: { server: string; code?: string; webOrigin?: string }) {
   const url = new URL("wiseeff-bridge://connect");
   url.searchParams.set("server", normalizeConnectServerUrl(input.server));
+  if (input.webOrigin) {
+    url.searchParams.set("webOrigin", normalizeConnectServerUrl(input.webOrigin));
+  }
   if (input.code) {
     url.searchParams.set("code", input.code);
   }
@@ -81,6 +84,7 @@ export function parseConnectUrl(raw: string) {
     throw new Error("Unsupported bridge URL");
   }
   const server = url.searchParams.get("server");
+  const webOrigin = url.searchParams.get("webOrigin") ?? undefined;
   const code = url.searchParams.get("code") ?? undefined;
   if (!server) {
     throw new Error("Missing server");
@@ -88,8 +92,15 @@ export function parseConnectUrl(raw: string) {
   if (!isAllowedConnectServerUrl(server)) {
     throw new Error("Server URL must use https or local http");
   }
+  if (webOrigin !== undefined && !isAllowedConnectServerUrl(webOrigin)) {
+    throw new Error("Web origin must use https or local http");
+  }
   if (code !== undefined && !isPairingCode(code)) {
     throw new Error("Pairing code must be a 6-digit number");
   }
-  return { server: normalizeConnectServerUrl(server), code };
+  return {
+    server: normalizeConnectServerUrl(server),
+    webOrigin: webOrigin ? normalizeConnectServerUrl(webOrigin) : undefined,
+    code
+  };
 }

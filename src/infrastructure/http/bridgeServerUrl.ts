@@ -18,3 +18,8 @@ export function resolveBridgeServerUrl(pageOrigin?: string) {
     return origin || apiBase;
   }
 }
+
+export function resolveBridgeWebOrigin(pageOrigin?: string) {
+  const origin = pageOrigin ?? (typeof window !== "undefined" ? window.location.origin : "");
+  return origin.replace(/\/$/, "");
+}

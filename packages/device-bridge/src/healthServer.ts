@@ -19,20 +19,46 @@ function isLoopbackOrigin(origin: string) {
   }
 }
 
-function resolveCorsOrigin(origin: string | undefined, allowedOrigin?: string) {
+export function normalizeCorsOrigin(raw: string) {
+  const url = new URL(raw);
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+function corsOriginHost(raw: string) {
+  return new URL(raw).hostname.toLowerCase();
+}
+
+function listAllowedOrigins(allowedOrigin?: string | string[]) {
+  if (!allowedOrigin) {
+    return [];
+  }
+  return (Array.isArray(allowedOrigin) ? allowedOrigin : [allowedOrigin]).filter(Boolean);
+}
+
+export function resolveCorsOrigin(origin: string | undefined, allowedOrigin?: string | string[]) {
   if (!origin) {
     return undefined;
-  }
-  if (allowedOrigin && origin === allowedOrigin) {
-    return origin;
   }
   if (isLoopbackOrigin(origin)) {
     return origin;
   }
+
+  const normalizedOrigin = normalizeCorsOrigin(origin);
+  for (const allowed of listAllowedOrigins(allowedOrigin)) {
+    if (normalizeCorsOrigin(allowed) === normalizedOrigin) {
+      return origin;
+    }
+    if (corsOriginHost(allowed) === corsOriginHost(origin)) {
+      return origin;
+    }
+  }
   return undefined;
 }
 
-function applyCorsHeaders(res: import("node:http").ServerResponse, origin: string | undefined, allowedOrigin?: string) {
+function applyCorsHeaders(res: import("node:http").ServerResponse, origin: string | undefined, allowedOrigin?: string | string[]) {
   const corsOrigin = resolveCorsOrigin(origin, allowedOrigin);
   if (!corsOrigin) {
     return;
@@ -47,7 +73,7 @@ export function startHealthServer(input: {
   port?: number;
   onHealthRead?: () => void | Promise<void>;
   onToolsInstall?: (protocol: "adb" | "hdc" | "all") => void | Promise<void>;
-  allowedOrigin?: string;
+  allowedOrigin?: string | string[];
 }): Promise<HealthServer> {
   const host = input.host ?? "127.0.0.1";
   const port = input.port ?? 18_787;
