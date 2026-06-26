@@ -1,6 +1,6 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
-import type { AgentProvider } from "./modules/agent/provider";
+import type { AgentProvider } from "./modules/agent/providerEvidence";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createLocalAuthService } from "./modules/auth/localAuth";
 import { getAuthContext } from "./modules/auth/repository";

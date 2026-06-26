@@ -131,7 +131,7 @@ describe("agent repository", () => {
     const { db: toolDb } = createRecordingDb([
       {
         id: "tool-1",
-        name: "parameter.summarizeReviewQueue",
+        name: "perception.getProjectOverview",
         label: "Summarize review queue",
         payload: "{broken",
         requires_approval: false,
@@ -171,7 +171,7 @@ describe("agent repository", () => {
       sessionId: "agent-session-1",
       organizationId: "org-chargelab",
       projectId: "aurora",
-      name: "parameter.summarizeReviewQueue",
+      name: "perception.getProjectOverview",
       label: "Summarize review queue",
       payload: { projectId: "aurora" },
       requiresApproval: false,
@@ -249,7 +249,7 @@ describe("agent repository", () => {
         session_id: "agent-session-1",
         organization_id: "org-chargelab",
         project_id: "aurora",
-        name: "parameter.submitChangeDraft",
+        name: "action.submitParameterChange",
         label: "Create parameter draft",
         payload: JSON.stringify({ projectId: "aurora", reason: "Stage draft" }),
         requires_approval: true,
@@ -415,7 +415,7 @@ describe("agent repository", () => {
     const { db, calls } = createRecordingDb([
       {
         id: "tool-1",
-        name: "parameter.summarizeReviewQueue",
+        name: "perception.getProjectOverview",
         label: "Summarize review queue",
         payload: JSON.stringify({ projectId: "aurora" }),
         requires_approval: false,

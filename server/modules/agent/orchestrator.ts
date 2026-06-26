@@ -10,8 +10,6 @@ import type { AgentToolExecutionContext } from "./toolRegistry";
 import {
   appendAgentMessage,
   createAgentApproval,
-  createAgentRunTrace,
-  createAgentSession,
   createAgentToolCall,
   getAgentApproval,
   getAgentSession,
@@ -23,23 +21,11 @@ import {
   markAgentApprovalRejected,
   updateAgentToolCall
 } from "./repository";
-import { createDeterministicAgentProvider, type AgentProvider, type AgentToolRequest } from "./provider";
-import { LiveAgentProviderOutageError } from "./liveProvider";
-import type { AgentContext, AgentToolCallDto, AgentToolResult, AgentTurnDto } from "./types";
+import type { AgentToolCallDto, AgentToolRequest, AgentToolResult, AgentTurnDto } from "./types";
 
 type AgentRequestContext = {
   auth: AuthContext;
   requestId: string;
-};
-
-type StartSessionInput = AgentRequestContext & {
-  context: AgentContext;
-  title?: string;
-};
-
-type SendMessageInput = AgentRequestContext & {
-  sessionId: string;
-  message: string;
 };
 
 type ToolCallInput = AgentRequestContext & {
@@ -68,29 +54,16 @@ function staleTransition(message: string, details: Record<string, unknown>) {
 export function createAgentOrchestrator(options: {
   db: Database;
   toolRegistry?: ToolRegistry;
-  provider?: AgentProvider;
   createAuditEvent?: typeof defaultCreateAuditEvent;
-  metrics?: Pick<
-    MetricsRegistry,
-    "recordAgentProviderCall" | "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure"
-  >;
+  metrics?: Pick<MetricsRegistry, "recordAgentApproval" | "recordAgentToolResult" | "recordAuditWriteFailure">;
   tracing?: Pick<TracingBoundary, "withSpan">;
 }) {
   const db = options.db;
-  const provider = options.provider ?? createDeterministicAgentProvider();
   const createAuditEvent = options.createAuditEvent ?? defaultCreateAuditEvent;
   const metrics = options.metrics;
   const tracing = options.tracing;
   const registryFor = (queryable: Queryable) => options.toolRegistry ?? createAgentToolRegistry({ db: queryable });
   const toolRegistry = registryFor(db);
-
-  function recordProviderCall(input: { provider: string; status: string; startedAt: number }) {
-    metrics?.recordAgentProviderCall({
-      provider: input.provider,
-      status: input.status,
-      durationMs: Math.max(Date.now() - input.startedAt, 0)
-    });
-  }
 
   function toolMetricLabels(toolCall: Pick<AgentToolCallDto, "name">) {
     const definition = toolRegistry.require(toolCall.name);
@@ -135,17 +108,6 @@ export function createAgentOrchestrator(options: {
     };
 
     return tracing ? tracing.withSpan("agent.tool.execute", attributes, execute) : execute();
-  }
-
-  async function withProviderSpan<T>(
-    name: string,
-    attributes: Record<string, string | number | boolean>,
-    fn: (spanAttributes: Record<string, string | number | boolean>) => Promise<T> | T
-  ) {
-    if (!tracing) {
-      return fn(attributes);
-    }
-    return tracing.withSpan(name, attributes, () => fn(attributes));
   }
 
   async function audit(input: {
@@ -204,42 +166,6 @@ export function createAgentOrchestrator(options: {
       toolCalls,
       approvals
     };
-  }
-
-  async function startSession(input: StartSessionInput): Promise<AgentTurnDto> {
-    const sessionId = newId("agent-session");
-    const messageId = newId("agent-msg");
-    const title = input.title ?? "WiseEff Agent Session";
-
-    await createAgentSession(db, {
-      id: sessionId,
-      organizationId: input.auth.organization.id,
-      projectId: input.context.projectId,
-      actorUserId: input.auth.user.id,
-      pageKey: input.context.pageKey,
-      roleId: input.context.roleId,
-      context: input.context,
-      title
-    });
-    await appendAgentMessage(db, {
-      id: messageId,
-      sessionId,
-      organizationId: input.auth.organization.id,
-      role: "system",
-      content: "WiseEff Agent is operating in deterministic M4 mode.",
-      citations: []
-    });
-    await audit({
-      context: input,
-      projectId: input.context.projectId,
-      kind: "agent-session",
-      action: "started",
-      targetType: "agent_session",
-      targetId: sessionId,
-      metadata: { sessionId, pageKey: input.context.pageKey }
-    });
-
-    return assembleTurn(input, sessionId);
   }
 
   async function createApprovalForToolCall(input: AgentRequestContext, toolCall: AgentToolCallDto, sessionId: string) {
@@ -366,173 +292,6 @@ export function createAgentOrchestrator(options: {
       throw new ApiError("INTERNAL_ERROR", "Agent tool call was not found after recording.", 500, { toolCallId });
     }
     return recorded;
-  }
-
-  async function sendMessage(input: SendMessageInput): Promise<AgentTurnDto> {
-    const session = await loadSessionOrThrow(input, input.sessionId);
-    const userMessageId = newId("agent-msg");
-    await appendAgentMessage(db, {
-      id: userMessageId,
-      sessionId: input.sessionId,
-      organizationId: input.auth.organization.id,
-      role: "user",
-      content: input.message,
-      citations: []
-    });
-
-    const providerMetadata = provider.metadata();
-    const providerStartedAt = Date.now();
-    const providerHealth = provider.checkHealth
-      ? await withProviderSpan(
-          "agent.provider.health",
-          {
-            provider: providerMetadata.provider,
-            model: providerMetadata.model,
-            promptVersion: providerMetadata.promptVersion,
-            status: "checking"
-          },
-          async (spanAttributes) => {
-            try {
-              const health = await provider.checkHealth!();
-              spanAttributes.status = health.ok ? health.status : "health_unavailable";
-              return health;
-            } catch (error) {
-              spanAttributes.status = "failed";
-              spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
-              throw error;
-            }
-          }
-        )
-      : undefined;
-    if (providerHealth && !providerHealth.ok) {
-      recordProviderCall({ provider: providerMetadata.provider, status: "health_unavailable", startedAt: providerStartedAt });
-      const fallbackReason = providerHealth.message ?? "Live Agent provider is unavailable.";
-      const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
-      await createAgentRunTrace(db, {
-        id: newId("agent-trace"),
-        sessionId: input.sessionId,
-        messageId: userMessageId,
-        organizationId: input.auth.organization.id,
-        provider: providerMetadata.provider,
-        model: providerMetadata.model,
-        promptVersion: providerMetadata.promptVersion,
-        inputSummary: input.message,
-        outputSummary: fallbackContent,
-        toolCallIds: [],
-        traceId: input.requestId,
-        safetyStatus: "failed",
-        safetyReasons: [fallbackReason],
-        fallbackReason
-      });
-      await appendAgentMessage(db, {
-        id: newId("agent-msg"),
-        sessionId: input.sessionId,
-        organizationId: input.auth.organization.id,
-        role: "assistant",
-        content: fallbackContent,
-        citations: [],
-        confidence: 0.2
-      });
-      return assembleTurn(input, input.sessionId);
-    }
-
-    let plan;
-    try {
-      plan = await withProviderSpan(
-        "agent.provider.plan_turn",
-        {
-          provider: providerMetadata.provider,
-          model: providerMetadata.model,
-          promptVersion: providerMetadata.promptVersion,
-          status: "planning"
-        },
-        async (spanAttributes) => {
-          try {
-            const nextPlan = await provider.planTurn({ context: session.context, message: input.message });
-            spanAttributes.status = "succeeded";
-            spanAttributes.toolRequestCount = nextPlan.toolRequests.length;
-            return nextPlan;
-          } catch (error) {
-            spanAttributes.status = error instanceof LiveAgentProviderOutageError ? "outage_fallback" : "failed";
-            spanAttributes.errorType = error instanceof Error ? error.name : "unknown";
-            throw error;
-          }
-        }
-      );
-      recordProviderCall({ provider: providerMetadata.provider, status: "succeeded", startedAt: providerStartedAt });
-    } catch (error) {
-      if (!(error instanceof LiveAgentProviderOutageError)) {
-        recordProviderCall({ provider: providerMetadata.provider, status: "failed", startedAt: providerStartedAt });
-        throw error;
-      }
-
-      recordProviderCall({ provider: providerMetadata.provider, status: "outage_fallback", startedAt: providerStartedAt });
-      const fallbackReason = error.message;
-      const fallbackContent = "The live Agent provider is temporarily unavailable right now.";
-      await createAgentRunTrace(db, {
-        id: newId("agent-trace"),
-        sessionId: input.sessionId,
-        messageId: userMessageId,
-        organizationId: input.auth.organization.id,
-        provider: providerMetadata.provider,
-        model: providerMetadata.model,
-        promptVersion: providerMetadata.promptVersion,
-        inputSummary: input.message,
-        outputSummary: fallbackContent,
-        toolCallIds: [],
-        traceId: input.requestId,
-        safetyStatus: "failed",
-        safetyReasons: [fallbackReason],
-        fallbackReason
-      });
-      await appendAgentMessage(db, {
-        id: newId("agent-msg"),
-        sessionId: input.sessionId,
-        organizationId: input.auth.organization.id,
-        role: "assistant",
-        content: fallbackContent,
-        citations: [],
-        confidence: 0.2
-      });
-      return assembleTurn(input, input.sessionId);
-    }
-
-    const toolCallIds: string[] = [];
-    for (const request of plan.toolRequests) {
-      const toolCall = await recordToolRequest(input, input.sessionId, request);
-      toolCallIds.push(toolCall.id);
-    }
-
-    await createAgentRunTrace(db, {
-      id: newId("agent-trace"),
-      sessionId: input.sessionId,
-      messageId: userMessageId,
-      organizationId: input.auth.organization.id,
-      provider: plan.provider,
-      model: plan.model,
-      promptVersion: plan.promptVersion,
-      inputSummary: input.message,
-      outputSummary: plan.assistantDraft.content,
-      toolCallIds,
-      traceId: input.requestId,
-      latencyMs: plan.latencyMs,
-      inputTokens: plan.usage?.inputTokens,
-      outputTokens: plan.usage?.outputTokens,
-      estimatedCostUsd: plan.usage?.estimatedCostUsd,
-      safetyStatus: plan.safety?.status,
-      safetyReasons: plan.safety?.reasons
-    });
-    await appendAgentMessage(db, {
-      id: newId("agent-msg"),
-      sessionId: input.sessionId,
-      organizationId: input.auth.organization.id,
-      role: "assistant",
-      content: plan.assistantDraft.content,
-      citations: plan.assistantDraft.citations,
-      confidence: plan.assistantDraft.confidence
-    });
-
-    return assembleTurn(input, input.sessionId);
   }
 
   async function runToolCall(input: ToolCallInput): Promise<AgentTurnDto> {
@@ -706,8 +465,6 @@ export function createAgentOrchestrator(options: {
   }
 
   return {
-    startSession,
-    sendMessage,
     runToolCall,
     approveToolCall,
     rejectToolCall,

@@ -3,7 +3,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
-import type { AgentProvider } from "../agent/provider";
+import type { AgentProvider } from "../agent/providerEvidence";
 import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import type { DebugDeviceGateway } from "../debugging/gateway";
 import type { DebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";

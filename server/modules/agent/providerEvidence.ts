@@ -1,6 +1,24 @@
 export type AgentProviderFormat = "deterministic" | "wiseeff" | "openai" | "pi";
 
+export type AgentProviderHealth = {
+  ok: boolean;
+  status: "ready" | "failed";
+  message?: string;
+};
+
+export type AgentProvider = {
+  metadata(): {
+    provider: "deterministic" | "live";
+    model: string;
+    promptVersion: string;
+    evidence?: AgentProviderEvidence;
+  };
+  planTurn(input: { context: unknown; message: string }): Promise<unknown> | unknown;
+  checkHealth?(): Promise<AgentProviderHealth> | AgentProviderHealth;
+};
+
 export type AgentProviderEvidence = {
+
   provider: "deterministic" | "live";
   format: AgentProviderFormat;
   model: string;

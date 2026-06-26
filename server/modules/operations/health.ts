@@ -1,5 +1,5 @@
 import type { Database } from "../../shared/database/client";
-import type { AgentProvider } from "../agent/provider";
+import type { AgentProvider } from "../agent/providerEvidence";
 import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";

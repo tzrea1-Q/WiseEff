@@ -38,13 +38,10 @@ describe("loadServerEnv", () => {
     expect(env.HDC_TIMEOUT_MS).toBe(5000);
     expect(env.ADB_TIMEOUT_MS).toBe(5000);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
-    expect(env.AGENT_PROVIDER).toBe("deterministic");
-    expect(env.AGENT_API_FORMAT).toBe("wiseeff");
     expect(env.AGENT_MODEL).toBeUndefined();
     expect(env.AGENT_API_KEY).toBeUndefined();
     expect(env.AGENT_API_BASE_URL).toBeUndefined();
     expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
-    expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(true);
     expect(env.DEVICE_BRIDGE_ARTIFACT_ROOT).toBe("ops/self-hosted/bridge-artifacts");
     expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(1800);
@@ -73,13 +70,10 @@ describe("loadServerEnv", () => {
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
       HDC_TIMEOUT_MS: "2500",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-      AGENT_PROVIDER: "live",
-      AGENT_API_FORMAT: "openai",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com",
       AGENT_API_TIMEOUT_MS: "1500",
-      AGENT_PROMPT_VERSION: "m5-agent-v1",
       LOG_WORKER_ENABLED: "false"
     });
 
@@ -102,13 +96,10 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_ACCESS_KEY_ID).toBe("key");
     expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBe("secret");
     expect(env.OBJECT_STORAGE_REGION).toBe("ap-southeast-1");
-    expect(env.AGENT_PROVIDER).toBe("live");
-    expect(env.AGENT_API_FORMAT).toBe("openai");
     expect(env.AGENT_MODEL).toBe("pilot-model");
     expect(env.AGENT_API_KEY).toBe("secret");
     expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
-    expect(env.AGENT_PROMPT_VERSION).toBe("m5-agent-v1");
     expect(env.LOG_WORKER_ENABLED).toBe(false);
   });
 
@@ -134,21 +125,6 @@ describe("loadServerEnv", () => {
   it("defaults ADB_TIMEOUT_MS to HDC timeout budget", () => {
     expect(loadServerEnv({}).ADB_TIMEOUT_MS).toBe(5000);
     expect(loadServerEnv({ ADB_TIMEOUT_MS: "7500" }).ADB_TIMEOUT_MS).toBe(7500);
-  });
-
-  it("migrates legacy AGENT_API_FORMAT=pi to wiseeff", () => {
-    const env = loadServerEnv({
-      ...productionOidcEnv,
-      DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-      AGENT_PROVIDER: "live",
-      AGENT_API_FORMAT: "pi" as never,
-      AGENT_PI_PROVIDER: "minimax",
-      AGENT_MODEL: "MiniMax-M2.7",
-      AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com"
-    });
-
-    expect(env.AGENT_API_FORMAT).toBe("wiseeff");
   });
 
   it("rejects production mock runtime", () => {
@@ -233,7 +209,6 @@ describe("loadServerEnv", () => {
       AUTH_OIDC_AUDIENCE: "wiseeff-api",
       AUTH_OIDC_JWKS_URI: "https://id.example.com/realms/wiseeff/protocol/openid-connect/certs",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-      AGENT_PROVIDER: "live",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com"
@@ -257,7 +232,6 @@ describe("loadServerEnv", () => {
       AUTH_MODE: "production",
       AUTH_PROVIDER: "local",
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-      AGENT_PROVIDER: "live",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com"
@@ -324,46 +298,9 @@ describe("loadServerEnv", () => {
     ).toThrow("AUTH_TOKEN_HMAC_SECRET must be at least 32 characters outside tests");
   });
 
-  it("requires live agent provider settings in production", () => {
-    expect(() =>
-      loadServerEnv({
-        ...productionOidcEnv,
-        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-        AGENT_PROVIDER: "deterministic",
-        AGENT_MODEL: "pilot-model",
-        AGENT_API_KEY: "secret",
-        AGENT_API_BASE_URL: "https://agent.example.com"
-      })
-    ).toThrow("AGENT_PROVIDER=live is required when NODE_ENV=production");
-
-    expect(() =>
-      loadServerEnv({
-        ...productionOidcEnv,
-        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-        AGENT_PROVIDER: "live",
-        AGENT_MODEL: "pilot-model",
-        AGENT_API_BASE_URL: "https://agent.example.com"
-      })
-    ).toThrow("AGENT_API_KEY is required when AGENT_PROVIDER=live");
-  });
-
-  it("requires AGENT_API_BASE_URL for URL-backed live agent provider formats", () => {
-    expect(() =>
-      loadServerEnv({
-        ...productionOidcEnv,
-        DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-        AGENT_PROVIDER: "live",
-        AGENT_API_FORMAT: "openai",
-        AGENT_MODEL: "pilot-model",
-        AGENT_API_KEY: "secret"
-      })
-    ).toThrow("AGENT_API_BASE_URL is required when AGENT_API_FORMAT=openai");
-  });
-
   it("requires a live device gateway in production unless simulator staging is explicitly allowed", () => {
     const productionEnv = {
       ...productionOidcEnv,
-      AGENT_PROVIDER: "live",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com"
