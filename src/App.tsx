@@ -84,7 +84,7 @@ import {
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
-import { xiaozeEnabled, xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
+import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
 
 function isStaticDownloadPath(pathname: string) {
@@ -2380,7 +2380,7 @@ function AppShell({
 
   const enableXiaozeInspector = canPerform(currentRoleId, "admin.access");
   const showXiaozeProactiveInsights =
-    xiaozeEnabled &&
+    runtimeMode === "api" &&
     xiaozeProactiveEnabled &&
     !isPlatformHome &&
     canAccessCurrentPage &&

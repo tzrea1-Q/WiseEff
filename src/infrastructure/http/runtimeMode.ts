@@ -24,10 +24,6 @@ export const wiseEffRuntimeMode = parseRuntimeMode(import.meta.env.VITE_WISEEFF_
 export const wiseEffApiBaseUrl = import.meta.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
 export const wiseEffApiAuthorization = parseStaticApiAuthorization(import.meta.env.VITE_WISEEFF_API_AUTHORIZATION, import.meta.env.MODE);
 
-export function parseXiaozeEnabled(value: string | undefined) {
-  return value?.trim().toLowerCase() === "true";
-}
-
 export function parseXiaozeProactiveEnabled(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
 }
@@ -40,7 +36,6 @@ export function parseXiaozePromptDebugEnabled(value: string | undefined) {
   return value?.trim().toLowerCase() === "true";
 }
 
-export const xiaozeEnabled = parseXiaozeEnabled(import.meta.env.VITE_XIAOZE_ENABLED);
 export const xiaozeProactiveEnabled = parseXiaozeProactiveEnabled(import.meta.env.VITE_XIAOZE_PROACTIVE_ENABLED);
 export const xiaozeReasoningDevExpanded =
   import.meta.env.MODE !== "production" && parseXiaozeReasoningDevExpanded(import.meta.env.VITE_XIAOZE_REASONING_DEV_EXPANDED);
