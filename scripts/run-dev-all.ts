@@ -103,12 +103,8 @@ export function buildDevAllPlan(
 }
 
 function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
-  const agentFormat = env.AGENT_API_FORMAT?.trim() || "wiseeff";
-  const missingLiveAgentSettings =
-    env.AGENT_PROVIDER === "live" &&
-    (!env.AGENT_MODEL?.trim() ||
-      !env.AGENT_API_KEY?.trim() ||
-      (agentFormat === "pi" ? !env.AGENT_PI_PROVIDER?.trim() : !env.AGENT_API_BASE_URL?.trim()));
+  const missingXiaozeLlmSettings =
+    !env.AGENT_MODEL?.trim() || !env.AGENT_API_KEY?.trim() || !env.AGENT_API_BASE_URL?.trim();
 
   return {
     AUTH_MODE: "production",
@@ -119,7 +115,7 @@ function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
     DEBUG_DEVICE_GATEWAY_MODE: "simulator",
     DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
     ...env,
-    ...(missingLiveAgentSettings ? { AGENT_PROVIDER: "deterministic", XIAOZE_DETERMINISTIC: "true" } : {})
+    ...(missingXiaozeLlmSettings ? { XIAOZE_DETERMINISTIC: "true" } : {})
   };
 }
 

@@ -101,7 +101,7 @@ describe("acceptance preflight helpers", () => {
     );
 
     expect(services.map((service) => service.name)).toEqual(["api runtime", "frontend runtime"]);
-    expect(services[0].env).toMatchObject({ PORT: "8787", AGENT_PROVIDER: "deterministic" });
+    expect(services[0].env).toMatchObject({ PORT: "8787", XIAOZE_DETERMINISTIC: "true" });
     expect(services[1].env).toMatchObject({
       VITE_WISEEFF_RUNTIME_MODE: "api",
       VITE_WISEEFF_API_BASE_URL: "http://127.0.0.1:8787",
@@ -161,7 +161,7 @@ describe("acceptance preflight helpers", () => {
       M5_DEVICE_GATEWAY_EVIDENCE: "ci",
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
       HDC_DEVICE_LAB_AVAILABLE: "true",
-      AGENT_PROVIDER: "live"
+      XIAOZE_DETERMINISTIC: "true"
     });
 
     expect(env.KEEP_ME).toBe("kept");
@@ -174,7 +174,7 @@ describe("acceptance preflight helpers", () => {
     expect(env).not.toHaveProperty("M5_DEVICE_GATEWAY_EVIDENCE");
     expect(env).not.toHaveProperty("DEBUG_DEVICE_GATEWAY_MODE");
     expect(env).not.toHaveProperty("HDC_DEVICE_LAB_AVAILABLE");
-    expect(env).not.toHaveProperty("AGENT_PROVIDER");
+    expect(env).not.toHaveProperty("XIAOZE_DETERMINISTIC");
   });
 
   it("accepts full pilot readiness", () => {

@@ -22,7 +22,7 @@ Rationale: WiseEffRouter streams SSE natively; auth stays on the existing `getCu
 
 Frontend: `@copilotkit/react-core/v2` `CopilotKit` with `selfManagedAgents={{ xiaoze: new HttpAgent({ url, headers }) }}`.
 
-Backend: `POST /api/v1/agent/xiaoze` returns `{ status: 200, sse: agUiEvents() }`, gated by `XIAOZE_RUNTIME_ENABLED`.
+Backend: `POST /api/v1/agent/xiaoze` returns `{ status: 200, sse: agUiEvents() }` when the database is available.
 
 ## 3. LangGraph ↔ AG-UI binding
 

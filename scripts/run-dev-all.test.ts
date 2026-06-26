@@ -141,12 +141,9 @@ describe("buildDevAllPlan", () => {
     });
   });
 
-  it("uses the deterministic Agent provider for one-command local startup when live settings are blank", () => {
+  it("uses deterministic Xiaoze mode for one-command local startup when LLM settings are blank", () => {
     const plan = buildDevAllPlan(
       {
-        AGENT_PROVIDER: "live",
-        AGENT_API_FORMAT: "pi",
-        AGENT_PI_PROVIDER: "minimax",
         AGENT_API_BASE_URL: "",
         AGENT_MODEL: "",
         AGENT_API_KEY: ""
@@ -155,22 +152,17 @@ describe("buildDevAllPlan", () => {
     );
 
     expect(plan.prepare[2].env).toMatchObject({
-      AGENT_PROVIDER: "deterministic",
       XIAOZE_DETERMINISTIC: "true"
     });
     expect(plan.services[0].env).toMatchObject({
-      AGENT_PROVIDER: "deterministic",
       XIAOZE_DETERMINISTIC: "true"
     });
   });
 
-  it("keeps the Pi live Agent provider when model, key, and Pi provider are configured without a base URL", () => {
+  it("keeps configured Xiaoze LLM settings when model, key, and base URL are present", () => {
     const plan = buildDevAllPlan(
       {
-        AGENT_PROVIDER: "live",
-        AGENT_API_FORMAT: "pi",
-        AGENT_PI_PROVIDER: "minimax",
-        AGENT_API_BASE_URL: "",
+        AGENT_API_BASE_URL: "https://api.example.com/v1",
         AGENT_MODEL: "MiniMax-M2.7",
         AGENT_API_KEY: "secret"
       },
@@ -178,12 +170,11 @@ describe("buildDevAllPlan", () => {
     );
 
     expect(plan.services[0].env).toMatchObject({
-      AGENT_PROVIDER: "live",
-      AGENT_API_FORMAT: "pi",
-      AGENT_PI_PROVIDER: "minimax",
+      AGENT_API_BASE_URL: "https://api.example.com/v1",
       AGENT_MODEL: "MiniMax-M2.7",
       AGENT_API_KEY: "secret"
     });
+    expect(plan.services[0].env).not.toHaveProperty("XIAOZE_DETERMINISTIC");
   });
 
   it("restarts an existing WiseEff PostgreSQL container on the configured database port and skips compose startup", async () => {
