@@ -135,7 +135,7 @@ export function resolveTurnAnswerText(
   return dedupeRepeatedAnswerText(userFacing.sort((left, right) => right.length - left.length)[0] ?? "");
 }
 
-export function shouldShowTurnThinking(turn: XiaozeConversationTurn, isActiveTurn: boolean, answerText: string) {
+export function shouldShowTurnThinking(_turn: XiaozeConversationTurn, isActiveTurn: boolean, answerText: string) {
   if (!isActiveTurn) {
     return false;
   }

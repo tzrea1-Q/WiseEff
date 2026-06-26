@@ -2507,7 +2507,7 @@ function AppShell({
   );
 
   return xiaozeEnabled ? (
-    <XiaozeProvider enabled={xiaozeEnabled} enableInspector={enableXiaozeInspector} navigationPath={path}>
+    <XiaozeProvider enabled={xiaozeEnabled} enableInspector={enableXiaozeInspector}>
       <XiaozePageContext.Provider value={xiaozePageContext}>{appShell}</XiaozePageContext.Provider>
     </XiaozeProvider>
   ) : (

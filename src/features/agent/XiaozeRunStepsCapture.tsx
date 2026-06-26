@@ -52,7 +52,7 @@ export function XiaozeRunStepsCapture() {
           const metadata = readStepMetadata(event.metadata);
           const toolName = typeof metadata.toolName === "string" ? metadata.toolName : undefined;
           upsertLiveStep({
-            id: readStepId(metadata, event.stepName),
+            id: readStepId(metadata, typeof event.stepName === "string" ? event.stepName : "step"),
             kind: readStepKind(metadata),
             label: readStepLabel(metadata, toolName),
             toolName,
@@ -65,7 +65,7 @@ export function XiaozeRunStepsCapture() {
           const metadata = readStepMetadata(event.metadata);
           const status = metadata.status;
           upsertLiveStep({
-            id: readStepId(metadata, event.stepName),
+            id: readStepId(metadata, typeof event.stepName === "string" ? event.stepName : "step"),
             kind: readStepKind(metadata),
             label: readStepLabel(metadata, typeof metadata.toolName === "string" ? metadata.toolName : undefined),
             toolName: typeof metadata.toolName === "string" ? metadata.toolName : undefined,

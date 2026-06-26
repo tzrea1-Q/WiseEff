@@ -23,8 +23,8 @@ export function XiaozeMessageView(props: XiaozeMessageViewProps) {
     <CopilotChatMessageView
       {...props}
       userMessage={XiaozeUserMessage as typeof CopilotChatUserMessage}
-      reasoningMessage={XiaozeReasoningMessage as typeof CopilotChatReasoningMessage}
-      assistantMessage={XiaozeAssistantMessage as typeof CopilotChatAssistantMessage}
+      reasoningMessage={XiaozeReasoningMessage as unknown as typeof CopilotChatReasoningMessage}
+      assistantMessage={XiaozeAssistantMessage as unknown as typeof CopilotChatAssistantMessage}
     >
       {({ messages, interruptElement, isRunning }) => {
         const showWelcome = shouldShowXiaozeWelcomePanel(messages.length);

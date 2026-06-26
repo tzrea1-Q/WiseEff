@@ -1,6 +1,6 @@
 import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
-type StreamdownNodeProps<T extends keyof HTMLElementTagNameMap> = ComponentPropsWithoutRef<T> & {
+type StreamdownNodeProps<T extends "table" | "th" | "td"> = ComponentPropsWithoutRef<T> & {
   node?: unknown;
   children?: ReactNode;
 };

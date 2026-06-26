@@ -38,9 +38,9 @@ describe("createXiaozeAgUiHandler", () => {
           roles: []
         }) as never,
       createAgent: () => ({
-        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void } }) => {
-          sink?.push({ type: "reasoning_delta", delta: "thinking" });
-          sink?.push({ type: "answer_delta", delta: "hello" });
+        run: vi.fn(async (input) => {
+          input.sink?.push({ type: "reasoning_delta", delta: "thinking" });
+          input.sink?.push({ type: "answer_delta", delta: "hello" });
           return { text: "hello", reasoning: "thinking", citations: [] };
         })
       })
@@ -72,9 +72,9 @@ describe("createXiaozeAgUiHandler", () => {
           roles: []
         }) as never,
       createAgent: () => ({
-        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void } }) => {
-          sink?.push({ type: "reasoning_delta", delta: "The user asked about charge parameters." });
-          sink?.push({ type: "answer_delta", delta: "The user asked about charge parameters." });
+        run: vi.fn(async (input) => {
+          input.sink?.push({ type: "reasoning_delta", delta: "The user asked about charge parameters." });
+          input.sink?.push({ type: "answer_delta", delta: "The user asked about charge parameters." });
           return {
             text: "aurora 项目里与 charge 相关的参数有 3 个。",
             reasoning: "The user asked about charge parameters.",
@@ -113,9 +113,9 @@ describe("createXiaozeAgUiHandler", () => {
           roles: []
         }) as never,
       createAgent: () => ({
-        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void; close?: () => void } }) => {
-          sink?.push({ type: "reasoning_delta", delta: "Need to search parameters." });
-          sink?.push({
+        run: vi.fn(async (input) => {
+          input.sink?.push({ type: "reasoning_delta", delta: "Need to search parameters." });
+          input.sink?.push({
             type: "step_started",
             step: {
               id: "step-1",
@@ -125,27 +125,27 @@ describe("createXiaozeAgUiHandler", () => {
               startedAtMs: Date.now()
             }
           });
-          sink?.push({
+          input.sink?.push({
             type: "tool_call",
             toolCallId: "tool-1",
             toolName: "perception.searchParameters",
             args: { projectId: "aurora", query: "charge" }
           });
-          sink?.push({
+          input.sink?.push({
             type: "tool_result",
             toolCallId: "tool-1",
             toolName: "perception.searchParameters",
             summary: "3 parameters",
             status: "succeeded"
           });
-          sink?.push({
+          input.sink?.push({
             type: "step_finished",
             stepId: "step-1",
             status: "succeeded",
             summary: "3 parameters",
             durationMs: 12
           });
-          sink?.push({ type: "answer_delta", delta: "找到 3 个 charge 相关参数。" });
+          input.sink?.push({ type: "answer_delta", delta: "找到 3 个 charge 相关参数。" });
           return {
             text: "找到 3 个 charge 相关参数。",
             reasoning: "Need to search parameters.",
@@ -191,8 +191,8 @@ describe("createXiaozeAgUiHandler", () => {
           roles: []
         }) as never,
       createAgent: () => ({
-        run: vi.fn(async ({ sink }: { sink?: { push: (event: unknown) => void } }) => {
-          sink?.push({
+        run: vi.fn(async (input) => {
+          input.sink?.push({
             type: "step_started",
             step: {
               id: "step-1",
@@ -202,14 +202,14 @@ describe("createXiaozeAgUiHandler", () => {
               startedAtMs: Date.now()
             }
           });
-          sink?.push({
+          input.sink?.push({
             type: "step_finished",
             stepId: "step-1",
             status: "succeeded",
             summary: "3 parameters",
             durationMs: 8
           });
-          sink?.push({ type: "answer_delta", delta: "找到 3 个 charge 相关参数。" });
+          input.sink?.push({ type: "answer_delta", delta: "找到 3 个 charge 相关参数。" });
           return {
             text: "找到 3 个 charge 相关参数。",
             reasoning: "Need to search parameters.",

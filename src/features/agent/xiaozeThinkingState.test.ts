@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Message } from "@ag-ui/core";
 import {
   isXiaozeReasoningStreaming,
   shouldShowXiaozeReasoningTimeline,
@@ -29,13 +30,18 @@ describe("xiaozeThinkingState", () => {
 
   it("keeps reasoning timeline visible when assistant shell exists but is still empty", () => {
     const reasoning = { id: "r1", role: "reasoning" as const, content: "planning" };
-    const messages = [
+    const messages: Message[] = [
       { id: "u1", role: "user" as const, content: "hello" },
       reasoning,
       { id: "a1", role: "assistant" as const, content: "" }
     ];
     expect(shouldShowXiaozeReasoningTimeline(reasoning, messages, true)).toBe(true);
-    messages[2] = { id: "a1", role: "assistant", content: "", toolCalls: [{ id: "tc1", type: "function", function: { name: "x", arguments: "{}" } }] };
+    messages[2] = {
+      id: "a1",
+      role: "assistant",
+      content: "",
+      toolCalls: [{ id: "tc1", type: "function", function: { name: "x", arguments: "{}" } }]
+    };
     expect(shouldShowXiaozeReasoningTimeline(reasoning, messages, true)).toBe(false);
   });
 });

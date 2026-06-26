@@ -18,7 +18,7 @@ function findPopup() {
 }
 
 function ensureResizeHandle(popup: HTMLElement) {
-  let handle = popup.querySelector<HTMLElement>(`.${RESIZE_HANDLE_CLASS}`);
+  let handle = popup.querySelector<HTMLButtonElement>(`.${RESIZE_HANDLE_CLASS}`);
   if (handle) {
     return handle;
   }

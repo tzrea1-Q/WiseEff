@@ -80,8 +80,8 @@ describe("XiaozeTurnBlock", () => {
     const turn = {
       id: "u1",
       user: { id: "u1", role: "user" as const, content: "charge 参数有哪些？" },
-      reasoning: { id: "r1", role: "reasoning", content: "The user is asking about charge parameters." },
-      assistants: [{ id: "a1", role: "assistant", content: "在 aurora 项目中找到 4 个 charge 相关参数。" }],
+      reasoning: { id: "r1", role: "reasoning" as const, content: "The user is asking about charge parameters." },
+      assistants: [{ id: "a1", role: "assistant" as const, content: "在 aurora 项目中找到 4 个 charge 相关参数。" }],
       tail: []
     };
 

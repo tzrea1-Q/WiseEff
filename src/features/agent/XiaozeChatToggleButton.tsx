@@ -1,6 +1,6 @@
 import { useCopilotChatConfiguration } from "@copilotkit/react-core/v2";
 import { Sparkles, X } from "lucide-react";
-import { readXiaozePopupOpenSession, writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
+import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 import { XiaozeToggleHint } from "./XiaozeToggleHint";
 
 export function XiaozeChatToggleButton() {

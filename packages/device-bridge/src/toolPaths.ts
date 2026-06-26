@@ -1,4 +1,5 @@
 import { access } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -62,7 +63,7 @@ export function resolveManagedToolPath(
 
 async function isExecutable(filePath: string) {
   try {
-    await access(filePath, os.constants.X_OK);
+    await access(filePath, fsConstants.X_OK);
     return true;
   } catch {
     try {
