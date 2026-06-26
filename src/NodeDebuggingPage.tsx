@@ -611,23 +611,60 @@ function LocalDeviceBridgePanel({
     }
   }, []);
 
-  const refreshBridgeState = useCallback(async () => {
-    setChecking(true);
-    setPanelError("");
+  const refreshBridgeState = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setChecking(true);
+      setPanelError("");
+    }
     try {
       const [nextHealth, nextBridges] = await Promise.all([
         probeLocalBridgeHealth(),
         listMyBridges().catch(() => [] as DeviceBridgeRecord[])
       ]);
-      setHealth(nextHealth);
-      setBridges(nextBridges);
-      setRenameDraftById(Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel])));
+      setHealth((current) =>
+        current?.updatedAt === nextHealth?.updatedAt &&
+        current?.connected === nextHealth?.connected &&
+        current?.paired === nextHealth?.paired &&
+        current?.bridgeId === nextHealth?.bridgeId &&
+        current?.lastError === nextHealth?.lastError
+          ? current
+          : nextHealth
+      );
+      setBridges((current) =>
+        current.length === nextBridges.length &&
+        current.every((bridge, index) => {
+          const next = nextBridges[index];
+          return (
+            next &&
+            bridge.id === next.id &&
+            bridge.machineLabel === next.machineLabel &&
+            bridge.lastSeenAt === next.lastSeenAt &&
+            bridge.revokedAt === next.revokedAt
+          );
+        })
+          ? current
+          : nextBridges
+      );
+      setRenameDraftById((current) => {
+        const nextDraft = Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel]));
+        const currentKeys = Object.keys(current);
+        const nextKeys = Object.keys(nextDraft);
+        if (
+          currentKeys.length === nextKeys.length &&
+          nextKeys.every((key) => current[key] === nextDraft[key])
+        ) {
+          return current;
+        }
+        return nextDraft;
+      });
       if (!nextHealth && nextBridges.length === 0) {
         await loadInstallReleases();
       }
       return { nextHealth, nextBridges, connected: Boolean(nextHealth?.connected) };
     } finally {
-      setChecking(false);
+      if (!options?.silent) {
+        setChecking(false);
+      }
     }
   }, [loadInstallReleases]);
 
@@ -654,7 +691,7 @@ function LocalDeviceBridgePanel({
     }
 
     const timer = window.setInterval(() => {
-      void refreshBridgeState();
+      void refreshBridgeState({ silent: true });
     }, 3000);
 
     return () => window.clearInterval(timer);

@@ -44,6 +44,58 @@ function createConnectDeps(overrides: Partial<{
 }
 
 describe("connectCommand", () => {
+  it("persists webOrigin when pairing", async () => {
+    let config: BridgeConfig | null = null;
+    const saveConfig = vi.fn(async (next: BridgeConfig) => {
+      config = next;
+    });
+    const loadConfig = vi.fn(async () => config);
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        bridgeId: "bridge_123",
+        bridgeToken: "wb_123",
+        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+      }),
+      text: async () => ""
+    })) as typeof fetch;
+
+    const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runConnectCommand(
+      createConnectDeps({ fetchImpl, loadConfig, saveConfig, ensureBridgeRunning }),
+      { server: "https://wiseeff.example.com", webOrigin: "https://wiseeff.example.com", code: "123456" }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        serverUrl: "https://wiseeff.example.com",
+        webOrigin: "https://wiseeff.example.com"
+      })
+    );
+  });
+
+  it("updates webOrigin without re-pairing and restarts bridge when origin changes", async () => {
+    const saveConfig = vi.fn(async () => undefined);
+    const loadConfig = vi.fn(async () => pairedConfig);
+    const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runConnectCommand(
+      createConnectDeps({ fetchImpl: vi.fn() as typeof fetch, loadConfig, saveConfig, ensureBridgeRunning }),
+      { server: "https://wiseeff.example.com", webOrigin: "https://wiseeff.example.com" }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(saveConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        webOrigin: "https://wiseeff.example.com"
+      })
+    );
+    expect(ensureBridgeRunning).toHaveBeenCalled();
+  });
+
   it("pairs when code provided and config missing, then ensures bridge running", async () => {
     let config: BridgeConfig | null = null;
     const saveConfig = vi.fn(async (next: BridgeConfig) => {

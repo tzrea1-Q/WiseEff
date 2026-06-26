@@ -8,7 +8,7 @@ import {
   rememberBridgeSchemeLaunchConfirm,
   shouldConfirmBridgeSchemeLaunch
 } from "../infrastructure/http/bridgeConnectLauncher";
-import { resolveBridgeServerUrl } from "../infrastructure/http/bridgeServerUrl";
+import { resolveBridgeServerUrl, resolveBridgeWebOrigin } from "../infrastructure/http/bridgeServerUrl";
 import {
   bridgeHostTargetLabel,
   bridgeReleaseDownloadLabel,
@@ -177,13 +177,14 @@ export function LocalDeviceBridgeWizard({
     onConnectError("");
     try {
       const serverUrl = resolveBridgeServerUrl();
+      const webOrigin = resolveBridgeWebOrigin();
       const needsPairingCode = panelStatus === "not_paired" || pairingStale || pairingAuthFailure;
       const connectUrl =
         needsPairingCode
-          ? buildBridgeConnectUrl(serverUrl, pairingCode!.code)
+          ? buildBridgeConnectUrl(serverUrl, pairingCode!.code, webOrigin)
           : panelStatus === "not_connected" || panelStatus === "not_running"
-            ? buildBridgeConnectUrl(serverUrl)
-            : buildBridgeConnectUrl(serverUrl, pairingCode!.code);
+            ? buildBridgeConnectUrl(serverUrl, undefined, webOrigin)
+            : buildBridgeConnectUrl(serverUrl, pairingCode!.code, webOrigin);
       launchBridgeConnect(connectUrl);
       const nextHealth = await pollLocalBridgeHealth({});
       await onRefresh();

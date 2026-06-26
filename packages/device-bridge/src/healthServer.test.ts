@@ -90,4 +90,46 @@ describe("healthServer", () => {
 
     await health.close();
   });
+
+  it("allows browser health reads from the paired web origin", async () => {
+    const health = await startHealthServer({
+      allowedOrigin: ["https://tzrea1.com", "https://tzrea1.com"],
+      getState: () => ({
+        paired: true,
+        connected: true,
+        updatedAt: "2026-06-25T00:00:00.000Z"
+      })
+    });
+
+    const response = await fetch(health.url, {
+      headers: {
+        Origin: "https://tzrea1.com"
+      }
+    });
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("access-control-allow-origin")).toBe("https://tzrea1.com");
+
+    await health.close();
+  });
+
+  it("matches allowed origins by hostname when scheme differs", async () => {
+    const health = await startHealthServer({
+      allowedOrigin: "http://tzrea1.com",
+      getState: () => ({
+        paired: true,
+        connected: true,
+        updatedAt: "2026-06-25T00:00:00.000Z"
+      })
+    });
+
+    const response = await fetch(health.url, {
+      headers: {
+        Origin: "https://tzrea1.com"
+      }
+    });
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("access-control-allow-origin")).toBe("https://tzrea1.com");
+
+    await health.close();
+  });
 });

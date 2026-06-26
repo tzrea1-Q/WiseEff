@@ -9,6 +9,8 @@ export type BridgeConfig = {
   bridgeToken: string;
   tokenExpiresAt: string;
   serverUrl: string;
+  /** Browser origin allowed to read local bridge health from a deployed web UI. */
+  webOrigin?: string;
   machineLabel: string;
   platform: "windows" | "darwin" | "linux";
   arch: string;

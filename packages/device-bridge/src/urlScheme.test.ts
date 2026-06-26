@@ -7,23 +7,26 @@ describe("urlScheme", () => {
     expect(
       buildConnectUrl({
         server: "https://tzrea1.com",
+        webOrigin: "https://tzrea1.com",
         code: "840021"
       })
-    ).toBe("wiseeff-bridge://connect?server=https%3A%2F%2Ftzrea1.com&code=840021");
+    ).toBe("wiseeff-bridge://connect?server=https%3A%2F%2Ftzrea1.com&webOrigin=https%3A%2F%2Ftzrea1.com&code=840021");
   });
 
   it("parses connect URL", () => {
-    expect(parseConnectUrl("wiseeff-bridge://connect?server=https%3A%2F%2Ftzrea1.com&code=840021")).toEqual({
+    expect(parseConnectUrl("wiseeff-bridge://connect?server=https%3A%2F%2Ftzrea1.com&webOrigin=https%3A%2F%2Ftzrea1.com&code=840021")).toEqual({
       server: "https://tzrea1.com",
+      webOrigin: "https://tzrea1.com",
       code: "840021"
     });
   });
 
   it("accepts local http server URLs", () => {
     expect(
-      parseConnectUrl("wiseeff-bridge://connect?server=http%3A%2F%2F127.0.0.1%3A8787&code=123456")
+      parseConnectUrl("wiseeff-bridge://connect?server=http%3A%2F%2F127.0.0.1%3A8787&webOrigin=http%3A%2F%2F127.0.0.1%3A5173&code=123456")
     ).toEqual({
       server: "http://127.0.0.1:8787",
+      webOrigin: "http://127.0.0.1:5173",
       code: "123456"
     });
   });
