@@ -15,6 +15,7 @@ import {
 import {
   buildRemoteWriteShellCommand,
   normalizeRemoteReadValue,
+  remoteShellDiagnostic,
   shellQuote
 } from "@wiseeff/device-command-core/remoteNodeWrite";
 
@@ -41,16 +42,6 @@ function normalizeFailure(result: HdcCommandResult, timeoutMs: number) {
 
   const reason = result.stderr.trim() || result.stdout.trim() || `exit code ${result.code ?? "unknown"}`;
   return `HDC command failed: ${reason}`;
-}
-
-function remoteShellDiagnostic(result: HdcCommandResult) {
-  const output = [result.stderr, result.stdout].map((value) => value.trim()).filter(Boolean).join("\n");
-  const diagnosticLine = output
-    .split(/\r?\n/)
-    .find((line) =>
-      /(?:^|:\s)(?:cat|sh|\/bin\/sh): .*?(?:No such file or directory|Permission denied|not found|Read-only file system)/i.test(line)
-    );
-  return diagnosticLine?.trim();
 }
 
 function nodeResultFromCommand(

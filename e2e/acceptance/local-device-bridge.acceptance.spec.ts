@@ -197,7 +197,8 @@ test.describe("local device bridge conditional acceptance", () => {
     await page.goto(`/node-debugging?project=${projectId}`);
     await expect(page.locator("body")).toBeVisible();
     await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
-    await expect(page.getByText("高级 · 命令行方式")).toBeVisible();
+    await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
+    await expect(page.getByText("便携压缩包（zip / tar.gz）")).toBeVisible();
 
     const manifestResponse = await request.get(apiRoute("/api/v1/device-bridges/releases"), { headers: smokeHeaders() });
     expect(manifestResponse.ok()).toBe(true);
@@ -353,7 +354,8 @@ test.describe("local device bridge conditional acceptance", () => {
     await page.goto(`/node-debugging?project=${projectId}`);
     await expect(page.locator("body")).toBeVisible();
     await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
-    await expect(page.getByText("高级 · 命令行方式")).toBeVisible();
+    await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
+    await expect(page.getByText("便携压缩包（zip / tar.gz）")).toBeVisible();
 
     const detectResponse = await postJson<{ items: DebugTargetDto[] }>(
       request,

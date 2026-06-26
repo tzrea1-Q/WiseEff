@@ -102,11 +102,11 @@ export function createDeviceBridgeWsHandler(options: DeviceBridgeWsHandlerOption
       });
 
       socket.on("close", () => {
-        options.pool.unregister(bridgeId);
+        options.pool.unregister(bridgeId, socket);
       });
 
       socket.on("error", () => {
-        options.pool.unregister(bridgeId);
+        options.pool.unregister(bridgeId, socket);
       });
     }
   };

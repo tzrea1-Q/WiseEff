@@ -15,6 +15,7 @@ import {
 import {
   buildRemoteWriteShellCommand,
   normalizeRemoteReadValue,
+  remoteShellDiagnostic,
   shellQuote
 } from "@wiseeff/device-command-core/remoteNodeWrite";
 
@@ -49,12 +50,13 @@ function nodeResultFromCommand(
   value?: string,
   preserveExact = false
 ): GatewayNodeResult {
-  if (result.timedOut || result.code !== 0) {
+  const diagnostic = remoteShellDiagnostic(result);
+  if (result.timedOut || result.code !== 0 || diagnostic) {
     return {
       ok: false,
       stdout: result.stdout,
       stderr: result.stderr,
-      error: normalizeFailure(result, timeoutMs),
+      error: diagnostic ? `ADB command failed: ${diagnostic}` : normalizeFailure(result, timeoutMs),
       durationMs: result.durationMs
     };
   }

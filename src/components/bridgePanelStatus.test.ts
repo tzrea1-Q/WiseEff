@@ -15,6 +15,56 @@ const connectedHealth: LocalBridgeHealthState = {
 };
 
 describe("deriveBridgePanelStatus", () => {
+  it("returns not_paired when local bridge id is missing from registered server bridges", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: {
+          ok: true,
+          paired: true,
+          connected: false,
+          bridgeId: "br_local",
+          updatedAt: "2026-06-26T00:00:00.000Z"
+        },
+        bridgeCount: 1,
+        registeredBridgeIds: ["br_server"]
+      })
+    ).toBe("not_paired");
+  });
+
+  it("returns not_paired when local bridge token auth fails", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: {
+          ok: true,
+          paired: true,
+          connected: false,
+          bridgeId: "br_local",
+          lastError: "Invalid or expired bridge token.",
+          updatedAt: "2026-06-26T00:00:00.000Z"
+        },
+        bridgeCount: 1,
+        registeredBridgeIds: ["br_local"]
+      })
+    ).toBe("not_paired");
+  });
+
+  it("returns not_paired when local bridge token is expired", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: {
+          ok: true,
+          paired: true,
+          connected: false,
+          bridgeId: "br_local",
+          tokenExpiresAt: "2020-01-01T00:00:00.000Z",
+          updatedAt: "2026-06-26T00:00:00.000Z"
+        },
+        bridgeCount: 1,
+        registeredBridgeIds: ["br_local"]
+      })
+    ).toBe("not_paired");
+  });
+
   it("returns tools_missing when connected but required protocol tool is unavailable", () => {
     expect(
       deriveBridgePanelStatus({

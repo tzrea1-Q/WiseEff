@@ -22,8 +22,11 @@ PKG_PATH="$OUT_DIR/WiseEffBridge_${VERSION}_darwin_${ARCH}.pkg"
 rm -rf "$BUILD_DIR"
 mkdir -p "$CONTENTS/MacOS" "$RESOURCES" "$OUT_DIR"
 
+export COPYFILE_DISABLE=1
+
 sed "s/__VERSION__/$VERSION/g" "$ROOT/ops/self-hosted/bridge-installer/macos/Info.plist.template" > "$CONTENTS/Info.plist"
 cp "$STAGING_DIR/cli.js" "$RESOURCES/cli.js"
+cp "$STAGING_DIR/package.json" "$RESOURCES/package.json"
 cp "$STAGING_DIR/wiseeff-bridge" "$RESOURCES/wiseeff-bridge"
 chmod +x "$RESOURCES/wiseeff-bridge"
 
@@ -37,6 +40,9 @@ fi
 exec "$DIR/wiseeff-bridge" "$@"
 LAUNCHER
 chmod +x "$MACOS_BIN"
+
+xattr -cr "$APP_DIR" 2>/dev/null || true
+dot_clean -m "$APP_DIR" 2>/dev/null || true
 
 SCRIPTS_DIR="$ROOT/ops/self-hosted/bridge-installer/macos/scripts"
 chmod +x "$SCRIPTS_DIR/postinstall"

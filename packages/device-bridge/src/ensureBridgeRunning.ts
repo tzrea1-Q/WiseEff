@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 
+import { stopLocalBridgeHealthListener, waitForLocalBridgeConnection } from "./localBridgeProcess";
 import { runWindowsServiceCommand } from "./windowsService";
 
 export type LocalBridgeHealthSnapshot = {
@@ -61,6 +62,19 @@ export async function ensureBridgeRunning(deps: EnsureBridgeRunningDependencies)
     }
   }
 
+  if (health && !health.connected) {
+    await stopLocalBridgeHealthListener(deps.platform);
+    const restarted = await waitForLocalBridgeConnection(deps.fetchImpl);
+    if (restarted?.connected) {
+      deps.stdout.log("Bridge reconnected.");
+      return { exitCode: 0 };
+    }
+  }
+
   spawnDetachedStart(deps);
+  const connected = await waitForLocalBridgeConnection(deps.fetchImpl);
+  if (connected?.connected) {
+    deps.stdout.log("Bridge connected.");
+  }
   return { exitCode: 0 };
 }

@@ -206,8 +206,13 @@ export function createBridgeWsClient(options: CreateBridgeWsClientOptions) {
       logger.error(`[wiseeff-bridge] websocket error: ${error.message}`);
     });
 
-    nextSocket.on("close", () => {
-      publishStatus({ connected: false });
+    nextSocket.on("close", (code, reason) => {
+      const reasonText = typeof reason === "string" ? reason : reason.toString("utf8");
+      if (code === 4401 && reasonText.trim()) {
+        publishStatus({ connected: false, lastError: reasonText.trim() });
+      } else {
+        publishStatus({ connected: false });
+      }
       clearPingTimer();
       scheduleReconnect();
     });

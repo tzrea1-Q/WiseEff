@@ -1,6 +1,10 @@
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
 import { describe, expect, it, vi } from "vitest";
 
-import { runCli } from "./cli";
+import { isCliEntryPoint, resolveCliEntryPath, runCli } from "./cli";
 import type { BridgeConfig } from "./config";
 
 function createStdoutCapture() {
@@ -17,6 +21,22 @@ function createStdoutCapture() {
 }
 
 describe("device bridge cli", () => {
+  it("detects CLI entry when argv path contains spaces", () => {
+    const entryPath = "/Applications/WiseEff Bridge.app/Contents/Resources/cli.js";
+    expect(resolveCliEntryPath(fileURLToPath(pathToFileURL(entryPath).href))).toBe(resolveCliEntryPath(entryPath));
+    expect(isCliEntryPoint(["node"])).toBe(false);
+  });
+
+  it("detects CLI entry across macOS /tmp and /private/tmp aliases", () => {
+    const dir = "/tmp/wiseeff-cli-entry-test";
+    mkdirSync(dir, { recursive: true });
+    const entryPath = path.join(dir, "cli.js");
+    writeFileSync(entryPath, "");
+    const privatePath = path.join("/private", entryPath);
+    expect(resolveCliEntryPath(privatePath)).toBe(resolveCliEntryPath(entryPath));
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   it("pairs bridge and persists config", async () => {
     const capture = createStdoutCapture();
     const saveConfig = vi.fn(async () => undefined);
@@ -55,8 +75,36 @@ describe("device bridge cli", () => {
       stdout: capture.stdout
     });
 
-    expect(exitCode).toBe(1);
-    expect(capture.errors.some((line) => line.includes("not paired"))).toBe(true);
+    expect(exitCode).toBe(0);
+    expect(capture.logs.some((line) => line.includes("paired=false"))).toBe(true);
+  });
+
+  it("starts standby health service when start runs without config", async () => {
+    const capture = createStdoutCapture();
+    const startPromise = runCli(["start"], {
+      loadConfig: async () => null,
+      stdout: capture.stdout
+    });
+
+    let healthReady = false;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const response = await fetch("http://127.0.0.1:18787/health").catch(() => null);
+      if (response?.ok) {
+        const body = (await response.json()) as { paired?: boolean };
+        healthReady = body.paired === false;
+        if (healthReady) {
+          break;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    process.emit("SIGTERM");
+    const exitCode = await startPromise;
+
+    expect(healthReady).toBe(true);
+    expect(exitCode).toBe(0);
+    expect(capture.logs.some((line) => line.includes("Bridge standby started"))).toBe(true);
   });
 
   it("reads local health state for status command", async () => {

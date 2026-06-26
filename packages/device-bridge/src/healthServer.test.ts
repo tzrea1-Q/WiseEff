@@ -70,4 +70,24 @@ describe("healthServer", () => {
 
     await health.close();
   });
+
+  it("allows browser health reads from local loopback origins", async () => {
+    const health = await startHealthServer({
+      getState: () => ({
+        paired: false,
+        connected: false,
+        updatedAt: "2026-06-25T00:00:00.000Z"
+      })
+    });
+
+    const response = await fetch(health.url, {
+      headers: {
+        Origin: "http://localhost:5173"
+      }
+    });
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:5173");
+
+    await health.close();
+  });
 });

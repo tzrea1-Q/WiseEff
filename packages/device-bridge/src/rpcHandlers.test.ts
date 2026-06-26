@@ -114,6 +114,78 @@ describe("device bridge rpc handlers", () => {
     expect(hdc.calls).toEqual([["-t", "AURORA-001", "shell", "cat '/sys/node'"]]);
   });
 
+  it("treats shell diagnostics as read failures even when hdc exits 0", async () => {
+    const hdc = makeRunner([
+      {
+        code: 0,
+        stdout: "/bin/sh: cat: /sys/class/power_supply/battery/constant_charge_current: No such file or directory\n",
+        stderr: "",
+        durationMs: 9
+      }
+    ]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.readNode", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      nodePath: "/sys/class/power_supply/battery/constant_charge_current"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error:
+        "HDC command failed: /bin/sh: cat: /sys/class/power_supply/battery/constant_charge_current: No such file or directory"
+    });
+  });
+
+  it("treats shell diagnostics as read failures even when adb exits 0", async () => {
+    const adb = makeRunner([
+      {
+        code: 0,
+        stdout: "/bin/sh: cat: /sys/missing-node: No such file or directory\n",
+        stderr: "",
+        durationMs: 8
+      }
+    ]);
+    const rpc = createRpcHandlers({ adbRunner: adb.runner, hdcRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.readNode", {
+      protocol: "adb",
+      targetRef: "emulator-5554",
+      nodePath: "/sys/missing-node"
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "ADB command failed: /bin/sh: cat: /sys/missing-node: No such file or directory"
+    });
+  });
+
+  it("treats shell diagnostics as write failures even when hdc exits 0", async () => {
+    const hdc = makeRunner([
+      {
+        code: 0,
+        stdout: "/bin/sh: /sys/node: Read-only file system\n",
+        stderr: "",
+        durationMs: 10
+      }
+    ]);
+    const rpc = createRpcHandlers({ hdcRunner: hdc.runner, adbRunner: makeRunner([]).runner });
+
+    const result = await rpc.handle("debug.writeNode", {
+      protocol: "hdc",
+      targetRef: "AURORA-001",
+      nodePath: "/sys/node",
+      value: "updated",
+      readBack: false
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: "HDC command failed: /bin/sh: /sys/node: Read-only file system"
+    });
+  });
+
   it("writes nodes with optional readback for hdc", async () => {
     const hdc = makeRunner([
       { code: 0, stdout: "", stderr: "", durationMs: 10 },

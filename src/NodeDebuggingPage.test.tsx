@@ -5,6 +5,7 @@ import { debuggingRuntimeFailureNotification } from "./application/debugging/deb
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
+import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const apiSession = {
@@ -734,7 +735,7 @@ describe("/node-debugging", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const method = (init?.method ?? "GET").toUpperCase();
-      if (url === "http://127.0.0.1:18787/health") {
+      if (url === resolveLocalBridgeHealthUrl()) {
         throw new Error("bridge offline");
       }
       if (url.endsWith("/api/v1/device-bridges/mine")) {
@@ -774,22 +775,17 @@ describe("/node-debugging", () => {
     const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
     expect(downloadLink).toHaveAttribute(
       "href",
-      "/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe"
+      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe"
     );
-    expect(screen.getByText("安装 Bridge")).toBeInTheDocument();
+    expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
+    expect(screen.getByText("本机推荐")).toBeInTheDocument();
+    expect(screen.getByText(/已识别当前环境/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText("高级 · 命令行方式"));
-    const pairCommand = await screen.findByText(
-      `wiseeff-bridge pair --server ${window.location.origin} --code 123456`
+    fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
+    expect(screen.getByRole("link", { name: "下载 Windows Bridge（x64）" })).toHaveAttribute(
+      "href",
+      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/windows/amd64/wiseeff-bridge_0.1.0_windows_amd64.zip"
     );
-    expect(pairCommand.tagName).toBe("CODE");
-
-    fireEvent.click(screen.getByRole("button", { name: "复制配对命令" }));
-    await waitFor(() => {
-      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
-        `wiseeff-bridge pair --server ${window.location.origin} --code 123456`
-      );
-    });
   });
 
   it("shows tools install CTA when bridge is connected but adb is missing", async () => {
@@ -799,7 +795,7 @@ describe("/node-debugging", () => {
     });
     vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (url === "http://127.0.0.1:18787/health") {
+      if (url === resolveLocalBridgeHealthUrl()) {
         return new Response(JSON.stringify({
           ok: true,
           paired: true,
@@ -823,6 +819,58 @@ describe("/node-debugging", () => {
     expect(await screen.findByText(/缺少 ADB 调试工具/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /安装调试工具/i })).toBeInTheDocument();
     expect(screen.queryByText(/未检测到本地 Bridge/)).not.toBeInTheDocument();
+  });
+
+  it("lets users return to step 1 to download bridge installers when bridge is already online", async () => {
+    const debuggingActions = createDebuggingActions({
+      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
+    });
+    vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === resolveLocalBridgeHealthUrl()) {
+        return new Response(JSON.stringify({
+          ok: true,
+          paired: true,
+          connected: true,
+          updatedAt: "2026-06-26T00:00:00.000Z",
+          tools: {
+            adb: { available: true, version: "adb version", source: "system" },
+            hdc: { available: true, version: "hdc version 2.0.0", source: "system" }
+          }
+        }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/mine")) {
+        return new Response(JSON.stringify({ items: [{ id: "br-1", machineLabel: "Desk", platform: "darwin", arch: "arm64" }] }));
+      }
+      if (url.endsWith("/api/v1/device-bridges/releases")) {
+        return new Response(JSON.stringify({
+          recommendedVersion: "0.1.0",
+          minCompatibleVersion: "0.1.0",
+          items: [
+            {
+              platform: "darwin",
+              arch: "arm64",
+              version: "0.1.0",
+              artifactKind: "installer",
+              downloadUrl: "/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg"
+            }
+          ]
+        }));
+      }
+      return new Response(JSON.stringify({ ok: true }));
+    }) as typeof fetch);
+
+    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+
+    expect(await screen.findByRole("button", { name: "安装 Bridge" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下载安装包" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "安装 Bridge" }));
+
+    expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
+      "href",
+      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg"
+    );
   });
 
   it("shows bridge target selection when adb detect returns multiple bridge-backed targets", async () => {
@@ -900,7 +948,7 @@ describe("/node-debugging", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input, init) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const method = (init?.method ?? "GET").toUpperCase();
-      if (url === "http://127.0.0.1:18787/health") {
+      if (url === resolveLocalBridgeHealthUrl()) {
         return new Response(JSON.stringify({
           ok: true,
           paired: true,

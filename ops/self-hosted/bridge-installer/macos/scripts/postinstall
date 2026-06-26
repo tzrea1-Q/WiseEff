@@ -4,27 +4,66 @@ set -euo pipefail
 APP_NAME="WiseEff Bridge.app"
 PLIST_LABEL="com.wiseeff.bridge"
 BRIDGE_BIN="/Applications/${APP_NAME}/Contents/Resources/wiseeff-bridge"
+INSTALL_LOG="/var/log/wiseeff-bridge-install.log"
+
+log() {
+  local message="$1"
+  printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$message" | tee -a "$INSTALL_LOG"
+}
+
+unload_launch_agent() {
+  local domain="gui/${CONSOLE_UID}"
+  launchctl bootout "$domain" "$PLIST_PATH" 2>/dev/null || true
+  launchctl bootout "$domain/${PLIST_LABEL}" 2>/dev/null || true
+  launchctl bootout "$domain" "$LAUNCH_AGENTS/${PLIST_LABEL}.plist" 2>/dev/null || true
+}
+
+load_launch_agent() {
+  local domain="gui/${CONSOLE_UID}"
+  local attempt
+
+  for attempt in 1 2 3; do
+    if launchctl bootstrap "$domain" "$PLIST_PATH" 2>/dev/null; then
+      return 0
+    fi
+    log "WARN: launchctl bootstrap attempt ${attempt} failed for ${domain}"
+    unload_launch_agent
+    sleep 1
+  done
+
+  return 1
+}
+
+log "WiseEff Bridge postinstall started (pid=$$)"
 
 if [[ ! -x "$BRIDGE_BIN" ]]; then
-  echo "WiseEff Bridge binary not found at $BRIDGE_BIN" >&2
+  log "ERROR: Bridge binary not executable at $BRIDGE_BIN"
   exit 1
 fi
+log "Bridge binary ok: $BRIDGE_BIN"
 
 CONSOLE_USER="$(stat -f '%Su' /dev/console 2>/dev/null || true)"
 if [[ -z "$CONSOLE_USER" || "$CONSOLE_USER" == "root" ]]; then
-  echo "Could not determine console user for LaunchAgent install." >&2
+  log "ERROR: Could not determine console user (got '${CONSOLE_USER:-<empty>}')"
   exit 1
 fi
+log "Console user: $CONSOLE_USER"
 
 USER_HOME="$(dscl . -read "/Users/$CONSOLE_USER" NFSHomeDirectory 2>/dev/null | awk '{print $2}')"
 if [[ -z "$USER_HOME" ]]; then
   USER_HOME="/Users/$CONSOLE_USER"
 fi
+log "User home: $USER_HOME"
 
 LAUNCH_AGENTS="$USER_HOME/Library/LaunchAgents"
 PLIST_PATH="$LAUNCH_AGENTS/${PLIST_LABEL}.plist"
+CONSOLE_UID="$(id -u "$CONSOLE_USER")"
+log "Console UID: $CONSOLE_UID"
 
 mkdir -p "$LAUNCH_AGENTS"
+unload_launch_agent
+log "Stopped any existing LaunchAgent for ${PLIST_LABEL}"
+
 cat > "$PLIST_PATH" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -38,16 +77,25 @@ cat > "$PLIST_PATH" <<PLIST
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:${USER_HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
 </dict>
 </plist>
 PLIST
+log "Wrote LaunchAgent plist: $PLIST_PATH"
 
 chown "$CONSOLE_USER" "$PLIST_PATH"
 
-UID="$(id -u "$CONSOLE_USER")"
-launchctl bootout "gui/${UID}/${PLIST_LABEL}" 2>/dev/null || true
-launchctl bootstrap "gui/${UID}" "$PLIST_PATH"
-launchctl enable "gui/${UID}/${PLIST_LABEL}"
-launchctl kickstart -k "gui/${UID}/${PLIST_LABEL}"
+if load_launch_agent; then
+  launchctl enable "gui/${CONSOLE_UID}/${PLIST_LABEL}" 2>/dev/null || log "WARN: launchctl enable returned non-zero"
+  if ! launchctl kickstart -k "gui/${CONSOLE_UID}/${PLIST_LABEL}" 2>/dev/null; then
+    log "WARN: launchctl kickstart failed; Bridge may need manual start from WiseEff Bridge.app"
+  fi
+else
+  log "WARN: Could not register LaunchAgent after retries. App files are installed; start Bridge manually or log out/in."
+fi
 
-echo "Registered LaunchAgent for $CONSOLE_USER at $PLIST_PATH"
+log "WiseEff Bridge postinstall completed for $CONSOLE_USER"

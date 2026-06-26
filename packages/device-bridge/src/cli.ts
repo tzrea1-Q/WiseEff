@@ -1,3 +1,5 @@
+import { realpathSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { loadBridgeConfig, saveBridgeConfig, type BridgeConfig } from "./config";
@@ -116,6 +118,7 @@ async function runStartCommand(
     connected: false,
     bridgeId: config.bridgeId,
     serverUrl: config.serverUrl,
+    tokenExpiresAt: config.tokenExpiresAt,
     lastError: undefined,
     updatedAt: new Date().toISOString(),
     tools: toolProbeCache.getTools(),
@@ -132,6 +135,7 @@ async function runStartCommand(
         connected: next.connected,
         bridgeId: next.bridgeId ?? config.bridgeId,
         serverUrl: config.serverUrl,
+        tokenExpiresAt: config.tokenExpiresAt,
         lastError: next.lastError,
         updatedAt: next.updatedAt,
         tools: toolProbeCache.getTools(),
@@ -206,13 +210,78 @@ async function runStartCommand(
   return { exitCode: 0, statusLine: status.connected ? "connected" : "disconnected" };
 }
 
-async function runStatusCommand(deps: CliDependencies, config: BridgeConfig): Promise<number> {
-  const response = await deps.fetchImpl("http://127.0.0.1:18787/health").catch(() => null);
-  if (!response || !response.ok) {
-    deps.stdout.log(`paired bridge=${config.bridgeId} server=${config.serverUrl} bridgeStatus=offline`);
+async function runStandbyStartCommand(deps: CliDependencies): Promise<number> {
+  const existingHealth = await deps.fetchImpl("http://127.0.0.1:18787/health").catch(() => null);
+  if (existingHealth?.ok) {
+    deps.stdout.log("Bridge service already running.");
     return 0;
   }
-  const payload = (await response.json()) as { connected?: boolean; lastError?: string };
+
+  const runtime = await createResolvedRpcHandlers();
+  const toolProbeCache = createToolProbeCache({
+    probe: () => runtime.probeTools()
+  });
+
+  let status: BridgeHealthState = {
+    paired: false,
+    connected: false,
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    const health = await startHealthServer({
+      getState: () => status,
+      onHealthRead: async () => {
+        await toolProbeCache.refreshTools();
+        status = {
+          ...status,
+          tools: toolProbeCache.getTools(),
+          toolsInstall: toolProbeCache.getToolsInstall(),
+          updatedAt: new Date().toISOString()
+        };
+      }
+    });
+
+    await toolProbeCache.refreshTools(true);
+    status = {
+      ...status,
+      tools: toolProbeCache.getTools(),
+      toolsInstall: toolProbeCache.getToolsInstall()
+    };
+
+    deps.stdout.log(`Bridge standby started. Health: ${health.url}`);
+    deps.stdout.log("Pair from the web UI to finish setup.");
+
+    await waitForTerminationSignal();
+    await health.close();
+    deps.stdout.log("Bridge stopped.");
+    return 0;
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "EADDRINUSE") {
+      deps.stdout.log("Bridge service already running.");
+      return 0;
+    }
+    throw error;
+  }
+}
+
+async function runStatusCommand(deps: CliDependencies, config: BridgeConfig | null): Promise<number> {
+  const response = await deps.fetchImpl("http://127.0.0.1:18787/health").catch(() => null);
+  if (!response || !response.ok) {
+    if (config) {
+      deps.stdout.log(`paired bridge=${config.bridgeId} server=${config.serverUrl} bridgeStatus=offline`);
+      return 0;
+    }
+    deps.stdout.log("bridgeStatus=offline paired=false");
+    return 0;
+  }
+  const payload = (await response.json()) as { connected?: boolean; paired?: boolean; lastError?: string };
+  if (!config) {
+    const bridgeStatus = payload.connected ? "connected" : "disconnected";
+    const paired = payload.paired === true ? "true" : "false";
+    deps.stdout.log(`bridgeStatus=${bridgeStatus} paired=${paired}`);
+    return 0;
+  }
   const bridgeStatus = payload.connected ? "connected" : "disconnected";
   const lastError = typeof payload.lastError === "string" && payload.lastError ? ` error=${payload.lastError}` : "";
   deps.stdout.log(`paired bridge=${config.bridgeId} server=${config.serverUrl} bridgeStatus=${bridgeStatus}${lastError}`);
@@ -332,22 +401,45 @@ export async function runCli(
   }
 
   const config = await deps.loadConfig();
-  if (!config) {
-    deps.stdout.error("Bridge is not paired yet. Run: wiseeff-bridge pair --server <url> --code <6-digit-code>");
-    return 1;
-  }
 
   if (parsed.command === "start") {
+    if (!config) {
+      return runStandbyStartCommand(deps);
+    }
     const result = await runStartCommand(deps, config);
     return result.exitCode;
+  }
+
+  if (!config) {
+    if (parsed.command === "status") {
+      return runStatusCommand(deps, null);
+    }
+    deps.stdout.error("Bridge is not paired yet. Run: wiseeff-bridge pair --server <url> --code <6-digit-code>");
+    return 1;
   }
 
   return runStatusCommand(deps, config);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function resolveCliEntryPath(filePath: string) {
+  try {
+    return realpathSync(filePath);
+  } catch {
+    return path.resolve(filePath);
+  }
+}
+
+function isCliEntryPoint(argv: string[] = process.argv) {
+  const entryPath = argv[1];
+  if (!entryPath) {
+    return false;
+  }
+  return resolveCliEntryPath(fileURLToPath(import.meta.url)) === resolveCliEntryPath(entryPath);
+}
+
+if (isCliEntryPoint()) {
   const exitCode = await runCli();
   process.exit(exitCode);
 }
 
-export { parseArgs, runStartCommand };
+export { isCliEntryPoint, parseArgs, resolveCliEntryPath, runStartCommand };

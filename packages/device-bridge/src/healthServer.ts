@@ -10,6 +10,37 @@ export type HealthServer = {
   close: () => Promise<void>;
 };
 
+function isLoopbackOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+    return (url.protocol === "http:" || url.protocol === "https:") && (url.hostname === "localhost" || url.hostname === "127.0.0.1");
+  } catch {
+    return false;
+  }
+}
+
+function resolveCorsOrigin(origin: string | undefined, allowedOrigin?: string) {
+  if (!origin) {
+    return undefined;
+  }
+  if (allowedOrigin && origin === allowedOrigin) {
+    return origin;
+  }
+  if (isLoopbackOrigin(origin)) {
+    return origin;
+  }
+  return undefined;
+}
+
+function applyCorsHeaders(res: import("node:http").ServerResponse, origin: string | undefined, allowedOrigin?: string) {
+  const corsOrigin = resolveCorsOrigin(origin, allowedOrigin);
+  if (!corsOrigin) {
+    return;
+  }
+  res.setHeader("Access-Control-Allow-Origin", corsOrigin);
+  res.setHeader("Vary", "Origin");
+}
+
 export function startHealthServer(input: {
   getState: () => BridgeHealthState;
   host?: string;
@@ -25,23 +56,22 @@ export function startHealthServer(input: {
     void (async () => {
       const requestUrl = new URL(req.url ?? "/", `http://${host}:${port}`);
       const origin = req.headers.origin;
-      const allowOrigin = input.allowedOrigin && origin === input.allowedOrigin ? origin : undefined;
 
-      if (req.method === "OPTIONS" && requestUrl.pathname === "/tools/install") {
+      if (req.method === "OPTIONS" && (requestUrl.pathname === "/tools/install" || requestUrl.pathname === "/health")) {
         res.statusCode = 204;
-        if (allowOrigin) {
-          res.setHeader("Access-Control-Allow-Origin", allowOrigin);
+        applyCorsHeaders(res, origin, input.allowedOrigin);
+        if (requestUrl.pathname === "/tools/install") {
           res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
           res.setHeader("Access-Control-Allow-Headers", "content-type");
+        } else {
+          res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
         }
         res.end();
         return;
       }
 
       if (req.method === "POST" && requestUrl.pathname === "/tools/install") {
-        if (allowOrigin) {
-          res.setHeader("Access-Control-Allow-Origin", allowOrigin);
-        }
+        applyCorsHeaders(res, origin, input.allowedOrigin);
         let body = "";
         for await (const chunk of req) {
           body += chunk.toString();
@@ -62,6 +92,7 @@ export function startHealthServer(input: {
         await input.onHealthRead?.();
         const payload = { ok: true, ...input.getState() };
         res.statusCode = 200;
+        applyCorsHeaders(res, origin, input.allowedOrigin);
         res.setHeader("content-type", "application/json; charset=utf-8");
         res.end(`${JSON.stringify(payload)}\n`);
         return;

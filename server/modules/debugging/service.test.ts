@@ -1014,6 +1014,7 @@ describe("debugging service", () => {
     };
     const { db, txCalls } = createFakeDb([
       [bridgeRow({ id: "br-1", machine_label: "Laptop" })],
+      [],
       (call) => [
         targetRow({
           id: call.values[3],
@@ -1024,7 +1025,8 @@ describe("debugging service", () => {
           label: call.values[7],
           status: call.values[8]
         })
-      ]
+      ],
+      []
     ]);
     const service = createDebuggingService({
       db,
@@ -1061,6 +1063,7 @@ describe("debugging service", () => {
     };
     const { db, txCalls } = createFakeDb([
       [bridgeRow({ id: "br-1", machine_label: "Laptop" }), bridgeRow({ id: "br-2", machine_label: "Desktop" })],
+      [],
       (call) => [
         targetRow({
           id: call.values[3],
@@ -1071,7 +1074,8 @@ describe("debugging service", () => {
           label: call.values[7],
           status: call.values[8]
         })
-      ]
+      ],
+      []
     ]);
     const service = createDebuggingService({
       db,

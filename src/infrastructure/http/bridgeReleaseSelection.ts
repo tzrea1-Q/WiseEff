@@ -72,12 +72,56 @@ export function bridgeReleaseDownloadLabel(item: DeviceBridgeReleaseItem) {
   return `下载 ${bridgePlatformLabel(item.platform)} Bridge（${archLabel}）`;
 }
 
+export function bridgeHostTargetLabel(target: BrowserBridgeTarget) {
+  if (target.platform === "darwin") {
+    if (target.arch === "arm64") {
+      return "macOS（Apple Silicon）";
+    }
+    if (target.arch === "amd64") {
+      return "macOS（Intel）";
+    }
+    return `macOS（${target.arch}）`;
+  }
+  if (target.platform === "windows") {
+    return target.arch === "amd64" ? "Windows（x64）" : `Windows（${target.arch}）`;
+  }
+  return `${bridgePlatformLabel(target.platform)}（${target.arch}）`;
+}
+
+export function isBridgeReleaseForHost(item: DeviceBridgeReleaseItem, target: BrowserBridgeTarget) {
+  return item.platform === target.platform && item.arch === target.arch;
+}
+
+export function pickHostPortableRelease(
+  items: DeviceBridgeReleaseItem[],
+  target: BrowserBridgeTarget = detectBrowserBridgeTarget()
+) {
+  const portableItems = items.filter((item) => item.artifactKind !== "installer");
+  const exact = portableItems.find((item) => isBridgeReleaseForHost(item, target));
+  if (exact) {
+    return exact;
+  }
+  return portableItems.find((item) => item.platform === target.platform) ?? null;
+}
+
 export function listPortableBridgeReleases(items: DeviceBridgeReleaseItem[], primary: DeviceBridgeReleaseItem | null) {
   return items.filter((item) => {
     if (primary && item.downloadUrl === primary.downloadUrl) {
       return false;
     }
     return item.artifactKind !== "installer";
+  });
+}
+
+export function listInstallerBridgeReleases(items: DeviceBridgeReleaseItem[], primary: DeviceBridgeReleaseItem | null) {
+  return items.filter((item) => {
+    if (item.artifactKind !== "installer") {
+      return false;
+    }
+    if (primary && item.downloadUrl === primary.downloadUrl) {
+      return false;
+    }
+    return true;
   });
 }
 

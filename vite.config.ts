@@ -85,6 +85,19 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: resolvePreviewAllowedHosts()
   },
+  server: {
+    proxy: {
+      "/downloads": {
+        target: process.env.VITE_WISEEFF_API_BASE_URL?.trim() || "http://127.0.0.1:8787",
+        changeOrigin: true
+      },
+      "/local-bridge": {
+        target: "http://127.0.0.1:18787",
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/local-bridge/, "")
+      }
+    }
+  },
   resolve: {
     alias: {
       "@": path.resolve(projectRoot, "./src")

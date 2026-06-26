@@ -61,13 +61,30 @@ export function createBridgeConnectionPool(options: BridgeConnectionPoolOptions 
 
   return {
     register(bridgeId: string, socket: BridgeSocket) {
+      const existing = connections.get(bridgeId);
+      if (existing && existing.socket !== socket) {
+        try {
+          existing.socket.close();
+        } catch {
+          // Ignore close errors from stale sockets.
+        }
+      }
+
       connections.set(bridgeId, {
         socket,
         lastSeenAt: now().toISOString()
       });
     },
 
-    unregister(bridgeId: string) {
+    unregister(bridgeId: string, socket?: BridgeSocket) {
+      const existing = connections.get(bridgeId);
+      if (!existing) {
+        return;
+      }
+      if (socket && existing.socket !== socket) {
+        return;
+      }
+
       connections.delete(bridgeId);
       rejectPendingForBridge(bridgeId, new Error("Bridge disconnected."));
     },

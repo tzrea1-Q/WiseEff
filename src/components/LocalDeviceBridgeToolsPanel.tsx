@@ -8,6 +8,7 @@ import {
   rememberBridgeToolInstallConfirm,
   shouldConfirmBridgeToolInstall
 } from "../infrastructure/http/bridgeToolInstallLauncher";
+import { resolveBridgeServerUrl } from "../infrastructure/http/bridgeServerUrl";
 import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
 import type { DebugConnectionProtocol } from "./bridgePanelStatus";
 
@@ -67,7 +68,7 @@ export function LocalDeviceBridgeToolsPanel({
     setLocalInstalling(true);
     onInstallError("");
     try {
-      launchBridgeToolInstall(buildBridgeToolInstallUrl(window.location.origin, installProtocol));
+      launchBridgeToolInstall(buildBridgeToolInstallUrl(resolveBridgeServerUrl(), installProtocol));
       const result = await pollBridgeToolInstall({ protocol: installProtocol });
       await onInstallComplete();
       if (!result) {

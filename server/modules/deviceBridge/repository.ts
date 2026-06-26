@@ -218,7 +218,7 @@ export async function touchBridgeLastSeen(
 
 export async function listBridgesForUser(
   db: Queryable,
-  input: { userId: string; organizationId: string }
+  input: { userId: string; organizationId: string; includeRevoked?: boolean }
 ): Promise<DeviceBridgeRecord[]> {
   const result = await db.query<DeviceBridgeRow>(
     `
@@ -237,12 +237,81 @@ export async function listBridgesForUser(
     from device_bridges
     where user_id = $1
       and organization_id = $2
+      ${input.includeRevoked ? "" : "and revoked_at is null"}
     order by created_at desc
     `,
     [input.userId, input.organizationId]
   );
 
   return result.rows.map(toDeviceBridgeRecord);
+}
+
+export async function listActiveBridgesForMachine(
+  db: Queryable,
+  input: {
+    userId: string;
+    organizationId: string;
+    machineLabel: string;
+    platform: DeviceBridgePlatform;
+    arch: string;
+  }
+): Promise<DeviceBridgeRecord[]> {
+  const result = await db.query<DeviceBridgeRow>(
+    `
+    select
+      id,
+      organization_id,
+      user_id,
+      machine_label,
+      platform,
+      arch,
+      client_version,
+      capabilities,
+      created_at,
+      last_seen_at,
+      revoked_at
+    from device_bridges
+    where user_id = $1
+      and organization_id = $2
+      and machine_label = $3
+      and platform = $4
+      and arch = $5
+      and revoked_at is null
+    order by created_at desc
+    `,
+    [input.userId, input.organizationId, input.machineLabel, input.platform, input.arch]
+  );
+
+  return result.rows.map(toDeviceBridgeRecord);
+}
+
+export async function revokeBridgeTokensForBridge(
+  db: Queryable,
+  input: { bridgeId: string; revokedAt: Date }
+) {
+  await db.query(
+    `
+    update device_bridge_tokens
+    set revoked_at = $2
+    where bridge_id = $1
+      and revoked_at is null
+    `,
+    [input.bridgeId, input.revokedAt.toISOString()]
+  );
+}
+
+export async function updateBridgeClientVersion(
+  db: Queryable,
+  input: { bridgeId: string; clientVersion: string | null }
+) {
+  await db.query(
+    `
+    update device_bridges
+    set client_version = $2
+    where id = $1
+    `,
+    [input.bridgeId, input.clientVersion]
+  );
 }
 
 export async function revokeBridge(
@@ -335,6 +404,12 @@ export function createDeviceBridgeRepository(db: Queryable) {
     validateBridgeToken: (input: Parameters<typeof validateBridgeToken>[1]) => validateBridgeToken(db, input),
     touchBridgeLastSeen: (input: Parameters<typeof touchBridgeLastSeen>[1]) => touchBridgeLastSeen(db, input),
     listBridgesForUser: (input: Parameters<typeof listBridgesForUser>[1]) => listBridgesForUser(db, input),
+    listActiveBridgesForMachine: (input: Parameters<typeof listActiveBridgesForMachine>[1]) =>
+      listActiveBridgesForMachine(db, input),
+    revokeBridgeTokensForBridge: (input: Parameters<typeof revokeBridgeTokensForBridge>[1]) =>
+      revokeBridgeTokensForBridge(db, input),
+    updateBridgeClientVersion: (input: Parameters<typeof updateBridgeClientVersion>[1]) =>
+      updateBridgeClientVersion(db, input),
     revokeBridge: (input: Parameters<typeof revokeBridge>[1]) => revokeBridge(db, input),
     updateBridgeMachineLabel: (input: Parameters<typeof updateBridgeMachineLabel>[1]) =>
       updateBridgeMachineLabel(db, input)

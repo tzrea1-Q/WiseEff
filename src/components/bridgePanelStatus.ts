@@ -11,9 +11,37 @@ export type BridgePanelStatus =
 
 export type DebugConnectionProtocol = "adb" | "hdc";
 
+export function isLocalBridgeAuthFailure(health: LocalBridgeHealthState | null) {
+  const error = health?.lastError ?? "";
+  return /invalid or expired bridge token/i.test(error) || /missing bridge authorization/i.test(error);
+}
+
+export function isLocalBridgeTokenExpired(health: LocalBridgeHealthState | null, now = Date.now()) {
+  if (!health?.tokenExpiresAt) {
+    return false;
+  }
+  const expiresAt = new Date(health.tokenExpiresAt).getTime();
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+export function isLocalBridgePairingStale(input: {
+  health: LocalBridgeHealthState | null;
+  registeredBridgeIds: string[];
+}) {
+  const localBridgeId = input.health?.bridgeId;
+  const registeredIds = input.registeredBridgeIds;
+  return Boolean(
+    input.health?.paired &&
+      localBridgeId &&
+      registeredIds.length > 0 &&
+      !registeredIds.includes(localBridgeId)
+  );
+}
+
 export function deriveBridgePanelStatus(input: {
   health: LocalBridgeHealthState | null;
   bridgeCount: number;
+  registeredBridgeIds?: string[];
   target?: string;
   protocol?: DebugConnectionProtocol;
 }): BridgePanelStatus {
@@ -21,6 +49,17 @@ export function deriveBridgePanelStatus(input: {
     return input.bridgeCount > 0 ? "not_running" : "missing_bridge";
   }
   if (!input.health.paired) {
+    return "not_paired";
+  }
+  if (isLocalBridgeAuthFailure(input.health) || isLocalBridgeTokenExpired(input.health)) {
+    return "not_paired";
+  }
+  if (
+    isLocalBridgePairingStale({
+      health: input.health,
+      registeredBridgeIds: input.registeredBridgeIds ?? []
+    })
+  ) {
     return "not_paired";
   }
   if (!input.health.connected) {
@@ -73,7 +112,18 @@ export function formatDetectFailureMessage(input: {
   return message;
 }
 
-export function bridgePanelStatusHint(status: BridgePanelStatus, protocol: DebugConnectionProtocol = "hdc") {
+export function bridgePanelStatusHint(
+  status: BridgePanelStatus,
+  protocol: DebugConnectionProtocol = "hdc",
+  options: { pairingStale?: boolean; authFailure?: boolean } = {}
+) {
+  if (options.pairingStale && status === "not_paired") {
+    return "本地 Bridge 配对已失效，请点击连接本机并使用新的配对码重新配对。";
+  }
+  if (status === "not_paired" && options.authFailure) {
+    return "本地 Bridge 令牌已失效或过期，请点击连接本机并使用新的配对码重新配对。";
+  }
+
   switch (status) {
     case "bridges_with_targets":
       return "Bridge 在线，已连接可调试目标。";

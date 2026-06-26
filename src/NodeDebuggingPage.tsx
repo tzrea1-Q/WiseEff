@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
-import { deriveBridgePanelStatus, formatDetectFailureMessage } from "./components/bridgePanelStatus";
+import { deriveBridgePanelStatus, formatDetectFailureMessage, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -21,7 +21,8 @@ import {
 } from "./infrastructure/http/deviceBridgeClient";
 import {
   detectBrowserBridgeTarget,
-  listAlternateBridgeReleases,
+  listInstallerBridgeReleases,
+  listPortableBridgeReleases,
   pickBridgeReleaseForHost
 } from "./infrastructure/http/bridgeReleaseSelection";
 import { formatDebuggingRuntimeError, type DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
@@ -563,6 +564,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
 function deriveBridgePanelStatusFromHealth(input: {
   health: LocalBridgeHealthState | null;
   bridgeCount: number;
+  registeredBridgeIds: string[];
   target?: string;
   protocol: DebugConnectionProtocol;
 }): BridgePanelStatus {
@@ -584,7 +586,8 @@ function LocalDeviceBridgePanel({
   const [health, setHealth] = useState<LocalBridgeHealthState | null>(null);
   const [bridges, setBridges] = useState<DeviceBridgeRecord[]>([]);
   const [hostRelease, setHostRelease] = useState<DeviceBridgeReleaseItem | null>(null);
-  const [alternateReleases, setAlternateReleases] = useState<DeviceBridgeReleaseItem[]>([]);
+  const [installerAlternates, setInstallerAlternates] = useState<DeviceBridgeReleaseItem[]>([]);
+  const [portableReleases, setPortableReleases] = useState<DeviceBridgeReleaseItem[]>([]);
   const [pairingCode, setPairingCode] = useState<DeviceBridgePairingCode | null>(null);
   const [pairingCodeLoading, setPairingCodeLoading] = useState(false);
   const [panelError, setPanelError] = useState("");
@@ -592,6 +595,21 @@ function LocalDeviceBridgePanel({
   const [renameDraftById, setRenameDraftById] = useState<Record<string, string>>({});
   const [renamingBridgeId, setRenamingBridgeId] = useState<string | null>(null);
   const [revokingBridgeId, setRevokingBridgeId] = useState<string | null>(null);
+  const [releasesLoading, setReleasesLoading] = useState(false);
+
+  const loadInstallReleases = useCallback(async () => {
+    setReleasesLoading(true);
+    try {
+      const manifest = await listReleases().catch(() => null);
+      const hostTarget = detectBrowserBridgeTarget();
+      const primary = manifest ? pickBridgeReleaseForHost(manifest.items, hostTarget) : null;
+      setHostRelease(primary);
+      setInstallerAlternates(manifest ? listInstallerBridgeReleases(manifest.items, primary) : []);
+      setPortableReleases(manifest ? listPortableBridgeReleases(manifest.items, null) : []);
+    } finally {
+      setReleasesLoading(false);
+    }
+  }, []);
 
   const refreshBridgeState = useCallback(async () => {
     setChecking(true);
@@ -605,19 +623,13 @@ function LocalDeviceBridgePanel({
       setBridges(nextBridges);
       setRenameDraftById(Object.fromEntries(nextBridges.map((bridge) => [bridge.id, bridge.machineLabel])));
       if (!nextHealth && nextBridges.length === 0) {
-        const manifest = await listReleases().catch(() => null);
-        const primary = manifest ? pickBridgeReleaseForHost(manifest.items, detectBrowserBridgeTarget()) : null;
-        setHostRelease(primary);
-        setAlternateReleases(manifest ? listAlternateBridgeReleases(manifest.items, primary) : []);
-      } else {
-        setHostRelease(null);
-        setAlternateReleases([]);
+        await loadInstallReleases();
       }
       return { nextHealth, nextBridges, connected: Boolean(nextHealth?.connected) };
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [loadInstallReleases]);
 
   useEffect(() => {
     void refreshBridgeState();
@@ -626,17 +638,27 @@ function LocalDeviceBridgePanel({
   const panelStatus = deriveBridgePanelStatusFromHealth({
     health,
     bridgeCount: bridges.length,
+    registeredBridgeIds: bridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id),
     target,
     protocol
   });
+  const pairingStale = isLocalBridgePairingStale({
+    health,
+    registeredBridgeIds: bridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id)
+  });
+  const pairingAuthFailure = isLocalBridgeAuthFailure(health) || isLocalBridgeTokenExpired(health);
 
-  const startCommand = "wiseeff-bridge start";
-  const pairCommand = pairingCode
-    ? `wiseeff-bridge pair --server ${window.location.origin} --code ${pairingCode.code}`
-    : "";
-  const connectCommand = pairingCode
-    ? `wiseeff-bridge connect --server ${window.location.origin} --code ${pairingCode.code}`
-    : "";
+  useEffect(() => {
+    if (panelStatus !== "missing_bridge" && panelStatus !== "not_running" && panelStatus !== "not_connected") {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      void refreshBridgeState();
+    }, 3000);
+
+    return () => window.clearInterval(timer);
+  }, [panelStatus, refreshBridgeState]);
 
   useEffect(() => {
     if (panelStatus !== "missing_bridge" && panelStatus !== "not_paired") {
@@ -708,10 +730,13 @@ function LocalDeviceBridgePanel({
     <section className="local-device-bridge-panel" aria-label="本地设备连接">
       <LocalDeviceBridgeWizard
         panelStatus={panelStatus}
+        pairingStale={pairingStale}
+        pairingAuthFailure={pairingAuthFailure}
         protocol={protocol}
         health={health}
         hostRelease={hostRelease}
-        alternateReleases={alternateReleases}
+        installerAlternates={installerAlternates}
+        portableReleases={portableReleases}
         pairingCode={pairingCode}
         pairingCodeLoading={pairingCodeLoading}
         checking={checking}
@@ -723,11 +748,8 @@ function LocalDeviceBridgePanel({
           return { connected: snapshot.connected };
         }}
         onDetect={onDetect}
-        advancedCommands={{
-          connect: connectCommand,
-          pair: pairCommand,
-          start: startCommand
-        }}
+        releasesLoading={releasesLoading}
+        onLoadInstallReleases={loadInstallReleases}
       />
       {bridges.length > 0 ? (
           <details className="local-device-bridge-panel__management" open>

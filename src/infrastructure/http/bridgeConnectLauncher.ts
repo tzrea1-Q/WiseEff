@@ -1,8 +1,10 @@
 import type { LocalBridgeHealthState, ToolProbeState } from "./deviceBridgeClient";
+import { resolveBridgeServerUrl } from "./bridgeServerUrl";
+import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
 
-export function buildBridgeConnectUrl(origin: string, code?: string) {
+export function buildBridgeConnectUrl(serverUrl?: string, code?: string) {
   const url = new URL("wiseeff-bridge://connect");
-  url.searchParams.set("server", origin);
+  url.searchParams.set("server", serverUrl ?? resolveBridgeServerUrl());
   if (code) {
     url.searchParams.set("code", code);
   }
@@ -68,6 +70,7 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
     connected: Boolean(body.connected),
     bridgeId: typeof body.bridgeId === "string" ? body.bridgeId : undefined,
     serverUrl: typeof body.serverUrl === "string" ? body.serverUrl : undefined,
+    tokenExpiresAt: typeof body.tokenExpiresAt === "string" ? body.tokenExpiresAt : undefined,
     lastError: typeof body.lastError === "string" ? body.lastError : undefined,
     updatedAt: body.updatedAt,
     tools,
@@ -77,7 +80,7 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch = fetch): Promise<LocalBridgeHealthState | null> {
   try {
-    const response = await fetchImpl("http://127.0.0.1:18787/health");
+    const response = await fetchImpl(resolveLocalBridgeHealthUrl());
     if (!response.ok) {
       return null;
     }
