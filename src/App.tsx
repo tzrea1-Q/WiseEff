@@ -4770,8 +4770,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   };
 
   const onAskAgent = () => {
-    document.querySelector<HTMLButtonElement>(".agent-fab")?.click();
-    dispatch({ type: "ADD_NOTIFICATION", message: "WiseAgent 已展开" });
+    document.querySelector<HTMLButtonElement>(".xiaoze-chat-toggle-anchor button")?.click();
   };
 
   const selectedFeedbackLog = feedbackLogId ? state.logs.find((log) => log.id === feedbackLogId) ?? null : null;

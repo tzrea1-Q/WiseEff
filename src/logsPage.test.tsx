@@ -1,9 +1,36 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { useState } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@/features/agent/XiaozeProvider", () => ({
+  XiaozeProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  XiaozeProactiveInsights: () => null
+}));
+
+vi.mock("@copilotkit/react-core/v2", () => ({
+  useAgentContext: vi.fn()
+}));
+
 import App from "./App";
 import { initialState } from "./mockData";
 
 const userState = { ...initialState, activeRoleId: "user" };
+
+function FakeXiaozeToggle() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <div className="xiaoze-chat-toggle-anchor">
+        <button type="button" aria-label="打开小泽" onClick={() => setOpen(true)} />
+      </div>
+      {open ? (
+        <div data-testid="xiaoze-popup-layer" className="xiaoze-popup-layer">
+          <span>小泽</span>
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 afterEach(() => {
   cleanup();
@@ -86,15 +113,22 @@ describe("LogsPage · Header", () => {
     expect(within(metadataPanel).getByText("aurora")).toBeInTheDocument();
   });
 
-  it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开 WiseAgent", () => {
+  it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开小泽", () => {
     window.history.replaceState(null, "", "/logs");
 
-    render(<App initialAppState={userState} />);
+    render(
+      <>
+        <App initialAppState={userState} />
+        <FakeXiaozeToggle />
+      </>
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /问 Agent/ }));
 
-    expect(document.querySelector(".agent-panel")).toBeInTheDocument();
-    expect(screen.getByText("WiseAgent")).toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-popup-layer")).toBeInTheDocument();
+    expect(screen.getByText("小泽")).toBeInTheDocument();
+    expect(document.querySelector(".agent-panel")).not.toBeInTheDocument();
+    expect(screen.queryByText("WiseAgent")).not.toBeInTheDocument();
   });
 
   it("Processing 结论卡不再展示文件名、阶段、时间和设备胶囊标签", () => {
