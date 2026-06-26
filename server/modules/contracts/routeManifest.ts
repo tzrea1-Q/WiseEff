@@ -197,29 +197,6 @@ export const routeManifest = [
     stability: "mvp"
   },
 
-  { id: "agent.createSession", method: "POST", path: "/api/v1/agent/sessions", module: "agent", stability: "mvp" },
-  { id: "agent.sendMessage", method: "POST", path: "/api/v1/agent/sessions/:sessionId/messages", module: "agent", stability: "mvp" },
-  {
-    id: "agent.runToolCall",
-    method: "POST",
-    path: "/api/v1/agent/sessions/:sessionId/tool-calls/:toolCallId/run",
-    module: "agent",
-    stability: "mvp"
-  },
-  {
-    id: "agent.approveToolCall",
-    method: "POST",
-    path: "/api/v1/agent/sessions/:sessionId/approvals/:approvalId/approve",
-    module: "agent",
-    stability: "mvp"
-  },
-  {
-    id: "agent.rejectToolCall",
-    method: "POST",
-    path: "/api/v1/agent/sessions/:sessionId/approvals/:approvalId/reject",
-    module: "agent",
-    stability: "mvp"
-  },
   { id: "xiaoze.run", method: "POST", path: "/api/v1/agent/xiaoze", module: "agent", stability: "mvp" },
   { id: "xiaoze.suggest", method: "POST", path: "/api/v1/agent/xiaoze/suggest", module: "agent", stability: "mvp" },
   { id: "xiaoze.listThreads", method: "GET", path: "/api/v1/agent/xiaoze/threads", module: "agent", stability: "mvp" },

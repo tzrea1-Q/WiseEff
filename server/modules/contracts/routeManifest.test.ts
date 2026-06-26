@@ -18,9 +18,9 @@ describe("routeManifest", () => {
     expect(routeManifest).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: "agent.approveToolCall",
+          id: "xiaoze.run",
           method: "POST",
-          path: "/api/v1/agent/sessions/:sessionId/approvals/:approvalId/approve"
+          path: "/api/v1/agent/xiaoze"
         }),
         expect.objectContaining({
           id: "debugging.writeNode",

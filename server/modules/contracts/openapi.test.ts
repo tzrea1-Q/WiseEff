@@ -13,7 +13,7 @@ const criticalRouteIds = [
   "logs.upload",
   "jobs.get",
   "debugging.writeNode",
-  "agent.approveToolCall",
+  "xiaoze.run",
   "operations.ready",
   "operations.pilotReadiness"
 ] as const;
@@ -26,7 +26,7 @@ const criticalPathsByRouteId: Record<(typeof criticalRouteIds)[number], string> 
   "logs.upload": "/api/v1/logs",
   "jobs.get": "/api/v1/jobs/{jobId}",
   "debugging.writeNode": "/api/v1/debugging/nodes/write",
-  "agent.approveToolCall": "/api/v1/agent/sessions/{sessionId}/approvals/{approvalId}/approve",
+  "xiaoze.run": "/api/v1/agent/xiaoze",
   "operations.ready": "/health/ready",
   "operations.pilotReadiness": "/api/v1/operations/pilot-readiness"
 };
@@ -214,11 +214,10 @@ describe("M5 OpenAPI contract", () => {
 
   it("declares required OpenAPI path parameters for templated paths", () => {
     const document = buildOpenApiDocument();
-    const operation = document.paths["/api/v1/agent/sessions/{sessionId}/tool-calls/{toolCallId}/run"]?.post;
+    const operation = document.paths["/api/v1/agent/xiaoze/threads/{threadId}"]?.patch;
 
     expect(operation?.parameters).toEqual([
-      { name: "sessionId", in: "path", required: true, schema: { type: "string" } },
-      { name: "toolCallId", in: "path", required: true, schema: { type: "string" } }
+      { name: "threadId", in: "path", required: true, schema: { type: "string" } }
     ]);
   });
 
@@ -233,7 +232,7 @@ describe("M5 OpenAPI contract", () => {
       { path: "/api/v1/log-files", method: "post" },
       { path: "/api/v1/logs", method: "post" },
       { path: "/api/v1/debugging/sessions", method: "post" },
-      { path: "/api/v1/agent/sessions", method: "post" }
+      { path: "/api/v1/agent/xiaoze/threads", method: "post" }
     ] as const;
     const okRoutes = [
       { path: "/api/v1/me", method: "get" },

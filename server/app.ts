@@ -1,5 +1,4 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
-import { registerAgentRoutes } from "./modules/agent/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
 import type { AgentProvider } from "./modules/agent/provider";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
@@ -152,13 +151,6 @@ export function createWiseEffServer(
   registerDeviceBridgeDownloadRoutes(router, {
     artifactRoot: options.deviceBridge?.artifactRoot ?? options.env?.DEVICE_BRIDGE_ARTIFACT_ROOT,
     toolArtifactRoot: options.deviceBridge?.toolArtifactRoot ?? options.env?.DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT
-  });
-  registerAgentRoutes(router, {
-    db: options.db,
-    getCurrentAuthContext: authResolver,
-    provider: options.agentProvider,
-    metrics,
-    tracing
   });
   registerXiaozeRoutes(router, {
     db: options.db,
