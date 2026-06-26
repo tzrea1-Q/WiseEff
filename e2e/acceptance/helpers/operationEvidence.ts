@@ -210,7 +210,7 @@ function defaultRuntimeSummary(): OperationEvidenceRuntimeSummary {
       DATABASE_URL: process.env.DATABASE_URL ? "set" : "unset",
       OBJECT_STORE_MODE: process.env.OBJECT_STORE_MODE?.trim() || "local",
       DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE?.trim() || "simulator",
-      AGENT_PROVIDER: process.env.AGENT_PROVIDER?.trim() || "deterministic",
+      XIAOZE_DETERMINISTIC: process.env.XIAOZE_DETERMINISTIC === "true" ? "true" : "false",
       WISEEFF_ACCEPTANCE_NO_START_RUNTIME: process.env.WISEEFF_ACCEPTANCE_NO_START_RUNTIME === "true" ? "true" : "false"
     }
   };

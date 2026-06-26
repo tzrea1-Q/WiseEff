@@ -2771,7 +2771,6 @@ describe("WiseEff app shell", () => {
     expect(navItemCss).toContain("justify-content: flex-start;");
     expect(navItemCss).toContain("height: auto;");
     expect(feedbackEntryCss).toContain("align-items: flex-start;");
-    expect(css).toContain(".agent-header [data-slot=\"button\"]");
 
     fireEvent.click(feedbackEntry);
 

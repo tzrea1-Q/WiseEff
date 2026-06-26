@@ -257,7 +257,6 @@ describe("loadServerEnv", () => {
         AUTH_TOKEN_ISSUER: "wiseeff-prod",
         AUTH_TOKEN_HMAC_SECRET: "a-production-secret-with-enough-length",
         DEBUG_DEVICE_GATEWAY_MODE: "hdc",
-        AGENT_PROVIDER: "live",
         AGENT_MODEL: "pilot-model",
         AGENT_API_KEY: "secret",
         AGENT_API_BASE_URL: "https://agent.example.com"
@@ -278,7 +277,6 @@ describe("loadServerEnv", () => {
         AUTH_MODE: "production",
         AUTH_PROVIDER: "oidc",
         DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-        AGENT_PROVIDER: "live",
         AGENT_MODEL: "pilot-model",
         AGENT_API_KEY: "secret",
         AGENT_API_BASE_URL: "https://agent.example.com"

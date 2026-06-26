@@ -1013,7 +1013,7 @@ export function registerXiaozeRoutes(
     options.createAgent ??
     createXiaozeAgentFactory({
       db: options.db,
-      env: options.env
+      env: options.env ?? { XIAOZE_DETERMINISTIC: true }
     });
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db });
   const persistTurn = createXiaozeTurnPersister({ db: options.db });
