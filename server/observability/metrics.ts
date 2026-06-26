@@ -1,6 +1,3 @@
-import type { AgentProviderEvidence } from "../modules/agent/providerEvidence";
-import { toMetricLabels } from "../modules/agent/providerEvidence";
-
 type LabelSet = Record<string, string | number | boolean>;
 
 type CounterSample = {
@@ -32,7 +29,7 @@ const httpDurationBucketsSeconds = [0.05, 0.1, 0.25, 0.5, 0.8, 1, 2.5, 5, Number
 const dependencyMetricNames: Record<string, string> = {
   database: "wiseeff_database_ready",
   objectStore: "wiseeff_object_store_ready",
-  agentProvider: "wiseeff_agent_provider_ready"
+  xiaozeLlm: "wiseeff_xiaoze_llm_ready"
 };
 
 function escapeLabel(value: string | number | boolean) {
@@ -121,17 +118,9 @@ export function createMetricsRegistry(options: { serviceName: string }) {
         setGauge(metricName, `WiseEff ${input.dependency} readiness, 1 for ready and 0 for not ready.`, {}, input.ok ? 1 : 0);
       }
     },
-    setAgentProviderHealth(input: { ok: boolean; evidence?: AgentProviderEvidence }) {
-      setGauge("wiseeff_dependency_health", "WiseEff dependency health, 1 for healthy and 0 for unhealthy.", { dependency: "agentProvider" }, input.ok ? 1 : 0);
-      setGauge("wiseeff_agent_provider_ready", "WiseEff agentProvider readiness, 1 for ready and 0 for not ready.", {}, input.ok ? 1 : 0);
-      if (input.evidence) {
-        setGauge(
-          "wiseeff_agent_provider_ready",
-          "WiseEff agentProvider readiness, 1 for ready and 0 for not ready.",
-          toMetricLabels(input.evidence),
-          input.ok ? 1 : 0
-        );
-      }
+    setXiaozeLlmHealth(input: { ok: boolean }) {
+      setGauge("wiseeff_dependency_health", "WiseEff dependency health, 1 for healthy and 0 for unhealthy.", { dependency: "xiaozeLlm" }, input.ok ? 1 : 0);
+      setGauge("wiseeff_xiaoze_llm_ready", "WiseEff xiaozeLlm readiness, 1 for ready and 0 for not ready.", {}, input.ok ? 1 : 0);
     },
     setQueueStats(input: { queue: string; queued: number; processing: number; deadLettered: number; oldestQueuedAgeMs: number | null }) {
       setGauge("wiseeff_queue_backlog", "WiseEff queue backlog by queue.", { queue: input.queue }, input.queued);

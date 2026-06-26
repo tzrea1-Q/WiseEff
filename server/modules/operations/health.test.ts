@@ -298,81 +298,98 @@ describe("operations health", () => {
     });
   });
 
-  it("includes agent provider readiness when requested", async () => {
+  it("includes Xiaoze LLM readiness when env is provided", async () => {
     const db: Pick<Queryable, "query"> = {
       query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
     };
     const objectStore = {
       checkHealth: async () => ({ ok: true as const, status: "ready" as const })
     };
-    const agentProvider = {
-      metadata: () => ({ provider: "live" as const, model: "pilot-model", promptVersion: "m5-agent-v1" }),
-      planTurn: async () => ({
-        assistantDraft: { content: "Ready.", citations: [], confidence: 0.8 },
-        toolRequests: [],
-        provider: "live" as const,
-        model: "pilot-model",
-        promptVersion: "m5-agent-v1"
-      }),
-      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
-    };
 
-    await expect(buildReadyHealth({ db, objectStore, agentProvider })).resolves.toMatchObject({
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com",
+          AGENT_API_KEY: "test-key",
+          XIAOZE_MODEL: "xiaoze-model"
+        }
+      })
+    ).resolves.toMatchObject({
       status: 200,
       body: {
         ok: true,
         dependencies: {
-          agentProvider: { ok: true, status: "ready" }
+          xiaozeLlm: {
+            ok: true,
+            status: "ready",
+            details: {
+              baseUrlConfigured: true,
+              model: "xiaoze-model"
+            }
+          }
         }
       }
     });
   });
 
-  it("includes safe agent provider evidence details when available", async () => {
+  it("reports missing Xiaoze LLM config when live mode env is incomplete", async () => {
     const db: Pick<Queryable, "query"> = {
       query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
     };
     const objectStore = {
       checkHealth: async () => ({ ok: true as const, status: "ready" as const })
     };
-    const agentProvider = {
-      metadata: () => ({
-        provider: "live" as const,
-        model: "model-a",
-        promptVersion: "m7-pi-agent-v1",
-        evidence: {
-          provider: "live" as const,
-          format: "pi" as const,
-          piProvider: "minimax",
-          model: "model-a",
-          promptVersion: "m7-pi-agent-v1"
+
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        env: {
+          AGENT_API_BASE_URL: "https://agent.example.com"
         }
-      }),
-      planTurn: async () => ({
-        assistantDraft: { content: "Ready.", citations: [], confidence: 0.8 },
-        toolRequests: [],
-        provider: "live" as const,
-        model: "model-a",
-        promptVersion: "m7-pi-agent-v1"
-      }),
-      checkHealth: async () => ({ ok: true as const, status: "ready" as const, message: "ready" })
+      })
+    ).resolves.toMatchObject({
+      status: 503,
+      body: {
+        ok: false,
+        dependencies: {
+          xiaozeLlm: {
+            ok: false,
+            status: "missing",
+            message: "Xiaoze LLM configuration is incomplete. Missing: AGENT_API_KEY."
+          }
+        }
+      }
+    });
+  });
+
+  it("treats deterministic Xiaoze mode as ready without LLM credentials", async () => {
+    const db: Pick<Queryable, "query"> = {
+      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+    };
+    const objectStore = {
+      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
     };
 
-    await expect(buildReadyHealth({ db, objectStore, agentProvider })).resolves.toMatchObject({
+    await expect(
+      buildReadyHealth({
+        db,
+        objectStore,
+        env: {
+          XIAOZE_DETERMINISTIC: true
+        }
+      })
+    ).resolves.toMatchObject({
       status: 200,
       body: {
+        ok: true,
         dependencies: {
-          agentProvider: {
+          xiaozeLlm: {
             ok: true,
             status: "ready",
-            message: "ready",
-            details: {
-              provider: "live",
-              format: "pi",
-              piProvider: "minimax",
-              model: "model-a",
-              promptVersion: "m7-pi-agent-v1"
-            }
+            message: "Xiaoze deterministic mode; LLM API not required."
           }
         }
       }

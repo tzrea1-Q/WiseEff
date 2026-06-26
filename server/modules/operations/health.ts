@@ -1,6 +1,4 @@
 import type { Database } from "../../shared/database/client";
-import type { AgentProvider } from "../agent/providerEvidence";
-import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
@@ -13,6 +11,14 @@ export type DependencyHealth = {
   details?: Record<string, string | number | boolean>;
 };
 
+export type XiaozeLlmEnv = {
+  AGENT_API_BASE_URL?: string;
+  AGENT_API_KEY?: string;
+  AGENT_MODEL?: string;
+  XIAOZE_MODEL?: string;
+  XIAOZE_DETERMINISTIC?: boolean;
+};
+
 export type OperationsHealthBody = {
   ok: boolean;
   service: "wiseeff-api";
@@ -22,7 +28,7 @@ export type OperationsHealthBody = {
     objectStore: DependencyHealth;
     workerQueue?: WorkerQueueHealth;
     durableQueue?: CombinedDurableQueueHealth;
-    agentProvider?: DependencyHealth;
+    xiaozeLlm?: DependencyHealth;
   };
 };
 
@@ -33,6 +39,57 @@ export function buildLiveHealth(): OperationsHealthBody {
     ok: true,
     service: "wiseeff-api",
     status: "live"
+  };
+}
+
+function readNonBlank(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+export function checkXiaozeLlmConfig(env?: XiaozeLlmEnv): DependencyHealth | undefined {
+  if (!env) {
+    return undefined;
+  }
+
+  if (env.XIAOZE_DETERMINISTIC) {
+    return {
+      ok: true,
+      status: "ready",
+      message: "Xiaoze deterministic mode; LLM API not required."
+    };
+  }
+
+  const baseUrl = readNonBlank(env.AGENT_API_BASE_URL);
+  const apiKey = readNonBlank(env.AGENT_API_KEY);
+  const missing: string[] = [];
+  if (!baseUrl) {
+    missing.push("AGENT_API_BASE_URL");
+  }
+  if (!apiKey) {
+    missing.push("AGENT_API_KEY");
+  }
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      status: "missing",
+      message: `Xiaoze LLM configuration is incomplete. Missing: ${missing.join(", ")}.`
+    };
+  }
+
+  const model = readNonBlank(env.XIAOZE_MODEL) ?? readNonBlank(env.AGENT_MODEL);
+  const details: Record<string, string | number | boolean> = {
+    baseUrlConfigured: true
+  };
+  if (model) {
+    details.model = model;
+  }
+
+  return {
+    ok: true,
+    status: "ready",
+    message: "Xiaoze LLM configuration is available.",
+    details
   };
 }
 
@@ -101,32 +158,6 @@ function sanitizeObjectStoreFailure(message: string | undefined) {
   return "Object store readiness failed. Verify endpoint, bucket, credentials, TLS policy, and S3 compatibility.";
 }
 
-async function checkAgentProvider(agentProvider?: AgentProvider): Promise<DependencyHealth | undefined> {
-  if (!agentProvider?.checkHealth) {
-    return undefined;
-  }
-
-  const evidence = sanitizeAgentProviderEvidence(agentProvider.metadata().evidence);
-  const details = evidence ? { ...evidence } : undefined;
-
-  try {
-    const result = await agentProvider.checkHealth();
-    return {
-      ok: result.ok,
-      status: result.status,
-      message: result.message,
-      ...(details ? { details } : {})
-    };
-  } catch (error) {
-    return {
-      ok: false,
-      status: "failed",
-      message: error instanceof Error ? error.message : "Agent provider readiness check failed.",
-      ...(details ? { details } : {})
-    };
-  }
-}
-
 async function checkDurableQueue(durableQueue?: DurableQueueHealthCheck): Promise<DurableQueueHealth | undefined> {
   if (!durableQueue) return undefined;
   if ("checkHealth" in durableQueue) {
@@ -140,18 +171,18 @@ export async function buildReadyHealth(options: {
   objectStore?: ObjectStoreHealthCheck;
   includeWorkerQueue?: boolean;
   durableQueue?: DurableQueueHealthCheck;
-  agentProvider?: AgentProvider;
+  env?: XiaozeLlmEnv;
 }) {
   const database = await checkDatabase(options.db);
   const objectStore = await checkObjectStore(options.objectStore);
-  const agentProvider = await checkAgentProvider(options.agentProvider);
+  const xiaozeLlm = checkXiaozeLlmConfig(options.env);
   const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
   const durableQueueTransport = await checkDurableQueue(options.durableQueue);
   const durableQueue =
     durableQueueTransport && workerQueue
       ? buildDurableQueueHealth({ transport: durableQueueTransport, database: workerQueue })
       : undefined;
-  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (durableQueue?.ok ?? true) && (agentProvider?.ok ?? true);
+  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (durableQueue?.ok ?? true) && (xiaozeLlm?.ok ?? true);
 
   return {
     status: ok ? 200 : 503,
@@ -164,7 +195,7 @@ export async function buildReadyHealth(options: {
         objectStore,
         ...(workerQueue ? { workerQueue } : {}),
         ...(durableQueue ? { durableQueue } : {}),
-        ...(agentProvider ? { agentProvider } : {})
+        ...(xiaozeLlm ? { xiaozeLlm } : {})
       }
     } satisfies OperationsHealthBody
   };

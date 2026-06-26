@@ -3,11 +3,9 @@ import { ApiError } from "../../shared/http/errors";
 import type { AuthContext } from "../auth/types";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
-import type { AgentProvider } from "../agent/providerEvidence";
-import { sanitizeAgentProviderEvidence } from "../agent/providerEvidence";
 import type { DebugDeviceGateway } from "../debugging/gateway";
 import type { DebugDeviceGatewayRegistry } from "../debugging/gatewayRegistry";
-import { buildLiveHealth, buildReadyHealth, type DurableQueueHealthCheck } from "./health";
+import { buildLiveHealth, buildReadyHealth, checkXiaozeLlmConfig, type DurableQueueHealthCheck, type XiaozeLlmEnv } from "./health";
 import { buildPilotReadiness, type PilotReadinessGateStatus } from "./pilotReadiness";
 
 export type PilotReadinessEnv = {
@@ -25,8 +23,7 @@ export type PilotReadinessEnv = {
   M5_DEVICE_GATEWAY_EVIDENCE?: string;
   M5_CONTRACT_CHECK_PASSED?: boolean;
   M5_CONTRACT_ARTIFACT_CHECKED_AT?: string;
-  AGENT_PROVIDER?: "deterministic" | "live";
-};
+} & XiaozeLlmEnv;
 
 function requireAdminAccess(auth: AuthContext) {
   if (!auth.permissions.includes("admin:access")) {
@@ -185,42 +182,29 @@ function deviceGatewayGate(options: {
   return mode === "hdc" ? deviceGatewayEvidenceGate(options.env) : adbDeviceGatewayEvidenceGate(options.env, mode);
 }
 
-async function agentProviderGate(options: { agentProvider?: AgentProvider; env: PilotReadinessEnv }): Promise<PilotReadinessGateStatus> {
-  if (!options.agentProvider) {
-    return {
-      ok: false,
-      status: "missing",
-      message: "Agent provider is not configured for this API process."
-    };
-  }
-
-  const metadata = options.agentProvider.metadata();
-  const evidence = sanitizeAgentProviderEvidence(metadata.evidence);
-  const details = evidence ? { ...evidence } : undefined;
-  const providerMode = options.env.AGENT_PROVIDER ?? metadata.provider;
-  if (providerMode !== "live") {
+function xiaozeLlmGate(env: PilotReadinessEnv): PilotReadinessGateStatus {
+  if (env.XIAOZE_DETERMINISTIC) {
     return {
       ok: false,
       status: "blocked",
-      message: "Deterministic agent provider mode is not acceptable for pilot readiness.",
-      ...(details ? { details } : {})
+      message: "Deterministic Xiaoze mode is not acceptable for pilot readiness."
     };
   }
 
-  if (!options.agentProvider.checkHealth) {
+  const health = checkXiaozeLlmConfig(env);
+  if (!health) {
     return {
       ok: false,
       status: "missing",
-      message: "Live agent provider health is not available."
+      message: "Xiaoze LLM environment is not configured for this API process."
     };
   }
 
-  const health = await options.agentProvider.checkHealth();
   return {
     ok: health.ok,
     status: health.status,
-    message: health.message ?? "Live agent provider health is available.",
-    ...(details ? { details } : {})
+    message: health.message ?? "Xiaoze LLM configuration is available.",
+    ...(health.details ? { details: health.details } : {})
   };
 }
 
@@ -239,7 +223,11 @@ function defaultPilotReadinessEnv(): PilotReadinessEnv {
     M5_DEVICE_GATEWAY_EVIDENCE: process.env.M5_DEVICE_GATEWAY_EVIDENCE?.trim() || undefined,
     M5_CONTRACT_CHECK_PASSED: process.env.M5_CONTRACT_CHECK_PASSED === "true",
     M5_CONTRACT_ARTIFACT_CHECKED_AT: process.env.M5_CONTRACT_ARTIFACT_CHECKED_AT?.trim() || undefined,
-    AGENT_PROVIDER: process.env.AGENT_PROVIDER === "live" ? "live" : "deterministic"
+    XIAOZE_DETERMINISTIC: process.env.XIAOZE_DETERMINISTIC === "true",
+    AGENT_API_BASE_URL: process.env.AGENT_API_BASE_URL?.trim() || undefined,
+    AGENT_API_KEY: process.env.AGENT_API_KEY?.trim() || undefined,
+    AGENT_MODEL: process.env.AGENT_MODEL?.trim() || undefined,
+    XIAOZE_MODEL: process.env.XIAOZE_MODEL?.trim() || undefined
   };
 }
 
@@ -248,7 +236,6 @@ export function registerOperationsRoutes(
   options: {
     db?: Database;
     objectStore?: ObjectStoreHealthCheck;
-    agentProvider?: AgentProvider;
     debugGateway?: DebugDeviceGateway;
     debugGatewayRegistry?: DebugDeviceGatewayRegistry;
     durableQueue?: DurableQueueHealthCheck;
@@ -267,7 +254,7 @@ export function registerOperationsRoutes(
     buildReadyHealth({
       db: options.db,
       objectStore: options.objectStore,
-      agentProvider: options.agentProvider,
+      env: options.env,
       durableQueue: options.durableQueue,
       includeWorkerQueue: true
     })
@@ -291,7 +278,7 @@ export function registerOperationsRoutes(
       objectStore: options.objectStore,
       includeWorkerQueue: true,
       durableQueue: options.durableQueue,
-      agentProvider: options.agentProvider
+      env: options.env
     });
     const dependencies = readyHealth.body.dependencies;
 
@@ -310,7 +297,7 @@ export function registerOperationsRoutes(
         message: "Worker queue health is unavailable."
       },
       deviceGateway: deviceGatewayGate({ debugGateway: options.debugGateway, debugGatewayRegistry: options.debugGatewayRegistry, env }),
-      agentProvider: await agentProviderGate({ agentProvider: options.agentProvider, env }),
+      xiaozeLlm: xiaozeLlmGate(env),
       backups: backupDrillGate()
     });
 

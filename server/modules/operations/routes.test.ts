@@ -46,70 +46,12 @@ function createDebugGateway(): DebugDeviceGateway {
   };
 }
 
-function createReadyAgentProvider() {
+function createXiaozeLlmEnv(overrides: Partial<PilotReadinessEnv> = {}) {
   return {
-    metadata: () => ({ provider: "live" as const, model: "pilot", promptVersion: "m5" }),
-    planTurn: async () => ({
-      assistantDraft: { content: "Ready.", citations: [], confidence: 0.9 },
-      toolRequests: [],
-      provider: "live" as const,
-      model: "pilot",
-      promptVersion: "m5"
-    }),
-    checkHealth: async () => ({ ok: true as const, status: "ready" as const })
-  };
-}
-
-function createReadyPiAgentProvider() {
-  return {
-    metadata: () => ({
-      provider: "live" as const,
-      model: "model-a",
-      promptVersion: "m7-pi-agent-v1",
-      evidence: {
-        provider: "live" as const,
-        format: "pi" as const,
-        piProvider: "minimax",
-        model: "model-a",
-        promptVersion: "m7-pi-agent-v1"
-      }
-    }),
-    planTurn: async () => ({
-      assistantDraft: { content: "Ready.", citations: [], confidence: 0.9 },
-      toolRequests: [],
-      provider: "live" as const,
-      model: "model-a",
-      promptVersion: "m7-pi-agent-v1"
-    }),
-    checkHealth: async () => ({ ok: true as const, status: "ready" as const })
-  };
-}
-
-function createFailedAgentProvider(message = "Agent provider unavailable.") {
-  return {
-    metadata: () => ({ provider: "live" as const, model: "pilot", promptVersion: "m5" }),
-    planTurn: async () => ({
-      assistantDraft: { content: "Blocked.", citations: [], confidence: 0.2 },
-      toolRequests: [],
-      provider: "live" as const,
-      model: "pilot",
-      promptVersion: "m5"
-    }),
-    checkHealth: async () => ({ ok: false as const, status: "failed" as const, message })
-  };
-}
-
-function createAdminAuth() {
-  return {
-    ...developmentAuthContext,
-    permissions: [...developmentAuthContext.permissions]
-  };
-}
-
-function createNonAdminAuth() {
-  return {
-    ...developmentAuthContext,
-    permissions: developmentAuthContext.permissions.filter((permission) => permission !== "admin:access")
+    AGENT_API_BASE_URL: "https://agent.example.com",
+    AGENT_API_KEY: "test-key",
+    XIAOZE_DETERMINISTIC: false,
+    ...overrides
   };
 }
 
@@ -123,8 +65,21 @@ function createPilotReadinessEnv(
     NODE_ENV: "production" as const,
     DEBUG_DEVICE_GATEWAY_MODE: "hdc" as const,
     DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: false,
-    AGENT_PROVIDER: "live" as const,
+    ...createXiaozeLlmEnv(),
     ...overrides
+  };
+}
+function createAdminAuth() {
+  return {
+    ...developmentAuthContext,
+    permissions: [...developmentAuthContext.permissions]
+  };
+}
+
+function createNonAdminAuth() {
+  return {
+    ...developmentAuthContext,
+    permissions: developmentAuthContext.permissions.filter((permission) => permission !== "admin:access")
   };
 }
 
@@ -204,7 +159,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -232,7 +186,7 @@ describe("operations routes", () => {
           objectStore: { ok: true, status: "ready" },
           worker: { ok: true, status: "ready" },
           deviceGateway: { ok: true, status: "ready" },
-          agentProvider: { ok: true, status: "ready" },
+          xiaozeLlm: { ok: true, status: "ready" },
           backups: { ok: true, status: "ready" }
         }
       });
@@ -241,7 +195,7 @@ describe("operations routes", () => {
     }
   });
 
-  it("includes safe Pi provider evidence in the pilot-readiness agent gate", async () => {
+  it("includes Xiaoze LLM model details in the pilot-readiness gate", async () => {
     const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
     process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
 
@@ -252,7 +206,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyPiAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -262,7 +215,8 @@ describe("operations routes", () => {
           HDC_SMOKE_PARAMETER_ID: "fast-charge-current",
           HDC_SMOKE_NODE_PATH: "/power/fast-charge-current",
           HDC_SMOKE_WRITE_VALUE: "3100",
-          M5_CONTRACT_CHECK_PASSED: true
+          M5_CONTRACT_CHECK_PASSED: true,
+          XIAOZE_MODEL: "model-a"
         }),
         getCurrentAuthContext: async () => createAdminAuth()
       });
@@ -273,15 +227,12 @@ describe("operations routes", () => {
       expect(response.body).toMatchObject({
         ok: true,
         gates: {
-          agentProvider: {
+          xiaozeLlm: {
             ok: true,
             status: "ready",
             details: {
-              provider: "live",
-              format: "pi",
-              piProvider: "minimax",
-              model: "model-a",
-              promptVersion: "m7-pi-agent-v1"
+              baseUrlConfigured: true,
+              model: "model-a"
             }
           }
         }
@@ -302,7 +253,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -343,7 +293,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -385,9 +334,9 @@ describe("operations routes", () => {
         db,
         objectStore: createFailedObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createFailedAgentProvider(),
         env: createPilotReadinessEnv({
-          M5_CONTRACT_CHECK_PASSED: true
+          M5_CONTRACT_CHECK_PASSED: true,
+          AGENT_API_KEY: undefined
         }),
         getCurrentAuthContext: async () => createAdminAuth()
       });
@@ -398,7 +347,7 @@ describe("operations routes", () => {
       expect(response.body).toMatchObject({
         ok: false,
         status: "blocked",
-        blockedBy: ["objectStore", "deviceGateway", "agentProvider", "backups"],
+        blockedBy: ["objectStore", "deviceGateway", "xiaozeLlm", "backups"],
         gates: {
           contract: { ok: true, status: "ready" },
           auth: { ok: true, status: "ready" },
@@ -406,7 +355,7 @@ describe("operations routes", () => {
           objectStore: { ok: false, status: "failed" },
           worker: { ok: true, status: "ready" },
           deviceGateway: { ok: false, status: "missing" },
-          agentProvider: { ok: false, status: "failed" },
+          xiaozeLlm: { ok: false, status: "missing" },
           backups: { ok: false, status: "missing" }
         }
       });
@@ -426,7 +375,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           M5_CONTRACT_CHECK_PASSED: true
@@ -461,7 +409,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -503,7 +450,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: createDebugGateway() }),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -546,7 +492,6 @@ describe("operations routes", () => {
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
         debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: createDebugGateway() }),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "hdc",
           HDC_DEVICE_LAB_AVAILABLE: true,
@@ -588,7 +533,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGatewayRegistry: createDebugDeviceGatewayRegistry({ adb: createDebugGateway() }),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "adb",
           M5_DEVICE_GATEWAY_EVIDENCE: "ADB-LAB-001 passed at 2026-06-21T10:00:00Z",
@@ -624,7 +568,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGatewayRegistry: createDebugDeviceGatewayRegistry({ hdc: createDebugGateway() }),
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "multi",
           M5_DEVICE_GATEWAY_EVIDENCE: "device gateway smoke passed",
@@ -656,7 +599,6 @@ describe("operations routes", () => {
       db,
       objectStore: createReadyObjectStore(),
       debugGateway: {} as never,
-      agentProvider: createReadyAgentProvider(),
       env: createPilotReadinessEnv(),
       getCurrentAuthContext: async () => createNonAdminAuth()
     });
@@ -683,10 +625,9 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: {} as never,
-        agentProvider: createReadyAgentProvider(),
         env: createPilotReadinessEnv({
           DEBUG_DEVICE_GATEWAY_MODE: "simulator",
-          AGENT_PROVIDER: "deterministic",
+          XIAOZE_DETERMINISTIC: true,
           M5_CONTRACT_CHECK_PASSED: true
         }),
         getCurrentAuthContext: async () => createAdminAuth()
@@ -698,10 +639,10 @@ describe("operations routes", () => {
       expect(response.body).toMatchObject({
         ok: false,
         status: "blocked",
-        blockedBy: ["deviceGateway", "agentProvider"],
+        blockedBy: ["deviceGateway", "xiaozeLlm"],
         gates: {
           deviceGateway: { ok: false, status: "blocked" },
-          agentProvider: { ok: false, status: "blocked" }
+          xiaozeLlm: { ok: false, status: "blocked" }
         }
       });
     } finally {
@@ -720,7 +661,6 @@ describe("operations routes", () => {
         db,
         objectStore: createReadyObjectStore(),
         debugGateway: createDebugGateway(),
-        agentProvider: createReadyAgentProvider(),
         durableQueue: {
           ok: false,
           status: "failed",
