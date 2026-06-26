@@ -237,30 +237,6 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     deferralReason: "Requires DEBUG_DEVICE_GATEWAY_MODE=adb, ADB_DEVICE_LAB_AVAILABLE=true, exactly one ready ADB device, one ADB inventory row, and one shared default ADB smoke binding."
   },
   {
-    id: "AGENT-APPROVAL-001",
-    priority: "P0",
-    area: "agent",
-    route: "/agent",
-    roles: ["Admin"],
-    action: "Run Agent context, approval, rejection, execution, and evidence flow.",
-    coverage: "automated",
-    acceptanceIds: ["AGENT-APPROVAL-001"],
-    specFiles: ["e2e/acceptance/agent.acceptance.spec.ts"],
-    assertions: ["ui", "api", "audit"]
-  },
-  {
-    id: "AGENT-UNAUTH-001",
-    priority: "P1",
-    area: "agent",
-    route: "/agent",
-    roles: ["Guest", "Hardware User", "Software User"],
-    action: "Reject direct execution of an unapproved Agent write tool.",
-    coverage: "automated",
-    acceptanceIds: ["AGENT-UNAUTH-001"],
-    specFiles: ["e2e/acceptance/agent.acceptance.spec.ts"],
-    assertions: ["api", "audit"]
-  },
-  {
     id: "XIAOZE-PERCEPTION-001",
     priority: "P0",
     area: "agent",

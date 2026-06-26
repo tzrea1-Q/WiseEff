@@ -111,18 +111,6 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: false
   },
   {
-    id: "AGENT-APPROVAL-001",
-    workflow: "G",
-    title: "Agent context, approval, rejection, execution, and evidence path work.",
-    required: true
-  },
-  {
-    id: "AGENT-UNAUTH-001",
-    workflow: "G",
-    title: "Direct execution of an unapproved Agent write tool is rejected.",
-    required: true
-  },
-  {
     id: "XIAOZE-PERCEPTION-001",
     workflow: "G",
     title: "Xiaoze answers grounded read-only questions using page context and perception tools.",

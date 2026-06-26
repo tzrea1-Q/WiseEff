@@ -100,7 +100,7 @@ describe("acceptance operation matrix", () => {
       "PARAM-REJECT-001",
       "LOG-REANALYZE-001",
       "DEBUG-PERM-001",
-      "AGENT-UNAUTH-001",
+      "XIAOZE-ACTION-AUTHZ-001",
       "PERM-USER-MGMT-001"
     ];
 

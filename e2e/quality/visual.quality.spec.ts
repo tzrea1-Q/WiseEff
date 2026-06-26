@@ -1,5 +1,5 @@
 import { expect, test } from "playwright/test";
-import { expectUsablePage, openAgentPanel, seedQualityRuntime, stableMasks } from "./helpers";
+import { expectUsablePage, openXiaozePopup, seedQualityRuntime, stableMasks } from "./helpers";
 
 const stableRoutes = [
   { path: "/", name: "home-shell" },
@@ -27,12 +27,11 @@ test.describe("M5.11 visual quality gate", () => {
     });
   }
 
-  test("keeps stable visual baseline for the Agent panel", async ({ page }) => {
-    await page.goto("/parameters");
+  test("keeps stable visual baseline for the Xiaoze popup", async ({ page }) => {
     await expectUsablePage(page);
-    const panel = await openAgentPanel(page);
+    const popup = await openXiaozePopup(page);
 
-    await expect(panel).toHaveScreenshot("agent-panel-open.png", {
+    await expect(popup).toHaveScreenshot("xiaoze-popup-open.png", {
       mask: stableMasks(page)
     });
   });

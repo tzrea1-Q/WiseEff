@@ -24,8 +24,6 @@ This file is generated from `e2e/acceptance/operationMatrix.ts`.
 | `BRIDGE-WIN-001` | P1 | debugging | future | `/node-debugging` | Hardware Committer, Admin | ui, api | `e2e/acceptance/debugging-local-bridge.acceptance.spec.ts` |
 | `HDC-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/hdc-device-lab.acceptance.spec.ts` |
 | `ADB-LAB-001` | P1 | debugging | conditional | `/node-debugging` | Hardware Committer, Admin | ui, api, audit | `e2e/acceptance/adb-device-lab.acceptance.spec.ts` |
-| `AGENT-APPROVAL-001` | P0 | agent | automated | `/agent` | Admin | ui, api, audit | `e2e/acceptance/agent.acceptance.spec.ts` |
-| `AGENT-UNAUTH-001` | P1 | agent | automated | `/agent` | Guest, Hardware User, Software User | api, audit | `e2e/acceptance/agent.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-001` | P0 | agent | automated | `/parameters` | Admin | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-PERCEPTION-AUTHZ-001` | P0 | agent | automated | `/parameters` | Guest | ui, api | `e2e/acceptance/xiaoze-perception.acceptance.spec.ts` |
 | `XIAOZE-ACTION-APPROVE-001` | P1 | agent | automated | `/parameters` | Admin | api, audit | `e2e/acceptance/xiaoze-action.acceptance.spec.ts` |
