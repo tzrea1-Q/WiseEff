@@ -158,10 +158,11 @@ function createDebuggingDetectDb() {
               organization_id: values[0],
               project_id: values[1],
               device_id: values[2],
-              protocol: values[4],
-              target_ref: values[5],
-              label: values[6],
-              status: values[7],
+              bridge_id: values[4],
+              protocol: values[5],
+              target_ref: values[6],
+              label: values[7],
+              status: values[8],
               detected_at: "2026-05-27T10:00:00.000Z"
             }
           ] as Row[],
