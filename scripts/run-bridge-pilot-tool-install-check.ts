@@ -5,9 +5,14 @@ import path from "node:path";
 
 import { createAdbCommandRunner } from "@wiseeff/device-command-core/adbRunner";
 import { createDefaultHdcCommandRunner } from "@wiseeff/device-command-core/hdcRunner";
-import { probeTools } from "../packages/device-bridge/src/toolProbe.ts";
-import { resolveManagedToolPath } from "../packages/device-bridge/src/toolPaths.ts";
-import { runToolsInstallCommand } from "../packages/device-bridge/src/toolsInstallCommand.ts";
+import { probeTools } from "../packages/device-bridge/src/toolProbe";
+import {
+  fetchToolReleaseManifest,
+  installToolReleaseItem,
+  runToolsInstallCommand,
+  selectToolReleaseItems
+} from "../packages/device-bridge/src/toolsInstallCommand";
+import { resolveManagedToolPath } from "../packages/device-bridge/src/toolPaths";
 
 const serverUrl = process.env.WISEEFF_PILOT_SERVER_URL ?? "http://127.0.0.1:8787";
 const keepToolsRoot = process.env.WISEEFF_PILOT_KEEP_TOOLS_ROOT === "1";
@@ -31,12 +36,14 @@ async function main() {
     const version = spawnSync(adbPath, ["version"], { encoding: "utf8" });
     console.log(`adb version exit=${version.status} stdout=${version.stdout.split("\n")[0] ?? ""}`);
 
-    const second = await runToolsInstallCommand({
+    const manifest = await fetchToolReleaseManifest(serverUrl);
+    const items = selectToolReleaseItems({ manifest, protocol: "adb" });
+    const skipResult = await installToolReleaseItem({
       serverUrl,
-      protocol: "adb",
+      item: items[0]!,
       toolsRoot
     });
-    console.log(`idempotent skip: ${second.items.every((item) => item.skipped === true)}`);
+    console.log(`idempotent skip: ${skipResult.skipped === true}`);
 
     const probe = await probeTools({
       adbRunner: createAdbCommandRunner({ command: adbPath }),

@@ -23,10 +23,6 @@ export function looksLikeInternalReasoning(text: string) {
   );
 }
 
-function normalizeForCompare(text: string) {
-  return text.replace(/\s+/g, " ").trim();
-}
-
 /** Collapse accidental duplicate answer bodies (e.g. perceive preamble + observe reply). */
 export function dedupeRepeatedAnswerText(raw: string) {
   const text = raw.trim();

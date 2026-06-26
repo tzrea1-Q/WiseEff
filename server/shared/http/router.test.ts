@@ -11,6 +11,9 @@ function expectJsonResponse(response: RouteResponse) {
   if ("text" in response) {
     throw new Error("Expected a JSON route response, but received a text response.");
   }
+  if ("bytes" in response) {
+    throw new Error("Expected a JSON route response, but received a binary response.");
+  }
   return response;
 }
 

@@ -18,6 +18,7 @@ declare module "node:path" {
 }
 
 interface ImportMetaEnv {
+  readonly DEV: boolean;
   readonly MODE: string;
   readonly VITE_WISEEFF_API_AUTHORIZATION?: string;
   readonly VITE_WISEEFF_API_BASE_URL?: string;

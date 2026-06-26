@@ -1,4 +1,4 @@
-import { type ComponentProps, type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentProps, type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CopilotChatView,
   CopilotModalHeader,

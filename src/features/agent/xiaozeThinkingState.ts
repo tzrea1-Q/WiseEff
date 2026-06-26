@@ -18,10 +18,6 @@ function hasAssistantReplyAfter(messages: Message[], fromIndex: number) {
   });
 }
 
-function hasAssistantShellAfter(messages: Message[], fromIndex: number) {
-  return messages.slice(fromIndex + 1).some((entry) => entry.role === "assistant");
-}
-
 function hasAssistantActivityAfter(messages: Message[], fromIndex: number) {
   return messages.slice(fromIndex + 1).some((entry) => {
     if (entry.role !== "assistant") {
