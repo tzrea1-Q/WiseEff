@@ -24,7 +24,7 @@ Rules:
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Jobs: status and progress events.
 - Debugging: devices, target detection, sessions, node reads/writes, snapshots, rollback.
-- Agent: sessions, messages, tool runs, approvals, rejection.
+- Agent: Xiaoze AG-UI run, proactive suggest, and thread persistence under `/api/v1/agent/xiaoze`.
 - Audit: audit event listing and detail.
 - Operations: liveness, readiness, metrics, pilot/release readiness.
 

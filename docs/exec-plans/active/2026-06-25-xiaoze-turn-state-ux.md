@@ -160,6 +160,14 @@ it("does not render prompt debug inside the user message block", () => {
 
 ---
 
+## Documentation Update Gate
+
+- [ ] All matrix rows applied or recorded unchanged with evidence.
+- [ ] `npm run docs:check` passes after doc updates.
+- [ ] playwright-cli evidence recorded under `work/ui-checks/`.
+
+---
+
 ## Success Criteria
 
 1. One user-facing answer per tool turn, no duplicate or truncated table

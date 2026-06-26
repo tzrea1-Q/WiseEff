@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/developer/environment-variables.md)
 
-Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill only the live Agent model and API key if you are testing the default Pi-backed provider behavior. Fill `AGENT_API_BASE_URL` only when testing URL-backed `wiseeff` or `openai` provider formats.
+Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill the blank `AGENT_API_*` values when testing live Xiaoze LLM behavior. Set `XIAOZE_DETERMINISTIC=true` for acceptance runs without a live model.
 
 ## Core Runtime
 
@@ -96,28 +96,21 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 | `ADB_SMOKE_CONFIRM_WRITE` | none | ADB device-lab | Required only when `ADB_SMOKE_ENABLE_WRITE=true`. |
 | `ADB_SMOKE_CONFIRM_ROLLBACK` | none | ADB device-lab | Required only when `ADB_SMOKE_ENABLE_WRITE=true`. |
 
-## Agent Provider
+## Xiaoze LLM And Agent Flags
+
+API mode always includes Xiaoze; mock mode has no Agent UI. The backend always registers the AG-UI SSE endpoint when the database is available.
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
-| `AGENT_PROVIDER` | `live` in `.env.example` | live provider path | Set `deterministic` for stable local tests without an API key. |
-| `AGENT_API_FORMAT` | `wiseeff` | live provider path | `openai` and `wiseeff` use URL-backed legacy transports. `pi` was removed in P1 (TD-027). |
-| `AGENT_API_BASE_URL` | blank | URL-backed live provider path | Required for `AGENT_API_FORMAT=openai` or `wiseeff`. Never commit secrets or private endpoints. |
-| `AGENT_MODEL` | blank | live provider path | Fill locally. |
-| `AGENT_API_KEY` | blank | live provider path | Secret. |
-| `AGENT_API_TIMEOUT_MS` | `30000` | live provider path | Request timeout. |
-| `AGENT_PROMPT_VERSION` | `m5-agent-v1` | traces | Include in provider trace metadata. |
-
-## Xiaoze (P0 perception + P1 action + P2 planning)
-
-| Variable | Local default | Required for | Notes |
-| --- | --- | --- | --- |
-| `XIAOZE_RUNTIME_ENABLED` | `false` | Xiaoze AG-UI endpoint | Set `true` to register `POST /api/v1/agent/xiaoze`. |
+| `AGENT_API_BASE_URL` | blank | live Xiaoze LLM | OpenAI-compatible endpoint. Required when `XIAOZE_DETERMINISTIC` is not set. Never commit secrets or private endpoints. |
+| `AGENT_MODEL` | blank | live Xiaoze LLM | Fill locally for live model runs. |
+| `AGENT_API_KEY` | blank | live Xiaoze LLM | Secret. |
+| `AGENT_API_TIMEOUT_MS` | `30000` | live Xiaoze LLM | Request timeout for LangChain `ChatOpenAI`. |
+| `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | Optional override for the Xiaoze LangGraph agent model id. |
+| `XIAOZE_DETERMINISTIC` | unset locally | acceptance/offline tests | Injects a fake chat model; no live LLM or `AGENT_API_*` values required. |
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
-| `XIAOZE_DETERMINISTIC` | `false` | acceptance/offline tests | Injects a fake chat model; no live LLM. |
-| `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | LangChain `ChatOpenAI` model id. |
-| `VITE_XIAOZE_ENABLED` | `false` | frontend Xiaoze UI | Mounts CopilotKit provider + chat popup. Reuses `AGENT_API_BASE_URL` / `AGENT_API_KEY` for the model when deterministic mode is off. |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
+| `VITE_XIAOZE_PROMPT_DEBUG` | `false` | frontend dev tooling | Opt-in prompt/debug surfacing for Xiaoze development. |
 
 ## M5 Evidence
 
@@ -144,7 +137,7 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 
 ## Self-Hosted Runtime
 
-M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches the target identity profile to OIDC. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, OIDC issuer/audience, S3-compatible object storage, Agent provider, and smoke authorization values.
+M6.1 adds `ops/self-hosted/.env.example` for Linux deployments. M6.2 switches the target identity profile to OIDC. It keeps secrets blank and expects the operator to fill DNS/TLS, PostgreSQL password, OIDC issuer/audience, S3-compatible object storage, Xiaoze LLM settings, and smoke authorization values.
 
 | Variable | Self-hosted value | Notes |
 | --- | --- | --- |
