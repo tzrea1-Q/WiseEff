@@ -1,5 +1,6 @@
 import { createApiClient } from "./apiClient";
 import { createDefaultApiClient } from "./defaultApiClient";
+import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 
@@ -59,6 +60,7 @@ export type LocalBridgeHealthState = {
   connected: boolean;
   bridgeId?: string;
   serverUrl?: string;
+  tokenExpiresAt?: string;
   lastError?: string;
   updatedAt: string;
   tools?: {
@@ -131,6 +133,7 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
     connected: Boolean(body.connected),
     bridgeId: typeof body.bridgeId === "string" ? body.bridgeId : undefined,
     serverUrl: typeof body.serverUrl === "string" ? body.serverUrl : undefined,
+    tokenExpiresAt: typeof body.tokenExpiresAt === "string" ? body.tokenExpiresAt : undefined,
     lastError: typeof body.lastError === "string" ? body.lastError : undefined,
     updatedAt: body.updatedAt,
     tools: parseTools(body.tools),
@@ -180,7 +183,7 @@ export async function listReleases(apiClient: ApiClient = createDefaultApiClient
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch = fetch): Promise<LocalBridgeHealthState | null> {
   try {
-    const response = await fetchImpl("http://127.0.0.1:18787/health");
+    const response = await fetchImpl(resolveLocalBridgeHealthUrl());
     if (!response.ok) {
       return null;
     }

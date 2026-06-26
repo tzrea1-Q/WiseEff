@@ -1,4 +1,5 @@
 import type { LocalBridgeHealthState } from "./deviceBridgeClient";
+import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
 
 export type DebugConnectionProtocol = "adb" | "hdc";
 
@@ -44,7 +45,7 @@ export async function pollBridgeToolInstall(options: {
 
   while (Date.now() - started < timeoutMs) {
     try {
-      const response = await fetchImpl("http://127.0.0.1:18787/health");
+      const response = await fetchImpl(resolveLocalBridgeHealthUrl());
       if (response.ok) {
         const body = (await response.json()) as LocalBridgeHealthState & { toolsInstall?: LocalBridgeHealthState["toolsInstall"] };
         if (body.toolsInstall?.status === "failed") {

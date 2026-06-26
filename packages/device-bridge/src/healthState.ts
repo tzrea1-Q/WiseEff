@@ -12,6 +12,7 @@ export type BridgeHealthState = {
   connected: boolean;
   bridgeId?: string;
   serverUrl?: string;
+  tokenExpiresAt?: string;
   lastError?: string;
   updatedAt: string;
   tools?: ToolProbeResult;

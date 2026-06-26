@@ -10,6 +10,11 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
+vi.mock("./localBridgeProcess", () => ({
+  stopLocalBridgeHealthListener: vi.fn(async () => undefined),
+  waitForLocalBridgeConnection: vi.fn(async () => null)
+}));
+
 import { spawn } from "node:child_process";
 
 import { ensureBridgeRunning, probeLocalBridgeHealth } from "./ensureBridgeRunning";

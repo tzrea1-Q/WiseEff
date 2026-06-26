@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -29,11 +29,11 @@ const bundlePath = path.join(bundleDir, "cli.js");
 const stagingDir = path.join(bundleDir, "staging");
 const manifestPath = path.join(rootDir, "ops", "self-hosted", "bridge-artifacts", VERSION, "manifest.json");
 
-const MAC_LAUNCHER = `#!/bin/bash
-set -euo pipefail
-DIR="$(cd "$(dirname "$0")" && pwd)"
-exec node "$DIR/cli.js" "$@"
-`;
+const MAC_LAUNCHER = await readFile(
+  path.join(rootDir, "ops", "self-hosted", "bridge-installer", "wiseeff-bridge.launcher.sh"),
+  "utf8"
+);
+const BRIDGE_PACKAGE_JSON = `${JSON.stringify({ type: "module", private: true }, null, 2)}\n`;
 
 function artifactFilename(target: BridgeArtifactTarget) {
   const extension = target.package === "zip" ? "zip" : "tar.gz";
@@ -52,7 +52,7 @@ async function packageZip(inputPath: string, outputPath: string) {
 
 async function packageTarGz(stagingPath: string, outputPath: string) {
   await rm(outputPath, { force: true });
-  await execFileAsync("tar", ["-czf", outputPath, "-C", stagingPath, "cli.js", "wiseeff-bridge"]);
+  await execFileAsync("tar", ["-czf", outputPath, "-C", stagingPath, "cli.js", "package.json", "wiseeff-bridge"]);
 }
 
 await mkdir(bundleDir, { recursive: true });
@@ -69,7 +69,11 @@ await build({
   minify: false,
   legalComments: "none",
   banner: {
-    js: "#!/usr/bin/env node"
+    js: [
+      "#!/usr/bin/env node",
+      "import { createRequire } from 'module';",
+      "const require = createRequire(import.meta.url);"
+    ].join("\n")
   }
 });
 
@@ -96,6 +100,7 @@ for (const target of ARTIFACT_TARGETS) {
     await rm(targetStagingDir, { recursive: true, force: true });
     await mkdir(targetStagingDir, { recursive: true });
     await writeFile(path.join(targetStagingDir, "cli.js"), await readFile(bundlePath));
+    await writeFile(path.join(targetStagingDir, "package.json"), BRIDGE_PACKAGE_JSON);
     const launcherPath = path.join(targetStagingDir, "wiseeff-bridge");
     await writeFile(launcherPath, MAC_LAUNCHER, "utf8");
     await chmod(launcherPath, 0o755);

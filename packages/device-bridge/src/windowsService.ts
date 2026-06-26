@@ -94,22 +94,45 @@ export async function installWindowsService(deps: WindowsServiceDependencies): P
   await deps.mkdir(path.win32.dirname(wrapperPath), { recursive: true });
   await deps.writeFile(wrapperPath, buildServiceWrapperContent(deps.nodePath, deps.cliPath), "utf8");
 
+  const createArgs = [
+    "create",
+    WISEEFF_BRIDGE_SERVICE_NAME,
+    formatScBinPath(wrapperPath),
+    "start=auto",
+    `DisplayName=${WISEEFF_BRIDGE_SERVICE_DISPLAY_NAME}`
+  ] as const;
+
   try {
-    await runSc(deps, [
-      "create",
-      WISEEFF_BRIDGE_SERVICE_NAME,
-      formatScBinPath(wrapperPath),
-      "start=auto",
-      `DisplayName=${WISEEFF_BRIDGE_SERVICE_DISPLAY_NAME}`
-    ]);
+    await runSc(deps, createArgs);
   } catch (error) {
     const message = execFailureMessage(error);
-    if (message.includes("1073") || message.toLowerCase().includes("already exists")) {
-      deps.error(`Service ${WISEEFF_BRIDGE_SERVICE_NAME} is already installed.`);
+    if (!(message.includes("1073") || message.toLowerCase().includes("already exists"))) {
+      deps.error(`Failed to install Windows service: ${message}`);
       return 1;
     }
-    deps.error(`Failed to install Windows service: ${message}`);
-    return 1;
+
+    try {
+      await runSc(deps, ["stop", WISEEFF_BRIDGE_SERVICE_NAME]);
+    } catch {
+      // Service may already be stopped.
+    }
+    try {
+      await runSc(deps, ["delete", WISEEFF_BRIDGE_SERVICE_NAME]);
+    } catch (deleteError) {
+      deps.error(`Failed to reinstall Windows service: ${execFailureMessage(deleteError)}`);
+      return 1;
+    }
+
+    try {
+      await runSc(deps, createArgs);
+    } catch (recreateError) {
+      deps.error(`Failed to reinstall Windows service: ${execFailureMessage(recreateError)}`);
+      return 1;
+    }
+
+    deps.log(`Reinstalled Windows service ${WISEEFF_BRIDGE_SERVICE_NAME}.`);
+    deps.log(`Wrapper script: ${wrapperPath}`);
+    return 0;
   }
 
   deps.log(`Installed Windows service ${WISEEFF_BRIDGE_SERVICE_NAME}.`);

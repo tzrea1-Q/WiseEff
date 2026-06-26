@@ -1,6 +1,7 @@
 import {
   buildRemoteWriteShellCommand,
   normalizeRemoteReadValue,
+  remoteShellDiagnostic,
   shellQuote
 } from "@wiseeff/device-command-core/remoteNodeWrite";
 import {
@@ -64,6 +65,32 @@ function commandFailureMessage(protocol: DebugProtocol, result: { code: number |
   return result.stderr.trim() || `${protocolLabel(protocol)} exited with ${String(result.code)}.`;
 }
 
+function readNodeFailure(
+  protocol: DebugProtocol,
+  result: { code: number | null; stderr: string; timedOut?: boolean },
+  diagnostic?: string
+) {
+  if (diagnostic) {
+    return `${protocolLabel(protocol)} command failed: ${diagnostic}`;
+  }
+  return commandFailureMessage(protocol, result);
+}
+
+function evaluateRemoteCommand(
+  protocol: DebugProtocol,
+  result: { code: number | null; stdout: string; stderr: string; timedOut?: boolean; durationMs: number }
+) {
+  const diagnostic = remoteShellDiagnostic(result);
+  const ok = result.code === 0 && !result.timedOut && !diagnostic;
+  return {
+    ok,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    error: ok ? undefined : readNodeFailure(protocol, result, diagnostic),
+    durationMs: result.durationMs
+  };
+}
+
 export function createRpcHandlers(options: {
   adbRunner?: AdbCommandRunner;
   hdcRunner?: HdcCommandRunner;
@@ -91,14 +118,9 @@ export function createRpcHandlers(options: {
 
     if (protocol === "adb") {
       const result = await adbRunner(["-s", targetRef, "shell", "cat", nodePath], { timeoutMs: adbTimeoutMs });
-      if (result.code !== 0 || result.timedOut) {
-        return {
-          ok: false,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          error: commandFailureMessage(protocol, result),
-          durationMs: result.durationMs
-        };
+      const evaluated = evaluateRemoteCommand(protocol, result);
+      if (!evaluated.ok) {
+        return evaluated;
       }
 
       return {
@@ -111,14 +133,9 @@ export function createRpcHandlers(options: {
     }
 
     const result = await hdcRunner(["-t", targetRef, "shell", `cat ${shellQuote(nodePath)}`], { timeoutMs: hdcTimeoutMs });
-    if (result.code !== 0 || result.timedOut) {
-      return {
-        ok: false,
-        stdout: result.stdout,
-        stderr: result.stderr,
-        error: commandFailureMessage(protocol, result),
-        durationMs: result.durationMs
-      };
+    const evaluated = evaluateRemoteCommand(protocol, result);
+    if (!evaluated.ok) {
+      return evaluated;
     }
 
     return {
@@ -206,16 +223,7 @@ export function createRpcHandlers(options: {
           const runner = protocol === "adb" ? adbRunner : hdcRunner;
           const timeoutMs = protocol === "adb" ? adbTimeoutMs : hdcTimeoutMs;
           const writeResult = await runner(writeArgs, { timeoutMs });
-          const writePayload = {
-            ok: writeResult.code === 0 && !writeResult.timedOut,
-            stdout: writeResult.stdout,
-            stderr: writeResult.stderr,
-            error:
-              writeResult.code === 0 && !writeResult.timedOut
-                ? undefined
-                : commandFailureMessage(protocol, writeResult),
-            durationMs: writeResult.durationMs
-          };
+          const writePayload = evaluateRemoteCommand(protocol, writeResult);
 
           if (!readBack || !writePayload.ok) {
             return {

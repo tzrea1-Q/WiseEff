@@ -22,3 +22,20 @@ export function normalizeRemoteReadValue(stdout: string, preserveExact: boolean)
 
   return stdout.trim();
 }
+
+export type RemoteCommandCapture = {
+  stdout: string;
+  stderr: string;
+};
+
+export function remoteShellDiagnostic(result: RemoteCommandCapture) {
+  const output = [result.stderr, result.stdout].map((value) => value.trim()).filter(Boolean).join("\n");
+  const diagnosticLine = output
+    .split(/\r?\n/)
+    .find((line) =>
+      /(?:^|:\s)(?:cat|sh|\/bin\/sh): .*?(?:No such file or directory|Permission denied|not found|Read-only file system)/i.test(
+        line
+      )
+    );
+  return diagnosticLine?.trim();
+}

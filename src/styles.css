@@ -7436,14 +7436,138 @@ td small {
   background: #f0fdf4;
 }
 
-.local-device-bridge-panel__advanced {
+.local-device-bridge-panel__install-options {
+  display: grid;
+  gap: 10px;
+}
+
+.local-device-bridge-panel__install-option {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+}
+
+.local-device-bridge-panel__install-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.local-device-bridge-panel__install-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--app-muted);
+}
+
+.local-device-bridge-panel__install-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.local-device-bridge-panel__host-banner {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: color-mix(in srgb, var(--app-primary) 8%, #fff);
+  border: 1px solid color-mix(in srgb, var(--app-primary) 22%, var(--outline));
+  border-radius: 10px;
+}
+
+.local-device-bridge-panel__host-banner strong {
+  color: var(--app-primary);
+  font-weight: 700;
+}
+
+.local-device-bridge-panel__install-cta {
+  color: #fff;
+  background: var(--app-primary);
+  border-color: var(--app-primary);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--app-primary) 24%, transparent);
+}
+
+.local-device-bridge-panel__install-cta:hover {
+  background: var(--primary-container);
+  border-color: var(--primary-container);
+}
+
+.local-device-bridge-panel__host-pick {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--app-primary) 30%, var(--outline));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-primary) 5%, #fff);
+}
+
+.local-device-bridge-panel__host-pick--portable {
+  border-color: color-mix(in srgb, var(--app-secondary) 28%, var(--outline));
+  background: color-mix(in srgb, var(--app-secondary) 6%, #fff);
+}
+
+.local-device-bridge-panel__host-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-primary) 12%, #fff);
+  color: var(--app-primary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.local-device-bridge-panel__host-pick--portable .local-device-bridge-panel__host-badge {
+  background: color-mix(in srgb, var(--app-secondary) 12%, #fff);
+  color: var(--app-secondary);
+}
+
+.local-device-bridge-panel__install-more {
   margin-top: 4px;
 }
 
-.local-device-bridge-panel__advanced > summary {
+.local-device-bridge-panel__install-more > summary {
   cursor: pointer;
   font-size: 12px;
-  color: var(--muted-foreground);
+  color: var(--app-muted);
+  font-weight: 600;
+}
+
+.local-device-bridge-panel__install-more .local-device-bridge-panel__install-actions {
+  margin-top: 8px;
+}
+
+.local-device-bridge-panel__install-portable {
+  padding: 10px 12px;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.local-device-bridge-panel__install-portable > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--app-muted);
+  font-weight: 600;
+}
+
+.local-device-bridge-panel__install-portable-body {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.local-device-bridge-panel__install-actions-label {
+  flex: 1 1 100%;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .local-device-bridge-panel__error {
@@ -7470,6 +7594,20 @@ td small {
   margin-top: 2px;
   color: var(--app-muted);
   font-size: 12px;
+}
+
+.local-device-bridge-wizard__step-button {
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.local-device-bridge-wizard__step-button:hover {
+  text-decoration: underline;
 }
 
 .local-device-bridge-panel__body {
@@ -7519,91 +7657,6 @@ td small {
 .local-device-bridge-panel .button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-.local-device-bridge-panel__alternate-downloads {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-}
-
-.local-device-bridge-panel__alternate-downloads > span {
-  color: var(--app-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.local-device-bridge-panel__command {
-  display: grid;
-  gap: 6px;
-}
-
-.local-device-bridge-panel__command-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.local-device-bridge-panel__command-head > span {
-  color: var(--app-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.local-device-bridge-panel__command-box {
-  position: relative;
-  background: #fff;
-  border: 1px solid var(--outline);
-  border-radius: 8px;
-}
-
-.local-device-bridge-panel__copy-button {
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: #334155;
-  background: #f8fafc;
-  border: 1px solid var(--outline);
-  border-radius: 6px;
-  font: inherit;
-  cursor: pointer;
-  transform: translateY(-50%);
-}
-
-.local-device-bridge-panel__copy-button:hover:not(:disabled) {
-  background: #f1f5f9;
-}
-
-.local-device-bridge-panel__copy-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.local-device-bridge-panel__command-box code {
-  display: block;
-  padding: 8px 44px 8px 10px;
-  color: #063970;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.local-device-bridge-panel__command small {
-  color: var(--app-muted);
-  font-size: 11px;
 }
 
 .local-device-bridge-panel__bridges {
@@ -13818,12 +13871,6 @@ body.xiaoze-popup-resize-active {
 
 .xiaoze-turn-block__reasoning {
   margin-top: 6px;
-}
-  margin: 6px 0 8px;
-  padding: 8px 10px;
-  border-radius: var(--xiaoze-radius-sm);
-  background: rgba(248, 250, 252, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .xiaoze-turn-phase-strip__status {

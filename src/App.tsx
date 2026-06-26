@@ -88,6 +88,10 @@ import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/Xiaoze
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { xiaozeEnabled, xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
+
+function isStaticDownloadPath(pathname: string) {
+  return pathname.startsWith("/downloads/");
+}
 import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
@@ -2289,6 +2293,9 @@ function AppShell({
 
   useEffect(() => {
     const syncPathFromHistory = () => {
+      if (isStaticDownloadPath(window.location.pathname)) {
+        return;
+      }
       const nextPage = getPageByPath(window.location.pathname);
       if (nextPage.path !== window.location.pathname) {
         window.history.replaceState(null, "", nextPage.path);
@@ -2306,6 +2313,10 @@ function AppShell({
 
   const navigate = useCallback((nextPath: string) => {
     const url = new URL(nextPath, window.location.origin);
+    if (isStaticDownloadPath(url.pathname)) {
+      window.location.assign(url.href);
+      return;
+    }
     const nextPage = getPageByPath(url.pathname);
     const nextUrl = `${nextPage.path}${url.search}`;
     const currentUrl = `${window.location.pathname}${window.location.search}`;
@@ -2496,7 +2507,7 @@ function AppShell({
   );
 
   return xiaozeEnabled ? (
-    <XiaozeProvider enabled={xiaozeEnabled} enableInspector={enableXiaozeInspector}>
+    <XiaozeProvider enabled={xiaozeEnabled} enableInspector={enableXiaozeInspector} navigationPath={path}>
       <XiaozePageContext.Provider value={xiaozePageContext}>{appShell}</XiaozePageContext.Provider>
     </XiaozeProvider>
   ) : (

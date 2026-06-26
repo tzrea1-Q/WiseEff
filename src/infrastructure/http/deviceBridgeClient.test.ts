@@ -9,6 +9,7 @@ import {
   renameBridge,
   revokeBridge
 } from "./deviceBridgeClient";
+import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status });
@@ -167,7 +168,7 @@ describe("deviceBridgeClient", () => {
       lastError: undefined,
       updatedAt: "2026-06-23T00:00:00.000Z"
     });
-    expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:18787/health");
+    expect(fetchMock).toHaveBeenCalledWith(resolveLocalBridgeHealthUrl());
   });
 
   it("returns null when local bridge health is unreachable", async () => {

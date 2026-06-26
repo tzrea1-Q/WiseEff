@@ -183,6 +183,24 @@ describe("ADB debug device gateway", () => {
     expect(matched.verified).toBe(true);
   });
 
+  it("treats remote shell cat diagnostics on stdout as ADB read failures", async () => {
+    const { runCommand } = makeRunner([
+      {
+        code: 0,
+        stdout: "/bin/sh: cat: /sys/missing-node: No such file or directory\n",
+        stderr: "",
+        durationMs: 5
+      }
+    ]);
+    const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1500 });
+
+    await expect(gateway.readNode({ targetRef: "emulator-5554", nodePath: "/sys/missing-node" })).resolves.toMatchObject({
+      ok: false,
+      stdout: "/bin/sh: cat: /sys/missing-node: No such file or directory\n",
+      error: "ADB command failed: /bin/sh: cat: /sys/missing-node: No such file or directory"
+    });
+  });
+
   it("constructs argv-safe ADB read commands", async () => {
     const nodePath = "/sys/node with spaces ' path";
     const { calls, runCommand } = makeRunner([{ code: 0, stdout: "42\n", stderr: "", durationMs: 5 }]);

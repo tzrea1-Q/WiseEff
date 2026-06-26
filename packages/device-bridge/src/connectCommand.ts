@@ -126,15 +126,7 @@ export async function runConnectCommand(
   const serverMatches = existing?.serverUrl === normalizedServer;
   const tokenValid = existing && !isBridgeTokenExpired(existing.tokenExpiresAt);
 
-  if (!existing || !serverMatches || !tokenValid) {
-    if (!input.code) {
-      if (existing && serverMatches && !tokenValid) {
-        deps.stdout.error("Bridge token expired. Pass --code with a new 6-digit pairing code to re-pair.");
-      } else {
-        deps.stdout.error("Pairing code required. Pass --code with a 6-digit pairing code.");
-      }
-      return { exitCode: 1 };
-    }
+  if (input.code) {
     const pairResult = await runPairCommand(
       {
         flags: new Map([
@@ -147,6 +139,13 @@ export async function runConnectCommand(
     if (pairResult.exitCode !== 0) {
       return pairResult;
     }
+  } else if (!existing || !serverMatches || !tokenValid) {
+    if (existing && serverMatches && !tokenValid) {
+      deps.stdout.error("Bridge token expired. Pass --code with a new 6-digit pairing code to re-pair.");
+    } else {
+      deps.stdout.error("Pairing code required. Pass --code with a 6-digit pairing code.");
+    }
+    return { exitCode: 1 };
   }
 
   const config = await deps.loadConfig();

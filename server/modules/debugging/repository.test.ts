@@ -593,6 +593,57 @@ describe("debugging repository", () => {
     expect(targets[0]).toMatchObject({ id: "target-1", bridgeId: null, status: "detected", targetRef: "simulator://aurora-1" });
   });
 
+  it("upsertDetectedTargets creates bridge-backed debug devices before persisting targets", async () => {
+    const { db, calls } = createFakeDb([
+      [],
+      (call) => [
+        {
+          id: call.values[3],
+          organization_id: call.values[0],
+          project_id: call.values[1],
+          device_id: call.values[2],
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8],
+          detected_at: timestamp
+        }
+      ],
+      []
+    ]);
+
+    await upsertDetectedTargets(db, {
+      organizationId: "org-1",
+      projectId: "aurora",
+      targets: [
+        {
+          id: "bridge:br-1:hdc:serial-1",
+          deviceId: "bridge:br-1",
+          bridgeId: "br-1",
+          bridgeMachineLabel: "Tzrea1deMacBook-Air.local",
+          protocol: "hdc",
+          targetRef: "serial-1",
+          label: "serial-1",
+          online: true
+        }
+      ]
+    });
+
+    expect(calls[0].text).toContain("insert into debugging_devices");
+    expect(calls[0].values).toEqual([
+      "bridge:br-1",
+      "org-1",
+      "aurora",
+      "Tzrea1deMacBook-Air.local",
+      "hdc",
+      "online",
+      "bridge"
+    ]);
+    expect(calls[1].text).toContain("insert into debugging_targets");
+    expect(calls[2].text).toContain("update debugging_devices");
+  });
+
   it("listDebugParameters returns sorted parameters by sort_order", async () => {
     const { db, calls } = createFakeDb([
       [

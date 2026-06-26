@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { ApiError } from "../../shared/http/errors";
 import type { DeviceBridgeRepository } from "./repository";
+import { normalizeMachineLabel, pickBridgeToReuse } from "./machineIdentity";
 import type { DeviceBridgePlatform } from "./types";
 import {
   bridgeTokenExpiresAt,
@@ -74,15 +75,63 @@ export function createPairingService(options: PairingServiceOptions) {
         );
       }
 
-      const bridgeId = nextBridgeId();
+      const machineLabel = normalizeMachineLabel(input.machineLabel);
+      const existingBridges = await options.repo.listActiveBridgesForMachine({
+        userId: pairing.userId,
+        organizationId: pairing.organizationId,
+        machineLabel,
+        platform: input.platform,
+        arch: input.arch
+      });
+
       const bridgeToken = issueToken();
       const tokenExpiresAt = bridgeTokenExpiresAt(consumedAt, tokenTtlDays);
+
+      if (existingBridges.length > 0) {
+        const reuseBridge = pickBridgeToReuse(existingBridges);
+
+        for (const bridge of existingBridges) {
+          if (bridge.id === reuseBridge.id) {
+            continue;
+          }
+          await options.repo.revokeBridge({
+            bridgeId: bridge.id,
+            userId: pairing.userId,
+            organizationId: pairing.organizationId,
+            revokedAt: consumedAt
+          });
+        }
+
+        await options.repo.revokeBridgeTokensForBridge({
+          bridgeId: reuseBridge.id,
+          revokedAt: consumedAt
+        });
+        await options.repo.updateBridgeClientVersion({
+          bridgeId: reuseBridge.id,
+          clientVersion: input.clientVersion ?? null
+        });
+        await options.repo.createBridgeToken({
+          id: randomUUID(),
+          bridgeId: reuseBridge.id,
+          tokenHash: sha256Hex(bridgeToken),
+          scopes: defaultBridgeTokenScopes(),
+          expiresAt: tokenExpiresAt
+        });
+
+        return {
+          bridgeId: reuseBridge.id,
+          bridgeToken,
+          tokenExpiresAt: tokenExpiresAt.toISOString()
+        };
+      }
+
+      const bridgeId = nextBridgeId();
 
       await options.repo.createBridge({
         id: bridgeId,
         organizationId: pairing.organizationId,
         userId: pairing.userId,
-        machineLabel: input.machineLabel,
+        machineLabel,
         platform: input.platform,
         arch: input.arch,
         clientVersion: input.clientVersion ?? null

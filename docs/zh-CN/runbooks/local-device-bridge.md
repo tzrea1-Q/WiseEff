@@ -75,6 +75,17 @@ npm run build:bridge-installers
 
 详见 `ops/self-hosted/bridge-installer/README.zh-CN.md`。
 
+### macOS `.pkg` 安装失败排查
+
+若安装器在「摘要」步骤报「安装失败」，先查日志：
+
+```bash
+sudo tail -80 /var/log/install.log | rg -i 'wiseeff|postinstall|error'
+sudo cat /var/log/wiseeff-bridge-install.log
+```
+
+安装器内也可打开 **窗口 → 安装日志**（`Cmd+L`）。`postinstall` 失败时，应用可能已复制到 `/Applications/WiseEff Bridge.app`，但 LaunchAgent 未注册。
+
 ## macOS 安装（便携包 — 高级）
 
 1. 从 `/node-debugging` 或 `GET /api/v1/device-bridges/releases` 下载匹配的 macOS 制品。

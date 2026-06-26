@@ -109,19 +109,29 @@ describe("windowsService commands", () => {
     expect(capture.logs.some((line) => line.includes("Installed Windows service"))).toBe(true);
   });
 
-  it("reports already installed service", async () => {
+  it("reinstalls service when Windows service already exists", async () => {
     const capture = createCapture();
+    let createAttempts = 0;
+    const execFile = vi.fn(async (_file, args: readonly string[]) => {
+      if (args[0] === "create") {
+        createAttempts += 1;
+        if (createAttempts === 1) {
+          throw new Error("CreateService FAILED 1073: The specified service already exists.");
+        }
+      }
+      return { stdout: "", stderr: "" };
+    });
     const deps = createDeps({
       ...capture,
-      execFile: vi.fn(async () => {
-        throw new Error("CreateService FAILED 1073: The specified service already exists.");
-      })
+      execFile
     });
 
     const exitCode = await installWindowsService(deps);
 
-    expect(exitCode).toBe(1);
-    expect(capture.errors.some((line) => line.includes("already installed"))).toBe(true);
+    expect(exitCode).toBe(0);
+    expect(execFile).toHaveBeenCalledWith("sc.exe", ["stop", WISEEFF_BRIDGE_SERVICE_NAME], { windowsHide: true });
+    expect(execFile).toHaveBeenCalledWith("sc.exe", ["delete", WISEEFF_BRIDGE_SERVICE_NAME], { windowsHide: true });
+    expect(capture.logs.some((line) => line.includes("Reinstalled Windows service"))).toBe(true);
   });
 
   it("starts and stops the Windows service", async () => {

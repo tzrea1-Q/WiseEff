@@ -4,7 +4,8 @@ import {
   consumePairingCode,
   createBridge,
   createBridgeToken,
-  createPairingCode
+  createPairingCode,
+  listBridgesForUser
 } from "./repository";
 import { DEVICE_BRIDGE_CONNECT_SCOPE, DEVICE_BRIDGE_EXECUTE_SCOPE } from "./types";
 
@@ -105,5 +106,11 @@ describe("device bridge repository", () => {
       [DEVICE_BRIDGE_CONNECT_SCOPE, DEVICE_BRIDGE_EXECUTE_SCOPE],
       expiresAt.toISOString()
     ]);
+  });
+
+  it("omits revoked bridges from the default user listing", async () => {
+    const { db, calls } = createFakeDb([[bridgeRow()]]);
+    await listBridgesForUser(db, { userId: "u-1", organizationId: "org-1" });
+    expect(calls[0].text).toContain("and revoked_at is null");
   });
 });

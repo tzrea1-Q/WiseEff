@@ -135,6 +135,32 @@ describe("connectCommand", () => {
     expect(ensureBridgeRunning).toHaveBeenCalled();
   });
 
+  it("re-pairs when code provided even if existing token is still valid", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        bridgeId: "bridge_456",
+        bridgeToken: "wb_456",
+        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+      }),
+      text: async () => ""
+    })) as typeof fetch;
+    const saveConfig = vi.fn(async () => undefined);
+    const loadConfig = vi.fn(async () => pairedConfig);
+    const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
+
+    const result = await runConnectCommand(
+      createConnectDeps({ fetchImpl, loadConfig, saveConfig, ensureBridgeRunning }),
+      { server: "https://wiseeff.example.com", code: "654321" }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(fetchImpl).toHaveBeenCalled();
+    expect(saveConfig).toHaveBeenCalled();
+    expect(ensureBridgeRunning).toHaveBeenCalled();
+  });
+
   it("returns exit code 1 when token expired and code missing", async () => {
     const expiredConfig: BridgeConfig = {
       ...pairedConfig,

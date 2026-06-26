@@ -123,4 +123,22 @@ describe("bridge connection pool", () => {
     });
     await second;
   });
+
+  it("closes stale sockets when the same bridge reconnects", () => {
+    const pool = createBridgeConnectionPool();
+    const first = createMockSocket();
+    const second = createMockSocket();
+
+    pool.register("br-1", first);
+    pool.register("br-1", second);
+
+    expect(first.close).toHaveBeenCalledTimes(1);
+    expect(pool.isConnected("br-1")).toBe(true);
+
+    pool.unregister("br-1", first);
+    expect(pool.isConnected("br-1")).toBe(true);
+
+    pool.unregister("br-1", second);
+    expect(pool.isConnected("br-1")).toBe(false);
+  });
 });

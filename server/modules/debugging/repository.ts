@@ -977,6 +977,57 @@ export async function listDebugSessionEvents(
   return result.rows.map(toNodeOperationRecord);
 }
 
+async function ensureBridgeDebugDevices(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    targets: Array<{
+      deviceId: string;
+      bridgeMachineLabel?: string;
+      protocol?: DebugConnectionProtocol;
+      online: boolean;
+    }>;
+  }
+) {
+  const bridgeDevices = new Map<string, { name: string; protocol: DebugConnectionProtocol; online: boolean }>();
+
+  for (const target of input.targets) {
+    if (!target.deviceId.startsWith("bridge:")) {
+      continue;
+    }
+
+    const existing = bridgeDevices.get(target.deviceId);
+    bridgeDevices.set(target.deviceId, {
+      name: target.bridgeMachineLabel?.trim() || target.deviceId,
+      protocol: target.protocol ?? defaultDebugConnectionProtocol,
+      online: existing?.online ? true : target.online
+    });
+  }
+
+  for (const [deviceId, device] of bridgeDevices) {
+    const status: DebugDeviceStatus = device.online ? "online" : "offline";
+    await db.query(
+      `
+      insert into debugging_devices (
+        id, organization_id, project_id, name, transport, status, firmware, last_seen_at
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, case when $6 = 'online' then now() else null end)
+      on conflict (id) do update
+      set name = excluded.name,
+        transport = excluded.transport,
+        status = excluded.status,
+        last_seen_at = case
+          when excluded.status = 'online' then now()
+          else debugging_devices.last_seen_at
+        end,
+        updated_at = now()
+      `,
+      [deviceId, input.organizationId, input.projectId, device.name, device.protocol, status, "bridge"]
+    );
+  }
+}
+
 export async function upsertDetectedTargets(
   db: Queryable,
   input: {
@@ -986,6 +1037,7 @@ export async function upsertDetectedTargets(
       id: string;
       deviceId: string;
       bridgeId?: string | null;
+      bridgeMachineLabel?: string;
       protocol?: DebugConnectionProtocol;
       targetRef: string;
       label: string;
@@ -993,6 +1045,7 @@ export async function upsertDetectedTargets(
     }>;
   }
 ): Promise<DebugTargetRecord[]> {
+  await ensureBridgeDebugDevices(db, input);
   const records: DebugTargetRecord[] = [];
 
   for (const target of input.targets) {
