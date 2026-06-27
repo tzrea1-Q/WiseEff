@@ -74,3 +74,18 @@ npm run selfhost:release-gate -- --target-environment staging-a --artifact-ref <
 ```
 
 `capacity:gate` writes `docs/generated/capacity-gate.md`. `selfhost:release-gate` writes `docs/generated/m6-release-readiness.md`. Both scripts are evidence writers as well as gates: without real target capacity, rollback, queue, observability, and synthetic acceptance evidence they must remain failed or pending.
+
+## Device Bridge (macOS portable)
+
+The portable `wiseeff-bridge` bundle (`.tar.gz`) does not register the `wiseeff-bridge://` URL scheme automatically. Browser pairing from the web UI requires a URL handler.
+
+After extracting the portable bundle and starting the bridge in standby mode:
+
+```bash
+./wiseeff-bridge start
+./wiseeff-bridge register
+```
+
+`register` creates `~/.wiseeff/WiseEffBridgeLauncher.app`, registers `wiseeff-bridge://` with Launch Services, and points the handler at your portable `cli.js`. Run `wiseeff-bridge unregister` to remove it.
+
+The macOS `.pkg` installer registers the URL scheme through `/Applications/WiseEff Bridge.app` and does not need `register`. See [bridge-installer/README.md](./bridge-installer/README.md) for installer build notes.

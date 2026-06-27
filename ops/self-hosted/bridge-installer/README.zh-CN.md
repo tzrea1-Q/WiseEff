@@ -23,6 +23,7 @@ npm run build:bridge-installers
 - Windows 注册表：`wiseeff-bridge://` → `wiseeff-bridge.exe --handle-url "%1"`
 - macOS `Info.plist`：`CFBundleURLSchemes` = `wiseeff-bridge`
 - macOS `.pkg` postinstall 为安装用户注册 `~/Library/LaunchAgents/com.wiseeff.bridge.plist` 并通过 `launchctl` 加载
+- macOS **portable**（`.tar.gz`）：解压后运行 `wiseeff-bridge register` 注册 `wiseeff-bridge://`（wrapper 位于 `~/.wiseeff/WiseEffBridgeLauncher.app`）；`wiseeff-bridge unregister` 可移除
 
 ## macOS 安装失败排查
 
