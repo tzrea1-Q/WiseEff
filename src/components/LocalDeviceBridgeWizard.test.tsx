@@ -73,8 +73,36 @@ describe("LocalDeviceBridgeWizard", () => {
       "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg"
     );
 
+    expect(screen.getByRole("button", { name: /已安装 Bridge/ })).toBeInTheDocument();
+
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 macOS Bridge（Apple Silicon）" })).toBeInTheDocument();
+  });
+
+  it("advances to step 2 when clicking the already-installed entry on missing_bridge", () => {
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="missing_bridge"
+        protocol="hdc"
+        health={null}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={{ code: "123456", expiresAt: "2026-06-27T00:00:00.000Z" }}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
+      />
+    );
+
+    const entry = screen.getByRole("button", { name: /已安装 Bridge/ });
+    fireEvent.click(entry);
+
+    expect(screen.getByText("连接本机")).toBeInTheDocument();
   });
 
   it("lets users return to step 1 from later wizard steps", async () => {

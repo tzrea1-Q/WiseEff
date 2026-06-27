@@ -158,7 +158,7 @@ export function LocalDeviceBridgeWizard({
       return;
     }
 
-    if (!pairingCode && (panelStatus === "not_paired" || pairingStale || pairingAuthFailure)) {
+    if (!pairingCode && (panelStatus === "not_paired" || panelStatus === "missing_bridge" || pairingStale || pairingAuthFailure)) {
       onConnectError("配对码尚未就绪，请稍后重试。");
       return;
     }
@@ -178,7 +178,7 @@ export function LocalDeviceBridgeWizard({
     try {
       const serverUrl = resolveBridgeServerUrl();
       const webOrigin = resolveBridgeWebOrigin();
-      const needsPairingCode = panelStatus === "not_paired" || pairingStale || pairingAuthFailure;
+      const needsPairingCode = panelStatus === "not_paired" || panelStatus === "missing_bridge" || pairingStale || pairingAuthFailure;
       const connectUrl =
         needsPairingCode
           ? buildBridgeConnectUrl(serverUrl, pairingCode!.code, webOrigin)
@@ -362,10 +362,26 @@ export function LocalDeviceBridgeWizard({
                 暂时无法加载安装包列表，请稍后重试。
               </p>
             )}
+
+            {panelStatus === "missing_bridge" ? (
+              <p className="local-device-bridge-panel__already-installed">
+                <button
+                  type="button"
+                  className="button subtle local-device-bridge-panel__already-installed-cta"
+                  onClick={() => setViewStep(2)}
+                >
+                  已安装 Bridge？点这里继续配对
+                </button>
+              </p>
+            ) : null}
           </>
         ) : null}
 
         {viewStep !== 1 && connectError ? <p className="local-device-bridge-panel__error">{connectError}</p> : null}
+
+        {viewStep !== 1 && !connectError && health?.pairingError ? (
+          <p className="local-device-bridge-panel__error" role="alert">{health.pairingError}</p>
+        ) : null}
 
         {viewStep === 3 && health?.tools ? (
           <LocalDeviceBridgeToolsPanel

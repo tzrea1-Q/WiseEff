@@ -14,6 +14,7 @@ export type BridgeHealthState = {
   serverUrl?: string;
   tokenExpiresAt?: string;
   lastError?: string;
+  pairingError?: string;
   updatedAt: string;
   tools?: ToolProbeResult;
   toolsInstall?: ToolsInstallStatus;

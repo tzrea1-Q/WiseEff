@@ -1,5 +1,7 @@
 import { realpathSync } from "node:fs";
+import { readFile, writeFile, unlink } from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 
 import { loadBridgeConfig, saveBridgeConfig, type BridgeConfig } from "./config";
@@ -18,8 +20,42 @@ import {
 import { ensureBridgeRunning } from "./ensureBridgeRunning";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
+import { createProxiedFetch } from "./proxyFetch";
 
 const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
+
+const PAIRING_ERROR_PATH = path.join(os.homedir(), ".wiseeff", "pairing-error.json");
+
+async function writePairingError(message: string): Promise<void> {
+  try {
+    const dir = path.dirname(PAIRING_ERROR_PATH);
+    await import("node:fs/promises").then((m) => m.mkdir(dir, { recursive: true }));
+    await writeFile(PAIRING_ERROR_PATH, JSON.stringify({ message, updatedAt: new Date().toISOString() }, null, 2), "utf8");
+  } catch {
+    // Best-effort — don't let error logging itself fail.
+  }
+}
+
+async function readPairingError(): Promise<string | undefined> {
+  try {
+    const raw = await readFile(PAIRING_ERROR_PATH, "utf8");
+    const parsed = JSON.parse(raw) as { message?: string; updatedAt?: string };
+    if (parsed.message) {
+      return parsed.message;
+    }
+  } catch {
+    // No pairing error file — that's fine.
+  }
+  return undefined;
+}
+
+async function clearPairingError(): Promise<void> {
+  try {
+    await unlink(PAIRING_ERROR_PATH);
+  } catch {
+    // Already gone — fine.
+  }
+}
 
 type ParsedArgs = {
   command?: "pair" | "start" | "status" | "service" | "connect" | "tools";
@@ -233,20 +269,24 @@ async function runStandbyStartCommand(deps: CliDependencies): Promise<number> {
       getState: () => status,
       onHealthRead: async () => {
         await toolProbeCache.refreshTools();
+        const pairingError = await readPairingError();
         status = {
           ...status,
           tools: toolProbeCache.getTools(),
           toolsInstall: toolProbeCache.getToolsInstall(),
+          pairingError,
           updatedAt: new Date().toISOString()
         };
       }
     });
 
     await toolProbeCache.refreshTools(true);
+    const initialError = await readPairingError();
     status = {
       ...status,
       tools: toolProbeCache.getTools(),
-      toolsInstall: toolProbeCache.getToolsInstall()
+      toolsInstall: toolProbeCache.getToolsInstall(),
+      pairingError: initialError
     };
 
     deps.stdout.log(`Bridge standby started. Health: ${health.url}`);
@@ -298,8 +338,9 @@ export async function runCli(
     platform?: NodeJS.Platform;
   } = {}
 ) {
+  const proxiedFetch = overrides.fetchImpl ?? (await createProxiedFetch());
   const deps: CliDependencies = {
-    fetchImpl: overrides.fetchImpl ?? fetch,
+    fetchImpl: overrides.fetchImpl ?? proxiedFetch,
     loadConfig: overrides.loadConfig ?? (() => loadBridgeConfig()),
     saveConfig: overrides.saveConfig ?? ((config) => saveBridgeConfig(config)),
     stdout: overrides.stdout ?? console
@@ -321,6 +362,11 @@ export async function runCli(
       const parsedUrl = parseBridgeUrl(handleUrl);
       if (parsedUrl.kind === "connect") {
         const result = await runConnectCommand(connectDeps, parsedUrl);
+        if (result.exitCode !== 0) {
+          await writePairingError(`配对失败：Bridge 无法连接到服务器。请检查网络代理设置（HTTPS_PROXY 环境变量或 ~/.wiseeff/proxy.json）。`);
+        } else {
+          await clearPairingError();
+        }
         return result.exitCode;
       }
       const config = await deps.loadConfig();
@@ -342,7 +388,9 @@ export async function runCli(
       deps.stdout.log(`Installing ${parsedUrl.protocol} tools from ${serverUrl}...`);
       return 0;
     } catch (error) {
-      deps.stdout.error(error instanceof Error ? error.message : "Invalid bridge URL");
+      const message = error instanceof Error ? error.message : "Invalid bridge URL";
+      deps.stdout.error(message);
+      await writePairingError(message);
       return 1;
     }
   }
@@ -366,6 +414,11 @@ export async function runCli(
 
   if (parsed.command === "pair") {
     const result = await runPairCommand(parsed, deps);
+    if (result.exitCode !== 0) {
+      await writePairingError(`配对失败。请检查网络代理设置（HTTPS_PROXY 环境变量或 ~/.wiseeff/proxy.json）。`);
+    } else {
+      await clearPairingError();
+    }
     return result.exitCode;
   }
 
