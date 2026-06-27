@@ -379,6 +379,10 @@ export function LocalDeviceBridgeWizard({
 
         {viewStep !== 1 && connectError ? <p className="local-device-bridge-panel__error">{connectError}</p> : null}
 
+        {viewStep !== 1 && !connectError && health?.pairingError ? (
+          <p className="local-device-bridge-panel__error" role="alert">{health.pairingError}</p>
+        ) : null}
+
         {viewStep === 3 && health?.tools ? (
           <LocalDeviceBridgeToolsPanel
             health={health}

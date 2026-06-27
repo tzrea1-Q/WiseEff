@@ -68,6 +68,7 @@ await build({
   sourcemap: false,
   minify: false,
   legalComments: "none",
+  external: ["undici"],
   banner: {
     js: [
       "#!/usr/bin/env node",

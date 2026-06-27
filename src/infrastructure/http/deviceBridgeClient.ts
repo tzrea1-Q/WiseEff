@@ -62,6 +62,7 @@ export type LocalBridgeHealthState = {
   serverUrl?: string;
   tokenExpiresAt?: string;
   lastError?: string;
+  pairingError?: string;
   updatedAt: string;
   tools?: {
     adb: ToolProbeState;
@@ -135,6 +136,7 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
     serverUrl: typeof body.serverUrl === "string" ? body.serverUrl : undefined,
     tokenExpiresAt: typeof body.tokenExpiresAt === "string" ? body.tokenExpiresAt : undefined,
     lastError: typeof body.lastError === "string" ? body.lastError : undefined,
+    pairingError: typeof body.pairingError === "string" ? body.pairingError : undefined,
     updatedAt: body.updatedAt,
     tools: parseTools(body.tools),
     toolsInstall: parseToolsInstall(body.toolsInstall)
