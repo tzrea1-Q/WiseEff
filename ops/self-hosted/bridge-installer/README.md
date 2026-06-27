@@ -23,6 +23,7 @@ Outputs land under `ops/self-hosted/bridge-artifacts/0.1.0/` and update `manifes
 - Windows registry: `wiseeff-bridge://` → `wiseeff-bridge.exe --handle-url "%1"`
 - macOS `Info.plist`: `CFBundleURLSchemes` = `wiseeff-bridge`
 - macOS `.pkg` postinstall registers `~/Library/LaunchAgents/com.wiseeff.bridge.plist` for the installing user and loads it via `launchctl`
+- macOS **portable** (`.tar.gz`): run `wiseeff-bridge register` after extract to register `wiseeff-bridge://` via `~/.wiseeff/WiseEffBridgeLauncher.app`; run `wiseeff-bridge unregister` to remove
 
 ## Notes
 

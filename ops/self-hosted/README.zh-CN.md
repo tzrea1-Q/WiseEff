@@ -17,6 +17,21 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## Device Bridge（macOS portable）
+
+portable 版 `wiseeff-bridge`（`.tar.gz`）不会自动注册 `wiseeff-bridge://` URL scheme。要通过浏览器完成配对，必须先注册 URL 处理器。
+
+解压 portable 包并启动 standby 模式后：
+
+```bash
+./wiseeff-bridge start
+./wiseeff-bridge register
+```
+
+`register` 会在 `~/.wiseeff/WiseEffBridgeLauncher.app` 创建轻量 `.app` wrapper，向 Launch Services 注册 `wiseeff-bridge://`，并将 handler 指向当前 portable 的 `cli.js`。运行 `wiseeff-bridge unregister` 可移除注册。
+
+macOS `.pkg` 安装包会通过 `/Applications/WiseEff Bridge.app` 注册 URL scheme，无需执行 `register`。安装包构建说明见 [bridge-installer/README.zh-CN.md](./bridge-installer/README.zh-CN.md)。
+
 ## 同类中文文档
 
 - [ops/self-hosted/README.zh-CN.md](README.zh-CN.md)

@@ -164,6 +164,17 @@ describe("device bridge cli", () => {
     expect(capture.errors.some((line) => line.includes("--server"))).toBe(true);
   });
 
+  it("rejects register on non-macOS platforms", async () => {
+    const capture = createStdoutCapture();
+    const exitCode = await runCli(["register"], {
+      stdout: capture.stdout,
+      platform: "linux"
+    });
+
+    expect(exitCode).toBe(1);
+    expect(capture.errors.some((line) => line.includes("only available on macOS"))).toBe(true);
+  });
+
   it("handle-url flag parses scheme and invokes connect flow", async () => {
     const capture = createStdoutCapture();
     const config: BridgeConfig = {
@@ -177,11 +188,23 @@ describe("device bridge cli", () => {
       pairedAt: "2026-06-23T00:00:00.000Z"
     };
     const ensureBridgeRunning = vi.fn(async () => ({ exitCode: 0 }));
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        bridgeId: "bridge_123",
+        bridgeToken: "wb_123",
+        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+      }),
+      text: async () => ""
+    })) as typeof fetch;
 
     const exitCode = await runCli(
       ["--handle-url", "wiseeff-bridge://connect?server=https%3A%2F%2Fwiseeff.example.com&code=123456"],
       {
         loadConfig: async () => config,
+        saveConfig: vi.fn(async () => undefined),
+        fetchImpl,
         stdout: capture.stdout,
         ensureBridgeRunning
       }

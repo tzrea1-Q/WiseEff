@@ -1,8 +1,10 @@
+import { execFile as defaultExecFile } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { readFile, writeFile, unlink } from "node:fs/promises";
+import { access, chmod, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 
 import { loadBridgeConfig, saveBridgeConfig, type BridgeConfig } from "./config";
 import { createResolvedRpcHandlers } from "./createResolvedRpcHandlers";
@@ -21,6 +23,12 @@ import { ensureBridgeRunning } from "./ensureBridgeRunning";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
 import { createProxiedFetch } from "./proxyFetch";
+import {
+  isPortableUrlSchemeRegistered,
+  runMacosUrlSchemeCommand,
+  type MacosUrlSchemeDependencies,
+  type ExecFileFn
+} from "./macosUrlScheme";
 
 const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
 
@@ -58,7 +66,7 @@ async function clearPairingError(): Promise<void> {
 }
 
 type ParsedArgs = {
-  command?: "pair" | "start" | "status" | "service" | "connect" | "tools";
+  command?: "pair" | "start" | "status" | "service" | "connect" | "tools" | "register" | "unregister";
   toolsAction?: "install";
   serviceAction?: ServiceAction;
   flags: Map<string, string>;
@@ -112,7 +120,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     return { command: "tools", flags: parseFlags(rest) };
   }
 
-  if (command === "pair" || command === "start" || command === "status" || command === "connect") {
+  if (command === "pair" || command === "start" || command === "status" || command === "connect" || command === "register" || command === "unregister") {
     return { command, flags: parseFlags(rest) };
   }
   return { flags: parseFlags(rest) };
@@ -127,6 +135,8 @@ function usage() {
     "  pair --server <url> --code <6-digit-code>",
     "  start",
     "  status",
+    "  register          Register wiseeff-bridge:// URL scheme (macOS portable only)",
+    "  unregister        Remove portable URL scheme registration (macOS only)",
     "  service install   Register background service (Windows only)",
     "  service start     Start installed service (Windows only)",
     "  service stop      Stop installed service (Windows only)",
@@ -246,7 +256,10 @@ async function runStartCommand(
   return { exitCode: 0, statusLine: status.connected ? "connected" : "disconnected" };
 }
 
-async function runStandbyStartCommand(deps: CliDependencies): Promise<number> {
+async function runStandbyStartCommand(
+  deps: CliDependencies,
+  platform: NodeJS.Platform = process.platform
+): Promise<number> {
   const existingHealth = await deps.fetchImpl("http://127.0.0.1:18787/health").catch(() => null);
   if (existingHealth?.ok) {
     deps.stdout.log("Bridge service already running.");
@@ -291,6 +304,15 @@ async function runStandbyStartCommand(deps: CliDependencies): Promise<number> {
 
     deps.stdout.log(`Bridge standby started. Health: ${health.url}`);
     deps.stdout.log("Pair from the web UI to finish setup.");
+    if (platform === "darwin") {
+      const registered = await isPortableUrlSchemeRegistered({
+        homedir: () => os.homedir(),
+        access
+      });
+      if (!registered) {
+        deps.stdout.log("To enable browser pairing via URL scheme, run: wiseeff-bridge register");
+      }
+    }
 
     await waitForTerminationSignal();
     await health.close();
@@ -453,11 +475,23 @@ export async function runCli(
     });
   }
 
+  if (parsed.command === "register" || parsed.command === "unregister") {
+    return runMacosUrlSchemeCommand(
+      parsed.command,
+      createMacosUrlSchemeDeps(deps, {
+        platform: overrides.platform,
+        cliPath: overrides.cliPath,
+        execPath: overrides.execPath,
+        execFile: overrides.execFile as ExecFileFn | undefined
+      })
+    );
+  }
+
   const config = await deps.loadConfig();
 
   if (parsed.command === "start") {
     if (!config) {
-      return runStandbyStartCommand(deps);
+      return runStandbyStartCommand(deps, overrides.platform ?? process.platform);
     }
     const result = await runStartCommand(deps, config);
     return result.exitCode;
@@ -472,6 +506,40 @@ export async function runCli(
   }
 
   return runStatusCommand(deps, config);
+}
+
+function createMacosUrlSchemeDeps(
+  deps: CliDependencies,
+  overrides: Partial<MacosUrlSchemeDependencies> & {
+    platform?: NodeJS.Platform;
+    cliPath?: string;
+    execPath?: string;
+    execFile?: ExecFileFn;
+  } = {}
+): MacosUrlSchemeDependencies {
+  const execFileAsync = promisify(defaultExecFile);
+  const defaultExecFileFn: ExecFileFn = async (file, args, options) => {
+    const { stdout, stderr } = await execFileAsync(file, args, {
+      ...options,
+      encoding: "utf8"
+    });
+    return { stdout: String(stdout), stderr: String(stderr) };
+  };
+
+  return {
+    platform: overrides.platform ?? process.platform,
+    homedir: () => os.homedir(),
+    execFile: overrides.execFile ?? defaultExecFileFn,
+    mkdir,
+    writeFile,
+    chmod,
+    rm,
+    access,
+    nodePath: overrides.execPath ?? process.execPath,
+    cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+    log: (message) => deps.stdout.log(message),
+    error: (message) => deps.stdout.error(message)
+  };
 }
 
 function resolveCliEntryPath(filePath: string) {
