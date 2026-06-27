@@ -21,6 +21,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-06-02-wiseeff-m6-5-observability-operations.md`: self-hosted observability, alerts, and operations runbooks.
 - `exec-plans/active/2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`: release, rollback, capacity, and target synthetic gates.
 - `exec-plans/active/2026-06-24-wiseeff-xiaoze-thread-persistence.md`: durable Xiaoze chat threads (Postgres + `/api/v1/agent/xiaoze/threads`, cross-device history).
+- `exec-plans/active/2026-06-27-wiseeff-device-bridge-cors-bootstrap-fix.md`: Device Bridge CORS bootstrap fix — open `/health` CORS, Step 1 pairing entry point, fetch-failed vs process-absent distinction, Bridge CLI proxy support, `webOrigin` defaulting, restart on config change.
 
 ## Completed Plans
 

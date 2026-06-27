@@ -67,6 +67,14 @@ function applyCorsHeaders(res: import("node:http").ServerResponse, origin: strin
   res.setHeader("Vary", "Origin");
 }
 
+function applyOpenCorsHeaders(res: import("node:http").ServerResponse, origin: string | undefined) {
+  if (!origin) {
+    return;
+  }
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+}
+
 export function startHealthServer(input: {
   getState: () => BridgeHealthState;
   host?: string;
@@ -85,11 +93,12 @@ export function startHealthServer(input: {
 
       if (req.method === "OPTIONS" && (requestUrl.pathname === "/tools/install" || requestUrl.pathname === "/health")) {
         res.statusCode = 204;
-        applyCorsHeaders(res, origin, input.allowedOrigin);
         if (requestUrl.pathname === "/tools/install") {
+          applyCorsHeaders(res, origin, input.allowedOrigin);
           res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
           res.setHeader("Access-Control-Allow-Headers", "content-type");
         } else {
+          applyOpenCorsHeaders(res, origin);
           res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
         }
         res.end();
@@ -118,7 +127,7 @@ export function startHealthServer(input: {
         await input.onHealthRead?.();
         const payload = { ok: true, ...input.getState() };
         res.statusCode = 200;
-        applyCorsHeaders(res, origin, input.allowedOrigin);
+        applyOpenCorsHeaders(res, origin);
         res.setHeader("content-type", "application/json; charset=utf-8");
         res.end(`${JSON.stringify(payload)}\n`);
         return;
@@ -133,10 +142,13 @@ export function startHealthServer(input: {
     server.once("error", reject);
     server.listen(port, host, () => {
       server.off("error", reject);
+      const address = server.address();
+      const actualPort = address && typeof address === "object" ? address.port : port;
       resolve({
-        url: `http://${host}:${port}/health`,
+        url: `http://${host}:${actualPort}/health`,
         close: async () =>
           new Promise<void>((closeResolve, closeReject) => {
+            server.closeAllConnections?.();
             server.close((error) => {
               if (error) {
                 closeReject(error);

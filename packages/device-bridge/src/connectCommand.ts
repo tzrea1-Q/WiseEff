@@ -52,6 +52,7 @@ export async function runPairCommand(
   }
 
   const normalizedServerUrl = normalizeServerUrl(server);
+  const resolvedWebOrigin = webOrigin ? normalizeCorsOrigin(webOrigin) : new URL(normalizedServerUrl).origin;
   const requestBody = {
     code,
     machineLabel: os.hostname(),
@@ -88,7 +89,7 @@ export async function runPairCommand(
     bridgeToken: payload.bridgeToken,
     tokenExpiresAt: payload.tokenExpiresAt,
     serverUrl: normalizedServerUrl,
-    webOrigin: webOrigin ? normalizeCorsOrigin(webOrigin) : undefined,
+    webOrigin: resolvedWebOrigin,
     machineLabel: requestBody.machineLabel,
     platform: requestBody.platform,
     arch: requestBody.arch,
@@ -127,7 +128,8 @@ export async function runConnectCommand(
 ): Promise<{ exitCode: number }> {
   const existing = await deps.loadConfig();
   const normalizedServer = normalizeServerUrl(input.server);
-  const normalizedWebOrigin = input.webOrigin ? normalizeCorsOrigin(input.webOrigin) : undefined;
+  const explicitWebOrigin = input.webOrigin ? normalizeCorsOrigin(input.webOrigin) : undefined;
+  const derivedWebOrigin = explicitWebOrigin ?? new URL(normalizedServer).origin;
   const serverMatches = existing?.serverUrl === normalizedServer;
   const tokenValid = existing && !isBridgeTokenExpired(existing.tokenExpiresAt);
 
@@ -136,8 +138,8 @@ export async function runConnectCommand(
       ["server", input.server],
       ["code", input.code]
     ]);
-    if (normalizedWebOrigin) {
-      pairFlags.set("webOrigin", normalizedWebOrigin);
+    if (derivedWebOrigin) {
+      pairFlags.set("webOrigin", derivedWebOrigin);
     }
     const pairResult = await runPairCommand(
       {
@@ -163,8 +165,8 @@ export async function runConnectCommand(
     return { exitCode: 1 };
   }
 
-  if (normalizedWebOrigin && config.webOrigin !== normalizedWebOrigin) {
-    config = { ...config, webOrigin: normalizedWebOrigin };
+  if (explicitWebOrigin && config.webOrigin !== explicitWebOrigin) {
+    config = { ...config, webOrigin: explicitWebOrigin };
     await deps.saveConfig(config);
     await stopLocalBridgeHealthListener(deps.platform);
   }
