@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { execSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 
@@ -34,13 +35,38 @@ export async function loadProxyConfig(): Promise<ProxyConfig> {
   return {};
 }
 
+function detectMacSystemProxy(): string | undefined {
+  if (process.platform !== "darwin") {
+    return undefined;
+  }
+  try {
+    const output = execSync("scutil --proxy", { timeout: 3000, encoding: "utf8" });
+    const httpsEnabled = /HTTPSEnable\s*:\s*1/.test(output);
+    const httpEnabled = /HTTPEnable\s*:\s*1/.test(output);
+    if (!httpsEnabled && !httpEnabled) {
+      return undefined;
+    }
+    const portMatch = output.match(/HTTPSPort\s*:\s*(\d+)/) ?? output.match(/HTTPPort\s*:\s*(\d+)/);
+    const hostMatch = output.match(/HTTPSProxy\s*:\s*([\d.]+)/) ?? output.match(/HTTPProxy\s*:\s*([\d.]+)/);
+    if (portMatch && hostMatch) {
+      return `http://${hostMatch[1]}:${portMatch[1]}`;
+    }
+  } catch {
+    // scutil not available or failed — skip.
+  }
+  return undefined;
+}
+
 export async function resolveProxyUrl(): Promise<string | undefined> {
   const envUrl = envProxyUrl();
   if (envUrl) {
     return envUrl;
   }
   const config = await loadProxyConfig();
-  return config.proxyUrl;
+  if (config.proxyUrl) {
+    return config.proxyUrl;
+  }
+  return detectMacSystemProxy();
 }
 
 let cachedDispatcher: unknown = null;

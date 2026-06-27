@@ -68,7 +68,7 @@ await build({
   sourcemap: false,
   minify: false,
   legalComments: "none",
-  external: ["undici"],
+  external: ["undici", "https-proxy-agent"],
   banner: {
     js: [
       "#!/usr/bin/env node",

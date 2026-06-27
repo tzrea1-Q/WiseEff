@@ -1,4 +1,6 @@
 import WebSocket from "ws";
+import { HttpsProxyAgent } from "https-proxy-agent";
+import { resolveProxyUrl } from "./proxyFetch";
 
 type RpcMethod = "bridge.getCapabilities" | "debug.detectTargets" | "debug.readNode" | "debug.writeNode";
 
@@ -87,10 +89,35 @@ function isBridgeRpcRequest(value: unknown): value is BridgeRpcRequest {
 export function createBridgeWsClient(options: CreateBridgeWsClientOptions) {
   const reconnectDelayMs = options.reconnectDelayMs ?? 2_000;
   const fallbackPingIntervalMs = options.pingIntervalMs ?? 15_000;
-  const websocketFactory = options.websocketFactory ?? ((url, init) => new WebSocket(url, init));
   const now = options.now ?? (() => new Date());
   const logger = options.logger ?? console;
   const wsUrl = buildBridgeWsUrl(options.serverUrl);
+
+  let proxyAgent: HttpsProxyAgent<string> | undefined;
+  let proxyResolved = false;
+
+  async function ensureProxyAgent() {
+    if (proxyResolved) {
+      return proxyAgent;
+    }
+    proxyResolved = true;
+    const proxyUrl = await resolveProxyUrl();
+    if (proxyUrl) {
+      try {
+        proxyAgent = new HttpsProxyAgent(proxyUrl);
+        logger.info(`[wiseeff-bridge] websocket using proxy: ${proxyUrl}`);
+      } catch {
+        // If agent creation fails, continue without proxy.
+      }
+    }
+    return proxyAgent;
+  }
+
+  const defaultWebsocketFactory = async (url: string, init: { headers: Record<string, string> }) => {
+    const agent = await ensureProxyAgent();
+    return new WebSocket(url, { ...init, agent });
+  };
+  const websocketFactory = options.websocketFactory ?? ((url, init) => defaultWebsocketFactory(url, init));
 
   let socket: WebSocket | null = null;
   let running = false;
