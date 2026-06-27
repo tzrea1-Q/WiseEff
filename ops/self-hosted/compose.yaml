@@ -125,6 +125,7 @@ services:
 
   proxy:
     image: caddy:2-alpine
+    init: true
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -140,7 +141,9 @@ services:
       - wiseeff-caddy-data:/data
       - wiseeff-caddy-config:/config
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider --header=\"Host: ${WISEEFF_SITE_HOST}\" http://127.0.0.1/health/live"]
+      # Use Caddy admin over plain HTTP to avoid BusyBox wget → ssl_client zombie leak
+      # when HTTP→HTTPS redirects would otherwise force an HTTPS fetch (see busybox #15967).
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2019/config/"]
       interval: 10s
       timeout: 5s
       retries: 12
