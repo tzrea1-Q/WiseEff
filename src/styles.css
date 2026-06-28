@@ -7576,6 +7576,21 @@ td small {
   color: #b42318;
 }
 
+.local-device-bridge-panel__ready {
+  display: grid;
+  gap: 0;
+}
+
+.local-device-bridge-panel__service-hint {
+  margin-top: 0.75rem;
+}
+
+.local-device-bridge-panel__service-hint > summary {
+  cursor: pointer;
+  color: var(--text-secondary, #64748b);
+  font-size: 0.8125rem;
+}
+
 .local-device-bridge-panel__head {
   display: flex;
   flex-wrap: wrap;

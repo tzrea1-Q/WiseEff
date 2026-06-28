@@ -131,12 +131,10 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.getByRole("button", { name: "启动并连接本机" })).toBeInTheDocument();
   });
 
-  it("lets users return to step 1 from later wizard steps", async () => {
-    const loadInstallReleases = vi.fn(async () => undefined);
-
+  it("renders a compact ready view when bridge targets are connected", () => {
     render(
       <LocalDeviceBridgeWizard
-        panelStatus="online_no_device"
+        panelStatus="bridges_with_targets"
         protocol="hdc"
         health={{
           ok: true,
@@ -159,12 +157,41 @@ describe("LocalDeviceBridgeWizard", () => {
         onConnectError={() => undefined}
         onRefresh={async () => ({ connected: true })}
         onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Bridge 在线，已连接可调试目标。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重新检测设备" })).toBeInTheDocument();
+    expect(screen.queryByText("安装 Bridge")).not.toBeInTheDocument();
+    expect(screen.queryByText(/设置登录时自动启动/)).not.toBeInTheDocument();
+    expect(screen.queryByText("HDC 工具")).not.toBeInTheDocument();
+  });
+
+  it("lets users return to step 1 from later wizard steps", async () => {
+    const loadInstallReleases = vi.fn(async () => undefined);
+
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_running"
+        hasRegisteredBridge
+        protocol="hdc"
+        health={null}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
         onLoadInstallReleases={loadInstallReleases}
       />
     );
 
     expect(screen.queryByText("图形安装包（推荐）")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "下载安装包" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "安装 Bridge" }));
 
@@ -174,18 +201,10 @@ describe("LocalDeviceBridgeWizard", () => {
   it("shows cached install downloads when returning to step 1", () => {
     render(
       <LocalDeviceBridgeWizard
-        panelStatus="tools_missing"
+        panelStatus="not_running"
+        hasRegisteredBridge
         protocol="hdc"
-        health={{
-          ok: true,
-          paired: true,
-          connected: true,
-          updatedAt: "2026-06-26T00:00:00.000Z",
-          tools: {
-            adb: { available: true, version: "adb", source: "system" },
-            hdc: { available: false, reason: "missing" }
-          }
-        }}
+        health={null}
         hostRelease={{
           platform: "darwin",
           arch: "arm64",
@@ -201,7 +220,7 @@ describe("LocalDeviceBridgeWizard", () => {
         detecting={false}
         connectError=""
         onConnectError={() => undefined}
-        onRefresh={async () => ({ connected: true })}
+        onRefresh={async () => ({ connected: false })}
         onDetect={() => undefined}
         onLoadInstallReleases={vi.fn(async () => undefined)}
       />
@@ -211,6 +230,5 @@ describe("LocalDeviceBridgeWizard", () => {
 
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /安装调试工具/i })).not.toBeInTheDocument();
   });
 });

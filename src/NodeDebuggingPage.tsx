@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
-import { deriveBridgePanelStatus, formatDetectFailureMessage, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
+import { deriveBridgePanelStatus, formatDetectFailureMessage, isBridgeOnlinePanelStatus, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -800,8 +800,8 @@ function LocalDeviceBridgePanel({
         onLoadInstallReleases={loadInstallReleases}
       />
       {bridges.length > 0 ? (
-          <details className="local-device-bridge-panel__management" open>
-            <summary>我的设备代理</summary>
+          <details className="local-device-bridge-panel__management" open={!isBridgeOnlinePanelStatus(panelStatus)}>
+            <summary>管理设备代理</summary>
             <ul className="local-device-bridge-panel__bridge-list" aria-label="我的设备代理列表">
               {bridges.map((bridge) => {
                 const draft = renameDraftById[bridge.id] ?? bridge.machineLabel;
