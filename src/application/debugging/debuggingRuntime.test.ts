@@ -221,6 +221,20 @@ describe("createDebuggingRuntimeActions", () => {
     expect(dispatch).toHaveBeenCalledWith({ type: "SET_DEBUG_ACTIVE_SESSION", session: apiSession, target: apiTarget });
   });
 
+  it("passes bridgeId through target detection when provided", async () => {
+    const dispatch = vi.fn();
+    const gateway = createGateway();
+    const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
+
+    await actions.detectAndStartSession("api-project", { protocol: "hdc", bridgeId: "br-local" });
+
+    expect(gateway.detectTargets).toHaveBeenCalledWith({
+      projectId: "api-project",
+      protocol: "hdc",
+      bridgeId: "br-local"
+    });
+  });
+
   it("passes the selected protocol through target detection and session creation", async () => {
     const dispatch = vi.fn();
     const adbDevice = { ...apiDevice, id: "adb-device-aurora", transport: "adb" as const };

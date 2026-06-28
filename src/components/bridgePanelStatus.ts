@@ -1,4 +1,4 @@
-import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
+import type { LocalBridgeHealthState, DeviceBridgePlatform } from "../infrastructure/http/deviceBridgeClient";
 
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 
@@ -41,20 +41,29 @@ export function isLocalBridgePairingStale(input: {
   );
 }
 
+export function countActiveBridgesForPlatform(
+  bridges: Array<{ platform: DeviceBridgePlatform; revokedAt: string | null }>,
+  platform: DeviceBridgePlatform
+): number {
+  return bridges.filter((bridge) => bridge.revokedAt === null && bridge.platform === platform).length;
+}
+
 export function deriveBridgePanelStatus(input: {
   health: LocalBridgeHealthState | null;
   bridgeCount: number;
+  registeredBridgeCountForHost?: number;
   registeredBridgeIds?: string[];
   target?: string;
   protocol?: DebugConnectionProtocol;
   healthReachability?: LocalBridgeReachability;
 }): BridgePanelStatus {
   if (!input.health) {
-    if (input.bridgeCount > 0) {
+    const registeredOnHost = input.registeredBridgeCountForHost ?? input.bridgeCount;
+    if (registeredOnHost > 0) {
+      if (input.healthReachability === "possibly_blocked") {
+        return "bridge_blocked";
+      }
       return "not_running";
-    }
-    if (input.healthReachability === "possibly_blocked") {
-      return "bridge_blocked";
     }
     return "missing_bridge";
   }

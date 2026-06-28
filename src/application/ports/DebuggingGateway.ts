@@ -74,6 +74,7 @@ export type NodeOperationSnapshot = {
 export type DetectTargetsInput = {
   projectId?: string;
   deviceId?: string;
+  bridgeId?: string;
   protocol?: DebugConnectionProtocol;
 };
 

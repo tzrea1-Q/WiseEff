@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
@@ -71,6 +71,17 @@ function sortItemsWindowsFirst(items: BridgeReleaseItem[]) {
   });
 }
 
+async function artifactFileExists(manifestPath: string, item: z.infer<typeof manifestItemSchema>) {
+  const versionDir = path.dirname(manifestPath);
+  const filePath = path.join(versionDir, item.platform, item.arch, item.artifact);
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function compareSemver(left: string, right: string) {
   const leftParts = left.split(".").map((part) => Number.parseInt(part, 10));
   const rightParts = right.split(".").map((part) => Number.parseInt(part, 10));
@@ -103,15 +114,29 @@ export async function loadBridgeReleaseManifest(manifestPath: string): Promise<B
   }
 
   const items = sortItemsWindowsFirst(
-    parsed.data.items.map((item) => ({
-      platform: item.platform,
-      arch: item.arch,
-      version: item.version,
-      downloadUrl: normalizeDownloadUrl(item),
-      artifactKind: item.artifactKind ?? "portable",
-      ...(item.sha256 ? { sha256: item.sha256 } : {})
-    }))
+    (
+      await Promise.all(
+        parsed.data.items.map(async (item) => {
+          if (!(await artifactFileExists(manifestPath, item))) {
+            return null;
+          }
+
+          return {
+            platform: item.platform,
+            arch: item.arch,
+            version: item.version,
+            downloadUrl: normalizeDownloadUrl(item),
+            artifactKind: item.artifactKind ?? "portable",
+            ...(item.sha256 ? { sha256: item.sha256 } : {})
+          } satisfies BridgeReleaseItem;
+        })
+      )
+    ).filter((item): item is BridgeReleaseItem => item !== null)
   );
+
+  if (items.length === 0) {
+    throw new ApiError("NOT_FOUND", "No published bridge release artifacts are available.", 404);
+  }
 
   return {
     recommendedVersion: parsed.data.recommendedVersion,

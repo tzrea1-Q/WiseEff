@@ -38,6 +38,11 @@ describe("debugging schemas", () => {
       deviceId: "sim-device-1",
       protocol: "hdc"
     });
+    expect(detectTargetsBodySchema.parse({ projectId: "aurora", bridgeId: "br-1" })).toEqual({
+      projectId: "aurora",
+      bridgeId: "br-1",
+      protocol: "hdc"
+    });
   });
 
   it("requires node session and path for reads", () => {

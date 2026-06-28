@@ -15,24 +15,48 @@ const connectedHealth: LocalBridgeHealthState = {
 };
 
 describe("deriveBridgePanelStatus", () => {
-  it("returns bridge_blocked when remote page cannot reach local health endpoint and no bridge is registered", () => {
+  it("returns missing_bridge when remote page cannot reach local health and no bridge is registered on this host", () => {
     expect(
       deriveBridgePanelStatus({
         health: null,
-        bridgeCount: 0,
+        bridgeCount: 1,
+        registeredBridgeCountForHost: 0,
+        healthReachability: "possibly_blocked"
+      })
+    ).toBe("missing_bridge");
+  });
+
+  it("returns bridge_blocked when remote page cannot reach local health but this host already has a registered bridge", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: null,
+        bridgeCount: 1,
+        registeredBridgeCountForHost: 1,
         healthReachability: "possibly_blocked"
       })
     ).toBe("bridge_blocked");
   });
 
-  it("returns not_running when a bridge is registered but local health is unreachable", () => {
+  it("returns not_running when a bridge is registered on this host but local health is unreachable on localhost", () => {
     expect(
       deriveBridgePanelStatus({
         health: null,
         bridgeCount: 1,
-        healthReachability: "possibly_blocked"
+        registeredBridgeCountForHost: 1,
+        healthReachability: "offline"
       })
     ).toBe("not_running");
+  });
+
+  it("returns missing_bridge when only bridges from other platforms are registered", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: null,
+        bridgeCount: 1,
+        registeredBridgeCountForHost: 0,
+        healthReachability: "offline"
+      })
+    ).toBe("missing_bridge");
   });
 
   it("allows reconnect without pairing code when bridge is registered but not running", () => {
