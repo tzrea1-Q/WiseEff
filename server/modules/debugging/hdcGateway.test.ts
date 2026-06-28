@@ -137,6 +137,28 @@ describe("HDC debug device gateway", () => {
     });
   });
 
+  it("treats HDC [Fail] diagnostics on stdout as read failures even when exit code is zero", async () => {
+    const { runCommand } = makeRunner([
+      {
+        code: 0,
+        stdout: "[Fail] [E001005] Device not found or connected\n",
+        stderr: "",
+        durationMs: 12
+      }
+    ]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+
+    const result = await gateway.readNode({ targetRef: "3DC0124226000194", nodePath: "/sys/node" });
+
+    expect(result).toEqual({
+      ok: false,
+      stdout: "[Fail] [E001005] Device not found or connected\n",
+      stderr: "",
+      error: "HDC command failed: [Fail] [E001005] Device not found or connected",
+      durationMs: 12
+    });
+  });
+
   it("reports read-back mismatch after a successful HDC write", async () => {
     const { runCommand } = makeRunner([
       {

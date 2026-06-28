@@ -37,5 +37,13 @@ export function remoteShellDiagnostic(result: RemoteCommandCapture) {
         line
       )
     );
-  return diagnosticLine?.trim();
+  if (diagnosticLine?.trim()) {
+    return diagnosticLine.trim();
+  }
+
+  const toolFailureLine = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => /^\[Fail\]/i.test(line) || /\[E\d{6}\]/.test(line));
+  return toolFailureLine || undefined;
 }

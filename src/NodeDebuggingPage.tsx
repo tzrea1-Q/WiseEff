@@ -317,6 +317,36 @@ function readFailureMessage(error: unknown) {
   return formatDebuggingRuntimeError(error);
 }
 
+function looksLikeFailedNodeReadValue(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return /^\[Fail\]/i.test(trimmed) || /\[E\d{6}\]/.test(trimmed);
+}
+
+function resolveReadRowOutcome(result: NodeReadResult) {
+  const value = result.value ?? result.stdout?.trim() ?? "";
+  if (!result.ok) {
+    return {
+      ok: false as const,
+      value,
+      error: result.error || result.stderr || value || "读取失败"
+    };
+  }
+  if (looksLikeFailedNodeReadValue(value)) {
+    return {
+      ok: false as const,
+      value,
+      error: value
+    };
+  }
+  return {
+    ok: true as const,
+    value
+  };
+}
+
 function formatSessionDuration(startedAt: string | null, now: Date) {
   if (!startedAt) return "—";
   const startTime = new Date(startedAt).getTime();
@@ -1049,21 +1079,23 @@ export function NodeDebuggingPage({
             nodePath: row.nodePath
           })
         : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
+      const outcome = resolveReadRowOutcome(result);
       const isLatest = isLatestRowOperation(row.id, operationSeq);
       if (isLatest) {
-        if (result.ok) {
-          const value = result.value ?? result.stdout?.trim() ?? "";
+        if (outcome.ok) {
           updateRow(row.id, {
-            runtimeCurrentValue: value,
-            lastReadValue: value,
+            runtimeCurrentValue: outcome.value,
+            lastReadValue: outcome.value,
             runtimeStatus: "成功",
-            activeOperation: undefined
+            activeOperation: undefined,
+            error: undefined
           });
         } else {
           updateRow(row.id, {
+            runtimeCurrentValue: outcome.value || undefined,
             runtimeStatus: "失败",
             activeOperation: undefined,
-            error: result.error || result.stderr || "读取失败"
+            error: outcome.error
           });
         }
       }
@@ -1075,24 +1107,24 @@ export function NodeDebuggingPage({
           parameterKey: row.key,
           accessMode: row.accessMode,
           action: "read",
-          status: result.ok ? "读取成功" : "读取失败",
+          status: outcome.ok ? "读取成功" : "读取失败",
           returncode: result.returncode,
           stdout: isComplexDebugParameter(row) ? undefined : result.stdout,
-          stderr: result.stderr || result.error,
+          stderr: result.stderr || outcome.error,
           nodePath: row.nodePath,
           ...complexOperationMetadata(row, {
             id: "",
             sessionId: "",
             nodePath: row.nodePath,
             operationType: "read",
-            status: result.ok ? "succeeded" : "failed",
-            verified: result.ok,
+            status: outcome.ok ? "succeeded" : "failed",
+            verified: outcome.ok,
             durationMs: result.durationMs ?? 0,
             createdAt: "",
-            readValue: result.value ?? result.stdout?.trim(),
+            readValue: outcome.value,
             valueKind: row.valueKind,
             valueFormat: row.valueFormat
-          }, result.value ?? result.stdout?.trim())
+          }, outcome.value)
         });
       }
     } catch (error) {
