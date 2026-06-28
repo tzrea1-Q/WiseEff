@@ -1038,7 +1038,7 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const targets = await service.detectTargets(readAuth, { projectId: "aurora", protocol: "hdc" });
+    const targets = await service.detectTargets(readAuth, { projectId: "aurora", protocol: "hdc", bridgeId: "br-1" });
 
     expect(targets).toEqual([
       expect.objectContaining({
@@ -1051,7 +1051,7 @@ describe("debugging service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[4] === "br-1")).toBe(true);
   });
 
-  it("detectTargets merges bridge-backed targets from online bridges", async () => {
+  it("detectTargets skips bridge detection when bridgeId is omitted", async () => {
     const bridgeRpcClient = {
       call: vi
         .fn()
@@ -1087,6 +1087,48 @@ describe("debugging service", () => {
 
     const targets = await service.detectTargets(readAuth, { projectId: "aurora" });
 
+    expect(bridgeRpcClient.call).not.toHaveBeenCalled();
+    expect(targets).toEqual([]);
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets"))).toBe(false);
+  });
+
+  it("detectTargets queries only the requested bridge when bridgeId is provided", async () => {
+    const bridgeRpcClient = {
+      call: vi
+        .fn()
+        .mockResolvedValueOnce({ targets: [{ targetRef: "serial-1", online: true, label: "ADB serial-1" }] })
+        .mockResolvedValueOnce({ targets: [{ targetRef: "serial-2", online: true, label: "ADB serial-2" }] })
+    };
+    const bridgeConnectionPool = {
+      isConnected: vi.fn((bridgeId: string) => bridgeId === "br-1" || bridgeId === "br-2")
+    };
+    const { db, txCalls } = createFakeDb([
+      [bridgeRow({ id: "br-1", machine_label: "Laptop" }), bridgeRow({ id: "br-2", machine_label: "Desktop" })],
+      [],
+      (call) => [
+        targetRow({
+          id: call.values[3],
+          device_id: call.values[2],
+          bridge_id: call.values[4],
+          protocol: call.values[5],
+          target_ref: call.values[6],
+          label: call.values[7],
+          status: call.values[8]
+        })
+      ],
+      []
+    ]);
+    const service = createDebuggingService({
+      db,
+      gateway: makeGateway({ detectTargets: vi.fn(async () => ({ ok: true, targets: [] })) }),
+      bridgeConnectionPool,
+      bridgeRpcClient,
+      createAuditEvent: createAuditSpy().createAuditEvent
+    });
+
+    const targets = await service.detectTargets(readAuth, { projectId: "aurora", bridgeId: "br-1" });
+
+    expect(bridgeRpcClient.call).toHaveBeenCalledTimes(1);
     expect(bridgeRpcClient.call).toHaveBeenCalledWith("br-1", "debug.detectTargets", { protocol: "hdc" }, { timeoutMs: 5000 });
     expect(targets).toEqual([
       expect.objectContaining({

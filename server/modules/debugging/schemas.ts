@@ -159,6 +159,7 @@ export const archiveDebugParameterBodySchema = z.object({
 export const detectTargetsBodySchema = z.object({
   projectId: nonEmptyString,
   deviceId: nonEmptyString.optional(),
+  bridgeId: nonEmptyString.optional(),
   protocol: protocolSchema
 });
 

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
-import { deriveBridgePanelStatus, formatDetectFailureMessage, isBridgeOnlinePanelStatus, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
+import { deriveBridgePanelStatus, countActiveBridgesForPlatform, formatDetectFailureMessage, isBridgeOnlinePanelStatus, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -598,6 +598,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
 function deriveBridgePanelStatusFromHealth(input: {
   health: LocalBridgeHealthState | null;
   bridgeCount: number;
+  registeredBridgeCountForHost: number;
   registeredBridgeIds: string[];
   target?: string;
   protocol: DebugConnectionProtocol;
@@ -695,7 +696,9 @@ function LocalDeviceBridgePanel({
         }
         return nextDraft;
       });
-      if (!nextHealth && nextBridges.length === 0) {
+      const hostTarget = detectBrowserBridgeTarget();
+      const registeredBridgeCountForHost = countActiveBridgesForPlatform(nextBridges, hostTarget.platform);
+      if (!nextHealth && registeredBridgeCountForHost === 0) {
         await loadInstallReleases();
       }
       return { nextHealth, nextBridges, connected: Boolean(nextHealth?.connected) };
@@ -710,10 +713,14 @@ function LocalDeviceBridgePanel({
     void refreshBridgeState();
   }, [refreshBridgeState]);
 
+  const hostTarget = detectBrowserBridgeTarget();
+  const activeBridges = bridges.filter((bridge) => !bridge.revokedAt);
+  const registeredBridgeCountForHost = countActiveBridgesForPlatform(activeBridges, hostTarget.platform);
   const panelStatus = deriveBridgePanelStatusFromHealth({
     health,
-    bridgeCount: bridges.length,
-    registeredBridgeIds: bridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id),
+    bridgeCount: activeBridges.length,
+    registeredBridgeCountForHost,
+    registeredBridgeIds: activeBridges.map((bridge) => bridge.id),
     target,
     protocol,
     healthReachability
@@ -808,7 +815,7 @@ function LocalDeviceBridgePanel({
         panelStatus={panelStatus}
         pairingStale={pairingStale}
         pairingAuthFailure={pairingAuthFailure}
-        hasRegisteredBridge={bridges.some((bridge) => !bridge.revokedAt)}
+        hasRegisteredBridge={registeredBridgeCountForHost > 0}
         healthReachability={healthReachability}
         protocol={protocol}
         health={health}
@@ -1196,7 +1203,15 @@ export function NodeDebuggingPage({
     setSelectingBridgeTargetId(null);
     try {
       if (debuggingActions) {
-        const result = await debuggingActions.detectAndStartSession(state.activeProjectId, { protocol: requestProtocol }) as DetectResultWithOperation;
+        const healthProbe = await probeLocalBridgeHealthDetailed();
+        const localBridgeId =
+          healthProbe.health?.connected && healthProbe.health.bridgeId
+            ? healthProbe.health.bridgeId
+            : undefined;
+        const result = await debuggingActions.detectAndStartSession(state.activeProjectId, {
+          protocol: requestProtocol,
+          ...(localBridgeId ? { bridgeId: localBridgeId } : {})
+        }) as DetectResultWithOperation;
         if (!isCurrentDetectRequest()) return;
         if ("candidates" in result) {
           setTarget(undefined);

@@ -303,7 +303,11 @@ export function createDebuggingRuntimeActions({
           }
         }
         device ??= resolveProjectDebugDevice(state, projectId, protocol);
-        const detectedTargets = await api.detectTargets({ projectId, protocol });
+        const detectedTargets = await api.detectTargets({
+          projectId,
+          protocol,
+          ...(options?.bridgeId ? { bridgeId: options.bridgeId } : {})
+        });
         if (detectedTargets.length === 0) {
           throw new Error("No debug target detected.");
         }

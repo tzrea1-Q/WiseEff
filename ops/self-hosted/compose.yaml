@@ -93,6 +93,8 @@ services:
         condition: service_completed_successfully
     expose:
       - "8787"
+    volumes:
+      - ./bridge-artifacts:/app/ops/self-hosted/bridge-artifacts:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8787/health/live"]
       interval: 10s

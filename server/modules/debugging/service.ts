@@ -180,6 +180,7 @@ type ScopedProjectQuery<T extends ProjectQuery> = T & {
 type DetectTargetsInput = {
   projectId: string;
   deviceId?: string;
+  bridgeId?: string;
   protocol?: DebugConnectionProtocol;
 };
 
@@ -629,7 +630,7 @@ export function createDebuggingService(options: ServiceOptions) {
       recordGatewayOperation("detect", gatewayResult.ok ? "succeeded" : "failed");
 
       const bridgeTargets =
-        options.bridgeRpcClient && options.bridgeConnectionPool
+        options.bridgeRpcClient && options.bridgeConnectionPool && input.bridgeId
           ? await detectTargetsAcrossBridges({
               rpc: options.bridgeRpcClient,
               bridges: (
@@ -638,7 +639,12 @@ export function createDebuggingService(options: ServiceOptions) {
                   organizationId
                 })
               )
-                .filter((bridge) => bridge.revokedAt === null && options.bridgeConnectionPool?.isConnected(bridge.id))
+                .filter(
+                  (bridge) =>
+                    bridge.revokedAt === null &&
+                    bridge.id === input.bridgeId &&
+                    options.bridgeConnectionPool?.isConnected(bridge.id)
+                )
                 .map((bridge) => ({
                   id: bridge.id,
                   machineLabel: bridge.machineLabel
