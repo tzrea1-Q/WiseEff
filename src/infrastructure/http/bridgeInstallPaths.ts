@@ -3,7 +3,7 @@ import type { DeviceBridgePlatform } from "./deviceBridgeClient";
 export function defaultBridgeCliPath(platform: DeviceBridgePlatform): string {
   switch (platform) {
     case "windows":
-      return "%LOCALAPPDATA%\\WiseEff\\Bridge\\wiseeff-bridge.exe";
+      return "%LOCALAPPDATA%\\WiseEff\\Bridge\\wiseeff-bridge.cmd";
     case "darwin":
       return "/Applications/WiseEff Bridge.app/Contents/Resources/wiseeff-bridge";
     default:
