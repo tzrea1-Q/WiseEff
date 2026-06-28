@@ -15,7 +15,7 @@ import {
   type LogRecordDto
 } from "./logDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
-import { wiseEffApiBaseUrl } from "./runtimeMode";
+import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 
 type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
@@ -97,7 +97,7 @@ function isTerminalStatus(status: string | undefined) {
 export function createHttpLogAnalysisRepository(
   options: HttpLogAnalysisRepositoryOptions = {}
 ): LogAnalysisRepository {
-  const baseUrl = options.baseUrl ?? wiseEffApiBaseUrl;
+  const baseUrl = options.baseUrl ?? resolveWiseEffApiBaseUrl();
   const apiClient = options.apiClient ?? createDefaultApiClient({ baseUrl });
 
   const repository: LogAnalysisRepository = {

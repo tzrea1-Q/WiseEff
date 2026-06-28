@@ -1,7 +1,7 @@
-import { wiseEffApiBaseUrl } from "./runtimeMode";
+import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 
 function readApiBaseUrl() {
-  return (import.meta.env.VITE_WISEEFF_API_BASE_URL ?? wiseEffApiBaseUrl).replace(/\/$/, "");
+  return resolveWiseEffApiBaseUrl().replace(/\/$/, "");
 }
 
 export function resolveBridgeServerUrl(pageOrigin?: string) {

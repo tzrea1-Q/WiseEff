@@ -3,7 +3,7 @@ import type { Insight } from "@/components/AgentInsightBar";
 import { resolveXiaozeAuthorizationHeader } from "./xiaozeHttpAgent";
 import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
-import { wiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
+import { resolveWiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
 
 type SuggestResponse = {
   suggestions: Array<{
@@ -28,7 +28,7 @@ export function useXiaozeSuggestions(options: { enabled: boolean }) {
     }
 
     const authorization = await resolveXiaozeAuthorizationHeader();
-    const response = await fetch(`${wiseEffApiBaseUrl.replace(/\/+$/, "")}/api/v1/agent/xiaoze/suggest`, {
+    const response = await fetch(`${resolveWiseEffApiBaseUrl().replace(/\/+$/, "")}/api/v1/agent/xiaoze/suggest`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

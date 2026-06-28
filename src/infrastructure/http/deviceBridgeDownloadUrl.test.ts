@@ -4,10 +4,13 @@ import { resolveDeviceBridgeDownloadUrl } from "./deviceBridgeDownloadUrl";
 
 describe("resolveDeviceBridgeDownloadUrl", () => {
   afterEach(() => {
+    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
   it("prefixes API origin when the SPA runs on a different port", () => {
+    vi.stubEnv("MODE", "development");
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:8787");
     vi.stubGlobal("window", {
       location: {
         origin: "http://127.0.0.1:5173"
@@ -22,6 +25,8 @@ describe("resolveDeviceBridgeDownloadUrl", () => {
   });
 
   it("keeps relative paths when page and API share the same origin", () => {
+    vi.stubEnv("MODE", "development");
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:8787");
     vi.stubGlobal("window", {
       location: {
         origin: "http://127.0.0.1:8787"

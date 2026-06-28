@@ -2,7 +2,7 @@ import { HttpAgent, type AgentSubscriber, type RunAgentResult } from "@ag-ui/cli
 import type { RunAgentParameters } from "@ag-ui/client";
 import { createDefaultOidcAuthProvider } from "@/infrastructure/auth/oidcAuthProvider";
 import { readLocalAuthToken } from "@/infrastructure/http/authClient";
-import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "@/infrastructure/http/runtimeMode";
+import { resolveWiseEffApiBaseUrl, wiseEffApiAuthorization } from "@/infrastructure/http/runtimeMode";
 import { buildXiaozeResumeEntries, readCopilotKitResumeCommand } from "./xiaozeResumeBridge";
 
 export { buildXiaozeResumeEntries, readCopilotKitResumeCommand };
@@ -12,7 +12,7 @@ export function resolveXiaozeAgentUrl(agentUrl?: string) {
   if (agentUrl) {
     return agentUrl;
   }
-  const base = wiseEffApiBaseUrl.replace(/\/+$/, "");
+  const base = resolveWiseEffApiBaseUrl().replace(/\/+$/, "");
   return `${base}/api/v1/agent/xiaoze`;
 }
 

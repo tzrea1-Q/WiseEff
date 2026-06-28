@@ -1,7 +1,7 @@
 import { createDefaultOidcAuthProvider, type BrowserOidcWindow } from "@/infrastructure/auth/oidcAuthProvider";
 import { createApiClient } from "./apiClient";
 import { readLocalAuthToken } from "./authClient";
-import { wiseEffApiAuthorization, wiseEffApiBaseUrl } from "./runtimeMode";
+import { resolveWiseEffApiBaseUrl, wiseEffApiAuthorization } from "./runtimeMode";
 
 export type DefaultApiClientOptions = {
   baseUrl?: string;
@@ -12,7 +12,7 @@ export type DefaultApiClientOptions = {
 export function createDefaultApiClient(options: DefaultApiClientOptions = {}) {
   const oidcProvider = createDefaultOidcAuthProvider(options.oidcWindow);
   return createApiClient({
-    baseUrl: options.baseUrl ?? wiseEffApiBaseUrl,
+    baseUrl: options.baseUrl ?? resolveWiseEffApiBaseUrl(),
     authorization: wiseEffApiAuthorization,
     getAuthorization: async () => {
       const oidcAuthorization = await oidcProvider?.getAuthorization();

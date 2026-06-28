@@ -1,4 +1,4 @@
-import { wiseEffApiBaseUrl } from "./runtimeMode";
+import { resolveWiseEffApiBaseUrl } from "./runtimeMode";
 
 function normalizeDownloadPath(downloadUrl: string) {
   if (downloadUrl.startsWith("/")) {
@@ -17,7 +17,7 @@ export function resolveDeviceBridgeDownloadUrl(downloadUrl: string) {
   }
 
   const path = normalizeDownloadPath(downloadUrl);
-  const apiBase = wiseEffApiBaseUrl.replace(/\/$/, "");
+  const apiBase = resolveWiseEffApiBaseUrl().replace(/\/$/, "");
 
   if (typeof window === "undefined") {
     return `${apiBase}${path}`;

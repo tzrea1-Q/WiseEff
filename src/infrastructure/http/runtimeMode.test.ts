@@ -1,5 +1,48 @@
-import { describe, expect, it } from "vitest";
-import { parseRuntimeMode, parseStaticApiAuthorization } from "./runtimeMode";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseRuntimeMode, parseStaticApiAuthorization, resolveWiseEffApiBaseUrl } from "./runtimeMode";
+
+describe("resolveWiseEffApiBaseUrl", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  it("uses the page origin in production when the configured API host differs", () => {
+    vi.stubEnv("MODE", "production");
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "https://tzrea1.com");
+    vi.stubGlobal("window", {
+      location: {
+        origin: "http://101.43.45.27"
+      }
+    } as Window);
+
+    expect(resolveWiseEffApiBaseUrl()).toBe("http://101.43.45.27");
+  });
+
+  it("keeps the configured API URL when it matches the page origin", () => {
+    vi.stubEnv("MODE", "production");
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "https://tzrea1.com");
+    vi.stubGlobal("window", {
+      location: {
+        origin: "https://tzrea1.com"
+      }
+    } as Window);
+
+    expect(resolveWiseEffApiBaseUrl()).toBe("https://tzrea1.com");
+  });
+
+  it("keeps the configured API URL outside production builds", () => {
+    vi.stubEnv("MODE", "development");
+    vi.stubEnv("VITE_WISEEFF_API_BASE_URL", "http://127.0.0.1:8787");
+    vi.stubGlobal("window", {
+      location: {
+        origin: "http://127.0.0.1:5173"
+      }
+    } as Window);
+
+    expect(resolveWiseEffApiBaseUrl()).toBe("http://127.0.0.1:8787");
+  });
+});
 
 describe("parseRuntimeMode", () => {
   it("defaults to api mode when unset", () => {

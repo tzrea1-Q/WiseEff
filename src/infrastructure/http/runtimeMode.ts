@@ -21,7 +21,36 @@ export function parseStaticApiAuthorization(value: string | undefined, environme
 }
 
 export const wiseEffRuntimeMode = parseRuntimeMode(import.meta.env.VITE_WISEEFF_RUNTIME_MODE, import.meta.env.MODE);
-export const wiseEffApiBaseUrl = import.meta.env.VITE_WISEEFF_API_BASE_URL ?? "http://127.0.0.1:8787";
+
+const defaultWiseEffApiBaseUrl = "http://127.0.0.1:8787";
+
+function readConfiguredWiseEffApiBaseUrl() {
+  return import.meta.env.VITE_WISEEFF_API_BASE_URL ?? defaultWiseEffApiBaseUrl;
+}
+
+/** Baked build-time API URL (tests and non-browser contexts). */
+export const wiseEffApiBaseUrl = readConfiguredWiseEffApiBaseUrl();
+
+/** Prefer the page origin in production when Caddy serves SPA and API on the same host (e.g. IP access before DNS). */
+export function resolveWiseEffApiBaseUrl() {
+  const configuredWiseEffApiBaseUrl = readConfiguredWiseEffApiBaseUrl();
+
+  if (typeof window === "undefined" || import.meta.env.MODE !== "production") {
+    return configuredWiseEffApiBaseUrl;
+  }
+
+  try {
+    const configuredOrigin = new URL(configuredWiseEffApiBaseUrl).origin;
+    if (configuredOrigin !== window.location.origin) {
+      return window.location.origin;
+    }
+  } catch {
+    // Keep configured URL when it is not a valid absolute URL.
+  }
+
+  return configuredWiseEffApiBaseUrl;
+}
+
 export const wiseEffApiAuthorization = parseStaticApiAuthorization(import.meta.env.VITE_WISEEFF_API_AUTHORIZATION, import.meta.env.MODE);
 
 export function parseXiaozeProactiveEnabled(value: string | undefined) {
