@@ -5,7 +5,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+$root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 if (-not $StagingDir) {
   $StagingDir = Join-Path $root "ops/self-hosted/bridge-installer/staging"
 }
@@ -38,7 +38,6 @@ Remove-Item $nodeDir.FullName -Recurse -Force
 
 Copy-Item (Join-Path $StagingDir "cli.js") (Join-Path $packDir "cli.js")
 Copy-Item (Join-Path $StagingDir "wiseeff-bridge.cmd") (Join-Path $packDir "wiseeff-bridge.cmd")
-Copy-Item (Join-Path $packDir "wiseeff-bridge.cmd") (Join-Path $packDir "wiseeff-bridge.exe")
 
 & iscc "/DSourceDir=$packDir" "/DMyAppVersion=$Version" (Join-Path $PSScriptRoot "WiseEffBridge.iss") "/O$outDir"
 Write-Host "Windows installer output: $outDir"

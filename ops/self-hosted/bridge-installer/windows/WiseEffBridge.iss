@@ -1,7 +1,7 @@
 #define MyAppName "WiseEff Bridge"
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "WiseEff"
-#define MyAppExeName "wiseeff-bridge.exe"
+#define MyAppLauncher "wiseeff-bridge.cmd"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -21,11 +21,11 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge"; ValueType: string; ValueData: "URL:WiseEff Bridge Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: string; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" --handle-url ""%1"""
+Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "service install"; Flags: runhidden
-Filename: "{app}\{#MyAppExeName}"; Parameters: "service start"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service install"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service start"; Flags: runhidden
 
 [Icons]
-Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "start"
+Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppLauncher}"; Parameters: "start"

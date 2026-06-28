@@ -20,7 +20,7 @@ describe("bridgeInstallPaths", () => {
         webOrigin: "http://101.43.45.27",
         code: "123456"
       })
-    ).toContain("wiseeff-bridge.exe");
+    ).toContain("wiseeff-bridge.cmd");
     expect(
       formatBridgeConnectFallbackCommand({
         platform: "darwin",
