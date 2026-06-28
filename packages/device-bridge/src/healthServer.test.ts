@@ -265,4 +265,22 @@ describe("healthServer", () => {
 
     await health.close();
   });
+
+  it("includes launcherPath in health JSON when provided", async () => {
+    const health = await startHealthServer({
+      port: 0,
+      getState: () => ({
+        paired: false,
+        connected: false,
+        launcherPath: "C:\\WiseEff\\Bridge\\wiseeff-bridge.cmd",
+        updatedAt: "2026-06-28T00:00:00.000Z"
+      })
+    });
+
+    const response = await requestHealth(health.url);
+    const body = JSON.parse(response.body);
+    expect(body.launcherPath).toBe("C:\\WiseEff\\Bridge\\wiseeff-bridge.cmd");
+
+    await health.close();
+  });
 });

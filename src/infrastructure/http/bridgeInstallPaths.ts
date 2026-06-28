@@ -16,9 +16,22 @@ export function formatBridgeConnectFallbackCommand(input: {
   serverUrl: string;
   webOrigin: string;
   code?: string;
+  cliPath?: string;
 }): string {
-  const base = `"${defaultBridgeCliPath(input.platform)}" connect --server ${input.serverUrl} --webOrigin ${input.webOrigin}`;
+  const launcher = input.cliPath?.trim() || defaultBridgeCliPath(input.platform);
+  const base = `"${launcher}" connect --server ${input.serverUrl} --webOrigin ${input.webOrigin}`;
   return input.code ? `${base} --code ${input.code}` : base;
+}
+
+export function bridgeCliDiscoveryHint(platform: DeviceBridgePlatform): string {
+  switch (platform) {
+    case "windows":
+      return "若下方路径无效，请在开始菜单右键「WiseEff Bridge」快捷方式 → 打开文件所在位置，使用该文件夹中的 wiseeff-bridge.cmd。";
+    case "darwin":
+      return "若下方路径无效，请使用 Bridge 安装目录或 /Applications/WiseEff Bridge.app 内的 wiseeff-bridge。";
+    default:
+      return "若下方路径无效，请使用 Bridge 安装目录中的 wiseeff-bridge 可执行文件。";
+  }
 }
 
 export function formatBridgeServiceInstallCommand(platform: DeviceBridgePlatform): string {
