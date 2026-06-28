@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveBridgePanelStatus, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError } from "./bridgePanelStatus";
+import { deriveBridgePanelStatus, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError, canConnectBridgeWithoutPairingCode } from "./bridgePanelStatus";
 import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
 
 const connectedHealth: LocalBridgeHealthState = {
@@ -15,7 +15,7 @@ const connectedHealth: LocalBridgeHealthState = {
 };
 
 describe("deriveBridgePanelStatus", () => {
-  it("returns bridge_blocked when remote page cannot reach local health endpoint", () => {
+  it("returns bridge_blocked when remote page cannot reach local health endpoint and no bridge is registered", () => {
     expect(
       deriveBridgePanelStatus({
         health: null,
@@ -23,6 +23,34 @@ describe("deriveBridgePanelStatus", () => {
         healthReachability: "possibly_blocked"
       })
     ).toBe("bridge_blocked");
+  });
+
+  it("returns not_running when a bridge is registered but local health is unreachable", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: null,
+        bridgeCount: 1,
+        healthReachability: "possibly_blocked"
+      })
+    ).toBe("not_running");
+  });
+
+  it("allows reconnect without pairing code when bridge is registered but not running", () => {
+    expect(
+      canConnectBridgeWithoutPairingCode({
+        panelStatus: "not_running",
+        hasRegisteredBridge: true
+      })
+    ).toBe(true);
+  });
+
+  it("requires pairing code for first-time bridge_blocked setup", () => {
+    expect(
+      canConnectBridgeWithoutPairingCode({
+        panelStatus: "bridge_blocked",
+        hasRegisteredBridge: false
+      })
+    ).toBe(false);
   });
 
   it("clears stale connect errors once bridge health reports online", () => {

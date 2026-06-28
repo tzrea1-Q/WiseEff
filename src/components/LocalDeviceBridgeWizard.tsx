@@ -23,7 +23,8 @@ import {
 } from "../infrastructure/http/bridgeReleaseSelection";
 import { resolveDeviceBridgeDownloadUrl } from "../infrastructure/http/deviceBridgeDownloadUrl";
 import type { DeviceBridgePairingCode, DeviceBridgeReleaseItem, LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
-import { bridgePanelStatusHint, shouldClearStaleBridgeConnectError, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
+import { bridgePanelStatusHint, canConnectBridgeWithoutPairingCode, needsLocalBridgeLaunch, needsPairingCodeForBridgeConnect, shouldClearStaleBridgeConnectError, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
+import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
 
 export type { BridgePanelStatus } from "./bridgePanelStatus";
@@ -56,6 +57,8 @@ type LocalDeviceBridgeWizardProps = {
   panelStatus: BridgePanelStatus;
   pairingStale?: boolean;
   pairingAuthFailure?: boolean;
+  hasRegisteredBridge?: boolean;
+  healthReachability?: LocalBridgeReachability;
   protocol: DebugConnectionProtocol;
   health: LocalBridgeHealthState | null;
   hostRelease: DeviceBridgeReleaseItem | null;
@@ -107,6 +110,8 @@ export function LocalDeviceBridgeWizard({
   panelStatus,
   pairingStale = false,
   pairingAuthFailure = false,
+  hasRegisteredBridge = false,
+  healthReachability = "offline",
   protocol,
   health,
   hostRelease,
@@ -126,14 +131,27 @@ export function LocalDeviceBridgeWizard({
   const [connecting, setConnecting] = useState(false);
   const [autoConnectPending, setAutoConnectPending] = useState(false);
   const [allowStep2WhileMissing, setAllowStep2WhileMissing] = useState(false);
+  const autoLaunchAttempted = useRef(false);
   const naturalStep = deriveNaturalWizardStep(panelStatus);
   const [viewStep, setViewStep] = useState<WizardViewStep>(naturalStep);
   const previousNaturalStep = useRef(naturalStep);
   const hostTarget = detectBrowserBridgeTarget();
   const showLoginAutoStart =
-    hostTarget?.platform === "darwin" && viewStep >= 2 && (health?.paired === true || panelStatus === "not_running");
+    hostTarget?.platform === "darwin" &&
+    viewStep >= 2 &&
+    (health?.paired === true ||
+      panelStatus === "not_running" ||
+      panelStatus === "not_connected" ||
+      panelStatus === "bridge_blocked" ||
+      panelStatus === "missing_bridge");
   const showWindowsServiceHint =
-    hostTarget?.platform === "windows" && viewStep >= 2 && (health?.paired === true || panelStatus === "not_running");
+    hostTarget?.platform === "windows" &&
+    viewStep >= 2 &&
+    (health?.paired === true ||
+      panelStatus === "not_running" ||
+      panelStatus === "not_connected" ||
+      panelStatus === "bridge_blocked" ||
+      panelStatus === "missing_bridge");
   const hostTargetLabel = bridgeHostTargetLabel(hostTarget);
   const hasInstallCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
 
@@ -180,12 +198,22 @@ export function LocalDeviceBridgeWizard({
       return;
     }
 
-    if (!pairingCode && (panelStatus === "not_paired" || panelStatus === "missing_bridge" || pairingStale || pairingAuthFailure)) {
+    const needsPairingCode = needsPairingCodeForBridgeConnect({
+      panelStatus,
+      pairingStale,
+      pairingAuthFailure
+    });
+    const canConnectWithoutPairingCode = canConnectBridgeWithoutPairingCode({
+      panelStatus,
+      hasRegisteredBridge
+    });
+
+    if (!pairingCode && needsPairingCode) {
       onConnectError("配对码尚未就绪，请稍后重试。");
       return;
     }
 
-    if (!pairingCode && panelStatus !== "not_connected" && panelStatus !== "not_running") {
+    if (!pairingCode && !canConnectWithoutPairingCode) {
       onConnectError("配对码尚未就绪，请稍后重试。");
       return;
     }
@@ -200,13 +228,10 @@ export function LocalDeviceBridgeWizard({
     try {
       const serverUrl = resolveBridgeServerUrl();
       const webOrigin = resolveBridgeWebOrigin();
-      const needsPairingCode = panelStatus === "not_paired" || panelStatus === "missing_bridge" || pairingStale || pairingAuthFailure;
       const connectUrl =
-        needsPairingCode
-          ? buildBridgeConnectUrl(serverUrl, pairingCode!.code, webOrigin)
-          : panelStatus === "not_connected" || panelStatus === "not_running"
-            ? buildBridgeConnectUrl(serverUrl, undefined, webOrigin)
-            : buildBridgeConnectUrl(serverUrl, pairingCode!.code, webOrigin);
+        needsPairingCode && pairingCode
+          ? buildBridgeConnectUrl(serverUrl, pairingCode.code, webOrigin)
+          : buildBridgeConnectUrl(serverUrl, undefined, webOrigin);
       launchBridgeConnect(connectUrl);
       const nextHealth = await pollLocalBridgeHealth({});
       const refreshSnapshot = await onRefresh();
@@ -238,20 +263,35 @@ export function LocalDeviceBridgeWizard({
     pairingCode,
     pairingStale,
     panelStatus,
+    hasRegisteredBridge,
     viewStep
   ]);
 
   useEffect(() => {
-    if (!autoConnectPending || viewStep !== 2 || pairingCodeLoading || !pairingCode || connecting) {
+    if (!autoConnectPending || viewStep !== 2 || pairingCodeLoading || connecting) {
       return;
     }
-    if (panelStatus !== "missing_bridge" && panelStatus !== "not_running" && panelStatus !== "not_paired") {
+    if (needsPairingCodeForBridgeConnect({ panelStatus, pairingStale, pairingAuthFailure }) && !pairingCode) {
+      return;
+    }
+    if (panelStatus !== "missing_bridge" && panelStatus !== "not_running" && panelStatus !== "not_paired" && panelStatus !== "bridge_blocked") {
       setAutoConnectPending(false);
       return;
     }
     setAutoConnectPending(false);
     void handleConnect();
-  }, [autoConnectPending, viewStep, pairingCode, pairingCodeLoading, connecting, panelStatus, handleConnect]);
+  }, [autoConnectPending, viewStep, pairingCode, pairingCodeLoading, connecting, panelStatus, pairingStale, pairingAuthFailure, handleConnect]);
+
+  useEffect(() => {
+    if (viewStep !== 2 || autoLaunchAttempted.current || connecting || checking) {
+      return;
+    }
+    if (panelStatus !== "not_running" && panelStatus !== "not_connected") {
+      return;
+    }
+    autoLaunchAttempted.current = true;
+    void handleConnect();
+  }, [viewStep, panelStatus, connecting, checking, handleConnect]);
 
   const primaryLabel =
     viewStep === 2
@@ -259,7 +299,9 @@ export function LocalDeviceBridgeWizard({
         ? "重新配对"
         : panelStatus === "not_connected"
           ? "重新连接"
-          : "连接本机"
+          : needsLocalBridgeLaunch(panelStatus)
+            ? "启动并连接本机"
+            : "连接本机"
       : viewStep === 3
         ? panelStatus === "tools_missing"
           ? "安装调试工具"
@@ -269,7 +311,11 @@ export function LocalDeviceBridgeWizard({
   const statusHint =
     viewStep === 1 && naturalStep > 1
       ? "可下载安装包升级或重装 Bridge，完成后点击步骤 2 继续连接。"
-      : bridgePanelStatusHint(panelStatus, protocol, { pairingStale, authFailure: pairingAuthFailure });
+      : bridgePanelStatusHint(panelStatus, protocol, {
+          pairingStale,
+          authFailure: pairingAuthFailure,
+          healthReachability
+        });
   const hostInstaller =
     hostRelease?.artifactKind === "installer"
       ? hostRelease
@@ -408,7 +454,7 @@ export function LocalDeviceBridgeWizard({
               </p>
             )}
 
-            {panelStatus === "missing_bridge" ? (
+            {needsLocalBridgeLaunch(panelStatus) ? (
               <p className="local-device-bridge-panel__already-installed">
                 {pairingCodeLoading ? (
                   <span className="local-device-bridge-panel__install-desc">正在生成配对码...</span>
@@ -426,7 +472,9 @@ export function LocalDeviceBridgeWizard({
                     setAutoConnectPending(true);
                   }}
                 >
-                  Bridge 已安装但未运行？点此自动启动并配对
+                  {panelStatus === "missing_bridge"
+                    ? "Bridge 已安装但未运行？点此自动启动并配对"
+                    : "Bridge 未运行？点此自动启动并连接"}
                 </button>
               </p>
             ) : null}
@@ -439,23 +487,23 @@ export function LocalDeviceBridgeWizard({
           <p className="local-device-bridge-panel__error" role="alert">{health.pairingError}</p>
         ) : null}
 
-        {viewStep === 2 && pairingCode && panelStatus === "missing_bridge" ? (
+        {viewStep === 2 && needsLocalBridgeLaunch(panelStatus) ? (
           <p className="local-device-bridge-panel__install-desc" role="status">
-            配对码：<strong>{pairingCode.code}</strong>
-            {connectError.includes("未检测到 Bridge 上线") ? (
+            {pairingCode ? (
               <>
-                {" "}
-                。若网页唤起失败，请在终端执行：
-                <code className="local-device-bridge-panel__fallback-command">
-                  {formatBridgeConnectFallbackCommand({
-                    platform: hostTarget.platform,
-                    serverUrl: resolveBridgeServerUrl(),
-                    webOrigin: resolveBridgeWebOrigin(),
-                    code: pairingCode.code
-                  })}
-                </code>
+                配对码：<strong>{pairingCode.code}</strong>
+                {" · "}
               </>
             ) : null}
+            若网页未能自动打开 Bridge，请在终端执行：
+            <code className="local-device-bridge-panel__fallback-command">
+              {formatBridgeConnectFallbackCommand({
+                platform: hostTarget.platform,
+                serverUrl: resolveBridgeServerUrl(),
+                webOrigin: resolveBridgeWebOrigin(),
+                code: pairingCode?.code
+              })}
+            </code>
           </p>
         ) : null}
 

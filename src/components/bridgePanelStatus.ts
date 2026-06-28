@@ -50,10 +50,13 @@ export function deriveBridgePanelStatus(input: {
   healthReachability?: LocalBridgeReachability;
 }): BridgePanelStatus {
   if (!input.health) {
+    if (input.bridgeCount > 0) {
+      return "not_running";
+    }
     if (input.healthReachability === "possibly_blocked") {
       return "bridge_blocked";
     }
-    return input.bridgeCount > 0 ? "not_running" : "missing_bridge";
+    return "missing_bridge";
   }
   if (!input.health.paired) {
     return "not_paired";
@@ -87,6 +90,42 @@ export function deriveBridgePanelStatus(input: {
 
 export function isBridgeOnlinePanelStatus(status: BridgePanelStatus): boolean {
   return status === "online_no_device" || status === "tools_missing" || status === "bridges_with_targets";
+}
+
+export function needsLocalBridgeLaunch(status: BridgePanelStatus): boolean {
+  return status === "missing_bridge" || status === "not_running" || status === "bridge_blocked";
+}
+
+export function canConnectBridgeWithoutPairingCode(input: {
+  panelStatus: BridgePanelStatus;
+  hasRegisteredBridge: boolean;
+}): boolean {
+  if (input.panelStatus === "not_connected" || input.panelStatus === "not_running") {
+    return true;
+  }
+  return input.panelStatus === "bridge_blocked" && input.hasRegisteredBridge;
+}
+
+export function needsPairingCodeForBridgeConnect(input: {
+  panelStatus: BridgePanelStatus;
+  pairingStale?: boolean;
+  pairingAuthFailure?: boolean;
+}): boolean {
+  if (input.pairingStale || input.pairingAuthFailure) {
+    return true;
+  }
+  return input.panelStatus === "not_paired" || input.panelStatus === "missing_bridge";
+}
+
+export function shouldFetchBridgePairingCode(input: {
+  panelStatus: BridgePanelStatus;
+  pairingStale?: boolean;
+  pairingAuthFailure?: boolean;
+}): boolean {
+  return (
+    needsPairingCodeForBridgeConnect(input) ||
+    input.panelStatus === "bridge_blocked"
+  );
 }
 
 export function shouldClearStaleBridgeConnectError(input: {
@@ -137,7 +176,7 @@ export function formatDetectFailureMessage(input: {
 export function bridgePanelStatusHint(
   status: BridgePanelStatus,
   protocol: DebugConnectionProtocol = "hdc",
-  options: { pairingStale?: boolean; authFailure?: boolean } = {}
+  options: { pairingStale?: boolean; authFailure?: boolean; healthReachability?: LocalBridgeReachability } = {}
 ) {
   if (options.pairingStale && status === "not_paired") {
     return "本地 Bridge 配对已失效，请点击连接本机并使用新的配对码重新配对。";
@@ -158,12 +197,15 @@ export function bridgePanelStatusHint(
     case "not_connected":
       return "Bridge 已配对，但尚未连接到服务器。";
     case "not_running":
-      return "已配对 Bridge，但本地服务未运行。";
+      if (options.healthReachability === "possibly_blocked") {
+        return "已配对 Bridge，但本地服务未运行或浏览器尚未允许访问本机网络。请点击「启动并连接本机」，并在浏览器提示中允许「本地网络」。";
+      }
+      return "已配对 Bridge，但本地服务未运行。请点击「启动并连接本机」自动打开 Bridge。";
     case "not_paired":
       return "Bridge 已启动但尚未配对，请点击连接。";
     case "missing_bridge":
       return "未检测到本地 Bridge 在运行（127.0.0.1:18787 无响应）。若已安装，请点击下方按钮进入步骤 2 自动启动并配对。";
     case "bridge_blocked":
-      return "浏览器可能阻止访问本机 Bridge（127.0.0.1:18787）。若 Bridge 已在运行，请在浏览器提示中允许「本地网络」访问，或检查站点权限后重试。";
+      return "未检测到本地 Bridge。若已安装，请点击「启动并连接本机」；若浏览器提示访问本地网络，请选择允许。";
   }
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
-import { deriveBridgePanelStatus, formatDetectFailureMessage, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired } from "./components/bridgePanelStatus";
+import { deriveBridgePanelStatus, formatDetectFailureMessage, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
 import { NodeOperationHistoryPanel, type NodeOperationEvent } from "./components/NodeOperationHistoryPanel";
 import { WorkbenchSheet } from "./components/WorkbenchSheet";
 import { useTopBarActions } from "./components/layout";
@@ -707,7 +707,7 @@ function LocalDeviceBridgePanel({
   }, [panelStatus, refreshBridgeState]);
 
   useEffect(() => {
-    if (panelStatus !== "missing_bridge" && panelStatus !== "not_paired") {
+    if (!shouldFetchBridgePairingCode({ panelStatus, pairingStale, pairingAuthFailure: pairingAuthFailure })) {
       return;
     }
 
@@ -733,7 +733,7 @@ function LocalDeviceBridgePanel({
     return () => {
       cancelled = true;
     };
-  }, [panelStatus]);
+  }, [panelStatus, pairingStale, pairingAuthFailure]);
 
   const handleRenameBridge = async (bridge: DeviceBridgeRecord) => {
     const draft = (renameDraftById[bridge.id] ?? bridge.machineLabel).trim();
@@ -778,6 +778,8 @@ function LocalDeviceBridgePanel({
         panelStatus={panelStatus}
         pairingStale={pairingStale}
         pairingAuthFailure={pairingAuthFailure}
+        hasRegisteredBridge={bridges.some((bridge) => !bridge.revokedAt)}
+        healthReachability={healthReachability}
         protocol={protocol}
         health={health}
         hostRelease={hostRelease}

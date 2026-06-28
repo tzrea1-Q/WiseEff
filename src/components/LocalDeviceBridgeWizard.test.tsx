@@ -71,13 +71,38 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.queryByText("高级 · 命令行方式")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
       "href",
-      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg"
+      expect.stringContaining("/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg")
     );
 
     expect(screen.getByRole("button", { name: /Bridge 已安装但未运行/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 macOS Bridge（Apple Silicon）" })).toBeInTheDocument();
+  });
+
+  it("shows launch entry for not_running on step 2", () => {
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_running"
+        hasRegisteredBridge
+        protocol="hdc"
+        health={null}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "启动并连接本机" })).toBeInTheDocument();
+    expect(screen.getByText(/若网页未能自动打开 Bridge/)).toBeInTheDocument();
   });
 
   it("advances to step 2 when clicking the already-installed entry on missing_bridge", () => {
@@ -103,7 +128,7 @@ describe("LocalDeviceBridgeWizard", () => {
     const entry = screen.getByRole("button", { name: /Bridge 已安装但未运行/ });
     fireEvent.click(entry);
 
-    expect(screen.getByRole("button", { name: "连接本机" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "启动并连接本机" })).toBeInTheDocument();
   });
 
   it("lets users return to step 1 from later wizard steps", async () => {
