@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveBridgePanelStatus, formatDetectFailureMessage, isToolMissingDetectError } from "./bridgePanelStatus";
+import { deriveBridgePanelStatus, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError } from "./bridgePanelStatus";
 import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
 
 const connectedHealth: LocalBridgeHealthState = {
@@ -15,6 +15,38 @@ const connectedHealth: LocalBridgeHealthState = {
 };
 
 describe("deriveBridgePanelStatus", () => {
+  it("returns bridge_blocked when remote page cannot reach local health endpoint", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: null,
+        bridgeCount: 0,
+        healthReachability: "possibly_blocked"
+      })
+    ).toBe("bridge_blocked");
+  });
+
+  it("clears stale connect errors once bridge health reports online", () => {
+    expect(
+      shouldClearStaleBridgeConnectError({
+        connectError: "30 秒内未检测到 Bridge 上线。",
+        health: {
+          ok: true,
+          paired: true,
+          connected: true,
+          updatedAt: "2026-06-28T00:00:00.000Z"
+        },
+        panelStatus: "online_no_device"
+      })
+    ).toBe(true);
+    expect(
+      shouldClearStaleBridgeConnectError({
+        connectError: "",
+        health: connectedHealth,
+        panelStatus: "online_no_device"
+      })
+    ).toBe(false);
+  });
+
   it("returns not_paired when local bridge id is missing from registered server bridges", () => {
     expect(
       deriveBridgePanelStatus({

@@ -30,16 +30,26 @@ cp "$STAGING_DIR/package.json" "$RESOURCES/package.json"
 cp "$STAGING_DIR/wiseeff-bridge" "$RESOURCES/wiseeff-bridge"
 chmod +x "$RESOURCES/wiseeff-bridge"
 
-cat > "$MACOS_BIN" <<'LAUNCHER'
+SWIFT_SRC="$ROOT/ops/self-hosted/bridge-installer/macos/BridgeAppMain.swift"
+if command -v swiftc >/dev/null 2>&1; then
+  swiftc "$SWIFT_SRC" -o "$MACOS_BIN" -framework Cocoa
+  chmod +x "$MACOS_BIN"
+else
+  cat > "$MACOS_BIN" <<'LAUNCHER'
 #!/bin/bash
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/../Resources" && pwd)"
-if [[ $# -eq 1 && "$1" == wiseeff-bridge://* ]]; then
+LOG="${HOME:-/tmp}/.wiseeff/bridge-launch.log"
+mkdir -p "$(dirname "$LOG")"
+printf '%s app-launcher argv=%q\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*" >> "$LOG"
+if [[ $# -ge 1 && "$1" == wiseeff-bridge://* ]]; then
   exec "$DIR/wiseeff-bridge" --handle-url "$1"
 fi
 exec "$DIR/wiseeff-bridge" "$@"
 LAUNCHER
-chmod +x "$MACOS_BIN"
+  chmod +x "$MACOS_BIN"
+  echo "WARN: swiftc unavailable; built bash launcher (URL scheme may not receive argv from browsers)" >&2
+fi
 
 xattr -cr "$APP_DIR" 2>/dev/null || true
 dot_clean -m "$APP_DIR" 2>/dev/null || true

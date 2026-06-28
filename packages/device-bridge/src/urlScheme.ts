@@ -40,6 +40,18 @@ export function parseInstallToolsUrl(raw: string) {
   return { server: normalizeConnectServerUrl(server), protocol };
 }
 
+export function buildInstallServiceUrl() {
+  return "wiseeff-bridge://install-service";
+}
+
+export function parseInstallServiceUrl(raw: string) {
+  const url = new URL(raw);
+  if (url.protocol !== "wiseeff-bridge:" || url.hostname !== "install-service") {
+    throw new Error("Unsupported bridge URL");
+  }
+  return { kind: "install-service" as const };
+}
+
 export function parseBridgeUrl(raw: string) {
   const url = new URL(raw);
   if (url.protocol !== "wiseeff-bridge:") {
@@ -51,11 +63,18 @@ export function parseBridgeUrl(raw: string) {
   if (url.hostname === "install-tools") {
     return { kind: "install-tools" as const, ...parseInstallToolsUrl(raw) };
   }
+  if (url.hostname === "install-service") {
+    return parseInstallServiceUrl(raw);
+  }
   throw new Error("Unsupported bridge URL");
 }
 
 function isPairingCode(code: string) {
   return /^\d{6}$/.test(code);
+}
+
+function isIpv4Address(host: string) {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host);
 }
 
 export function normalizeConnectServerUrl(raw: string) {
@@ -73,7 +92,13 @@ export function isAllowedConnectServerUrl(raw: string) {
   }
   if (url.protocol === "http:") {
     const host = url.hostname.toLowerCase();
-    return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
+    if (host === "localhost" || host === "127.0.0.1" || host === "[::1]") {
+      return true;
+    }
+    // IP-mode deployments (pre-ICP HTTP) use plain http against a public IPv4 address.
+    if (isIpv4Address(host)) {
+      return true;
+    }
   }
   return false;
 }

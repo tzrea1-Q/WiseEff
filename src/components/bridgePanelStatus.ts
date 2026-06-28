@@ -1,7 +1,10 @@
 import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
 
+import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
+
 export type BridgePanelStatus =
   | "missing_bridge"
+  | "bridge_blocked"
   | "not_paired"
   | "not_running"
   | "not_connected"
@@ -44,8 +47,12 @@ export function deriveBridgePanelStatus(input: {
   registeredBridgeIds?: string[];
   target?: string;
   protocol?: DebugConnectionProtocol;
+  healthReachability?: LocalBridgeReachability;
 }): BridgePanelStatus {
   if (!input.health) {
+    if (input.healthReachability === "possibly_blocked") {
+      return "bridge_blocked";
+    }
     return input.bridgeCount > 0 ? "not_running" : "missing_bridge";
   }
   if (!input.health.paired) {
@@ -76,6 +83,21 @@ export function deriveBridgePanelStatus(input: {
     return "online_no_device";
   }
   return "bridges_with_targets";
+}
+
+export function isBridgeOnlinePanelStatus(status: BridgePanelStatus): boolean {
+  return status === "online_no_device" || status === "tools_missing" || status === "bridges_with_targets";
+}
+
+export function shouldClearStaleBridgeConnectError(input: {
+  connectError: string;
+  health: LocalBridgeHealthState | null;
+  panelStatus: BridgePanelStatus;
+}): boolean {
+  if (!input.connectError) {
+    return false;
+  }
+  return Boolean(input.health?.connected) || isBridgeOnlinePanelStatus(input.panelStatus);
 }
 
 const TOOL_MISSING_PATTERNS = [
@@ -140,6 +162,8 @@ export function bridgePanelStatusHint(
     case "not_paired":
       return "Bridge 已启动但尚未配对，请点击连接。";
     case "missing_bridge":
-      return "未检测到本地 Bridge，请先安装。";
+      return "未检测到本地 Bridge 在运行（127.0.0.1:18787 无响应）。若已安装，请点击下方按钮进入步骤 2 自动启动并配对。";
+    case "bridge_blocked":
+      return "浏览器可能阻止访问本机 Bridge（127.0.0.1:18787）。若 Bridge 已在运行，请在浏览器提示中允许「本地网络」访问，或检查站点权限后重试。";
   }
 }

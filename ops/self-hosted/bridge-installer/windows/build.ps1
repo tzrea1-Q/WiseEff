@@ -27,19 +27,17 @@ $packDir = Join-Path $env:TEMP "wiseeff-bridge-win-pack"
 Remove-Item -Recurse -Force $packDir -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $packDir | Out-Null
 Expand-Archive -Path $nodeZip -DestinationPath $packDir -Force
+
+$nodeDir = Get-ChildItem $packDir -Directory | Where-Object { $_.Name -like "node-v*" } | Select-Object -First 1
+if (-not $nodeDir) {
+  throw "Node.js archive did not contain an expected node-v* directory."
+}
+
+Copy-Item (Join-Path $nodeDir.FullName "node.exe") (Join-Path $packDir "node.exe")
+Remove-Item $nodeDir.FullName -Recurse -Force
+
 Copy-Item (Join-Path $StagingDir "cli.js") (Join-Path $packDir "cli.js")
 Copy-Item (Join-Path $StagingDir "wiseeff-bridge.cmd") (Join-Path $packDir "wiseeff-bridge.cmd")
-
-@'
-const { spawn } = require("node:child_process");
-const path = require("node:path");
-const nodeExe = path.join(__dirname, "node.exe");
-const cliPath = path.join(__dirname, "cli.js");
-const child = spawn(nodeExe, [cliPath, ...process.argv.slice(2)], { stdio: "inherit", windowsHide: false });
-child.on("exit", (code) => process.exit(code ?? 0));
-'@ | Set-Content -Encoding UTF8 (Join-Path $packDir "wiseeff-bridge.exe.js")
-
-# Launcher exe stub: invoke via node.exe + cli.js through cmd wrapper renamed below
 Copy-Item (Join-Path $packDir "wiseeff-bridge.cmd") (Join-Path $packDir "wiseeff-bridge.exe")
 
 & iscc "/DSourceDir=$packDir" "/DMyAppVersion=$Version" (Join-Path $PSScriptRoot "WiseEffBridge.iss") "/O$outDir"

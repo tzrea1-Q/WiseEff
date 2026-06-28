@@ -1,0 +1,14 @@
+@echo off
+setlocal
+set "DIR=%~dp0"
+if exist "%DIR%node.exe" (
+  "%DIR%node.exe" "%DIR%cli.js" %*
+  exit /b %ERRORLEVEL%
+)
+where node >nul 2>nul
+if errorlevel 1 (
+  echo wiseeff-bridge: Node.js not found. Install Node 20+ or reinstall WiseEff Bridge.
+  exit /b 127
+)
+node "%DIR%cli.js" %*
+exit /b %ERRORLEVEL%

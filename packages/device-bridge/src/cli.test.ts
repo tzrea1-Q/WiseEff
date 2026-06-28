@@ -136,22 +136,34 @@ describe("device bridge cli", () => {
     expect(capture.logs.some((line) => line.includes("bridgeStatus=connected"))).toBe(true);
   });
 
-  it("rejects service commands on non-Windows platforms", async () => {
+  it("rejects service commands on unsupported platforms", async () => {
     const capture = createStdoutCapture();
-    const originalPlatform = process.platform;
+    const exitCode = await runCli(["service", "install"], {
+      stdout: capture.stdout,
+      platform: "linux"
+    });
 
-    Object.defineProperty(process, "platform", { value: "darwin" });
+    expect(exitCode).toBe(1);
+    expect(capture.errors.some((line) => line.includes("only supported on Windows and macOS"))).toBe(true);
+  });
 
-    try {
-      const exitCode = await runCli(["service", "install"], {
-        stdout: capture.stdout
-      });
+  it("installs macOS launch agent via service install", async () => {
+    const capture = createStdoutCapture();
+    const bridgeBin = "/Applications/WiseEff Bridge.app/Contents/Resources/wiseeff-bridge";
+    const existsSpy = vi.spyOn(await import("node:fs"), "existsSync").mockImplementation((target) => target === bridgeBin);
 
-      expect(exitCode).toBe(1);
-      expect(capture.errors.some((line) => line.includes("only supported on Windows"))).toBe(true);
-    } finally {
-      Object.defineProperty(process, "platform", { value: originalPlatform });
-    }
+    const exitCode = await runCli(["service", "install"], {
+      stdout: capture.stdout,
+      platform: "darwin",
+      cliPath: "/Applications/WiseEff Bridge.app/Contents/Resources/cli.js",
+      execFile: vi.fn(async () => ({ stdout: "", stderr: "" })),
+      mkdir: vi.fn(async () => undefined),
+      writeFile: vi.fn(async () => undefined)
+    });
+    existsSpy.mockRestore();
+
+    expect(exitCode).toBe(0);
+    expect(capture.logs.some((line) => line.includes("LaunchAgent plist"))).toBe(true);
   });
 
   it("connect command requires server flag", async () => {

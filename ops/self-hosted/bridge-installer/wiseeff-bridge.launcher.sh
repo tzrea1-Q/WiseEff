@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
+LOG="${HOME:-/tmp}/.wiseeff/bridge-launch.log"
+mkdir -p "$(dirname "$LOG")"
+printf '%s wiseeff-bridge argv=%q\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*" >> "$LOG"
 
 resolve_node() {
   if command -v node >/dev/null 2>&1; then
@@ -20,7 +23,11 @@ resolve_node() {
     "/usr/local/bin/node"
   )
   if [[ -n "$user_home" ]]; then
-    candidates+=("$user_home/.local/bin/node" "$user_home/.nvm/current/bin/node")
+    candidates+=(
+      "$user_home/.local/bin/node"
+      "$user_home/.nvm/current/bin/node"
+      "$user_home/.fnm/current/bin/node"
+    )
   fi
   candidates+=("/usr/bin/node")
 
@@ -31,11 +38,19 @@ resolve_node() {
       return 0
     fi
   done
+
+  local login_node
+  login_node="$(/usr/bin/env -i HOME="${HOME:-$user_home}" USER="${USER:-$console_user}" /bin/bash -lc 'command -v node' 2>/dev/null || true)"
+  if [[ -n "$login_node" && -x "$login_node" ]]; then
+    echo "$login_node"
+    return 0
+  fi
   return 1
 }
 
 NODE_BIN="$(resolve_node)" || {
   echo "wiseeff-bridge: Node.js not found. Install Node 20+ or add it to PATH." >&2
+  printf '%s wiseeff-bridge ERROR=node-not-found\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$LOG"
   exit 127
 }
 

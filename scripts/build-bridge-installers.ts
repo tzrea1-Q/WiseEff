@@ -67,16 +67,16 @@ async function stageBundle() {
     path.join(rootDir, "ops", "self-hosted", "bridge-installer", "wiseeff-bridge.launcher.sh"),
     "utf8"
   );
+  const windowsCmd = await readFile(
+    path.join(rootDir, "ops", "self-hosted", "bridge-installer", "wiseeff-bridge.cmd.template"),
+    "utf8"
+  );
   await rm(stagingDir, { recursive: true, force: true });
   await mkdir(stagingDir, { recursive: true });
   await copyFile(bundlePath, path.join(stagingDir, "cli.js"));
   await writeFile(path.join(stagingDir, "package.json"), BRIDGE_PACKAGE_JSON);
   await writeFile(path.join(stagingDir, "wiseeff-bridge"), launcher, "utf8");
-  await writeFile(
-    path.join(stagingDir, "wiseeff-bridge.cmd"),
-    `@echo off\r\nset DIR=%~dp0\r\nnode "%DIR%cli.js" %*\r\n`,
-    "utf8"
-  );
+  await writeFile(path.join(stagingDir, "wiseeff-bridge.cmd"), windowsCmd, "utf8");
 }
 
 async function buildWindowsInstaller() {

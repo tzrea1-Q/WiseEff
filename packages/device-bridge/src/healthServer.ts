@@ -75,6 +75,13 @@ function applyOpenCorsHeaders(res: import("node:http").ServerResponse, origin: s
   res.setHeader("Vary", "Origin");
 }
 
+function applyPrivateNetworkAccess(res: import("node:http").ServerResponse, req: import("node:http").IncomingMessage) {
+  const requestPrivateNetwork = req.headers["access-control-request-private-network"];
+  if (requestPrivateNetwork === "true") {
+    res.setHeader("Access-Control-Allow-Private-Network", "true");
+  }
+}
+
 export function startHealthServer(input: {
   getState: () => BridgeHealthState;
   host?: string;
@@ -99,6 +106,7 @@ export function startHealthServer(input: {
           res.setHeader("Access-Control-Allow-Headers", "content-type");
         } else {
           applyOpenCorsHeaders(res, origin);
+          applyPrivateNetworkAccess(res, req);
           res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
         }
         res.end();
