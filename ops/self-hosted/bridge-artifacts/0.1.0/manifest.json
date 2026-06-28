@@ -7,7 +7,7 @@
       "arch": "amd64",
       "version": "0.1.0",
       "artifact": "wiseeff-bridge_0.1.0_windows_amd64.zip",
-      "sha256": "7b7212fe35fa44308fe84ce068cea69446631247b9e0b4620e04811d96ffa63f",
+      "sha256": "9a7e0a85a3e30d2a7d035561533a922d3663f07f24e88c525d6dcbbf1205c755",
       "artifactKind": "portable"
     },
     {
@@ -15,7 +15,7 @@
       "arch": "arm64",
       "version": "0.1.0",
       "artifact": "wiseeff-bridge_0.1.0_darwin_arm64.tar.gz",
-      "sha256": "985c2fff486b12844f2256f18373f660477c303dbd887cf549423d1b18ca47f2",
+      "sha256": "a31f07ae05434f919010376225fd67333a6578b6e98ea71b130b804a3b7e3938",
       "artifactKind": "portable"
     },
     {
@@ -23,7 +23,7 @@
       "arch": "amd64",
       "version": "0.1.0",
       "artifact": "wiseeff-bridge_0.1.0_darwin_amd64.tar.gz",
-      "sha256": "985c2fff486b12844f2256f18373f660477c303dbd887cf549423d1b18ca47f2",
+      "sha256": "a31f07ae05434f919010376225fd67333a6578b6e98ea71b130b804a3b7e3938",
       "artifactKind": "portable"
     },
     {

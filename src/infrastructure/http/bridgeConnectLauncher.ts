@@ -19,6 +19,34 @@ export function launchBridgeConnect(url: string) {
   window.location.href = url;
 }
 
+export function buildBridgeInstallServiceUrl() {
+  return "wiseeff-bridge://install-service";
+}
+
+export function launchBridgeInstallService() {
+  window.location.href = buildBridgeInstallServiceUrl();
+}
+
+export type LocalBridgeReachability = "ok" | "offline" | "possibly_blocked";
+
+export type LocalBridgeProbeResult = {
+  health: LocalBridgeHealthState | null;
+  reachability: LocalBridgeReachability;
+};
+
+export function classifyLocalBridgeReachability(pageOrigin: string): LocalBridgeReachability {
+  return isRemoteWebOrigin(pageOrigin) ? "possibly_blocked" : "offline";
+}
+
+function isRemoteWebOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return host !== "localhost" && host !== "127.0.0.1" && host !== "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -76,6 +104,7 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
     serverUrl: typeof body.serverUrl === "string" ? body.serverUrl : undefined,
     tokenExpiresAt: typeof body.tokenExpiresAt === "string" ? body.tokenExpiresAt : undefined,
     lastError: typeof body.lastError === "string" ? body.lastError : undefined,
+    pairingError: typeof body.pairingError === "string" ? body.pairingError : undefined,
     updatedAt: body.updatedAt,
     tools,
     toolsInstall
@@ -83,15 +112,29 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
 }
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch = fetch): Promise<LocalBridgeHealthState | null> {
+  const result = await probeLocalBridgeHealthDetailed(fetchImpl);
+  return result.health;
+}
+
+export async function probeLocalBridgeHealthDetailed(
+  fetchImpl: typeof fetch = fetch,
+  pageOrigin: string = typeof window === "undefined" ? "" : window.location.origin
+): Promise<LocalBridgeProbeResult> {
   try {
     const response = await fetchImpl(resolveLocalBridgeHealthUrl());
     if (!response.ok) {
-      return null;
+      return { health: null, reachability: "offline" };
     }
     const body = (await response.json()) as Record<string, unknown>;
-    return parseLocalBridgeHealthBody(body);
+    return {
+      health: parseLocalBridgeHealthBody(body),
+      reachability: "ok"
+    };
   } catch {
-    return null;
+    return {
+      health: null,
+      reachability: classifyLocalBridgeReachability(pageOrigin)
+    };
   }
 }
 

@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { resolveProxyUrl } from "./proxyFetch";
+import { shouldBypassProxyForUrl } from "./proxyBypass";
 
 type RpcMethod = "bridge.getCapabilities" | "debug.detectTargets" | "debug.readNode" | "debug.writeNode";
 
@@ -51,7 +52,10 @@ type CreateBridgeWsClientOptions = {
   };
   reconnectDelayMs?: number;
   pingIntervalMs?: number;
-  websocketFactory?: (url: string, options: { headers: Record<string, string> }) => WebSocket;
+  websocketFactory?: (
+    url: string,
+    options: { headers: Record<string, string> }
+  ) => WebSocket | Promise<WebSocket>;
   now?: () => Date;
   onStatusChange?: (status: BridgeWsClientStatus) => void;
   logger?: Pick<Console, "info" | "error">;
@@ -101,6 +105,9 @@ export function createBridgeWsClient(options: CreateBridgeWsClientOptions) {
       return proxyAgent;
     }
     proxyResolved = true;
+    if (shouldBypassProxyForUrl(wsUrl, options.serverUrl)) {
+      return undefined;
+    }
     const proxyUrl = await resolveProxyUrl();
     if (proxyUrl) {
       try {
@@ -196,53 +203,74 @@ export function createBridgeWsClient(options: CreateBridgeWsClientOptions) {
   }
 
   function connect() {
-    const nextSocket = websocketFactory(wsUrl, {
-      headers: {
-        Authorization: `Bridge ${options.bridgeToken}`
-      }
-    });
-    socket = nextSocket;
-
-    nextSocket.on("open", () => {
-      logger.info(`[wiseeff-bridge] connected ${wsUrl}`);
-      publishStatus({ connected: true, lastError: undefined });
-    });
-
-    nextSocket.on("message", (raw) => {
-      const payload = typeof raw === "string" ? raw : raw.toString("utf8");
-      const parsed = safeParseJson(payload);
-      if (!parsed) {
+    void (async () => {
+      let nextSocket: WebSocket;
+      try {
+        nextSocket = await Promise.resolve(
+          websocketFactory(wsUrl, {
+            headers: {
+              Authorization: `Bridge ${options.bridgeToken}`
+            }
+          })
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        publishStatus({ connected: false, lastError: message });
+        logger.error(`[wiseeff-bridge] websocket connect failed: ${message}`);
+        scheduleReconnect();
         return;
       }
 
-      if (isBridgeHelloMessage(parsed)) {
-        handleHello(parsed);
+      if (!running) {
+        if (nextSocket.readyState <= WebSocket.OPEN) {
+          nextSocket.close();
+        }
         return;
       }
-      if (isBridgePongMessage(parsed)) {
+
+      socket = nextSocket;
+
+      nextSocket.on("open", () => {
+        logger.info(`[wiseeff-bridge] connected ${wsUrl}`);
         publishStatus({ connected: true, lastError: undefined });
-        return;
-      }
-      if (isBridgeRpcRequest(parsed)) {
-        void handleRpcRequest(parsed);
-      }
-    });
+      });
 
-    nextSocket.on("error", (error) => {
-      publishStatus({ connected: false, lastError: error.message });
-      logger.error(`[wiseeff-bridge] websocket error: ${error.message}`);
-    });
+      nextSocket.on("message", (raw) => {
+        const payload = typeof raw === "string" ? raw : raw.toString("utf8");
+        const parsed = safeParseJson(payload);
+        if (!parsed) {
+          return;
+        }
 
-    nextSocket.on("close", (code, reason) => {
-      const reasonText = typeof reason === "string" ? reason : reason.toString("utf8");
-      if (code === 4401 && reasonText.trim()) {
-        publishStatus({ connected: false, lastError: reasonText.trim() });
-      } else {
-        publishStatus({ connected: false });
-      }
-      clearPingTimer();
-      scheduleReconnect();
-    });
+        if (isBridgeHelloMessage(parsed)) {
+          handleHello(parsed);
+          return;
+        }
+        if (isBridgePongMessage(parsed)) {
+          publishStatus({ connected: true, lastError: undefined });
+          return;
+        }
+        if (isBridgeRpcRequest(parsed)) {
+          void handleRpcRequest(parsed);
+        }
+      });
+
+      nextSocket.on("error", (error) => {
+        publishStatus({ connected: false, lastError: error.message });
+        logger.error(`[wiseeff-bridge] websocket error: ${error.message}`);
+      });
+
+      nextSocket.on("close", (code, reason) => {
+        const reasonText = typeof reason === "string" ? reason : reason.toString("utf8");
+        if (code === 4401 && reasonText.trim()) {
+          publishStatus({ connected: false, lastError: reasonText.trim() });
+        } else {
+          publishStatus({ connected: false });
+        }
+        clearPingTimer();
+        scheduleReconnect();
+      });
+    })();
   }
 
   return {

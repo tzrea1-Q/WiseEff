@@ -4,6 +4,7 @@ import { detectBridgePlatform, type BridgeConfig } from "./config";
 import { ensureBridgeRunning, type EnsureBridgeRunningDependencies } from "./ensureBridgeRunning";
 import { normalizeCorsOrigin } from "./healthServer";
 import { stopLocalBridgeHealthListener } from "./localBridgeProcess";
+import { writePairingError } from "./pairingErrorStore";
 
 const BRIDGE_VERSION = "0.1.0";
 
@@ -71,6 +72,9 @@ export async function runPairCommand(
   if (!response.ok) {
     const body = await response.text();
     deps.stdout.error(`Pair request failed (${response.status}): ${body}`);
+    await writePairingError(
+      `配对请求失败（HTTP ${response.status}）。若使用 Clash 等系统代理，请把 ${normalizedServerUrl} 加入直连规则，或设置 NO_PROXY 后重试。`
+    );
     return { exitCode: 1 };
   }
 
@@ -171,11 +175,14 @@ export async function runConnectCommand(
     await stopLocalBridgeHealthListener(deps.platform);
   }
 
+  const webOriginChanged = Boolean(explicitWebOrigin && existing?.webOrigin !== explicitWebOrigin);
+
   return deps.ensureBridgeRunning({
     fetchImpl: deps.fetchImpl,
     platform: deps.platform,
     execPath: deps.execPath,
     cliPath: deps.cliPath,
-    stdout: deps.stdout
+    stdout: deps.stdout,
+    forceRestart: webOriginChanged
   });
 }

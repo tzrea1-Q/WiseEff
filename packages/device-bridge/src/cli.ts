@@ -11,7 +11,9 @@ import { createResolvedRpcHandlers } from "./createResolvedRpcHandlers";
 import { createToolProbeCache, type BridgeHealthState } from "./healthServer";
 import { startHealthServer } from "./healthServer";
 import { createBridgeWsClient } from "./wsClient";
-import { runWindowsServiceCommand, type ServiceAction } from "./windowsService";
+import { runServiceCommand } from "./serviceCommand";
+import type { MacosLaunchAgentDependencies } from "./macosLaunchAgent";
+import type { ServiceAction } from "./windowsService";
 import {
   runConnectCommand,
   runPairCommand,
@@ -23,6 +25,9 @@ import { ensureBridgeRunning } from "./ensureBridgeRunning";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
 import { createProxiedFetch } from "./proxyFetch";
+import { pairingStartupErrorMessage } from "./bridgeRuntimePaths";
+import { appendBridgeLaunchLog } from "./bridgeLaunchLog";
+import { clearPairingError, readPairingError, writePairingError } from "./pairingErrorStore";
 import {
   isPortableUrlSchemeRegistered,
   runMacosUrlSchemeCommand,
@@ -31,39 +36,6 @@ import {
 } from "./macosUrlScheme";
 
 const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
-
-const PAIRING_ERROR_PATH = path.join(os.homedir(), ".wiseeff", "pairing-error.json");
-
-async function writePairingError(message: string): Promise<void> {
-  try {
-    const dir = path.dirname(PAIRING_ERROR_PATH);
-    await import("node:fs/promises").then((m) => m.mkdir(dir, { recursive: true }));
-    await writeFile(PAIRING_ERROR_PATH, JSON.stringify({ message, updatedAt: new Date().toISOString() }, null, 2), "utf8");
-  } catch {
-    // Best-effort — don't let error logging itself fail.
-  }
-}
-
-async function readPairingError(): Promise<string | undefined> {
-  try {
-    const raw = await readFile(PAIRING_ERROR_PATH, "utf8");
-    const parsed = JSON.parse(raw) as { message?: string; updatedAt?: string };
-    if (parsed.message) {
-      return parsed.message;
-    }
-  } catch {
-    // No pairing error file — that's fine.
-  }
-  return undefined;
-}
-
-async function clearPairingError(): Promise<void> {
-  try {
-    await unlink(PAIRING_ERROR_PATH);
-  } catch {
-    // Already gone — fine.
-  }
-}
 
 type ParsedArgs = {
   command?: "pair" | "start" | "status" | "service" | "connect" | "tools" | "register" | "unregister";
@@ -137,10 +109,10 @@ function usage() {
     "  status",
     "  register          Register wiseeff-bridge:// URL scheme (macOS portable only)",
     "  unregister        Remove portable URL scheme registration (macOS only)",
-    "  service install   Register background service (Windows only)",
-    "  service start     Start installed service (Windows only)",
-    "  service stop      Stop installed service (Windows only)",
-    "  service uninstall Remove installed service (Windows only)",
+    "  service install   Register background service (Windows service or macOS LaunchAgent)",
+    "  service start     Start installed service",
+    "  service stop      Stop installed service",
+    "  service uninstall Remove installed service",
     "  tools install --protocol adb|hdc|all [--server <url>] [--force]",
     "",
     "Options:",
@@ -358,9 +330,14 @@ export async function runCli(
     execPath?: string;
     cliPath?: string;
     platform?: NodeJS.Platform;
+    execFile?: MacosLaunchAgentDependencies["execFile"];
+    mkdir?: MacosLaunchAgentDependencies["mkdir"];
+    writeFile?: MacosLaunchAgentDependencies["writeFile"];
+    unlink?: MacosLaunchAgentDependencies["unlink"];
   } = {}
 ) {
-  const proxiedFetch = overrides.fetchImpl ?? (await createProxiedFetch());
+  const existingConfig = await (overrides.loadConfig ?? (() => loadBridgeConfig()))().catch(() => null);
+  const proxiedFetch = overrides.fetchImpl ?? (await createProxiedFetch({ serverUrl: existingConfig?.serverUrl }));
   const deps: CliDependencies = {
     fetchImpl: overrides.fetchImpl ?? proxiedFetch,
     loadConfig: overrides.loadConfig ?? (() => loadBridgeConfig()),
@@ -375,6 +352,19 @@ export async function runCli(
     cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
     platform: overrides.platform ?? process.platform
   };
+  const serviceDeps = {
+    platform: overrides.platform ?? process.platform,
+    cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+    nodePath: overrides.execPath ?? process.execPath,
+    homedir: () => os.homedir(),
+    getuid: () => process.getuid?.() ?? 501,
+    execFile: overrides.execFile,
+    mkdir: overrides.mkdir,
+    writeFile: overrides.writeFile,
+    unlink: overrides.unlink,
+    log: (message: string) => deps.stdout.log(message),
+    error: (message: string) => deps.stdout.error(message)
+  };
 
   const parsed = parseArgs(argv);
 
@@ -382,12 +372,19 @@ export async function runCli(
   if (handleUrl) {
     try {
       const parsedUrl = parseBridgeUrl(handleUrl);
+      if (parsedUrl.kind === "install-service") {
+        await appendBridgeLaunchLog("handle-url install-service");
+        return runServiceCommand("install", serviceDeps);
+      }
       if (parsedUrl.kind === "connect") {
+        await appendBridgeLaunchLog(`handle-url connect server=${parsedUrl.server} code=${parsedUrl.code ?? "none"}`);
         const result = await runConnectCommand(connectDeps, parsedUrl);
         if (result.exitCode !== 0) {
-          await writePairingError(`配对失败：Bridge 无法连接到服务器。请检查网络代理设置（HTTPS_PROXY 环境变量或 ~/.wiseeff/proxy.json）。`);
+          await writePairingError(pairingStartupErrorMessage(connectDeps.platform));
+          await appendBridgeLaunchLog(`handle-url connect failed exit=${result.exitCode}`);
         } else {
           await clearPairingError();
+          await appendBridgeLaunchLog("handle-url connect succeeded");
         }
         return result.exitCode;
       }
@@ -413,6 +410,7 @@ export async function runCli(
       const message = error instanceof Error ? error.message : "Invalid bridge URL";
       deps.stdout.error(message);
       await writePairingError(message);
+      await appendBridgeLaunchLog(`handle-url error=${message}`);
       return 1;
     }
   }
@@ -450,11 +448,7 @@ export async function runCli(
       deps.stdout.log(usage());
       return 1;
     }
-    return runWindowsServiceCommand(parsed.serviceAction, {
-      cliPath: CLI_ENTRY_PATH,
-      log: (message) => deps.stdout.log(message),
-      error: (message) => deps.stdout.error(message)
-    });
+    return runServiceCommand(parsed.serviceAction, serviceDeps);
   }
 
   if (parsed.command === "tools") {

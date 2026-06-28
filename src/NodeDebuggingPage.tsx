@@ -11,7 +11,6 @@ import {
   createPairingCode,
   listMyBridges,
   listReleases,
-  probeLocalBridgeHealth,
   renameBridge,
   revokeBridge,
   type DeviceBridgePairingCode,
@@ -19,6 +18,11 @@ import {
   type DeviceBridgeReleaseItem,
   type LocalBridgeHealthState
 } from "./infrastructure/http/deviceBridgeClient";
+import {
+  probeLocalBridgeHealth,
+  probeLocalBridgeHealthDetailed,
+  type LocalBridgeReachability
+} from "./infrastructure/http/bridgeConnectLauncher";
 import {
   detectBrowserBridgeTarget,
   listInstallerBridgeReleases,
@@ -567,6 +571,7 @@ function deriveBridgePanelStatusFromHealth(input: {
   registeredBridgeIds: string[];
   target?: string;
   protocol: DebugConnectionProtocol;
+  healthReachability?: LocalBridgeReachability;
 }): BridgePanelStatus {
   return deriveBridgePanelStatus(input);
 }
@@ -584,6 +589,7 @@ function LocalDeviceBridgePanel({
 }) {
   const [checking, setChecking] = useState(false);
   const [health, setHealth] = useState<LocalBridgeHealthState | null>(null);
+  const [healthReachability, setHealthReachability] = useState<LocalBridgeReachability>("offline");
   const [bridges, setBridges] = useState<DeviceBridgeRecord[]>([]);
   const [hostRelease, setHostRelease] = useState<DeviceBridgeReleaseItem | null>(null);
   const [installerAlternates, setInstallerAlternates] = useState<DeviceBridgeReleaseItem[]>([]);
@@ -617,10 +623,12 @@ function LocalDeviceBridgePanel({
       setPanelError("");
     }
     try {
-      const [nextHealth, nextBridges] = await Promise.all([
-        probeLocalBridgeHealth(),
+      const [healthProbe, nextBridges] = await Promise.all([
+        probeLocalBridgeHealthDetailed(),
         listMyBridges().catch(() => [] as DeviceBridgeRecord[])
       ]);
+      const nextHealth = healthProbe.health;
+      setHealthReachability(healthProbe.reachability);
       setHealth((current) =>
         current?.updatedAt === nextHealth?.updatedAt &&
         current?.connected === nextHealth?.connected &&
@@ -677,7 +685,8 @@ function LocalDeviceBridgePanel({
     bridgeCount: bridges.length,
     registeredBridgeIds: bridges.filter((bridge) => !bridge.revokedAt).map((bridge) => bridge.id),
     target,
-    protocol
+    protocol,
+    healthReachability
   });
   const pairingStale = isLocalBridgePairingStale({
     health,
@@ -686,7 +695,7 @@ function LocalDeviceBridgePanel({
   const pairingAuthFailure = isLocalBridgeAuthFailure(health) || isLocalBridgeTokenExpired(health);
 
   useEffect(() => {
-    if (panelStatus !== "missing_bridge" && panelStatus !== "not_running" && panelStatus !== "not_connected") {
+    if (panelStatus !== "missing_bridge" && panelStatus !== "bridge_blocked" && panelStatus !== "not_running" && panelStatus !== "not_connected") {
       return;
     }
 

@@ -52,7 +52,18 @@ async function packageZip(inputPath: string, outputPath: string) {
 
 async function packageTarGz(stagingPath: string, outputPath: string) {
   await rm(outputPath, { force: true });
-  await execFileAsync("tar", ["-czf", outputPath, "-C", stagingPath, "cli.js", "package.json", "wiseeff-bridge"]);
+  await execFileAsync("tar", [
+    "-czf",
+    outputPath,
+    "-C",
+    stagingPath,
+    "cli.js",
+    "package.json",
+    "wiseeff-bridge",
+    "install-launchagent.sh",
+    "BridgeAppMain.swift",
+    "rebuild-app-executable.sh"
+  ]);
 }
 
 await mkdir(bundleDir, { recursive: true });
@@ -68,7 +79,7 @@ await build({
   sourcemap: false,
   minify: false,
   legalComments: "none",
-  external: ["undici", "https-proxy-agent"],
+  external: ["undici"],
   banner: {
     js: [
       "#!/usr/bin/env node",
@@ -105,6 +116,19 @@ for (const target of ARTIFACT_TARGETS) {
     const launcherPath = path.join(targetStagingDir, "wiseeff-bridge");
     await writeFile(launcherPath, MAC_LAUNCHER, "utf8");
     await chmod(launcherPath, 0o755);
+    await copyFile(
+      path.join(rootDir, "ops", "self-hosted", "bridge-installer", "macos", "BridgeAppMain.swift"),
+      path.join(targetStagingDir, "BridgeAppMain.swift")
+    );
+    await copyFile(
+      path.join(rootDir, "ops", "self-hosted", "bridge-installer", "macos", "rebuild-app-executable.sh"),
+      path.join(targetStagingDir, "rebuild-app-executable.sh")
+    );
+    await copyFile(
+      path.join(rootDir, "ops", "self-hosted", "bridge-installer", "install-launchagent.sh"),
+      path.join(targetStagingDir, "install-launchagent.sh")
+    );
+    await chmod(path.join(targetStagingDir, "install-launchagent.sh"), 0o755);
     await packageTarGz(targetStagingDir, artifactPath);
   }
 

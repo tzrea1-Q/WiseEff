@@ -6,6 +6,7 @@ import { deriveWizardStep, LocalDeviceBridgeWizard, type BridgePanelStatus } fro
 describe("deriveWizardStep", () => {
   const cases: Array<{ status: BridgePanelStatus; step: ReturnType<typeof deriveWizardStep> }> = [
     { status: "missing_bridge", step: 1 },
+    { status: "bridge_blocked", step: 2 },
     { status: "not_paired", step: 2 },
     { status: "not_running", step: 2 },
     { status: "not_connected", step: 2 },
@@ -73,7 +74,7 @@ describe("LocalDeviceBridgeWizard", () => {
       "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg"
     );
 
-    expect(screen.getByRole("button", { name: /已安装 Bridge/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Bridge 已安装但未运行/ })).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("便携压缩包（zip / tar.gz）"));
     expect(screen.getByRole("link", { name: "下载 macOS Bridge（Apple Silicon）" })).toBeInTheDocument();
@@ -99,10 +100,10 @@ describe("LocalDeviceBridgeWizard", () => {
       />
     );
 
-    const entry = screen.getByRole("button", { name: /已安装 Bridge/ });
+    const entry = screen.getByRole("button", { name: /Bridge 已安装但未运行/ });
     fireEvent.click(entry);
 
-    expect(screen.getByText("连接本机")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "连接本机" })).toBeInTheDocument();
   });
 
   it("lets users return to step 1 from later wizard steps", async () => {

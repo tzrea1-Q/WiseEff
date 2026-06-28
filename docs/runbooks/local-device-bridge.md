@@ -104,11 +104,18 @@ chmod +x wiseeff-bridge
 ./wiseeff-bridge start
 ```
 
+4. Optional login auto-start (macOS LaunchAgent):
+
+```bash
+./wiseeff-bridge service install
+# or: ./install-launchagent.sh
+```
+
 Notes:
 
 - The archive contains `cli.js` and a `wiseeff-bridge` launcher script that runs `node cli.js`.
 - Bridge config is stored at `~/.wiseeff/bridge.json`.
-- The macOS `.pkg` installer registers `~/Library/LaunchAgents/com.wiseeff.bridge.plist` via postinstall; portable installs require manual `launchd` or a terminal session.
+- The macOS `.pkg` installer registers `~/Library/LaunchAgents/com.wiseeff.bridge.plist` via postinstall; portable installs can run `wiseeff-bridge service install` or open `wiseeff-bridge://install-service` from `/node-debugging`.
 - macOS does not use the Windows `service` commands.
 - Install `adb` and/or `hdc` on the Mac and authorize the USB device before detecting targets in `/node-debugging`.
 

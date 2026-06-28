@@ -37,6 +37,16 @@ describe("urlScheme", () => {
     ).toThrow("Server URL must use https or local http");
   });
 
+  it("accepts IP-mode http server URLs for self-hosted staging", () => {
+    expect(
+      parseConnectUrl("wiseeff-bridge://connect?server=http%3A%2F%2F101.43.45.27&webOrigin=http%3A%2F%2F101.43.45.27&code=123456")
+    ).toEqual({
+      server: "http://101.43.45.27",
+      webOrigin: "http://101.43.45.27",
+      code: "123456"
+    });
+  });
+
   it("rejects remote http server URLs", () => {
     expect(() =>
       parseConnectUrl("wiseeff-bridge://connect?server=http%3A%2F%2Fwiseeff.example.com&code=123456")
@@ -69,5 +79,6 @@ describe("urlScheme", () => {
       server: "https://wiseeff.example.com",
       protocol: "all"
     });
+    expect(parseBridgeUrl("wiseeff-bridge://install-service")).toEqual({ kind: "install-service" });
   });
 });

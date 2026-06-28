@@ -77,10 +77,13 @@ cat > "$PLIST_PATH" <<PLIST
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>${USER_HOME}/.wiseeff/bridge-launchd.log</string>
+  <key>StandardErrorPath</key><string>${USER_HOME}/.wiseeff/bridge-launchd.log</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:${USER_HOME}/.local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key><string>${USER_HOME}</string>
   </dict>
 </dict>
 </plist>

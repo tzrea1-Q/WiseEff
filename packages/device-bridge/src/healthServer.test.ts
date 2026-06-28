@@ -202,6 +202,30 @@ describe("healthServer", () => {
     await health.close();
   });
 
+  it("responds to OPTIONS /health with private network access for remote origins", async () => {
+    const health = await startHealthServer({
+      port: 0,
+      getState: () => ({
+        paired: false,
+        connected: false,
+        updatedAt: "2026-06-25T00:00:00.000Z"
+      })
+    });
+
+    const response = await requestHealth(health.url, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://101.43.45.27",
+        "Access-Control-Request-Private-Network": "true"
+      }
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("http://101.43.45.27");
+    expect(response.headers["access-control-allow-private-network"]).toBe("true");
+
+    await health.close();
+  });
+
   it("allows browser health reads from the paired web origin", async () => {
     const health = await startHealthServer({
       port: 0,
