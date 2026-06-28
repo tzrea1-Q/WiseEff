@@ -1,4 +1,4 @@
-import type { DeviceBridgePlatform } from "../infrastructure/http/deviceBridgeClient";
+import type { DeviceBridgePlatform } from "./deviceBridgeClient";
 
 export function defaultBridgeCliPath(platform: DeviceBridgePlatform): string {
   switch (platform) {
