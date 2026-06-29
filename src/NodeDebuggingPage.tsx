@@ -1,6 +1,7 @@
 import { Eye, Pencil, RotateCw, Search, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { detectHdcTargets, readNodeValue, writeNodeValue } from "./hdcClient";
+import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { LocalDeviceBridgeWizard, type BridgePanelStatus } from "./components/LocalDeviceBridgeWizard";
 import { deriveBridgePanelStatus, countActiveBridgesForPlatform, formatDetectFailureMessage, isBridgeOnlinePanelStatus, isLocalBridgeAuthFailure, isLocalBridgePairingStale, isLocalBridgeTokenExpired, shouldFetchBridgePairingCode } from "./components/bridgePanelStatus";
@@ -947,7 +948,7 @@ export function NodeDebuggingPage({
   const isLatestRowOperation = (rowId: string, operationSeq: number) =>
     rowOperationSeqRef.current[rowId] === operationSeq;
 
-  const connected = Boolean(target);
+  const connected = Boolean(target) && !isHdcPlaceholderTarget(target ?? "");
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   useEffect(() => {
@@ -1180,6 +1181,14 @@ export function NodeDebuggingPage({
   }, [activeSessionId, activeTargetId, debuggingActions, rows]);
 
   const applyDetectedSession = (session: { id: string; startedAt: string }, detectedTarget: DeviceTarget) => {
+    if (isHdcPlaceholderTarget(detectedTarget.targetRef ?? detectedTarget.label ?? "")) {
+      setActiveSessionId(undefined);
+      setActiveTargetId(undefined);
+      setTarget(undefined);
+      setBridgeTargetCandidates([]);
+      setConnectionError("未检测到 HDC 设备，请插入 USB 设备并授权调试。");
+      return;
+    }
     setActiveSessionId(session.id);
     setActiveTargetId(detectedTarget.id);
     setTarget(bridgeTargetLabel(detectedTarget));
@@ -1235,7 +1244,7 @@ export function NodeDebuggingPage({
 
       const result = await detectHdcTargets();
       if (!isCurrentDetectRequest()) return;
-      setTarget(result.activeTarget);
+      setTarget(result.activeTarget && !isHdcPlaceholderTarget(result.activeTarget) ? result.activeTarget : undefined);
       setActiveTargetId(result.activeTarget);
       setBridgeTargetCandidates([]);
       setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");

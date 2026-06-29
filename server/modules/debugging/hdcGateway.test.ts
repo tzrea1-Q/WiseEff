@@ -79,6 +79,25 @@ describe("HDC debug device gateway", () => {
     });
   });
 
+  it("ignores HDC [Empty] placeholder output when no device is attached", async () => {
+    const { runCommand } = makeRunner([
+      {
+        code: 0,
+        stdout: "[Empty]\n",
+        stderr: "",
+        durationMs: 8
+      }
+    ]);
+    const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
+
+    const result = await gateway.detectTargets({ projectId: "aurora", deviceId: "device-db-id" });
+
+    expect(result).toEqual({
+      ok: true,
+      targets: []
+    });
+  });
+
   it("rejects HDC target detection without a requested deviceId to avoid misleading persistence", async () => {
     const { runCommand } = makeRunner([]);
     const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });

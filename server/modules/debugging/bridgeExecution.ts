@@ -1,4 +1,5 @@
 import type { BridgeRpcClient } from "../deviceBridge/rpc";
+import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 import type { DebugConnectionProtocol } from "./protocol";
 import type { GatewayNodeResult, GatewayWriteResult } from "./gateway";
 
@@ -50,7 +51,7 @@ function parseDetectTargets(result: Record<string, unknown>): BridgeDetectTarget
       continue;
     }
     const targetRef = typeof entry.targetRef === "string" ? entry.targetRef.trim() : "";
-    if (!targetRef) {
+    if (!targetRef || isHdcPlaceholderTarget(targetRef)) {
       continue;
     }
     records.push({

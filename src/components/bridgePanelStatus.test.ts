@@ -168,6 +168,17 @@ describe("deriveBridgePanelStatus", () => {
       })
     ).toBe("online_no_device");
   });
+
+  it("returns online_no_device when HDC reports the [Empty] placeholder target", () => {
+    expect(
+      deriveBridgePanelStatus({
+        health: connectedHealth,
+        bridgeCount: 1,
+        protocol: "hdc",
+        target: "[Empty]"
+      })
+    ).toBe("online_no_device");
+  });
 });
 
 describe("detect failure mapping", () => {
