@@ -16,6 +16,6 @@ ENV VITE_WISEEFF_API_BASE_URL=$VITE_WISEEFF_API_BASE_URL
 RUN apk add --no-cache curl
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+RUN NODE_OPTIONS='--max-old-space-size=2048' npx tsc -b && NODE_OPTIONS='--max-old-space-size=2048' npx vite build
 
 CMD ["npx", "tsx", "server/index.ts"]
