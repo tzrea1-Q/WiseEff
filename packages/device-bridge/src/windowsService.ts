@@ -115,8 +115,8 @@ function resolveServiceLauncherPath(cliPath: string): string {
 }
 
 async function registerServiceUrlScheme(deps: WindowsServiceDependencies): Promise<number> {
-  const launcherPath = resolveServiceLauncherPath(deps.cliPath);
-  return registerWindowsUrlScheme(launcherPath, urlSchemeDeps(deps));
+  const nodePath = resolveBundledNodePath(deps.cliPath, deps.nodePath, deps.platform);
+  return registerWindowsUrlScheme(nodePath, urlSchemeDeps(deps), deps.cliPath);
 }
 
 async function unregisterServiceUrlScheme(deps: WindowsServiceDependencies): Promise<number> {
