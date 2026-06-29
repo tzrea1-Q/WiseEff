@@ -14,15 +14,18 @@
 
 验收或离线演练可设 `XIAOZE_DETERMINISTIC=true`，无需填写 `AGENT_API_*`。
 
+生产与自托管部署须设 `XIAOZE_CHECKPOINTER=postgres`（除非 `XIAOZE_DETERMINISTIC=true`）。部署或配置变更后运行 `npm run db:migrate`，确保 LangGraph checkpoint 表已创建再对外服务。
+
 ## 就绪检查
 
-1. 使用 live 小泽 LLM 配置（或 `XIAOZE_DETERMINISTIC=true` 做离线验收）启动 API。
-2. 检查 `/health/ready`。
-3. 确认 `dependencies.xiaozeLlm.details` 包含安全证据（如 `baseUrlConfigured`，以及可用的 `model`）。
-4. 使用 admin smoke token 检查 `/api/v1/operations/pilot-readiness`，确认 `xiaozeLlm` gate 为 ready。
-5. 从私有运维网络检查 `/metrics`，确认就绪指标反映小泽 LLM 依赖且标签不暴露 secret。
-6. 运行最小小泽 acceptance spec，或在 API mode 打开 CopilotKit 弹窗发送只读 prompt。
-7. 确认 mutating tool 提案创建 approval，且仅通过 orchestrator approval 链恢复，审计 `actorType=agent`。
+1. 当 `XIAOZE_CHECKPOINTER=postgres` 时运行 `npm run db:migrate`，确认 checkpoint 表存在（`checkpoints`、`checkpoint_blobs`、`checkpoint_writes`、`checkpoint_migrations`）。
+2. 使用 live 小泽 LLM 配置（或 `XIAOZE_DETERMINISTIC=true` 做离线验收）启动 API。
+3. 检查 `/health/ready`。
+4. 确认 `dependencies.xiaozeLlm.details` 包含安全证据（如 `baseUrlConfigured`，以及可用的 `model`）。
+5. 使用 admin smoke token 检查 `/api/v1/operations/pilot-readiness`，确认 `xiaozeLlm` gate 为 ready。
+6. 从私有运维网络检查 `/metrics`，确认就绪指标反映小泽 LLM 依赖且标签不暴露 secret。
+7. 运行最小小泽 acceptance spec，或在 API mode 打开 CopilotKit 弹窗发送只读 prompt。
+8. 确认 mutating tool 提案创建 approval，且仅通过 orchestrator approval 链恢复，审计 `actorType=agent`。
 
 ## 安全预期
 

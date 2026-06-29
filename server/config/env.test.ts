@@ -12,7 +12,8 @@ const productionOidcEnv = {
   AUTH_MODE: "production",
   AUTH_PROVIDER: "oidc",
   AUTH_OIDC_ISSUER: "https://id.example.com/realms/wiseeff",
-  AUTH_OIDC_AUDIENCE: "wiseeff-api"
+  AUTH_OIDC_AUDIENCE: "wiseeff-api",
+  XIAOZE_CHECKPOINTER: "postgres"
 } as const;
 
 describe("loadServerEnv", () => {
@@ -43,10 +44,12 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_BASE_URL).toBeUndefined();
     expect(env.AGENT_API_TIMEOUT_MS).toBe(5000);
     expect(env.LOG_WORKER_ENABLED).toBe(true);
+    expect(env.XIAOZE_REASONING_FALLBACK_HEURISTIC).toBe(false);
     expect(env.DEVICE_BRIDGE_ARTIFACT_ROOT).toBe("ops/self-hosted/bridge-artifacts");
     expect(env.DEVICE_BRIDGE_PAIRING_TTL_SECONDS).toBe(1800);
     expect(env.DEVICE_BRIDGE_TOKEN_TTL_DAYS).toBe(90);
     expect(env.DEVICE_BRIDGE_WS_PATH).toBe("/api/v1/device-bridges/ws");
+    expect(env.XIAOZE_CHECKPOINTER).toBe("memory");
   });
 
   it("parses explicit API settings", () => {
@@ -74,7 +77,8 @@ describe("loadServerEnv", () => {
       AGENT_API_KEY: "secret",
       AGENT_API_BASE_URL: "https://agent.example.com",
       AGENT_API_TIMEOUT_MS: "1500",
-      LOG_WORKER_ENABLED: "false"
+      LOG_WORKER_ENABLED: "false",
+      XIAOZE_REASONING_FALLBACK_HEURISTIC: "true"
     });
 
     expect(env.NODE_ENV).toBe("test");
@@ -101,6 +105,7 @@ describe("loadServerEnv", () => {
     expect(env.AGENT_API_BASE_URL).toBe("https://agent.example.com");
     expect(env.AGENT_API_TIMEOUT_MS).toBe(1500);
     expect(env.LOG_WORKER_ENABLED).toBe(false);
+    expect(env.XIAOZE_REASONING_FALLBACK_HEURISTIC).toBe(true);
   });
 
   it("parses device bridge settings", () => {
@@ -211,10 +216,12 @@ describe("loadServerEnv", () => {
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com"
+      AGENT_API_BASE_URL: "https://agent.example.com",
+      XIAOZE_CHECKPOINTER: "postgres"
     });
 
     expect(env.AUTH_PROVIDER).toBe("oidc");
+    expect(env.XIAOZE_CHECKPOINTER).toBe("postgres");
     expect(env.AUTH_OIDC_ISSUER).toBe("https://id.example.com/realms/wiseeff");
     expect(env.AUTH_OIDC_AUDIENCE).toBe("wiseeff-api");
     expect(env.AUTH_OIDC_JWKS_URI).toBe("https://id.example.com/realms/wiseeff/protocol/openid-connect/certs");
@@ -234,10 +241,12 @@ describe("loadServerEnv", () => {
       DEBUG_DEVICE_GATEWAY_MODE: "hdc",
       AGENT_MODEL: "pilot-model",
       AGENT_API_KEY: "secret",
-      AGENT_API_BASE_URL: "https://agent.example.com"
+      AGENT_API_BASE_URL: "https://agent.example.com",
+      XIAOZE_CHECKPOINTER: "postgres"
     });
 
     expect(env.AUTH_PROVIDER).toBe("local");
+    expect(env.XIAOZE_CHECKPOINTER).toBe("postgres");
     expect(env.AUTH_OIDC_ISSUER).toBeUndefined();
     expect(env.AUTH_TOKEN_HMAC_SECRET).toBeUndefined();
   });
@@ -322,5 +331,33 @@ describe("loadServerEnv", () => {
         DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
       }).DEBUG_DEVICE_GATEWAY_MODE
     ).toBe("simulator");
+  });
+
+  it("requires postgres checkpointer in production when not deterministic", () => {
+    expect(() =>
+      loadServerEnv({
+        ...productionOidcEnv,
+        XIAOZE_CHECKPOINTER: "memory",
+        AGENT_MODEL: "pilot-model",
+        AGENT_API_KEY: "secret",
+        AGENT_API_BASE_URL: "https://agent.example.com",
+        DEBUG_DEVICE_GATEWAY_MODE: "adb"
+      })
+    ).toThrow("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production when XIAOZE_DETERMINISTIC is not set");
+  });
+
+  it("allows memory checkpointer in production when XIAOZE_DETERMINISTIC is set", () => {
+    const env = loadServerEnv({
+      ...productionOidcEnv,
+      XIAOZE_DETERMINISTIC: "true",
+      XIAOZE_CHECKPOINTER: "memory",
+      AGENT_MODEL: undefined,
+      AGENT_API_KEY: undefined,
+      AGENT_API_BASE_URL: undefined,
+      DEBUG_DEVICE_GATEWAY_MODE: "adb"
+    });
+
+    expect(env.XIAOZE_CHECKPOINTER).toBe("memory");
+    expect(env.XIAOZE_DETERMINISTIC).toBe(true);
   });
 });

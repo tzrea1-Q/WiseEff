@@ -57,7 +57,12 @@ const rawEnvSchema = z.object({
   XIAOZE_PROACTIVE_ENABLED: z
     .enum(["true", "false"])
     .default("false")
-    .transform((value) => value === "true")
+    .transform((value) => value === "true"),
+  XIAOZE_REASONING_FALLBACK_HEURISTIC: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  XIAOZE_CHECKPOINTER: z.enum(["memory", "postgres"]).default("memory")
 });
 
 export type ServerEnv = z.infer<typeof rawEnvSchema>;
@@ -111,6 +116,15 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   }
   if (env.LOG_ANALYSIS_QUEUE_MODE === "durable" && !env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable");
+  }
+  if (
+    env.NODE_ENV === "production" &&
+    !env.XIAOZE_DETERMINISTIC &&
+    (env.XIAOZE_CHECKPOINTER !== "postgres" || !env.DATABASE_URL?.trim())
+  ) {
+    throw new Error(
+      "XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production when XIAOZE_DETERMINISTIC is not set"
+    );
   }
 
   return env;

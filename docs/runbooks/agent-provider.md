@@ -14,15 +14,18 @@ Use this runbook when validating live Xiaoze LLM configuration in staging or pil
 
 For acceptance or offline drills without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
 
+Production and self-hosted deployments must set `XIAOZE_CHECKPOINTER=postgres` (unless `XIAOZE_DETERMINISTIC=true`). Run `npm run db:migrate` after deploy or config changes so LangGraph checkpoint tables are ensured before serving traffic.
+
 ## Readiness Check
 
-1. Start the API with live Xiaoze LLM configuration (or `XIAOZE_DETERMINISTIC=true` for offline acceptance).
-2. Check `/health/ready`.
-3. Confirm `dependencies.xiaozeLlm.details` reports safe evidence such as `baseUrlConfigured` and, when present, `model`.
-4. Check `/api/v1/operations/pilot-readiness` with an admin smoke token and confirm the `xiaozeLlm` gate is ready.
-5. Check `/metrics` from the private operations network and confirm readiness gauges reflect the Xiaoze LLM dependency without exposing secrets in labels.
-6. Run a minimal Xiaoze acceptance spec or open the CopilotKit popup in API mode and send a read-only prompt.
-7. Confirm mutating tool proposals create approvals and resume only through the orchestrator approval chain with audit `actorType=agent`.
+1. Run `npm run db:migrate` when `XIAOZE_CHECKPOINTER=postgres` and confirm checkpoint tables exist (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`, `checkpoint_migrations`).
+2. Start the API with live Xiaoze LLM configuration (or `XIAOZE_DETERMINISTIC=true` for offline acceptance).
+3. Check `/health/ready`.
+4. Confirm `dependencies.xiaozeLlm.details` reports safe evidence such as `baseUrlConfigured` and, when present, `model`.
+5. Check `/api/v1/operations/pilot-readiness` with an admin smoke token and confirm the `xiaozeLlm` gate is ready.
+6. Check `/metrics` from the private operations network and confirm readiness gauges reflect the Xiaoze LLM dependency without exposing secrets in labels.
+7. Run a minimal Xiaoze acceptance spec or open the CopilotKit popup in API mode and send a read-only prompt.
+8. Confirm mutating tool proposals create approvals and resume only through the orchestrator approval chain with audit `actorType=agent`.
 
 ## Safety Expectations
 

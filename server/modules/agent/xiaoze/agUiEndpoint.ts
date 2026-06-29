@@ -9,13 +9,13 @@ import { createAgentToolRegistry } from "../toolRegistry";
 import type { AgentToolExecutionContext } from "../toolRegistry";
 import type { AgentToolName, AgentCitation } from "../types";
 import { createOrchestratorApprovalBridge, type ApprovalBridgeBeginResult } from "./approvalBridge";
-import { createXiaozeCheckpointer } from "./checkpointer";
+import { createXiaozeCheckpointer, resolveXiaozeCheckpointerFromEnv } from "./checkpointer";
 import { type PersistXiaozeTurnInput, createXiaozeTurnPersister } from "./threadPersistence";
 import { registerXiaozeThreadRoutes } from "./threadRoutes";
 import { type PerceptionAgentRunResult, type PerceptionToolDescriptor, wrapLangChainChatModel } from "./perceptionAgent";
 import { createPlanningAgent } from "./planningGraph";
 import { runXiaozeSuggest, type XiaozeSuggestContext } from "./suggest";
-import { isLikelyUserFacingAnswerDelta } from "./perceptionAgent";
+import { createDefaultReasoningClassifier, type ReasoningClassifier } from "./reasoningClassifier";
 import { splitAssistantContent, mergeReasoningText } from "./splitAssistantContent";
 import {
   createReasoningMessageId,
@@ -84,23 +84,12 @@ function createTurnStreamFlags(): TurnStreamFlags {
   };
 }
 
-function normalizeSinkEventForAgUi(event: RunEventSinkEvent, flags: TurnStreamFlags): RunEventSinkEvent {
-  if (event.type === "reasoning_delta") {
-    flags.streamedReasoning = true;
-    flags.streamedReasoningText += event.delta;
-    return event;
-  }
-  if (event.type !== "answer_delta") {
-    return event;
-  }
-  if (isLikelyUserFacingAnswerDelta(event.delta, flags.streamedReasoningText)) {
-    flags.streamedAnswer = true;
-    flags.streamedAnswerText += event.delta;
-    return event;
-  }
-  flags.streamedReasoning = true;
-  flags.streamedReasoningText += event.delta;
-  return { type: "reasoning_delta", delta: event.delta };
+function normalizeSinkEventForAgUi(
+  event: RunEventSinkEvent,
+  flags: TurnStreamFlags,
+  reasoningClassifier: ReasoningClassifier
+): RunEventSinkEvent {
+  return reasoningClassifier.normalizeSinkEvent(event, flags);
 }
 
 function normalizeStreamText(text: string) {
@@ -165,11 +154,12 @@ async function* yieldMappedSinkEvents(
   sink: RunEventSink,
   context: RunTimelineContext,
   flags: TurnStreamFlags,
+  reasoningClassifier: ReasoningClassifier,
   turnStateTracker?: XiaozeTurnStateTracker
 ) {
   const events = await sink.drain();
   for (const event of events) {
-    const normalized = normalizeSinkEventForAgUi(event, flags);
+    const normalized = normalizeSinkEventForAgUi(event, flags, reasoningClassifier);
     if (turnStateTracker) {
       if (normalized.type === "step_started") {
         turnStateTracker.onSinkEvent({ type: "step_started", step: normalized.step as XiaozeTurnStateStep });
@@ -213,6 +203,7 @@ async function* pumpAgentRun(input: {
   run: () => Promise<PerceptionAgentRunResult>;
   flags: TurnStreamFlags;
   outcome: { result?: PerceptionAgentRunResult; error?: unknown };
+  reasoningClassifier: ReasoningClassifier;
   turnStateTracker?: XiaozeTurnStateTracker;
 }) {
   let settled = false;
@@ -231,7 +222,7 @@ async function* pumpAgentRun(input: {
     });
 
   while (true) {
-    yield* yieldMappedSinkEvents(input.sink, input.context, input.flags, input.turnStateTracker);
+    yield* yieldMappedSinkEvents(input.sink, input.context, input.flags, input.reasoningClassifier, input.turnStateTracker);
     if (settled) {
       const leftover = await input.sink.drain(0);
       if (leftover.length > 0) {
@@ -494,7 +485,10 @@ function resolveXiaozeModel(env: Pick<ServerEnv, "AGENT_MODEL" | "XIAOZE_MODEL">
 }
 
 function createProductionModel(
-  env: Pick<ServerEnv, "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL">,
+  env: Pick<
+    ServerEnv,
+    "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL" | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
+  >,
   tools: PerceptionToolDescriptor[]
 ) {
   const chat = new ChatOpenAI({
@@ -510,7 +504,9 @@ function createProductionModel(
     }
   });
   const bound = tools.length > 0 ? chat.bindTools(toOpenAiToolDefinitions(tools)) : chat;
-  return wrapLangChainChatModel(bound);
+  return wrapLangChainChatModel(bound, {
+    fallbackHeuristic: env.XIAOZE_REASONING_FALLBACK_HEURISTIC
+  });
 }
 
 export function createXiaozeAgUiHandler(options: {
@@ -520,6 +516,7 @@ export function createXiaozeAgUiHandler(options: {
   allowPromptDebug?: boolean;
   resolveModelLabel?: () => string | undefined;
   persistTurn?: (input: PersistXiaozeTurnInput) => Promise<void>;
+  reasoningClassifier?: ReasoningClassifier;
 }) {
   return async function handleXiaozeAgUi(request: XiaozeAgUiRequest): Promise<RouteResponse> {
     const auth = await options.resolveAuth(request);
@@ -527,6 +524,9 @@ export function createXiaozeAgUiHandler(options: {
       throw new ApiError("UNAUTHENTICATED", "Authentication is required for Xiaoze.", 401);
     }
     const verifiedAuth = auth;
+    const reasoningClassifier =
+      options.reasoningClassifier ??
+      createDefaultReasoningClassifier({ XIAOZE_REASONING_FALLBACK_HEURISTIC: false });
 
     const threadId =
       typeof (request.body as { threadId?: unknown }).threadId === "string"
@@ -696,6 +696,7 @@ export function createXiaozeAgUiHandler(options: {
           context: timelineContext,
           flags: streamFlags,
           outcome,
+          reasoningClassifier,
           turnStateTracker,
           run: () =>
             agent.run({
@@ -938,7 +939,17 @@ export function createDeterministicPerceptionModel(): import("./perceptionAgent"
 
 export function createXiaozeAgentFactory(options: {
   db: Database;
-  env: Pick<ServerEnv, "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL" | "XIAOZE_DETERMINISTIC">;
+  env: Pick<
+    ServerEnv,
+    | "AGENT_API_BASE_URL"
+    | "AGENT_API_KEY"
+    | "AGENT_MODEL"
+    | "XIAOZE_MODEL"
+    | "XIAOZE_DETERMINISTIC"
+    | "XIAOZE_CHECKPOINTER"
+    | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
+    | "DATABASE_URL"
+  >;
   modelFactory?: typeof createProductionModel;
   checkpointer?: ReturnType<typeof createXiaozeCheckpointer>;
   approvalBridge?: ReturnType<typeof createOrchestratorApprovalBridge>;
@@ -948,7 +959,7 @@ export function createXiaozeAgentFactory(options: {
   const actionTools = registry.list().filter((tool) => tool.name.startsWith("action."));
   const planningToolDescriptors = buildXiaozePlanningToolDescriptors([...perceptionTools, ...actionTools]);
   const modelFactory = options.modelFactory ?? createProductionModel;
-  const checkpointer = options.checkpointer ?? createXiaozeCheckpointer();
+  const checkpointer = options.checkpointer ?? resolveXiaozeCheckpointerFromEnv(options.env);
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db, toolRegistry: registry });
   const executionContextRef: { current: AgentToolExecutionContext | null } = { current: null };
   const planningAgent = createPlanningAgent({
@@ -993,7 +1004,15 @@ export function registerXiaozeRoutes(
     db?: Database;
     env?: Pick<
       ServerEnv,
-      "XIAOZE_DETERMINISTIC" | "XIAOZE_PROACTIVE_ENABLED" | "AGENT_API_BASE_URL" | "AGENT_API_KEY" | "AGENT_MODEL" | "XIAOZE_MODEL"
+      | "XIAOZE_DETERMINISTIC"
+      | "XIAOZE_PROACTIVE_ENABLED"
+      | "XIAOZE_CHECKPOINTER"
+      | "DATABASE_URL"
+      | "AGENT_API_BASE_URL"
+      | "AGENT_API_KEY"
+      | "AGENT_MODEL"
+      | "XIAOZE_MODEL"
+      | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
     >;
     getCurrentAuthContext: (request: RouteRequest) => Promise<AuthContext> | AuthContext;
     createAgent?: (context: AgentToolExecutionContext) => XiaozePerceptionAgent;
@@ -1009,11 +1028,17 @@ export function registerXiaozeRoutes(
     getCurrentAuthContext: options.getCurrentAuthContext
   });
 
+  const envDefaults = options.env ?? {
+    XIAOZE_DETERMINISTIC: true,
+    XIAOZE_CHECKPOINTER: "memory",
+    XIAOZE_REASONING_FALLBACK_HEURISTIC: false
+  };
+  const reasoningClassifier = createDefaultReasoningClassifier(envDefaults);
   const createAgent =
     options.createAgent ??
     createXiaozeAgentFactory({
       db: options.db,
-      env: options.env ?? { XIAOZE_DETERMINISTIC: true }
+      env: envDefaults
     });
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db });
   const persistTurn = createXiaozeTurnPersister({ db: options.db });
@@ -1032,7 +1057,8 @@ export function registerXiaozeRoutes(
     createAgent,
     approvalBridge,
     persistTurn,
-    resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined
+    resolveModelLabel: options.env ? () => resolveXiaozeModel(options.env!) : undefined,
+    reasoningClassifier
   });
 
   router.post("/api/v1/agent/xiaoze", async (request) => handler(request));

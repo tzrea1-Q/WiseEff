@@ -1,5 +1,10 @@
 import type { AgentToolResult } from "../types";
-import { classifyStreamingModelContent, looksLikeInternalReasoning, mergeReasoningText, splitAssistantContent } from "./splitAssistantContent";
+import { looksLikeInternalReasoning } from "./splitAssistantContent";
+import {
+  createReasoningClassifier,
+  readReasoningFromLangChainResponse,
+  type ReasoningClassifierOptions
+} from "./reasoningClassifier";
 
 export { looksLikeInternalReasoning } from "./splitAssistantContent";
 import { createXiaozeCheckpointer, type XiaozeCheckpointer } from "./checkpointer";
@@ -147,13 +152,7 @@ export function createPerceptionAgent(options: {
 }
 
 export function normalizeModelResponse(response: Pick<PerceptionModelResponse, "content" | "reasoning">) {
-  const split = splitAssistantContent(response.content ?? "");
-  const reasoning = mergeReasoningText(response.reasoning, split.reasoning);
-  const answer = split.answer || (reasoning ? "" : response.content ?? "");
-  return {
-    answer: answer.trim(),
-    reasoning: reasoning || undefined
-  };
+  return createReasoningClassifier({ fallbackHeuristic: false }).normalizeModelResponse(response);
 }
 
 export function appendStreamText(previous: string, incoming: string): { next: string; delta: string } {
@@ -169,82 +168,6 @@ export function appendStreamText(previous: string, incoming: string): { next: st
   return { next: previous + incoming, delta: incoming };
 }
 
-export function isLikelyUserFacingAnswerDelta(delta: string, reasoningSoFar: string) {
-  const trimmed = delta.trim();
-  if (!trimmed) {
-    return false;
-  }
-  if (!reasoningSoFar.trim()) {
-    return !looksLikeInternalReasoning(trimmed);
-  }
-  if (looksLikeInternalReasoning(reasoningSoFar) && /[\u4e00-\u9fff]/.test(trimmed)) {
-    return true;
-  }
-  if (/^(你好|您好|我是|Hi[!.]?|Hello)/i.test(trimmed)) {
-    return true;
-  }
-  return false;
-}
-
-export function shouldBeginAnswerPhase(input: {
-  answerPhase: boolean;
-  sawReasoningMetadata: boolean;
-  chunkHasReasoningMetadata: boolean;
-  reasoningFromContent: string;
-  rawContent: string;
-  delta: string;
-}) {
-  if (input.answerPhase) {
-    return true;
-  }
-  if (input.chunkHasReasoningMetadata) {
-    return false;
-  }
-  if (input.sawReasoningMetadata && input.rawContent) {
-    return true;
-  }
-  if (
-    input.reasoningFromContent &&
-    input.rawContent &&
-    !input.rawContent.startsWith(input.reasoningFromContent) &&
-    input.rawContent.length < input.reasoningFromContent.length
-  ) {
-    return true;
-  }
-  return isLikelyUserFacingAnswerDelta(input.delta, input.reasoningFromContent);
-}
-
-function readReasoningFromLangChainResponse(response: {
-  content?: unknown;
-  additional_kwargs?: Record<string, unknown>;
-  response_metadata?: Record<string, unknown>;
-}) {
-  const additional = response.additional_kwargs ?? {};
-  const metadata = response.response_metadata ?? {};
-  const reasoningDetails = additional.reasoning_details ?? metadata.reasoning_details;
-  if (Array.isArray(reasoningDetails)) {
-    const text = reasoningDetails
-      .map((entry) => {
-        if (typeof entry === "string") {
-          return entry;
-        }
-        if (entry && typeof entry === "object" && "text" in entry) {
-          return String((entry as { text?: unknown }).text ?? "");
-        }
-        return "";
-      })
-      .filter(Boolean)
-      .join("\n\n")
-      .trim();
-    if (text) {
-      return text;
-    }
-  }
-
-  const reasoningContent = additional.reasoning_content ?? metadata.reasoning_content;
-  return typeof reasoningContent === "string" ? reasoningContent.trim() : undefined;
-}
-
 function mapLangChainToolCalls(
   toolCalls?: Array<{ id?: string; name: string; args: Record<string, unknown> }>
 ): PerceptionModelToolCall[] | undefined {
@@ -255,25 +178,7 @@ function mapLangChainToolCalls(
   }));
 }
 
-function mapLangChainResponse(response: {
-  content?: unknown;
-  tool_calls?: Array<{ id?: string; name: string; args: Record<string, unknown> }>;
-  additional_kwargs?: Record<string, unknown>;
-  response_metadata?: Record<string, unknown>;
-}): PerceptionModelResponse {
-  const rawContent = typeof response.content === "string" ? response.content : "";
-  const normalized = normalizeModelResponse({
-    content: rawContent,
-    reasoning: readReasoningFromLangChainResponse(response)
-  });
-  return {
-    content: normalized.answer,
-    reasoning: normalized.reasoning,
-    toolCalls: mapLangChainToolCalls(response.tool_calls)
-  };
-}
-
-export function wrapLangChainChatModel(model: {
+type LangChainChatModel = {
   invoke(input: unknown): Promise<{
     content?: unknown;
     tool_calls?: Array<{ id?: string; name: string; args: Record<string, unknown> }>;
@@ -286,15 +191,38 @@ export function wrapLangChainChatModel(model: {
     additional_kwargs?: Record<string, unknown>;
     response_metadata?: Record<string, unknown>;
   }>>;
-}): PerceptionChatModel {
+};
+
+function mapLangChainResponse(
+  response: Awaited<ReturnType<LangChainChatModel["invoke"]>>,
+  classifier: ReturnType<typeof createReasoningClassifier>
+): PerceptionModelResponse {
+  const rawContent = typeof response.content === "string" ? response.content : "";
+  const normalized = classifier.normalizeModelResponse({
+    content: rawContent,
+    reasoning: readReasoningFromLangChainResponse(response)
+  });
+  return {
+    content: normalized.answer,
+    reasoning: normalized.reasoning,
+    toolCalls: mapLangChainToolCalls(response.tool_calls)
+  };
+}
+
+export function wrapLangChainChatModel(
+  model: LangChainChatModel,
+  classifierOptions: ReasoningClassifierOptions = { fallbackHeuristic: false }
+): PerceptionChatModel {
+  const classifier = createReasoningClassifier(classifierOptions);
+
   return {
     async invoke(messages) {
-      return mapLangChainResponse(await model.invoke(messages));
+      return mapLangChainResponse(await model.invoke(messages), classifier);
     },
     async *stream(messages) {
       if (!model.stream) {
         const response = await model.invoke(messages);
-        const mapped = mapLangChainResponse(response);
+        const mapped = mapLangChainResponse(response, classifier);
         if (mapped.reasoning) {
           yield { reasoningDelta: mapped.reasoning };
         }
@@ -304,11 +232,8 @@ export function wrapLangChainChatModel(model: {
         return;
       }
 
-      let contentBuffer = "";
-      let emittedReasoningLength = 0;
-      let emittedAnswerLength = 0;
-      let reasoningFromMetadata = "";
       let latestToolCalls: PerceptionModelToolCall[] | undefined;
+      const router = classifier.createStreamRouter();
       const stream = await model.stream(messages);
       for await (const chunk of stream) {
         const mappedToolCalls = mapLangChainToolCalls(chunk.tool_calls);
@@ -316,39 +241,12 @@ export function wrapLangChainChatModel(model: {
           latestToolCalls = mappedToolCalls;
         }
 
-        const chunkReasoningFull = readReasoningFromLangChainResponse(chunk);
-        if (chunkReasoningFull) {
-          const { next, delta } = appendStreamText(reasoningFromMetadata, chunkReasoningFull);
-          if (delta) {
-            reasoningFromMetadata = next;
+        for (const event of router.ingestChunk(chunk)) {
+          if (event.reasoningDelta) {
+            yield { reasoningDelta: event.reasoningDelta };
           }
-        }
-
-        const rawContent = typeof chunk.content === "string" ? chunk.content : "";
-        if (rawContent) {
-          contentBuffer = appendStreamText(contentBuffer, rawContent).next;
-        }
-
-        if (!chunkReasoningFull && !rawContent) {
-          continue;
-        }
-
-        const split = classifyStreamingModelContent(contentBuffer);
-        const combinedReasoning = mergeReasoningText(reasoningFromMetadata, split.reasoning);
-
-        if (combinedReasoning.length > emittedReasoningLength) {
-          const reasoningDelta = combinedReasoning.slice(emittedReasoningLength);
-          emittedReasoningLength = combinedReasoning.length;
-          if (reasoningDelta) {
-            yield { reasoningDelta };
-          }
-        }
-
-        if (split.answer.length > emittedAnswerLength) {
-          const answerDelta = split.answer.slice(emittedAnswerLength);
-          emittedAnswerLength = split.answer.length;
-          if (answerDelta) {
-            yield { answerDelta };
+          if (event.answerDelta) {
+            yield { answerDelta: event.answerDelta };
           }
         }
       }
