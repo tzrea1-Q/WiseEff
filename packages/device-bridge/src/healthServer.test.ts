@@ -1,5 +1,6 @@
-import { get } from "node:http";
 import { describe, expect, it, vi } from "vitest";
+
+import { request } from "node:http";
 
 import { createToolProbeCache } from "./healthState";
 import { startHealthServer } from "./healthServer";
@@ -13,11 +14,11 @@ type TestResponse = {
 
 function requestHealth(
   url: string,
-  options: { method?: string; headers?: Record<string, string> } = {}
+  options: { method?: string; headers?: Record<string, string>; body?: string } = {}
 ): Promise<TestResponse> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
-    const req = get(
+    const req = request(
       {
         hostname: parsed.hostname,
         port: parsed.port,
@@ -49,6 +50,9 @@ function requestHealth(
       }
     );
     req.on("error", reject);
+    if (options.body) {
+      req.write(options.body);
+    }
     req.end();
   });
 }
@@ -280,6 +284,70 @@ describe("healthServer", () => {
     const response = await requestHealth(health.url);
     const body = JSON.parse(response.body);
     expect(body.launcherPath).toBe("C:\\WiseEff\\Bridge\\wiseeff-bridge.cmd");
+
+    await health.close();
+  });
+
+  it("accepts POST /connect and returns CORS headers for remote origins", async () => {
+    const onConnect = vi.fn(async () => ({ ok: true, accepted: true }));
+    const health = await startHealthServer({
+      port: 0,
+      onConnect,
+      getState: () => ({
+        paired: false,
+        connected: false,
+        updatedAt: "2026-06-28T00:00:00.000Z"
+      })
+    });
+
+    const connectUrl = health.url.replace(/\/health$/, "/connect");
+    const response = await requestHealth(connectUrl, {
+      method: "POST",
+      headers: {
+        Origin: "http://101.43.45.27",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        server: "http://101.43.45.27",
+        webOrigin: "http://101.43.45.27",
+        code: "123456"
+      })
+    });
+    expect(response.status).toBe(202);
+    expect(response.headers["access-control-allow-origin"]).toBe("http://101.43.45.27");
+    expect(JSON.parse(response.body)).toEqual({ ok: true, accepted: true });
+    expect(onConnect).toHaveBeenCalledWith({
+      server: "http://101.43.45.27",
+      webOrigin: "http://101.43.45.27",
+      code: "123456"
+    });
+
+    await health.close();
+  });
+
+  it("responds to OPTIONS /connect with private network access", async () => {
+    const health = await startHealthServer({
+      port: 0,
+      onConnect: async () => ({ ok: true, accepted: true }),
+      getState: () => ({
+        paired: false,
+        connected: false,
+        updatedAt: "2026-06-28T00:00:00.000Z"
+      })
+    });
+
+    const connectUrl = health.url.replace(/\/health$/, "/connect");
+    const response = await requestHealth(connectUrl, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "http://101.43.45.27",
+        "Access-Control-Request-Private-Network": "true"
+      }
+    });
+    expect(response.status).toBe(204);
+    expect(response.headers["access-control-allow-origin"]).toBe("http://101.43.45.27");
+    expect(response.headers["access-control-allow-private-network"]).toBe("true");
+    expect(response.headers["access-control-allow-methods"]).toBe("POST, OPTIONS");
 
     await health.close();
   });

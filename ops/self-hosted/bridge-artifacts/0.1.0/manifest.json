@@ -3,6 +3,30 @@
   "minCompatibleVersion": "0.1.0",
   "items": [
     {
+      "platform": "windows",
+      "arch": "amd64",
+      "version": "0.1.0",
+      "artifact": "wiseeff-bridge_0.1.0_windows_amd64.zip",
+      "sha256": "e5a4d1606fcf4a6479cdfb8846ca33177c74a911ab795ae24ab927f689150d90",
+      "artifactKind": "portable"
+    },
+    {
+      "platform": "darwin",
+      "arch": "arm64",
+      "version": "0.1.0",
+      "artifact": "wiseeff-bridge_0.1.0_darwin_arm64.tar.gz",
+      "sha256": "35450289812310525d498c07aca877673704f5a1bebc264b11eb0ea3ca2049c2",
+      "artifactKind": "portable"
+    },
+    {
+      "platform": "darwin",
+      "arch": "amd64",
+      "version": "0.1.0",
+      "artifact": "wiseeff-bridge_0.1.0_darwin_amd64.tar.gz",
+      "sha256": "35450289812310525d498c07aca877673704f5a1bebc264b11eb0ea3ca2049c2",
+      "artifactKind": "portable"
+    },
+    {
       "platform": "darwin",
       "arch": "arm64",
       "version": "0.1.0",
@@ -25,30 +49,6 @@
       "artifact": "WiseEffBridgeSetup_0.1.0.exe",
       "artifactKind": "installer",
       "sha256": "4562240396660815e91c215bc96a04c0f0d527b7f1f273da3b0ad1a89592ffd8"
-    },
-    {
-      "platform": "windows",
-      "arch": "amd64",
-      "version": "0.1.0",
-      "artifact": "wiseeff-bridge_0.1.0_windows_amd64.zip",
-      "sha256": "0f8f2436adc27c19d7f89b3bc90e6aa68c8f73c8577eef6227f471acfd2d68d5",
-      "artifactKind": "portable"
-    },
-    {
-      "platform": "darwin",
-      "arch": "arm64",
-      "version": "0.1.0",
-      "artifact": "wiseeff-bridge_0.1.0_darwin_arm64.tar.gz",
-      "sha256": "9e10dabac400c9b2acb4e0df053fcdb167464f1d416ebe89e0f49b58e541cd15",
-      "artifactKind": "portable"
-    },
-    {
-      "platform": "darwin",
-      "arch": "amd64",
-      "version": "0.1.0",
-      "artifact": "wiseeff-bridge_0.1.0_darwin_amd64.tar.gz",
-      "sha256": "a0dd26d905720a64e9fab106e71055322bbe6bff45df74cf64076a8c0d99fd00",
-      "artifactKind": "portable"
     }
   ]
 }

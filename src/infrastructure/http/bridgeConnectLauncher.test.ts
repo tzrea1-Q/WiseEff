@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildBridgeConnectUrl, launchBridgeConnect, probeLocalBridgeHealth } from "./bridgeConnectLauncher";
+import { buildBridgeConnectUrl, launchBridgeConnect, probeLocalBridgeHealth, requestLocalBridgeConnect } from "./bridgeConnectLauncher";
 
 describe("bridgeConnectLauncher", () => {
   it("launches custom protocol URLs via location.assign", () => {
@@ -49,5 +49,36 @@ describe("bridgeConnectLauncher", () => {
         hdc: { available: true, version: "hdc version 2.0.0", source: "system" }
       }
     });
+  });
+
+  it("posts connect requests to the local bridge HTTP API", async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      json: async () => ({ ok: true, accepted: true })
+    })) as unknown as typeof fetch;
+
+    await expect(
+      requestLocalBridgeConnect(
+        {
+          server: "http://101.43.45.27",
+          webOrigin: "http://101.43.45.27",
+          code: "337769"
+        },
+        fetchImpl
+      )
+    ).resolves.toEqual({ reachable: true, ok: true, accepted: true });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining("/connect"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          server: "http://101.43.45.27",
+          webOrigin: "http://101.43.45.27",
+          code: "337769"
+        })
+      })
+    );
   });
 });

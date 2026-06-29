@@ -82,12 +82,25 @@ function applyPrivateNetworkAccess(res: import("node:http").ServerResponse, req:
   }
 }
 
+export type BridgeConnectRequest = {
+  server: string;
+  webOrigin?: string;
+  code?: string;
+};
+
+export type BridgeConnectResult = {
+  ok: boolean;
+  accepted?: boolean;
+  error?: string;
+};
+
 export function startHealthServer(input: {
   getState: () => BridgeHealthState;
   host?: string;
   port?: number;
   onHealthRead?: () => void | Promise<void>;
   onToolsInstall?: (protocol: "adb" | "hdc" | "all") => void | Promise<void>;
+  onConnect?: (request: BridgeConnectRequest) => void | Promise<BridgeConnectResult>;
   allowedOrigin?: string | string[];
 }): Promise<HealthServer> {
   const host = input.host ?? "127.0.0.1";
@@ -98,10 +111,15 @@ export function startHealthServer(input: {
       const requestUrl = new URL(req.url ?? "/", `http://${host}:${port}`);
       const origin = req.headers.origin;
 
-      if (req.method === "OPTIONS" && (requestUrl.pathname === "/tools/install" || requestUrl.pathname === "/health")) {
+      if (req.method === "OPTIONS" && (requestUrl.pathname === "/tools/install" || requestUrl.pathname === "/health" || requestUrl.pathname === "/connect")) {
         res.statusCode = 204;
         if (requestUrl.pathname === "/tools/install") {
           applyCorsHeaders(res, origin, input.allowedOrigin);
+          res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+          res.setHeader("Access-Control-Allow-Headers", "content-type");
+        } else if (requestUrl.pathname === "/connect") {
+          applyOpenCorsHeaders(res, origin);
+          applyPrivateNetworkAccess(res, req);
           res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
           res.setHeader("Access-Control-Allow-Headers", "content-type");
         } else {
@@ -110,6 +128,46 @@ export function startHealthServer(input: {
           res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
         }
         res.end();
+        return;
+      }
+
+      if (req.method === "POST" && requestUrl.pathname === "/connect") {
+        applyOpenCorsHeaders(res, origin);
+        applyPrivateNetworkAccess(res, req);
+        if (!input.onConnect) {
+          res.statusCode = 404;
+          res.end("Not Found");
+          return;
+        }
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk.toString();
+        }
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(body || "{}") as Record<string, unknown>;
+        } catch {
+          res.statusCode = 400;
+          res.setHeader("content-type", "application/json; charset=utf-8");
+          res.end(`${JSON.stringify({ ok: false, error: "Invalid JSON body" })}\n`);
+          return;
+        }
+        const server = typeof parsed.server === "string" ? parsed.server.trim() : "";
+        if (!server) {
+          res.statusCode = 400;
+          res.setHeader("content-type", "application/json; charset=utf-8");
+          res.end(`${JSON.stringify({ ok: false, error: "Missing server" })}\n`);
+          return;
+        }
+        const request: BridgeConnectRequest = {
+          server,
+          webOrigin: typeof parsed.webOrigin === "string" ? parsed.webOrigin : undefined,
+          code: typeof parsed.code === "string" ? parsed.code : undefined
+        };
+        const result = await input.onConnect(request);
+        res.statusCode = result.accepted ? 202 : result.ok ? 200 : 422;
+        res.setHeader("content-type", "application/json; charset=utf-8");
+        res.end(`${JSON.stringify(result)}\n`);
         return;
       }
 

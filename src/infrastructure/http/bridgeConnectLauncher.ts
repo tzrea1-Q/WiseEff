@@ -1,6 +1,6 @@
 import type { LocalBridgeHealthState, ToolProbeState } from "./deviceBridgeClient";
 import { resolveBridgeServerUrl, resolveBridgeWebOrigin } from "./bridgeServerUrl";
-import { resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
+import { resolveLocalBridgeConnectUrl, resolveLocalBridgeHealthUrl } from "./localBridgeHttpUrl";
 
 export function buildBridgeConnectUrl(serverUrl?: string, code?: string, webOrigin?: string) {
   const url = new URL("wiseeff-bridge://connect");
@@ -141,6 +141,76 @@ function parseLocalBridgeHealthBody(body: Record<string, unknown>): LocalBridgeH
     tools,
     toolsInstall
   };
+}
+
+export type LocalBridgeConnectResult = {
+  reachable: boolean;
+  ok: boolean;
+  accepted?: boolean;
+  error?: string;
+};
+
+export async function requestLocalBridgeConnect(
+  input: { server?: string; webOrigin?: string; code?: string },
+  fetchImpl: typeof fetch = fetch
+): Promise<LocalBridgeConnectResult> {
+  const server = input.server ?? resolveBridgeServerUrl();
+  const webOrigin = input.webOrigin ?? resolveBridgeWebOrigin();
+  try {
+    const response = await fetchImpl(resolveLocalBridgeConnectUrl(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        server,
+        ...(webOrigin ? { webOrigin } : {}),
+        ...(input.code ? { code: input.code } : {})
+      })
+    });
+    if (response.status === 404) {
+      return { reachable: true, ok: false, error: "connect_unsupported" };
+    }
+    const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    return {
+      reachable: true,
+      ok: response.ok && body.ok === true,
+      accepted: body.accepted === true,
+      error: typeof body.error === "string" ? body.error : undefined
+    };
+  } catch {
+    return { reachable: false, ok: false };
+  }
+}
+
+export async function connectLocalBridge(input: {
+  server?: string;
+  webOrigin?: string;
+  code?: string;
+  fetchImpl?: typeof fetch;
+  launchSchemeFallback?: boolean;
+}): Promise<LocalBridgeConnectResult> {
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const localResult = await requestLocalBridgeConnect(
+    {
+      server: input.server,
+      webOrigin: input.webOrigin,
+      code: input.code
+    },
+    fetchImpl
+  );
+
+  if (localResult.reachable && (localResult.ok || localResult.accepted)) {
+    return localResult;
+  }
+
+  if (input.launchSchemeFallback === false) {
+    return localResult;
+  }
+
+  const server = input.server ?? resolveBridgeServerUrl();
+  const webOrigin = input.webOrigin ?? resolveBridgeWebOrigin();
+  const connectUrl = buildBridgeConnectUrl(server, input.code, webOrigin);
+  launchBridgeConnect(connectUrl);
+  return localResult.reachable ? localResult : { ...localResult, ok: false };
 }
 
 export async function probeLocalBridgeHealth(fetchImpl: typeof fetch = fetch): Promise<LocalBridgeHealthState | null> {

@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 
 import { appendBridgeLaunchLog } from "./bridgeLaunchLog";
-import { resolveBundledNodePath, resolveDetachedBridgeStartCommand } from "./bridgeRuntimePaths";
+import {
+  resolveBundledNodePath,
+  resolveDetachedBridgeConnectCommand,
+  resolveDetachedBridgeStartCommand
+} from "./bridgeRuntimePaths";
 import { stopLocalBridgeHealthListener, waitForLocalBridgeConnection } from "./localBridgeProcess";
 import { runWindowsServiceCommand } from "./windowsService";
 
@@ -60,11 +64,15 @@ function resolveDetachedStartCommand(deps: Pick<EnsureBridgeRunningDependencies,
   return resolveDetachedBridgeStartCommand(deps);
 }
 
-function spawnDetachedStart(deps: Pick<EnsureBridgeRunningDependencies, "execPath" | "cliPath" | "stdout" | "platform">) {
+function spawnDetachedCommand(
+  deps: Pick<EnsureBridgeRunningDependencies, "execPath" | "cliPath" | "stdout" | "platform">,
+  command: string,
+  args: string[],
+  label: string
+) {
   const logPath = path.join(os.homedir(), ".wiseeff", "bridge-start.log");
   mkdirSync(path.dirname(logPath), { recursive: true });
   const logFd = openSync(logPath, "a");
-  const { command, args } = resolveDetachedStartCommand(deps);
   const spawnEnv = {
     ...process.env,
     HOME: os.homedir(),
@@ -82,7 +90,7 @@ function spawnDetachedStart(deps: Pick<EnsureBridgeRunningDependencies, "execPat
       void appendBridgeLaunchLog(`spawn ERROR ${error.message}`);
     });
     child.unref();
-    deps.stdout.log(`Started bridge in background via login shell (${command}).`);
+    deps.stdout.log(`${label} via login shell (${command}).`);
     void appendBridgeLaunchLog(`spawn detached ${inner}`);
     return;
   }
@@ -97,8 +105,21 @@ function spawnDetachedStart(deps: Pick<EnsureBridgeRunningDependencies, "execPat
     void appendBridgeLaunchLog(`spawn ERROR ${error.message}`);
   });
   child.unref();
-  deps.stdout.log(`Started bridge in background (${command}).`);
+  deps.stdout.log(`${label} (${command}).`);
   void appendBridgeLaunchLog(`spawn detached ${command} ${args.join(" ")}`);
+}
+
+function spawnDetachedStart(deps: Pick<EnsureBridgeRunningDependencies, "execPath" | "cliPath" | "stdout" | "platform">) {
+  const { command, args } = resolveDetachedBridgeStartCommand(deps);
+  spawnDetachedCommand(deps, command, args, "Started bridge in background");
+}
+
+export function spawnDetachedConnect(
+  deps: Pick<EnsureBridgeRunningDependencies, "execPath" | "cliPath" | "stdout" | "platform">,
+  input: { server: string; code?: string; webOrigin?: string }
+) {
+  const { command, args } = resolveDetachedBridgeConnectCommand({ ...deps, ...input });
+  spawnDetachedCommand(deps, command, args, "Started bridge connect in background");
 }
 
 export async function ensureBridgeRunning(deps: EnsureBridgeRunningDependencies): Promise<{ exitCode: number }> {

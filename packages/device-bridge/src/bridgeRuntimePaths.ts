@@ -51,11 +51,43 @@ export function resolveWindowsBridgeLauncher(cliPath: string, platform: NodeJS.P
   return null;
 }
 
-export function resolveDetachedBridgeStartCommand(input: {
+export type DetachedBridgeCliInput = {
   platform: NodeJS.Platform;
   execPath: string;
   cliPath: string;
-}): { command: string; args: string[] } {
+};
+
+export function resolveDetachedBridgeConnectCommand(
+  input: DetachedBridgeCliInput & {
+    server: string;
+    code?: string;
+    webOrigin?: string;
+  }
+): { command: string; args: string[] } {
+  const pathApi = pathForPlatform(input.platform);
+
+  const connectArgs = ["connect", "--server", input.server];
+  if (input.code) {
+    connectArgs.push("--code", input.code);
+  }
+  if (input.webOrigin) {
+    connectArgs.push("--webOrigin", input.webOrigin);
+  }
+
+  if (input.platform === "darwin") {
+    const wrapperPath = pathApi.join(pathApi.dirname(input.cliPath), "wiseeff-bridge");
+    if (existsSync(wrapperPath)) {
+      return { command: wrapperPath, args: connectArgs };
+    }
+  }
+
+  return {
+    command: resolveBundledNodePath(input.cliPath, input.execPath, input.platform),
+    args: [input.cliPath, ...connectArgs]
+  };
+}
+
+export function resolveDetachedBridgeStartCommand(input: DetachedBridgeCliInput): { command: string; args: string[] } {
   const pathApi = pathForPlatform(input.platform);
 
   if (input.platform === "darwin") {

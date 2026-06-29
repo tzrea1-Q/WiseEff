@@ -15,14 +15,14 @@ const runningUnpairedHealth: LocalBridgeHealthState = {
 };
 
 describe("bridgeConnectFailure", () => {
-  it("describes scheme registration failures when bridge is running but unpaired", () => {
+  it("describes pairing failures when bridge is running but unpaired", () => {
     expect(
       describeBridgeConnectFailureMessage({
         health: runningUnpairedHealth,
         pairingStale: false,
         pairingAuthFailure: false
       })
-    ).toContain("wiseeff-bridge://");
+    ).toContain("尚未完成配对");
   });
 
   it("prefers pairing errors from health", () => {
