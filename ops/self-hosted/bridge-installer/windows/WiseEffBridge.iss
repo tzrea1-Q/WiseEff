@@ -2,6 +2,8 @@
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "WiseEff"
 #define MyAppLauncher "wiseeff-bridge.cmd"
+#define MyAppNodeExe "node.exe"
+#define MyAppCli "cli.js"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
@@ -22,13 +24,13 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge"; ValueType: string; ValueData: "URL:WiseEff Bridge Protocol"; Flags: uninsdeletekey
-Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: string; ValueData: ""
-Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppLauncher}"; Flags: uninsdeletevalue
-Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
+Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge"; ValueName: "URL Protocol"; ValueType: string; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppNodeExe}"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppNodeExe}"" ""{app}\{#MyAppCli}"" --handle-url ""%1"""
 Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge"; ValueType: string; ValueData: "URL:WiseEff Bridge Protocol"; Flags: uninsdeletekey
-Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: string; ValueData: ""
-Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppLauncher}"; Flags: uninsdeletevalue
-Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge"; ValueName: "URL Protocol"; ValueType: string; ValueData: ""; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppNodeExe}"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppNodeExe}"" ""{app}\{#MyAppCli}"" --handle-url ""%1"""
 
 [Run]
 Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" register"; Flags: waituntilterminated runhidden; StatusMsg: "Registering URL scheme..."

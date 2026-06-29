@@ -43,6 +43,15 @@ describe("windowsUrlScheme helpers", () => {
     );
   });
 
+  it("builds registry command value with node.exe and cli.js for Chrome compatibility", () => {
+    expect(
+      buildWindowsUrlSchemeCommandValue(
+        "C:\\WiseEff\\Bridge\\node.exe",
+        "C:\\WiseEff\\Bridge\\cli.js"
+      )
+    ).toBe('"C:\\WiseEff\\Bridge\\node.exe" "C:\\WiseEff\\Bridge\\cli.js" --handle-url "%1"');
+  });
+
   it("extracts launcher path from registry command value", () => {
     expect(
       extractLauncherPathFromRegistryCommand('"C:\\Custom\\Bridge\\wiseeff-bridge.cmd" --handle-url "%1"')
@@ -102,6 +111,11 @@ describe("windowsUrlScheme register/unregister", () => {
     );
     expect(execFile).toHaveBeenCalledWith(
       "reg.exe",
+      ["add", WINDOWS_URL_SCHEME_KEY, "/v", "URL Protocol", "/d", "", "/f"],
+      { windowsHide: true }
+    );
+    expect(execFile).toHaveBeenCalledWith(
+      "reg.exe",
       [
         "add",
         WINDOWS_URL_SCHEME_COMMAND_KEY,
@@ -113,6 +127,37 @@ describe("windowsUrlScheme register/unregister", () => {
       { windowsHide: true }
     );
     expect(capture.logs.some((line) => line.includes("Registered wiseeff-bridge://"))).toBe(true);
+  });
+
+  it("writes URL Protocol as a named value and uses node.exe handler when cliPath is provided", async () => {
+    const capture = createCapture();
+    const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const deps = createDeps({ execFile, ...capture });
+
+    const exitCode = await registerWindowsUrlScheme(
+      "C:\\WiseEff\\Bridge\\node.exe",
+      deps,
+      "C:\\WiseEff\\Bridge\\cli.js"
+    );
+
+    expect(exitCode).toBe(0);
+    expect(execFile).toHaveBeenCalledWith(
+      "reg.exe",
+      ["add", WINDOWS_URL_SCHEME_KEY, "/v", "URL Protocol", "/d", "", "/f"],
+      { windowsHide: true }
+    );
+    expect(execFile).toHaveBeenCalledWith(
+      "reg.exe",
+      [
+        "add",
+        WINDOWS_URL_SCHEME_COMMAND_KEY,
+        "/ve",
+        "/d",
+        '"C:\\WiseEff\\Bridge\\node.exe" "C:\\WiseEff\\Bridge\\cli.js" --handle-url "%1"',
+        "/f"
+      ],
+      { windowsHide: true }
+    );
   });
 
   it("detects registered scheme and validates launcher path", async () => {

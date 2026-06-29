@@ -28,6 +28,7 @@ import { createProxiedFetch } from "./proxyFetch";
 import {
   pairingStartupErrorMessage,
   resolveBridgeLauncherPath,
+  resolveBundledNodePath,
   resolveWindowsBridgeLauncher
 } from "./bridgeRuntimePaths";
 import { appendBridgeLaunchLog } from "./bridgeLaunchLog";
@@ -547,7 +548,8 @@ export async function runCli(
       return runWindowsUrlSchemeCommand(
         parsed.command,
         resolveWindowsRegisterLauncherPath(runtimePaths.cliPath),
-        createWindowsUrlSchemeDeps(deps, runtimePaths, overrides.execFile as WindowsUrlSchemeExecFileFn | undefined)
+        createWindowsUrlSchemeDeps(deps, runtimePaths, overrides.execFile as WindowsUrlSchemeExecFileFn | undefined),
+        runtimePaths.cliPath
       );
     }
     deps.stdout.error("register is only available on Windows and macOS.");
@@ -580,10 +582,8 @@ export async function runCli(
 }
 
 function resolveWindowsRegisterLauncherPath(cliPath: string): string {
-  return (
-    resolveWindowsBridgeLauncher(cliPath, "win32") ??
-    path.win32.join(path.win32.dirname(cliPath), "wiseeff-bridge.cmd")
-  );
+  // Use bundled node.exe as the handler executable; .cmd handlers are rejected by Chrome.
+  return resolveBundledNodePath(cliPath, process.execPath, "win32");
 }
 
 function createWindowsUrlSchemeDeps(

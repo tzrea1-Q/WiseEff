@@ -25,8 +25,12 @@ export function isWindowsPlatform(platform: NodeJS.Platform): boolean {
   return platform === "win32";
 }
 
-export function buildWindowsUrlSchemeCommandValue(launcherPath: string): string {
+export function buildWindowsUrlSchemeCommandValue(launcherPath: string, cliPath?: string): string {
   const normalized = path.win32.normalize(launcherPath);
+  if (cliPath) {
+    const normalizedCli = path.win32.normalize(cliPath);
+    return `"${normalized}" "${normalizedCli}" --handle-url "%1"`;
+  }
   return `"${normalized}" --handle-url "%1"`;
 }
 
@@ -77,6 +81,15 @@ async function runRegAdd(
   await deps.execFile("reg.exe", ["add", key, "/ve", "/d", value, "/f"], { windowsHide: true });
 }
 
+async function runRegAddNamed(
+  deps: Pick<WindowsUrlSchemeDependencies, "execFile">,
+  key: string,
+  valueName: string,
+  value: string
+): Promise<void> {
+  await deps.execFile("reg.exe", ["add", key, "/v", valueName, "/d", value, "/f"], { windowsHide: true });
+}
+
 async function runRegDelete(deps: Pick<WindowsUrlSchemeDependencies, "execFile">, key: string): Promise<void> {
   await deps.execFile("reg.exe", ["delete", key, "/f"], { windowsHide: true });
 }
@@ -97,12 +110,14 @@ async function queryRegistryCommandValue(
 async function writeUrlSchemeRegistry(
   deps: Pick<WindowsUrlSchemeDependencies, "execFile">,
   root: "HKCU" | "HKLM",
-  launcherPath: string
+  launcherPath: string,
+  cliPath?: string
 ): Promise<void> {
   const schemeKey = windowsUrlSchemeRegistryRoot(root);
-  const commandValue = buildWindowsUrlSchemeCommandValue(launcherPath);
+  const commandValue = buildWindowsUrlSchemeCommandValue(launcherPath, cliPath);
   await runRegAdd(deps, schemeKey, WINDOWS_URL_SCHEME_PROTOCOL_LABEL);
-  await runRegAdd(deps, `${schemeKey}\\URL Protocol`, "");
+  // URL Protocol must be a named value, NOT a subkey, per Microsoft URL protocol spec.
+  await runRegAddNamed(deps, schemeKey, "URL Protocol", "");
   await runRegAdd(deps, `${schemeKey}\\DefaultIcon`, launcherPath);
   await runRegAdd(deps, `${schemeKey}\\shell\\open\\command`, commandValue);
 }
@@ -147,7 +162,8 @@ function execFailureMessage(error: unknown): string {
 
 export async function registerWindowsUrlScheme(
   launcherPath: string,
-  deps: WindowsUrlSchemeDependencies
+  deps: WindowsUrlSchemeDependencies,
+  cliPath?: string
 ): Promise<number> {
   if (!isWindowsPlatform(deps.platform)) {
     deps.error("register is only available on Windows.");
@@ -155,7 +171,7 @@ export async function registerWindowsUrlScheme(
   }
 
   try {
-    await writeUrlSchemeRegistry(deps, "HKCU", launcherPath);
+    await writeUrlSchemeRegistry(deps, "HKCU", launcherPath, cliPath);
     deps.log(`Registered wiseeff-bridge:// in HKCU via ${path.win32.normalize(launcherPath)}`);
   } catch (error) {
     deps.error(`Failed to register Windows URL scheme (HKCU): ${execFailureMessage(error)}`);
@@ -163,7 +179,7 @@ export async function registerWindowsUrlScheme(
   }
 
   try {
-    await writeUrlSchemeRegistry(deps, "HKLM", launcherPath);
+    await writeUrlSchemeRegistry(deps, "HKLM", launcherPath, cliPath);
     deps.log(`Registered wiseeff-bridge:// in HKLM via ${path.win32.normalize(launcherPath)}`);
   } catch (error) {
     deps.log("HKLM URL scheme registration skipped (administrator privileges required).");
@@ -204,10 +220,11 @@ export async function unregisterWindowsUrlScheme(deps: WindowsUrlSchemeDependenc
 export async function runWindowsUrlSchemeCommand(
   action: "register" | "unregister",
   launcherPath: string,
-  deps: WindowsUrlSchemeDependencies
+  deps: WindowsUrlSchemeDependencies,
+  cliPath?: string
 ): Promise<number> {
   if (action === "register") {
-    return registerWindowsUrlScheme(launcherPath, deps);
+    return registerWindowsUrlScheme(launcherPath, deps, cliPath);
   }
   return unregisterWindowsUrlScheme(deps);
 }
