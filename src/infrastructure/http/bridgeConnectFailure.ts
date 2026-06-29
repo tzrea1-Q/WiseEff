@@ -10,7 +10,7 @@ export function describeBridgeConnectFailureMessage(context: BridgeConnectFailur
   const { health, pairingStale } = context;
 
   if (!health) {
-    return "30 秒内未检测到 Bridge 上线。若浏览器已唤起 Bridge，请稍候；否则请确认已安装并启动 WiseEff Bridge。";
+    return "30 秒内未检测到 Bridge 上线。若 Console 报 wiseeff-bridge:// 无 handler，请改用 https://tzrea1.com 打开页面，或执行下方 --handle-url 命令。";
   }
 
   if (health.pairingError) {

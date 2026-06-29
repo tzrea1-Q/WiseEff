@@ -34,6 +34,11 @@ export function bridgeCliDiscoveryHint(platform: DeviceBridgePlatform): string {
   }
 }
 
+export function formatBridgeHandleUrlFallbackCommand(input: { cliPath?: string; connectUrl: string }): string {
+  const launcher = input.cliPath?.trim() || defaultBridgeCliPath("windows");
+  return `"${launcher}" --handle-url "${input.connectUrl}"`;
+}
+
 export function formatBridgeServiceInstallCommand(platform: DeviceBridgePlatform): string {
   return `"${defaultBridgeCliPath(platform)}" service install`;
 }

@@ -25,8 +25,29 @@ function launchCustomProtocolUrl(url: string) {
   anchor.remove();
 }
 
+function launchCustomProtocolViaIframe(url: string) {
+  const iframe = document.createElement("iframe");
+  iframe.style.display = "none";
+  iframe.setAttribute("aria-hidden", "true");
+  document.body.appendChild(iframe);
+  try {
+    if (iframe.contentWindow) {
+      iframe.contentWindow.location.href = url;
+    }
+  } finally {
+    window.setTimeout(() => iframe.remove(), 2000);
+  }
+}
+
 export function launchBridgeConnect(url: string) {
-  launchCustomProtocolUrl(url);
+  // Windows Chrome often rejects hidden anchor clicks for custom schemes from remote http(s) pages.
+  // Try location.assign first (must stay synchronous inside the user click handler).
+  try {
+    window.location.assign(url);
+  } catch {
+    launchCustomProtocolUrl(url);
+  }
+  launchCustomProtocolViaIframe(url);
 }
 
 export function buildBridgeInstallServiceUrl() {

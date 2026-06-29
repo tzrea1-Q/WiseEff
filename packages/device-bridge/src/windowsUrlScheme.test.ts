@@ -97,7 +97,7 @@ describe("windowsUrlScheme register/unregister", () => {
     );
     expect(execFile).toHaveBeenCalledWith(
       "reg.exe",
-      ["add", `${WINDOWS_URL_SCHEME_KEY}\\URL Protocol`, "/ve", "/d", "", "/f"],
+      ["add", "HKLM\\Software\\Classes\\wiseeff-bridge", "/ve", "/d", "URL:WiseEff Bridge Protocol", "/f"],
       { windowsHide: true }
     );
     expect(execFile).toHaveBeenCalledWith(

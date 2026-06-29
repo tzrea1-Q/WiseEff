@@ -23,7 +23,12 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 [Registry]
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge"; ValueType: string; ValueData: "URL:WiseEff Bridge Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: string; ValueData: ""
+Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppLauncher}"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge"; ValueType: string; ValueData: "URL:WiseEff Bridge Protocol"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: string; ValueData: ""
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\DefaultIcon"; ValueType: string; ValueData: "{app}\{#MyAppLauncher}"; Flags: uninsdeletevalue
+Root: HKLM; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
 
 [Run]
 Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" register"; Flags: waituntilterminated runhidden; StatusMsg: "Registering URL scheme..."
@@ -64,7 +69,9 @@ var
   ResultCode: Integer;
 begin
   if Exec('reg.exe', 'delete HKCU\Software\Classes\wiseeff-bridge /f', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-    AppendInstallLog('Removed wiseeff-bridge URL scheme registry');
+    AppendInstallLog('Removed wiseeff-bridge URL scheme registry (HKCU)');
+  if Exec('reg.exe', 'delete HKLM\Software\Classes\wiseeff-bridge /f', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    AppendInstallLog('Removed wiseeff-bridge URL scheme registry (HKLM)');
 end;
 
 procedure RemoveLegacyDir(const SubDir: String);

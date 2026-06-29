@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   formatBridgeConnectFallbackCommand,
+  formatBridgeHandleUrlFallbackCommand,
   formatBridgeServiceInstallCommand,
   bridgeCliDiscoveryHint
 } from "../infrastructure/http/bridgeInstallPaths";
@@ -147,6 +148,11 @@ export function LocalDeviceBridgeWizard({
   const showWindowsServiceHint = hostTarget.platform === "windows" && showServiceInstallHint && viewStep >= 2;
   const hostTargetLabel = bridgeHostTargetLabel(hostTarget);
   const hasInstallCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
+  const connectUrlForFallback = buildBridgeConnectUrl(
+    resolveBridgeServerUrl(),
+    pairingCode?.code,
+    resolveBridgeWebOrigin()
+  );
 
   useEffect(() => {
     if (panelStatus === "missing_bridge") {
@@ -564,6 +570,18 @@ export function LocalDeviceBridgeWizard({
             <p>
               若网页未能自动打开 Bridge，请在 Bridge 安装目录打开终端并执行：
             </p>
+            {hostTarget.platform === "windows" ? (
+              <>
+                <p className="local-device-bridge-panel__install-desc">推荐（与浏览器点击连接等效）：</p>
+                <code className="local-device-bridge-panel__fallback-command">
+                  {formatBridgeHandleUrlFallbackCommand({
+                    cliPath: health?.launcherPath,
+                    connectUrl: connectUrlForFallback
+                  })}
+                </code>
+                <p className="local-device-bridge-panel__install-desc">或使用 connect 子命令：</p>
+              </>
+            ) : null}
             <code className="local-device-bridge-panel__fallback-command">
               {formatBridgeConnectFallbackCommand({
                 platform: hostTarget.platform,
