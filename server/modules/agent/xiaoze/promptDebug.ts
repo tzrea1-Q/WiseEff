@@ -14,6 +14,7 @@ export type XiaozePromptDebugSnapshot = {
   llmMessages: unknown[];
   tools: PerceptionToolDescriptor[];
   model?: string;
+  promptVersion?: string;
 };
 
 export function buildXiaozePromptDebugSnapshot(options: {
@@ -24,6 +25,7 @@ export function buildXiaozePromptDebugSnapshot(options: {
   tools: PerceptionToolDescriptor[];
   systemPolicy: string;
   model?: string;
+  promptVersion?: string;
 }): XiaozePromptDebugSnapshot {
   return {
     threadId: options.threadId,
@@ -35,6 +37,7 @@ export function buildXiaozePromptDebugSnapshot(options: {
     },
     llmMessages: options.llmMessages,
     tools: options.tools,
-    ...(options.model ? { model: options.model } : {})
+    ...(options.model ? { model: options.model } : {}),
+    ...(options.promptVersion ? { promptVersion: options.promptVersion } : {})
   };
 }

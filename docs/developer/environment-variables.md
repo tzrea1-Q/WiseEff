@@ -108,6 +108,8 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 | `AGENT_API_TIMEOUT_MS` | `30000` | live Xiaoze LLM | Request timeout for LangChain `ChatOpenAI`. |
 | `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | Optional override for the Xiaoze LangGraph agent model id. |
 | `XIAOZE_DETERMINISTIC` | unset locally | acceptance/offline tests | Injects a fake chat model; no live LLM or `AGENT_API_*` values required. |
+| `XIAOZE_CHECKPOINTER` | `memory` | production Xiaoze planning resume | Use `postgres` in production/self-hosted so LangGraph checkpoints survive restarts and multi-replica routing; tables are ensured by `npm run db:migrate`. `memory` remains valid for local dev, tests, and when `XIAOZE_DETERMINISTIC=true`. |
+| `XIAOZE_REASONING_FALLBACK_HEURISTIC` | `false` | live Xiaoze LLM | Opt-in legacy language heuristic for splitting untagged model content into reasoning vs answer. Keep `false` in production; structured `reasoning_content` / `<think>` tags are the primary path. |
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |
 | `VITE_XIAOZE_PROMPT_DEBUG` | `false` | frontend dev tooling | Opt-in prompt/debug surfacing for Xiaoze development. |

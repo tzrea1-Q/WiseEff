@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase } from "../server/shared/database/client";
 import { applyMigrations } from "../server/shared/database/migrations";
+import { setupXiaozeCheckpointerTables } from "../server/modules/agent/xiaoze/durableCheckpointer";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const env = loadServerEnv(process.env);
@@ -16,3 +17,13 @@ const db = createPostgresDatabase(env.DATABASE_URL);
 const applied = await applyMigrations(db, path.join(root, "server", "migrations"));
 
 console.log(`Applied ${applied.length} migration(s): ${applied.join(", ") || "none"}`);
+
+const checkpointerSetup = await setupXiaozeCheckpointerTables({
+  mode: env.XIAOZE_CHECKPOINTER,
+  connectionString: env.DATABASE_URL
+});
+if (checkpointerSetup.status === "ensured") {
+  console.log("Ensured Xiaoze LangGraph checkpoint tables.");
+} else {
+  console.log("Skipped Xiaoze LangGraph checkpoint setup (XIAOZE_CHECKPOINTER is not postgres).");
+}

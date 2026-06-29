@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  appendStreamText,
-  isLikelyUserFacingAnswerDelta,
-  shouldBeginAnswerPhase,
-  wrapLangChainChatModel
-} from "./perceptionAgent";
+import { appendStreamText, wrapLangChainChatModel } from "./perceptionAgent";
 
 describe("appendStreamText", () => {
   it("supports cumulative and delta chunk shapes", () => {
@@ -19,27 +14,6 @@ describe("appendStreamText", () => {
   });
 });
 
-describe("shouldBeginAnswerPhase", () => {
-  it("keeps english thinking in the reasoning phase", () => {
-    expect(
-      shouldBeginAnswerPhase({
-        answerPhase: false,
-        sawReasoningMetadata: false,
-        chunkHasReasoningMetadata: false,
-        reasoningFromContent: "The user just said hello.",
-        rawContent: "The user just said hello. I should greet",
-        delta: " I should greet"
-      })
-    ).toBe(false);
-  });
-
-  it("starts answer phase when chinese reply begins", () => {
-    expect(
-      isLikelyUserFacingAnswerDelta("你好！我是小泽", "The user just said hello. I should greet them back.")
-    ).toBe(true);
-  });
-});
-
 describe("wrapLangChainChatModel stream routing", () => {
   it("routes untagged english thinking in content to reasoning deltas", async () => {
     const chunks = [
@@ -48,19 +22,22 @@ describe("wrapLangChainChatModel stream routing", () => {
       { content: "The user just said hello. I should greet them back in Chinese.\n\n你好！我是小泽。" }
     ];
     let index = 0;
-    const wrapped = wrapLangChainChatModel({
-      async invoke() {
-        return { content: chunks.at(-1)?.content ?? "" };
+    const wrapped = wrapLangChainChatModel(
+      {
+        async invoke() {
+          return { content: chunks.at(-1)?.content ?? "" };
+        },
+        async stream() {
+          return (async function* () {
+            while (index < chunks.length) {
+              yield chunks[index]!;
+              index += 1;
+            }
+          })();
+        }
       },
-      async stream() {
-        return (async function* () {
-          while (index < chunks.length) {
-            yield chunks[index]!;
-            index += 1;
-          }
-        })();
-      }
-    });
+      { fallbackHeuristic: true }
+    );
 
     const events: Array<{ reasoningDelta?: string; answerDelta?: string }> = [];
     for await (const chunk of wrapped.stream!([])) {

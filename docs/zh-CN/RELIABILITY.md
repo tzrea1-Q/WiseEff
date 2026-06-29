@@ -17,6 +17,12 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## 补充说明（小泽 checkpoint）
+
+- 生产与自托管部署使用 `XIAOZE_CHECKPOINTER=postgres`；LangGraph checkpoint 表由 `npm run db:migrate` 确保。
+- HITL 多步计划在 API 重启与多副本间可恢复；本地开发/测试默认 `memory`。
+- 与用户可见聊天历史（TD-030）分离。
+
 ## 同类中文文档
 
 - [docs/zh-CN/root/AGENTS.md](root/AGENTS.md)

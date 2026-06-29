@@ -26,6 +26,7 @@ import { formatToolCatalogForSystemPrompt, getXiaozeToolLabel } from "./toolCata
 import { buildXiaozePromptDebugSnapshot } from "./promptDebug";
 import { startRunStep, type RunEventSink } from "./runEventSink";
 import { createToolCallId } from "./runTimelineEvents";
+import { XIAOZE_PROMPT_VERSION, XIAOZE_SYSTEM_PROMPT } from "./xiaozePrompt";
 
 export type PlanningResumeDecision = Pick<
   ApprovalBridgeResumeInput,
@@ -45,13 +46,7 @@ export type PlanningApprovalBridge = {
   resume(input: ApprovalBridgeResumeInput): Promise<ApprovalBridgeResumeResult>;
 };
 
-const SYSTEM_PROMPT = [
-  "You are Xiaoze (小泽), WiseEff's perception and action assistant.",
-  "Use only the provided WiseEff tools to ground answers and proposed actions.",
-  "Never claim a write occurred unless an approved mutating tool executed successfully.",
-  "Cite sources from tool results when summarizing.",
-  "If a tool returns FORBIDDEN or access is denied, answer that the user is not permitted and do not reveal protected data."
-].join(" ");
+const SYSTEM_PROMPT = XIAOZE_SYSTEM_PROMPT;
 
 const MAX_TURNS = 6;
 
@@ -445,7 +440,8 @@ export function createPlanningAgent(options: {
               context: input.context,
               llmMessages,
               tools,
-              systemPolicy: SYSTEM_PROMPT
+              systemPolicy: SYSTEM_PROMPT,
+              promptVersion: XIAOZE_PROMPT_VERSION
             })
           : undefined;
 
