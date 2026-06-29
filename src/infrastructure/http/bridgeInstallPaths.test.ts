@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultBridgeCliPath,
   formatBridgeConnectFallbackCommand,
+  formatBridgeHandleUrlFallbackCommand,
   isRemoteWebOrigin,
   bridgeCliDiscoveryHint
 } from "./bridgeInstallPaths";
@@ -45,6 +46,15 @@ describe("bridgeInstallPaths", () => {
 
   it("provides platform-specific CLI discovery hints", () => {
     expect(bridgeCliDiscoveryHint("windows")).toContain("开始菜单");
+  });
+
+  it("builds handle-url fallback commands for Windows", () => {
+    expect(
+      formatBridgeHandleUrlFallbackCommand({
+        cliPath: "C:\\Bridge\\wiseeff-bridge.cmd",
+        connectUrl: "wiseeff-bridge://connect?server=http%3A%2F%2F101.43.45.27&code=123456"
+      })
+    ).toContain("--handle-url");
   });
 
   it("detects remote web origins", () => {

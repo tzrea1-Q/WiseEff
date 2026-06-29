@@ -1,8 +1,12 @@
 import path from "node:path";
 
-export const WINDOWS_URL_SCHEME_KEY = "HKCU\\Software\\Classes\\wiseeff-bridge";
-export const WINDOWS_URL_SCHEME_COMMAND_KEY = `${WINDOWS_URL_SCHEME_KEY}\\shell\\open\\command`;
+export const WINDOWS_URL_SCHEME_PROTOCOL = "wiseeff-bridge";
 export const WINDOWS_URL_SCHEME_PROTOCOL_LABEL = "URL:WiseEff Bridge Protocol";
+export const WINDOWS_URL_SCHEME_HKCU_KEY = "HKCU\\Software\\Classes\\wiseeff-bridge";
+export const WINDOWS_URL_SCHEME_HKLM_KEY = "HKLM\\Software\\Classes\\wiseeff-bridge";
+export const WINDOWS_URL_SCHEME_COMMAND_KEY = `${WINDOWS_URL_SCHEME_HKCU_KEY}\\shell\\open\\command`;
+/** @deprecated Use WINDOWS_URL_SCHEME_HKCU_KEY */
+export const WINDOWS_URL_SCHEME_KEY = WINDOWS_URL_SCHEME_HKCU_KEY;
 
 export type ExecFileFn = (
   file: string,
@@ -24,6 +28,10 @@ export function isWindowsPlatform(platform: NodeJS.Platform): boolean {
 export function buildWindowsUrlSchemeCommandValue(launcherPath: string): string {
   const normalized = path.win32.normalize(launcherPath);
   return `"${normalized}" --handle-url "%1"`;
+}
+
+export function windowsUrlSchemeRegistryRoot(root: "HKCU" | "HKLM"): string {
+  return `${root}\\Software\\Classes\\${WINDOWS_URL_SCHEME_PROTOCOL}`;
 }
 
 export function normalizeWindowsLauncherPath(launcherPath: string): string {
@@ -73,17 +81,37 @@ async function runRegDelete(deps: Pick<WindowsUrlSchemeDependencies, "execFile">
   await deps.execFile("reg.exe", ["delete", key, "/f"], { windowsHide: true });
 }
 
-async function queryRegistryCommandValue(deps: Pick<WindowsUrlSchemeDependencies, "execFile">): Promise<string | null> {
+async function queryRegistryCommandValue(
+  deps: Pick<WindowsUrlSchemeDependencies, "execFile">,
+  root: "HKCU" | "HKLM" = "HKCU"
+): Promise<string | null> {
+  const commandKey = `${windowsUrlSchemeRegistryRoot(root)}\\shell\\open\\command`;
   try {
-    const { stdout } = await deps.execFile(
-      "reg.exe",
-      ["query", WINDOWS_URL_SCHEME_COMMAND_KEY, "/ve"],
-      { windowsHide: true }
-    );
+    const { stdout } = await deps.execFile("reg.exe", ["query", commandKey, "/ve"], { windowsHide: true });
     return parseRegQueryDefaultValue(stdout);
   } catch {
     return null;
   }
+}
+
+async function writeUrlSchemeRegistry(
+  deps: Pick<WindowsUrlSchemeDependencies, "execFile">,
+  root: "HKCU" | "HKLM",
+  launcherPath: string
+): Promise<void> {
+  const schemeKey = windowsUrlSchemeRegistryRoot(root);
+  const commandValue = buildWindowsUrlSchemeCommandValue(launcherPath);
+  await runRegAdd(deps, schemeKey, WINDOWS_URL_SCHEME_PROTOCOL_LABEL);
+  await runRegAdd(deps, `${schemeKey}\\URL Protocol`, "");
+  await runRegAdd(deps, `${schemeKey}\\DefaultIcon`, launcherPath);
+  await runRegAdd(deps, `${schemeKey}\\shell\\open\\command`, commandValue);
+}
+
+async function deleteUrlSchemeRegistry(
+  deps: Pick<WindowsUrlSchemeDependencies, "execFile">,
+  root: "HKCU" | "HKLM"
+): Promise<void> {
+  await runRegDelete(deps, windowsUrlSchemeRegistryRoot(root));
 }
 
 export async function isWindowsUrlSchemeRegistered(
@@ -94,16 +122,20 @@ export async function isWindowsUrlSchemeRegistered(
     return false;
   }
 
-  const commandValue = await queryRegistryCommandValue(deps);
-  if (!commandValue) {
-    return false;
+  for (const root of ["HKCU", "HKLM"] as const) {
+    const commandValue = await queryRegistryCommandValue(deps, root);
+    if (!commandValue) {
+      continue;
+    }
+    if (!expectedLauncherPath) {
+      return true;
+    }
+    if (registryCommandMatchesLauncher(commandValue, expectedLauncherPath)) {
+      return true;
+    }
   }
 
-  if (!expectedLauncherPath) {
-    return true;
-  }
-
-  return registryCommandMatchesLauncher(commandValue, expectedLauncherPath);
+  return false;
 }
 
 function execFailureMessage(error: unknown): string {
@@ -122,18 +154,21 @@ export async function registerWindowsUrlScheme(
     return 1;
   }
 
-  const commandValue = buildWindowsUrlSchemeCommandValue(launcherPath);
-
   try {
-    await runRegAdd(deps, WINDOWS_URL_SCHEME_KEY, WINDOWS_URL_SCHEME_PROTOCOL_LABEL);
-    await runRegAdd(deps, `${WINDOWS_URL_SCHEME_KEY}\\URL Protocol`, "");
-    await runRegAdd(deps, WINDOWS_URL_SCHEME_COMMAND_KEY, commandValue);
+    await writeUrlSchemeRegistry(deps, "HKCU", launcherPath);
+    deps.log(`Registered wiseeff-bridge:// in HKCU via ${path.win32.normalize(launcherPath)}`);
   } catch (error) {
-    deps.error(`Failed to register Windows URL scheme: ${execFailureMessage(error)}`);
+    deps.error(`Failed to register Windows URL scheme (HKCU): ${execFailureMessage(error)}`);
     return 1;
   }
 
-  deps.log(`Registered wiseeff-bridge:// URL scheme via ${path.win32.normalize(launcherPath)}`);
+  try {
+    await writeUrlSchemeRegistry(deps, "HKLM", launcherPath);
+    deps.log(`Registered wiseeff-bridge:// in HKLM via ${path.win32.normalize(launcherPath)}`);
+  } catch (error) {
+    deps.log("HKLM URL scheme registration skipped (administrator privileges required).");
+  }
+
   return 0;
 }
 
@@ -150,10 +185,16 @@ export async function unregisterWindowsUrlScheme(deps: WindowsUrlSchemeDependenc
   }
 
   try {
-    await runRegDelete(deps, WINDOWS_URL_SCHEME_KEY);
+    await deleteUrlSchemeRegistry(deps, "HKCU");
   } catch (error) {
-    deps.error(`Failed to unregister Windows URL scheme: ${execFailureMessage(error)}`);
+    deps.error(`Failed to unregister Windows URL scheme (HKCU): ${execFailureMessage(error)}`);
     return 1;
+  }
+
+  try {
+    await deleteUrlSchemeRegistry(deps, "HKLM");
+  } catch {
+    // HKLM may not exist or may require admin to delete.
   }
 
   deps.log("Unregistered wiseeff-bridge:// Windows URL scheme handler.");
