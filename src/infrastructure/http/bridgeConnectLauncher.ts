@@ -181,11 +181,22 @@ export async function requestLocalBridgeConnect(
   }
 }
 
+/** Launch the OS protocol handler; must run synchronously inside a user click handler. */
+export function launchBridgeSchemeForConnect(input: { server?: string; webOrigin?: string; code?: string }) {
+  const server = input.server ?? resolveBridgeServerUrl();
+  const webOrigin = input.webOrigin ?? resolveBridgeWebOrigin();
+  launchBridgeConnect(buildBridgeConnectUrl(server, input.code, webOrigin));
+}
+
 export async function connectLocalBridge(input: {
   server?: string;
   webOrigin?: string;
   code?: string;
   fetchImpl?: typeof fetch;
+  /**
+   * When true, launches `wiseeff-bridge://` after a failed local POST. This only works when
+   * called synchronously from a user gesture; prefer `launchBridgeSchemeForConnect` before await.
+   */
   launchSchemeFallback?: boolean;
 }): Promise<LocalBridgeConnectResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
@@ -202,14 +213,15 @@ export async function connectLocalBridge(input: {
     return localResult;
   }
 
-  if (input.launchSchemeFallback === false) {
+  if (input.launchSchemeFallback !== true) {
     return localResult;
   }
 
-  const server = input.server ?? resolveBridgeServerUrl();
-  const webOrigin = input.webOrigin ?? resolveBridgeWebOrigin();
-  const connectUrl = buildBridgeConnectUrl(server, input.code, webOrigin);
-  launchBridgeConnect(connectUrl);
+  launchBridgeSchemeForConnect({
+    server: input.server,
+    webOrigin: input.webOrigin,
+    code: input.code
+  });
   return localResult.reachable ? localResult : { ...localResult, ok: false };
 }
 
