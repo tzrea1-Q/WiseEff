@@ -88,6 +88,15 @@ describe("device bridge rpc handlers", () => {
     expect(hdc.calls).toEqual([["list", "targets"]]);
   });
 
+  it("ignores HDC [Empty] placeholder output when no device is attached", async () => {
+    const adb = makeRunner([]);
+    const hdc = makeRunner([{ code: 0, stdout: "[Empty]\n", stderr: "", durationMs: 5 }]);
+    const rpc = createRpcHandlers({ adbRunner: adb.runner, hdcRunner: hdc.runner });
+
+    const result = await rpc.handle("debug.detectTargets", { protocol: "hdc" });
+    expect(result).toEqual({ ok: true, targets: [], durationMs: 5 });
+  });
+
   it("reads nodes over adb and hdc with gateway argv patterns", async () => {
     const adb = makeRunner([
       { code: 0, stdout: "42\n", stderr: "", durationMs: 8 }

@@ -1,3 +1,5 @@
+import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
+
 import type { LocalBridgeHealthState, DeviceBridgePlatform } from "../infrastructure/http/deviceBridgeClient";
 
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
@@ -91,7 +93,7 @@ export function deriveBridgePanelStatus(input: {
     return "tools_missing";
   }
 
-  if (!input.target) {
+  if (!input.target?.trim() || isHdcPlaceholderTarget(input.target)) {
     return "online_no_device";
   }
   return "bridges_with_targets";

@@ -24,6 +24,19 @@ describe("bridgeExecution", () => {
     ]);
   });
 
+  it("ignores HDC [Empty] placeholder targets from bridge RPC", async () => {
+    const rpc = {
+      call: vi.fn().mockResolvedValueOnce({ targets: [{ targetRef: "[Empty]", online: true, label: "[Empty]" }] })
+    };
+    const result = await detectTargetsAcrossBridges({
+      rpc: rpc as never,
+      bridges: [{ id: "br-1", machineLabel: "Laptop" }],
+      protocol: "hdc",
+      timeoutMs: 1000
+    });
+    expect(result).toEqual([]);
+  });
+
   it("maps bridge read payload into gateway-compatible result", async () => {
     const rpc = {
       call: vi.fn().mockResolvedValue({

@@ -11,6 +11,10 @@ describe("viteHdcApi helpers", () => {
     expect(parseTargets("device-a\n\n device-b \n")).toEqual(["device-a", "device-b"]);
   });
 
+  it("ignores HDC [Empty] placeholder output when no device is attached", () => {
+    expect(parseTargets("[Empty]\n")).toEqual([]);
+  });
+
   it("validates absolute Linux node paths", () => {
     expect(validateNodePath("/sys/class/power_supply/battery/temp")).toEqual({ ok: true });
     expect(validateNodePath("relative/path")).toEqual({

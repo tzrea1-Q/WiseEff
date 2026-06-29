@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
+import { parseHdcTargets } from "@wiseeff/device-command-core/hdcTargets";
 
 type HdcCommandResult = {
   command: string[];
@@ -14,10 +15,7 @@ const detectTimeoutMs = 5_000;
 const commandTimeoutMs = 10_000;
 
 export function parseTargets(stdout: string) {
-  return stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  return parseHdcTargets(stdout).map((target) => target.targetRef);
 }
 
 export function validateNodePath(nodePath: unknown): { ok: true } | { ok: false; error: string } {
