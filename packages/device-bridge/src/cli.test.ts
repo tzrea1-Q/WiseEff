@@ -176,7 +176,7 @@ describe("device bridge cli", () => {
     expect(capture.errors.some((line) => line.includes("--server"))).toBe(true);
   });
 
-  it("rejects register on non-macOS platforms", async () => {
+  it("rejects register on unsupported platforms", async () => {
     const capture = createStdoutCapture();
     const exitCode = await runCli(["register"], {
       stdout: capture.stdout,
@@ -184,7 +184,26 @@ describe("device bridge cli", () => {
     });
 
     expect(exitCode).toBe(1);
-    expect(capture.errors.some((line) => line.includes("only available on macOS"))).toBe(true);
+    expect(capture.errors.some((line) => line.includes("only available on Windows and macOS"))).toBe(true);
+  });
+
+  it("registers Windows URL scheme via register command", async () => {
+    const capture = createStdoutCapture();
+    const execFile = vi.fn(async () => ({ stdout: "", stderr: "" }));
+    const exitCode = await runCli(["register"], {
+      stdout: capture.stdout,
+      platform: "win32",
+      cliPath: "C:\\WiseEff\\Bridge\\cli.js",
+      execFile
+    });
+
+    expect(exitCode).toBe(0);
+    expect(execFile).toHaveBeenCalledWith(
+      "reg.exe",
+      expect.arrayContaining(["add", "HKCU\\Software\\Classes\\wiseeff-bridge\\shell\\open\\command"]),
+      { windowsHide: true }
+    );
+    expect(capture.logs.some((line) => line.includes("Registered wiseeff-bridge://"))).toBe(true);
   });
 
   it("handle-url flag parses scheme and invokes connect flow", async () => {

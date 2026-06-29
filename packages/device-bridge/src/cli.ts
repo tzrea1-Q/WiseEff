@@ -25,7 +25,11 @@ import { ensureBridgeRunning } from "./ensureBridgeRunning";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
 import { createProxiedFetch } from "./proxyFetch";
-import { pairingStartupErrorMessage, resolveBridgeLauncherPath } from "./bridgeRuntimePaths";
+import {
+  pairingStartupErrorMessage,
+  resolveBridgeLauncherPath,
+  resolveWindowsBridgeLauncher
+} from "./bridgeRuntimePaths";
 import { appendBridgeLaunchLog } from "./bridgeLaunchLog";
 import { clearPairingError, readPairingError, writePairingError } from "./pairingErrorStore";
 import {
@@ -34,6 +38,12 @@ import {
   type MacosUrlSchemeDependencies,
   type ExecFileFn
 } from "./macosUrlScheme";
+import {
+  isWindowsUrlSchemeRegistered,
+  runWindowsUrlSchemeCommand,
+  type ExecFileFn as WindowsUrlSchemeExecFileFn,
+  type WindowsUrlSchemeDependencies
+} from "./windowsUrlScheme";
 
 const CLI_ENTRY_PATH = fileURLToPath(import.meta.url);
 
@@ -107,8 +117,8 @@ function usage() {
     "  pair --server <url> --code <6-digit-code>",
     "  start",
     "  status",
-    "  register          Register wiseeff-bridge:// URL scheme (macOS portable only)",
-    "  unregister        Remove portable URL scheme registration (macOS only)",
+    "  register          Register wiseeff-bridge:// URL scheme (Windows/macOS)",
+    "  unregister        Remove URL scheme registration (Windows/macOS)",
     "  service install   Register background service (Windows service or macOS LaunchAgent)",
     "  service start     Start installed service",
     "  service stop      Stop installed service",
@@ -289,6 +299,13 @@ async function runStandbyStartCommand(
         homedir: () => os.homedir(),
         access
       });
+      if (!registered) {
+        deps.stdout.log("To enable browser pairing via URL scheme, run: wiseeff-bridge register");
+      }
+    }
+    if (runtimePaths.platform === "win32") {
+      const urlSchemeDeps = createWindowsUrlSchemeDeps(deps, runtimePaths);
+      const registered = await isWindowsUrlSchemeRegistered(launcherPath, urlSchemeDeps);
       if (!registered) {
         deps.stdout.log("To enable browser pairing via URL scheme, run: wiseeff-bridge register");
       }
@@ -484,15 +501,31 @@ export async function runCli(
   }
 
   if (parsed.command === "register" || parsed.command === "unregister") {
-    return runMacosUrlSchemeCommand(
-      parsed.command,
-      createMacosUrlSchemeDeps(deps, {
-        platform: overrides.platform,
-        cliPath: overrides.cliPath,
-        execPath: overrides.execPath,
-        execFile: overrides.execFile as ExecFileFn | undefined
-      })
-    );
+    const platform = overrides.platform ?? process.platform;
+    if (platform === "darwin") {
+      return runMacosUrlSchemeCommand(
+        parsed.command,
+        createMacosUrlSchemeDeps(deps, {
+          platform,
+          cliPath: overrides.cliPath,
+          execPath: overrides.execPath,
+          execFile: overrides.execFile as ExecFileFn | undefined
+        })
+      );
+    }
+    if (platform === "win32") {
+      const runtimePaths = {
+        cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+        platform: "win32" as const
+      };
+      return runWindowsUrlSchemeCommand(
+        parsed.command,
+        resolveWindowsRegisterLauncherPath(runtimePaths.cliPath),
+        createWindowsUrlSchemeDeps(deps, runtimePaths, overrides.execFile as WindowsUrlSchemeExecFileFn | undefined)
+      );
+    }
+    deps.stdout.error("register is only available on Windows and macOS.");
+    return 1;
   }
 
   const config = await deps.loadConfig();
@@ -518,6 +551,35 @@ export async function runCli(
   }
 
   return runStatusCommand(deps, config);
+}
+
+function resolveWindowsRegisterLauncherPath(cliPath: string): string {
+  return (
+    resolveWindowsBridgeLauncher(cliPath, "win32") ??
+    path.win32.join(path.win32.dirname(cliPath), "wiseeff-bridge.cmd")
+  );
+}
+
+function createWindowsUrlSchemeDeps(
+  deps: CliDependencies,
+  runtimePaths: { cliPath: string; platform: NodeJS.Platform },
+  execFileOverride?: WindowsUrlSchemeExecFileFn
+): WindowsUrlSchemeDependencies {
+  const execFileAsync = promisify(defaultExecFile);
+  const defaultExecFileFn: WindowsUrlSchemeExecFileFn = async (file, args, options) => {
+    const { stdout, stderr } = await execFileAsync(file, args, {
+      ...options,
+      encoding: "utf8"
+    });
+    return { stdout: String(stdout), stderr: String(stderr) };
+  };
+
+  return {
+    platform: runtimePaths.platform,
+    execFile: execFileOverride ?? defaultExecFileFn,
+    log: (message) => deps.stdout.log(message),
+    error: (message) => deps.stdout.error(message)
+  };
 }
 
 function createMacosUrlSchemeDeps(
