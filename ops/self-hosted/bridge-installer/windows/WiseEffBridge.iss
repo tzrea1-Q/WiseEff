@@ -32,8 +32,8 @@ Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service start"; Fl
 Filename: "{cmd}"; Parameters: "/c reg query HKCU\Software\Classes\wiseeff-bridge\shell\open\command"; Flags: waituntilterminated runhidden; StatusMsg: "Verifying URL scheme registration..."
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service uninstall"; Flags: waithidden runhidden; RunOnceId: "UninstallService"
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" unregister"; Flags: waithidden runhidden; RunOnceId: "UnregisterUrlScheme"
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service uninstall"; Flags: waituntilterminated runhidden; RunOnceId: "UninstallService"
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" unregister"; Flags: waituntilterminated runhidden; RunOnceId: "UnregisterUrlScheme"
 
 [Icons]
 Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppLauncher}"; Parameters: "start"
@@ -86,7 +86,7 @@ begin
   end;
 end;
 
-function PrepareToInstall(var NeedsRestart: Boolean): Boolean;
+function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
   AppendInstallLog('=== WiseEff Bridge install prepare ===');
   StopWiseEffBridgeService();
@@ -95,7 +95,7 @@ begin
   RemoveLegacyDir('Bridge-test-verify');
   RemoveLegacyDir('device-bridge');
   RemoveLegacyDir('Bridge');
-  Result := True;
+  Result := '';
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

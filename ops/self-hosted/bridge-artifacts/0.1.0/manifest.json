@@ -24,14 +24,14 @@
       "version": "0.1.0",
       "artifact": "WiseEffBridgeSetup_0.1.0.exe",
       "artifactKind": "installer",
-      "sha256": "1cdb6d204fe57af7f9b5059b29aaa988b5006b70f2f1faafe1dc2fc179c01076"
+      "sha256": "4562240396660815e91c215bc96a04c0f0d527b7f1f273da3b0ad1a89592ffd8"
     },
     {
       "platform": "windows",
       "arch": "amd64",
       "version": "0.1.0",
       "artifact": "wiseeff-bridge_0.1.0_windows_amd64.zip",
-      "sha256": "1c62c2c03acb39f97f5aca236d735d6c77ab1bc8bd04bd0cabe3b905a1175821",
+      "sha256": "0f8f2436adc27c19d7f89b3bc90e6aa68c8f73c8577eef6227f471acfd2d68d5",
       "artifactKind": "portable"
     },
     {
