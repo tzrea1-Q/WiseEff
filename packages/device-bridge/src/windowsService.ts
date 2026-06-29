@@ -4,6 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { resolveWindowsBridgeLauncher } from "./bridgeRuntimePaths";
+import {
+  registerWindowsUrlScheme,
+  unregisterWindowsUrlScheme,
+  type ExecFileFn as UrlSchemeExecFileFn
+} from "./windowsUrlScheme";
+
 export const WISEEFF_BRIDGE_SERVICE_NAME = "WiseEffBridge";
 export const WISEEFF_BRIDGE_SERVICE_DISPLAY_NAME = "WiseEff Device Bridge";
 
@@ -44,12 +51,12 @@ export function isWindowsPlatform(platform: NodeJS.Platform): boolean {
   return platform === "win32";
 }
 
-export function getServiceWrapperPath(homedir: () => string = os.homedir): string {
-  return path.win32.join(homedir(), "AppData", "Local", "WiseEff", "device-bridge", "start-service.cmd");
+export function getServiceWrapperPath(cliPath: string): string {
+  return path.win32.join(path.win32.dirname(cliPath), "start-service.cmd");
 }
 
-export function buildServiceWrapperContent(nodePath: string, cliPath: string): string {
-  return `@echo off\r\n"${nodePath}" "${cliPath}" start\r\n`;
+export function buildServiceWrapperContent(): string {
+  return '@echo off\r\ncd /d "%~dp0"\r\n"%~dp0wiseeff-bridge.cmd" start\r\n';
 }
 
 export function formatScBinPath(wrapperPath: string): string {
@@ -85,14 +92,39 @@ function execFailureMessage(error: unknown): string {
   return String(error);
 }
 
+function urlSchemeDeps(deps: WindowsServiceDependencies) {
+  return {
+    execFile: deps.execFile as UrlSchemeExecFileFn,
+    platform: deps.platform,
+    log: deps.log,
+    error: deps.error
+  };
+}
+
+function resolveServiceLauncherPath(cliPath: string): string {
+  return (
+    resolveWindowsBridgeLauncher(cliPath, "win32") ??
+    path.win32.join(path.win32.dirname(cliPath), "wiseeff-bridge.cmd")
+  );
+}
+
+async function registerServiceUrlScheme(deps: WindowsServiceDependencies): Promise<number> {
+  const launcherPath = resolveServiceLauncherPath(deps.cliPath);
+  return registerWindowsUrlScheme(launcherPath, urlSchemeDeps(deps));
+}
+
+async function unregisterServiceUrlScheme(deps: WindowsServiceDependencies): Promise<number> {
+  return unregisterWindowsUrlScheme(urlSchemeDeps(deps));
+}
+
 export async function installWindowsService(deps: WindowsServiceDependencies): Promise<number> {
   if (!assertWindowsPlatform(deps)) {
     return 1;
   }
 
-  const wrapperPath = getServiceWrapperPath(deps.homedir);
+  const wrapperPath = getServiceWrapperPath(deps.cliPath);
   await deps.mkdir(path.win32.dirname(wrapperPath), { recursive: true });
-  await deps.writeFile(wrapperPath, buildServiceWrapperContent(deps.nodePath, deps.cliPath), "utf8");
+  await deps.writeFile(wrapperPath, buildServiceWrapperContent(), "utf8");
 
   const createArgs = [
     "create",
@@ -132,12 +164,12 @@ export async function installWindowsService(deps: WindowsServiceDependencies): P
 
     deps.log(`Reinstalled Windows service ${WISEEFF_BRIDGE_SERVICE_NAME}.`);
     deps.log(`Wrapper script: ${wrapperPath}`);
-    return 0;
+    return registerServiceUrlScheme(deps);
   }
 
   deps.log(`Installed Windows service ${WISEEFF_BRIDGE_SERVICE_NAME}.`);
   deps.log(`Wrapper script: ${wrapperPath}`);
-  return 0;
+  return registerServiceUrlScheme(deps);
 }
 
 export async function startWindowsService(deps: Pick<WindowsServiceDependencies, "execFile" | "platform" | "log" | "error">): Promise<number> {
@@ -173,7 +205,7 @@ export async function stopWindowsService(deps: Pick<WindowsServiceDependencies, 
 }
 
 export async function uninstallWindowsService(
-  deps: Pick<WindowsServiceDependencies, "execFile" | "platform" | "homedir" | "unlink" | "log" | "error">
+  deps: Pick<WindowsServiceDependencies, "execFile" | "platform" | "homedir" | "unlink" | "log" | "error" | "cliPath">
 ): Promise<number> {
   if (!assertWindowsPlatform(deps)) {
     return 1;
@@ -192,11 +224,16 @@ export async function uninstallWindowsService(
     return 1;
   }
 
-  const wrapperPath = getServiceWrapperPath(deps.homedir);
+  const wrapperPath = getServiceWrapperPath(deps.cliPath);
   try {
     await deps.unlink(wrapperPath);
   } catch {
     // Wrapper may already be removed.
+  }
+
+  const unregisterResult = await unregisterServiceUrlScheme(deps as WindowsServiceDependencies);
+  if (unregisterResult !== 0) {
+    return unregisterResult;
   }
 
   deps.log(`Uninstalled Windows service ${WISEEFF_BRIDGE_SERVICE_NAME}.`);

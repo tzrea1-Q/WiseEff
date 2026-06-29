@@ -24,8 +24,13 @@ Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: s
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
 
 [Run]
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service install"; Flags: runhidden
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service start"; Flags: runhidden
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" register"; Flags: runhidden; StatusMsg: "Registering URL scheme..."
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service install"; Flags: runhidden; StatusMsg: "Installing background service..."
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service start"; Flags: runhidden; StatusMsg: "Starting background service..."
+Filename: "{cmd}"; Parameters: "/c reg query HKCU\Software\Classes\wiseeff-bridge\shell\open\command"; Flags: runhidden; StatusMsg: "Verifying URL scheme registration..."
+
+[UninstallRun]
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" unregister"; Flags: runhidden; RunOnceId: "UnregisterUrlScheme"
 
 [Icons]
 Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppLauncher}"; Parameters: "start"

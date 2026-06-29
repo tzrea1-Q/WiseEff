@@ -49,15 +49,15 @@ describe("windowsService helpers", () => {
     expect(isWindowsPlatform("linux")).toBe(false);
   });
 
-  it("builds wrapper script content", () => {
-    expect(buildServiceWrapperContent("C:\\node.exe", "C:\\cli.js")).toBe(
-      '@echo off\r\n"C:\\node.exe" "C:\\cli.js" start\r\n'
+  it("builds wrapper script content with relative install paths", () => {
+    expect(buildServiceWrapperContent()).toBe(
+      '@echo off\r\ncd /d "%~dp0"\r\n"%~dp0wiseeff-bridge.cmd" start\r\n'
     );
   });
 
-  it("resolves wrapper path under Local AppData", () => {
-    expect(getServiceWrapperPath(() => "C:\\Users\\operator")).toBe(
-      "C:\\Users\\operator\\AppData\\Local\\WiseEff\\device-bridge\\start-service.cmd"
+  it("resolves wrapper path next to the bridge install directory", () => {
+    expect(getServiceWrapperPath("C:\\Users\\operator\\AppData\\Local\\WiseEff\\Bridge\\cli.js")).toBe(
+      "C:\\Users\\operator\\AppData\\Local\\WiseEff\\Bridge\\start-service.cmd"
     );
   });
 
@@ -80,30 +80,32 @@ describe("windowsService commands", () => {
     expect(capture.errors).toContain("Windows service commands are only supported on Windows.");
   });
 
-  it("installs service wrapper and registers sc.exe service", async () => {
+  it("installs service wrapper, registers sc.exe service, and registers URL scheme", async () => {
     const capture = createCapture();
     const deps = createDeps(capture);
+    const wrapperPath = getServiceWrapperPath(deps.cliPath);
 
     const exitCode = await installWindowsService(deps);
 
     expect(exitCode).toBe(0);
-    expect(deps.mkdir).toHaveBeenCalledWith("C:\\Users\\operator\\AppData\\Local\\WiseEff\\device-bridge", {
+    expect(deps.mkdir).toHaveBeenCalledWith("C:\\WiseEff\\device-bridge\\dist", {
       recursive: true
     });
-    expect(deps.writeFile).toHaveBeenCalledWith(
-      "C:\\Users\\operator\\AppData\\Local\\WiseEff\\device-bridge\\start-service.cmd",
-      buildServiceWrapperContent(deps.nodePath, deps.cliPath),
-      "utf8"
-    );
+    expect(deps.writeFile).toHaveBeenCalledWith(wrapperPath, buildServiceWrapperContent(), "utf8");
     expect(deps.execFile).toHaveBeenCalledWith(
       "sc.exe",
       [
         "create",
         WISEEFF_BRIDGE_SERVICE_NAME,
-        "binPath= C:\\Users\\operator\\AppData\\Local\\WiseEff\\device-bridge\\start-service.cmd",
+        "binPath= C:\\WiseEff\\device-bridge\\dist\\start-service.cmd",
         "start=auto",
         "DisplayName=WiseEff Device Bridge"
       ],
+      { windowsHide: true }
+    );
+    expect(deps.execFile).toHaveBeenCalledWith(
+      "reg.exe",
+      expect.arrayContaining(["add", "HKCU\\Software\\Classes\\wiseeff-bridge"]),
       { windowsHide: true }
     );
     expect(capture.logs.some((line) => line.includes("Installed Windows service"))).toBe(true);
@@ -149,9 +151,18 @@ describe("windowsService commands", () => {
     });
   });
 
-  it("uninstalls service and removes wrapper script", async () => {
+  it("uninstalls service, removes wrapper script, and unregisters URL scheme", async () => {
     const capture = createCapture();
-    const deps = createDeps(capture);
+    const execFile = vi.fn(async (_file, args: readonly string[]) => {
+      if (args[0] === "query") {
+        return {
+          stdout: '    (Default)    REG_SZ    "C:\\WiseEff\\device-bridge\\dist\\wiseeff-bridge.cmd" --handle-url "%1"\r\n',
+          stderr: ""
+        };
+      }
+      return { stdout: "", stderr: "" };
+    });
+    const deps = createDeps({ ...capture, execFile });
 
     const exitCode = await uninstallWindowsService(deps);
 
@@ -162,8 +173,11 @@ describe("windowsService commands", () => {
     expect(deps.execFile).toHaveBeenCalledWith("sc.exe", ["delete", WISEEFF_BRIDGE_SERVICE_NAME], {
       windowsHide: true
     });
-    expect(deps.unlink).toHaveBeenCalledWith(
-      "C:\\Users\\operator\\AppData\\Local\\WiseEff\\device-bridge\\start-service.cmd"
+    expect(deps.unlink).toHaveBeenCalledWith("C:\\WiseEff\\device-bridge\\dist\\start-service.cmd");
+    expect(deps.execFile).toHaveBeenCalledWith(
+      "reg.exe",
+      ["delete", "HKCU\\Software\\Classes\\wiseeff-bridge", "/f"],
+      { windowsHide: true }
     );
     expect(capture.logs.some((line) => line.includes("Uninstalled Windows service"))).toBe(true);
   });
