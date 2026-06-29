@@ -11,6 +11,7 @@ import {
   buildBridgeConnectUrl,
   connectLocalBridge,
   launchBridgeInstallService,
+  launchBridgeSchemeForConnect,
   pollLocalBridgeHealth,
   rememberBridgeSchemeLaunchConfirm,
   shouldConfirmBridgeSchemeLaunch
@@ -132,9 +133,7 @@ export function LocalDeviceBridgeWizard({
   onLoadInstallReleases
 }: LocalDeviceBridgeWizardProps) {
   const [connecting, setConnecting] = useState(false);
-  const [autoConnectPending, setAutoConnectPending] = useState(false);
   const [allowStep2WhileMissing, setAllowStep2WhileMissing] = useState(false);
-  const autoLaunchAttempted = useRef(false);
   const naturalStep = deriveNaturalWizardStep(panelStatus);
   const [viewStep, setViewStep] = useState<WizardViewStep>(naturalStep);
   const previousNaturalStep = useRef(naturalStep);
@@ -217,19 +216,32 @@ export function LocalDeviceBridgeWizard({
       return;
     }
 
+    const serverUrl = resolveBridgeServerUrl();
+    const webOrigin = resolveBridgeWebOrigin();
+    const pairingCodeValue = needsPairingCode && pairingCode ? pairingCode.code : undefined;
+    const shouldLaunchScheme = needsLocalBridgeLaunch(panelStatus);
+
+    // Custom protocol URLs must launch synchronously inside the click handler (before any await).
+    if (shouldLaunchScheme) {
+      launchBridgeSchemeForConnect({
+        server: serverUrl,
+        webOrigin,
+        code: pairingCodeValue
+      });
+    }
+
     setConnecting(true);
     onConnectError("");
     try {
-      const serverUrl = resolveBridgeServerUrl();
-      const webOrigin = resolveBridgeWebOrigin();
-      const pairingCodeValue = needsPairingCode && pairingCode ? pairingCode.code : undefined;
       await connectLocalBridge({
         server: serverUrl,
         webOrigin,
         code: pairingCodeValue,
-        launchSchemeFallback: true
+        launchSchemeFallback: false
       });
-      const nextHealth = await pollLocalBridgeHealth({});
+      const nextHealth = await pollLocalBridgeHealth({
+        timeoutMs: shouldLaunchScheme ? 45_000 : 30_000
+      });
       const refreshSnapshot = await onRefresh();
       const connected = Boolean(nextHealth?.connected || refreshSnapshot.connected);
       if (connected) {
@@ -258,32 +270,6 @@ export function LocalDeviceBridgeWizard({
     hasRegisteredBridge,
     viewStep
   ]);
-
-  useEffect(() => {
-    if (!autoConnectPending || viewStep !== 2 || pairingCodeLoading || connecting) {
-      return;
-    }
-    if (needsPairingCodeForBridgeConnect({ panelStatus, pairingStale, pairingAuthFailure }) && !pairingCode) {
-      return;
-    }
-    if (panelStatus !== "missing_bridge" && panelStatus !== "not_running" && panelStatus !== "not_paired" && panelStatus !== "bridge_blocked") {
-      setAutoConnectPending(false);
-      return;
-    }
-    setAutoConnectPending(false);
-    void handleConnect();
-  }, [autoConnectPending, viewStep, pairingCode, pairingCodeLoading, connecting, panelStatus, pairingStale, pairingAuthFailure, handleConnect]);
-
-  useEffect(() => {
-    if (viewStep !== 2 || autoLaunchAttempted.current || connecting || checking) {
-      return;
-    }
-    if (panelStatus !== "not_running" && panelStatus !== "not_connected") {
-      return;
-    }
-    autoLaunchAttempted.current = true;
-    void handleConnect();
-  }, [viewStep, panelStatus, connecting, checking, handleConnect]);
 
   const primaryLabel =
     viewStep === 2
@@ -408,7 +394,9 @@ export function LocalDeviceBridgeWizard({
             className="button subtle"
             type="button"
             disabled={checking || detecting || connecting || (viewStep === 2 && pairingCodeLoading)}
-            onClick={() => void handleConnect()}
+            onClick={() => {
+              handleConnect();
+            }}
           >
             <Link2 size={14} aria-hidden="true" />
             {checking || connecting ? "连接中..." : primaryLabel}
@@ -532,7 +520,6 @@ export function LocalDeviceBridgeWizard({
                   onClick={() => {
                     setAllowStep2WhileMissing(true);
                     setViewStep(2);
-                    setAutoConnectPending(true);
                   }}
                 >
                   {panelStatus === "missing_bridge"

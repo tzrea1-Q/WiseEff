@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildBridgeConnectUrl, launchBridgeConnect, probeLocalBridgeHealth, requestLocalBridgeConnect } from "./bridgeConnectLauncher";
+import { buildBridgeConnectUrl, connectLocalBridge, launchBridgeConnect, launchBridgeSchemeForConnect, probeLocalBridgeHealth, requestLocalBridgeConnect } from "./bridgeConnectLauncher";
 
 describe("bridgeConnectLauncher", () => {
   it("launches custom protocol URLs via location.assign", () => {
@@ -80,5 +80,52 @@ describe("bridgeConnectLauncher", () => {
         })
       })
     );
+  });
+
+  it("does not launch the URL scheme after a failed POST unless fallback is enabled", async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, assign }
+    });
+    const fetchImpl = vi.fn(async () => {
+      throw new Error("offline");
+    }) as unknown as typeof fetch;
+
+    await expect(
+      connectLocalBridge({
+        server: "http://101.43.45.27",
+        webOrigin: "http://101.43.45.27",
+        code: "337769",
+        fetchImpl,
+        launchSchemeFallback: false
+      })
+    ).resolves.toEqual({ reachable: false, ok: false });
+
+    expect(assign).not.toHaveBeenCalled();
+
+    Object.defineProperty(window, "location", { configurable: true, value: original });
+  });
+
+  it("launches the URL scheme helper with connect query params", () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...original, assign }
+    });
+
+    launchBridgeSchemeForConnect({
+      server: "http://101.43.45.27",
+      webOrigin: "http://101.43.45.27",
+      code: "337769"
+    });
+
+    expect(assign).toHaveBeenCalledWith(
+      "wiseeff-bridge://connect?server=http%3A%2F%2F101.43.45.27&webOrigin=http%3A%2F%2F101.43.45.27&code=337769"
+    );
+
+    Object.defineProperty(window, "location", { configurable: true, value: original });
   });
 });

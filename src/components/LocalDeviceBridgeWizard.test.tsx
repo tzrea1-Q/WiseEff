@@ -1,7 +1,24 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { deriveWizardStep, LocalDeviceBridgeWizard, type BridgePanelStatus } from "./LocalDeviceBridgeWizard";
+
+const launchBridgeSchemeForConnect = vi.fn();
+const connectLocalBridge = vi.fn(async () => ({ reachable: false, ok: false }));
+const pollLocalBridgeHealth = vi.fn(async () => null);
+
+vi.mock("../infrastructure/http/bridgeConnectLauncher", async () => {
+  const actual = await vi.importActual<typeof import("../infrastructure/http/bridgeConnectLauncher")>(
+    "../infrastructure/http/bridgeConnectLauncher"
+  );
+  return {
+    ...actual,
+    launchBridgeSchemeForConnect: (input: Parameters<typeof actual.launchBridgeSchemeForConnect>[0]) =>
+      launchBridgeSchemeForConnect(input),
+    connectLocalBridge: (input: Parameters<typeof actual.connectLocalBridge>[0]) => connectLocalBridge(input),
+    pollLocalBridgeHealth: (input: Parameters<typeof actual.pollLocalBridgeHealth>[0]) => pollLocalBridgeHealth(input)
+  };
+});
 
 describe("deriveWizardStep", () => {
   const cases: Array<{ status: BridgePanelStatus; step: ReturnType<typeof deriveWizardStep> }> = [
@@ -230,5 +247,58 @@ describe("LocalDeviceBridgeWizard", () => {
 
     expect(screen.getByText("图形安装包（推荐）")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toBeInTheDocument();
+  });
+
+  it("launches the bridge URL scheme synchronously before awaiting local HTTP connect", async () => {
+    launchBridgeSchemeForConnect.mockClear();
+    connectLocalBridge.mockClear();
+    pollLocalBridgeHealth.mockClear();
+    let launchOrder = 0;
+    launchBridgeSchemeForConnect.mockImplementation(() => {
+      launchOrder = launchOrder === 0 ? 1 : launchOrder;
+    });
+    connectLocalBridge.mockImplementation(async () => {
+      launchOrder = launchOrder === 1 ? 2 : launchOrder;
+      return { reachable: false, ok: false };
+    });
+
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_running"
+        hasRegisteredBridge
+        protocol="hdc"
+        health={null}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={{ code: "123456", expiresAt: "2026-06-27T00:00:00.000Z" }}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "启动并连接本机" }));
+
+    await waitFor(() => {
+      expect(connectLocalBridge).toHaveBeenCalled();
+    });
+
+    expect(launchBridgeSchemeForConnect).toHaveBeenCalledWith({
+      server: expect.any(String),
+      webOrigin: expect.any(String),
+      code: undefined
+    });
+    expect(launchOrder).toBe(2);
+    expect(connectLocalBridge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        launchSchemeFallback: false
+      })
+    );
+    expect(pollLocalBridgeHealth).toHaveBeenCalledWith({ timeoutMs: 45_000 });
   });
 });
