@@ -13,6 +13,7 @@ describe("localBridgeHttpUrl", () => {
   it("uses the local bridge origin in production builds", () => {
     vi.stubEnv("MODE", "production");
     expect(resolveLocalBridgeHealthUrl()).toBe("http://127.0.0.1:18787/health");
+    expect(resolveLocalBridgeUrl("/connect")).toBe("http://127.0.0.1:18787/connect");
     vi.unstubAllEnvs();
   });
 });

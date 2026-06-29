@@ -10,7 +10,7 @@ export function describeBridgeConnectFailureMessage(context: BridgeConnectFailur
   const { health, pairingStale } = context;
 
   if (!health) {
-    return "30 秒内未检测到 Bridge 上线。若 Console 报 wiseeff-bridge:// 无 handler，请改用 https://tzrea1.com 打开页面，或执行下方 --handle-url 命令。";
+    return "30 秒内未检测到 Bridge 上线。请确认 WiseEff Bridge 服务已启动（或运行 wiseeff-bridge start），然后重试；也可使用下方终端命令。";
   }
 
   if (health.pairingError) {
@@ -22,7 +22,7 @@ export function describeBridgeConnectFailureMessage(context: BridgeConnectFailur
   }
 
   if (!health.paired && !health.connected) {
-    return "浏览器未能通过 wiseeff-bridge:// 完成配对（协议未注册或指向错误目录）。请使用下方终端命令完成连接。";
+    return "本地 Bridge 已响应但尚未完成配对。请重试连接，或使用下方终端命令。";
   }
 
   if (health.lastError) {
@@ -30,7 +30,7 @@ export function describeBridgeConnectFailureMessage(context: BridgeConnectFailur
   }
 
   if (!health.connected) {
-    return "浏览器未能唤起 Bridge 配对，或 Bridge 未连接到服务器。若 Bridge 已在运行，请使用下方终端命令完成连接。";
+    return "Bridge 未连接到服务器。若 Bridge 已在运行，请使用下方终端命令完成连接。";
   }
 
   return "30 秒内 Bridge 未能连接到服务器。请检查网络后重试，或从托盘/菜单栏重新启动 Bridge。";

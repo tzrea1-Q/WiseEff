@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { loadBridgeConfig, saveBridgeConfig, type BridgeConfig } from "./config";
 import { createResolvedRpcHandlers } from "./createResolvedRpcHandlers";
 import { createToolProbeCache, type BridgeHealthState } from "./healthServer";
-import { startHealthServer } from "./healthServer";
+import { startHealthServer, type BridgeConnectRequest, type BridgeConnectResult } from "./healthServer";
 import { createBridgeWsClient } from "./wsClient";
 import { runServiceCommand } from "./serviceCommand";
 import type { MacosLaunchAgentDependencies } from "./macosLaunchAgent";
@@ -21,7 +21,7 @@ import {
   type CliDependencies,
   type StartBridgeFn
 } from "./connectCommand";
-import { ensureBridgeRunning } from "./ensureBridgeRunning";
+import { ensureBridgeRunning, spawnDetachedConnect } from "./ensureBridgeRunning";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
 import { createProxiedFetch } from "./proxyFetch";
@@ -113,7 +113,7 @@ function usage() {
     "wiseeff-bridge <command>",
     "",
     "Commands:",
-    "  connect --server <url> [--code <6-digit-code>]",
+    "  connect --server <url> [--code <6-digit-code>] [--webOrigin <url>]",
     "  pair --server <url> --code <6-digit-code>",
     "  start",
     "  status",
@@ -128,6 +128,29 @@ function usage() {
     "Options:",
     "  --handle-url <wiseeff-bridge://...>  Handle URL scheme activation"
   ].join("\n");
+}
+
+function createHttpConnectHandler(
+  deps: CliDependencies,
+  runtimePaths: { cliPath: string; platform: NodeJS.Platform },
+  overrides: {
+    ensureBridgeRunning?: typeof ensureBridgeRunning;
+    execPath?: string;
+  } = {}
+) {
+  const connectDeps = {
+    ...deps,
+    ensureBridgeRunning: overrides.ensureBridgeRunning ?? ensureBridgeRunning,
+    execPath: overrides.execPath ?? process.execPath,
+    cliPath: runtimePaths.cliPath,
+    platform: runtimePaths.platform
+  };
+
+  return async (request: BridgeConnectRequest): Promise<BridgeConnectResult> => {
+    await appendBridgeLaunchLog(`http-connect server=${request.server} code=${request.code ?? "none"}`);
+    spawnDetachedConnect(connectDeps, request);
+    return { ok: true, accepted: true };
+  };
 }
 
 async function runStartCommand(
@@ -180,6 +203,7 @@ async function runStartCommand(
   const health = await startHealthServer({
     getState: () => status,
     allowedOrigin: [config.webOrigin, config.serverUrl].filter(Boolean),
+    onConnect: createHttpConnectHandler(deps, runtimePaths),
     onHealthRead: async () => {
       await toolProbeCache.refreshTools();
       status = {
@@ -270,6 +294,7 @@ async function runStandbyStartCommand(
   try {
     const health = await startHealthServer({
       getState: () => status,
+      onConnect: createHttpConnectHandler(deps, runtimePaths),
       onHealthRead: async () => {
         await toolProbeCache.refreshTools();
         const pairingError = await readPairingError();
@@ -454,12 +479,13 @@ export async function runCli(
   if (parsed.command === "connect") {
     const server = parsed.flags.get("server");
     const code = parsed.flags.get("code");
+    const webOrigin = parsed.flags.get("webOrigin");
     if (!server) {
       deps.stdout.error("Missing required flag: --server");
       deps.stdout.log(usage());
       return 1;
     }
-    const result = await runConnectCommand(connectDeps, { server, code });
+    const result = await runConnectCommand(connectDeps, { server, code, webOrigin });
     return result.exitCode;
   }
 

@@ -13,3 +13,7 @@ export function resolveLocalBridgeUrl(path: string) {
 export function resolveLocalBridgeHealthUrl() {
   return resolveLocalBridgeUrl("/health");
 }
+
+export function resolveLocalBridgeConnectUrl() {
+  return resolveLocalBridgeUrl("/connect");
+}

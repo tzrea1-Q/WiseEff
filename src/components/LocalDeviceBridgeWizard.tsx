@@ -9,7 +9,7 @@ import {
 } from "../infrastructure/http/bridgeInstallPaths";
 import {
   buildBridgeConnectUrl,
-  launchBridgeConnect,
+  connectLocalBridge,
   launchBridgeInstallService,
   pollLocalBridgeHealth,
   rememberBridgeSchemeLaunchConfirm,
@@ -217,21 +217,18 @@ export function LocalDeviceBridgeWizard({
       return;
     }
 
-    if (shouldConfirmBridgeSchemeLaunch() && !window.confirm("即将打开 WiseEff Bridge 以完成连接。是否继续？")) {
-      return;
-    }
-    rememberBridgeSchemeLaunchConfirm();
-
     setConnecting(true);
     onConnectError("");
     try {
       const serverUrl = resolveBridgeServerUrl();
       const webOrigin = resolveBridgeWebOrigin();
-      const connectUrl =
-        needsPairingCode && pairingCode
-          ? buildBridgeConnectUrl(serverUrl, pairingCode.code, webOrigin)
-          : buildBridgeConnectUrl(serverUrl, undefined, webOrigin);
-      launchBridgeConnect(connectUrl);
+      const pairingCodeValue = needsPairingCode && pairingCode ? pairingCode.code : undefined;
+      await connectLocalBridge({
+        server: serverUrl,
+        webOrigin,
+        code: pairingCodeValue,
+        launchSchemeFallback: true
+      });
       const nextHealth = await pollLocalBridgeHealth({});
       const refreshSnapshot = await onRefresh();
       const connected = Boolean(nextHealth?.connected || refreshSnapshot.connected);
