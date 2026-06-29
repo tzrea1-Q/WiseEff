@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   defaultBridgeCliPath,
   formatBridgeConnectFallbackCommand,
-  isRemoteWebOrigin
+  isRemoteWebOrigin,
+  bridgeCliDiscoveryHint
 } from "./bridgeInstallPaths";
 
 describe("bridgeInstallPaths", () => {
@@ -28,6 +29,22 @@ describe("bridgeInstallPaths", () => {
         webOrigin: "http://101.43.45.27"
       })
     ).not.toContain("--code");
+  });
+
+  it("uses health launcherPath when provided", () => {
+    expect(
+      formatBridgeConnectFallbackCommand({
+        platform: "windows",
+        serverUrl: "http://101.43.45.27",
+        webOrigin: "http://101.43.45.27",
+        code: "123456",
+        cliPath: "C:\\Custom\\Bridge\\wiseeff-bridge.cmd"
+      })
+    ).toContain("C:\\Custom\\Bridge\\wiseeff-bridge.cmd");
+  });
+
+  it("provides platform-specific CLI discovery hints", () => {
+    expect(bridgeCliDiscoveryHint("windows")).toContain("开始菜单");
   });
 
   it("detects remote web origins", () => {

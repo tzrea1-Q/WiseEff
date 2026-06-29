@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   formatBridgeConnectFallbackCommand,
-  formatBridgeServiceInstallCommand
+  formatBridgeServiceInstallCommand,
+  bridgeCliDiscoveryHint
 } from "../infrastructure/http/bridgeInstallPaths";
 import {
   buildBridgeConnectUrl,
@@ -13,6 +14,7 @@ import {
   rememberBridgeSchemeLaunchConfirm,
   shouldConfirmBridgeSchemeLaunch
 } from "../infrastructure/http/bridgeConnectLauncher";
+import { describeBridgeConnectFailureMessage, shouldShowBridgeConnectFallback } from "../infrastructure/http/bridgeConnectFailure";
 import { resolveBridgeServerUrl, resolveBridgeWebOrigin } from "../infrastructure/http/bridgeServerUrl";
 import {
   bridgeHostTargetLabel,
@@ -230,17 +232,13 @@ export function LocalDeviceBridgeWizard({
       if (connected) {
         onConnectError("");
         onDetect();
-      } else if (!nextHealth) {
-        onConnectError("30 秒内未检测到 Bridge 上线。若浏览器已唤起 Bridge，请稍候；否则请确认已安装 WiseEff Bridge。");
       } else {
         onConnectError(
-          nextHealth?.pairingError
-            ? nextHealth.pairingError
-            : pairingStale
-              ? "本地 Bridge 配对已失效。请重新点击「连接本地设备」完成配对。"
-              : nextHealth.lastError
-                ? `30 秒内 Bridge 未能连接到服务器：${nextHealth.lastError}`
-                : "30 秒内 Bridge 未能连接到服务器。请检查网络后重试，或从托盘/菜单栏重新启动 Bridge。"
+          describeBridgeConnectFailureMessage({
+            health: nextHealth,
+            pairingStale,
+            pairingAuthFailure
+          })
         );
       }
     } finally {
@@ -549,24 +547,36 @@ export function LocalDeviceBridgeWizard({
           <p className="local-device-bridge-panel__error" role="alert">{health.pairingError}</p>
         ) : null}
 
-        {viewStep === 2 && needsLocalBridgeLaunch(panelStatus) ? (
-          <p className="local-device-bridge-panel__install-desc" role="status">
+        {viewStep === 2 &&
+        shouldShowBridgeConnectFallback({
+          viewStep,
+          pairingCode,
+          health,
+          connectError,
+          needsLocalLaunch: needsLocalBridgeLaunch(panelStatus)
+        }) ? (
+          <div className="local-device-bridge-panel__install-desc" role="status">
             {pairingCode ? (
-              <>
+              <p>
                 配对码：<strong>{pairingCode.code}</strong>
-                {" · "}
-              </>
+              </p>
             ) : null}
-            若网页未能自动打开 Bridge，请在终端执行：
+            <p>
+              若网页未能自动打开 Bridge，请在 Bridge 安装目录打开终端并执行：
+            </p>
             <code className="local-device-bridge-panel__fallback-command">
               {formatBridgeConnectFallbackCommand({
                 platform: hostTarget.platform,
                 serverUrl: resolveBridgeServerUrl(),
                 webOrigin: resolveBridgeWebOrigin(),
-                code: pairingCode?.code
+                code: pairingCode?.code,
+                cliPath: health?.launcherPath
               })}
             </code>
-          </p>
+            {!health?.launcherPath ? (
+              <p className="local-device-bridge-panel__install-desc">{bridgeCliDiscoveryHint(hostTarget.platform)}</p>
+            ) : null}
+          </div>
         ) : null}
 
         {showLoginAutoStart ? (

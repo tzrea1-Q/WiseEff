@@ -18,6 +18,26 @@ export function resolveBundledNodePath(
   return fallbackExecPath;
 }
 
+export function resolveBridgeLauncherPath(cliPath: string, platform: NodeJS.Platform = process.platform): string {
+  const pathApi = pathForPlatform(platform);
+
+  if (platform === "darwin") {
+    const wrapperPath = pathApi.join(pathApi.dirname(cliPath), "wiseeff-bridge");
+    if (existsSync(wrapperPath)) {
+      return wrapperPath;
+    }
+  }
+
+  if (platform === "win32") {
+    const launcher = resolveWindowsBridgeLauncher(cliPath, platform);
+    if (launcher) {
+      return launcher;
+    }
+  }
+
+  return cliPath;
+}
+
 export function resolveWindowsBridgeLauncher(cliPath: string, platform: NodeJS.Platform = process.platform): string | null {
   const pathApi = pathForPlatform(platform);
   const directory = pathApi.dirname(cliPath);

@@ -25,7 +25,7 @@ import { ensureBridgeRunning } from "./ensureBridgeRunning";
 import { kickOffInstallTools, runToolsInstallCliCommand } from "./toolsInstallCli";
 import { parseBridgeUrl } from "./urlScheme";
 import { createProxiedFetch } from "./proxyFetch";
-import { pairingStartupErrorMessage } from "./bridgeRuntimePaths";
+import { pairingStartupErrorMessage, resolveBridgeLauncherPath } from "./bridgeRuntimePaths";
 import { appendBridgeLaunchLog } from "./bridgeLaunchLog";
 import { clearPairingError, readPairingError, writePairingError } from "./pairingErrorStore";
 import {
@@ -122,7 +122,8 @@ function usage() {
 
 async function runStartCommand(
   deps: CliDependencies,
-  config: BridgeConfig
+  config: BridgeConfig,
+  runtimePaths: { cliPath: string; platform: NodeJS.Platform }
 ): Promise<{ exitCode: number; statusLine: string }> {
   const runtime = await createResolvedRpcHandlers();
   const toolProbeCache = createToolProbeCache({
@@ -131,6 +132,8 @@ async function runStartCommand(
 
   await toolProbeCache.refreshTools(true);
 
+  const launcherPath = resolveBridgeLauncherPath(runtimePaths.cliPath, runtimePaths.platform);
+
   let status: BridgeHealthState = {
     paired: true,
     connected: false,
@@ -138,6 +141,7 @@ async function runStartCommand(
     serverUrl: config.serverUrl,
     tokenExpiresAt: config.tokenExpiresAt,
     lastError: undefined,
+    launcherPath,
     updatedAt: new Date().toISOString(),
     tools: toolProbeCache.getTools(),
     toolsInstall: toolProbeCache.getToolsInstall()
@@ -155,6 +159,7 @@ async function runStartCommand(
         serverUrl: config.serverUrl,
         tokenExpiresAt: config.tokenExpiresAt,
         lastError: next.lastError,
+        launcherPath,
         updatedAt: next.updatedAt,
         tools: toolProbeCache.getTools(),
         toolsInstall: toolProbeCache.getToolsInstall()
@@ -230,7 +235,7 @@ async function runStartCommand(
 
 async function runStandbyStartCommand(
   deps: CliDependencies,
-  platform: NodeJS.Platform = process.platform
+  runtimePaths: { cliPath: string; platform: NodeJS.Platform }
 ): Promise<number> {
   const existingHealth = await deps.fetchImpl("http://127.0.0.1:18787/health").catch(() => null);
   if (existingHealth?.ok) {
@@ -243,9 +248,12 @@ async function runStandbyStartCommand(
     probe: () => runtime.probeTools()
   });
 
+  const launcherPath = resolveBridgeLauncherPath(runtimePaths.cliPath, runtimePaths.platform);
+
   let status: BridgeHealthState = {
     paired: false,
     connected: false,
+    launcherPath,
     updatedAt: new Date().toISOString()
   };
 
@@ -276,7 +284,7 @@ async function runStandbyStartCommand(
 
     deps.stdout.log(`Bridge standby started. Health: ${health.url}`);
     deps.stdout.log("Pair from the web UI to finish setup.");
-    if (platform === "darwin") {
+    if (runtimePaths.platform === "darwin") {
       const registered = await isPortableUrlSchemeRegistered({
         homedir: () => os.homedir(),
         access
@@ -344,7 +352,13 @@ export async function runCli(
     saveConfig: overrides.saveConfig ?? ((config) => saveBridgeConfig(config)),
     stdout: overrides.stdout ?? console
   };
-  const startBridge = overrides.startBridge ?? ((config) => runStartCommand(deps, config));
+  const startBridge =
+    overrides.startBridge ??
+    ((config) =>
+      runStartCommand(deps, config, {
+        cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+        platform: overrides.platform ?? process.platform
+      }));
   const connectDeps = {
     ...deps,
     ensureBridgeRunning: overrides.ensureBridgeRunning ?? ensureBridgeRunning,
@@ -484,10 +498,14 @@ export async function runCli(
   const config = await deps.loadConfig();
 
   if (parsed.command === "start") {
+    const runtimePaths = {
+      cliPath: overrides.cliPath ?? CLI_ENTRY_PATH,
+      platform: overrides.platform ?? process.platform
+    };
     if (!config) {
-      return runStandbyStartCommand(deps, overrides.platform ?? process.platform);
+      return runStandbyStartCommand(deps, runtimePaths);
     }
-    const result = await runStartCommand(deps, config);
+    const result = await runStartCommand(deps, config, runtimePaths);
     return result.exitCode;
   }
 
