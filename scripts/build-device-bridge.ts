@@ -47,6 +47,11 @@ async function sha256File(filePath: string) {
 
 async function packageZip(inputPath: string, outputPath: string) {
   await rm(outputPath, { force: true });
+  if (process.platform === "win32") {
+    const ps = `Compress-Archive -LiteralPath '${inputPath.replace(/'/g, "''")}' -DestinationPath '${outputPath.replace(/'/g, "''")}' -Force`;
+    await execFileAsync("powershell.exe", ["-NoProfile", "-Command", ps]);
+    return;
+  }
   await execFileAsync("zip", ["-j", outputPath, inputPath]);
 }
 

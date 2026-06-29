@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   WISEEFF_BRIDGE_SERVICE_NAME,
+  buildServiceBinPath,
   buildServiceWrapperContent,
   formatScBinPath,
   getServiceWrapperPath,
@@ -67,6 +68,17 @@ describe("windowsService helpers", () => {
       'binPath= "C:\\Program Files\\WiseEff\\start-service.cmd"'
     );
   });
+
+  it("builds service binPath with bundled node.exe and cli.js start", () => {
+    expect(
+      buildServiceBinPath(
+        "C:\\Users\\operator\\AppData\\Local\\WiseEff\\Bridge\\node.exe",
+        "C:\\Users\\operator\\AppData\\Local\\WiseEff\\Bridge\\cli.js"
+      )
+    ).toBe(
+      'binPath= "\\"C:\\Users\\operator\\AppData\\Local\\WiseEff\\Bridge\\node.exe\\" \\"C:\\Users\\operator\\AppData\\Local\\WiseEff\\Bridge\\cli.js\\" start"'
+    );
+  });
 });
 
 describe("windowsService commands", () => {
@@ -97,7 +109,7 @@ describe("windowsService commands", () => {
       [
         "create",
         WISEEFF_BRIDGE_SERVICE_NAME,
-        "binPath= C:\\WiseEff\\device-bridge\\dist\\start-service.cmd",
+        'binPath= "\\"C:\\Program Files\\nodejs\\node.exe\\" \\"C:\\WiseEff\\device-bridge\\dist\\cli.js\\" start"',
         "start=auto",
         "DisplayName=WiseEff Device Bridge"
       ],

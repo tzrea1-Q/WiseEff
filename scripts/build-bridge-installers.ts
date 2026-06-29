@@ -38,7 +38,14 @@ async function exists(filePath: string) {
   }
 }
 
+const BRIDGE_HTTP_CONNECT_ROUTE_MARKER = 'pathname === "/connect"';
+
 async function sha256File(filePath: string) {
+  if (process.platform === "win32") {
+    const ps = `(Get-FileHash -LiteralPath '${filePath.replace(/'/g, "''")}' -Algorithm SHA256).Hash.ToLower()`;
+    const { stdout } = await execFileAsync("powershell.exe", ["-NoProfile", "-Command", ps]);
+    return stdout.trim();
+  }
   const { stdout } = await execFileAsync("shasum", ["-a", "256", filePath]);
   return stdout.split(/\s+/)[0] ?? "";
 }
@@ -53,12 +60,23 @@ type ManifestInstallerItem = {
 };
 
 async function ensurePortableBuild() {
-  if (!(await exists(bundlePath))) {
-    console.log("Portable bundle missing; running npm run bridge:build...");
-    const result = spawnSync("npm", ["run", "bridge:build"], { cwd: rootDir, stdio: "inherit" });
-    if (result.status !== 0) {
-      throw new Error(`bridge:build failed with exit code ${result.status ?? 1}`);
-    }
+  console.log("Running npm run bridge:build...");
+  const result = spawnSync("npm", ["run", "bridge:build"], {
+    cwd: rootDir,
+    stdio: "inherit",
+    shell: process.platform === "win32"
+  });
+  if (result.status !== 0) {
+    throw new Error(`bridge:build failed with exit code ${result.status ?? 1}`);
+  }
+}
+
+async function assertBridgeHttpConnectRoute() {
+  const source = await readFile(bundlePath, "utf8");
+  if (!source.includes(BRIDGE_HTTP_CONNECT_ROUTE_MARKER)) {
+    throw new Error(
+      `${bundlePath} is missing POST /connect. Check out latest main and rerun npm run build:bridge-installers.`
+    );
   }
 }
 
@@ -164,6 +182,7 @@ async function mergeManifestInstallers(built: Array<{ target: InstallerTarget; p
 }
 
 await ensurePortableBuild();
+await assertBridgeHttpConnectRoute();
 await stageBundle();
 
 const builtInstallers: Array<{ target: InstallerTarget; path: string }> = [];

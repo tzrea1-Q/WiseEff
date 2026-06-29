@@ -28,6 +28,9 @@ Outputs land under `ops/self-hosted/bridge-artifacts/0.1.0/` and update `manifes
 ## Notes
 
 - Installers bundle a pinned Node runtime plus the esbuild CLI bundle.
+- Windows background service registration uses `node.exe` + `cli.js start` as the `sc create` `binPath` (**not** `start-service.cmd`, which causes `sc start` error 87).
+- `npm run build:bridge-installers` always runs `bridge:build` first and refuses to package an installer unless the bundle includes the `POST /connect` HTTP route.
+- On Windows hosts without `zip`, `bridge:build` uses PowerShell `Compress-Archive` for the portable zip.
 - Windows installer requests administrator approval once so `WiseEffBridge` service registration succeeds; legacy test directories under `%LOCALAPPDATA%\\WiseEff\\` are removed before install when they are not the chosen target folder.
 - Users may choose a custom install directory in the Windows setup wizard (default `%LOCALAPPDATA%\\WiseEff\\Bridge`).
 - Builds are unsigned; Gatekeeper / SmartScreen warnings are expected in pilot.
