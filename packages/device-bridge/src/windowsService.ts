@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { resolveWindowsBridgeLauncher } from "./bridgeRuntimePaths";
+import { resolveBundledNodePath, resolveWindowsBridgeLauncher } from "./bridgeRuntimePaths";
 import {
   registerWindowsUrlScheme,
   unregisterWindowsUrlScheme,
@@ -57,6 +57,12 @@ export function getServiceWrapperPath(cliPath: string): string {
 
 export function buildServiceWrapperContent(): string {
   return '@echo off\r\ncd /d "%~dp0"\r\n"%~dp0wiseeff-bridge.cmd" start\r\n';
+}
+
+export function buildServiceBinPath(nodePath: string, cliPath: string): string {
+  // Windows SCM cannot start .cmd batch files directly (StartService error 87).
+  // Escape embedded quotes for sc.exe create syntax.
+  return `binPath= "\\"${nodePath}\\" \\"${cliPath}\\" start"`;
 }
 
 export function formatScBinPath(wrapperPath: string): string {
@@ -126,10 +132,11 @@ export async function installWindowsService(deps: WindowsServiceDependencies): P
   await deps.mkdir(path.win32.dirname(wrapperPath), { recursive: true });
   await deps.writeFile(wrapperPath, buildServiceWrapperContent(), "utf8");
 
+  const nodePath = resolveBundledNodePath(deps.cliPath, deps.nodePath, deps.platform);
   const createArgs = [
     "create",
     WISEEFF_BRIDGE_SERVICE_NAME,
-    formatScBinPath(wrapperPath),
+    buildServiceBinPath(nodePath, deps.cliPath),
     "start=auto",
     `DisplayName=${WISEEFF_BRIDGE_SERVICE_DISPLAY_NAME}`
   ] as const;

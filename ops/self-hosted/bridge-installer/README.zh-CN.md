@@ -38,6 +38,9 @@ npm run build:bridge-installers
 ## 说明
 
 - 安装包内嵌固定版本 Node 与 esbuild CLI 包。
+- Windows 后台服务通过 `sc create` 注册为 `node.exe` + `cli.js start`（**不能**把 `start-service.cmd` 作为服务 `binPath`，否则会 `sc start` 错误 87）。
+- `npm run build:bridge-installers` 会**强制**先跑 `bridge:build`，并校验 bundle 含 `POST /connect` HTTP 路由后再打安装包。
+- Windows 无 `zip` 命令时，`bridge:build` 使用 PowerShell `Compress-Archive` 生成 portable zip。
 - 当前未签名；试点阶段 Gatekeeper / SmartScreen 提示属预期。
 - 未内置 `adb` / `hdc`（Phase B/C）。
 
