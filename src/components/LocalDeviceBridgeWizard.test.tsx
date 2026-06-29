@@ -1,7 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { deriveWizardStep, LocalDeviceBridgeWizard, type BridgePanelStatus } from "./LocalDeviceBridgeWizard";
+import {
+  deriveWizardStep,
+  LocalDeviceBridgeWizard,
+  WINDOWS_BRIDGE_ADMIN_INSTALL_HINT,
+  type BridgePanelStatus
+} from "./LocalDeviceBridgeWizard";
 
 const launchBridgeSchemeForConnect = vi.fn();
 const connectLocalBridge = vi.fn(async () => ({ reachable: false, ok: false }));
@@ -40,6 +45,43 @@ describe("deriveWizardStep", () => {
 });
 
 describe("LocalDeviceBridgeWizard", () => {
+  it("shows Windows admin install hint on step 1 for Windows hosts", () => {
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    });
+
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="missing_bridge"
+        protocol="adb"
+        health={null}
+        hostRelease={{
+          platform: "windows",
+          arch: "amd64",
+          version: "0.1.0",
+          downloadUrl: "/downloads/device-bridge/0.1.0/windows/amd64/WiseEffBridgeSetup_0.1.0.exe",
+          artifactKind: "installer"
+        }}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading={false}
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("note")).toHaveTextContent("Windows 安装提示：");
+    expect(screen.getByRole("note")).toHaveTextContent(WINDOWS_BRIDGE_ADMIN_INSTALL_HINT);
+
+    vi.unstubAllGlobals();
+  });
+
   it("groups install options into installer and portable sections", () => {
     render(
       <LocalDeviceBridgeWizard

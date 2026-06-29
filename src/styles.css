@@ -7486,6 +7486,22 @@ td small {
   font-weight: 700;
 }
 
+.local-device-bridge-panel__install-notice {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: color-mix(in srgb, var(--warning, #b45309) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--warning, #b45309) 28%, var(--outline));
+  border-radius: 10px;
+}
+
+.local-device-bridge-panel__install-notice strong {
+  color: var(--warning, #b45309);
+  font-weight: 700;
+}
+
 .local-device-bridge-panel__install-cta {
   color: #fff;
   background: var(--app-primary);

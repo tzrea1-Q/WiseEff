@@ -33,6 +33,9 @@ import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
 
 export type { BridgePanelStatus } from "./bridgePanelStatus";
 
+export const WINDOWS_BRIDGE_ADMIN_INSTALL_HINT =
+  "请右键安装包，选择「以管理员身份运行」。管理员权限用于正确注册 wiseeff-bridge:// 协议；若未提权，浏览器可能无法唤起 Bridge。";
+
 export type WizardViewStep = 1 | 2 | 3;
 
 export function deriveWizardStep(panelStatus: BridgePanelStatus): 1 | 2 | 3 | "done" {
@@ -147,6 +150,8 @@ export function LocalDeviceBridgeWizard({
   const showWindowsServiceHint = hostTarget.platform === "windows" && showServiceInstallHint && viewStep >= 2;
   const hostTargetLabel = bridgeHostTargetLabel(hostTarget);
   const hasInstallCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
+  const showWindowsAdminInstallHint =
+    hostTarget.platform === "windows" && viewStep === 1 && hasInstallCatalog && !releasesLoading;
   const connectUrlForFallback = buildBridgeConnectUrl(
     resolveBridgeServerUrl(),
     pairingCode?.code,
@@ -416,6 +421,13 @@ export function LocalDeviceBridgeWizard({
                 <p className="local-device-bridge-panel__host-banner" role="status">
                   已识别当前环境：<strong>{hostTargetLabel}</strong>。请优先下载下方标注为「本机推荐」的安装包。
                 </p>
+
+                {showWindowsAdminInstallHint ? (
+                  <p className="local-device-bridge-panel__install-notice" role="note">
+                    <strong>Windows 安装提示：</strong>
+                    {WINDOWS_BRIDGE_ADMIN_INSTALL_HINT}
+                  </p>
+                ) : null}
 
                 <div className="local-device-bridge-panel__install-options">
                   <article className="local-device-bridge-panel__install-option">
