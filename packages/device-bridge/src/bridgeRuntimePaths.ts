@@ -66,10 +66,11 @@ export function resolveDetachedBridgeStartCommand(input: {
   }
 
   if (input.platform === "win32") {
-    const launcher = resolveWindowsBridgeLauncher(input.cliPath, input.platform);
-    if (launcher) {
-      return { command: launcher, args: ["start"] };
-    }
+    // Node.js cannot spawn .cmd/.bat directly on Windows (EINVAL); use bundled node.exe + cli.js.
+    return {
+      command: resolveBundledNodePath(input.cliPath, input.execPath, input.platform),
+      args: [input.cliPath, "start"]
+    };
   }
 
   return {

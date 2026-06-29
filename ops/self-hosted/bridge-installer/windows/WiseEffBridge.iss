@@ -8,12 +8,14 @@ AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 DefaultDirName={localappdata}\WiseEff\Bridge
-DisableDirPage=yes
+UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 OutputBaseFilename=WiseEffBridgeSetup_{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64
+PrivilegesRequired=admin
+PrivilegesRequiredOverridesAllowed=dialog
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
@@ -24,13 +26,80 @@ Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\URL Protocol"; ValueType: s
 Root: HKCU; Subkey: "Software\Classes\wiseeff-bridge\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppLauncher}"" --handle-url ""%1"""
 
 [Run]
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" register"; Flags: runhidden; StatusMsg: "Registering URL scheme..."
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service install"; Flags: runhidden; StatusMsg: "Installing background service..."
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service start"; Flags: runhidden; StatusMsg: "Starting background service..."
-Filename: "{cmd}"; Parameters: "/c reg query HKCU\Software\Classes\wiseeff-bridge\shell\open\command"; Flags: runhidden; StatusMsg: "Verifying URL scheme registration..."
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" register"; Flags: waituntilterminated runhidden; StatusMsg: "Registering URL scheme..."
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service install"; Flags: waituntilterminated runhidden; StatusMsg: "Installing background service..."
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service start"; Flags: waituntilterminated runhidden; StatusMsg: "Starting background service..."
+Filename: "{cmd}"; Parameters: "/c reg query HKCU\Software\Classes\wiseeff-bridge\shell\open\command"; Flags: waituntilterminated runhidden; StatusMsg: "Verifying URL scheme registration..."
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" unregister"; Flags: runhidden; RunOnceId: "UnregisterUrlScheme"
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" service uninstall"; Flags: waithidden runhidden; RunOnceId: "UninstallService"
+Filename: "{cmd}"; Parameters: "/c ""{app}\{#MyAppLauncher}"" unregister"; Flags: waithidden runhidden; RunOnceId: "UnregisterUrlScheme"
 
 [Icons]
 Name: "{userdesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppLauncher}"; Parameters: "start"
+
+[Code]
+var
+  InstallLogPath: String;
+
+procedure AppendInstallLog(const Message: String);
+begin
+  if InstallLogPath = '' then
+    InstallLogPath := ExpandConstant('{localappdata}\WiseEff\bridge-install.log');
+  SaveStringToFile(InstallLogPath, Message + #13#10, True);
+end;
+
+procedure StopWiseEffBridgeService();
+var
+  ResultCode: Integer;
+begin
+  if Exec('sc.exe', 'stop WiseEffBridge', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    AppendInstallLog('Stopped WiseEffBridge service');
+  if Exec('sc.exe', 'delete WiseEffBridge', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    AppendInstallLog('Deleted WiseEffBridge service');
+end;
+
+procedure UnregisterUrlScheme();
+var
+  ResultCode: Integer;
+begin
+  if Exec('reg.exe', 'delete HKCU\Software\Classes\wiseeff-bridge /f', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    AppendInstallLog('Removed wiseeff-bridge URL scheme registry');
+end;
+
+procedure RemoveLegacyDir(const SubDir: String);
+var
+  ResultCode: Integer;
+  TargetDir, AppDir: String;
+begin
+  TargetDir := ExpandConstant('{localappdata}\WiseEff\' + SubDir);
+  AppDir := RemoveBackslashUnlessRoot(ExpandConstant('{app}'));
+  if CompareText(TargetDir, AppDir) = 0 then
+  begin
+    AppendInstallLog('Skipping active install dir: ' + TargetDir);
+    Exit;
+  end;
+  if DirExists(TargetDir) then
+  begin
+    AppendInstallLog('Removing legacy dir: ' + TargetDir);
+    Exec('cmd.exe', '/c rmdir /s /q "' + TargetDir + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): Boolean;
+begin
+  AppendInstallLog('=== WiseEff Bridge install prepare ===');
+  StopWiseEffBridgeService();
+  UnregisterUrlScheme();
+  RemoveLegacyDir('Bridge-install-fix-test');
+  RemoveLegacyDir('Bridge-test-verify');
+  RemoveLegacyDir('device-bridge');
+  RemoveLegacyDir('Bridge');
+  Result := True;
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    AppendInstallLog('Installed to: ' + ExpandConstant('{app}'));
+end;

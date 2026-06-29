@@ -116,7 +116,7 @@ export async function loadBridgeReleaseManifest(manifestPath: string): Promise<B
   const items = sortItemsWindowsFirst(
     (
       await Promise.all(
-        parsed.data.items.map(async (item) => {
+        parsed.data.items.map(async (item): Promise<BridgeReleaseItem | null> => {
           if (!(await artifactFileExists(manifestPath, item))) {
             return null;
           }
@@ -128,7 +128,7 @@ export async function loadBridgeReleaseManifest(manifestPath: string): Promise<B
             downloadUrl: normalizeDownloadUrl(item),
             artifactKind: item.artifactKind ?? "portable",
             ...(item.sha256 ? { sha256: item.sha256 } : {})
-          } satisfies BridgeReleaseItem;
+          };
         })
       )
     ).filter((item): item is BridgeReleaseItem => item !== null)
