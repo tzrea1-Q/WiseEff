@@ -15,8 +15,18 @@ export function buildBridgeConnectUrl(serverUrl?: string, code?: string, webOrig
   return url.toString();
 }
 
+function launchCustomProtocolUrl(url: string) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.rel = "noopener noreferrer";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 export function launchBridgeConnect(url: string) {
-  window.location.href = url;
+  launchCustomProtocolUrl(url);
 }
 
 export function buildBridgeInstallServiceUrl() {
@@ -24,7 +34,7 @@ export function buildBridgeInstallServiceUrl() {
 }
 
 export function launchBridgeInstallService() {
-  window.location.href = buildBridgeInstallServiceUrl();
+  launchCustomProtocolUrl(buildBridgeInstallServiceUrl());
 }
 
 export type LocalBridgeReachability = "ok" | "offline" | "possibly_blocked";

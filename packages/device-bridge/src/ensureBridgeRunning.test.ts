@@ -35,6 +35,10 @@ vi.mock("./bridgeLaunchLog", () => ({
   appendBridgeLaunchLog: vi.fn(async () => undefined)
 }));
 
+vi.mock("./windowsService", () => ({
+  runWindowsServiceCommand: vi.fn(async () => 1)
+}));
+
 import { buildDarwinLoginShellStartScript, ensureBridgeRunning, probeLocalBridgeHealth } from "./ensureBridgeRunning";
 
 describe("probeLocalBridgeHealth", () => {
@@ -91,6 +95,28 @@ describe("ensureBridgeRunning", () => {
 
     expect(result.exitCode).toBe(1);
     expect(stdout.error).toHaveBeenCalledWith("Bridge failed to come online within 25 seconds.");
+  });
+
+  it("spawns bundled node on Windows instead of .cmd launchers", async () => {
+    const stdout = { log: vi.fn(), error: vi.fn() };
+    const fetchImpl = vi.fn(async () => null) as typeof fetch;
+    spawnMock.mockClear();
+
+    await ensureBridgeRunning({
+      fetchImpl,
+      platform: "win32",
+      execPath: "C:\\Program Files\\nodejs\\node.exe",
+      cliPath: "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js",
+      stdout
+    });
+
+    expect(spawnMock).toHaveBeenCalled();
+    const [command, args] = spawnMock.mock.calls.at(-1) ?? [];
+    expect(command).toBe("C:\\Program Files\\nodejs\\node.exe");
+    expect(args).toEqual([
+      "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js",
+      "start"
+    ]);
   });
 
   it("quotes darwin app bundle paths with spaces when spawning start", () => {

@@ -28,6 +28,8 @@ Outputs land under `ops/self-hosted/bridge-artifacts/0.1.0/` and update `manifes
 ## Notes
 
 - Installers bundle a pinned Node runtime plus the esbuild CLI bundle.
+- Windows installer requests administrator approval once so `WiseEffBridge` service registration succeeds; legacy test directories under `%LOCALAPPDATA%\\WiseEff\\` are removed before install when they are not the chosen target folder.
+- Users may choose a custom install directory in the Windows setup wizard (default `%LOCALAPPDATA%\\WiseEff\\Bridge`).
 - Builds are unsigned; Gatekeeper / SmartScreen warnings are expected in pilot.
 - `adb` / `hdc` are not bundled (Phase B/C).
 
