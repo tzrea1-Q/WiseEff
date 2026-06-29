@@ -9,8 +9,8 @@ import {
 } from "./LocalDeviceBridgeWizard";
 
 const launchBridgeSchemeForConnect = vi.fn();
-const connectLocalBridge = vi.fn(async () => ({ reachable: false, ok: false }));
-const pollLocalBridgeHealth = vi.fn(async () => null);
+const connectLocalBridge = vi.fn(async (_input?: unknown) => ({ reachable: false, ok: false }));
+const pollLocalBridgeHealth = vi.fn(async (_input?: unknown) => null);
 
 vi.mock("../infrastructure/http/bridgeConnectLauncher", async () => {
   const actual = await vi.importActual<typeof import("../infrastructure/http/bridgeConnectLauncher")>(
