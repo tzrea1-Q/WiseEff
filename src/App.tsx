@@ -65,7 +65,8 @@ import { canAccessPage, canPerform } from "@/app/permissions";
 import {
   applyInitializationDraftToConfig,
   buildInitializationDraft,
-  canSubmitInitializationDraft
+  canSubmitInitializationDraft,
+  resolveInitializationConfig
 } from "@/domain/parameters/initialization";
 import { submitParameterRound } from "@/domain/parameters/commands";
 import type {
@@ -750,7 +751,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         return state;
       }
       const now = new Date().toISOString();
-      const draft = buildInitializationDraft(state.configDraft, {
+      const draft = buildInitializationDraft(resolveInitializationConfig(state.configDraft, state.parameters), {
         ...action.draft,
         selectedModules: [],
         selectedRisks: [],

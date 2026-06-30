@@ -17,7 +17,7 @@ describe("ProjectParameterInitializationWizard", () => {
   }
 
   function selectFirstCandidateAndContinue() {
-    const table = screen.getByRole("table", { name: "初始化候选参数" });
+    const table = screen.getByRole("table", { name: "参数库选择表" });
     const firstRowCheckbox = within(table).getAllByRole("checkbox")[1];
     fireEvent.click(firstRowCheckbox);
     fireEvent.click(screen.getByRole("button", { name: "下一步" }));
@@ -29,17 +29,17 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.getByLabelText("项目名称")).toBeInTheDocument();
     expect(screen.getByLabelText("项目代号")).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Aurora/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "初始化候选参数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "参数库选择表" })).not.toBeInTheDocument();
 
     fillProjectInfoAndContinue();
 
     expect(screen.getByLabelText(/^Aurora/)).toBeInTheDocument();
     expect(screen.queryByLabelText("项目名称")).not.toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "初始化候选参数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "参数库选择表" })).not.toBeInTheDocument();
 
     selectAuroraSourceAndContinue();
 
-    expect(screen.getByRole("table", { name: "初始化候选参数" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "参数库选择表" })).toBeInTheDocument();
     expect(screen.queryByLabelText("项目名称")).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/^Aurora/)).not.toBeInTheDocument();
 
@@ -47,7 +47,7 @@ describe("ProjectParameterInitializationWizard", () => {
 
     expect(screen.getByRole("region", { name: "初始化快照预览" })).toBeInTheDocument();
     expect(screen.getByLabelText("备注")).toBeInTheDocument();
-    expect(screen.queryByRole("table", { name: "初始化候选参数" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "参数库选择表" })).not.toBeInTheDocument();
   });
 
   it("validates the current step before continuing", () => {
@@ -70,6 +70,99 @@ describe("ProjectParameterInitializationWizard", () => {
 
     expect(screen.getByText("请先选择主来源项目。")).toBeInTheDocument();
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("allows creating a project when no source projects exist", () => {
+    const dispatch = vi.fn();
+    const emptyProjectState = {
+      ...initialState,
+      configDraft: {
+        ...initialState.configDraft,
+        projects: []
+      }
+    };
+
+    render(<ProjectParameterInitializationWizard state={emptyProjectState} dispatch={dispatch} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+
+    expect(screen.getByText("当前平台尚无已有项目，可直接进入下一步创建空项目。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByRole("table", { name: "参数库选择表" })).toBeInTheDocument();
+    expect(screen.getByText(/个参数库条目可选/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SUBMIT_PARAMETER_INITIALIZATION",
+        draft: expect.objectContaining({
+          projectName: "Zephyr",
+          projectCode: "ZEP",
+          sourceProjectIds: [],
+          primarySourceProjectId: "",
+          selectedParameterIds: []
+        })
+      })
+    );
+  });
+
+  it("allows starting from empty when source projects exist", () => {
+    const dispatch = vi.fn();
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={dispatch} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^从零开始/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SUBMIT_PARAMETER_INITIALIZATION",
+        draft: expect.objectContaining({
+          projectName: "Zephyr",
+          projectCode: "ZEP",
+          sourceProjectIds: [],
+          primarySourceProjectId: "",
+          selectedParameterIds: []
+        })
+      })
+    );
+  });
+
+  it("requires choosing a source or starting from empty when projects exist", () => {
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByText("请选择至少一个来源项目，或选择从零开始。")).toBeInTheDocument();
+  });
+
+  it("shows candidates when runtime parameters exist but configDraft parameterLibrary is empty", () => {
+    const auroraRecord = initialState.parameters.find((parameter) => parameter.projectId === "aurora");
+    expect(auroraRecord).toBeTruthy();
+
+    const hydratedState = {
+      ...initialState,
+      configDraft: {
+        ...initialState.configDraft,
+        parameterLibrary: []
+      },
+      parameters: initialState.parameters
+    };
+
+    render(<ProjectParameterInitializationWizard state={hydratedState} dispatch={vi.fn()} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^Aurora/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByText(/12 个参数库条目可选/)).toBeInTheDocument();
+    expect(screen.getByText("battery_temp_target_c")).toBeInTheDocument();
   });
 
   it("submits selected parameters for initialization review", () => {
@@ -151,7 +244,7 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(screen.queryByText("不选择模块时默认包含全部模块。")).not.toBeInTheDocument();
     expect(screen.queryByText("不选择风险等级时默认包含全部等级。")).not.toBeInTheDocument();
 
-    const table = screen.getByRole("table", { name: "初始化候选参数" });
+    const table = screen.getByRole("table", { name: "参数库选择表" });
     const moduleHeader = within(table).getByRole("columnheader", { name: /模块/ });
     const riskHeader = within(table).getByRole("columnheader", { name: /风险/ });
     expect(within(moduleHeader).getByRole("button", { name: "筛选模块" })).toHaveAttribute("aria-expanded", "false");
@@ -171,7 +264,7 @@ describe("ProjectParameterInitializationWizard", () => {
     fireEvent.click(within(riskMenu).getByLabelText("高"));
 
     expect(within(table).queryByText("battery_temp_target_c")).not.toBeInTheDocument();
-    expect(within(table).getByText("暂无可预览的候选参数。")).toBeInTheDocument();
+    expect(within(table).getByText(/当前筛选条件下没有匹配参数/)).toBeInTheDocument();
   });
 
   it("supports header filters on every initialization candidate data column", () => {
@@ -180,7 +273,7 @@ describe("ProjectParameterInitializationWizard", () => {
     fillProjectInfoAndContinue();
     selectAuroraSourceAndContinue();
 
-    const table = screen.getByRole("table", { name: "初始化候选参数" });
+    const table = screen.getByRole("table", { name: "参数库选择表" });
     const checks: Array<[string, string, string]> = [
       ["参数", "筛选参数", "battery_temp_target_c"],
       ["模块", "筛选模块", "Battery Safety"],
@@ -217,7 +310,7 @@ describe("ProjectParameterInitializationWizard", () => {
     fireEvent.mouseDown(within(riskMenu).getByLabelText("中"));
     expect(screen.getByRole("group", { name: "风险筛选" })).toBeInTheDocument();
 
-    fireEvent.mouseDown(screen.getByText("候选参数"));
+    fireEvent.mouseDown(screen.getByText(/12 个参数库条目可选/));
     expect(screen.queryByRole("group", { name: "风险筛选" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "筛选风险" })).toHaveAttribute("aria-expanded", "false");
   });
@@ -246,7 +339,7 @@ describe("ProjectParameterInitializationWizard", () => {
     fillProjectInfoAndContinue();
     selectAuroraSourceAndContinue();
 
-    const table = screen.getByRole("table", { name: "初始化候选参数" });
+    const table = screen.getByRole("table", { name: "参数库选择表" });
     const columns = table.querySelectorAll("colgroup col");
 
     expect(columns).toHaveLength(7);
@@ -271,12 +364,12 @@ describe("ProjectParameterInitializationWizard", () => {
     const sourceCellRule = styles.match(/\.project-init-table__source\s*\{[^}]*\}/)?.[0] ?? "";
 
     expect(tableRule).toMatch(/table-layout:\s*fixed/);
-    expect(tableRule).toMatch(/min-width:\s*940px/);
+    expect(tableRule).toMatch(/min-width:\s*860px/);
     expect(parameterCellRule).toMatch(/overflow:\s*hidden/);
     expect(parameterCellRule).toMatch(/text-overflow:\s*ellipsis/);
     expect(parameterCellRule).toMatch(/white-space:\s*nowrap/);
-    expect(sourceCellRule).toMatch(/white-space:\s*normal/);
-    expect(sourceCellRule).toMatch(/line-height:\s*1\.35/);
+    expect(sourceCellRule).toMatch(/white-space:\s*nowrap/);
+    expect(sourceCellRule).toMatch(/text-overflow:\s*ellipsis/);
   });
 
   it("shows parameter details from a candidate row", () => {
@@ -285,7 +378,7 @@ describe("ProjectParameterInitializationWizard", () => {
     fillProjectInfoAndContinue();
     selectAuroraSourceAndContinue();
 
-    const table = screen.getByRole("table", { name: "初始化候选参数" });
+    const table = screen.getByRole("table", { name: "参数库选择表" });
     const columns = table.querySelectorAll("colgroup col");
     expect(columns).toHaveLength(7);
     expect(columns[6]).toHaveClass("project-init-col-detail");
@@ -331,6 +424,98 @@ describe("ProjectParameterInitializationWizard", () => {
     expect(footerSubtleButtonRule).toMatch(/background:\s*#fff/);
     expect(footerPrimaryButtonRule).toMatch(/color:\s*#fff/);
     expect(footerPrimaryButtonRule).toMatch(/background:\s*var\(--app-primary\)/);
+  });
+
+  it("allows selecting parameters from the library when starting from empty", () => {
+    const dispatch = vi.fn();
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={dispatch} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+    fireEvent.click(screen.getByLabelText(/^从零开始/));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+
+    expect(screen.getByText(/个参数库条目可选/)).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("选择 battery_temp_target_c"));
+    fireEvent.click(screen.getByRole("button", { name: "下一步" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交初始化审阅" }));
+
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "SUBMIT_PARAMETER_INITIALIZATION",
+        draft: expect.objectContaining({
+          sourceProjectIds: [],
+          selectedParameterIds: expect.arrayContaining(["battery-temp-target"])
+        })
+      })
+    );
+  });
+
+  it("presents the scope step as a full-width stacked layout for the parameter table", () => {
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+    selectAuroraSourceAndContinue();
+
+    const scopeStepPanel = screen.getByLabelText("参数范围").closest(".project-init-step-panel");
+    expect(scopeStepPanel).toHaveClass("project-init-step-panel--scope");
+    expect(scopeStepPanel?.querySelector(".project-init-step-copy:not(.project-init-step-copy--scope)")).toBeNull();
+    expect(screen.getByRole("heading", { name: "从参数库选择项目参数" }).closest(".project-init-step-copy--scope")).toBeTruthy();
+    expect(screen.getByText(/12 个参数库条目可选/)).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "参数库选择表" })).toBeInTheDocument();
+
+    const styles = readFileSync("src/styles.css", "utf8");
+    const scopePanelRule = styles.match(/\.project-init-step-panel--scope\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(scopePanelRule).toMatch(/grid-template-columns:\s*1fr/);
+    expect(scopePanelRule).not.toMatch(/minmax\(220px/);
+  });
+
+  it("filters source projects with search when many projects exist", () => {
+    const manyProjectsState = {
+      ...initialState,
+      configDraft: {
+        ...initialState.configDraft,
+        projects: [
+          ...initialState.configDraft.projects,
+          ...Array.from({ length: 18 }, (_, index) => ({
+            id: `bench-project-${index}`,
+            name: `Bench Project ${index}`,
+            code: `BP-${index}`
+          }))
+        ]
+      }
+    };
+
+    render(<ProjectParameterInitializationWizard state={manyProjectsState} dispatch={vi.fn()} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+
+    expect(screen.getByText(/共 21 个项目/)).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "搜索来源项目" }), { target: { value: "Bench Project 17" } });
+    expect(screen.getByText(/显示 1 \/ 21 个项目/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Bench Project 17")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Aurora/)).not.toBeInTheDocument();
+  });
+
+  it("presents the source step as a searchable compact project table", () => {
+    render(<ProjectParameterInitializationWizard state={initialState} dispatch={vi.fn()} onClose={() => {}} />);
+
+    fillProjectInfoAndContinue();
+
+    const sourceStepPanel = screen.getByLabelText("来源项目").closest(".project-init-step-panel");
+    expect(sourceStepPanel).toHaveClass("project-init-step-panel--source");
+    expect(sourceStepPanel?.querySelector(".project-init-step-copy:not(.project-init-step-copy--source)")).toBeNull();
+    expect(screen.getByRole("heading", { name: "选择要继承的项目" }).closest(".project-init-step-copy--source")).toBeTruthy();
+    expect(screen.getByRole("table", { name: "可选来源项目" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索来源项目" })).toBeInTheDocument();
+
+    const styles = readFileSync("src/styles.css", "utf8");
+    const sourcePanelRule = styles.match(/\.project-init-step-panel--source\s*\{[^}]*\}/)?.[0] ?? "";
+    const sourceTableWrapRule = styles.match(/\.project-init-source-table-wrap\s*\{[^}]*\}/)?.[0] ?? "";
+
+    expect(sourcePanelRule).toMatch(/grid-template-columns:\s*1fr/);
+    expect(sourceTableWrapRule).toMatch(/max-height:\s*260px/);
+    expect(sourceTableWrapRule).toMatch(/overflow:\s*auto/);
   });
 
   it("presents the project information step as a focused two-column form card", () => {

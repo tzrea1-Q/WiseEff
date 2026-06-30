@@ -4,7 +4,7 @@ import type { Dispatch } from "react";
 import type { AppAction } from "./App";
 import { ColumnFilter } from "./components/ColumnFilter";
 import { toggleFilterValue, uniqueFilterValues, type HeaderFilterState } from "./components/tableFilterUtils";
-import { getInitializationCandidateParameters } from "./domain/parameters/initialization";
+import { getInitializationScopeParameters, resolveInitializationConfig } from "./domain/parameters/initialization";
 import type { ProjectParameterInitializationSnapshotItem, RiskLevel } from "./domain/parameters/types";
 import type { PrototypeState } from "./mockData";
 
@@ -22,7 +22,8 @@ const riskLevelLabels: Record<RiskLevel, string> = {
 };
 const sourceRoleLabels = {
   primary: "主来源",
-  supplement: "补充来源"
+  supplement: "补充来源",
+  library: "参数库"
 };
 
 type CandidateColumnFilterKey = "parameter" | "module" | "risk" | "recommendedValue" | "source";
@@ -40,8 +41,8 @@ const wizardSteps = [
   },
   {
     label: "参数范围",
-    title: "筛选并确认参数",
-    description: "用模块和风险缩小范围，再选择本次初始化要复制的参数。"
+    title: "从参数库选择项目参数",
+    description: "浏览全局参数库并勾选纳入本项目的参数；若已选来源项目，对应条目会标注继承来源与推荐值。"
   },
   {
     label: "提交审阅",
@@ -68,45 +69,61 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   const [columnFilters, setColumnFilters] = useState<HeaderFilterState>({});
   const [detailParameterId, setDetailParameterId] = useState("");
   const [notes, setNotes] = useState("");
+  const [startFromEmpty, setStartFromEmpty] = useState(false);
+  const [sourceProjectSearchQuery, setSourceProjectSearchQuery] = useState("");
   const [error, setError] = useState("");
 
   const activeStep = wizardSteps[currentStepIndex];
+  const projects = state.configDraft.projects;
+  const initializationConfig = useMemo(
+    () => resolveInitializationConfig(state.configDraft, state.parameters),
+    [state.configDraft, state.parameters]
+  );
+  const hasAvailableSourceProjects = projects.length > 0;
+  const isEmptyInitialization = startFromEmpty || !hasAvailableSourceProjects;
   const isReviewStep = currentStepIndex === wizardSteps.length - 1;
   const ownerName = state.users.find((user) => user.id === ownerUserId)?.name ?? ownerUserId;
   const modules = useMemo(
-    () => Array.from(new Set(state.configDraft.parameterLibrary.map((parameter) => parameter.module))).sort(),
-    [state.configDraft.parameterLibrary]
+    () => Array.from(new Set(initializationConfig.parameterLibrary.map((parameter) => parameter.module))).sort(),
+    [initializationConfig.parameterLibrary]
   );
   const projectNameById = useMemo(
-    () => new Map(state.configDraft.projects.map((project) => [project.id, project.name])),
-    [state.configDraft.projects]
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects]
   );
   const parameterNameById = useMemo(
-    () => new Map(state.configDraft.parameterLibrary.map((parameter) => [parameter.id, parameter.name])),
-    [state.configDraft.parameterLibrary]
+    () => new Map(initializationConfig.parameterLibrary.map((parameter) => [parameter.id, parameter.name])),
+    [initializationConfig.parameterLibrary]
   );
   const parameterById = useMemo(
-    () => new Map(state.configDraft.parameterLibrary.map((parameter) => [parameter.id, parameter])),
-    [state.configDraft.parameterLibrary]
+    () => new Map(initializationConfig.parameterLibrary.map((parameter) => [parameter.id, parameter])),
+    [initializationConfig.parameterLibrary]
   );
   const supplementSourceProjectIds = sourceProjectIds.filter((projectId) => projectId !== primarySourceProjectId);
-  const candidatePool = useMemo(() => {
-    if (!primarySourceProjectId) {
-      return [];
+  const filteredSourceProjects = useMemo(() => {
+    const normalizedQuery = sourceProjectSearchQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return projects;
     }
 
-    return getInitializationCandidateParameters(state.configDraft, {
-      primarySourceProjectId,
-      supplementSourceProjectIds,
-      selectedModules: [],
-      selectedRisks: []
+    return projects.filter((project) => {
+      const haystack = `${project.name} ${project.code} ${project.id}`.toLowerCase();
+      return haystack.includes(normalizedQuery);
     });
-  }, [primarySourceProjectId, state.configDraft, supplementSourceProjectIds]);
+  }, [projects, sourceProjectSearchQuery]);
+  const scopePool = useMemo(
+    () =>
+      getInitializationScopeParameters(initializationConfig, {
+        primarySourceProjectId,
+        supplementSourceProjectIds
+      }),
+    [initializationConfig, primarySourceProjectId, supplementSourceProjectIds]
+  );
   const candidates = useMemo(() => {
     const selectedModuleSet = new Set(selectedModules);
     const selectedRiskSet = new Set<RiskLevel>(selectedRisks);
 
-    return candidatePool.filter((candidate) => {
+    return scopePool.filter((candidate) => {
       const matchesModule = selectedModuleSet.size === 0 || selectedModuleSet.has(candidate.module);
       const matchesRisk = selectedRiskSet.size === 0 || selectedRiskSet.has(candidate.risk);
       const matchesColumnFilters = (["parameter", "recommendedValue", "source"] as CandidateColumnFilterKey[]).every((key) => {
@@ -116,25 +133,17 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
 
       return matchesModule && matchesRisk && matchesColumnFilters;
     });
-  }, [candidatePool, columnFilters, parameterNameById, projectNameById, selectedModules, selectedRisks]);
-  const availableCandidateIds = useMemo(() => {
-    if (!primarySourceProjectId) {
-      return new Set<string>();
-    }
-
-    return new Set(
-      getInitializationCandidateParameters(state.configDraft, {
-        primarySourceProjectId,
-        supplementSourceProjectIds,
-        selectedModules: [],
-        selectedRisks: []
-      }).map((candidate) => candidate.parameterId)
-    );
-  }, [primarySourceProjectId, state.configDraft, supplementSourceProjectIds]);
+  }, [scopePool, columnFilters, parameterNameById, projectNameById, selectedModules, selectedRisks]);
+  const availableScopeParameterIds = useMemo(() => new Set(scopePool.map((candidate) => candidate.parameterId)), [scopePool]);
   const visibleSelectedParameterIds = selectedParameterIds.filter((parameterId) =>
     candidates.some((candidate) => candidate.parameterId === parameterId)
   );
-  const selectedAvailableParameterIds = selectedParameterIds.filter((parameterId) => availableCandidateIds.has(parameterId));
+  const selectedAvailableParameterIds = selectedParameterIds.filter((parameterId) => availableScopeParameterIds.has(parameterId));
+  const selectedFromSourceCount = selectedAvailableParameterIds.filter((parameterId) => {
+    const candidate = scopePool.find((item) => item.parameterId === parameterId);
+    return candidate?.sourceRole !== "library";
+  }).length;
+  const selectedFromLibraryCount = selectedAvailableParameterIds.length - selectedFromSourceCount;
   const allCandidatesSelected = candidates.length > 0 && visibleSelectedParameterIds.length === candidates.length;
   const detailCandidate = candidates.find((candidate) => candidate.parameterId === detailParameterId) ?? null;
   const detailParameter = detailCandidate ? parameterById.get(detailCandidate.parameterId) : undefined;
@@ -185,8 +194,21 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     }
   }
 
+  function toggleStartFromEmpty() {
+    setError("");
+    setStartFromEmpty((current) => {
+      const next = !current;
+      if (next) {
+        setSourceProjectIds([]);
+        setPrimarySourceProjectId("");
+      }
+      return next;
+    });
+  }
+
   function toggleSource(projectId: string) {
     setError("");
+    setStartFromEmpty(false);
     setSourceProjectIds((current) => {
       if (current.includes(projectId)) {
         const next = current.filter((id) => id !== projectId);
@@ -236,8 +258,11 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   }
 
   function validateSourceStep() {
+    if (isEmptyInitialization) {
+      return true;
+    }
     if (sourceProjectIds.length === 0) {
-      setError("请选择至少一个来源项目。");
+      setError("请选择至少一个来源项目，或选择从零开始。");
       return false;
     }
     if (!primarySourceProjectId) {
@@ -249,6 +274,9 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   }
 
   function validateParameterStep() {
+    if (isEmptyInitialization) {
+      return true;
+    }
     if (selectedAvailableParameterIds.length === 0) {
       setError("请至少选择一个参数。");
       return false;
@@ -369,43 +397,139 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
 
   function renderSourceStep() {
     return (
-      <section aria-label="来源项目">
-        <div className="project-init-source-grid">
-          {state.configDraft.projects.map((project) => {
-            const checked = sourceProjectIds.includes(project.id);
-            return (
-              <div className="project-init-source" key={project.id}>
-                <label>
-                  <input type="checkbox" checked={checked} onChange={() => toggleSource(project.id)} />
-                  <span>
-                    <strong>{project.name}</strong>
-                    <small>{project.code}</small>
-                  </span>
-                </label>
-                <label className="project-init-primary">
-                  <input
-                    type="radio"
-                    name="primary-source-project"
-                    aria-label={`设 ${project.name} 为主来源`}
-                    checked={primarySourceProjectId === project.id}
-                    disabled={!checked}
-                    onChange={() => {
-                      setError("");
-                      setPrimarySourceProjectId(project.id);
-                    }}
-                  />
-                  <span>设为主来源</span>
-                </label>
+      <section className="project-init-source-step" aria-label="来源项目">
+        {!hasAvailableSourceProjects ? (
+          <p className="project-init-empty-hint" role="status">
+            当前平台尚无已有项目，可直接进入下一步创建空项目。
+          </p>
+        ) : (
+          <div className="project-init-source-card">
+            <div className="project-init-source-head">
+              <div className="project-init-step-copy project-init-step-copy--source">
+                <span className="eyebrow">第 2 步</span>
+                <h3 id="project-init-step-title">{activeStep.title}</h3>
+                <p>{activeStep.description}</p>
               </div>
-            );
-          })}
-        </div>
-        <div className="project-init-step-summary">
-          已选择 {sourceProjectIds.length} 个来源项目
-          {primarySourceProjectId ? `，主来源为 ${projectNameById.get(primarySourceProjectId) ?? primarySourceProjectId}` : ""}
-        </div>
+              <label
+                className={[
+                  "project-init-source-empty-toggle",
+                  startFromEmpty ? "is-selected" : ""
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <input type="checkbox" checked={startFromEmpty} onChange={toggleStartFromEmpty} />
+                <span>
+                  <strong>从零开始</strong>
+                  <small>不继承来源参数，下一步直接从参数库勾选</small>
+                </span>
+              </label>
+            </div>
+            <div className="project-init-source-toolbar">
+              <label className="project-init-source-search">
+                <span className="sr-only">搜索来源项目</span>
+                <input
+                  type="search"
+                  value={sourceProjectSearchQuery}
+                  disabled={startFromEmpty}
+                  placeholder="搜索项目名称或代号"
+                  aria-label="搜索来源项目"
+                  onChange={(event) => {
+                    setError("");
+                    setSourceProjectSearchQuery(event.target.value);
+                  }}
+                />
+              </label>
+              <span className="project-init-source-toolbar__meta" aria-live="polite">
+                {sourceProjectSearchQuery.trim()
+                  ? `显示 ${filteredSourceProjects.length} / ${projects.length} 个项目`
+                  : `共 ${projects.length} 个项目`}
+              </span>
+            </div>
+            <div className={startFromEmpty ? "project-init-source-table-wrap is-disabled" : "project-init-source-table-wrap"}>
+              <table className="project-init-source-table" aria-label="可选来源项目">
+                <thead>
+                  <tr>
+                    <th aria-label="选择" scope="col" />
+                    <th scope="col">项目名称</th>
+                    <th scope="col">代号</th>
+                    <th scope="col">主来源</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSourceProjects.length > 0 ? (
+                    filteredSourceProjects.map((project) => {
+                      const checked = sourceProjectIds.includes(project.id);
+                      const isPrimary = primarySourceProjectId === project.id;
+
+                      return (
+                        <tr
+                          className={[checked ? "is-selected" : "", isPrimary ? "is-primary" : ""].filter(Boolean).join(" ")}
+                          key={project.id}
+                        >
+                          <td>
+                            <input
+                              type="checkbox"
+                              aria-label={project.name}
+                              checked={checked}
+                              disabled={startFromEmpty}
+                              onChange={() => toggleSource(project.id)}
+                            />
+                          </td>
+                          <td className="project-init-source-table__name" title={project.name}>
+                            {project.name}
+                          </td>
+                          <td className="project-init-source-table__code" title={project.code}>
+                            {project.code}
+                          </td>
+                          <td className="project-init-source-table__primary">
+                            <label className="project-init-source-table__primary-label">
+                              <input
+                                type="radio"
+                                name="primary-source-project"
+                                aria-label={`设 ${project.name} 为主来源`}
+                                checked={isPrimary}
+                                disabled={!checked || startFromEmpty}
+                                onChange={() => {
+                                  setError("");
+                                  setPrimarySourceProjectId(project.id);
+                                }}
+                              />
+                              <span>{isPrimary ? "主来源" : checked ? "设为主来源" : "—"}</span>
+                            </label>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={4}>没有匹配的项目，请调整搜索关键词。</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="project-init-step-summary project-init-source-card__summary">
+              {isEmptyInitialization
+                ? "将从零开始创建项目，不继承来源参数。"
+                : `已选择 ${sourceProjectIds.length} 个来源项目${
+                    primarySourceProjectId
+                      ? `，主来源为 ${projectNameById.get(primarySourceProjectId) ?? primarySourceProjectId}`
+                      : ""
+                  }`}
+            </div>
+          </div>
+        )}
       </section>
     );
+  }
+
+  function formatCandidateSource(candidate: ProjectParameterInitializationSnapshotItem) {
+    if (candidate.sourceRole === "library") {
+      return sourceRoleLabels.library;
+    }
+
+    return `${projectNameById.get(candidate.sourceProjectId) ?? candidate.sourceProjectId} (${sourceRoleLabels[candidate.sourceRole]})`;
   }
 
   function getCandidateFilterValue(candidate: ProjectParameterInitializationSnapshotItem, key: CandidateColumnFilterKey) {
@@ -421,7 +545,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
     if (key === "recommendedValue") {
       return candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue;
     }
-    return `${projectNameById.get(candidate.sourceProjectId) ?? candidate.sourceProjectId} (${sourceRoleLabels[candidate.sourceRole]})`;
+    return formatCandidateSource(candidate);
   }
 
   function toggleColumnFilter(key: CandidateColumnFilterKey, value: string) {
@@ -462,7 +586,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
       <ColumnFilter
         label={label}
         groupLabel={`${label}筛选`}
-        values={key === "module" ? modules : key === "risk" ? riskLevels : uniqueFilterValues(candidatePool, (candidate) => getCandidateFilterValue(candidate, key))}
+        values={key === "module" ? modules : key === "risk" ? riskLevels : uniqueFilterValues(scopePool, (candidate) => getCandidateFilterValue(candidate, key))}
         selectedValues={selectedValues}
         renderLabel={key === "risk" ? (risk) => riskLevelLabels[risk as RiskLevel] : undefined}
         onToggle={onToggle}
@@ -481,15 +605,35 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
   }
 
   function renderParameterStep() {
+    const emptyCandidateMessage = initializationConfig.parameterLibrary.length === 0
+      ? "参数库尚未加载或当前为空，请稍后重试或联系管理员。"
+      : "当前筛选条件下没有匹配参数。可清除模块、风险或列筛选后重试。";
+    const scopeStatsMessage = initializationConfig.parameterLibrary.length === 0
+      ? "参数库暂不可用。"
+      : isEmptyInitialization
+        ? `${scopePool.length} 个参数库条目可选，已选 ${selectedAvailableParameterIds.length} 个。`
+        : `${scopePool.length} 个参数库条目可选，已选 ${selectedAvailableParameterIds.length} 个（来源继承 ${selectedFromSourceCount}，参数库 ${selectedFromLibraryCount}）。`;
+
     return (
       <section className="project-init-parameter-step" aria-label="参数范围">
-        <section>
-          <div className="project-init-section-head">
-            <span className="eyebrow">候选参数</span>
-            <p>{candidates.length} 个参数可生成初始化快照，已选 {selectedAvailableParameterIds.length} 个。</p>
+        <div className="project-init-scope-head">
+          <div className="project-init-step-copy project-init-step-copy--scope">
+            <span className="eyebrow">第 3 步</span>
+            <h3 id="project-init-step-title">{activeStep.title}</h3>
+            <p>{activeStep.description}</p>
           </div>
+          <div className="project-init-scope-meta">
+            <p>{scopeStatsMessage}</p>
+            {!isEmptyInitialization && initializationConfig.parameterLibrary.length > 0 ? (
+              <p className="project-init-scope-hint">
+                已选来源项目的参数会标注继承来源；未出现在来源中的条目仍可从参数库直接纳入本项目。
+              </p>
+            ) : null}
+          </div>
+        </div>
+        <section className="project-init-scope-table-panel">
           <div className="project-init-table">
-            <table aria-label="初始化候选参数">
+            <table aria-label="参数库选择表">
               <colgroup>
                 <col className="project-init-col-select" />
                 <col className="project-init-col-parameter" />
@@ -504,7 +648,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                   <th aria-label="选择">
                     <input
                       type="checkbox"
-                      aria-label="全选初始化候选参数"
+                      aria-label="全选参数库条目"
                       checked={allCandidatesSelected}
                       disabled={candidates.length === 0}
                       onChange={toggleAllCandidates}
@@ -545,8 +689,11 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                       <td className="project-init-table__value" title={candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue}>
                         {candidate.needsRecommendedValueConfirmation ? "需确认" : candidate.recommendedValue}
                       </td>
-                      <td className="project-init-table__source">
-                        {projectNameById.get(candidate.sourceProjectId) ?? candidate.sourceProjectId} ({sourceRoleLabels[candidate.sourceRole]})
+                      <td
+                        className="project-init-table__source"
+                        title={formatCandidateSource(candidate)}
+                      >
+                        {formatCandidateSource(candidate)}
                       </td>
                       <td className="project-init-table__detail">
                         <button
@@ -565,7 +712,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7}>暂无可预览的候选参数。</td>
+                    <td colSpan={7}>{emptyCandidateMessage}</td>
                   </tr>
                 )}
               </tbody>
@@ -607,9 +754,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
               </div>
               <div>
                 <dt>来源</dt>
-                <dd>
-                  {projectNameById.get(detailCandidate.sourceProjectId) ?? detailCandidate.sourceProjectId} ({sourceRoleLabels[detailCandidate.sourceRole]})
-                </dd>
+                <dd>{formatCandidateSource(detailCandidate)}</dd>
               </div>
             </dl>
             <div className="project-init-parameter-detail__note">
@@ -648,7 +793,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
             </div>
             <div>
               <dt>主来源</dt>
-              <dd>{projectNameById.get(primarySourceProjectId) ?? "-"}</dd>
+              <dd>{isEmptyInitialization ? "从零开始" : projectNameById.get(primarySourceProjectId) ?? "-"}</dd>
             </div>
             <div>
               <dt>补充来源</dt>
@@ -666,6 +811,23 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
         </label>
       </section>
     );
+  }
+
+  function getStepPanelClassName(stepIndex: number) {
+    if (stepIndex === 0) {
+      return " project-init-step-panel--project";
+    }
+    if (stepIndex === 1) {
+      return " project-init-step-panel--source";
+    }
+    if (stepIndex === 2) {
+      return " project-init-step-panel--scope";
+    }
+    if (stepIndex === 3) {
+      return " project-init-step-panel--review";
+    }
+
+    return "";
   }
 
   function renderCurrentStep() {
@@ -702,7 +864,7 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
           <div>
             <span className="eyebrow">项目初始化</span>
             <h2 id="project-init-title">新项目参数初始化</h2>
-            <p>从已有项目一次性复制推荐值，生成初始化快照并提交审阅。</p>
+            <p>从参数库选择纳入本项目的参数，生成初始化快照并提交审阅。</p>
           </div>
           <button
             className="button subtle"
@@ -730,14 +892,16 @@ export function ProjectParameterInitializationWizard({ state, dispatch, onClose 
 
         <div className="project-init-main">
           <section
-            className={`project-init-step-panel${currentStepIndex === 0 ? " project-init-step-panel--project" : ""}`}
+            className={`project-init-step-panel${getStepPanelClassName(currentStepIndex)}`}
             aria-labelledby="project-init-step-title"
           >
-            <div className="project-init-step-copy">
-              <span className="eyebrow">第 {currentStepIndex + 1} 步</span>
-              <h3 id="project-init-step-title">{activeStep.title}</h3>
-              <p>{activeStep.description}</p>
-            </div>
+            {currentStepIndex !== 1 && currentStepIndex !== 2 ? (
+              <div className="project-init-step-copy">
+                <span className="eyebrow">第 {currentStepIndex + 1} 步</span>
+                <h3 id="project-init-step-title">{activeStep.title}</h3>
+                <p>{activeStep.description}</p>
+              </div>
+            ) : null}
             {renderCurrentStep()}
           </section>
         </div>
