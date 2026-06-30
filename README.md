@@ -2,9 +2,9 @@
 
 > Chinese: [Chinese](docs/zh-CN/root/README.md)
 
-WiseEff is an AI-assisted enterprise efficiency platform prototype. It has moved from a frontend-only demo toward an M0-M6 productization baseline with a Vite/React/TypeScript frontend, mock and API runtimes, a TypeScript modular backend, PostgreSQL migrations, OpenAPI contract checks, production auth boundaries, worker/object-store seams, Redis/BullMQ durable queue support, HDC gateway seams, live Agent provider seams, and admin-gated pilot/readiness endpoints.
+WiseEff is an AI-assisted enterprise efficiency platform prototype. It has moved from a frontend-only demo toward an M0-M6 productization baseline with a Vite/React/TypeScript frontend, mock and API runtimes, a TypeScript modular backend, PostgreSQL migrations, OpenAPI contract checks, production auth boundaries, worker/object-store seams, Redis/BullMQ durable queue support, HDC gateway seams, Xiaoze LLM integration (`AGENT_API_*`), and admin-gated pilot/readiness endpoints.
 
-The repository is suitable for controlled staging and pilot evidence collection. It must not be described as broadly production-ready until real target-environment evidence exists for live API, PostgreSQL-backed E2E, HDC device lab, backup/restore, rollback, identity, queue, observability, capacity, and live Agent provider checks.
+The repository is suitable for controlled staging and pilot evidence collection. It must not be described as broadly production-ready until real target-environment evidence exists for live API, PostgreSQL-backed E2E, HDC device lab, backup/restore, rollback, identity, queue, observability, capacity, and Xiaoze LLM readiness checks.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ copy .env.example .env
 npm run dev:all
 ```
 
-`npm run dev:all` auto-detects `docker compose` or `docker-compose`, starts PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, simulator device gateway, production-mode local account auth defaults, optional HMAC smoke inputs, and the Pi-backed live Agent provider format. If live Agent model/key values are blank, local startup falls back to the deterministic Agent provider.
+`npm run dev:all` auto-detects `docker compose` or `docker-compose`, starts PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, simulator device gateway, production-mode local account auth defaults, optional HMAC smoke inputs, and Xiaoze LLM settings via `AGENT_API_*`. If live model/key values are blank, local startup falls back to deterministic Xiaoze responses (`XIAOZE_DETERMINISTIC=true`).
 
 Development services bind to `127.0.0.1`. Vite usually prints this URL after startup:
 

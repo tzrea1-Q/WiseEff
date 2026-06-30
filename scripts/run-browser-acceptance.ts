@@ -136,7 +136,11 @@ const workflowSpecs: Record<string, string[]> = {
   D: ["log-analysis.acceptance.spec.ts"],
   E: ["debugging-simulator.acceptance.spec.ts"],
   F: ["hdc-device-lab.acceptance.spec.ts"],
-  G: ["agent.acceptance.spec.ts"],
+  G: [
+    "xiaoze-perception.acceptance.spec.ts",
+    "xiaoze-action.acceptance.spec.ts",
+    "xiaoze-planning.acceptance.spec.ts"
+  ],
   H: ["permissions.acceptance.spec.ts"]
 };
 

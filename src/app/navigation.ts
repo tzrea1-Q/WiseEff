@@ -1,2 +1,2 @@
-export { createAgentPlan, getPageByPath, navigationItems, utilityItems } from "@/appConfig";
-export type { AgentPlan, PageConfig, PageKey } from "@/appConfig";
+export { getPageByPath, getXiaozeContextSummary, navigationItems, utilityItems } from "@/appConfig";
+export type { PageConfig, PageKey } from "@/appConfig";

@@ -17,6 +17,18 @@
 - 阅读英文版中的完整细节、表格和命令，再用本页确认中文语境下的执行边界。
 - 任何 target-environment readiness、pilot-ready、release-ready 结论都必须有真实目标环境证据，不能由本地 skip 代替。
 
+## 必监控信号（摘要）
+
+| 区域 | 信号 |
+| --- | --- |
+| API | 请求量、延迟、错误率、request id |
+| Readiness | `/health/live`、`/health/ready`、pilot-readiness |
+| 小泽 LLM | 健康状态（`xiaozeLlm` / `wiseeff_xiaoze_llm_ready`）、fallback、延迟、token、成本、安全状态 |
+| Worker / 队列 | 排队/运行/失败/dead-letter、Redis/BullMQ 连接 |
+| 对象存储 / 设备网关 | 探针失败、超时、回读不一致 |
+
+指标标签不得包含 bearer token、API key、高基数 model id、原始日志或参数值。小泽 LLM 标签仅允许有界字段（如 readiness mode、deterministic flag）。配置与告警规则见 `ops/self-hosted/observability/` 及英文版全文。
+
 ## 同类中文文档
 
 - [docs/zh-CN/runbooks/README.md](README.md)

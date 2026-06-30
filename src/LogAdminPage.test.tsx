@@ -421,12 +421,17 @@ describe("LogAdminPage · insight bar", () => {
     expect(within(table).getByText(/thermal_snapshot\.bin/)).toBeInTheDocument();
   });
 
-  it("dispatches OPEN_AGENT_WITH_PRESET on 交给 Agent", async () => {
+  it("prompts mock-mode users to open 小泽 on 交给 Agent", async () => {
     const { dispatch } = renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: /交给 Agent 分析/ }));
 
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "OPEN_AGENT_WITH_PRESET" }));
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "PUSH_NOTIFICATION",
+        message: expect.stringMatching(/小泽/)
+      })
+    );
   });
 
   it("hides insight bar after dismiss + persists in localStorage", async () => {

@@ -1,6 +1,6 @@
 # 后端与运行环境
 
-WiseEff 后端是 TypeScript 模块化单体。M0-M5 已包括 auth、audit、parameters、logs、jobs、debugging、agent、contracts、operations 等模块，并通过 PostgreSQL、对象存储、worker、设备网关和 Agent provider 形成产品化 runtime seam。
+WiseEff 后端是 TypeScript 模块化单体。M0-M5 已包括 auth、audit、parameters、logs、jobs、debugging、agent、contracts、operations 等模块，并通过 PostgreSQL、对象存储、worker、设备网关和 Xiaoze LLM（`AGENT_API_*`）形成产品化 runtime seam。
 
 ## 本地启动
 
@@ -31,7 +31,7 @@ VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787
 
 ## 环境变量
 
-本地开发推荐从 `.env.example` 复制为 `.env`，默认使用 Pi-backed live Agent provider。测试默认 Pi 路径时只需要填写模型和 key；只有测试 URL-backed `openai` 或 `wiseeff` provider 时才需要填写 `AGENT_API_BASE_URL`。
+本地开发推荐从 `.env.example` 复制为 `.env`。小泽 LLM 通过 `AGENT_API_BASE_URL`、`AGENT_MODEL`、`AGENT_API_KEY` 配置；本地验收或离线演示可设 `XIAOZE_DETERMINISTIC=true` 使用确定性响应，无需 live LLM。
 
 关键变量：
 
@@ -193,7 +193,7 @@ M6.5 新增自托管观测性基线：
 GET /metrics
 ```
 
-`/metrics` 返回 Prometheus text，并在返回前刷新 readiness、database、object store、Agent provider 和 worker queue 指标。Prometheus/Grafana/alert 配置位于：
+`/metrics` 返回 Prometheus text，并在返回前刷新 readiness、database、object store、Xiaoze LLM（`xiaozeLlm`）和 worker queue 指标。Prometheus/Grafana/alert 配置位于：
 
 ```text
 ops/self-hosted/observability/

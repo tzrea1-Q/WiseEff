@@ -85,7 +85,7 @@ import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
-import { createAgentPlan, getPageByPath, navigationItems, PageConfig, utilityItems } from "./appConfig";
+import { getPageByPath, getXiaozeContextSummary, navigationItems, PageConfig, utilityItems } from "./appConfig";
 
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
@@ -360,7 +360,7 @@ export type AppAction =
   | { type: "LOG_ADMIN_REMOVE_USER"; userId: string }
   | { type: "LOG_ADMIN_SYNC_LOGS" }
   | { type: "LOG_ADMIN_EXPORT_REPORT"; timeWindow: TimeWindow }
-  | { type: "OPEN_AGENT_WITH_PRESET"; preset: string };
+  | { type: "PUSH_NOTIFICATION"; message: string };
 
 function updateArchivedLogIdsForLog(archivedLogIds: string[], log: LogRecord): string[] {
   if (log.archiveState === "archived") {
@@ -860,7 +860,7 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const project = projects.find((item) => item.id === parameter.projectId);
       const submitter = state.users.find((user) => user.id === state.currentUserId)?.name ?? activeRoleLabel(state.activeRoleId);
       const roundId = `PRS-${2406 + state.parameterSubmissionRounds.length}`;
-      const summary = action.reason || "WiseAgent 已生成影响摘要，建议参数管理员审阅后推进。";
+      const summary = action.reason || "小泽已生成影响摘要，建议参数管理员审阅后推进。";
       const workflowAssignees = {
         hardwareCommitterId: state.users.find((user) => user.isActive && roleCanBeAssignedToWorkflowSlot(user.roleId, "hardwareCommitter"))?.id ?? "",
         softwareCommitterId: state.users.find((user) => user.isActive && roleCanBeAssignedToWorkflowSlot(user.roleId, "softwareCommitter"))?.id ?? "",
@@ -1968,10 +1968,10 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         }),
         notifications: [`已生成 ${action.timeWindow} 日志后台报表`, ...state.notifications]
       };
-    case "OPEN_AGENT_WITH_PRESET":
+    case "PUSH_NOTIFICATION":
       return {
         ...state,
-        notifications: [`Agent 已打开预设：${action.preset}`, ...state.notifications]
+        notifications: [action.message, ...state.notifications]
       };
     default:
       return state;
@@ -2051,7 +2051,7 @@ function AppShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsedPreference);
   const page = getPageByPath(path);
   const pageKeyRef = useRef(page.key);
-  const agentPlan = useMemo(() => createAgentPlan(path), [path]);
+  const xiaozeContextSummary = useMemo(() => getXiaozeContextSummary(path), [path]);
   const topBarActionsContextValue = useMemo(() => ({ setActions: setTopBarActions }), []);
   const isPlatformHome = page.key === "home";
   const isParameterHome = page.key === "parameter-home";
@@ -2477,7 +2477,7 @@ function AppShell({
           pageKey={page.key}
           projectId={state.activeProjectId}
           roleId={currentRoleId}
-          visibleRecords={agentPlan.contextSummary ? [{ summary: agentPlan.contextSummary }] : undefined}
+          visibleRecords={xiaozeContextSummary ? [{ summary: xiaozeContextSummary }] : undefined}
         />
       ) : null}
         {projectInitOpen ? (

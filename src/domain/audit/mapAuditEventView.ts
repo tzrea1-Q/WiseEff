@@ -7,7 +7,7 @@ function actorLabelFromDto(dto: AuditEventDto) {
     return dto.actorName.trim();
   }
   if (dto.actorType === "agent") {
-    return "WiseAgent";
+    return "小泽";
   }
   if (dto.actorType === "system") {
     return "System";
@@ -16,7 +16,7 @@ function actorLabelFromDto(dto: AuditEventDto) {
 }
 
 function actorTypeFromMock(event: AuditEvent): AuditActorType {
-  if (event.viaAgent || event.actor === "WiseAgent") {
+  if (event.viaAgent || event.actor === "小泽" || event.actor === "WiseAgent") {
     return "agent";
   }
   return "user";

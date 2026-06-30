@@ -211,7 +211,7 @@ describe("browser acceptance runner", () => {
             specs: [{ tests: [{ results: [{ status: "passed" }] }] }]
           },
           {
-            file: "e2e/acceptance/agent.acceptance.spec.ts",
+            file: "e2e/acceptance/xiaoze-action.acceptance.spec.ts",
             specs: [{ tests: [{ results: [{ status: "skipped" }] }] }]
           },
           {

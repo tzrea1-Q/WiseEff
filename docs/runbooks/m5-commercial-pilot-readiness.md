@@ -55,7 +55,7 @@ npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
 - Alert on worker dead-letter growth or worker lease churn.
 - Alert on object-store health probe failures.
 - Alert on device gateway timeout, stderr, or read-back mismatch failures.
-- Alert on agent provider fallback or unsafe provider health.
+- Alert on Xiaoze LLM fallback or unsafe LLM health.
 - Alert on audit gaps for high-risk writes.
 
 ## Backup And Restore Drill

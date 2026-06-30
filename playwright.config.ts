@@ -7,7 +7,7 @@ const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === "tr
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["quality/*.quality.spec.ts"],
+  testIgnore: ["quality/*.quality.spec.ts", "acceptance/**"],
   snapshotPathTemplate: "{testDir}/{testFileDir}/{testFileName}-snapshots/{platform}/{arg}{ext}",
   fullyParallel: false,
   workers: 1,
