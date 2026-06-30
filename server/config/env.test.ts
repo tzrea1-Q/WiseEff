@@ -27,7 +27,6 @@ describe("loadServerEnv", () => {
     expect(env.AUTH_PROVIDER).toBe("local");
     expect(env.AUTH_TOKEN_ISSUER).toBeUndefined();
     expect(env.AUTH_TOKEN_HMAC_SECRET).toBeUndefined();
-    expect(env.MOCK_RUNTIME_ENABLED).toBe(false);
     expect(env.OBJECT_STORE_MODE).toBe("local");
     expect(env.OBJECT_STORE_ROOT).toBe(".wiseeff-object-store");
     expect(env.OBJECT_STORAGE_ENDPOINT).toBeUndefined();
@@ -62,7 +61,6 @@ describe("loadServerEnv", () => {
       AUTH_TOKEN_HMAC_SECRET: "short-test-secret",
       AUTH_PROVIDER: "hmac",
       DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
-      MOCK_RUNTIME_ENABLED: "true",
       OBJECT_STORE_MODE: "s3",
       OBJECT_STORE_ROOT: "tmp/object-store",
       OBJECT_STORAGE_ENDPOINT: "https://storage.example.com",
@@ -92,7 +90,6 @@ describe("loadServerEnv", () => {
     expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("hdc");
     expect(env.HDC_TIMEOUT_MS).toBe(2500);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(true);
-    expect(env.MOCK_RUNTIME_ENABLED).toBe(true);
     expect(env.OBJECT_STORE_MODE).toBe("s3");
     expect(env.OBJECT_STORE_ROOT).toBe("tmp/object-store");
     expect(env.OBJECT_STORAGE_ENDPOINT).toBe("https://storage.example.com");
@@ -132,20 +129,10 @@ describe("loadServerEnv", () => {
     expect(loadServerEnv({ ADB_TIMEOUT_MS: "7500" }).ADB_TIMEOUT_MS).toBe(7500);
   });
 
-  it("rejects production mock runtime", () => {
-    expect(() =>
-      loadServerEnv({
-        NODE_ENV: "production",
-        MOCK_RUNTIME_ENABLED: "true"
-      })
-    ).toThrow("MOCK_RUNTIME_ENABLED cannot be true in production");
-  });
-
   it("requires DATABASE_URL in production", () => {
     expect(() =>
       loadServerEnv({
-        NODE_ENV: "production",
-        MOCK_RUNTIME_ENABLED: "false"
+        NODE_ENV: "production"
       })
     ).toThrow("DATABASE_URL is required in production");
   });
@@ -154,8 +141,7 @@ describe("loadServerEnv", () => {
     expect(() =>
       loadServerEnv({
         NODE_ENV: "production",
-        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff",
-        MOCK_RUNTIME_ENABLED: "false"
+        DATABASE_URL: "postgres://wiseeff:wiseeff@localhost:5432/wiseeff"
       })
     ).toThrow("OBJECT_STORE_MODE=s3 is required when NODE_ENV=production");
   });

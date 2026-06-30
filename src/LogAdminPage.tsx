@@ -14,6 +14,8 @@ import { applyTableFilters, applyTimeWindow, deriveInsight, deriveMetrics } from
 import { STAGE_LABELS, type LogRecord, type LogStatus, type PrototypeState, type TimeWindow } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
 import { logRuntimeFailureNotification, type LogRuntimeActions } from "@/application/logs/logRuntime";
+import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
+import { dispatchXiaozeOpenHandoff } from "@/features/agent/xiaozeOpenHandoff";
 import type { AppAction } from "./App";
 
 export type LogAdminPageProps = {
@@ -252,7 +254,14 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
         : insight.severity === "warn"
           ? "log-admin-stuck"
           : "log-admin-confidence-drop";
-    dispatch({ type: "OPEN_AGENT_WITH_PRESET", preset });
+    if (wiseEffRuntimeMode === "api") {
+      dispatchXiaozeOpenHandoff(preset);
+      return;
+    }
+    dispatch({
+      type: "PUSH_NOTIFICATION",
+      message: "日志治理分析需在 API 模式下通过右下角「小泽」继续。"
+    });
   };
 
   const handleExport = () => {

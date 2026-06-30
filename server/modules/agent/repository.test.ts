@@ -3,7 +3,6 @@ import type { Queryable } from "../../shared/database/client";
 import {
   appendAgentMessage,
   createAgentApproval,
-  createAgentRunTrace,
   createAgentSession,
   createAgentToolCall,
   getAgentApproval,
@@ -203,43 +202,6 @@ describe("agent repository", () => {
     expect(toolUpdated).toBe(false);
     expect(approved).toBe(false);
     expect(rejected).toBe(false);
-  });
-
-  it("creates run traces with provider metadata and tool call ids", async () => {
-    const { db, calls } = createRecordingDb();
-
-    await createAgentRunTrace(db, {
-      id: "trace-1",
-      sessionId: "agent-session-1",
-      messageId: "agent-msg-user-1",
-      organizationId: "org-chargelab",
-      provider: "deterministic",
-      model: "wiseeff-rules-m4",
-      promptVersion: "m4-agent-v1",
-      inputSummary: "Summarize review queue",
-      outputSummary: "I will call controlled tools.",
-      toolCallIds: ["tool-1", "tool-2"],
-      traceId: "req-1",
-      latencyMs: 250,
-      inputTokens: 100,
-      outputTokens: 40,
-      estimatedCostUsd: 0.002,
-      safetyStatus: "safe",
-      safetyReasons: ["grounded"],
-      fallbackReason: "provider unavailable"
-    });
-
-    expect(calls[0].text).toContain("insert into agent_run_traces");
-    expect(calls[0].values).toContain("wiseeff-rules-m4");
-    expect(calls[0].values).toContain("req-1");
-    expect(calls[0].values).toContainEqual(["tool-1", "tool-2"]);
-    expect(calls[0].values).toContain(250);
-    expect(calls[0].values).toContain(100);
-    expect(calls[0].values).toContain(40);
-    expect(calls[0].values).toContain(0.002);
-    expect(calls[0].values).toContain("safe");
-    expect(calls[0].values).toContain(JSON.stringify(["grounded"]));
-    expect(calls[0].values).toContain("provider unavailable");
   });
 
   it("loads a scoped tool call with session and project metadata", async () => {

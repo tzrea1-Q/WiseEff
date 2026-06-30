@@ -93,29 +93,17 @@ $headers = @{ Authorization = $env:AUTHORIZATION }
 Invoke-RestMethod -Headers $headers -Uri "$env:WISEEFF_API_BASE_URL/api/v1/logs?projectId=aurora"
 ```
 
-## Agent Session
+## Xiaoze Threads
 
 ```bash
 curl -fsS \
   -H "Authorization: $AUTHORIZATION" \
-  -H "Content-Type: application/json" \
-  -d '{"pageKey":"parameters","path":"/parameters","projectId":"aurora"}' \
-  "$WISEEFF_API_BASE_URL/api/v1/agent/sessions"
+  "$WISEEFF_API_BASE_URL/api/v1/agent/xiaoze/threads"
 ```
 
 ```powershell
-$headers = @{
-  Authorization = $env:AUTHORIZATION
-  "Content-Type" = "application/json"
-}
-
-$body = @{
-  pageKey = "parameters"
-  path = "/parameters"
-  projectId = "aurora"
-} | ConvertTo-Json
-
-Invoke-RestMethod -Method Post -Headers $headers -Body $body -Uri "$env:WISEEFF_API_BASE_URL/api/v1/agent/sessions"
+$headers = @{ Authorization = $env:AUTHORIZATION }
+Invoke-RestMethod -Headers $headers -Uri "$env:WISEEFF_API_BASE_URL/api/v1/agent/xiaoze/threads"
 ```
 
-Use the OpenAPI artifact for exact request/response shapes before building an external integration.
+Agent turns use `POST /api/v1/agent/xiaoze` (AG-UI). Use the OpenAPI artifact for exact request/response shapes before building an external integration.

@@ -29,6 +29,8 @@ Completed plans are historical implementation evidence. They can explain why a s
 | Local account lifecycle | `2026-06-12-wiseeff-local-account-lifecycle.md` |
 | Pi Agent provider adapter | `2026-06-09-wiseeff-pi-agent-provider-adapter.md`, `2026-06-09-wiseeff-pi-agent-evidence-evaluation.md` |
 | Complex debugging-node values | `2026-06-23-wiseeff-complex-debug-node-values.md` |
+| Xiaoze thread persistence | `2026-06-24-wiseeff-xiaoze-thread-persistence.md` |
+| Dead code / legacy cleanup | `2026-06-30-wiseeff-dead-code-cleanup.md` |
 
 ## Historical Feature Plans
 

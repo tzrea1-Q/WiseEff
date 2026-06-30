@@ -80,7 +80,6 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - `NODE_ENV=production` requires live Xiaoze LLM configuration unless `XIAOZE_DETERMINISTIC=true`: `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`.
 - `AGENT_API_TIMEOUT_MS` controls the live LLM request timeout and defaults to 5000ms.
 - Production and self-hosted deployments require `XIAOZE_CHECKPOINTER=postgres` unless `XIAOZE_DETERMINISTIC=true`.
-- `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 - `LOG_ANALYSIS_QUEUE_MODE=durable` requires `REDIS_URL`.
 - Missing or unsafe production settings should stop the API process before it accepts traffic.
 

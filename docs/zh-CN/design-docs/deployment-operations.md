@@ -181,14 +181,14 @@ Device Gateway 健康检查：
 - Customer production must set `DEBUG_DEVICE_GATEWAY_MODE=hdc`. Set `HDC_TIMEOUT_MS` to the pilot lab's command timeout budget; the default is `5000`.
 - `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true` bypasses the production HDC requirement only for explicitly marked non-customer staging environments.
 - The HDC adapter executes `hdc` through argv arrays with shell-quoted node commands and normalizes timeout, stderr, nonzero exit, and read-back mismatch failures through `DebugDeviceGateway`.
-- HDC and live Agent provider seams are implemented, but real pilot readiness depends on target-environment evidence.
+- HDC and Xiaoze LLM seams are implemented, but real pilot readiness depends on target-environment evidence.
 - Local tests cover the adapter with a fake command runner. The real device-lab smoke is enabled with `DEBUG_DEVICE_GATEWAY_MODE=hdc` and `HDC_DEVICE_LAB_AVAILABLE=true`; it requires `DATABASE_URL`, exactly one connected HDC target, `HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write`, and `HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback`. The lab auto-prepares a WiseEff lab-only temporary file node by default. Optional validation overrides include `HDC_SMOKE_PROJECT_ID`, `HDC_SMOKE_DEVICE_ID`, `HDC_SMOKE_TARGET_REF`, `HDC_SMOKE_PARAMETER_ID`, `HDC_SMOKE_NODE_PATH`, `HDC_SMOKE_ORIGINAL_VALUE`, `HDC_SMOKE_WRITE_VALUE`, `HDC_SMOKE_EXPECT_READ_PATTERN`, and `HDC_SMOKE_USER_ID`.
 - The HDC smoke calls the production API path for target detection, session creation, node read, node write, read-back verification, and snapshot rollback restore. Before pilot signoff, the device lab must also record timeout/offline behavior, stderr failure behavior, and mismatch handling.
 
 ## M5 Release Operations
 
 - The pilot-ready release smoke is `npm run smoke:m5`. It checks the committed OpenAPI artifact, `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness`. It requires a live API URL by default, and staging/prod pilot checks also need `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` or the readiness route will return 403. It only skips with `M5_SMOKE_ALLOW_NO_API=true` for local documentation runs.
-- `GET /api/v1/operations/pilot-readiness` is admin-gated and should only return `status: "pilot_ready"` when contract, auth, database, object storage, worker, device gateway, agent provider, and backup/restore evidence are all ready.
+- `GET /api/v1/operations/pilot-readiness` is admin-gated and should only return `status: "pilot_ready"` when contract, auth, database, object storage, worker, device gateway, `xiaozeLlm`, and backup/restore evidence are all ready.
 - `npm run test:m5` is the intended full pilot gate. It still depends on PostgreSQL plus any external device-lab, backup/restore, and staging evidence that is not fully simulated in this repository.
 - Record the backup drill timestamp in `M5_BACKUP_RESTORE_DRILL_AT` and keep the rollback sequence documented in `docs/runbooks/m5-commercial-pilot-readiness.md`.
 - PR #39 merged M5 on 2026-05-29 and GitHub CI passed for the merged branch. This repository evidence does not replace staging live API, HDC device-lab, backup/restore, rollback, or live provider evidence.

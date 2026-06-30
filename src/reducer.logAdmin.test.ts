@@ -255,16 +255,16 @@ describe("reducer · LOG_ADMIN_EXPORT_REPORT", () => {
   });
 });
 
-describe("reducer · OPEN_AGENT_WITH_PRESET", () => {
-  it("appends a notification describing the preset", () => {
+describe("reducer · PUSH_NOTIFICATION", () => {
+  it("appends a notification with the provided message", () => {
     const state = createLogAdminState();
     const next = reducer(state, {
-      type: "OPEN_AGENT_WITH_PRESET",
-      preset: "log-admin-failures"
+      type: "PUSH_NOTIFICATION",
+      message: "日志治理分析需在 API 模式下通过右下角「小泽」继续。"
     });
 
     expect(next.notifications.length).toBe(state.notifications.length + 1);
-    expect(next.notifications[0]).toMatch(/Agent/);
+    expect(next.notifications[0]).toMatch(/小泽/);
   });
 });
 

@@ -40,10 +40,6 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_QUEUE_ATTEMPTS: z.coerce.number().int().positive().default(4),
   LOG_ANALYSIS_QUEUE_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
   LOG_ANALYSIS_QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(1),
-  MOCK_RUNTIME_ENABLED: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
   DEVICE_BRIDGE_ARTIFACT_ROOT: z.string().default("ops/self-hosted/bridge-artifacts"),
   DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT: z.string().default("ops/self-hosted/bridge-tool-artifacts"),
   DEVICE_BRIDGE_PAIRING_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
@@ -70,9 +66,6 @@ export type ServerEnv = z.infer<typeof rawEnvSchema>;
 export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   const env = rawEnvSchema.parse(raw);
 
-  if (env.NODE_ENV === "production" && env.MOCK_RUNTIME_ENABLED) {
-    throw new Error("MOCK_RUNTIME_ENABLED cannot be true in production");
-  }
   if (env.NODE_ENV === "production" && !env.DATABASE_URL) {
     throw new Error("DATABASE_URL is required in production");
   }
