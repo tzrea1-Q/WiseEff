@@ -1,4 +1,6 @@
 import type { PowerManagementConfig, PowerManagementProjectId } from "../../powerManagementConfig";
+import type { ParameterRecord } from "./types";
+import { buildParameterLibraryFromRecords } from "../../parameterAdminLibrary";
 import type {
   ProjectParameterInitializationDraft,
   ProjectParameterInitializationSnapshotItem,
@@ -25,6 +27,20 @@ type DraftInput = CandidateInput & {
   notes?: string;
 };
 
+export function resolveInitializationConfig(
+  configDraft: PowerManagementConfig,
+  parameters: readonly ParameterRecord[] = []
+): PowerManagementConfig {
+  if (parameters.length === 0) {
+    return configDraft;
+  }
+
+  return {
+    ...configDraft,
+    parameterLibrary: buildParameterLibraryFromRecords(parameters, configDraft.projects)
+  };
+}
+
 function hasProjectValue(values: Record<string, unknown>, projectId: string) {
   return Object.prototype.hasOwnProperty.call(values, projectId);
 }
@@ -34,6 +50,56 @@ function getProjectValue(
   projectId: string
 ) {
   return values[projectId as PowerManagementProjectId];
+}
+
+function resolveDefinitionRecommendedValue(
+  parameter: PowerManagementConfig["parameterLibrary"][number]
+) {
+  for (const value of Object.values(parameter.values)) {
+    const recommended = value?.recommendedValue?.trim();
+    if (recommended) {
+      return recommended;
+    }
+  }
+
+  return "";
+}
+
+function createLibraryScopeCandidate(
+  parameter: PowerManagementConfig["parameterLibrary"][number]
+): ProjectParameterInitializationSnapshotItem {
+  const recommendedValue = resolveDefinitionRecommendedValue(parameter);
+
+  return {
+    parameterId: parameter.id,
+    sourceProjectId: "",
+    sourceRole: "library",
+    module: parameter.module,
+    risk: parameter.risk,
+    recommendedValue,
+    currentValueState: "pending_project_confirmation",
+    alternativeSourceProjectIds: [],
+    needsRecommendedValueConfirmation: !recommendedValue
+  };
+}
+
+export function getInitializationScopeParameters(
+  config: PowerManagementConfig,
+  input: Pick<CandidateInput, "primarySourceProjectId" | "supplementSourceProjectIds">
+): ProjectParameterInitializationSnapshotItem[] {
+  const sourceCandidates = input.primarySourceProjectId
+    ? getInitializationCandidateParameters(config, {
+        primarySourceProjectId: input.primarySourceProjectId,
+        supplementSourceProjectIds: input.supplementSourceProjectIds,
+        selectedModules: [],
+        selectedRisks: []
+      })
+    : [];
+  const sourceCandidateById = new Map(sourceCandidates.map((candidate) => [candidate.parameterId, candidate]));
+
+  return config.parameterLibrary.map((parameter) => {
+    return sourceCandidateById.get(parameter.id) ?? createLibraryScopeCandidate(parameter);
+  });
 }
 
 export function getInitializationCandidateParameters(
@@ -79,7 +145,7 @@ export function buildInitializationDraft(
   input: DraftInput
 ): ProjectParameterInitializationDraft {
   const selectedIds = new Set(input.selectedParameterIds);
-  const candidates = getInitializationCandidateParameters(config, input);
+  const candidates = getInitializationScopeParameters(config, input);
 
   return {
     id: input.id,
@@ -102,7 +168,9 @@ export function buildInitializationDraft(
 }
 
 export function canSubmitInitializationDraft(draft: ProjectParameterInitializationDraft) {
-  if (draft.parameterSnapshots.length === 0) {
+  const isEmptyInitialization = draft.sourceProjectIds.length === 0;
+
+  if (draft.parameterSnapshots.length === 0 && !isEmptyInitialization) {
     return {
       ok: false as const,
       reason: "请至少选择一个参数后再提交初始化审阅。"

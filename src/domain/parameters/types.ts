@@ -150,7 +150,7 @@ export type ProjectInitializationStatus =
   | "initialization_rejected"
   | "initialized";
 
-export type ParameterInitializationSourceRole = "primary" | "supplement";
+export type ParameterInitializationSourceRole = "primary" | "supplement" | "library";
 
 export type ProjectParameterInitializationSnapshotItem = {
   parameterId: string;
