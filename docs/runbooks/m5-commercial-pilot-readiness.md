@@ -25,8 +25,8 @@ This runbook describes the release gate for a controlled commercial pilot. It as
 - `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` with `admin:access` for staging/prod pilot-readiness smoke
 - `M5_SMOKE_ALLOW_NO_API=true` only for local documentation runs that intentionally skip the API probe
 - `M5_CONTRACT_CHECK_PASSED=true` or `M5_CONTRACT_ARTIFACT_CHECKED_AT=<timestamp>` for the pilot-readiness contract gate
-- `AGENT_PROVIDER=live`
-- `AGENT_API_FORMAT=pi` plus `AGENT_PI_PROVIDER`, `AGENT_MODEL`, `AGENT_API_KEY`, `AGENT_API_TIMEOUT_MS`, and `AGENT_PROMPT_VERSION` for Pi-backed live provider evidence; URL-backed `wiseeff` and `openai` formats additionally require `AGENT_API_BASE_URL`
+- `AGENT_API_BASE_URL`, `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_TIMEOUT_MS` for live Xiaoze LLM evidence; set `XIAOZE_DETERMINISTIC=true` for offline acceptance instead
+- `XIAOZE_CHECKPOINTER=postgres` in production/self-hosted unless `XIAOZE_DETERMINISTIC=true`
 
 ## Deploy Order
 
@@ -41,12 +41,12 @@ Recommended commands:
 
 ```bash
 npm run contract:check
-npm run agent:pi-eval
 npm run smoke:m5
 npm run test:m5
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
 ```
 
-`npm run agent:pi-eval` is an offline adapter gate and does not prove live provider reachability. When a live Pi key is configured for staging or pilot, also run `npm run agent:pi-smoke` and attach the redacted JSON output. `npm run smoke:m5` requires a live API URL by default. For staging/prod pilot checks, set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access`; otherwise `/api/v1/operations/pilot-readiness` will return 403. Use `M5_SMOKE_ALLOW_NO_API=true` only when documenting the runbook locally without a reachable API. `npm run test:m5` always probes the live API because it passes `--require-api` to the smoke runner.
+`npm run smoke:m5` requires a live API URL by default. For staging/prod pilot checks, set `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION` to a bearer token with `admin:access`; otherwise `/api/v1/operations/pilot-readiness` will return 403. Use `M5_SMOKE_ALLOW_NO_API=true` only when documenting the runbook locally without a reachable API. `npm run test:m5` always probes the live API because it passes `--require-api` to the smoke runner. For offline Xiaoze acceptance, set `XIAOZE_DETERMINISTIC=true` instead of live `AGENT_API_*` values.
 
 ## Monitoring
 
@@ -103,6 +103,6 @@ Latest M5.2 execution note: on 2026-06-02, after M5.12 merged, latest `main` was
 - [ ] Backup/restore drill timestamp is recorded.
 - [ ] Device-lab smoke evidence is attached.
 - [ ] Agent provider health or safety evidence is attached.
-- [ ] Agent evidence includes `agent:pi-eval` output, live `agent:pi-smoke` output when Pi credentials are in scope, `/health/ready` Agent provider details, pilot-readiness Agent gate details, private `/metrics` readiness snapshot, trace/request/session ids, token or cost metadata if returned, approval id for mutating requests, and confirmation that Pi Coding Agent CLI/filesystem/shell tools were not loaded in product runtime.
+- [ ] Agent evidence includes `/health/ready` Xiaoze LLM details, pilot-readiness `xiaozeLlm` gate details, private `/metrics` readiness snapshot, trace/request/session ids, token or cost metadata if returned, approval id for mutating requests, and Xiaoze acceptance spec output when live or deterministic Agent behavior is in scope.
 - [ ] Rollback steps were rehearsed in the target environment.
 - [ ] `docs/generated/m5-pilot-acceptance.md` lists any skipped external checks explicitly.

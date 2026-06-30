@@ -48,15 +48,13 @@ npm run acceptance:evidence
 npm run acceptance:quality
 ```
 
-Pi-backed provider work should also run:
+Xiaoze work should also run:
 
 ```bash
-npm run agent:pi-eval
-npm test -- scripts/run-pi-agent-smoke.test.ts
-npm run test:server -- server/modules/agent/piProvider.test.ts server/modules/agent/providerRegistry.test.ts server/modules/agent/orchestrator.test.ts
-npm run test:server -- server/modules/agent/providerEvidence.test.ts server/modules/operations/health.test.ts server/modules/operations/routes.test.ts server/observability/metrics.test.ts server/app.test.ts
-npm run test:m4
+npm run test:server -- server/modules/agent/xiaoze/
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 npm run build
 ```
 
-These tests cover `@earendil-works/pi-ai` adapter mapping, unknown or ungrounded tool rejection, registry selection through `AGENT_API_FORMAT=pi`, safe provider evidence, readiness and pilot-readiness details, low-cardinality metrics labels, and the existing WiseEff approval boundary for Pi-like mutating tool plans. `agent:pi-eval` is offline and deterministic. `agent:pi-smoke` is live-key dependent and should be attached only as target or staging provider evidence.
+These tests cover AG-UI endpoint wiring, read-only perception tools, mutating action approval/resume, LangGraph planning/checkpoint behavior, safe readiness evidence, and the existing WiseEff approval boundary for mutating tool plans. Set `XIAOZE_DETERMINISTIC=true` for offline acceptance without live `AGENT_API_*` values.

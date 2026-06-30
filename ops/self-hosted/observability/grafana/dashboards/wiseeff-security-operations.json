@@ -120,12 +120,12 @@
       "pluginVersion": "10.4.0",
       "targets": [
         {
-          "expr": "wiseeff_agent_provider_ready",
-          "legendFormat": "agent provider",
+          "expr": "wiseeff_xiaoze_llm_ready",
+          "legendFormat": "xiaoze llm",
           "refId": "A"
         }
       ],
-      "title": "Agent provider ready",
+      "title": "Xiaoze LLM ready",
       "type": "stat"
     },
     {

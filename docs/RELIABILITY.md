@@ -63,7 +63,7 @@ The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default 
 
 M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and three Grafana dashboards for overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.
 
-`GET /metrics` exposes build info, HTTP request counters/duration buckets, readiness/dependency gauges, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, and device gateway operation counters for detect, read, write, and rollback paths. These metrics support operational triage, but audit records, device snapshots, and target evidence remain the authoritative proof for high-risk writes.
+`GET /metrics` exposes build info, HTTP request counters/duration buckets, readiness/dependency gauges, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Xiaoze LLM readiness gauges, Agent approval/tool metrics, and device gateway operation counters for detect, read, write, and rollback paths. These metrics support operational triage, but audit records, device snapshots, and target evidence remain the authoritative proof for high-risk writes.
 
 Baseline tracing is available through the injectable tracing boundary. The current runtime exports HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans when tracing is enabled. Trace attributes must stay low-cardinality and non-sensitive; target Prometheus/Grafana/trace-collector evidence is still required before a deployed environment is called observability-ready.
 
@@ -77,12 +77,9 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - `NODE_ENV=production` requires `OBJECT_STORE_MODE=s3`.
 - `OBJECT_STORE_MODE=s3` requires `OBJECT_STORAGE_ENDPOINT`, `OBJECT_STORAGE_BUCKET`, `OBJECT_STORAGE_ACCESS_KEY_ID`, and `OBJECT_STORAGE_SECRET_ACCESS_KEY`.
 - M6.3 self-hosted targets should also set `OBJECT_STORAGE_TLS_POLICY=required`, `OBJECT_STORAGE_PATH_STYLE`, `OBJECT_STORAGE_HEALTH_PREFIX`, and isolated backup/restore targets before backup drills.
-- `NODE_ENV=production` requires `AGENT_PROVIDER=live`.
-- `AGENT_PROVIDER=live` requires `AGENT_MODEL` and `AGENT_API_KEY`.
-- `AGENT_API_FORMAT` defaults to `wiseeff`; set `AGENT_API_FORMAT=pi` for the `@earendil-works/pi-ai` adapter or `AGENT_API_FORMAT=openai` for OpenAI-compatible `/chat/completions` and `/models` providers.
-- `AGENT_API_FORMAT=pi` requires `AGENT_PI_PROVIDER` and does not require `AGENT_API_BASE_URL`.
-- `AGENT_API_FORMAT=wiseeff` and `AGENT_API_FORMAT=openai` require `AGENT_API_BASE_URL`.
-- `AGENT_API_TIMEOUT_MS` controls the live provider HTTP request timeout and defaults to 5000ms.
+- `NODE_ENV=production` requires live Xiaoze LLM configuration unless `XIAOZE_DETERMINISTIC=true`: `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`.
+- `AGENT_API_TIMEOUT_MS` controls the live LLM request timeout and defaults to 5000ms.
+- Production and self-hosted deployments require `XIAOZE_CHECKPOINTER=postgres` unless `XIAOZE_DETERMINISTIC=true`.
 - `NODE_ENV=production` rejects `MOCK_RUNTIME_ENABLED=true`.
 - `LOG_ANALYSIS_QUEUE_MODE=durable` requires `REDIS_URL`.
 - Missing or unsafe production settings should stop the API process before it accepts traffic.
@@ -122,11 +119,11 @@ Every production alert rule must include a `runbook_url` annotation. Use [runboo
 - Approval execution is idempotent by approval state: only `pending` approvals can transition to `approved` or `rejected`; repeated approval attempts return `INVALID_APPROVAL_STATE`.
 - Approval-time execution must re-check authz and current business state before running the tool. If that check fails, the pending approval and tool call remain retryable.
 - `parameter.submitChangeDraft` creates human-review drafts only; it does not merge or apply production parameter values.
-- Live provider startup uses the selected provider format. The default `wiseeff` format is HTTP-backed through `AGENT_API_BASE_URL` and expects `/agent/health` and `/agent/plan-turn`; `AGENT_API_FORMAT=openai` expects OpenAI-compatible `/models` and `/chat/completions`; `AGENT_API_FORMAT=pi` resolves `AGENT_PI_PROVIDER` and `AGENT_MODEL` through `@earendil-works/pi-ai`.
-- Live Agent provider readiness is checked through the same health seam used by `/health/ready`; Agent provider dependency details include safe provider evidence (`provider`, `format`, `piProvider`, `model`, and `promptVersion`) when available. If the provider is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
+- Live Xiaoze LLM startup uses LangChain `ChatOpenAI` against `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`, with optional `XIAOZE_MODEL` override.
+- Xiaoze LLM readiness is checked through the same health seam used by `/health/ready`; dependency details include safe evidence such as `baseUrlConfigured` and model id when available. If the LLM is unavailable, the orchestrator emits a degraded assistant message, records a fallback reason, and skips tool execution.
 - Xiaoze multi-step planning checkpoints are durable when `XIAOZE_CHECKPOINTER=postgres` (required in production unless `XIAOZE_DETERMINISTIC=true`). LangGraph checkpoint tables are created idempotently during `npm run db:migrate`, so HITL resume survives API restarts and multi-replica routing bound to the same PostgreSQL. Local dev/tests default to in-memory checkpointing.
-- `/metrics` keeps the compatibility `wiseeff_agent_provider_ready` gauge and may add low-cardinality provider labels such as `provider`, `format`, and `piProvider`. Model ids and prompt versions stay in readiness JSON and traces rather than Prometheus labels.
-- `npm run agent:pi-eval` is the offline Pi adapter gate. `npm run agent:pi-smoke` is optional live evidence and uses a synthetic no-tool prompt; it must return `toolRequests: 0`.
+- `/metrics` exports `wiseeff_xiaoze_llm_ready` for Xiaoze LLM readiness. Model ids stay in readiness JSON and traces rather than Prometheus labels.
+- For offline acceptance without a live model, set `XIAOZE_DETERMINISTIC=true` and run `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts`.
 - Trace metadata now includes latency, token usage, estimated cost, safety status, safety reasons, and fallback reason so pilot operators can distinguish normal planning from provider outages.
 - Production auth now requires OIDC/JWKS in `NODE_ENV=production`; the pilot HMAC verifier is retained only for local smoke/test profiles. Target reliability evidence still has to prove the real self-hosted issuer, token refresh/logout behavior, and `/api/v1/me` with target OIDC access tokens.
 

@@ -264,24 +264,30 @@ describe("resolveInitializationConfig", () => {
     const resolved = resolveInitializationConfig(
       { ...config, parameterLibrary: [] },
       config.parameterLibrary.flatMap((parameter) =>
-        Object.entries(parameter.values).map(([projectId, value]) => ({
-          id: `${projectId}-${parameter.id}`,
-          name: parameter.name,
-          description: parameter.description,
-          explanation: parameter.explanation,
-          configFormat: parameter.configFormat,
-          module: parameter.module,
-          range: parameter.range,
-          unit: parameter.unit,
-          risk: parameter.risk,
-          valueKind: parameter.valueKind,
-          projectId,
-          currentValue: value.currentValue,
-          recommendedValue: value.recommendedValue,
-          updatedAt: value.updatedAt,
-          updatedAtTs: value.updatedAt,
-          history: []
-        }))
+        Object.entries(parameter.values).flatMap(([projectId, value]) =>
+          value
+            ? [
+                {
+                  id: `${projectId}-${parameter.id}`,
+                  name: parameter.name,
+                  description: parameter.description,
+                  explanation: parameter.explanation,
+                  configFormat: parameter.configFormat,
+                  module: parameter.module,
+                  range: parameter.range,
+                  unit: parameter.unit,
+                  risk: parameter.risk,
+                  valueKind: parameter.valueKind,
+                  projectId,
+                  currentValue: value.currentValue,
+                  recommendedValue: value.recommendedValue,
+                  updatedAt: value.updatedAt,
+                  updatedAtTs: value.updatedAt,
+                  history: []
+                }
+              ]
+            : []
+        )
       )
     );
 

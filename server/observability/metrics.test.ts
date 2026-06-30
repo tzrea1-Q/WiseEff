@@ -8,7 +8,7 @@ describe("Prometheus metrics registry", () => {
     registry.recordHttpRequest({ method: "GET", route: "/api/v1/me", status: 200, durationMs: 34 });
     registry.setDependencyHealth({ dependency: "database", ok: true });
     registry.setQueueStats({ queue: "log-analysis", queued: 4, processing: 1, deadLettered: 0, oldestQueuedAgeMs: 1200 });
-    registry.recordAgentProviderCall({ provider: "live", status: "failed", durationMs: 800 });
+    registry.setXiaozeLlmHealth({ ok: true });
     registry.recordDeviceGatewayOperation({ mode: "simulator", action: "write", status: "blocked" });
 
     const text = registry.renderPrometheus();
@@ -19,7 +19,7 @@ describe("Prometheus metrics registry", () => {
     expect(text).toContain("wiseeff_dependency_health{dependency=\"database\"} 1");
     expect(text).toContain("wiseeff_queue_backlog{queue=\"log-analysis\"} 4");
     expect(text).toContain("wiseeff_queue_dead_lettered{queue=\"log-analysis\"} 0");
-    expect(text).toContain("wiseeff_agent_provider_calls_total{provider=\"live\",status=\"failed\"} 1");
+    expect(text).toContain("wiseeff_xiaoze_llm_ready 1");
     expect(text).toContain("wiseeff_device_gateway_operations_total{mode=\"simulator\",action=\"write\",status=\"blocked\"} 1");
     expect(text).not.toMatch(/secret|password|token|authorization/i);
   });

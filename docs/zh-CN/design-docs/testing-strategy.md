@@ -113,22 +113,21 @@ The smoke proves the supported upload reaches `Complete`, the conclusion/evidenc
 Current M3 acceptance command:
 
 ```bash
-DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff DEBUG_DEVICE_GATEWAY_MODE=simulator OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m3
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff DEBUG_DEVICE_GATEWAY_MODE=simulator OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m3-5
 ```
 
-`npm run test:m3` runs `npm run test:all`, `npm run build`, and `npm run test:e2e -- e2e/debugging.api.spec.ts`. The M3 Playwright smoke runs migrations and seeds `db:seed:m0`, `db:seed:m1`, and `db:seed:m3` in `beforeAll`, then uses the built-in simulator fixture exposed as `Aurora Simulator 1`.
+`npm run test:m3-5` runs `npm run test:all`, `npm run build`, and `npm run test:e2e -- e2e/debugging.api.spec.ts`. The M3 Playwright smoke runs migrations and seeds `db:seed:m0`, `db:seed:m1`, and `db:seed:m3` in `beforeAll`, then uses the built-in simulator fixture exposed as `Aurora Simulator 1`.
 
 The smoke proves the simulator target is detected, fast charge current reads `3000`, writing `3100` succeeds with readback, `Cycle count` is not writable from the UI, `Readback mismatch probe` reports mismatch text, rollback returns fast charge current to `3000`, and debugging write/rollback audit events exist. If `/debugging` has no enabled rollback card for an API write snapshot, the test records that UI-state gap and verifies rollback through the backend API rather than faking the UI path.
 
-Current M4 acceptance command:
+当前 Xiaoze acceptance 命令：
 
 ```bash
-DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT=.wiseeff-object-store npm run test:m4
+DATABASE_URL=postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff OBJECT_STORE_ROOT=.wiseeff-object-store XIAOZE_DETERMINISTIC=true npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
-`npm run test:m4` runs `npm run test:all`, `npm run build`, and `npm run test:e2e -- e2e/agent.api.spec.ts`. The M4 Playwright smoke runs migrations and seeds `db:seed:m0` and `db:seed:m1`, opens `/parameters` in API mode, starts WiseAgent, sends a prompt through `sendMessage`, and verifies the deterministic provider returns confidence plus an approval-required `Create parameter draft` tool call.
-
-Agent test coverage must include route envelopes, schema validation, deterministic provider planning, tool registry permission checks, approval creation, approval approve/reject transitions, stale approval rejection, and UnifiedAgent runtime rendering. Negative tests should cover `APPROVAL_REQUIRED`, `INVALID_APPROVAL_STATE`, `FORBIDDEN`, `VALIDATION_FAILED`, wrong-session approvals, inactive users, missing permissions, and tool execution failures.
+Xiaoze 测试覆盖 AG-UI endpoint、read-only `perception.*` tools、mutating action approval/resume、LangGraph planning/checkpoint，以及 orchestrator approval 边界。负面测试应覆盖 `APPROVAL_REQUIRED`、`INVALID_APPROVAL_STATE`、`FORBIDDEN`、`VALIDATION_FAILED`、错误 session approval、inactive user、missing permissions 和 tool execution failures。
 
 ## 6. 契约测试
 
@@ -221,7 +220,7 @@ npm test -- scripts/check-observability-config.test.ts server/observability/*.te
 npm run observability:check
 ```
 
-`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, device gateway operation counters, structured log redaction, correlation metadata, tracing export failure isolation, HTTP route-template spans, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans. Target Prometheus scrape, trace collector export, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
+`observability:check` validates Prometheus config, alert runbook links, dashboard JSON, package script wiring, obvious secret leakage, and unknown `wiseeff_*` metric references. Runtime tests cover `/metrics`, HTTP request counters, readiness/dependency/queue gauges, log-analysis terminal job duration/failure-reason counters, Xiaoze LLM readiness gauges, device gateway operation counters, structured log redaction, correlation metadata, tracing export failure isolation, HTTP route-template spans, Agent approval/tool metrics, and debugging gateway detect/read/write/rollback spans. Target Prometheus scrape, trace collector export, Alertmanager routing, and Grafana import screenshots remain target-environment evidence, not local unit-test evidence.
 
 ## 9.5 M6.6 Release, Rollback, And Capacity Gates
 

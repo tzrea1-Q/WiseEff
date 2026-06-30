@@ -27,6 +27,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!.env.local.example
 !ops/self-hosted/.env.example
 
 # Editor and OS files
@@ -43,3 +44,7 @@ docs/superpowers/
 
 # Generated visual QA screenshots
 qa-screenshots/
+work/
+
+# playwright-cli browser automation snapshots
+.playwright-cli/

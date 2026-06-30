@@ -110,14 +110,15 @@ npm ci
 copy .env.example .env
 ```
 
-如果要测试默认 Pi-backed live Agent，只填写以下留空项：
+如果要测试 live Xiaoze LLM，填写以下留空项：
 
 ```text
+AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
 
-本地 profile 默认 `AGENT_API_FORMAT=pi` 和 `AGENT_PI_PROVIDER=minimax`；只有测试 URL-backed `wiseeff` 或 `openai` provider 时才需要填写 `AGENT_API_BASE_URL`。
+离线验收可设 `XIAOZE_DETERMINISTIC=true`，无需填写 `AGENT_API_*`。
 
 目标环境或 staging 验收需要准备：
 
@@ -128,7 +129,7 @@ AGENT_API_KEY=
 - `AUTH_TOKEN_HMAC_SECRET`
 - `M5_SMOKE_AUTHORIZATION` 或 `WISEEFF_SMOKE_AUTHORIZATION`
 - S3/OSS-compatible 对象存储 endpoint、bucket、access key、secret
-- live Agent provider base URL、model、API key
+- live Xiaoze LLM 的 `AGENT_API_BASE_URL`、model、API key，或离线验收时使用 `XIAOZE_DETERMINISTIC=true`
 - HDC smoke 变量，若要验收真实设备
 - backup/restore 目标位置
 - rollback 演练窗口
@@ -518,14 +519,14 @@ npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 
 检查：
 
-- [ ] 打开 WiseAgent。
+- [ ] 打开小泽（Xiaoze）弹窗。
 - [ ] Agent 面板显示当前业务上下文。
 - [ ] 触发只读建议或总结。
 - [ ] 触发需要审批的操作，例如创建参数草稿。
 - [ ] 写入类工具执行前出现审批弹窗。
 - [ ] 拒绝审批后状态不变。
 - [ ] 批准审批后工具执行，并有 trace/audit 证据。
-- [ ] live provider 模式下，provider trace 包含 provider、model/prompt version、latency、token usage 或等价元数据、safety status、fallback reason。
+- [ ] live LLM 模式下，readiness/trace 包含 model、latency、token usage 或等价元数据、safety status、fallback reason；离线验收使用 `XIAOZE_DETERMINISTIC=true`。
 
 通过标准：
 

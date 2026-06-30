@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "workspaces": [
-    "packages/*",
-    "packages/device-bridge"
+    "packages/*"
   ],
   "scripts": {
     "dev": "VITE_WISEEFF_RUNTIME_MODE=api VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787 vite --host 127.0.0.1",
@@ -17,9 +16,7 @@
     "test:server": "NODE_OPTIONS='--max-old-space-size=768' vitest run --config vitest.server.config.ts",
     "test:all": "npm test && npm run test:server",
     "test:e2e": "playwright test",
-    "test:m1": "npm run test:all && npm run build && npm run test:e2e",
     "test:m2": "npm run test:all && npm run build && npm run test:e2e",
-    "test:m3": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "test:m3-5": "npm run test:all && npm run build && npm run test:e2e -- e2e/debugging.api.spec.ts",
     "smoke:m5": "tsx scripts/run-m5-smoke.ts",
     "acceptance:preflight": "tsx -- scripts/run-acceptance-preflight.ts",

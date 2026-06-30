@@ -49,7 +49,7 @@ Completed locally after `.env` was populated:
 - On 2026-05-30, `npm run smoke:m5 -- --allow-only-blocked=deviceGateway` passed against the local live API runtime; database, local object store, worker queue, live Agent provider, auth, contract, and backup gates were ready, and only `deviceGateway` remained blocked.
 - On 2026-05-30, focused live API preflight passed with `npx tsx -- scripts/run-acceptance-preflight.ts --no-start-runtime --skip-gates --skip-frontend --evidence-out test-results/acceptance/live-api-preflight-evidence.md`.
 - On 2026-05-30, `npm run acceptance:browser` passed in local non-HDC mode: 16 passed and 1 HDC device-lab test skipped. This deterministic-Agent browser suite records stable UI workflow evidence, while live Agent readiness remains covered by smoke/preflight.
-- On 2026-05-30, production-auth API-mode E2E passed locally with `VITE_WISEEFF_API_AUTHORIZATION` and `AGENT_PROVIDER=deterministic`: 6 passed and 1 HDC device-lab test skipped.
+- On 2026-05-30, production-auth API-mode E2E passed locally with `VITE_WISEEFF_API_AUTHORIZATION` and `XIAOZE_DETERMINISTIC=true`: 6 passed and 1 HDC device-lab test skipped.
 - On 2026-06-02, after PR #52 merged, latest `main` was revalidated locally on branch `codex/m5-2-remaining-evidence-closure`: `npm run docs:check`, `npm run contract:check`, `npm run acceptance:ci`, `npm run acceptance:models`, `npm run acceptance:quality`, `npm run build`, `npm run acceptance:browser -- --mode=local-non-hdc`, `npm run acceptance:evidence`, and `git diff --check` passed. Browser acceptance reported 33 passed and 1 HDC device-lab test skipped. A temporary local API on `127.0.0.1:8877` used the completed `.env` live Agent provider configuration; `npm run smoke:m5` passed with `npm_config_allow_only_blocked=deviceGateway`, leaving only `deviceGateway` blocked.
 
 Still open:
@@ -104,14 +104,12 @@ Please provide these before execution. Secrets must be supplied locally or throu
 - Confirmation that the worker uses the same `DATABASE_URL` and object-store settings as the API.
 - Worker logs location or command for evidence capture.
 
-### Live Agent Provider
+### Xiaoze LLM
 
-- `AGENT_PROVIDER=live`.
-- `AGENT_MODEL`.
-- `AGENT_API_KEY`.
-- `AGENT_API_BASE_URL`.
+- `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` for live LLM evidence, or `XIAOZE_DETERMINISTIC=true` for offline acceptance.
 - `AGENT_API_TIMEOUT_MS`, if different from 30000.
-- Provider health endpoint behavior and a safe outage/degraded-mode simulation window, if outage evidence is required.
+- `XIAOZE_CHECKPOINTER=postgres` for production/self-hosted unless `XIAOZE_DETERMINISTIC=true`.
+- Safe outage/degraded-mode simulation window, if outage evidence is required.
 
 ### Non-HDC Device Gateway Policy
 
@@ -223,11 +221,11 @@ OBJECT_STORAGE_SECRET_ACCESS_KEY=<secret-key>
 OBJECT_STORAGE_REGION=<region-if-needed>
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
-AGENT_PROVIDER=live
+AGENT_API_BASE_URL=<agent-base-url>
 AGENT_MODEL=<model>
 AGENT_API_KEY=<agent-key>
-AGENT_API_BASE_URL=<agent-base-url>
 AGENT_API_TIMEOUT_MS=30000
+XIAOZE_CHECKPOINTER=postgres
 WISEEFF_API_BASE_URL=<staging-api-url>
 M5_CONTRACT_CHECK_PASSED=true
 ```
@@ -449,7 +447,10 @@ DATABASE_URL=<staging-postgres-url>
 OBJECT_STORE_MODE=s3
 DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
-AGENT_PROVIDER=live
+AGENT_API_BASE_URL=<agent-base-url>
+AGENT_MODEL=<model>
+AGENT_API_KEY=<agent-key>
+XIAOZE_CHECKPOINTER=postgres
 ```
 
 Expected:
@@ -485,7 +486,8 @@ Expected:
 Run with staging env loaded:
 
 ```bash
-npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts e2e/agent.api.spec.ts
+npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
 Expected:

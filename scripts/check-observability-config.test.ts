@@ -144,22 +144,22 @@ describe("M6.5 observability configuration metadata", () => {
     ]);
   });
 
-  it("allows Agent, device, and log-analysis terminal metrics produced by the M6.5 runtime", () => {
+  it("allows Xiaoze and device terminal metrics produced by the M6.5 runtime", () => {
     const result = evaluateObservabilityConfig({
       packageJson: validPackageJson,
       files: {
         "ops/self-hosted/observability/prometheus.yml": validPrometheus,
         "ops/self-hosted/observability/alerts.yml": `${validAlerts}
-      - alert: WiseEffAgentProviderCalls
-        expr: wiseeff_agent_provider_calls_total > 0
+      - alert: WiseEffXiaozeLlmFailure
+        expr: wiseeff_xiaoze_llm_ready == 0
         annotations:
-          runbook_url: docs/runbooks/observability-operations.md#wiseeffagentprovidercalls
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffxiaozellmfailure
 `,
         ...validDashboards,
         "ops/self-hosted/observability/grafana/dashboards/wiseeff-security-operations.json": JSON.stringify({
           title: "WiseEff Security Operations",
           panels: [
-            { targets: [{ expr: "wiseeff_agent_provider_duration_ms_sum" }] },
+            { targets: [{ expr: "wiseeff_xiaoze_llm_ready" }] },
             { targets: [{ expr: "wiseeff_agent_approvals_total" }] },
             { targets: [{ expr: "wiseeff_agent_tool_results_total" }] },
             { targets: [{ expr: "wiseeff_audit_write_failures_total" }] },

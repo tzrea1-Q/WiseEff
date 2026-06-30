@@ -29,6 +29,8 @@ AGENT_API_KEY=
 
 For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
 
+To keep live LLM secrets out of `.env`, copy `.env.local.example` to `.env.local`. That file is gitignored and overrides `.env` at runtime.
+
 ## One-Command Local Stack
 
 Start the full local stack:
