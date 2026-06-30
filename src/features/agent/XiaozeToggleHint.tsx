@@ -4,7 +4,9 @@ import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
 import { useXiaozePageContextValue } from "./xiaozePageContext";
 import {
   dismissXiaozeToggleHint,
+  markXiaozeToggleHintShown,
   readXiaozeToggleHintDismissed,
+  readXiaozeToggleHintShown,
   XIAOZE_TOGGLE_HINT_DELAY_MS
 } from "./xiaozeToggleHintStorage";
 
@@ -22,12 +24,13 @@ export function XiaozeToggleHint({ visible, onOpen }: XiaozeToggleHintProps) {
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
-    if (!visible || dismissed || pageHasProactiveInsights) {
+    if (!visible || dismissed || pageHasProactiveInsights || readXiaozeToggleHintShown()) {
       setRevealed(false);
       return;
     }
 
     const timer = window.setTimeout(() => {
+      markXiaozeToggleHintShown();
       setRevealed(true);
     }, XIAOZE_TOGGLE_HINT_DELAY_MS);
 

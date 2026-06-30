@@ -5,6 +5,7 @@ import {
   useCopilotChatConfiguration
 } from "@copilotkit/react-core/v2";
 import { XiaozeChatToggleButton } from "./XiaozeChatToggleButton";
+import { useXiaozePageContextValue } from "./xiaozePageContext";
 import {
   dimensionToCss,
   readXiaozePopupMotionDurations,
@@ -67,6 +68,27 @@ export function XiaozePopupView({
     writeXiaozePopupOpenSession(false);
     setModalOpen?.(false);
   }, [setModalOpen]);
+
+  const pageContext = useXiaozePageContextValue();
+  const previousPathRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const path = pageContext?.path;
+    if (!path) {
+      return;
+    }
+
+    if (previousPathRef.current === undefined) {
+      previousPathRef.current = path;
+      requestClose();
+      return;
+    }
+
+    if (path !== previousPathRef.current) {
+      previousPathRef.current = path;
+      requestClose();
+    }
+  }, [pageContext?.path, requestClose]);
 
   useEffect(() => {
     const wasOpen = wasOpenRef.current;

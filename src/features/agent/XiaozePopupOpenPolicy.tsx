@@ -1,23 +1,33 @@
 import { useEffect, useRef } from "react";
 import { useCopilotChatConfiguration } from "@copilotkit/react-core/v2";
-import { readXiaozePopupOpenSession } from "./xiaozePopupOpenState";
+import { useXiaozePageContextValue } from "./xiaozePageContext";
+import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 
-/** Align CopilotKit modal state with WiseEff default-closed policy on first mount. */
+/** Close the outer CopilotKit modal scope on navigation; inner state is handled in XiaozePopupView. */
 export function XiaozePopupOpenPolicy() {
   const configuration = useCopilotChatConfiguration();
-  const appliedRef = useRef(false);
+  const pageContext = useXiaozePageContextValue();
+  const path = pageContext?.path;
+  const previousPathRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    if (appliedRef.current) {
+    if (!configuration?.setModalOpen || !path) {
       return;
     }
-    appliedRef.current = true;
 
-    const shouldBeOpen = readXiaozePopupOpenSession();
-    if (configuration?.isModalOpen !== shouldBeOpen) {
-      configuration?.setModalOpen?.(shouldBeOpen);
+    if (previousPathRef.current === undefined) {
+      previousPathRef.current = path;
+      writeXiaozePopupOpenSession(false);
+      configuration.setModalOpen(false);
+      return;
     }
-  }, [configuration]);
+
+    if (path !== previousPathRef.current) {
+      previousPathRef.current = path;
+      writeXiaozePopupOpenSession(false);
+      configuration.setModalOpen(false);
+    }
+  }, [configuration?.setModalOpen, path]);
 
   return null;
 }

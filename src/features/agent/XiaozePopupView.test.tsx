@@ -1,9 +1,11 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozePopupView } from "./XiaozePopupView";
+import { XIAOZE_POPUP_OPEN_SESSION_KEY, writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 
 const setModalOpen = vi.fn();
-let isModalOpen = true;
+let isModalOpen = false;
+let pagePath = "/parameters";
 
 vi.mock("@copilotkit/react-core/v2", () => ({
   useCopilotChatConfiguration: () => ({
@@ -26,7 +28,40 @@ vi.mock("./XiaozeChatToggleButton", () => ({
   XiaozeChatToggleButton: () => <button type="button">toggle</button>
 }));
 
+vi.mock("./xiaozePageContext", () => ({
+  useXiaozePageContextValue: () => ({ path: pagePath, pageKey: "parameters" })
+}));
+
 describe("XiaozePopupView", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    isModalOpen = false;
+    pagePath = "/parameters";
+    setModalOpen.mockReset();
+  });
+
+  it("closes on first mount even when session storage says open", () => {
+    writeXiaozePopupOpenSession(true);
+    isModalOpen = true;
+
+    render(<XiaozePopupView />);
+
+    expect(setModalOpen).toHaveBeenCalledWith(false);
+    expect(sessionStorage.getItem(XIAOZE_POPUP_OPEN_SESSION_KEY)).toBeNull();
+  });
+
+  it("closes when the page path changes", () => {
+    const { rerender } = render(<XiaozePopupView />);
+    setModalOpen.mockClear();
+    isModalOpen = true;
+    pagePath = "/debugging";
+
+    rerender(<XiaozePopupView />);
+
+    expect(setModalOpen).toHaveBeenCalledWith(false);
+    expect(sessionStorage.getItem(XIAOZE_POPUP_OPEN_SESSION_KEY)).toBeNull();
+  });
+
   it("keeps visible motion on re-render while the popup stays open", async () => {
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       callback(0);
