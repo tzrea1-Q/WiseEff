@@ -28,24 +28,19 @@ WiseEff 至少需要三个环境：
 
 ## 3. 配置
 
-配置必须通过环境变量或安全配置系统注入：
+配置必须通过环境变量或安全配置系统注入。现行变量以 `docs/developer/environment-variables.md` 为准，例如：
 
-- `APP_ENV`
-- `DATABASE_URL`
-- `REDIS_URL`
-- `OBJECT_STORAGE_ENDPOINT`
-- `OBJECT_STORAGE_BUCKET`
-- `OIDC_ISSUER`
-- `OIDC_CLIENT_ID`
-- `AGENT_PROVIDER`
-- `DEVICE_GATEWAY_URL`
-- `MOCK_RUNTIME_ENABLED`
+- `NODE_ENV`、`DATABASE_URL`、`REDIS_URL`
+- `AUTH_MODE`、`AUTH_PROVIDER`、`AUTH_OIDC_ISSUER`、`AUTH_OIDC_AUDIENCE`
+- `OBJECT_STORE_MODE`、`OBJECT_STORAGE_ENDPOINT`、`OBJECT_STORAGE_BUCKET`
+- `AGENT_API_BASE_URL`、`AGENT_MODEL`、`AGENT_API_KEY`（live Xiaoze LLM；离线验收可用 `XIAOZE_DETERMINISTIC=true`）
+- `XIAOZE_CHECKPOINTER`、`DEBUG_DEVICE_GATEWAY_MODE`
 
 生产环境要求：
 
-- `MOCK_RUNTIME_ENABLED=false`
 - 禁止使用开发密钥。
 - 禁止设备网关暴露公网。
+- production 模式下 mock runtime 不得作为业务数据源。
 
 ## 4. CI/CD
 

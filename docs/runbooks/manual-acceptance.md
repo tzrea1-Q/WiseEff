@@ -559,14 +559,14 @@ Open:
 
 Checklist:
 
-- [ ] Open WiseAgent.
+- [ ] Open the Xiaoze popup.
 - [ ] Agent panel shows current business context.
 - [ ] Trigger a read-only suggestion or summary action.
 - [ ] Trigger an approval-required action such as parameter draft creation.
 - [ ] Approval dialog appears before any write-like tool executes.
 - [ ] Reject path leaves state unchanged.
 - [ ] Approve path executes the tool and records trace/audit evidence.
-- [ ] For live provider mode, verify provider trace includes provider name, model or prompt version, latency, token usage or equivalent metadata, safety status, and fallback reason when applicable.
+- [ ] For live LLM mode, verify readiness/trace includes model id, latency, token usage or equivalent metadata, safety status, and fallback reason when applicable; use `XIAOZE_DETERMINISTIC=true` for offline acceptance.
 
 Pass criteria:
 

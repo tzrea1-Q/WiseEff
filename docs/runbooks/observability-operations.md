@@ -117,7 +117,7 @@ If any target proof is not available, keep the matching status as `pending` or `
 2. Capture request ID, audit ID, Agent session ID, tool call ID, approval ID, debugging session ID, device ID, and target ID when present.
 3. Redact user tokens, provider keys, raw log contents, raw parameter values, and raw device payloads from shared evidence.
 4. Pause high-risk writes if audit or rollback evidence is missing.
-5. Use `wiseeff_agent_provider_calls_total`, `wiseeff_agent_approvals_total`, `wiseeff_agent_tool_results_total`, `wiseeff_audit_write_failures_total`, and `wiseeff_device_gateway_operations_total` as supporting signals; they do not replace audit records, approval records, or device-lab evidence.
+5. Use `wiseeff_xiaoze_llm_ready`, `wiseeff_agent_approvals_total`, `wiseeff_agent_tool_results_total`, `wiseeff_audit_write_failures_total`, and `wiseeff_device_gateway_operations_total` as supporting signals; they do not replace audit records, approval records, or device-lab evidence.
 
 ## Alert Response
 
@@ -172,12 +172,12 @@ If any target proof is not available, keep the matching status as `pending` or `
 2. Verify `DATABASE_URL` and network routing from the API service.
 3. If migrations just ran, preserve migration output and follow rollback or restore guidance as needed.
 
-### WiseEffAgentProviderFailure
+### WiseEffXiaozeLlmFailure
 
 1. Check Xiaoze LLM health through `/health/ready` and confirm `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` when not running with `XIAOZE_DETERMINISTIC=true`.
 2. Capture model id, timeout, readiness message, and request ID from `/health/ready` or pilot-readiness details.
 3. For offline acceptance, set `XIAOZE_DETERMINISTIC=true` and rerun `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts`.
-4. Compare `/metrics` with readiness JSON. `wiseeff_agent_provider_ready` should reflect Xiaoze LLM readiness.
+4. Compare `/metrics` with readiness JSON. `wiseeff_xiaoze_llm_ready` should reflect Xiaoze LLM readiness.
 5. If the LLM is unavailable during high-risk operations, pause Agent-assisted writes.
 
 ### WiseEffAuditWriteFailure

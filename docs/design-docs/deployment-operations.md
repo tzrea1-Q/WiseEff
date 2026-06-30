@@ -22,4 +22,4 @@ CI should install dependencies, run tests, check contracts, build artifacts, and
 
 ## Health, Monitoring, And Evidence
 
-Operations endpoints report liveness, readiness, metrics, pilot readiness, and release readiness. Pi-backed Agent provider evidence can identify provider format, Pi provider id, model, and prompt version in readiness JSON; metrics keep only low-cardinality provider labels. Target-environment claims require target evidence; local skips only prove scripts and wiring.
+Operations endpoints report liveness, readiness, metrics, pilot readiness, and release readiness. Xiaoze LLM readiness evidence can identify model id and base URL configuration status in readiness JSON; metrics use `wiseeff_xiaoze_llm_ready`. Target-environment claims require target evidence; local skips only prove scripts and wiring.

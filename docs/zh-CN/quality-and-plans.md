@@ -51,11 +51,9 @@ npm run test:e2e
 阶段门禁：
 
 ```bash
-npm run test:m1
 npm run test:m2
-npm run test:m3
 npm run test:m3-5
-npm run test:m4
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
 npm run smoke:m5
 npm run test:m5
 ```

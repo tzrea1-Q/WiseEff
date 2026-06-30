@@ -130,16 +130,6 @@ export function createMetricsRegistry(options: { serviceName: string }) {
         setGauge("wiseeff_queue_oldest_queued_age_ms", "WiseEff oldest queued job age in milliseconds.", { queue: input.queue }, input.oldestQueuedAgeMs);
       }
     },
-    recordAgentProviderCall(input: { provider: string; status: string; durationMs: number }) {
-      incrementCounter("wiseeff_agent_provider_calls_total", "WiseEff Agent provider calls by provider and status.", {
-        provider: input.provider,
-        status: input.status
-      });
-      incrementCounter("wiseeff_agent_provider_duration_ms_sum", "Total WiseEff Agent provider call duration in milliseconds.", {
-        provider: input.provider,
-        status: input.status
-      }, input.durationMs);
-    },
     recordAgentApproval(input: { action: AgentApprovalMetricAction; tool: string; kind: AgentToolMetricKind; requiresApproval: boolean }) {
       incrementCounter("wiseeff_agent_approvals_total", "WiseEff Agent approvals by action and tool class.", {
         action: input.action,

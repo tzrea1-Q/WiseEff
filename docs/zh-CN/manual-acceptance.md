@@ -519,14 +519,14 @@ npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts
 
 检查：
 
-- [ ] 打开 WiseAgent。
+- [ ] 打开小泽（Xiaoze）弹窗。
 - [ ] Agent 面板显示当前业务上下文。
 - [ ] 触发只读建议或总结。
 - [ ] 触发需要审批的操作，例如创建参数草稿。
 - [ ] 写入类工具执行前出现审批弹窗。
 - [ ] 拒绝审批后状态不变。
 - [ ] 批准审批后工具执行，并有 trace/audit 证据。
-- [ ] live provider 模式下，provider trace 包含 provider、model/prompt version、latency、token usage 或等价元数据、safety status、fallback reason。
+- [ ] live LLM 模式下，readiness/trace 包含 model、latency、token usage 或等价元数据、safety status、fallback reason；离线验收使用 `XIAOZE_DETERMINISTIC=true`。
 
 通过标准：
 

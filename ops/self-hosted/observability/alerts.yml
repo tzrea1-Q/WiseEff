@@ -89,16 +89,16 @@ groups:
           description: The API readiness check reports the database dependency as unavailable.
           runbook_url: docs/runbooks/observability-operations.md#wiseeffdatabaseunavailable
 
-      - alert: WiseEffAgentProviderFailure
-        expr: wiseeff_agent_provider_ready == 0
+      - alert: WiseEffXiaozeLlmFailure
+        expr: wiseeff_xiaoze_llm_ready == 0
         for: 5m
         labels:
           severity: warning
           component: agent
         annotations:
-          summary: WiseEff Agent provider is degraded
-          description: The live Agent provider is unavailable or fallback events are spiking.
-          runbook_url: docs/runbooks/observability-operations.md#wiseeffagentproviderfailure
+          summary: WiseEff Xiaoze LLM is degraded
+          description: The Xiaoze LLM dependency is unavailable or readiness reports not ready.
+          runbook_url: docs/runbooks/observability-operations.md#wiseeffxiaozellmfailure
 
       - alert: WiseEffAuditWriteFailure
         expr: sum(increase(wiseeff_audit_write_failures_total[5m])) > 0

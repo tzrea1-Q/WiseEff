@@ -321,8 +321,8 @@
           "refId": "B"
         },
         {
-          "expr": "wiseeff_agent_provider_ready",
-          "legendFormat": "agent provider",
+          "expr": "wiseeff_xiaoze_llm_ready",
+          "legendFormat": "xiaoze llm",
           "refId": "C"
         }
       ],
