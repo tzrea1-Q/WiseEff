@@ -113,14 +113,15 @@ For local non-HDC acceptance:
 copy .env.example .env
 ```
 
-Then fill these blank live Agent values only if testing the default Pi-backed live provider:
+Then fill these blank live Xiaoze LLM values only if testing non-deterministic Agent behavior:
 
 ```text
+AGENT_API_BASE_URL=
 AGENT_MODEL=
 AGENT_API_KEY=
 ```
 
-The local profile defaults to `AGENT_API_FORMAT=pi` and `AGENT_PI_PROVIDER=minimax`. Fill `AGENT_API_BASE_URL` only when using URL-backed `wiseeff` or `openai` formats.
+For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
 
 For staging or pilot acceptance, use the target environment's secret manager or local-only `.env.staging.local`. Never commit secrets.
 
@@ -133,7 +134,7 @@ Required target inputs:
 - `AUTH_TOKEN_HMAC_SECRET`
 - `M5_SMOKE_AUTHORIZATION` or `WISEEFF_SMOKE_AUTHORIZATION`
 - object-storage endpoint, bucket, access key, and secret when `OBJECT_STORE_MODE=s3`
-- `AGENT_PROVIDER=live`, model, base URL, and API key when live Agent evidence is in scope
+- `AGENT_API_BASE_URL`, model, and API key when live Xiaoze LLM evidence is in scope, or `XIAOZE_DETERMINISTIC=true` for offline acceptance
 - HDC smoke variables when real device-lab evidence is in scope
 - backup/restore target and rollback window
 

@@ -48,9 +48,9 @@ M1-M5 的写入路径都会产生审计事件：
 
 Agent 工具只能通过后端 registry 执行。mutating tool 必须先创建 approval record，再在 approval-time 重新校验 authz 和状态。
 
-`AGENT_API_FORMAT=pi` 只是后端 `@earendil-works/pi-ai` provider adapter；Pi 输出在 WiseEff registry、authz、approval 和 audit 接受前都是 advisory。WiseEff 产品运行时不加载 Pi Coding Agent CLI、Pi filesystem tools、Pi shell tools 或 `.pi` 扩展。
+Xiaoze 使用 LangChain `ChatOpenAI` 连接 OpenAI-compatible `AGENT_API_*` endpoint。模型输出在 WiseEff registry、authz、approval 和 audit 接受前都是 advisory。
 
-Provider evidence 可以记录 provider format、Pi provider id、model、prompt version、trace id、usage、cost、safety 和 fallback；不能记录 `AGENT_API_KEY`、Authorization header、raw prompt、raw provider payload 或客户数据。`agent:pi-eval` 是离线证据，`agent:pi-smoke` 才是 live-key provider smoke。
+Provider evidence 可以记录 model id、trace id、usage、cost、safety 和 fallback；不能记录 `AGENT_API_KEY`、Authorization header、raw prompt、raw provider payload 或客户数据。离线验收使用 `XIAOZE_DETERMINISTIC=true`；live-key staging/pilot 证据使用 `npm run smoke:m5` 和 Xiaoze acceptance specs。
 
 Provider 不可用时允许降级 assistant response，但不能静默执行工具。provider outage、unsafe response、fallback reason 都应该留下 readiness 或 trace 证据。
 

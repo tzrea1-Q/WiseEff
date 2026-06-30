@@ -218,9 +218,8 @@ Runtime services:
 
 This started as an M6.1 deployment baseline. M6.2 adds OIDC identity and user-governance boundaries. M6.3 adds the self-hosted object-store provider decision, compatibility probe, and backup/restore evidence gates, but target restore readiness still requires a real isolated restore drill. M6.4 adds Redis/BullMQ durable queue wiring, but target queue readiness still requires live Redis evidence. M6.5 adds the first self-hosted observability baseline: `GET /metrics`, `npm run observability:check`, Prometheus scrape config, alert rules with runbook links, and Grafana dashboard templates. Release rollback, capacity evidence, and target Prometheus/Grafana/Alertmanager proof remain M6 follow-up work.
 
-## M5 Live Agent Provider Boundary
+## M5 Xiaoze LLM Boundary
 
-- `AGENT_PROVIDER=live` requires `AGENT_MODEL`, `AGENT_API_KEY`, and `AGENT_API_BASE_URL`.
-- `AGENT_API_FORMAT` defaults to `wiseeff`, which expects `/agent/health` and `/agent/plan-turn` under `AGENT_API_BASE_URL`.
-- Set `AGENT_API_FORMAT=openai` for OpenAI-compatible providers. That mode probes `/models` for health and sends planning requests to `/chat/completions`.
-- `.env.example` uses `AGENT_API_FORMAT=openai` for the local non-HDC staging profile and intentionally leaves only `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` blank.
+- live Xiaoze LLM 需要 `AGENT_API_BASE_URL`、`AGENT_MODEL`、`AGENT_API_KEY`；离线验收可用 `XIAOZE_DETERMINISTIC=true`。
+- 生产/自托管需要 `XIAOZE_CHECKPOINTER=postgres`（除非 `XIAOZE_DETERMINISTIC=true`）。
+- `.env.example` 的 local non-HDC profile 故意只留 `AGENT_API_BASE_URL`、`AGENT_MODEL`、`AGENT_API_KEY` 为空。

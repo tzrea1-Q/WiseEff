@@ -51,9 +51,9 @@ Use the narrowest command that proves the change while developing. Before finish
 
 | Gate | Command | Requires | Use when |
 | --- | --- | --- | --- |
-| M1 parameter management | `npm run test:m1` | PostgreSQL and M0/M1 seeds | Parameter API/runtime changes. |
+| M1 parameter management | `npm run test:m2` (`test:m1` is a legacy alias) | PostgreSQL and M0/M1 seeds | Parameter API/runtime changes. |
 | M2 log analysis | `npm run test:m2` | PostgreSQL, local object store, M0-M2 seeds | Log upload, worker, object store, log UI/API changes. |
-| M3 debugging | `npm run test:m3` | PostgreSQL, simulator gateway, M0/M1/M3 seeds | Debugging service/gateway/runtime changes. |
+| M3 debugging | `npm run test:m3-5` (`test:m3` is a legacy alias) | PostgreSQL, simulator gateway, M0/M1/M3 seeds | Debugging service/gateway/runtime changes. |
 | M3.5 commercial readiness | `npm run test:m3-5` | PostgreSQL, object-store root, simulator gateway | Readiness, production config, leases, request/audit correlation. |
 | Xiaoze P0 perception | `npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts` plus `npm run test:server -- perceptionTools perceptionAgent agUiEndpoint` | PostgreSQL, M0/M1 seeds, `XIAOZE_DETERMINISTIC=true` for acceptance | CopilotKit/AG-UI perception surface, read-only `perception.*` tools, authz boundary, and SSE endpoint. |
 | Xiaoze P1 action | `npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts` plus `npm run test:server -- actionTools approvalBridge agUiEndpoint` and `npm test -- src/features/agent` | Same as P0 plus approval-chain persistence | Mutating `action.submitParameterChange`, AG-UI interrupt/resume, HITL approval card, reject/authz paths. |

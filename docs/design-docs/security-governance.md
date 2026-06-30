@@ -20,7 +20,7 @@ Login/identity events, user and role changes, parameter writes, review decisions
 
 Agent output cannot directly become a business write. Tool payloads require schema validation, approvals must be recorded before mutating actions, and execution must re-check permissions and current business state.
 
-`AGENT_API_FORMAT=pi` uses `@earendil-works/pi-ai` only as a backend planning adapter. Pi output remains advisory until the WiseEff tool registry, authorization, approval, and audit paths accept it. Pi Coding Agent CLI, Pi filesystem tools, Pi shell tools, and project-local `.pi` extensions are not exposed in the WiseEff product runtime. Safe provider evidence can identify provider format, Pi provider id, model, and prompt version in readiness and trace artifacts, but keys, raw prompts, raw provider payloads, and customer data must stay out of evidence.
+Xiaoze uses LangChain `ChatOpenAI` against OpenAI-compatible `AGENT_API_*` configuration. Model output remains advisory until the WiseEff tool registry, authorization, approval, and audit paths accept it. Safe readiness evidence can identify model id and base URL configuration status, but keys, raw prompts, raw provider payloads, and customer data must stay out of evidence.
 
 Device writes require permissions, device state checks, access-mode checks, range/risk checks, confirmation, snapshot preparation, readback handling, and audit. The device gateway should not be exposed publicly.
 
