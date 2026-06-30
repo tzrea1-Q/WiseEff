@@ -61,7 +61,7 @@ Completion decision, 2026-06-02: keep this plan in `docs/exec-plans/active/`. Fu
 ## Success Criteria
 
 - `origin/main` includes the M5.1 documentation governance changes before M5.2 starts.
-- Staging runs with production-style configuration: `AUTH_MODE=production`, PostgreSQL, `OBJECT_STORE_MODE=s3`, `DEBUG_DEVICE_GATEWAY_MODE=hdc`, and `AGENT_PROVIDER=live`.
+- Staging runs with production-style configuration: `AUTH_MODE=production`, PostgreSQL, `OBJECT_STORE_MODE=s3`, `DEBUG_DEVICE_GATEWAY_MODE=hdc`, and live Xiaoze LLM configuration (`AGENT_API_*`, or `XIAOZE_DETERMINISTIC=true` for offline acceptance).
 - `/health/live`, `/health/ready`, and `/api/v1/operations/pilot-readiness` are checked against the live staging API.
 - `npm run smoke:m5` runs against a live API URL without `M5_SMOKE_ALLOW_NO_API=true`.
 - PostgreSQL-backed API-mode E2E runs for parameter management, log analysis, debugging, and Agent flows.
@@ -182,10 +182,10 @@ OBJECT_STORAGE_SECRET_ACCESS_KEY=operator-provided-secret-key
 OBJECT_STORAGE_REGION=operator-provided-region
 DEBUG_DEVICE_GATEWAY_MODE=hdc
 HDC_TIMEOUT_MS=5000
-AGENT_PROVIDER=live
+AGENT_API_BASE_URL=operator-provided-agent-api-base-url
 AGENT_MODEL=operator-provided-model
 AGENT_API_KEY=operator-provided-agent-api-key
-AGENT_API_BASE_URL=operator-provided-agent-api-base-url
+AGENT_API_TIMEOUT_MS=30000
 WISEEFF_API_BASE_URL=operator-provided-staging-api-url
 M5_CONTRACT_CHECK_PASSED=true
 ```
@@ -233,7 +233,7 @@ Commit: `<commit-sha-recorded-during-execution>`
 - Auth: `AUTH_MODE=production`; issuer recorded; HMAC secret redacted.
 - Object storage: `OBJECT_STORE_MODE=s3`; bucket name redacted or environment-labeled.
 - Device gateway: `DEBUG_DEVICE_GATEWAY_MODE=hdc`.
-- Agent provider: `AGENT_PROVIDER=live`; model recorded if safe.
+- Xiaoze LLM: `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY`, or `XIAOZE_DETERMINISTIC=true` for offline acceptance; model recorded if safe.
 - Smoke authorization: admin token present; token redacted.
 ```
 
@@ -334,7 +334,8 @@ Expected:
 Run:
 
 ```bash
-npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts e2e/debugging.api.spec.ts e2e/agent.api.spec.ts
+npm run test:e2e -- e2e/parameter-management.api.spec.ts e2e/log-analysis.api.spec.ts e2e/debugging.api.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
 Expected:
@@ -709,7 +710,7 @@ Expected:
 - Modify: `docs/runbooks/m5-commercial-pilot-readiness.md`
 - Modify: `docs/SECURITY.md` or `docs/RELIABILITY.md` only if behavior differs from documented boundaries
 
-- [ ] **Step 1: Confirm live provider configuration**
+- [ ] **Step 1: Confirm live Xiaoze LLM configuration**
 
 Run with staging env:
 
@@ -719,23 +720,24 @@ curl -fsS "$WISEEFF_API_BASE_URL/health/ready"
 
 Expected:
 
-- Agent provider dependency is ready.
-- `AGENT_PROVIDER=live` is active.
+- `dependencies.xiaozeLlm` is ready.
+- Live `AGENT_API_*` values are configured, or `XIAOZE_DETERMINISTIC=true` is set for offline acceptance.
 
-- [ ] **Step 2: Run Agent API-mode E2E against PostgreSQL**
+- [ ] **Step 2: Run Xiaoze acceptance against PostgreSQL**
 
 Run:
 
 ```bash
-npm run test:e2e -- e2e/agent.api.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-perception.acceptance.spec.ts
+npm run acceptance:e2e -- e2e/acceptance/xiaoze-action.acceptance.spec.ts
 ```
 
 Expected:
 
-- Agent session, message, tool call, approval, and audit flows pass.
-- Provider trace metadata records latency, token usage or equivalent provider metadata, safety status, and fallback reason when applicable.
+- Xiaoze perception, approval, and audit flows pass.
+- Trace metadata records latency, token usage or equivalent metadata, safety status, and fallback reason when applicable.
 
-- [ ] **Step 3: Verify provider outage behavior**
+- [ ] **Step 3: Verify LLM outage behavior**
 
 In a controlled staging window, point `AGENT_API_BASE_URL` to an unavailable endpoint or use an approved provider outage simulation. Then run the smallest Agent request that exercises provider health.
 
@@ -752,7 +754,7 @@ Append to `docs/generated/m5-pilot-acceptance.md`:
 ```markdown
 ### Live Agent Provider Evidence
 
-- `AGENT_PROVIDER=live`: verified.
+- `XIAOZE_DETERMINISTIC=true` or live `AGENT_API_*`: verified.
 - Agent API-mode E2E: passed.
 - Provider trace metadata: latency/token/cost/safety/fallback fields recorded.
 - Provider outage behavior: no mutating tool executed; fallback/readiness evidence recorded.

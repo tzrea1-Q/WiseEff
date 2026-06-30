@@ -63,7 +63,7 @@ The smoke writes `docs/generated/m6-self-hosted-runtime-evidence.md` by default 
 
 M6.5 adds self-hosted observability configuration under `ops/self-hosted/observability/`: Prometheus scrape config, alert rules, and three Grafana dashboards for overview, jobs, and security operations. The baseline scrape path is `api:8787/metrics` from a private compose or operations network.
 
-`GET /metrics` exposes build info, HTTP request counters/duration buckets, readiness/dependency gauges, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Agent provider call counters, and device gateway operation counters for detect, read, write, and rollback paths. These metrics support operational triage, but audit records, device snapshots, and target evidence remain the authoritative proof for high-risk writes.
+`GET /metrics` exposes build info, HTTP request counters/duration buckets, readiness/dependency gauges, worker queue gauges, log-analysis terminal job duration/failure-reason counters, Xiaoze LLM readiness gauges, Agent approval/tool metrics, and device gateway operation counters for detect, read, write, and rollback paths. These metrics support operational triage, but audit records, device snapshots, and target evidence remain the authoritative proof for high-risk writes.
 
 Baseline tracing is available through the injectable tracing boundary. The current runtime exports HTTP `api.request` spans with route templates, Agent provider health/planning spans, and debugging gateway detect/read/write/rollback spans when tracing is enabled. Trace attributes must stay low-cardinality and non-sensitive; target Prometheus/Grafana/trace-collector evidence is still required before a deployed environment is called observability-ready.
 
