@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import { cloneElement, isValidElement, type MouseEvent, type ReactNode } from "react";
 import { History, MessageSquarePlus } from "lucide-react";
 import { useAgent } from "@copilotkit/react-core/v2";
 import { clearXiaozePromptDebugStore } from "./XiaozePromptDebugContext";
 import { useXiaozeThreads } from "./XiaozeThreadContext";
+import { writeXiaozePopupOpenSession } from "./xiaozePopupOpenState";
 import { XiaozeThreadHistoryPanel } from "./XiaozeThreadHistoryPanel";
 
 type XiaozeChatHeaderProps = {
@@ -12,6 +13,14 @@ type XiaozeChatHeaderProps = {
 };
 
 export function XiaozeChatHeader({ closeButton }: XiaozeChatHeaderProps) {
+  const resolvedCloseButton = isValidElement<{ onClick?: (event: MouseEvent<HTMLButtonElement>) => void }>(closeButton)
+    ? cloneElement(closeButton, {
+        onClick: (event: MouseEvent<HTMLButtonElement>) => {
+          writeXiaozePopupOpenSession(false);
+          closeButton.props.onClick?.(event);
+        }
+      })
+    : closeButton;
   const { agent } = useAgent({ agentId: "default" });
   const {
     activeThreadId,
@@ -63,7 +72,7 @@ export function XiaozeChatHeader({ closeButton }: XiaozeChatHeaderProps) {
         <div className="xiaoze-chat-header__brand">
           <strong className="xiaoze-chat-header__title">小泽</strong>
         </div>
-        <div className="xiaoze-chat-header__actions xiaoze-chat-header__actions--end">{closeButton}</div>
+        <div className="xiaoze-chat-header__actions xiaoze-chat-header__actions--end">{resolvedCloseButton}</div>
       </header>
       <div className={`xiaoze-thread-history-shell${historyOpen ? " is-open" : ""}`} aria-hidden={!historyOpen}>
         <XiaozeThreadHistoryPanel

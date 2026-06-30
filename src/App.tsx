@@ -2491,9 +2491,9 @@ function AppShell({
   );
 
   return runtimeMode === "api" ? (
-    <XiaozeProvider enableInspector={enableXiaozeInspector}>
-      <XiaozePageContext.Provider value={xiaozePageContext}>{appShell}</XiaozePageContext.Provider>
-    </XiaozeProvider>
+    <XiaozePageContext.Provider value={xiaozePageContext}>
+      <XiaozeProvider enableInspector={enableXiaozeInspector}>{appShell}</XiaozeProvider>
+    </XiaozePageContext.Provider>
   ) : (
     appShell
   );

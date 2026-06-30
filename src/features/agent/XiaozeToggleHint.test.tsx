@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozeToggleHint } from "./XiaozeToggleHint";
-import { XIAOZE_TOGGLE_HINT_DELAY_MS, XIAOZE_TOGGLE_HINT_STORAGE_KEY } from "./xiaozeToggleHintStorage";
+import { XIAOZE_TOGGLE_HINT_DELAY_MS, XIAOZE_TOGGLE_HINT_STORAGE_KEY, markXiaozeToggleHintShown } from "./xiaozeToggleHintStorage";
 
 const useXiaozePageContextValue = vi.fn();
 
@@ -12,6 +12,7 @@ vi.mock("./xiaozePageContext", () => ({
 describe("XiaozeToggleHint", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     vi.useFakeTimers();
     useXiaozePageContextValue.mockReturnValue({ path: "/debugging", pageKey: "debugging" });
   });
@@ -60,6 +61,19 @@ describe("XiaozeToggleHint", () => {
 
     fireEvent.click(screen.getByLabelText("不再提示"));
     expect(localStorage.getItem(XIAOZE_TOGGLE_HINT_STORAGE_KEY)).toBe("1");
+    expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+  });
+
+  it("does not reappear on later page visits in the same session", () => {
+    markXiaozeToggleHintShown();
+
+    useXiaozePageContextValue.mockReturnValue({ path: "/logs/history", pageKey: "logs-history" });
+    render(<XiaozeToggleHint visible onOpen={vi.fn()} />);
+
+    act(() => {
+      vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS + 100);
+    });
+
     expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
   });
 });
