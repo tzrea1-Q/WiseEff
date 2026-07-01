@@ -56,17 +56,48 @@ import {
   upsertDebugParameterNodeBinding,
   upsertDetectedTargets
 } from "./repository";
+import {
+  archiveDebugNodeBinding,
+  countDebugNodesForModule,
+  createDebugNode,
+  createDebugNodeModule,
+  deleteDebugNodeModule,
+  getDebugNode,
+  getDebugNodeBinding,
+  getDebugNodeModule,
+  getParameterReloadBinding,
+  listDebugNodeBindings,
+  listDebugNodeModules,
+  listDebugNodes,
+  listParameterReloadBindingsAdmin,
+  listParameterReloadTargets,
+  listRuntimeDebugNodes,
+  renameDebugNodeModuleReferences,
+  updateDebugNode,
+  updateDebugNodeModule,
+  updateProjectParameterCurrentValue,
+  upsertDebugNodeBinding,
+  upsertParameterReloadBinding
+} from "./catalogSplitRepository";
 import { defaultDebugConnectionProtocol, type DebugConnectionProtocol } from "./protocol";
-import type { DebugAccessMode } from "./status";
+import type { DebugAccessMode, DebugOperationType } from "./status";
 import type {
+  DebugNodeBindingRecord,
+  DebugNodeModuleRecord,
+  DebugNodeRecord,
+  DebugNodeWithBindingsRecord,
   DebugParameterNodeBindingRecord,
   DebugParameterRecord,
   DebugParameterWithBindingsRecord,
+  DebugRuntimeNodeRecord,
   DebugSessionExecutionMode,
+  DebugSessionKind,
   DebugSessionRecord,
   DebugSnapshotEntry,
   DebugValueMetadata,
-  NodeOperationRecord
+  NodeOperationRecord,
+  ParameterReloadBindingRecord,
+  ParameterReloadTargetRecord
 } from "./types";
 import {
   buildValueEnvelope,
@@ -77,7 +108,13 @@ import {
   resolveDebugValueMetadata,
   validateWritePayload
 } from "./valueCodec";
-import { DEBUG_VALUE_KIND_COMPLEX } from "./types";
+import {
+  DEBUG_NORMALIZATION_MODE_TRIM,
+  DEBUG_SESSION_KIND_PARAMETER_RELOAD,
+  DEBUG_VALUE_FORMAT_RAW,
+  DEBUG_VALUE_KIND_COMPLEX,
+  DEBUG_VALUE_KIND_SCALAR
+} from "./types";
 
 type AuditWriter = typeof defaultCreateAuditEvent;
 
@@ -173,6 +210,55 @@ type AdminParameterBindingArchiveInput = {
   protocol: DebugConnectionProtocol;
 };
 
+type AdminNodeBindingInput = {
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugAccessMode;
+  enabled: boolean;
+  notes?: string | null;
+};
+
+type AdminNodeWriteInput = {
+  projectId?: string | null;
+  name: string;
+  description?: string;
+  detailedDescription?: string;
+  module?: string;
+  valueKind?: DebugParameterRecord["valueKind"];
+  valueFormat?: DebugParameterRecord["valueFormat"];
+  normalizationMode?: DebugParameterRecord["normalizationMode"];
+  maxValueBytes?: number | null;
+  enabled?: boolean;
+  bindings?: AdminNodeBindingInput[];
+};
+
+type AdminNodePatchInput = Partial<Omit<AdminNodeWriteInput, "name">> & {
+  nodeId: string;
+  name?: string;
+};
+
+type AdminNodeBindingWriteInput = AdminNodeBindingInput & {
+  nodeId: string;
+};
+
+type AdminNodeBindingArchiveInput = {
+  nodeId: string;
+  protocol: DebugConnectionProtocol;
+};
+
+type AdminDebugModuleWriteInput = {
+  name: string;
+  description?: string;
+  owner?: string;
+  scope?: string;
+};
+
+type AdminDebugModulePatchInput = Partial<AdminDebugModuleWriteInput> & {
+  moduleName: string;
+};
+
+type RuntimeNodeSource = DebugRuntimeNodeRecord | { node: DebugNodeRecord; binding: DebugNodeBindingRecord };
+
 type ScopedProjectQuery<T extends ProjectQuery> = T & {
   projectIds?: string[];
 };
@@ -190,17 +276,29 @@ type CreateSessionInput = {
   targetId: string;
   bridgeId?: string;
   protocol?: DebugConnectionProtocol;
+  sessionKind?: DebugSessionKind;
 };
 
 type ReadNodeInput = {
   sessionId: string;
   parameterId?: string;
+  nodeId?: string;
   nodePath?: string;
 };
 
 type WriteNodeInput = {
   sessionId: string;
-  parameterId: string;
+  parameterId?: string;
+  nodeId?: string;
+  parameterDefinitionId?: string;
+  value: string;
+  confirmationToken?: string;
+  approvalId?: string;
+};
+
+type ReloadParameterInput = {
+  sessionId: string;
+  parameterDefinitionId: string;
   value: string;
   confirmationToken?: string;
   approvalId?: string;
@@ -259,6 +357,45 @@ function ensureParameterAllowedForSession(parameter: DebugParameterRecord, sessi
     throw new ApiError("VALIDATION_FAILED", "Legacy project-scoped parameter does not belong to the session project.", 400, {
       projectId: session.projectId
     });
+  }
+}
+
+function runtimeNodeAsParameter(source: RuntimeNodeSource): DebugParameterRecord {
+  const node = "node" in source ? source.node : source;
+  const nodePath = "node" in source ? source.binding.nodePath : source.nodePath;
+  const accessMode = "node" in source ? source.binding.accessMode : source.accessMode;
+  return {
+    id: node.id,
+    organizationId: node.organizationId,
+    projectId: node.projectId,
+    name: node.name,
+    key: node.id,
+    description: node.description,
+    module: node.module || "Device Nodes",
+    nodePath,
+    accessMode,
+    unit: "",
+    range: "",
+    minValue: null,
+    maxValue: null,
+    risk: "Medium",
+    currentValue: "",
+    targetValue: "",
+    sortOrder: 0,
+    enabled: node.enabled,
+    archivedAt: node.archivedAt,
+    archivedBy: node.archivedBy,
+    archiveReason: node.archiveReason,
+    valueKind: node.valueKind,
+    valueFormat: node.valueFormat,
+    normalizationMode: node.normalizationMode,
+    maxValueBytes: node.maxValueBytes
+  };
+}
+
+function ensureNodeRuntimeAvailable(node: DebugNodeRecord) {
+  if (!node.enabled || node.archivedAt) {
+    throw new ApiError("VALIDATION_FAILED", "Debug node is disabled or archived.", 400);
   }
 }
 
@@ -327,6 +464,62 @@ function ensureWritable(
   return parameter;
 }
 
+async function resolveReloadWriteTarget(
+  tx: Queryable,
+  input: { organizationId: string; projectId: string; parameterDefinitionId: string; protocol: DebugConnectionProtocol }
+): Promise<{ parameter: DebugParameterRecord; nodePath: string; accessMode: DebugAccessMode }> {
+  const binding = await getParameterReloadBinding(tx, {
+    organizationId: input.organizationId,
+    parameterDefinitionId: input.parameterDefinitionId,
+    protocol: input.protocol
+  });
+  if (!binding) {
+    throw new ApiError("NOT_FOUND", "Parameter reload binding was not found.", 404);
+  }
+  const targets = await listParameterReloadTargets(tx, {
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    protocol: input.protocol
+  });
+  const target = targets.find((item) => item.parameterDefinitionId === input.parameterDefinitionId);
+  if (!target) {
+    throw new ApiError("NOT_FOUND", "Managed parameter was not found for this project.", 404);
+  }
+  if (!target.binding?.enabled) {
+    throw new ApiError("VALIDATION_FAILED", "Parameter reload binding is disabled.", 400);
+  }
+
+  const parameter: DebugParameterRecord = {
+    id: target.parameterDefinitionId,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    name: target.name,
+    key: target.parameterDefinitionId,
+    description: "",
+    module: target.module,
+    nodePath: binding.nodePath,
+    accessMode: binding.accessMode,
+    unit: target.unit,
+    range: target.range,
+    minValue: null,
+    maxValue: null,
+    risk: target.risk,
+    currentValue: target.currentValue,
+    targetValue: target.recommendedValue,
+    sortOrder: 0,
+    enabled: true,
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: null,
+    valueKind: DEBUG_VALUE_KIND_SCALAR,
+    valueFormat: DEBUG_VALUE_FORMAT_RAW,
+    normalizationMode: DEBUG_NORMALIZATION_MODE_TRIM,
+    maxValueBytes: null
+  };
+
+  return { parameter, nodePath: binding.nodePath, accessMode: binding.accessMode };
+}
+
 function failureReason(error: string | undefined, fallback: string) {
   return error?.trim() || fallback;
 }
@@ -368,6 +561,28 @@ async function requireProtocolBinding(
     throw new ApiError("DEBUG_BINDING_DISABLED", "Debug parameter binding is disabled for the selected protocol.", 400, {
       parameterId: input.parameterId,
       protocol: input.protocol
+    });
+  }
+  return binding;
+}
+
+async function requireNodeBinding(
+  tx: Queryable,
+  organizationId: string,
+  nodeId: string,
+  protocol: DebugConnectionProtocol
+): Promise<DebugNodeBindingRecord> {
+  const binding = await getDebugNodeBinding(tx, { organizationId, nodeId, protocol, includeDisabled: true });
+  if (!binding) {
+    throw new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", 400, {
+      nodeId,
+      protocol
+    });
+  }
+  if (!binding.enabled) {
+    throw new ApiError("DEBUG_BINDING_DISABLED", "Debug node binding is disabled for the selected protocol.", 400, {
+      nodeId,
+      protocol
     });
   }
   return binding;
@@ -459,6 +674,28 @@ function parameterAuditMetadata(parameter: DebugParameterRecord, extra: Record<s
 function bindingAuditMetadata(binding: DebugParameterNodeBindingRecord, extra: Record<string, unknown> = {}) {
   return {
     parameterId: binding.parameterId,
+    protocol: binding.protocol,
+    projectId: binding.projectId,
+    enabled: binding.enabled,
+    accessMode: binding.accessMode,
+    hasNotes: Boolean(binding.notes?.trim()),
+    ...extra
+  };
+}
+
+function nodeAuditMetadata(node: DebugNodeRecord, extra: Record<string, unknown> = {}) {
+  return {
+    nodeId: node.id,
+    projectId: node.projectId,
+    enabled: node.enabled,
+    archived: node.archivedAt !== null,
+    ...extra
+  };
+}
+
+function nodeBindingAuditMetadata(binding: DebugNodeBindingRecord, extra: Record<string, unknown> = {}) {
+  return {
+    nodeId: binding.nodeId,
     protocol: binding.protocol,
     projectId: binding.projectId,
     enabled: binding.enabled,
@@ -732,6 +969,17 @@ export function createDebuggingService(options: ServiceOptions) {
         protocol: query.protocol
       });
       return attachParameterBindings(parameters, bindings, query.protocol).filter((parameter) => parameter.selectedBinding?.enabled === true);
+    },
+
+    async listRuntimeNodes(auth: AuthContext, query: { projectId: string; protocol?: DebugConnectionProtocol }) {
+      requireDebugView(auth);
+      requireDebugProjectAccess(auth, query.projectId);
+      const organizationId = organizationIdFor(auth);
+      return listRuntimeDebugNodes(db, {
+        organizationId,
+        projectId: query.projectId,
+        protocol: query.protocol
+      });
     },
 
     async listAdminParameters(auth: AuthContext, query: AdminParameterListQuery = {}) {
@@ -1117,6 +1365,459 @@ export function createDebuggingService(options: ServiceOptions) {
       });
     },
 
+    async listAdminDebugNodes(
+      auth: AuthContext,
+      query: { projectId?: string; includeArchived?: boolean } = {}
+    ): Promise<DebugNodeWithBindingsRecord[]> {
+      requireDebugAdmin(auth);
+      const scopedQuery = scopedProjectQuery(auth, query);
+      const organizationId = organizationIdFor(auth);
+      const nodes = await listDebugNodes(db, {
+        organizationId,
+        projectId: scopedQuery.projectId,
+        includeArchived: query.includeArchived
+      });
+      if (nodes.length === 0) {
+        return [];
+      }
+
+      const nodesWithBindings = await Promise.all(
+        nodes.map(async (node) => {
+          const bindings = await listDebugNodeBindings(db, { organizationId, nodeId: node.id });
+          return { ...node, bindings };
+        })
+      );
+      return nodesWithBindings;
+    },
+
+    async createAdminDebugNode(auth: AuthContext, input: AdminNodeWriteInput, context: ServiceContext = {}): Promise<DebugNodeWithBindingsRecord> {
+      requireDebugAdmin(auth);
+      requireDebugParameterMutationAccess(auth, input.projectId ?? null);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const node = await createDebugNode(tx, {
+          organizationId,
+          projectId: input.projectId ?? null,
+          name: input.name,
+          description: input.description ?? "",
+          detailedDescription: input.detailedDescription ?? "",
+          module: input.module ?? "",
+          valueKind: input.valueKind,
+          valueFormat: input.valueFormat,
+          normalizationMode: input.normalizationMode,
+          maxValueBytes: input.maxValueBytes ?? null,
+          enabled: input.enabled ?? true
+        });
+        for (const bindingInput of input.bindings ?? []) {
+          const binding = await upsertDebugNodeBinding(tx, {
+            organizationId,
+            projectId: node.projectId,
+            nodeId: node.id,
+            protocol: bindingInput.protocol,
+            nodePath: bindingInput.nodePath,
+            accessMode: bindingInput.accessMode,
+            enabled: bindingInput.enabled,
+            notes: bindingInput.notes
+          });
+          if (!binding) {
+            throw notFound("Debug node was not found.");
+          }
+        }
+        const bindings = await listDebugNodeBindings(tx, { organizationId, nodeId: node.id });
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: node.projectId,
+              kind: "debug-node-admin-create",
+              action: "create",
+              severity: "Medium",
+              targetType: "debug-node-registry",
+              targetId: node.id,
+              metadata: nodeAuditMetadata(node, {
+                bindingCount: bindings.length,
+                protocols: bindings.map((binding) => binding.protocol)
+              })
+            },
+            context
+          )
+        );
+
+        return { ...node, bindings };
+      });
+    },
+
+    async updateAdminDebugNode(auth: AuthContext, input: AdminNodePatchInput, context: ServiceContext = {}): Promise<DebugNodeWithBindingsRecord> {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const current = await getDebugNode(tx, { organizationId, nodeId: input.nodeId, includeArchived: true });
+        if (!current) {
+          throw notFound("Debug node was not found.");
+        }
+        requireDebugParameterMutationAccess(auth, current.projectId);
+        const projectId = resolvePatchedNullable(input, "projectId", current.projectId);
+        requireDebugParameterMutationAccess(auth, projectId);
+        const node = await updateDebugNode(tx, {
+          organizationId,
+          nodeId: input.nodeId,
+          name: input.name ?? current.name,
+          description: input.description ?? current.description,
+          detailedDescription: input.detailedDescription ?? current.detailedDescription,
+          module: input.module ?? current.module,
+          valueKind: input.valueKind ?? current.valueKind,
+          valueFormat: input.valueFormat ?? current.valueFormat,
+          normalizationMode: input.normalizationMode ?? current.normalizationMode,
+          maxValueBytes: resolvePatchedNullable(input, "maxValueBytes", current.maxValueBytes),
+          enabled: input.enabled ?? current.enabled
+        });
+        if (!node) {
+          throw notFound("Debug node was not found.");
+        }
+        const bindings = await listDebugNodeBindings(tx, { organizationId, nodeId: node.id });
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: node.projectId,
+              kind: "debug-node-admin-update",
+              action: "update",
+              severity: "Medium",
+              targetType: "debug-node-registry",
+              targetId: node.id,
+              metadata: nodeAuditMetadata(node, {
+                bindingCount: bindings.length,
+                protocols: bindings.map((binding) => binding.protocol)
+              })
+            },
+            context
+          )
+        );
+
+        return { ...node, bindings };
+      });
+    },
+
+    async listAdminDebugModules(auth: AuthContext): Promise<DebugNodeModuleRecord[]> {
+      requireDebugAdmin(auth);
+      return listDebugNodeModules(db, { organizationId: organizationIdFor(auth) });
+    },
+
+    async createAdminDebugModule(auth: AuthContext, input: AdminDebugModuleWriteInput, context: ServiceContext = {}): Promise<DebugNodeModuleRecord> {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+      const name = input.name.trim();
+      if (!name) {
+        throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
+      }
+
+      const existing = await getDebugNodeModule(db, { organizationId, name });
+      if (existing) {
+        throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name });
+      }
+
+      return db.transaction(async (tx) => {
+        const module = await createDebugNodeModule(tx, {
+          organizationId,
+          name,
+          description: input.description?.trim() ?? "",
+          owner: input.owner?.trim() ?? "",
+          scope: input.scope?.trim() ?? ""
+        });
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: null,
+              kind: "debug-node-module-admin-create",
+              action: "create",
+              severity: "Low",
+              targetType: "debug-node-module",
+              targetId: module.name,
+              metadata: { name: module.name, owner: module.owner, scope: module.scope }
+            },
+            context
+          )
+        );
+
+        return module;
+      });
+    },
+
+    async updateAdminDebugModule(auth: AuthContext, input: AdminDebugModulePatchInput, context: ServiceContext = {}): Promise<DebugNodeModuleRecord> {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+      const current = await getDebugNodeModule(db, { organizationId, name: input.moduleName });
+      if (!current) {
+        throw notFound("Debug module was not found.");
+      }
+
+      const nextName = (input.name ?? current.name).trim();
+      if (!nextName) {
+        throw new ApiError("VALIDATION_FAILED", "Module name is required.", 400);
+      }
+      if (nextName !== current.name) {
+        const conflict = await getDebugNodeModule(db, { organizationId, name: nextName });
+        if (conflict) {
+          throw new ApiError("CONFLICT", "Debug module already exists.", 409, { name: nextName });
+        }
+      }
+
+      return db.transaction(async (tx) => {
+        if (nextName !== current.name) {
+          await renameDebugNodeModuleReferences(tx, {
+            organizationId,
+            fromModule: current.name,
+            toModule: nextName
+          });
+        }
+
+        const module = await updateDebugNodeModule(tx, {
+          organizationId,
+          moduleName: current.name,
+          name: nextName,
+          description: input.description?.trim() ?? current.description,
+          owner: input.owner?.trim() ?? current.owner,
+          scope: input.scope?.trim() ?? current.scope
+        });
+        if (!module) {
+          throw notFound("Debug module was not found.");
+        }
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: null,
+              kind: "debug-node-module-admin-update",
+              action: "update",
+              severity: "Low",
+              targetType: "debug-node-module",
+              targetId: module.name,
+              metadata: {
+                previousName: current.name,
+                name: module.name,
+                owner: module.owner,
+                scope: module.scope
+              }
+            },
+            context
+          )
+        );
+
+        return module;
+      });
+    },
+
+    async deleteAdminDebugModule(auth: AuthContext, moduleName: string, context: ServiceContext = {}): Promise<void> {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+      const current = await getDebugNodeModule(db, { organizationId, name: moduleName });
+      if (!current) {
+        throw notFound("Debug module was not found.");
+      }
+
+      const nodeCount = await countDebugNodesForModule(db, { organizationId, moduleName });
+      if (nodeCount > 0) {
+        throw new ApiError("CONFLICT", "Cannot delete a debug module that still has nodes.", 409, {
+          moduleName,
+          nodeCount
+        });
+      }
+
+      await db.transaction(async (tx) => {
+        const deleted = await deleteDebugNodeModule(tx, { organizationId, moduleName });
+        if (!deleted) {
+          throw notFound("Debug module was not found.");
+        }
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: null,
+              kind: "debug-node-module-admin-delete",
+              action: "delete",
+              severity: "Low",
+              targetType: "debug-node-module",
+              targetId: moduleName,
+              metadata: { name: moduleName }
+            },
+            context
+          )
+        );
+      });
+    },
+
+    async upsertAdminDebugNodeBinding(auth: AuthContext, input: AdminNodeBindingWriteInput, context: ServiceContext = {}) {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId, includeArchived: true });
+        if (!node) {
+          throw notFound("Debug node was not found.");
+        }
+        requireDebugParameterMutationAccess(auth, node.projectId);
+        const binding = await upsertDebugNodeBinding(tx, {
+          organizationId,
+          projectId: node.projectId,
+          nodeId: input.nodeId,
+          protocol: input.protocol,
+          nodePath: input.nodePath,
+          accessMode: input.accessMode,
+          enabled: input.enabled,
+          notes: input.notes
+        });
+        if (!binding) {
+          throw notFound("Debug node was not found.");
+        }
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: binding.projectId,
+              kind: "debug-node-binding-admin-upsert",
+              action: "update",
+              severity: "Medium",
+              targetType: "debug-node-binding",
+              targetId: `${binding.nodeId}:${binding.protocol}`,
+              metadata: nodeBindingAuditMetadata(binding)
+            },
+            context
+          )
+        );
+
+        return binding;
+      });
+    },
+
+    async archiveAdminDebugNodeBinding(auth: AuthContext, input: AdminNodeBindingArchiveInput, context: ServiceContext = {}) {
+      requireDebugAdmin(auth);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId, includeArchived: true });
+        if (!node) {
+          throw notFound("Debug node was not found.");
+        }
+        requireDebugParameterMutationAccess(auth, node.projectId);
+        const binding = await archiveDebugNodeBinding(tx, {
+          organizationId,
+          nodeId: input.nodeId,
+          protocol: input.protocol
+        });
+        if (!binding) {
+          throw notFound("Debug node binding was not found.");
+        }
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: binding.projectId,
+              kind: "debug-node-binding-admin-archive",
+              action: "archive",
+              severity: "Medium",
+              targetType: "debug-node-binding",
+              targetId: `${binding.nodeId}:${binding.protocol}`,
+              metadata: nodeBindingAuditMetadata(binding)
+            },
+            context
+          )
+        );
+
+        return binding;
+      });
+    },
+
+    async listAdminReloadBindings(auth: AuthContext, query: { projectId?: string }) {
+      requireDebugAdmin(auth);
+      const scopedQuery = scopedProjectQuery(auth, query);
+      return listParameterReloadBindingsAdmin(db, {
+        organizationId: organizationIdFor(auth),
+        projectId: scopedQuery.projectId
+      });
+    },
+
+    async upsertAdminReloadBinding(
+      auth: AuthContext,
+      input: {
+        projectId?: string | null;
+        parameterDefinitionId: string;
+        protocol: DebugConnectionProtocol;
+        nodePath: string;
+        accessMode?: DebugAccessMode;
+        enabled?: boolean;
+        notes?: string | null;
+      },
+      context: ServiceContext = {}
+    ): Promise<ParameterReloadBindingRecord> {
+      requireDebugAdmin(auth);
+      requireDebugParameterMutationAccess(auth, input.projectId ?? null);
+      const organizationId = organizationIdFor(auth);
+
+      return db.transaction(async (tx) => {
+        const binding = await upsertParameterReloadBinding(tx, {
+          organizationId,
+          projectId: input.projectId ?? null,
+          parameterDefinitionId: input.parameterDefinitionId,
+          protocol: input.protocol,
+          nodePath: input.nodePath,
+          accessMode: input.accessMode ?? "RW",
+          enabled: input.enabled ?? true,
+          notes: input.notes ?? null
+        });
+
+        await writeAudit(
+          tx,
+          auditInput(
+            auth,
+            {
+              projectId: binding.projectId,
+              kind: "debug-reload-binding-admin-upsert",
+              action: "update",
+              severity: "Medium",
+              targetType: "parameter-reload-binding",
+              targetId: binding.id,
+              metadata: {
+                parameterDefinitionId: binding.parameterDefinitionId,
+                protocol: binding.protocol,
+                nodePath: binding.nodePath,
+                enabled: binding.enabled
+              }
+            },
+            context
+          )
+        );
+
+        return binding;
+      });
+    },
+
+    async listReloadTargets(auth: AuthContext, query: { projectId: string; protocol?: DebugConnectionProtocol }): Promise<ParameterReloadTargetRecord[]> {
+      requireDebugView(auth);
+      requireDebugProjectAccess(auth, query.projectId);
+      return listParameterReloadTargets(db, {
+        organizationId: organizationIdFor(auth),
+        projectId: query.projectId,
+        protocol: query.protocol ?? defaultDebugConnectionProtocol
+      });
+    },
+
     async createSession(auth: AuthContext, input: CreateSessionInput, context: ServiceContext = {}) {
       requireDebugRead(auth);
       requireDebugProjectAccess(auth, input.projectId);
@@ -1194,6 +1895,7 @@ export function createDebuggingService(options: ServiceOptions) {
           executionMode,
           bridgeId,
           bridgeMachineLabel,
+          sessionKind: input.sessionKind,
           actorUserId: auth.user.id
         });
         await insertDebugEvent(tx, {
@@ -1254,16 +1956,37 @@ export function createDebuggingService(options: ServiceOptions) {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
         requireDebugProjectAccess(auth, session.projectId);
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
-        const parameter = input.parameterId ? await getDebugParameter(tx, { organizationId, parameterId: input.parameterId }) : null;
-        const binding = input.parameterId
-          ? await requireProtocolBinding(tx, { organizationId, parameterId: input.parameterId, protocol })
-          : null;
-        const nodePath = binding?.nodePath ?? input.nodePath;
-        if (!nodePath) {
-          throw new ApiError("VALIDATION_FAILED", "parameterId or nodePath is required.", 400);
+        let catalogParameter: DebugParameterRecord | null = null;
+        let catalogNodeId: string | null = null;
+        let nodePath = input.nodePath;
+        let accessMode: DebugAccessMode = "RW";
+
+        if (input.nodeId) {
+          const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId });
+          if (!node) {
+            throw new ApiError("NOT_FOUND", "Debug node was not found.", 404);
+          }
+          ensureNodeRuntimeAvailable(node);
+          if (node.projectId && node.projectId !== session.projectId) {
+            throw new ApiError("VALIDATION_FAILED", "Debug node does not belong to the session project.", 400);
+          }
+          const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
+          catalogParameter = runtimeNodeAsParameter({ node, binding });
+          catalogNodeId = node.id;
+          nodePath = binding.nodePath;
+          accessMode = binding.accessMode;
+          ensureReadable(catalogParameter, session, accessMode);
+        } else if (input.parameterId) {
+          catalogParameter = await getDebugParameter(tx, { organizationId, parameterId: input.parameterId });
+          const binding = await requireProtocolBinding(tx, { organizationId, parameterId: input.parameterId, protocol });
+          ensureReadable(catalogParameter, session, binding.accessMode);
+          nodePath = binding.nodePath;
+          accessMode = binding.accessMode;
+          catalogNodeId = input.parameterId;
         }
-        if (input.parameterId) {
-          ensureReadable(parameter, session, binding?.accessMode ?? "RW");
+
+        if (!nodePath) {
+          throw new ApiError("VALIDATION_FAILED", "nodeId, parameterId, or nodePath is required.", 400);
         }
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
@@ -1279,7 +2002,7 @@ export function createDebuggingService(options: ServiceOptions) {
         }
         const gateway = executionMode === "server" ? gatewayRegistry.requireGateway(protocol) : null;
 
-        const readMetadata = parameter ? resolveDebugValueMetadata(parameter) : null;
+        const readMetadata = catalogParameter ? resolveDebugValueMetadata(catalogParameter) : null;
         const preserveExactRead = readMetadata ? requiresExactRead(readMetadata) : false;
 
         const result = await withGatewaySpan("read", { hasParameterId: Boolean(input.parameterId), protocol }, async (spanAttributes) => {
@@ -1313,7 +2036,8 @@ export function createDebuggingService(options: ServiceOptions) {
           organizationId,
           projectId: session.projectId,
           sessionId: session.id,
-          parameterId: input.parameterId ?? null,
+          parameterId: catalogNodeId,
+          nodeId: catalogNodeId,
           protocol,
           nodePath,
           operationType: "read",
@@ -1357,15 +2081,49 @@ export function createDebuggingService(options: ServiceOptions) {
     async writeNode(auth: AuthContext, input: WriteNodeInput, context: ServiceContext = {}) {
       requireDebugWrite(auth);
       const organizationId = organizationIdFor(auth);
+      const isReload = Boolean(input.parameterDefinitionId?.trim());
 
       return db.transaction(async (tx) => {
         const session = ensureActiveSession(await getDebugSessionRecord(tx, { organizationId, sessionId: input.sessionId }));
         requireDebugProjectAccess(auth, session.projectId);
         const protocol = session.protocol ?? defaultDebugConnectionProtocol;
-        const parameterRecord = await getDebugParameter(tx, { organizationId, parameterId: input.parameterId });
-        const binding = await requireProtocolBinding(tx, { organizationId, parameterId: input.parameterId, protocol });
-        const parameter = ensureWritable(parameterRecord, session, input, binding.accessMode);
-        const nodePath = binding.nodePath;
+        let parameter: DebugParameterRecord;
+        let parameterId: string | null = null;
+        let parameterDefinitionId: string | null = null;
+        let catalogNodeId: string | null = null;
+        let nodePath: string;
+        let accessMode: DebugAccessMode;
+        let operationType: DebugOperationType = "write";
+
+        if (isReload) {
+          throw new ApiError("GONE", "Parameter reload is no longer available.", 410);
+        } else if (input.nodeId?.trim()) {
+          const node = await getDebugNode(tx, { organizationId, nodeId: input.nodeId.trim() });
+          if (!node) {
+            throw new ApiError("NOT_FOUND", "Debug node was not found.", 404);
+          }
+          ensureNodeRuntimeAvailable(node);
+          if (node.projectId && node.projectId !== session.projectId) {
+            throw new ApiError("VALIDATION_FAILED", "Debug node does not belong to the session project.", 400);
+          }
+          const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
+          parameter = ensureWritable(runtimeNodeAsParameter({ node, binding }), session, input, binding.accessMode);
+          catalogNodeId = node.id;
+          parameterId = node.id;
+          nodePath = binding.nodePath;
+          accessMode = binding.accessMode;
+        } else if (input.parameterId?.trim()) {
+          parameterId = input.parameterId.trim();
+          catalogNodeId = parameterId;
+          const parameterRecord = await getDebugParameter(tx, { organizationId, parameterId });
+          const binding = await requireProtocolBinding(tx, { organizationId, parameterId, protocol });
+          parameter = ensureWritable(parameterRecord, session, input, binding.accessMode);
+          nodePath = binding.nodePath;
+          accessMode = binding.accessMode;
+        } else {
+          throw new ApiError("VALIDATION_FAILED", "nodeId or parameterId is required.", 400);
+        }
+
         const target = await getDebugTarget(tx, { organizationId, targetId: session.targetId });
         if (!target) {
           throw new ApiError("NOT_FOUND", "Debug target was not found.", 404);
@@ -1413,10 +2171,12 @@ export function createDebuggingService(options: ServiceOptions) {
             organizationId,
             projectId: session.projectId,
             sessionId: session.id,
-            parameterId: parameter.id,
+            parameterId,
+            nodeId: catalogNodeId,
+            parameterDefinitionId,
             protocol,
             nodePath,
-            operationType: "write",
+            operationType,
             status: "failed",
             requestedValue: input.value,
             failureReason: failureReason(previous.error ?? previous.stderr, "Pre-write read failed."),
@@ -1431,11 +2191,11 @@ export function createDebuggingService(options: ServiceOptions) {
               auth,
               {
                 projectId: session.projectId,
-                kind: "debug-node-write",
-                action: "write",
+                kind: isReload ? "debug-parameter-reload" : "debug-node-write",
+                action: isReload ? "reload" : "write",
                 severity: "High",
-                targetType: "debug-node",
-                targetId: parameter.id,
+                targetType: isReload ? "parameter-definition" : "debug-node",
+                targetId: parameterDefinitionId ?? parameter.id,
                 metadata: {
                   sessionId: session.id,
                   operationId: operation.id,
@@ -1504,10 +2264,12 @@ export function createDebuggingService(options: ServiceOptions) {
           organizationId,
           projectId: session.projectId,
           sessionId: session.id,
-          parameterId: parameter.id,
+          parameterId,
+          nodeId: catalogNodeId,
+          parameterDefinitionId,
           protocol,
           nodePath,
-          operationType: "write",
+          operationType,
           status,
           requestedValue: input.value,
           previousValue,
@@ -1524,12 +2286,22 @@ export function createDebuggingService(options: ServiceOptions) {
         await linkOperationSnapshot(tx, { organizationId, operationId: operation.id, snapshotId: snapshot.id });
 
         if (result.ok && result.verified) {
-          await updateDebugParameterValues(tx, {
-            organizationId,
-            parameterId: parameter.id,
-            currentValue: input.value,
-            targetValue: input.value
-          });
+          if (isReload && parameterDefinitionId) {
+            await updateProjectParameterCurrentValue(tx, {
+              organizationId,
+              projectId: session.projectId,
+              parameterDefinitionId,
+              currentValue: input.value,
+              actorUserId: auth.user.id
+            });
+          } else if (parameterId) {
+            await updateDebugParameterValues(tx, {
+              organizationId,
+              parameterId,
+              currentValue: input.value,
+              targetValue: input.value
+            });
+          }
         }
 
         await writeAudit(
@@ -1538,11 +2310,11 @@ export function createDebuggingService(options: ServiceOptions) {
             auth,
             {
               projectId: session.projectId,
-              kind: "debug-node-write",
-              action: "write",
+              kind: isReload ? "debug-parameter-reload" : "debug-node-write",
+              action: isReload ? "reload" : "write",
               severity: status === "succeeded" ? "Medium" : "High",
-              targetType: "debug-node",
-              targetId: parameter.id,
+              targetType: isReload ? "parameter-definition" : "debug-node",
+              targetId: parameterDefinitionId ?? parameter.id,
               metadata: {
                 sessionId: session.id,
                 operationId: operation.id,

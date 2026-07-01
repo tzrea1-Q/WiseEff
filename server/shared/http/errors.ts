@@ -13,6 +13,7 @@ export type ApiErrorCode =
   | "PROTOCOL_UNSUPPORTED"
   | "DEBUG_BINDING_NOT_CONFIGURED"
   | "DEBUG_BINDING_DISABLED"
+  | "GONE"
   | "INTERNAL_ERROR";
 
 export class ApiError extends Error {

@@ -104,36 +104,21 @@ function createAppDebuggingGateway(overrides: Partial<DebuggingGateway> = {}): D
 }
 
 function createAppDebuggingAdminApiMock() {
-  const seedParameter = {
-    id: "param-1",
-    projectId: null,
+  const seedNode = {
+    id: "node-1",
+    projectId: "aurora",
     name: "Fast charge current",
-    key: "debug.fast_charge.current",
-    description: "Parameter",
-    module: "Charging",
-    nodePath: "/sys/current",
-    accessMode: "RW",
-    unit: "mA",
-    range: "0-5000",
-    risk: "High",
-    currentValue: "3000",
-    targetValue: "3000",
-    sortOrder: 10,
+    description: "Node",
+    module: "Battery",
     enabled: true,
-    archivedAt: null,
-    archivedBy: null,
-    archiveReason: null,
-    bindings: [
-      { protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true },
-      { protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: true }
-    ]
+    bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true }]
   };
 
   return {
-    seedParameter,
-    get: vi.fn().mockResolvedValue({ items: [seedParameter] }),
-    post: vi.fn().mockResolvedValue({ item: seedParameter }),
-    patch: vi.fn().mockResolvedValue({ item: seedParameter }),
+    seedNode,
+    get: vi.fn().mockResolvedValue({ items: [seedNode] }),
+    post: vi.fn().mockResolvedValue({ item: seedNode }),
+    patch: vi.fn().mockResolvedValue({ item: seedNode }),
     put: vi.fn()
   };
 }
@@ -774,7 +759,8 @@ describe("WiseEff app shell", () => {
   });
 
   it("hydrates debugging runtime data from the API gateway after auth", async () => {
-    window.history.replaceState(null, "", "/debugging");
+    window.localStorage.setItem("wiseeff.nodeDebugging.protocol", "hdc");
+    window.history.replaceState(null, "", "/node-debugging");
     const debuggingGateway = createAppDebuggingGateway();
 
     render(
@@ -895,7 +881,8 @@ describe("WiseEff app shell", () => {
   });
 
   it("keeps debugging runtime hydration independent when parameter refresh fails", async () => {
-    window.history.replaceState(null, "", "/debugging");
+    window.localStorage.setItem("wiseeff.nodeDebugging.protocol", "hdc");
+    window.history.replaceState(null, "", "/node-debugging");
     const debuggingGateway = createAppDebuggingGateway();
     const parameterRepository = createAppParameterRepository({
       listProjects: vi.fn().mockRejectedValue(new Error("parameter API unavailable"))
@@ -927,7 +914,7 @@ describe("WiseEff app shell", () => {
 
     expect(await screen.findByText("api_debug_runtime_parameter")).toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
-    expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
+    expect(debuggingGateway.listDevices).toHaveBeenCalled();
     expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" });
   });
 
@@ -942,8 +929,8 @@ describe("WiseEff app shell", () => {
       routesSource.indexOf('case "debugging-admin":')
     );
 
-    expect(debuggingCase).toContain("debuggingActions={debuggingActions}");
-    expect(debuggingCase).toContain("debuggingGateway={debuggingGateway}");
+    expect(debuggingCase).toContain("NoEntryPage");
+    expect(debuggingCase).not.toContain("DebuggingPageWithRuntimeProps");
     expect(nodeDebuggingCase).toContain('debuggingActions={runtimeMode === "api" ? debuggingActions : undefined}');
     expect(nodeDebuggingCase).not.toContain("debuggingGateway={debuggingGateway}");
   });
@@ -1375,7 +1362,7 @@ describe("WiseEff app shell", () => {
 
     expect(within(homepage).getByRole("link", { name: /进入参数首页/ })).toHaveAttribute("href", "/parameter-home");
     expect(within(homepage).getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
-    expect(within(homepage).getByRole("link", { name: /进入调试工作台/ })).toHaveAttribute("href", "/debugging");
+    expect(within(homepage).getByRole("link", { name: /进入节点调试/ })).toHaveAttribute("href", "/node-debugging");
 
     expect(within(homepage).getByRole("heading", { name: "一条可审阅工作流，三种场景接入" })).toBeInTheDocument();
 
@@ -2656,12 +2643,12 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/debugging",
-        present: ["需要连接", "实时可调参数"],
-        absent: ["Device Online", "Connect Required"]
+        present: ["页面暂时不可用"],
+        absent: ["实时可调参数"]
       },
       {
         path: "/debugging-admin",
-        present: ["参数调试管理后台", "可调参数"],
+        present: ["调试管理后台", "可调节点"],
         absent: ["参数调试 Admin", "Ready"]
       }
     ];
@@ -2692,48 +2679,13 @@ describe("WiseEff app shell", () => {
     expect(document.body).not.toHaveTextContent("OpsAgent");
   });
 
-  it("keeps the debug route on a single column without a filter panel", () => {
+  it("renders the parameter debugging workspace route as unavailable", () => {
     window.history.replaceState(null, "", "/debugging");
 
     renderAppForCurrentPath();
 
-    expect(screen.queryByRole("complementary", { name: "参数筛选" })).not.toBeInTheDocument();
-    expect(screen.queryByText("当前筛选命中 8 条参数。")).not.toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText("charger.input_current_limit_ma")).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText("battery.cell_temp_limit_c")).toBeInTheDocument();
-  });
-
-  it("edits and pushes debugging target values on the debug route", () => {
-    window.history.replaceState(null, "", "/debugging");
-
-    render(<App initialAppState={userState} />);
-
-    const findDebugRow = (parameterKey: string) =>
-      Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((row) =>
-        row.textContent?.includes(parameterKey)
-      );
-    const parameterKey = "charger.charge_pump.enable";
-    const row = findDebugRow(parameterKey);
-
-    expect(row).toBeDefined();
-    expect(within(row as HTMLElement).getByText("已同步")).toBeInTheDocument();
-    expect(within(row as HTMLElement).queryByLabelText(`${parameterKey} 目标设定值`)).not.toBeInTheDocument();
-
-    fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "编辑 充电泵使能" }));
-    fireEvent.change(screen.getByLabelText("目标设定值"), { target: { value: "0" } });
-    fireEvent.click(screen.getByRole("button", { name: "关闭草稿" }));
-
-    expect(within(findDebugRow(parameterKey) as HTMLElement).getByText("待下发")).toBeInTheDocument();
-    expect(document.body).toHaveTextContent("1 项参数等待应用");
-
-    fireEvent.click(screen.getByRole("button", { name: "连接" }));
-    fireEvent.click(screen.getByRole("button", { name: "下发调试值" }));
-
-    const updatedRow = findDebugRow(parameterKey);
-
-    expect(updatedRow).toBeDefined();
-    expect(updatedRow).toHaveTextContent("0");
-    expect(within(updatedRow as HTMLElement).getByText("待下发")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "页面暂时不可用" })).toBeInTheDocument();
+    expect(screen.queryByText("实时可调参数")).not.toBeInTheDocument();
   });
 
   it("removes the global project selector from review and parameter admin topbars", () => {
@@ -3044,49 +2996,39 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
   });
 
-  it("edits debug parameter config and reflects it in the debugging workspace", () => {
+  it("edits debug node config from the debugging admin catalog", () => {
     window.history.replaceState(null, "", "/debugging-admin");
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
-    const catalog = screen.getByRole("table", { name: "可调参数目录" });
-    const chargerRow = within(catalog).getByRole("row", { name: /charger\.input_current_limit_ma|充电输入限流/ });
-    fireEvent.click(within(chargerRow).getByRole("button", { name: "修改" }));
-    fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "保存" }));
+    const catalog = screen.getByRole("table", { name: "可调节点目录" });
+    const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
+    fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
+    fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
+      target: { value: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
-    expect(document.body).toHaveTextContent('"targetValue": "3650"');
-
-    fireEvent.click(screen.getByRole("button", { name: "参数调试" }));
-
-    const row = Array.from(screen.getByRole("table").querySelectorAll<HTMLElement>("tbody tr")).find((item) =>
-      item.textContent?.includes("charger.input_current_limit_ma")
-    );
-    expect(row).toBeDefined();
-    expect(row?.querySelector("td[data-label='目标设定值']")).toHaveTextContent("3650");
+    expect(screen.getByTitle("/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited")).toBeInTheDocument();
   });
 
-  it("adds and deletes debug parameters from the debugging admin config", () => {
+  it("adds and disables debug nodes from the debugging admin catalog", () => {
     window.history.replaceState(null, "", "/debugging-admin");
-    const nextIndex = adminState.configDraft.debugParameters.length + 1;
-    const nextName = `new_debug_parameter_${nextIndex}`;
-    const nextKey = `debug.new_parameter_${nextIndex}`;
+    const nextName = "新调试节点";
 
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
-
-    expect(screen.getByDisplayValue(nextName)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "创建" }));
-    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
-    expect(document.body).toHaveTextContent(`"key": "${nextKey}"`);
+    fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: nextName } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });
-    fireEvent.click(within(createdRow).getByRole("button", { name: new RegExp(`归档 ${nextName}`) }));
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "归档" }));
+    expect(createdRow).toBeInTheDocument();
 
-    expect(screen.queryByDisplayValue(nextName)).not.toBeInTheDocument();
+    fireEvent.click(within(createdRow).getByRole("button", { name: new RegExp(`禁用 ${nextName}`) }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "禁用" }));
+
+    expect(within(createdRow).getByText("已禁用")).toBeInTheDocument();
   });
 
   it("renders the debugging admin context in a normalized workspace header", () => {
@@ -3095,7 +3037,7 @@ describe("WiseEff app shell", () => {
     render(<App initialAppState={stateForCurrentPath()} runtimeMode="mock" />);
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    expect(topbar).toHaveTextContent("可调参数");
+    expect(topbar).toHaveTextContent("可调节点");
     expect(topbar).toHaveTextContent("在线设备");
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("heading", { level: 1, name: "参数调试管理后台" })).not.toBeInTheDocument();
@@ -3111,34 +3053,7 @@ describe("WiseEff app shell", () => {
     expect(mainBlock).toContain("min-height: 0;");
   });
 
-  it("saves debug admin edits to the local JSON config endpoint", () => {
-    window.history.replaceState(null, "", "/debugging-admin");
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ ok: true })
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<App initialAppState={adminState} runtimeMode="mock" />);
-
-    const catalog = screen.getByRole("table", { name: "可调参数目录" });
-    const chargerRow = within(catalog).getByRole("row", { name: /charger\.input_current_limit_ma|充电输入限流/ });
-    fireEvent.click(within(chargerRow).getByRole("button", { name: "修改" }));
-    fireEvent.change(screen.getByLabelText("调试目标值"), { target: { value: "3650" } });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "保存" }));
-    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
-    fireEvent.click(screen.getByRole("button", { name: "保存到 JSON 文件" }));
-
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/power-management-config",
-      expect.objectContaining({
-        method: "PUT",
-        body: expect.stringContaining('"targetValue": "3650"')
-      })
-    );
-  });
-
-  it("does not save debug admin config directly in API mode", async () => {
+  it("does not expose mock JSON export controls in API mode", async () => {
     window.history.replaceState(null, "", "/debugging-admin");
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -3196,9 +3111,8 @@ describe("WiseEff app shell", () => {
     expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
     expect(screen.getByText("缺少 debugging:admin 权限，目录仅可查看。")).toBeInTheDocument();
 
-    const catalog = screen.getByRole("table", { name: "可调参数目录" });
-    expect(within(catalog).getByRole("button", { name: "修改" })).toBeDisabled();
-    expect(within(catalog).getByRole("button", { name: "路径绑定" })).toBeDisabled();
+    const catalog = screen.getByRole("table", { name: "可调节点目录" });
+    expect(within(catalog).getByRole("button", { name: "编辑" })).toBeDisabled();
     expect(apiClient.patch).not.toHaveBeenCalled();
   });
 

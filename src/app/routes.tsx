@@ -21,7 +21,6 @@ import type { AppAction } from "@/App";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
-import { DebuggingPage } from "@/DebuggingPage";
 import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
@@ -36,7 +35,6 @@ import type { PrototypeState } from "@/mockData";
 import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
-const DebuggingPageWithRuntimeProps = DebuggingPage as (props: Pick<PageProps, "state" | "dispatch" | "debuggingActions" | "debuggingGateway">) => ReactNode;
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (
   props: Pick<PageProps, "state" | "debuggingActions"> & { runtimeReady?: boolean }
 ) => ReactNode;
@@ -178,11 +176,12 @@ export function PageRouter({
       return <LogAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} logActions={logActions} />;
     case "debugging":
       return (
-        <DebuggingPageWithRuntimeProps
-          state={state}
-          dispatch={dispatch}
-          debuggingActions={debuggingActions}
-          debuggingGateway={debuggingGateway}
+        <NoEntryPage
+          title="页面暂时不可用"
+          description="参数调试工作区已下线。请使用节点调试读写设备节点，或在调试管理后台维护可调节点目录。"
+          actionLabel="节点调试"
+          actionPath="/node-debugging"
+          onNavigate={onNavigate}
         />
       );
     case "node-debugging":

@@ -271,7 +271,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               void runRuntimeAction(
                 "connect",
                 async () => {
-                  await debuggingActions.detectAndStartSession(state.activeProjectId);
+                  await debuggingActions.detectAndStartSession(state.activeProjectId, { sessionKind: "parameter_reload" });
                 },
                 "Debug connection failed"
               );

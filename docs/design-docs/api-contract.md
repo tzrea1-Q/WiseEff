@@ -32,7 +32,11 @@ Rules:
 
 `GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` returns enabled, non-archived shared debugging catalog rows plus legacy rows owned by the requested project. The `projectId` query parameter authorizes and contextualizes the request; it is not the ownership boundary for shared debugging catalog rows.
 
-Read/write node APIs resolve protocol-specific `nodePath` from `debugging_parameter_node_bindings` when `parameterId` is provided. The request does not need to send a raw node path for catalog parameters.
+Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindings` when `nodeId` is provided (preferred) or from legacy `debugging_parameter_node_bindings` when `parameterId` is provided. The request does not need to send a raw node path for catalog-backed nodes.
+
+### Runtime Node Catalog (Option A)
+
+`GET /api/v1/debugging/nodes?projectId=:projectId&protocol=hdc|adb` returns enabled, non-archived logical nodes that have an **enabled binding for the requested protocol**. Nodes missing or with a disabled binding for that protocol are omitted from runtime lists. Admin list APIs return full logical nodes with all bindings so `/debugging-admin` can show HDC/ADB coverage labels.
 
 ### Debugging Admin Catalog
 
@@ -40,16 +44,22 @@ Read/write node APIs resolve protocol-specific `nodePath` from `debugging_parame
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/debugging/admin/parameters` | List the full debugging catalog, including disabled or archived rows when `includeArchived=true`. |
+| `GET` | `/api/v1/debugging/admin/nodes` | List logical debug nodes, including disabled or archived rows when `includeArchived=true`. |
+| `POST` | `/api/v1/debugging/admin/nodes` | Create a logical debug node and optional initial bindings. |
+| `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId` | Update logical node metadata. |
+| `PUT` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Upsert the HDC or ADB binding for a logical node. |
+| `PATCH` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` | Update the HDC or ADB binding for a logical node. |
+| `POST` | `/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive` | Disable one protocol binding without affecting the logical node or other protocols. |
+| `GET` | `/api/v1/debugging/admin/parameters` | List the legacy debugging catalog, including disabled or archived rows when `includeArchived=true`. |
 | `POST` | `/api/v1/debugging/admin/parameters` | Create a debugging parameter and optional HDC/ADB bindings. |
 | `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId` | Update debugging parameter metadata. |
 | `POST` | `/api/v1/debugging/admin/parameters/:parameterId/archive` | Archive a parameter without deleting historical references. |
 | `POST` | `/api/v1/debugging/admin/parameters/:parameterId/restore` | Restore an archived parameter. |
-| `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert the HDC or ADB node binding. |
-| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Update the HDC or ADB node binding. |
-| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | Disable one protocol binding. |
+| `PUT` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Upsert the HDC or ADB node binding (legacy catalog). |
+| `PATCH` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol` | Update the HDC or ADB node binding (legacy catalog). |
+| `POST` | `/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive` | Disable one protocol binding (legacy catalog). |
 
-Runtime `/api/v1/debugging/parameters?protocol=...` returns only enabled, non-archived parameters with an enabled selected-protocol binding. Admin list APIs can return missing or archived bindings so `/debugging-admin` can show HDC/ADB coverage labels.
+Runtime `/api/v1/debugging/parameters?protocol=...` (legacy) returns only enabled, non-archived parameters with an enabled selected-protocol binding. Admin list APIs can return missing or archived bindings so coverage labels remain visible.
 
 Runtime and admin debugging parameter DTOs include optional value metadata:
 

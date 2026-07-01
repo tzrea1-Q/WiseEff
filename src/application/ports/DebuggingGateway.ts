@@ -49,9 +49,10 @@ export type NodeOperationSnapshot = {
   id: string;
   sessionId: string;
   parameterId?: string;
+  nodeId?: string;
   protocol?: DebugConnectionProtocol;
   nodePath: string;
-  operationType: "detect" | "read" | "write" | "rollback";
+  operationType: "detect" | "read" | "write" | "reload" | "rollback";
   status: "pending" | "succeeded" | "failed" | "readback_mismatch";
   requestedValue?: string;
   previousValue?: string;
@@ -82,6 +83,7 @@ export type ReadNodeInput = {
   sessionId?: string;
   target?: string;
   parameterId?: string;
+  nodeId?: string;
   nodePath?: string;
 };
 
@@ -98,6 +100,7 @@ export type WriteNodeInput = {
   sessionId?: string;
   target?: string;
   parameterId?: string;
+  nodeId?: string;
   nodePath?: string;
   value: string;
   readBack: boolean;
@@ -120,9 +123,19 @@ export type RollbackSnapshotInput = {
   confirmationToken: string;
 };
 
+export type ReloadParameterInput = {
+  sessionId: string;
+  parameterDefinitionId: string;
+  value: string;
+  confirmationToken?: string;
+  approvalId?: string;
+};
+
 export interface DebuggingGateway {
   listDevices?(): Promise<DebugDeviceSnapshot[]>;
   listParameters?(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listRuntimeNodes?(query: { projectId: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listReloadTargets?(query: { projectId: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
   detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]>;
   createSession?(input: {
     projectId: string;
@@ -130,10 +143,12 @@ export interface DebuggingGateway {
     targetId: string;
     protocol?: DebugConnectionProtocol;
     bridgeId?: string;
+    sessionKind?: "node" | "parameter_reload";
   }): Promise<DebugSessionSnapshot>;
   getSession?(sessionId: string): Promise<DebugSessionSnapshot | null>;
   listSessionEvents?(sessionId: string): Promise<NodeOperationSnapshot[]>;
   readNode(input: ReadNodeInput): Promise<NodeReadResult>;
   writeNode(input: WriteNodeInput): Promise<NodeWriteResult>;
+  reloadParameter?(input: ReloadParameterInput): Promise<NodeWriteResult>;
   rollbackSnapshot?(input: RollbackSnapshotInput): Promise<{ snapshot: DebugSnapshotSummary; operations: NodeOperationSnapshot[] }>;
 }

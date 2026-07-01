@@ -1,72 +1,63 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App from "./App";
+import { TopBarActionsContext } from "@/components/layout";
+import { DebuggingAdminPage } from "./DebuggingAdminPage";
 import { createDebuggingAdminClient } from "./infrastructure/http/debuggingAdminClient";
 import { initialState } from "./mockData";
 
 const adminState = { ...initialState, activeRoleId: "admin" };
 
-function createResolvedAdminAuthClient() {
-  return {
-    getCurrentAuthContext: vi.fn().mockResolvedValue({
-      user: {
-        id: "admin-api",
-        organizationId: "org-api",
-        name: "API Admin",
-        username: "api.admin",
-        title: "Admin",
-        isActive: true
-      },
-      organization: { id: "org-api", name: "API Org" },
-      roles: [{ projectId: null, roleId: "admin" }],
-      permissions: ["debugging:view", "debugging:admin", "admin:access"]
-    })
-  };
-}
-
 function createDebuggingAdminApiMock() {
-  const seedParameter = {
-    id: "param-1",
-    projectId: null,
+  const seedNode = {
+    id: "node-1",
+    projectId: "aurora",
     name: "Fast charge current",
-    key: "debug.fast_charge.current",
-    description: "Parameter",
-    module: "Charging",
-    nodePath: "/sys/current",
-    accessMode: "RW",
-    unit: "mA",
-    range: "0-5000",
-    risk: "High",
-    currentValue: "3000",
-    targetValue: "3000",
-    sortOrder: 10,
+    description: "Fast charge node",
+    detailedDescription: "Controls constant charge current.",
+    module: "Battery Charging",
     enabled: true,
-    archivedAt: null,
-    archivedBy: null,
-    archiveReason: null,
-    bindings: [
-      { protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true },
-      { protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: true }
-    ]
+    bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true }]
   };
 
   return {
-    seedParameter,
-    get: vi.fn().mockResolvedValue({ items: [seedParameter] }),
-    post: vi.fn().mockResolvedValue({ item: seedParameter }),
-    patch: vi.fn().mockImplementation((_path, body) => Promise.resolve({ item: { ...seedParameter, ...body } })),
-    put: vi.fn()
+    seedNode,
+    get: vi.fn().mockImplementation((path: string) => {
+      if (path === "/api/v1/debugging/admin/modules") {
+        return Promise.resolve({
+          items: [{ name: "Battery Charging", description: "", owner: "", scope: "" }]
+        });
+      }
+      return Promise.resolve({ items: [seedNode] });
+    }),
+    post: vi.fn().mockResolvedValue({ item: seedNode }),
+    patch: vi.fn().mockImplementation((_path, body) => Promise.resolve({ item: { ...seedNode, ...body } })),
+    put: vi.fn().mockImplementation((_path, body) =>
+      Promise.resolve({
+        item: {
+          protocol: "hdc",
+          nodePath: body.nodePath,
+          accessMode: body.accessMode,
+          enabled: body.enabled,
+          notes: body.notes ?? null
+        }
+      })
+    )
   };
 }
 
 function renderDebuggingAdminPage(apiClient = createDebuggingAdminApiMock()) {
   render(
-    <App
-      authClient={createResolvedAdminAuthClient()}
-      debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
-      initialAppState={adminState}
-      runtimeMode="api"
-    />
+    <TopBarActionsContext.Provider value={{ setActions: vi.fn() }}>
+      <DebuggingAdminPage
+        state={adminState}
+        dispatch={vi.fn()}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="api"
+        debuggingAdminClient={createDebuggingAdminClient(apiClient as never)}
+        apiAuthPermissions={["debugging:admin"]}
+      />
+    </TopBarActionsContext.Provider>
   );
   return apiClient;
 }
@@ -81,175 +72,89 @@ function findTableRowByText(text: string) {
 
 afterEach(() => {
   cleanup();
-  window.history.replaceState(null, "", "/");
 });
 
 describe("/debugging-admin API mode", () => {
-  it("loads API catalog parameters, edits in definition dialog, and saves through PATCH", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+  it("loads API node catalog, edits in node dialog, and saves through PATCH", async () => {
     const apiClient = renderDebuggingAdminPage();
 
     expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
-    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/parameters?includeArchived=true");
-    expect(screen.getByText("双协议")).toBeInTheDocument();
-    expect(screen.getByText("标量")).toBeInTheDocument();
+    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes?projectId=aurora&includeArchived=true");
+    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/modules");
+    expect(screen.getByText("Battery Charging")).toBeInTheDocument();
 
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "修改" }));
-    fireEvent.change(screen.getByLabelText("参数名称"), { target: { value: "Fast charge current edited" } });
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "编辑" }));
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Fast charge current edited" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(apiClient.patch).toHaveBeenCalled());
-    expect(apiClient.patch.mock.calls[0][0]).toBe("/api/v1/debugging/admin/parameters/param-1");
+    expect(apiClient.patch.mock.calls[0][0]).toBe("/api/v1/debugging/admin/nodes/node-1");
     expect(apiClient.patch.mock.calls[0][1]).toEqual(expect.objectContaining({ name: "Fast charge current edited" }));
-    expect(apiClient.patch.mock.calls[0][1]).toEqual(
-      expect.objectContaining({
-        valueKind: "scalar",
-        valueFormat: "raw",
-        normalizationMode: "trim"
-      })
-    );
-    expect(apiClient.patch.mock.calls[0][1].bindings).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true }),
-        expect.objectContaining({ protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: true })
-      ])
-    );
   });
 
-  it("edits a complex JSON debug parameter and saves metadata through PATCH", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
-    const apiClient = createDebuggingAdminApiMock();
-    apiClient.get.mockResolvedValue({
-      items: [{
-        ...apiClient.seedParameter,
-        valueKind: "complex",
-        valueFormat: "json",
-        normalizationMode: "json-canonical",
-        currentValue: '{"enabled":true}',
-        targetValue: '{"enabled":false}'
-      }]
-    });
-    renderDebuggingAdminPage(apiClient);
-
-    expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
-    expect(screen.getByText("JSON")).toBeInTheDocument();
-
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "修改" }));
-    fireEvent.change(screen.getByLabelText("调试目标值"), {
-      target: { value: '{\n  "enabled": false,\n  "mode": "safe"\n}' }
-    });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-
-    await waitFor(() => expect(apiClient.patch).toHaveBeenCalled());
-    expect(apiClient.patch.mock.calls[0][1]).toEqual(
-      expect.objectContaining({
-        valueKind: "complex",
-        valueFormat: "json",
-        normalizationMode: "json-canonical",
-        targetValue: '{\n  "enabled": false,\n  "mode": "safe"\n}'
-      })
-    );
-  });
-
-  it("creates a new API catalog parameter via 新增参数 button", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
+  it("creates a new API catalog node via 新增节点 button", async () => {
     const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(screen.getByRole("button", { name: "新增参数" }));
+    fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
 
-    fireEvent.change(screen.getByLabelText("参数名称"), { target: { value: "Thermal throttle limit" } });
-    fireEvent.change(screen.getByLabelText("参数 key"), { target: { value: "debug.thermal.throttle_limit" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建" }));
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Thermal throttle limit" } });
+    fireEvent.change(screen.getByLabelText("模块"), { target: { value: "Battery Charging" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(apiClient.post).toHaveBeenCalledWith(
-        "/api/v1/debugging/admin/parameters",
+        "/api/v1/debugging/admin/nodes",
         expect.objectContaining({
-          key: "debug.thermal.throttle_limit",
           name: "Thermal throttle limit",
-          valueKind: "scalar",
-          valueFormat: "raw",
-          normalizationMode: "trim"
+          module: "Battery Charging",
+          enabled: true,
+          projectId: "aurora"
         })
       )
     );
-    expect(apiClient.post.mock.calls.some(([path]) => path === "/api/v1/debugging/admin/parameters/param-1/archive")).toBe(false);
   });
 
-  it("treats disabled API parameters as inactive instead of archived", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
-    const apiClient = createDebuggingAdminApiMock();
-    apiClient.get.mockResolvedValue({
-      items: [{
-        ...apiClient.seedParameter,
-        enabled: false,
-        archivedAt: null
-      }]
-    });
-    renderDebuggingAdminPage(apiClient);
+  it("opens module management dialog from the library toolbar", async () => {
+    renderDebuggingAdminPage();
 
-    expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
-    expect(screen.queryByText("已归档")).not.toBeInTheDocument();
-    expect(screen.getByText("已停用")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /归档 Fast charge current/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "恢复参数" })).not.toBeInTheDocument();
+    await screen.findByText("Fast charge current");
+    fireEvent.click(screen.getByRole("button", { name: "模块管理" }));
+
+    expect(screen.getByRole("dialog", { name: "模块管理" })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: "模块管理" });
+    expect(within(dialog).getByText("Battery Charging")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "1" })).toBeInTheDocument();
   });
 
-  it("opens 路径绑定 dialog and saves/archives protocol bindings", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
-    const apiClient = createDebuggingAdminApiMock();
-    apiClient.put.mockResolvedValue({
-      item: { protocol: "hdc", nodePath: "/sys/hdc/current_edited", accessMode: "RW", enabled: true, notes: "saved" }
-    });
-    apiClient.post.mockResolvedValue({
-      item: { protocol: "adb", nodePath: "/sys/adb/current", accessMode: "RO", enabled: false, notes: "archived" }
-    });
-    renderDebuggingAdminPage(apiClient);
+  it("upserts node bindings through the bindings dialog", async () => {
+    const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
     fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
-    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current_edited" } });
+    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "/sys/hdc/current-edited" } });
     fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
 
     await waitFor(() =>
-      expect(apiClient.put).toHaveBeenCalledWith(
-        "/api/v1/debugging/admin/parameters/param-1/bindings/hdc",
-        expect.objectContaining({ nodePath: "/sys/hdc/current_edited", accessMode: "RW", enabled: true })
-      )
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "归档 ADB binding" }));
-    await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/api/v1/debugging/admin/parameters/param-1/bindings/adb/archive",
-        {}
-      )
+      expect(apiClient.put).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes/node-1/bindings/hdc", {
+        nodePath: "/sys/hdc/current-edited",
+        accessMode: "RW",
+        enabled: true
+      })
     );
   });
 
-  it("archives parameters through confirmation dialog", async () => {
-    window.history.replaceState(null, "", "/debugging-admin");
-    const apiClient = createDebuggingAdminApiMock();
-    apiClient.post.mockResolvedValue({
-      item: {
-        ...apiClient.seedParameter,
-        enabled: false,
-        archivedAt: "2026-06-22T12:00:00.000Z",
-        archivedBy: "admin-api",
-        archiveReason: "Archived from debugging admin."
-      }
-    });
-    renderDebuggingAdminPage(apiClient);
+  it("disables nodes through confirmation dialog", async () => {
+    const apiClient = renderDebuggingAdminPage();
 
     await screen.findByText("Fast charge current");
-    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /归档 Fast charge current/ }));
-    fireEvent.click(screen.getByRole("button", { name: /^归档$/ }));
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: /禁用 Fast charge current/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^禁用$/ }));
 
     await waitFor(() =>
-      expect(apiClient.post).toHaveBeenCalledWith(
-        "/api/v1/debugging/admin/parameters/param-1/archive",
-        { reason: "Archived from debugging admin." }
+      expect(apiClient.patch).toHaveBeenCalledWith(
+        "/api/v1/debugging/admin/nodes/node-1",
+        { enabled: false }
       )
     );
   });

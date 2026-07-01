@@ -32,6 +32,23 @@ Debugging catalog governance is split from runtime execution. `debugging_paramet
 
 HDC and ADB node bindings remain separate rows in `debugging_parameter_node_bindings`, keyed by protocol. Disabling or archiving one binding only affects that protocol and must not hide the other protocol's binding from admin catalog governance.
 
+### Node Registry vs Parameter Reload (TD-032)
+
+TD-032 split the debugging catalog into three cooperating surfaces:
+
+- **Legacy debugging parameters** (`debugging_parameters` + `debugging_parameter_node_bindings`) remain the M3 node-debugging catalog used by `/node-debugging`. They are parameter-shaped rows with optional per-protocol bindings.
+- **Debug nodes** (`debug_nodes`) are logical, protocol-agnostic adjustable nodes for `/node-debugging` runtime and the debugging admin **node directory**. They carry node metadata (name, description, sort order, enabled/archive) but not device paths.
+- **Debug node bindings** (`debug_node_bindings`) store per-protocol HDC/ADB paths, access mode, and enablement for each logical node. One enabled binding row per `(node_id, protocol)`; disabling or archiving one protocol binding does not hide the other protocol's binding from admin governance.
+- **Parameter reload bindings** (`parameter_reload_bindings`) map M1 `parameter_definitions` to device node paths per protocol. Metadata (name, module, unit, risk, current/recommended values) comes from M1; the binding row only stores path, protocol, access mode, and enablement.
+
+Runtime separation:
+
+- `/node-debugging` creates sessions with `session_kind = node`, lists federated runtime nodes via `GET /api/v1/debugging/nodes?protocol=...`, and reads/writes through node APIs using `nodeId`. The runtime list inner-joins enabled `debug_node_bindings` for the requested protocol (Option A: nodes without an enabled selected-protocol binding are omitted).
+- `/debugging` creates sessions with `session_kind = parameter_reload`, lists federated reload targets via `GET /api/v1/debugging/reload-targets`, and writes through `POST /api/v1/debugging/parameters/reload` (**product-offline**; endpoints return HTTP 410).
+- `node_operations.node_id` references `debug_nodes.id` for node writes; legacy `parameter_id` remains for historical rows and audit compatibility.
+
+Admin IA exposes a single **node directory** tab for logical node CRUD plus per-protocol binding upsert/archive. Reload binding admin APIs remain deprecated behind HTTP 410.
+
 ### Debug Value Metadata
 
 Debugging parameters carry explicit value metadata separate from protocol bindings:

@@ -13,14 +13,28 @@ import {
   archiveDebugParameterBodySchema,
   createDebugSessionBodySchema,
   debugAdminBindingParamsSchema,
+  debugAdminNodeBindingParamsSchema,
+  debugAdminNodeParamsSchema,
   debugAdminParameterParamsSchema,
+  debugNodeBindingWriteSchema,
   detectTargetsBodySchema,
   listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
+  listParameterReloadBindingsAdminQuerySchema,
+  listParameterReloadTargetsQuerySchema,
+  listRuntimeDebugNodesQuerySchema,
+  listDebugNodesAdminQuerySchema,
+  debugAdminModuleParamsSchema,
+  patchDebugNodeAdminBodySchema,
+  patchDebugNodeModuleAdminBodySchema,
   patchDebugParameterAdminBodySchema,
   readNodeBodySchema,
+  reloadParameterBodySchema,
   rollbackSnapshotBodySchema,
   upsertDebugParameterNodeBindingBodySchema,
+  upsertParameterReloadBindingBodySchema,
+  writeDebugNodeAdminBodySchema,
+  writeDebugNodeModuleAdminBodySchema,
   writeDebugParameterAdminBodySchema,
   writeNodeBodySchema
 } from "./schemas";
@@ -150,6 +164,15 @@ export function registerDebuggingRoutes(
     return { status: 200, body: { items } };
   });
 
+  router.get("/api/v1/debugging/nodes", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(listRuntimeDebugNodesQuerySchema, request.query);
+    const items = await service.listRuntimeNodes(auth, query);
+
+    return { status: 200, body: { items } };
+  });
+
   router.get("/api/v1/debugging/admin/parameters", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
@@ -234,6 +257,135 @@ export function registerDebuggingRoutes(
     return { status: 200, body: { item } };
   });
 
+  router.get("/api/v1/debugging/admin/nodes", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(listDebugNodesAdminQuerySchema, request.query);
+    const items = await service.listAdminDebugNodes(auth, query);
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/debugging/admin/nodes", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(writeDebugNodeAdminBodySchema, request.body);
+    const item = await service.createAdminDebugNode(auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v1/debugging/admin/nodes/:nodeId", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminNodeParamsSchema, request.params);
+    const body = parseWithSchema(patchDebugNodeAdminBodySchema, request.body);
+    const item = await service.updateAdminDebugNode(auth, { nodeId: params.nodeId, ...body }, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/debugging/admin/modules", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const items = await service.listAdminDebugModules(auth);
+
+    return { status: 200, body: { items } };
+  });
+
+  router.post("/api/v1/debugging/admin/modules", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(writeDebugNodeModuleAdminBodySchema, request.body);
+    const item = await service.createAdminDebugModule(auth, body, { requestId: request.requestId });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v1/debugging/admin/modules/:moduleName", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
+    const body = parseWithSchema(patchDebugNodeModuleAdminBodySchema, request.body);
+    const item = await service.updateAdminDebugModule(
+      auth,
+      { moduleName: params.moduleName, ...body },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.delete("/api/v1/debugging/admin/modules/:moduleName", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminModuleParamsSchema, request.params);
+    await service.deleteAdminDebugModule(auth, params.moduleName, { requestId: request.requestId });
+
+    return { status: 204, body: null };
+  });
+
+  const upsertAdminNodeBinding = async (request: RouteRequest) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminNodeBindingParamsSchema, request.params);
+    const body = parseWithSchema(debugNodeBindingWriteSchema, request.body);
+    const item = await service.upsertAdminDebugNodeBinding(
+      auth,
+      { nodeId: params.nodeId, protocol: params.protocol, ...body },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  };
+
+  router.put("/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol", upsertAdminNodeBinding);
+  router.patch("/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol", upsertAdminNodeBinding);
+
+  router.post("/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const params = parseWithSchema(debugAdminNodeBindingParamsSchema, request.params);
+    const item = await service.archiveAdminDebugNodeBinding(
+      auth,
+      { nodeId: params.nodeId, protocol: params.protocol },
+      { requestId: request.requestId }
+    );
+
+    return { status: 200, body: { item } };
+  });
+
+  router.get("/api/v1/debugging/admin/reload-bindings", async (request) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const query = parseWithSchema(listParameterReloadBindingsAdminQuerySchema, request.query);
+    const items = await service.listAdminReloadBindings(auth, query);
+
+    return { status: 200, body: { items } };
+  });
+
+  const upsertAdminReloadBinding = async (request: RouteRequest) => {
+    const { service } = serviceFrom(options);
+    const auth = await options.getCurrentAuthContext(request);
+    const body = parseWithSchema(upsertParameterReloadBindingBodySchema, request.body);
+    const item = await service.upsertAdminReloadBinding(auth, body, { requestId: request.requestId });
+
+    return { status: 200, body: { item } };
+  };
+
+  router.put("/api/v1/debugging/admin/reload-bindings", upsertAdminReloadBinding);
+  router.patch("/api/v1/debugging/admin/reload-bindings", upsertAdminReloadBinding);
+
+  router.get("/api/v1/debugging/reload-targets", async () => ({
+    status: 410,
+    body: { error: { code: "GONE", message: "Parameter reload is no longer available." } }
+  }));
+
+  router.post("/api/v1/debugging/parameters/reload", async () => ({
+    status: 410,
+    body: { error: { code: "GONE", message: "Parameter reload is no longer available." } }
+  }));
+
   router.post("/api/v1/debugging/sessions", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
@@ -280,6 +432,7 @@ export function registerDebuggingRoutes(
       {
         sessionId: body.sessionId,
         parameterId: body.parameterId,
+        nodeId: body.nodeId,
         value: body.value,
         confirmationToken: body.confirmationToken,
         approvalId: body.approvalId

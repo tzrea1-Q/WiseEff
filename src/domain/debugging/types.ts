@@ -37,6 +37,7 @@ export type DebugParameter = {
   name: string;
   key: string;
   description: string;
+  detailedDescription?: string;
   module: string;
   currentValue: string;
   targetValue: string;
@@ -61,6 +62,8 @@ export type DebugParameter = {
   valueFormat?: DebugValueFormat;
   normalizationMode?: DebugNormalizationMode;
   maxValueBytes?: number | null;
+  parameterDefinitionId?: string;
+  reloadManaged?: boolean;
 };
 
 export type DebugParameterArchiveState = "active" | "archived";
@@ -109,3 +112,37 @@ export type DebugEvent =
   | { kind: "push"; snapshotId: string; parameterIds: string[]; at: string; risk: RiskLevel }
   | { kind: "rollback"; snapshotId: string; parameterIds: string[]; at: string }
   | { kind: "rollback-undo"; snapshotId: string; at: string };
+
+export type DebugNodeProtocolBinding = {
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  enabled: boolean;
+  notes?: string;
+};
+
+export type DebugNodeRegistryEntry = {
+  id: string;
+  projectId?: string | null;
+  name: string;
+  description: string;
+  detailedDescription: string;
+  module: string;
+  enabled: boolean;
+  bindings: DebugNodeProtocolBinding[];
+};
+
+export type ParameterReloadBinding = {
+  id: string;
+  projectId?: string | null;
+  parameterDefinitionId: string;
+  parameterName?: string;
+  module?: string;
+  unit?: string;
+  risk?: RiskLevel;
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  enabled: boolean;
+  notes?: string | null;
+};

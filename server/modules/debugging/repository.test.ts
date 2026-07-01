@@ -936,8 +936,9 @@ describe("debugging repository", () => {
           execution_mode: call.values[6],
           bridge_id: call.values[7],
           bridge_machine_label: call.values[8],
-          actor_user_id: "user-1",
-          status: "active",
+          session_kind: call.values[9],
+          actor_user_id: call.values[10],
+          status: call.values[11],
           started_at: timestamp,
           ended_at: null
         }
@@ -953,12 +954,13 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into debugging_sessions");
-    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "server", null, null, "user-1", "active"]);
+    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "server", null, null, "node", "user-1", "active"]);
     expect(session).toMatchObject({
       organizationId: "org-1",
       projectId: "aurora",
       actorUserId: "user-1",
       status: "active",
+      sessionKind: "node",
       executionMode: "server",
       bridgeId: null,
       bridgeMachineLabel: null
@@ -1091,27 +1093,29 @@ describe("debugging repository", () => {
           project_id: call.values[2],
           session_id: call.values[3],
           parameter_id: call.values[4],
-          protocol: call.values[5],
-          node_path: call.values[6],
-          operation_type: call.values[7],
-          status: call.values[8],
-          requested_value: call.values[9],
-          previous_value: call.values[10],
-          read_value: call.values[11],
-          readback_value: call.values[12],
-          verified: call.values[13],
-          failure_reason: call.values[14],
-          duration_ms: call.values[15],
-          approval_id: call.values[16],
-          snapshot_id: call.values[17],
+          node_id: call.values[5],
+          parameter_definition_id: call.values[6],
+          protocol: call.values[7],
+          node_path: call.values[8],
+          operation_type: call.values[9],
+          status: call.values[10],
+          requested_value: call.values[11],
+          previous_value: call.values[12],
+          read_value: call.values[13],
+          readback_value: call.values[14],
+          verified: call.values[15],
+          failure_reason: call.values[16],
+          duration_ms: call.values[17],
+          approval_id: call.values[18],
+          snapshot_id: call.values[19],
           created_at: timestamp,
-          value_kind: call.values[18],
-          value_format: call.values[19],
-          normalization_mode: call.values[20],
-          requested_value_digest: call.values[21],
-          previous_value_digest: call.values[22],
-          readback_value_digest: call.values[23],
-          value_preview: call.values[24]
+          value_kind: call.values[20],
+          value_format: call.values[21],
+          normalization_mode: call.values[22],
+          requested_value_digest: call.values[23],
+          previous_value_digest: call.values[24],
+          readback_value_digest: call.values[25],
+          value_preview: call.values[26]
         }
       ]
     ]);
@@ -1149,6 +1153,8 @@ describe("debugging repository", () => {
       "aurora",
       "session-1",
       "param-1",
+      "param-1",
+      null,
       "hdc",
       "/sys/current",
       "write",

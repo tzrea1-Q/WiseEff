@@ -1,7 +1,9 @@
 import type {
   DebugAdminParameterDraft,
   DebugConnectionProtocol,
+  DebugNodeProtocolBinding,
   DebugParameter as DomainDebugParameter,
+  DebugParameterBindingStatus,
   DebugParameterNodeBinding
 } from "@/domain/debugging/types";
 import {
@@ -64,7 +66,7 @@ export function draftFromDebugParameter(parameter: DomainDebugParameter): DebugA
 }
 
 export function bindingForProtocol(
-  bindings: DebugParameterNodeBinding[] | undefined,
+  bindings: DebugParameterNodeBinding[] | DebugNodeProtocolBinding[] | undefined,
   protocol: DebugConnectionProtocol
 ): DebugParameterNodeBinding {
   return (
@@ -76,6 +78,31 @@ export function bindingForProtocol(
       notes: ""
     }
   );
+}
+
+export function nodeBindingStatus(
+  bindings: DebugNodeProtocolBinding[] | undefined,
+  protocol: DebugConnectionProtocol
+): DebugParameterBindingStatus {
+  const binding = bindings?.find((item) => item.protocol === protocol);
+  if (!binding || !binding.nodePath.trim()) {
+    return "missing";
+  }
+  if (!binding.enabled) {
+    return "disabled";
+  }
+  return "configured";
+}
+
+export function nodeBindingStatusLabel(status: DebugParameterBindingStatus) {
+  switch (status) {
+    case "configured":
+      return "已配置";
+    case "disabled":
+      return "已禁用";
+    case "missing":
+      return "缺失";
+  }
 }
 
 export function isArchivedDebugParameter(parameter: DomainDebugParameter) {

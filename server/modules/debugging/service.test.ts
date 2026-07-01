@@ -247,6 +247,46 @@ function bindingRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function debugNodeRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "node-1",
+    organization_id: "org-1",
+    project_id: "aurora",
+    name: "Charge current",
+    description: "Device charge current node.",
+    detailed_description: "",
+    module: "Battery",
+    value_kind: "scalar",
+    value_format: "raw",
+    normalization_mode: "trim",
+    max_value_bytes: null,
+    enabled: true,
+    archived_at: null,
+    archived_by: null,
+    archive_reason: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    ...overrides
+  };
+}
+
+function debugNodeBindingRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "node-1:hdc",
+    organization_id: "org-1",
+    project_id: "aurora",
+    node_id: "node-1",
+    protocol: "hdc",
+    node_path: "/sys/node/current",
+    access_mode: "RW",
+    enabled: true,
+    notes: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    ...overrides
+  };
+}
+
 function sessionRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "session-1",
@@ -258,6 +298,7 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
     execution_mode: "server",
     bridge_id: null,
     bridge_machine_label: null,
+    session_kind: "node",
     actor_user_id: "user-1",
     status: "active",
     started_at: timestamp,
@@ -273,26 +314,28 @@ function operationRow(call: QueryCall, overrides: Record<string, unknown> = {}) 
     project_id: call.values[2],
     session_id: call.values[3],
     parameter_id: call.values[4],
-    protocol: call.values[5],
-    node_path: call.values[6],
-    operation_type: call.values[7],
-    status: call.values[8],
-    requested_value: call.values[9],
-    previous_value: call.values[10],
-    read_value: call.values[11],
-    readback_value: call.values[12],
-    verified: call.values[13],
-    failure_reason: call.values[14],
-    duration_ms: call.values[15],
-    approval_id: call.values[16],
-    snapshot_id: call.values[17],
-    value_kind: call.values[18] ?? null,
-    value_format: call.values[19] ?? null,
-    normalization_mode: call.values[20] ?? null,
-    requested_value_digest: call.values[21] ?? null,
-    previous_value_digest: call.values[22] ?? null,
-    readback_value_digest: call.values[23] ?? null,
-    value_preview: call.values[24] ?? null,
+    node_id: call.values[5] ?? null,
+    parameter_definition_id: call.values[6] ?? null,
+    protocol: call.values[7],
+    node_path: call.values[8],
+    operation_type: call.values[9],
+    status: call.values[10],
+    requested_value: call.values[11],
+    previous_value: call.values[12],
+    read_value: call.values[13],
+    readback_value: call.values[14],
+    verified: call.values[15],
+    failure_reason: call.values[16],
+    duration_ms: call.values[17],
+    approval_id: call.values[18],
+    snapshot_id: call.values[19],
+    value_kind: call.values[20] ?? null,
+    value_format: call.values[21] ?? null,
+    normalization_mode: call.values[22] ?? null,
+    requested_value_digest: call.values[23] ?? null,
+    previous_value_digest: call.values[24] ?? null,
+    readback_value_digest: call.values[25] ?? null,
+    value_preview: call.values[26] ?? null,
     created_at: timestamp,
     ...overrides
   };
@@ -2554,5 +2597,66 @@ describe("debugging service", () => {
       preview: expect.stringMatching(/…$/),
       bytes: expect.any(Number)
     });
+  });
+
+  it("readNode resolves debug node binding for the active session protocol", async () => {
+    const gateway = makeGateway();
+    const { db } = createFakeDb([
+      [sessionRow({ protocol: "hdc" })],
+      [debugNodeRow({ id: "node-1" })],
+      [debugNodeBindingRow({ node_id: "node-1", protocol: "hdc", node_path: "/sys/node/hdc/current" })],
+      [targetRow()],
+      (call) => [operationRow(call, { node_id: "node-1", node_path: "/sys/node/hdc/current" })]
+    ]);
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    const operation = await service.readNode(readAuth, { sessionId: "session-1", nodeId: "node-1" });
+
+    expect(gateway.readNode).toHaveBeenCalledWith({
+      targetRef: "simulator://aurora-1",
+      nodePath: "/sys/node/hdc/current",
+      preserveExactRead: false
+    });
+    expect(operation).toMatchObject({ operationType: "read", status: "succeeded", nodePath: "/sys/node/hdc/current" });
+  });
+
+  it("readNode rejects DEBUG_BINDING_NOT_CONFIGURED when the node has no binding for the session protocol", async () => {
+    const gateway = makeGateway();
+    const { db } = createFakeDb([[sessionRow({ protocol: "hdc" })], [debugNodeRow({ id: "node-1" })], []]);
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    await expect(service.readNode(readAuth, { sessionId: "session-1", nodeId: "node-1" })).rejects.toMatchObject(
+      new ApiError("DEBUG_BINDING_NOT_CONFIGURED", "Debug node is not configured for the selected protocol.", 400, {
+        nodeId: "node-1",
+        protocol: "hdc"
+      })
+    );
+    expect(gateway.readNode).not.toHaveBeenCalled();
+  });
+
+  it("writeNode uses the debug node binding path for the active session protocol", async () => {
+    const gateway = makeGateway();
+    const { db } = createFakeDb([
+      [sessionRow({ protocol: "hdc" })],
+      [debugNodeRow({ id: "node-1" })],
+      [debugNodeBindingRow({ node_id: "node-1", protocol: "hdc", node_path: "/sys/node/hdc/write", access_mode: "RW" })],
+      [targetRow()],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [operationRow(call, { node_id: "node-1", node_path: "/sys/node/hdc/write" })],
+      []
+    ]);
+    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
+
+    const operation = await service.writeNode(writeAuth, { sessionId: "session-1", nodeId: "node-1", value: "3200" });
+
+    expect(gateway.readNode).toHaveBeenCalledWith({
+      targetRef: "simulator://aurora-1",
+      nodePath: "/sys/node/hdc/write",
+      preserveExactRead: false
+    });
+    expect(gateway.writeNode).toHaveBeenCalledWith(
+      expect.objectContaining({ targetRef: "simulator://aurora-1", nodePath: "/sys/node/hdc/write", value: "3200" })
+    );
+    expect(operation).toMatchObject({ operationType: "write", status: "succeeded", nodePath: "/sys/node/hdc/write" });
   });
 });

@@ -35,7 +35,7 @@ describe("SubAppEntryRow", () => {
 
     expect(screen.getByRole("link", { name: /进入参数首页/ })).toHaveAttribute("href", "/parameter-home");
     expect(screen.getByRole("link", { name: /进入日志分析/ })).toHaveAttribute("href", "/logs");
-    expect(screen.getByRole("link", { name: /进入调试工作台/ })).toHaveAttribute("href", "/debugging");
+    expect(screen.getByRole("link", { name: /进入节点调试/ })).toHaveAttribute("href", "/node-debugging");
   });
 
   it("links the secondary CTAs to the admin routes", () => {

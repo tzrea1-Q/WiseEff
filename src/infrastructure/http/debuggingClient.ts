@@ -1,24 +1,30 @@
+import type { DebugConnectionProtocol } from "@/domain/debugging/types";
 import type {
   DebuggingGateway,
   DebugSessionSnapshot,
   DetectTargetsInput,
   ReadNodeInput,
+  ReloadParameterInput,
   RollbackSnapshotInput,
   WriteNodeInput
 } from "@/application/ports/DebuggingGateway";
 import { createApiClient, WiseEffApiError } from "./apiClient";
 import {
   debugParameterFromDto,
+  debugRuntimeNodeToDebugParameter,
   debugSnapshotFromDto,
   debugTargetFromDto,
   nodeOperationFromDto,
   nodeReadResultFromDto,
   nodeWriteResultFromDto,
+  reloadTargetToDebugParameter,
   type DebugDeviceDto,
   type DebugParameterDto,
+  type DebugRuntimeNodeDto,
   type DebugSnapshotDto,
   type DebugTargetDto,
-  type NodeOperationDto
+  type NodeOperationDto,
+  type ParameterReloadTargetDto
 } from "./debuggingDtos";
 import { createDefaultApiClient } from "./defaultApiClient";
 
@@ -49,7 +55,18 @@ function snapshotRollbackPath(snapshotId: string) {
   return `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`;
 }
 
+function buildReloadTargetsPath(query: { projectId: string; protocol?: string }) {
+  const params = new URLSearchParams();
+  params.set("projectId", query.projectId);
+  if (query.protocol) params.set("protocol", query.protocol);
+  return appendQuery("/api/v1/debugging/reload-targets", params);
+}
+
 function readNodeRequestBody(input: ReadNodeInput): ReadNodeInput {
+  if (input.nodeId) {
+    const { nodePath: _nodePath, parameterId: _parameterId, ...body } = input;
+    return body;
+  }
   if (!input.parameterId) {
     return input;
   }
@@ -57,7 +74,18 @@ function readNodeRequestBody(input: ReadNodeInput): ReadNodeInput {
   return body;
 }
 
+function buildRuntimeNodesPath(query: { projectId: string; protocol?: string }) {
+  const params = new URLSearchParams();
+  params.set("projectId", query.projectId);
+  if (query.protocol) params.set("protocol", query.protocol);
+  return appendQuery("/api/v1/debugging/nodes", params);
+}
+
 function writeNodeRequestBody(input: WriteNodeInput): WriteNodeInput {
+  if (input.nodeId) {
+    const { nodePath: _nodePath, parameterId: _parameterId, ...body } = input;
+    return body;
+  }
   if (!input.parameterId) {
     return input;
   }
@@ -71,9 +99,17 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
       const response = await apiClient.get<ItemsEnvelope<DebugDeviceDto>>("/api/v1/debugging/devices");
       return response.items;
     },
+    async listRuntimeNodes(query: { projectId: string; protocol?: DebugConnectionProtocol }) {
+      const response = await apiClient.get<ItemsEnvelope<DebugRuntimeNodeDto>>(buildRuntimeNodesPath(query));
+      return response.items.map(debugRuntimeNodeToDebugParameter);
+    },
     async listParameters(query) {
       const response = await apiClient.get<ItemsEnvelope<DebugParameterDto>>(buildParametersPath(query));
       return response.items.map(debugParameterFromDto);
+    },
+    async listReloadTargets(query) {
+      const response = await apiClient.get<ItemsEnvelope<ParameterReloadTargetDto>>(buildReloadTargetsPath(query));
+      return response.items.map(reloadTargetToDebugParameter);
     },
     async detectTargets(input?: DetectTargetsInput) {
       const response = await apiClient.post<ItemsEnvelope<DebugTargetDto>>("/api/v1/debugging/targets/detect", input ?? {});
@@ -104,6 +140,10 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
     },
     async writeNode(input: WriteNodeInput) {
       const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/nodes/write", writeNodeRequestBody(input));
+      return nodeWriteResultFromDto(response);
+    },
+    async reloadParameter(input: ReloadParameterInput) {
+      const response = await apiClient.post<WriteNodeResponse>("/api/v1/debugging/parameters/reload", input);
       return nodeWriteResultFromDto(response);
     },
     async rollbackSnapshot(input: RollbackSnapshotInput) {

@@ -417,7 +417,7 @@ function returncodeFromOperation(operation: NodeOperationSnapshot) {
 }
 
 function findOperationParameter(operation: NodeOperationSnapshot, rows: RuntimeRow[]) {
-  return rows.find((row) => row.id === operation.parameterId || row.nodePath === operation.nodePath);
+  return rows.find((row) => row.id === operation.nodeId || row.id === operation.parameterId || row.nodePath === operation.nodePath);
 }
 
 function eventFromOperation(operation: NodeOperationSnapshot, rows: RuntimeRow[]): Omit<PageNodeOperationEvent, "id" | "at"> & { at?: string } {
@@ -532,7 +532,6 @@ function NodeSessionSummaryCard({
 function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: DebugConnectionProtocol }) {
   const titleId = `node-write-format-${row.id}`;
   const exampleValue = row.targetValue || row.currentValue || "value";
-  const rangeText = `${row.range} ${row.unit}`.trim();
   const isComplex = isComplexDebugParameter(row);
 
   return (
@@ -568,18 +567,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
               </div>
             ) : null}
           </>
-        ) : (
-          <>
-            <div>
-              <dt>取值范围</dt>
-              <dd>{rangeText}</dd>
-            </div>
-            <div>
-              <dt>单位</dt>
-              <dd>{row.unit || "无单位"}</dd>
-            </div>
-          </>
-        )}
+        ) : null}
         <div>
           <dt>写入方式</dt>
           <dd>{row.accessMode === "RW" ? "写入后自动回读并校验" : "仅写入，设备不支持回读确认"}</dd>
@@ -1083,7 +1071,7 @@ export function NodeDebuggingPage({
         ? await debuggingActions.readNode({
             sessionId,
             target: activeTarget,
-            parameterId: row.id,
+            nodeId: row.id,
             nodePath: row.nodePath
           })
         : await readNodeValue({ target: activeTarget ?? "", nodePath: row.nodePath });
@@ -1342,7 +1330,7 @@ export function NodeDebuggingPage({
         ? await debuggingActions.writeNode({
             sessionId: activeSessionId,
             target: activeTargetId,
-            parameterId: row.id,
+            nodeId: row.id,
             nodePath: row.nodePath,
             value: row.draftValue,
             readBack,
@@ -1581,11 +1569,6 @@ export function NodeDebuggingPage({
                     </th>
                     <th scope="col">
                       <div className="parameters-table-head-cell">
-                        <span>范围</span>
-                      </div>
-                    </th>
-                    <th scope="col">
-                      <div className="parameters-table-head-cell">
                         <span>状态</span>
                         <ColumnFilter
                           label="状态"
@@ -1633,7 +1616,6 @@ export function NodeDebuggingPage({
                           <span>只读</span>
                         )}
                       </td>
-                      <td data-label="范围">{row.range} {row.unit}</td>
                       <td data-label="状态"><span className={statusClass(row.runtimeStatus)}>{row.runtimeStatus}</span></td>
                       <td className="parameter-row-actions" data-label="操作">
                         <button
@@ -1740,11 +1722,7 @@ export function NodeDebuggingPage({
                 )}
                 <div className="debug-detail-row">
                   <span>目标写入值</span>
-                  <strong className="mono">{canWrite(editingRow) ? `${editingRow.draftValue} ${editingRow.unit}`.trim() : "只读"}</strong>
-                </div>
-                <div className="debug-detail-row">
-                  <span>有效范围</span>
-                  <strong>{editingRow.range} {editingRow.unit}</strong>
+                  <strong className="mono">{canWrite(editingRow) ? editingRow.draftValue : "只读"}</strong>
                 </div>
                 <div className="debug-detail-row">
                   <span>模块</span>

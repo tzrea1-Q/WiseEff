@@ -7,6 +7,7 @@ import type {
   DebugParameterNodeBindingRecord,
   DebugParameterRecord,
   DebugSessionExecutionMode,
+  DebugSessionKind,
   DebugSessionRecord,
   DebugSnapshotEntry,
   DebugSnapshotRecord,
@@ -17,6 +18,7 @@ import type {
 } from "./types";
 import {
   DEBUG_NORMALIZATION_MODE_TRIM,
+  DEBUG_SESSION_KIND_NODE,
   DEBUG_VALUE_FORMAT_RAW,
   DEBUG_VALUE_KIND_SCALAR
 } from "./types";
@@ -105,6 +107,7 @@ type DebugSessionRow = {
   execution_mode?: DebugSessionExecutionMode;
   bridge_id: string | null;
   bridge_machine_label: string | null;
+  session_kind?: DebugSessionKind;
   actor_user_id: string;
   status: DebugSessionStatus;
   started_at: string | Date;
@@ -144,6 +147,7 @@ type NodeOperationRow = {
   project_id: string;
   session_id: string;
   parameter_id: string | null;
+  parameter_definition_id?: string | null;
   protocol?: DebugConnectionProtocol;
   node_path: string;
   operation_type: DebugOperationType;
@@ -279,6 +283,7 @@ function toDebugSessionRecord(row: DebugSessionRow): DebugSessionRecord {
     executionMode: row.execution_mode ?? "server",
     bridgeId: row.bridge_id ?? null,
     bridgeMachineLabel: row.bridge_machine_label ?? null,
+    sessionKind: row.session_kind ?? DEBUG_SESSION_KIND_NODE,
     actorUserId: row.actor_user_id,
     status: row.status,
     startedAt: dateTimeToIso(row.started_at) ?? "",
@@ -307,6 +312,7 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
     projectId: row.project_id,
     sessionId: row.session_id,
     parameterId: row.parameter_id,
+    parameterDefinitionId: row.parameter_definition_id ?? null,
     protocol: row.protocol ?? defaultDebugConnectionProtocol,
     nodePath: row.node_path,
     operationType: row.operation_type,
@@ -393,6 +399,7 @@ const nodeOperationColumns = `
   project_id,
   session_id,
   parameter_id,
+  parameter_definition_id,
   protocol,
   node_path,
   operation_type,
@@ -908,6 +915,7 @@ export async function getDebugSession(
       execution_mode,
       bridge_id,
       bridge_machine_label,
+      session_kind,
       actor_user_id,
       status,
       started_at,
@@ -1118,6 +1126,7 @@ export async function createDebugSession(
     executionMode?: DebugSessionExecutionMode;
     bridgeId?: string | null;
     bridgeMachineLabel?: string | null;
+    sessionKind?: DebugSessionKind;
     actorUserId: string;
   }
 ): Promise<DebugSessionRecord> {
@@ -1133,10 +1142,11 @@ export async function createDebugSession(
       execution_mode,
       bridge_id,
       bridge_machine_label,
+      session_kind,
       actor_user_id,
       status
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     returning
       id,
       organization_id,
@@ -1147,6 +1157,7 @@ export async function createDebugSession(
       execution_mode,
       bridge_id,
       bridge_machine_label,
+      session_kind,
       actor_user_id,
       status,
       started_at,
@@ -1162,6 +1173,7 @@ export async function createDebugSession(
       input.executionMode ?? "server",
       input.bridgeId ?? null,
       input.bridgeMachineLabel ?? null,
+      input.sessionKind ?? DEBUG_SESSION_KIND_NODE,
       input.actorUserId,
       "active"
     ]
@@ -1239,6 +1251,8 @@ export async function insertNodeOperation(
     projectId: string;
     sessionId: string;
     parameterId: string | null;
+    nodeId?: string | null;
+    parameterDefinitionId?: string | null;
     protocol?: DebugConnectionProtocol;
     nodePath: string;
     operationType: DebugOperationType;
@@ -1265,14 +1279,14 @@ export async function insertNodeOperation(
   const result = await db.query<NodeOperationRow>(
     `
     insert into node_operations (
-      id, organization_id, project_id, session_id, parameter_id, protocol, node_path, operation_type,
+      id, organization_id, project_id, session_id, parameter_id, node_id, parameter_definition_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
       failure_reason, duration_ms, approval_id, snapshot_id,
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
       actor_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
     returning ${nodeOperationColumns}
     `,
     [
@@ -1281,6 +1295,8 @@ export async function insertNodeOperation(
       input.projectId,
       input.sessionId,
       input.parameterId,
+      input.nodeId ?? input.parameterId,
+      input.parameterDefinitionId ?? null,
       input.protocol ?? defaultDebugConnectionProtocol,
       input.nodePath,
       input.operationType,

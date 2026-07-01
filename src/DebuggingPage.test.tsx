@@ -151,19 +151,18 @@ function changeTargetFromDetail(parameterName: string, nextValue: string) {
 
 describe("/debugging 单栏骨架", () => {
   it("渲染为单栏布局，不再出现筛选侧栏或右侧调试时间轴", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
-    const main = screen.getByRole("main");
-    expect(within(main).queryByLabelText("参数筛选")).not.toBeInTheDocument();
-    expect(within(main).queryByRole("list", { name: "调试事件列表" })).not.toBeInTheDocument();
-    expect(main.querySelector(".workbench-one-col")).toBeInTheDocument();
-    expect(main.querySelector(".workbench-grid")).not.toBeInTheDocument();
+    const layout = document.querySelector(".workbench-one-col");
+    expect(layout).toBeInTheDocument();
+    expect(screen.queryByLabelText("参数筛选")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "调试事件列表" })).not.toBeInTheDocument();
+    expect(layout).toBeInTheDocument();
+    expect(document.querySelector(".workbench-grid")).not.toBeInTheDocument();
   });
 
   it("保留主表格和现有下发按钮能跑通的基本功能", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     expect(screen.getByText("实时可调参数")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /下发调试值/ })).toBeInTheDocument();
@@ -184,8 +183,7 @@ describe("/debugging 单栏骨架", () => {
   });
 
   it("将风险和状态筛选合并到表头，搜索框仍独立存在", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     expect(screen.getByRole("searchbox", { name: "按名称 / Key 搜索" })).toBeInTheDocument();
     expect(document.querySelector(".parameters-table-filters")).not.toBeInTheDocument();
@@ -201,8 +199,7 @@ describe("/debugging 单栏骨架", () => {
   });
 
   it("仅支持从风险和状态表头筛选调试参数", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     const headers: Array<[string, string, string]> = [
       ["风险", "筛选风险", "高"],
@@ -232,8 +229,7 @@ describe("/debugging 单栏骨架", () => {
   });
 
   it("连接、修改 target、下发的基本链路仍能工作", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     const parameterKey = "charger.charge_pump.enable";
     changeTargetFromDetail("充电泵使能", "0");
@@ -247,8 +243,7 @@ describe("/debugging 单栏骨架", () => {
   });
 
   it("目标设定值在表格中只读显示，只允许在详情弹窗中多行编辑", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     const parameterKey = "charger.charge_pump.enable";
     const multilineValue = "mode=diagnostic\nenable=0";
@@ -269,8 +264,7 @@ describe("/debugging 单栏骨架", () => {
   });
 
   it("不再渲染硬编码的示例时间条目（10:45:02 / 10:50:11 / 10:52:30）", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     expect(screen.queryByText(/10:45:02/)).not.toBeInTheDocument();
     expect(screen.queryByText(/10:50:11/)).not.toBeInTheDocument();
@@ -439,8 +433,7 @@ describe("/debugging runtime wiring", () => {
 
 describe("离线提示条", () => {
   it("参数调试页不再渲染离线 banner", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.queryByText(/设备离线/)).not.toBeInTheDocument();
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -449,16 +442,14 @@ describe("离线提示条", () => {
 
 describe("SessionSummaryCard 集成", () => {
   it("未连接默认设备时按钮 disabled 且提示连接设备", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     const button = screen.getByRole("button", { name: /回滚到上次快照/ });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", expect.stringMatching(/连接/));
   });
 
   it("连接后按钮仍 disabled（尚无快照）但 title 文案改变", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     fireEvent.click(screen.getByRole("button", { name: "连接" }));
     const button = screen.getByRole("button", { name: /回滚到上次快照/ });
     expect(button).toBeDisabled();
@@ -468,8 +459,7 @@ describe("SessionSummaryCard 集成", () => {
 
 describe("回滚链路端到端", () => {
   it("下发 → 回滚 → 快照清空、currentValue 恢复", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
 
     fireEvent.click(screen.getByRole("button", { name: "连接" }));
 
@@ -494,8 +484,7 @@ describe("回滚链路端到端", () => {
   });
 
   it("点击取消保留快照", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     fireEvent.click(screen.getByRole("button", { name: "连接" }));
     const firstRow = screen.getByRole("table").querySelector<HTMLElement>("tbody tr:first-child");
     const firstParameterName = firstRow?.querySelector("td[data-label='参数名称'] strong")?.textContent ?? "";
@@ -512,15 +501,13 @@ describe("回滚链路端到端", () => {
 
 describe("OperationHistoryPanel 集成", () => {
   it("页面底部出现折叠式操作记录面板（默认折叠）", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     expect(screen.getByRole("button", { name: /调试操作记录/ })).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "调试事件列表" })).not.toBeInTheDocument();
   });
 
   it("下发后展开面板能看到 push 事件", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     fireEvent.click(screen.getByRole("button", { name: "连接" }));
     const firstRow = screen.getByRole("table").querySelector<HTMLElement>("tbody tr:first-child");
     const firstParameterName = firstRow?.querySelector("td[data-label='参数名称'] strong")?.textContent ?? "";
@@ -534,8 +521,7 @@ describe("OperationHistoryPanel 集成", () => {
   });
 
   it("table-actionbar 中不再出现断掉的一键回滚按钮", () => {
-    window.history.replaceState(null, "", "/debugging");
-    render(<App initialAppState={userState} />);
+    renderDebuggingPage();
     expect(screen.queryByRole("button", { name: /一键回滚充电策略/ })).not.toBeInTheDocument();
   });
 });
@@ -552,7 +538,7 @@ describe("/debugging-admin 节点元数据", () => {
     });
     await userEvent.click(screen.getByLabelText("HDC 访问模式"));
     await userEvent.click(screen.getByRole("option", { name: "WO · 只写" }));
-    fireEvent.click(screen.getByRole("button", { name: "完成" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
 
