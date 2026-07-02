@@ -111,6 +111,29 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["parameters"],
     responseBody: "ProjectModuleListResponse"
   },
+  "parameters.admin.listProjects": {
+    summary: "List projects for parameter admin",
+    tags: ["parameters"],
+    responseBody: "ProjectAdminListResponse"
+  },
+  "parameters.admin.getProject": {
+    summary: "Get project admin detail",
+    tags: ["parameters"],
+    responseBody: "ProjectAdminDetailResponse"
+  },
+  "parameters.admin.createProject": {
+    summary: "Create project",
+    tags: ["parameters"],
+    requestBody: "CreateProjectRequest",
+    responseBody: "ProjectAdminSummaryResponse",
+    successStatus: 201
+  },
+  "parameters.admin.updateProject": {
+    summary: "Update project",
+    tags: ["parameters"],
+    requestBody: "UpdateProjectRequest",
+    responseBody: "ProjectAdminDetailResponse"
+  },
   "parameters.list": { summary: "List parameters", tags: ["parameters"], responseBody: "ParameterListResponse" },
   "parameters.get": { summary: "Get parameter", tags: ["parameters"], responseBody: "ParameterResponse" },
   "parameters.history": {

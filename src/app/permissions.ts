@@ -19,6 +19,7 @@ const pageRequiredRoles: Record<PageKey, PlatformRoleId> = {
   "parameter-comparison": "guest",
   "parameter-review": "hardware-committer",
   "parameter-admin": "admin",
+  "parameter-admin-projects": "admin",
   "log-dashboard": "hardware-user",
   logs: "hardware-user",
   "log-admin": "admin",

@@ -12,6 +12,20 @@ export type ProjectDto = {
   code: string;
 };
 
+export type ProjectAdminSummaryDto = {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+  moduleCount: number;
+  parameterCount: number;
+  updatedAt: string;
+};
+
+export type ProjectAdminDetailDto = ProjectAdminSummaryDto & {
+  modules: ProjectModuleDto[];
+};
+
 export type ProjectModuleDto = {
   id: string;
   projectId: string;

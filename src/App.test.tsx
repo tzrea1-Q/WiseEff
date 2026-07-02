@@ -238,6 +238,7 @@ function stateForCurrentPath() {
     case "/parameter-review":
       return committerState;
     case "/parameter-admin":
+    case "/parameter-admin/projects":
     case "/log-admin":
     case "/debugging-admin":
       return adminState;
@@ -2869,6 +2870,22 @@ describe("WiseEff app shell", () => {
       aurora: 12,
       nebula: 12
     });
+  });
+
+  it("renders the parameter admin projects workspace without hanging", () => {
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+
+    render(<App initialAppState={adminState} />);
+
+    const topbar = document.querySelector(".topbar") as HTMLElement;
+
+    expect(screen.getByRole("navigation", { name: "参数管理后台分区" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "项目管理" })).toHaveClass("is-active");
+    expect(screen.getByRole("table", { name: "项目管理列表" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "项目清单" })).toBeInTheDocument();
+    expect(within(topbar).queryByRole("button", { name: "新建项目" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "新建项目" })).toBeInTheDocument();
+    expect(document.querySelector(".project-admin-detail")).not.toBeInTheDocument();
   });
 
   it("edits project parameter config and reflects it in comparison data", () => {

@@ -4,11 +4,15 @@ import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
+  createProject,
   getParameterById,
+  getProjectAdminDetail,
   listParameterHistory,
   listParameters,
+  listProjectAdminSummaries,
   listProjectModules,
-  listProjects
+  listProjects,
+  updateProject
 } from "./repository";
 import {
   applyImportBatch,
@@ -25,13 +29,15 @@ import {
 import {
   applyImportBatchBodySchema,
   createImportBatchBodySchema,
+  createProjectBodySchema,
   listParametersQuerySchema,
   paramsWithRoundIdSchema,
   reviewChangeBodySchema,
   saveDraftBodySchema,
-  submitRoundBodySchema
+  submitRoundBodySchema,
+  updateProjectBodySchema
 } from "./schemas";
-import { canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
+import { canAdminParameters, canMergeParameters, canReviewParameters, canViewParameters } from "./policy";
 import { parameterChangeRequestStatuses, parameterSubmissionRoundStatuses } from "./status";
 
 const paramsWithProjectIdSchema = z.object({
@@ -98,6 +104,17 @@ function requireCanReviewOrMerge(auth: AuthContext) {
   }
 }
 
+function requireCanAdmin(auth: AuthContext) {
+  if (!canAdminParameters(auth)) {
+    throw new ApiError("FORBIDDEN", "Parameter admin permission is required.", 403);
+  }
+}
+
+function slugifyProjectId(code: string) {
+  const normalized = code.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return normalized || "project";
+}
+
 function withRouteField(value: unknown, field: string, fieldValue: string) {
   if (
     typeof value === "object" &&
@@ -133,6 +150,69 @@ export function registerParameterRoutes(
     const items = await listProjects(db, { organizationId: auth.organization.id });
 
     return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/parameters/admin/projects", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const items = await listProjectAdminSummaries(db, { organizationId: auth.organization.id });
+
+    return { status: 200, body: { items } };
+  });
+
+  router.get("/api/v1/parameters/admin/projects/:projectId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const item = await getProjectAdminDetail(db, {
+      organizationId: auth.organization.id,
+      projectId: params.projectId
+    });
+
+    if (!item) {
+      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+    }
+
+    return { status: 200, body: { item } };
+  });
+
+  router.post("/api/v1/parameters/admin/projects", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const body = parseWithSchema(createProjectBodySchema, request.body, "Invalid project create payload.");
+    const projectId = body.id?.trim() || slugifyProjectId(body.code);
+    const item = await createProject(db, {
+      organizationId: auth.organization.id,
+      id: projectId,
+      name: body.name.trim(),
+      code: body.code.trim().toUpperCase()
+    });
+
+    return { status: 201, body: { item } };
+  });
+
+  router.patch("/api/v1/parameters/admin/projects/:projectId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const body = parseWithSchema(updateProjectBodySchema, request.body, "Invalid project update payload.");
+    const item = await updateProject(db, {
+      organizationId: auth.organization.id,
+      projectId: params.projectId,
+      name: body.name?.trim(),
+      code: body.code?.trim().toUpperCase(),
+      status: body.status?.trim()
+    });
+
+    if (!item) {
+      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+    }
+
+    return { status: 200, body: { item } };
   });
 
   router.get("/api/v1/projects/:projectId/modules", async (request) => {

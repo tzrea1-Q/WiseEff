@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 export type KpiItem = {
   id: string;
@@ -12,7 +12,11 @@ export type KpiItem = {
 
 export function KpiStrip({ items }: { items: KpiItem[] }) {
   return (
-    <section className="kpi-strip" aria-label="参数管理后台指标">
+    <section
+      className="kpi-strip"
+      aria-label="参数管理后台指标"
+      style={{ "--kpi-count": items.length } as CSSProperties}
+    >
       {items.map((item) => {
         const content = (
           <>

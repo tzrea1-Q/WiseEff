@@ -10,11 +10,15 @@ import { registerParameterRoutes } from "./routes";
 import * as service from "./service";
 
 vi.mock("./repository", () => ({
+  createProject: vi.fn(),
   getParameterById: vi.fn(),
+  getProjectAdminDetail: vi.fn(),
   listParameterHistory: vi.fn(),
   listParameters: vi.fn(),
+  listProjectAdminSummaries: vi.fn(),
   listProjectModules: vi.fn(),
-  listProjects: vi.fn()
+  listProjects: vi.fn(),
+  updateProject: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -406,5 +410,70 @@ describe("parameter routes", () => {
 
     expect(response.status).toBe(200);
     expect(service.reviewChange).toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters/admin/projects requires admin permission", async () => {
+    const db = makeDb();
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view"] }) }),
+      "/api/v1/parameters/admin/projects"
+    );
+
+    expect(response.status).toBe(403);
+    expect(repository.listProjectAdminSummaries).not.toHaveBeenCalled();
+  });
+
+  it("GET /api/v1/parameters/admin/projects returns admin summaries", async () => {
+    const db = makeDb();
+    const item = {
+      id: "aurora",
+      name: "Aurora",
+      code: "AUR",
+      status: "initialized",
+      moduleCount: 3,
+      parameterCount: 12,
+      updatedAt: "2026-07-02T00:00:00.000Z"
+    };
+    vi.mocked(repository.listProjectAdminSummaries).mockResolvedValue([item]);
+
+    const response = await requestJson<{ items: typeof item[] }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameters/admin/projects"
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ items: [item] });
+  });
+
+  it("POST /api/v1/parameters/admin/projects creates a project", async () => {
+    const db = makeDb();
+    const item = {
+      id: "nova",
+      name: "Nova",
+      code: "NOVA",
+      status: "initialized",
+      moduleCount: 0,
+      parameterCount: 0,
+      updatedAt: "2026-07-02T00:00:00.000Z"
+    };
+    vi.mocked(repository.createProject).mockResolvedValue(item);
+
+    const response = await requestJson<{ item: typeof item }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameters/admin/projects",
+      {
+        method: "POST",
+        body: JSON.stringify({ name: "Nova", code: "NOVA" })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ item });
+    expect(repository.createProject).toHaveBeenCalledWith(db, {
+      organizationId: "org-1",
+      id: "nova",
+      name: "Nova",
+      code: "NOVA"
+    });
   });
 });

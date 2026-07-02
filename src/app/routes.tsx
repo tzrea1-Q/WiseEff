@@ -25,6 +25,7 @@ import { migrateLegacyRoleId } from "@/domain/users/types";
 import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
+import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
 import { ParameterManagementHomePage } from "@/ParameterManagementHomePage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
@@ -107,7 +108,8 @@ export function PageRouter({
   const activeProjectInitializationStatus =
     state.projectInitializationStatuses[effectiveParametersProjectId] ?? "initialized";
   const canEditParameters =
-    canPerform(currentRoleId, "parameter.edit") && activeProjectInitializationStatus === "initialized";
+    canPerform(currentRoleId, "parameter.edit") &&
+    (activeProjectInitializationStatus === "initialized" || activeProjectInitializationStatus === "maintenance");
 
   if (!canAccessPage(currentRoleId, page.key)) {
     const requiredRole = getRequiredRoleForPage(page.key);
@@ -168,6 +170,18 @@ export function PageRouter({
       return <ParameterReviewPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-admin":
       return <ParameterAdminPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} runtimeMode={runtimeMode} />;
+    case "parameter-admin-projects":
+      return (
+        <ParameterAdminProjectsPage
+          state={state}
+          dispatch={dispatch}
+          onNavigate={onNavigate}
+          search={search}
+          parameterActions={parameterActions}
+          runtimeMode={runtimeMode}
+          onNewProject={onNewProject}
+        />
+      );
     case "log-dashboard":
       return <LogDashboardPage state={state} onNavigate={onNavigate} />;
     case "logs":

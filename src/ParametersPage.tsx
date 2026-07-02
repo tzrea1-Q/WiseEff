@@ -106,7 +106,7 @@ export function ParametersPage({
   canEdit = true,
   initializationStatus = "initialized"
 }: ParametersPageProps) {
-  const initializationLocked = initializationStatus !== "initialized";
+  const initializationLocked = initializationStatus !== "initialized" && initializationStatus !== "maintenance";
   const effectiveCanEdit = canEdit && !initializationLocked;
   const [searchQuery, setSearchQuery] = useState("");
   const [riskFilters, setRiskFilters] = useState<Set<ParameterRiskFilter>>(new Set());

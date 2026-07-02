@@ -9,6 +9,8 @@ import type {
   ParameterSubmissionItemDto,
   ParameterSubmissionRoundDto,
   ParameterWorkflowAssigneesDto,
+  ProjectAdminDetailDto,
+  ProjectAdminSummaryDto,
   ProjectDto,
   ProjectModuleDto
 } from "./types";
@@ -49,6 +51,10 @@ type ProjectRow = {
   id: string;
   name: string;
   code: string;
+  status?: string;
+  updated_at?: string | Date;
+  module_count?: number | string;
+  parameter_count?: number | string;
 };
 
 type ProjectModuleRow = {
@@ -303,6 +309,18 @@ function toProjectDto(row: ProjectRow): ProjectDto {
     id: row.id,
     name: row.name,
     code: row.code
+  };
+}
+
+function toProjectAdminSummaryDto(row: ProjectRow): ProjectAdminSummaryDto {
+  return {
+    id: row.id,
+    name: row.name,
+    code: row.code,
+    status: row.status ?? "initialized",
+    moduleCount: Number(row.module_count ?? 0),
+    parameterCount: Number(row.parameter_count ?? 0),
+    updatedAt: row.updated_at ? dateTimeToIso(row.updated_at) : new Date(0).toISOString()
   };
 }
 
@@ -575,6 +593,118 @@ export async function getProjectById(db: Queryable, query: { organizationId: str
   );
 
   return result.rows[0] ? toProjectDto(result.rows[0]) : null;
+}
+
+export async function listProjectAdminSummaries(db: Queryable, query: { organizationId: string }) {
+  const result = await db.query<ProjectRow>(
+    `
+    select
+      p.id,
+      p.name,
+      p.code,
+      p.status,
+      p.updated_at,
+      coalesce(module_counts.module_count, 0) as module_count,
+      coalesce(param_counts.parameter_count, 0) as parameter_count
+    from projects p
+    left join (
+      select project_id, count(*)::int as module_count
+      from project_modules
+      where organization_id = $1
+      group by project_id
+    ) module_counts on module_counts.project_id = p.id
+    left join (
+      select project_id, count(*)::int as parameter_count
+      from project_parameter_values
+      where organization_id = $1
+      group by project_id
+    ) param_counts on param_counts.project_id = p.id
+    where p.organization_id = $1
+    order by p.name asc
+    `,
+    [query.organizationId]
+  );
+
+  return result.rows.map(toProjectAdminSummaryDto);
+}
+
+export async function getProjectAdminDetail(
+  db: Queryable,
+  query: { organizationId: string; projectId: string }
+): Promise<ProjectAdminDetailDto | null> {
+  const summaries = await listProjectAdminSummaries(db, { organizationId: query.organizationId });
+  const summary = summaries.find((item) => item.id === query.projectId);
+  if (!summary) {
+    return null;
+  }
+
+  const modules = await listProjectModules(db, query);
+  return { ...summary, modules };
+}
+
+export async function createProject(
+  db: Queryable,
+  input: { organizationId: string; id: string; name: string; code: string; status?: string }
+) {
+  const result = await db.query<ProjectRow>(
+    `
+    insert into projects (id, organization_id, name, code, status)
+    values ($1, $2, $3, $4, $5)
+    returning id, name, code, status, updated_at
+    `,
+    [input.id, input.organizationId, input.name, input.code, input.status ?? "initialized"]
+  );
+
+  const row = result.rows[0];
+  if (!row) {
+    throw new Error("Failed to create project.");
+  }
+
+  return toProjectAdminSummaryDto({ ...row, module_count: 0, parameter_count: 0 });
+}
+
+export async function updateProject(
+  db: Queryable,
+  input: { organizationId: string; projectId: string; name?: string; code?: string; status?: string }
+) {
+  const assignments: string[] = [];
+  const values: unknown[] = [input.organizationId, input.projectId];
+
+  if (input.name !== undefined) {
+    values.push(input.name);
+    assignments.push(`name = $${values.length}`);
+  }
+  if (input.code !== undefined) {
+    values.push(input.code);
+    assignments.push(`code = $${values.length}`);
+  }
+  if (input.status !== undefined) {
+    values.push(input.status);
+    assignments.push(`status = $${values.length}`);
+  }
+
+  if (assignments.length === 0) {
+    return getProjectAdminDetail(db, { organizationId: input.organizationId, projectId: input.projectId });
+  }
+
+  assignments.push("updated_at = now()");
+
+  const result = await db.query<ProjectRow>(
+    `
+    update projects
+    set ${assignments.join(", ")}
+    where organization_id = $1
+      and id = $2
+    returning id, name, code, status, updated_at
+    `,
+    values
+  );
+
+  if (!result.rows[0]) {
+    return null;
+  }
+
+  return getProjectAdminDetail(db, { organizationId: input.organizationId, projectId: input.projectId });
 }
 
 export async function listProjectModules(db: Queryable, query: { organizationId: string; projectId: string }) {

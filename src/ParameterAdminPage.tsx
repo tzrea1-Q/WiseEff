@@ -8,6 +8,7 @@ import type { ParameterImportBatchDto, ParameterImportSourceItem } from "@/appli
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
+import { ParameterAdminSubNav } from "./components/admin/ParameterAdminSubNav";
 import { KpiStrip, type KpiItem } from "./components/KpiStrip";
 import { ModuleManagementDialog } from "./components/admin/ModuleManagementDialog";
 import { ParameterDefinitionDialog } from "./components/admin/ParameterDefinitionDialog";
@@ -285,6 +286,7 @@ export function ParameterAdminPage({
 
   return (
     <div className="param-admin-shell">
+      <ParameterAdminSubNav active="library" onNavigate={onNavigate} />
       <KpiStrip items={kpiItems} />
       <AgentInsightBar
         dismissedIds={state.insightDismissedIds}

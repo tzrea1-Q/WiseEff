@@ -679,6 +679,150 @@
         }
       }
     },
+    "/api/v1/parameters/admin/projects": {
+      "get": {
+        "operationId": "parameters.admin.listProjects",
+        "summary": "List projects for parameter admin",
+        "tags": [
+          "parameters"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAdminListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "parameters.admin.createProject",
+        "summary": "Create project",
+        "tags": [
+          "parameters"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAdminSummaryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/parameters/admin/projects/{projectId}": {
+      "get": {
+        "operationId": "parameters.admin.getProject",
+        "summary": "Get project admin detail",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAdminDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "parameters.admin.updateProject",
+        "summary": "Update project",
+        "tags": [
+          "parameters"
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectAdminDetailResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/parameters": {
       "get": {
         "operationId": "parameters.list",
@@ -1634,6 +1778,33 @@
         }
       }
     },
+    "/api/v1/debugging/nodes": {
+      "get": {
+        "operationId": "debugging.listRuntimeNodes",
+        "summary": "List runtime debug nodes",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/debugging/admin/parameters": {
       "get": {
         "operationId": "debugging.admin.listParameters",
@@ -2020,6 +2191,639 @@
             "$ref": "#/components/responses/ErrorResponse"
           },
           "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/nodes": {
+      "get": {
+        "operationId": "debugging.admin.listNodes",
+        "summary": "List debug node registry entries",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "debugging.admin.createNode",
+        "summary": "Create debug node registry entry",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugNodeAdminRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/nodes/{nodeId}": {
+      "patch": {
+        "operationId": "debugging.admin.updateNode",
+        "summary": "Update debug node registry entry",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugNodeAdminPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/modules": {
+      "get": {
+        "operationId": "debugging.admin.listModules",
+        "summary": "List debug node module registry entries",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeModuleListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "post": {
+        "operationId": "debugging.admin.createModule",
+        "summary": "Create debug node module registry entry",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugNodeModuleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/modules/{moduleName}": {
+      "patch": {
+        "operationId": "debugging.admin.updateModule",
+        "summary": "Update debug node module registry entry",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "moduleName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugNodeModulePatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "debugging.admin.deleteModule",
+        "summary": "Delete debug node module registry entry",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "moduleName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "409": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/nodes/{nodeId}/bindings/{protocol}": {
+      "put": {
+        "operationId": "debugging.admin.upsertNodeBinding",
+        "summary": "Upsert debug node protocol binding",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminNodeBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminNodeBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "debugging.admin.patchNodeBinding",
+        "summary": "Update debug node protocol binding",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DebugAdminNodeBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminNodeBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/nodes/{nodeId}/bindings/{protocol}/archive": {
+      "post": {
+        "operationId": "debugging.admin.archiveNodeBinding",
+        "summary": "Archive debug node protocol binding",
+        "tags": [
+          "debugging"
+        ],
+        "parameters": [
+          {
+            "name": "nodeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "protocol",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugAdminNodeBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/admin/reload-bindings": {
+      "get": {
+        "operationId": "debugging.admin.listReloadBindings",
+        "summary": "List parameter reload bindings",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterReloadBindingListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "put": {
+        "operationId": "debugging.admin.upsertReloadBinding",
+        "summary": "Upsert parameter reload binding",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParameterReloadBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterReloadBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "debugging.admin.patchReloadBinding",
+        "summary": "Patch parameter reload binding",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParameterReloadBindingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterReloadBindingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "403": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/reload-targets": {
+      "get": {
+        "operationId": "debugging.listReloadTargets",
+        "summary": "List managed parameters with reload bindings for a project",
+        "tags": [
+          "debugging"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParameterReloadTargetListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/debugging/parameters/reload": {
+      "post": {
+        "operationId": "debugging.reloadParameter",
+        "summary": "Reload managed parameter value onto device",
+        "tags": [
+          "debugging"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReloadParameterRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DebugNodeOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
             "$ref": "#/components/responses/ErrorResponse"
           },
           "500": {
@@ -2709,6 +3513,26 @@
         "type": "object",
         "x-wiseeff-schema": "ProjectModuleListResponse"
       },
+      "ProjectAdminListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectAdminListResponse"
+      },
+      "ProjectAdminDetailResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectAdminDetailResponse"
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "CreateProjectRequest"
+      },
+      "ProjectAdminSummaryResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ProjectAdminSummaryResponse"
+      },
+      "UpdateProjectRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "UpdateProjectRequest"
+      },
       "ParameterListResponse": {
         "type": "object",
         "x-wiseeff-schema": "ParameterListResponse"
@@ -2833,6 +3657,10 @@
         "type": "object",
         "x-wiseeff-schema": "DebugParameterListResponse"
       },
+      "DebugNodeListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeListResponse"
+      },
       "DebugAdminParameterListResponse": {
         "type": "object",
         "x-wiseeff-schema": "DebugAdminParameterListResponse"
@@ -2861,6 +3689,66 @@
         "type": "object",
         "x-wiseeff-schema": "DebugAdminBindingResponse"
       },
+      "DebugNodeAdminRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeAdminRequest"
+      },
+      "DebugNodeResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeResponse"
+      },
+      "DebugNodeAdminPatchRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeAdminPatchRequest"
+      },
+      "DebugAdminNodeBindingRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminNodeBindingRequest"
+      },
+      "DebugAdminNodeBindingResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugAdminNodeBindingResponse"
+      },
+      "DebugNodeModuleListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeModuleListResponse"
+      },
+      "DebugNodeModuleRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeModuleRequest"
+      },
+      "DebugNodeModuleResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeModuleResponse"
+      },
+      "DebugNodeModulePatchRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeModulePatchRequest"
+      },
+      "ParameterReloadBindingListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterReloadBindingListResponse"
+      },
+      "ParameterReloadBindingRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterReloadBindingRequest"
+      },
+      "ParameterReloadBindingResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterReloadBindingResponse"
+      },
+      "ParameterReloadTargetListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "ParameterReloadTargetListResponse"
+      },
+      "ReloadParameterRequest": {
+        "type": "object",
+        "x-wiseeff-schema": "ReloadParameterRequest"
+      },
+      "DebugNodeOperationResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "DebugNodeOperationResponse"
+      },
       "CreateDebugSessionRequest": {
         "type": "object",
         "x-wiseeff-schema": "CreateDebugSessionRequest"
@@ -2876,10 +3764,6 @@
       "ReadDebugNodeRequest": {
         "type": "object",
         "x-wiseeff-schema": "ReadDebugNodeRequest"
-      },
-      "DebugNodeOperationResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "DebugNodeOperationResponse"
       },
       "WriteDebugNodeRequest": {
         "type": "object",
