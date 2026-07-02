@@ -70,9 +70,11 @@ The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_
 
 Runtime split:
 
-- `mock` mode keeps `/debugging` reducer behavior for demos and component tests.
+- `mock` mode keeps `DebuggingPage` reducer behavior for demos and component tests; the `/debugging` route is not linked in navigation.
 - Local HDC helpers remain available for non-API `/node-debugging` experiments.
 - `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
+
+**Parameter debugging route:** `/debugging` is restored (TD-032). It federates M1 parameter metadata with `parameter_reload_bindings`, creates `parameter_reload` sessions, and writes through `POST /api/v1/debugging/parameters/reload`. `/node-debugging` remains the legacy M3 node catalog workspace.
 
 ### Local Device Bridge (Phase A)
 
@@ -88,23 +90,22 @@ The browser health probe is UI guidance only; bridge-backed device execution rem
 
 Bridge management (rename/revoke, multi-bridge target picker) behavior is unchanged from Phase 2.
 
-`/debugging-admin` uses API-backed catalog management in `api` mode. It calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, archive, restore, and bind debug parameters. `mock` mode keeps the local `configDraft` and JSON editing path for demos and component tests.
+`/debugging-admin` (debug management console) uses API-backed **logical debug node** catalog management in `api` mode. It calls `src/infrastructure/http/debuggingAdminClient.ts` to list, create, update, and archive adjustable nodes (`debug_nodes`). Protocol-specific device paths live in separate **`debug_node_bindings`** rows (HDC and ADB per logical node). Legacy parameter catalog APIs remain on the server for audit/history but are no longer exposed in this Admin UI. `mock` mode keeps a slim local path for demos and component tests.
 
 ### Debugging Admin UI
 
-Page shell lives in `src/DebuggingAdminPage.tsx` (mirrors the `/parameter-admin` rhythm). The main surface is a full-width catalog table; create/edit/archive flows open modal dialogs instead of a split list-plus-inline-editor layout.
+Page shell lives in `src/DebuggingAdminPage.tsx`. The main surface is a full-width **node directory** table; create/edit/archive flows open modal dialogs.
 
-- `DebugParameterLibraryTable` — toolbar search, risk chips, module multi-select, coverage/status filters, and row actions.
-- `DebugParameterDefinitionDialog` — metadata editor opened from the row **Edit** action (save; restore when archived).
-- `DebugParameterBindingsDialog` — HDC and ADB binding panels opened from **Path bindings**.
-- `CreateDebugParameterDialog` — empty draft plus default bindings, opened from the table **Add parameter** action.
-- `ArchiveDebugParameterDialog` — confirm archive from a row action or the definition dialog.
+- `DebugNodeLibraryTable` — toolbar search, protocol coverage filters, and row actions (edit node, edit bindings, archive).
+- `DebugNodeEditorDialog` — logical node metadata only (name, description, sort order, enabled).
+- `DebugNodeBindingsDialog` — per-protocol binding editor (HDC / ADB node path, access mode, enabled, notes).
+- `ArchiveDebugNodeDialog` — confirm archive from a row action.
 
-Complex debug parameters use `src/debugValueKind.ts` helpers shared by admin and runtime surfaces. `DebugParameterDefinitionDialog` exposes value kind, format, normalization mode, and multiline code editors for complex current/target values. `DebugParameterLibraryTable` shows a compact format badge. `/node-debugging` renders complex values as compact previews with format badges, opens a wide sheet for inspect/edit, and shows operation-history preview plus digest instead of full payloads.
+Admin saves bindings through `PUT/PATCH /api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol` and can disable one protocol without affecting the other.
 
-URL-synced filters and dialog deep links use `useDebugAdminSearch`. Mock mode keeps a collapsible config-source preview footer below the table for `power-management.json` export/sync.
+The **parameter debugging** route (`/debugging`) is retired from navigation and resolves to an unavailable page. Runtime catalog for `/node-debugging` comes from `GET /api/v1/debugging/nodes?protocol=...` (`listRuntimeNodes`); the API inner-joins enabled `debug_node_bindings` for the selected protocol (Option A filter). Writes use `nodeId`. Parameter reload endpoints return HTTP 410.
 
-The runtime coordinator hydrates devices and debugging parameters after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. A current residual gap is that snapshots created from `/node-debugging` writes are not yet promoted into `/debugging`'s `lastDebugSnapshot` rollback card; the M3 E2E therefore verifies rollback through the API if that UI affordance is disabled.
+The runtime coordinator hydrates devices and runtime nodes after auth, detects `Aurora Simulator 1`, starts a session, dispatches node operations into operation history, and records valid write snapshots returned by the API. Snapshot rollback card hydration from `/node-debugging` writes may still lag API state (**TD-015**). Rollback remains available via API and operation history.
 
 The M3 API smoke lives in `e2e/debugging.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m3`. Playwright starts the backend with `DEBUG_DEVICE_GATEWAY_MODE=simulator` and the frontend with `VITE_WISEEFF_RUNTIME_MODE=api`.
 

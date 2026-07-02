@@ -60,7 +60,7 @@ describe("TRANSFER_REVIEW", () => {
     expect(updated?.assignedTo).toBe("specialist-wang");
     expect(updated?.status).toBe(existing.status);
     expect(updated?.reviewerNote).toBe("请协助审查新型号");
-    expect(next.notifications[0]).toContain(existing.id);
+    expect(next.notifications[0]).toContain(existing.title);
     expect(next.notifications[0]).toContain("specialist-wang");
   });
 

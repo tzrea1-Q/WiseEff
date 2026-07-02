@@ -12,10 +12,14 @@ vi.mock("@/infrastructure/http/authClient", () => ({
   readLocalAuthToken: vi.fn(() => "we_local_test_token")
 }));
 
-vi.mock("@/infrastructure/http/runtimeMode", () => ({
-  wiseEffApiAuthorization: undefined,
-  wiseEffApiBaseUrl: "http://127.0.0.1:8787"
-}));
+vi.mock("@/infrastructure/http/runtimeMode", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/infrastructure/http/runtimeMode")>();
+  return {
+    ...actual,
+    wiseEffApiAuthorization: undefined,
+    wiseEffApiBaseUrl: "http://127.0.0.1:8787"
+  };
+});
 
 describe("xiaozeHttpAgent", () => {
   beforeEach(() => {

@@ -262,6 +262,55 @@ export async function seedM3Debugging(db: Database): Promise<void> {
 
       await tx.query(
         `
+        insert into debug_nodes (
+          id, organization_id, project_id, name, description, detailed_description, module, enabled
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, true)
+        on conflict (id) do update set
+          name = excluded.name,
+          description = excluded.description,
+          detailed_description = excluded.detailed_description,
+          module = excluded.module,
+          enabled = excluded.enabled,
+          updated_at = now()
+        `,
+        [
+          parameter.id,
+          organizationId,
+          projectId,
+          parameter.name,
+          parameter.description,
+          parameter.description,
+          parameter.module
+        ]
+      );
+
+      await tx.query(
+        `
+        insert into debug_node_bindings (
+          id, organization_id, project_id, node_id, protocol, node_path, access_mode, enabled, notes
+        )
+        values ($1, $2, $3, $4, 'hdc', $5, $6, true, $7)
+        on conflict (node_id, protocol) do update set
+          node_path = excluded.node_path,
+          access_mode = excluded.access_mode,
+          enabled = excluded.enabled,
+          notes = excluded.notes,
+          updated_at = now()
+        `,
+        [
+          `${parameter.id}:hdc`,
+          organizationId,
+          projectId,
+          parameter.id,
+          parameter.nodePath,
+          parameter.accessMode,
+          "Seeded HDC node binding."
+        ]
+      );
+
+      await tx.query(
+        `
         insert into debugging_parameter_node_bindings (
           id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
         )
@@ -274,6 +323,18 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           updated_at = now()
         `,
         [`${parameter.id}:hdc`, organizationId, projectId, parameter.id, parameter.nodePath, parameter.accessMode, "Seeded HDC node binding."]
+      );
+    }
+
+    const moduleNames = [...new Set(parameters.map((parameter) => parameter.module.trim()).filter(Boolean))];
+    for (const moduleName of moduleNames) {
+      await tx.query(
+        `
+        insert into debug_node_modules (id, organization_id, name, description, owner, scope)
+        values ($1, $2, $3, '', '', '')
+        on conflict (organization_id, name) do nothing
+        `,
+        [`dmod-${organizationId}-${moduleName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, organizationId, moduleName]
       );
     }
   });

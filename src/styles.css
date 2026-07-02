@@ -4763,6 +4763,28 @@ td small {
   width: 188px;
 }
 
+.parameters-table-grid.debug-admin-node-library-grid col.debug-admin-col-name {
+  width: auto;
+}
+
+.parameters-table-grid.debug-admin-node-library-grid col.debug-admin-col-module {
+  width: 112px;
+}
+
+.parameters-table-grid.debug-admin-node-library-grid col.debug-admin-col-format {
+  width: 76px;
+}
+
+.parameters-table-grid.debug-admin-node-library-grid col.debug-admin-col-actions {
+  width: 256px;
+}
+
+.parameters-table-grid.debug-admin-node-library-grid td[data-label="模块"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .parameters-table-grid.debug-admin-library-grid th,
 .parameters-table-grid.debug-admin-library-grid td {
   width: auto;
@@ -4844,6 +4866,67 @@ td small {
   margin: 8px 12px;
   font-size: 12px;
   color: #ba1a1a;
+}
+
+.param-admin-shell .debug-admin-catalog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.param-admin-shell .debug-admin-catalog-tab.active {
+  color: var(--app-primary);
+  background: #eef5ff;
+  border-color: rgba(0, 82, 204, 0.28);
+}
+
+.debug-admin-split-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+
+.debug-admin-split-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.debug-admin-note {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.debug-admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.debug-admin-table th,
+.debug-admin-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--outline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.debug-admin-table thead th {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-low);
+}
+
+.debug-admin-table tbody tr:hover td {
+  background: rgba(0, 82, 204, 0.03);
 }
 
 .debug-admin-coverage-badge {
@@ -4934,8 +5017,33 @@ td small {
 }
 
 .debug-admin-field [data-slot="input"],
-.debug-admin-field [data-slot="select-trigger"] {
+.debug-admin-field [data-slot="select-trigger"],
+.debug-admin-field select {
   width: 100%;
+}
+
+.debug-admin-field select {
+  min-height: 36px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  outline: 0;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.debug-admin-field select:focus {
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.debug-admin-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .debug-admin-field input[type="checkbox"] {
@@ -5036,6 +5144,23 @@ td small {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.debug-admin-form-fields .debug-admin-field--full {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.debug-admin-form-fields .debug-admin-field--full .debug-admin-field-label {
+  white-space: normal;
+}
+
+.debug-admin-form-fields .debug-admin-field--full [data-slot="textarea"] {
+  min-height: 72px;
+  resize: none;
 }
 
 @media (max-width: 860px) {
@@ -7868,6 +7993,22 @@ td small {
   font-weight: 700;
 }
 
+.node-debugging-page .parameters-table-grid th:nth-child(7),
+.node-debugging-page .parameters-table-grid td:nth-child(7),
+.node-debugging-page .parameters-table-grid th:last-child,
+.node-debugging-page .parameters-table-grid td:last-child {
+  width: 88px;
+  min-width: 88px;
+  max-width: 88px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.node-debugging-page .parameters-table-grid td.parameter-row-actions .icon-button {
+  display: inline-grid;
+  vertical-align: middle;
+}
+
 .node-debugging-page .node-row-error {
   color: #b42318;
   display: block;
@@ -8147,8 +8288,6 @@ td small {
 
   .node-debugging-page .parameters-table-grid th:last-child,
   .node-debugging-page .parameters-table-grid td:last-child {
-    width: 72px;
-    min-width: 72px;
     text-align: center;
   }
 
@@ -10701,6 +10840,15 @@ td small {
 
   .parameters-table-grid td:first-child::before {
     content: "";
+  }
+
+  .node-debugging-page .parameters-table-grid td.parameter-row-actions {
+    align-items: center;
+  }
+
+  .node-debugging-page .parameters-table-grid td.parameter-row-actions .icon-button {
+    justify-self: center;
+    margin-inline: auto;
   }
 
   .parameter-value-diff {
@@ -14425,8 +14573,8 @@ body.xiaoze-popup-resize-active {
 
 .param-admin-module-parameters {
   display: grid;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: 8px;
+  padding: 8px 12px 12px;
 }
 
 .param-admin-module-parameters-head {
@@ -14453,12 +14601,11 @@ body.xiaoze-popup-resize-active {
 }
 
 .param-admin-module-parameter-list li {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 12px;
+  padding: 8px 10px;
   border: 1px solid var(--outline);
   border-radius: 8px;
   background: #fff;
@@ -14468,7 +14615,6 @@ body.xiaoze-popup-resize-active {
   display: grid;
   gap: 4px;
   min-width: 0;
-  flex: 1 1 240px;
 }
 
 .param-admin-module-parameter-meta code {
@@ -14480,6 +14626,24 @@ body.xiaoze-popup-resize-active {
   color: var(--app-muted);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.param-admin-module-parameter-summary {
+  color: var(--text);
+}
+
+.param-admin-module-parameter-detail {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.param-admin-module-parameter-list li .button {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .param-admin-module-error {

@@ -456,6 +456,7 @@ type DebugParameterEditorDraft = {
   name: string;
   key: string;
   description: string;
+  detailedDescription?: string;
   module: string;
   currentValue: string;
   targetValue: string;

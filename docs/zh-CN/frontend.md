@@ -67,8 +67,8 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 
 设备调试：
 
-- `/node-debugging`：通过 API mode gateway 读写节点、生成快照和审计。
-- `/debugging`：保留参数调试工作台和 rollback 入口。
+- `/node-debugging`：通过 API mode gateway 读写节点、生成快照和审计（当前主入口）。
+- `/debugging`：**暂时下线**（2026-07-01）；路由显示不可用页并引导至节点调试，因设备参数重载能力尚未就绪。`DebuggingPage` 组件保留供后续恢复与组件测试。
 - `/debugging-admin`：API mode 下通过 `src/infrastructure/http/debuggingAdminClient.ts` 管理调试 catalog，可查询、新增、更新、归档、恢复并维护 HDC/ADB bindings；mock mode 保留本地 `configDraft` 和 JSON 编辑路径，用于演示和组件测试。
 
 ### 本地 Device Bridge（Phase A）

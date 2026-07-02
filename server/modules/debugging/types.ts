@@ -10,6 +10,14 @@ import type {
 } from "./status";
 import type { DebugConnectionProtocol } from "./protocol";
 
+export const DEBUG_SESSION_KINDS = ["node", "parameter_reload"] as const;
+export type DebugSessionKind = (typeof DEBUG_SESSION_KINDS)[number];
+export const DEBUG_SESSION_KIND_NODE: DebugSessionKind = "node";
+export const DEBUG_SESSION_KIND_PARAMETER_RELOAD: DebugSessionKind = "parameter_reload";
+
+export const DEBUG_SESSION_EXECUTION_MODES = ["server", "bridge"] as const;
+export type DebugSessionExecutionMode = (typeof DEBUG_SESSION_EXECUTION_MODES)[number];
+
 export const DEBUG_VALUE_KINDS = ["scalar", "complex"] as const;
 export type DebugValueKind = (typeof DEBUG_VALUE_KINDS)[number];
 export const DEBUG_VALUE_KIND_SCALAR: DebugValueKind = "scalar";
@@ -136,6 +144,7 @@ export type DebugSessionRecord = {
   executionMode: DebugSessionExecutionMode;
   bridgeId: string | null;
   bridgeMachineLabel: string | null;
+  sessionKind: DebugSessionKind;
   actorUserId: string;
   status: DebugSessionStatus;
   startedAt: string;
@@ -184,6 +193,7 @@ export type NodeOperationRecord = {
   projectId: string;
   sessionId: string;
   parameterId: string | null;
+  parameterDefinitionId: string | null;
   protocol: DebugConnectionProtocol;
   nodePath: string;
   operationType: DebugOperationType;
@@ -207,5 +217,89 @@ export type NodeOperationRecord = {
   valuePreview: string | null;
 };
 
-export const DEBUG_SESSION_EXECUTION_MODES = ["server", "bridge"] as const;
-export type DebugSessionExecutionMode = (typeof DEBUG_SESSION_EXECUTION_MODES)[number];
+
+export type DebugNodeModuleRecord = {
+  name: string;
+  description: string;
+  owner: string;
+  scope: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DebugNodeRecord = {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  name: string;
+  description: string;
+  detailedDescription: string;
+  module: string;
+  valueKind: DebugValueKind;
+  valueFormat: DebugValueFormat;
+  normalizationMode: DebugNormalizationMode;
+  maxValueBytes: number | null;
+  enabled: boolean;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type DebugNodeBindingRecord = {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  nodeId: string;
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugAccessMode;
+  enabled: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Runtime list row: logical node metadata plus the active protocol binding. */
+export type DebugRuntimeNodeRecord = DebugNodeRecord & {
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugAccessMode;
+};
+
+export type DebugNodeWithBindingsRecord = DebugNodeRecord & {
+  bindings: DebugNodeBindingRecord[];
+};
+
+export type ParameterReloadBindingRecord = {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  parameterDefinitionId: string;
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugAccessMode;
+  enabled: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ParameterReloadTargetRecord = {
+  parameterDefinitionId: string;
+  name: string;
+  module: string;
+  unit: string;
+  range: string;
+  risk: DebugRiskLevel;
+  currentValue: string;
+  recommendedValue: string;
+  binding: {
+    id: string;
+    protocol: DebugConnectionProtocol;
+    nodePath: string;
+    accessMode: DebugAccessMode;
+    enabled: boolean;
+  } | null;
+};

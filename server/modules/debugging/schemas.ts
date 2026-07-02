@@ -168,7 +168,8 @@ export const createDebugSessionBodySchema = z.object({
   deviceId: nonEmptyString,
   targetId: nonEmptyString,
   bridgeId: nonEmptyString.optional(),
-  protocol: protocolSchema
+  protocol: protocolSchema,
+  sessionKind: z.enum(["node", "parameter_reload"]).default("node")
 }).refine((value) => !value.targetId.startsWith("bridge:") || Boolean(value.bridgeId), {
   message: "bridgeId is required when targetId references a device bridge target.",
   path: ["bridgeId"]
@@ -178,24 +179,114 @@ export const readNodeBodySchema = z
   .object({
     sessionId: nonEmptyString,
     parameterId: nonEmptyString.optional(),
+    nodeId: nonEmptyString.optional(),
     nodePath: nodePathSchema.optional()
   })
-  .refine((value) => Boolean(value.parameterId ?? value.nodePath), {
-    message: "Either parameterId or nodePath is required.",
-    path: ["parameterId"]
+  .refine((value) => Boolean(value.parameterId ?? value.nodeId ?? value.nodePath), {
+    message: "Either nodeId, parameterId, or nodePath is required.",
+    path: ["nodeId"]
   });
 
-export const writeNodeBodySchema = z.object({
-  sessionId: nonEmptyString,
-  parameterId: nonEmptyString,
-  nodePath: nodePathSchema.optional(),
-  value: nonEmptyString,
-  readBack: z.boolean().default(true),
-  approvalId: nonEmptyString.optional(),
-  confirmationToken: nonEmptyString.optional(),
-  expectedPreviousValue: nonEmptyString.optional()
-});
+export const writeNodeBodySchema = z
+  .object({
+    sessionId: nonEmptyString,
+    parameterId: nonEmptyString.optional(),
+    nodeId: nonEmptyString.optional(),
+    nodePath: nodePathSchema.optional(),
+    value: nonEmptyString,
+    readBack: z.boolean().default(true),
+    approvalId: nonEmptyString.optional(),
+    confirmationToken: nonEmptyString.optional(),
+    expectedPreviousValue: nonEmptyString.optional()
+  })
+  .refine((value) => Boolean(value.parameterId ?? value.nodeId ?? value.nodePath), {
+    message: "Either nodeId, parameterId, or nodePath is required.",
+    path: ["nodeId"]
+  });
 
 export const rollbackSnapshotBodySchema = z.object({
   confirmationToken: nonEmptyString
 });
+
+export const listRuntimeDebugNodesQuerySchema = z.object({
+  projectId: nonEmptyString,
+  protocol: protocolSchema.optional()
+});
+
+export const listParameterReloadTargetsQuerySchema = z.object({
+  projectId: nonEmptyString,
+  protocol: protocolSchema
+});
+
+export const reloadParameterBodySchema = z.object({
+  sessionId: nonEmptyString,
+  parameterDefinitionId: nonEmptyString,
+  value: nonEmptyString,
+  approvalId: nonEmptyString.optional(),
+  confirmationToken: nonEmptyString.optional()
+});
+
+export const listDebugNodesAdminQuerySchema = z.object({
+  projectId: nonEmptyString.optional(),
+  protocol: protocolSchema.optional(),
+  includeArchived: booleanQuerySchema
+});
+
+export const debugNodeBindingWriteSchema = z.object({
+  nodePath: nodePathSchema,
+  accessMode: z.enum(debugAccessModes),
+  enabled: z.boolean().default(true),
+  notes: optionalTrimmedString
+});
+
+export const debugAdminNodeParamsSchema = z.object({
+  nodeId: nonEmptyString
+});
+
+export const debugAdminNodeBindingParamsSchema = z.object({
+  nodeId: nonEmptyString,
+  protocol: z.enum(debugConnectionProtocols)
+});
+
+export const writeDebugNodeAdminBodySchema = z.object({
+  projectId: nullableProjectIdSchema,
+  name: nonEmptyString,
+  description: optionalTrimmedString.default(""),
+  detailedDescription: optionalTrimmedString.default(""),
+  module: nonEmptyString,
+  valueKind: debugValueKindSchema.default(DEBUG_VALUE_KIND_SCALAR),
+  valueFormat: debugValueFormatSchema.default(DEBUG_VALUE_FORMAT_RAW),
+  normalizationMode: debugNormalizationModeSchema.default(DEBUG_NORMALIZATION_MODE_TRIM),
+  maxValueBytes: z.number().int().positive().nullable().optional(),
+  enabled: z.boolean().default(true),
+  bindings: z.array(debugParameterNodeBindingSchema).optional()
+});
+
+export const patchDebugNodeAdminBodySchema = writeDebugNodeAdminBodySchema.partial();
+
+export const upsertParameterReloadBindingBodySchema = z.object({
+  projectId: nullableProjectIdSchema,
+  parameterDefinitionId: nonEmptyString,
+  protocol: protocolSchema,
+  nodePath: nodePathSchema,
+  accessMode: z.enum(debugAccessModes).default("RW"),
+  enabled: z.boolean().default(true),
+  notes: z.string().trim().nullable().optional()
+});
+
+export const listParameterReloadBindingsAdminQuerySchema = z.object({
+  projectId: nonEmptyString.optional()
+});
+
+export const debugAdminModuleParamsSchema = z.object({
+  moduleName: nonEmptyString
+});
+
+export const writeDebugNodeModuleAdminBodySchema = z.object({
+  name: nonEmptyString,
+  description: optionalTrimmedString.default(""),
+  owner: optionalTrimmedString.default(""),
+  scope: optionalTrimmedString.default("")
+});
+
+export const patchDebugNodeModuleAdminBodySchema = writeDebugNodeModuleAdminBodySchema.partial();

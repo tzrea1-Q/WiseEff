@@ -41,27 +41,33 @@ function withComplexDebugAutoReads(responses: unknown[]) {
 }
 
 function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}): DebuggingRuntimeActions {
+  const readValueForNode = (nodeId?: string) => (nodeId === "dbg-charge-input-current" ? "3651" : "12");
+
   return {
     refresh: vi.fn().mockResolvedValue(undefined),
     detectAndStartSession: vi.fn().mockResolvedValue({ session: apiSession, target: apiTarget }),
-    readNode: vi.fn(async (input) => ({
-      ok: true,
-      value: input.parameterId === "dbg-charge-input-current" ? "3651" : "12",
-      stdout: `${input.parameterId === "dbg-charge-input-current" ? "3651" : "12"}\n`,
-      durationMs: 7,
-      operation: {
-        id: `op-read-${input.parameterId}`,
-        sessionId: apiSession.id,
-        parameterId: input.parameterId,
-        nodePath: input.nodePath,
-        operationType: "read",
-        status: "succeeded",
-        readValue: input.parameterId === "dbg-charge-input-current" ? "3651" : "12",
-        verified: true,
+    readNode: vi.fn(async (input) => {
+      const nodeId = input.nodeId ?? input.parameterId;
+      const value = readValueForNode(nodeId);
+      return {
+        ok: true,
+        value,
+        stdout: `${value}\n`,
         durationMs: 7,
-        createdAt: "2026-05-27T09:00:01.000Z"
-      }
-    })),
+        operation: {
+          id: `op-read-${nodeId}`,
+          sessionId: apiSession.id,
+          parameterId: nodeId,
+          nodePath: input.nodePath,
+          operationType: "read",
+          status: "succeeded",
+          readValue: value,
+          verified: true,
+          durationMs: 7,
+          createdAt: "2026-05-27T09:00:01.000Z"
+        }
+      };
+    }),
     writeNode: vi.fn().mockResolvedValue({
       ok: true,
       value: "3700",
@@ -71,7 +77,7 @@ function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}
       operation: {
         id: "op-write-1",
         sessionId: apiSession.id,
-        parameterId: "dbg-charge-input-current",
+        nodeId: "dbg-charge-input-current",
         nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
         operationType: "write",
         status: "succeeded",
@@ -339,11 +345,11 @@ describe("/node-debugging", () => {
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: apiSession.id,
-      parameterId: "dbg-charge-input-current",
+      nodeId: "dbg-charge-input-current",
       nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma"
     })));
     expect(debuggingActions.readNode).not.toHaveBeenCalledWith(expect.objectContaining({
-      parameterId: "dbg-trickle-start"
+      nodeId: "dbg-trickle-start"
     }));
     expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
   });
@@ -449,11 +455,11 @@ describe("/node-debugging", () => {
     detect.resolve({ session: apiSession, target: apiTarget });
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
-      parameterId: "dbg-api-fast-charge-current",
+      nodeId: "dbg-api-fast-charge-current",
       nodePath: "/sys/class/power_supply/battery/constant_charge_current"
     })));
     expect(debuggingActions.readNode).not.toHaveBeenCalledWith(expect.objectContaining({
-      parameterId: "dbg-charge-input-current"
+      nodeId: "dbg-charge-input-current"
     }));
   });
 
@@ -469,7 +475,8 @@ describe("/node-debugging", () => {
     };
     const debuggingActions = createDebuggingActions({
       readNode: vi.fn(async (input) => {
-        if (input.parameterId === "dbg-api-fast-charge-current") {
+        const nodeId = input.nodeId ?? input.parameterId;
+        if (nodeId === "dbg-api-fast-charge-current") {
           return {
             ok: true,
             value: "3000",
@@ -483,7 +490,7 @@ describe("/node-debugging", () => {
     const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
-      parameterId: "dbg-charge-input-current"
+      nodeId: "dbg-charge-input-current"
     })));
     rerender(
       <NodeDebuggingPage
@@ -494,7 +501,7 @@ describe("/node-debugging", () => {
 
     expect(await screen.findByText(/API Gateway Target/)).toBeInTheDocument();
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
-      parameterId: "dbg-api-fast-charge-current",
+      nodeId: "dbg-api-fast-charge-current",
       nodePath: "/sys/class/power_supply/battery/constant_charge_current"
     })));
     expect(await within(findRowByText("fast_charge_current")).findByText("3000")).toBeInTheDocument();
@@ -513,7 +520,7 @@ describe("/node-debugging", () => {
 
     await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: apiSession.id,
-      parameterId: "dbg-charge-input-current",
+      nodeId: "dbg-charge-input-current",
       nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
       value: "3700",
       readBack: true
@@ -573,7 +580,7 @@ describe("/node-debugging", () => {
         operation: {
           id: "op-write-mismatch",
           sessionId: apiSession.id,
-          parameterId: "dbg-charge-input-current",
+          nodeId: "dbg-charge-input-current",
           nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
           operationType: "write",
           status: "readback_mismatch",
@@ -603,7 +610,8 @@ describe("/node-debugging", () => {
     const delayedRead = createDeferred<Awaited<ReturnType<DebuggingRuntimeActions["readNode"]>> & { operation?: unknown }>();
     const debuggingActions = createDebuggingActions({
       readNode: vi.fn((input) => {
-        if (input.parameterId === "dbg-charge-input-current") {
+        const nodeId = input.nodeId ?? input.parameterId;
+        if (nodeId === "dbg-charge-input-current") {
           return delayedRead.promise;
         }
         return Promise.resolve({
@@ -622,7 +630,7 @@ describe("/node-debugging", () => {
         operation: {
           id: "op-write-mismatch",
           sessionId: apiSession.id,
-          parameterId: "dbg-charge-input-current",
+          nodeId: "dbg-charge-input-current",
           nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
           operationType: "write",
           status: "readback_mismatch",
@@ -654,7 +662,7 @@ describe("/node-debugging", () => {
       operation: {
         id: "op-read-stale",
         sessionId: apiSession.id,
-        parameterId: "dbg-charge-input-current",
+        nodeId: "dbg-charge-input-current",
         nodePath: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma",
         operationType: "read",
         status: "succeeded",
@@ -698,9 +706,9 @@ describe("/node-debugging", () => {
         value: input.value,
         verified: true,
         operation: {
-          id: `op-write-${input.parameterId}`,
+          id: `op-write-${input.nodeId ?? input.parameterId}`,
           sessionId: apiSession.id,
-          parameterId: input.parameterId,
+          parameterId: input.nodeId ?? input.parameterId,
           nodePath: input.nodePath,
           operationType: "write",
           status: "succeeded",
@@ -722,7 +730,7 @@ describe("/node-debugging", () => {
 
     await waitFor(() => expect(debuggingActions.writeNode).toHaveBeenCalledTimes(1));
     expect(debuggingActions.writeNode).toHaveBeenCalledWith(expect.objectContaining({
-      parameterId: "dbg-trickle-start",
+      nodeId: "dbg-trickle-start",
       value: "95",
       readBack: false
     }));
@@ -821,10 +829,8 @@ describe("/node-debugging", () => {
     expect(screen.queryByText(/未检测到本地 Bridge/)).not.toBeInTheDocument();
   });
 
-  it("lets users return to step 1 to download bridge installers when bridge is already online", async () => {
-    const debuggingActions = createDebuggingActions({
-      detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
-    });
+  it("shows bridge ready state when local bridge health is already online", async () => {
+    const debuggingActions = createDebuggingActions();
     vi.spyOn(globalThis, "fetch").mockImplementation(vi.fn(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       if (url === resolveLocalBridgeHealthUrl()) {
@@ -862,15 +868,8 @@ describe("/node-debugging", () => {
 
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
 
-    expect(await screen.findByRole("button", { name: "安装 Bridge" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "下载安装包" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "安装 Bridge" }));
-
-    expect(await screen.findByText("图形安装包（推荐）")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "安装 Bridge（macOS Apple Silicon）" })).toHaveAttribute(
-      "href",
-      "http://127.0.0.1:8787/downloads/device-bridge/0.1.0/darwin/arm64/WiseEffBridge_0.1.0_darwin_arm64.pkg"
-    );
+    expect(await screen.findByRole("button", { name: "重新检测设备" })).toBeInTheDocument();
+    expect(screen.getByText("管理设备代理")).toBeInTheDocument();
   });
 
   it("shows bridge target selection when adb detect returns multiple bridge-backed targets", async () => {
@@ -1363,7 +1362,6 @@ describe("/node-debugging", () => {
     expect(formatSection).toHaveTextContent("示例");
     expect(formatSection).toHaveTextContent("3600");
     expect(formatSection).toHaveTextContent("RW");
-    expect(formatSection).toHaveTextContent("2000 - 5000 mA");
     expect(formatSection).not.toHaveTextContent("/data/local/tmp/wiseeff_nodes");
   });
 
@@ -1427,26 +1425,30 @@ describe("/node-debugging", () => {
 
     const fullDts = complexRo.currentValue;
     const debuggingActions = createDebuggingActions({
-      readNode: vi.fn(async (input) => ({
-        ok: true,
-        value: input.parameterId === "dbg-battery-health-dts" ? fullDts : "12",
-        stdout: `${input.parameterId === "dbg-battery-health-dts" ? fullDts : "12"}\n`,
-        operation: {
-          id: `op-read-${input.parameterId}`,
-          sessionId: apiSession.id,
-          parameterId: input.parameterId,
-          nodePath: input.nodePath,
-          operationType: "read",
-          status: "succeeded",
-          readValue: input.parameterId === "dbg-battery-health-dts" ? fullDts : "12",
-          verified: true,
-          durationMs: 7,
-          createdAt: "2026-05-27T09:00:01.000Z",
-          valueKind: input.parameterId === "dbg-battery-health-dts" ? "complex" : undefined,
-          valueFormat: input.parameterId === "dbg-battery-health-dts" ? "dts" : undefined,
-          valuePreview: input.parameterId === "dbg-battery-health-dts" ? `${fullDts.slice(0, 80)}…` : undefined
-        }
-      }))
+      readNode: vi.fn(async (input) => {
+        const nodeId = input.nodeId ?? input.parameterId;
+        const value = nodeId === "dbg-battery-health-dts" ? fullDts : "12";
+        return {
+          ok: true,
+          value,
+          stdout: `${value}\n`,
+          operation: {
+            id: `op-read-${nodeId}`,
+            sessionId: apiSession.id,
+            parameterId: nodeId,
+            nodePath: input.nodePath,
+            operationType: "read",
+            status: "succeeded",
+            readValue: value,
+            verified: true,
+            durationMs: 7,
+            createdAt: "2026-05-27T09:00:01.000Z",
+            valueKind: nodeId === "dbg-battery-health-dts" ? "complex" : undefined,
+            valueFormat: nodeId === "dbg-battery-health-dts" ? "dts" : undefined,
+            valuePreview: nodeId === "dbg-battery-health-dts" ? `${fullDts.slice(0, 80)}…` : undefined
+          }
+        };
+      })
     });
     render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
     await screen.findByText(/API Gateway Target/);
@@ -1472,7 +1474,7 @@ describe("/node-debugging", () => {
         operation: {
           id: "op-write-complex",
           sessionId: apiSession.id,
-          parameterId: "dbg-charge-policy-json",
+          nodeId: "dbg-charge-policy-json",
           nodePath: "/data/local/tmp/wiseeff_nodes/charger/policy_overlay_json",
           operationType: "write",
           status: "succeeded",

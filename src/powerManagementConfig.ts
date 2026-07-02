@@ -41,6 +41,7 @@ export type PowerManagementDebugParameter = {
   name: string;
   key: string;
   description: string;
+  detailedDescription?: string;
   module: string;
   currentValue: string;
   targetValue: string;
@@ -54,6 +55,8 @@ export type PowerManagementDebugParameter = {
   valueFormat?: "raw" | "json" | "dts" | "line-list" | "kv-list";
   normalizationMode?: "exact" | "trim" | "line-ending-normalized" | "json-canonical";
   maxValueBytes?: number | null;
+  parameterDefinitionId?: string;
+  reloadManaged?: boolean;
 };
 
 export type PowerManagementProject = {
@@ -471,7 +474,7 @@ export function deleteDebugParameter(config: PowerManagementConfig, parameterId:
 export function updateDebugParameter(
   config: PowerManagementConfig,
   parameterId: string,
-  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "module" | "unit" | "range" | "risk" | "status" | "nodePath" | "accessMode">>
+  patch: Partial<Pick<PowerManagementDebugParameter, "currentValue" | "targetValue" | "name" | "key" | "description" | "detailedDescription" | "module" | "unit" | "range" | "risk" | "status" | "nodePath" | "accessMode">>
 ) {
   return {
     ...config,

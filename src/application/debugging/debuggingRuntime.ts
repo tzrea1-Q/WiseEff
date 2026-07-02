@@ -58,7 +58,7 @@ export type DebuggingRuntimeActions = {
   refresh(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<void>;
   detectAndStartSession(
     projectId: string,
-    options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string }
+    options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
   ): Promise<
     | { session: DebugSessionSnapshot; target: DeviceTarget }
     | { candidates: DeviceTarget[] }
@@ -257,7 +257,9 @@ export function createDebuggingRuntimeActions({
       const parameterQuery = { ...query, protocol: query?.protocol ?? "hdc" as const };
       const [devices, debugParameters] = await Promise.all([
         api.listDevices?.() ?? Promise.resolve([]),
-        api.listParameters?.(parameterQuery) ?? Promise.resolve([])
+        query?.projectId && api.listRuntimeNodes
+          ? api.listRuntimeNodes({ projectId: query.projectId, protocol: parameterQuery.protocol })
+          : api.listParameters?.(parameterQuery) ?? Promise.resolve([])
       ]);
 
       dispatch({
@@ -322,11 +324,12 @@ export function createDebuggingRuntimeActions({
         if (!target && bridgeTargets.length > 1) {
           return { candidates: bridgeTargets };
         }
-        target ??= bridgeTargets[0] ?? nonSimulatorTargets[0];
-        if (!target && detectedTargets.every(isSimulatorTarget)) {
-          throw new Error("未检测到本地 Bridge 或真实设备，请先安装并配对 Device Bridge。");
-        }
+        const simulatorTargets = detectedTargets.filter(isSimulatorTarget);
+        target ??= bridgeTargets[0] ?? nonSimulatorTargets[0] ?? simulatorTargets[0];
         target ??= detectedTargets[0];
+        if (!target) {
+          throw new Error("No debug target detected.");
+        }
         if (!api.createSession) {
           throw new Error("Debug session creation is not supported by this gateway.");
         }
@@ -335,7 +338,8 @@ export function createDebuggingRuntimeActions({
           deviceId: target.deviceId ?? device.id,
           targetId: target.id,
           protocol,
-          bridgeId: options?.bridgeId ?? target.bridgeId
+          bridgeId: options?.bridgeId ?? target.bridgeId,
+          sessionKind: options?.sessionKind ?? "node"
         });
         dispatch({ type: "SET_DEBUG_ACTIVE_SESSION", session, target });
         return { session, target };
@@ -388,14 +392,14 @@ export function createDebuggingRuntimeActions({
           return parameter && isWritablePendingDebugParameter(parameter, state) ? [parameter] : [];
         });
         for (const parameter of parameters) {
-          const result = (await requireGateway(gateway).writeNode({
+          const writeInput = {
             sessionId,
-            parameterId: parameter.id,
-            nodePath: parameter.nodePath,
+            nodeId: parameter.id,
             value: parameter.targetValue,
             readBack: true,
-            ...(parameter.risk === "High" ? { confirmationToken: "confirm-high-risk-write" } : {})
-          })) as DebuggingGatewayWriteResult;
+            ...(parameter.risk === "High" ? { confirmationToken: "confirm-high-risk-write" as const } : {})
+          };
+          const result = (await requireGateway(gateway).writeNode(writeInput)) as DebuggingGatewayWriteResult;
           dispatchOperation(dispatch, result.operation);
           dispatchSnapshot(dispatch, result.snapshot);
         }

@@ -1,135 +1,56 @@
-import { FileText, Upload } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PageProps } from "@/app/routes";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
-import { ArchiveDebugParameterDialog } from "@/components/admin/ArchiveDebugParameterDialog";
-import { CreateDebugParameterDialog } from "@/components/admin/CreateDebugParameterDialog";
-import { DebugParameterBindingsDialog } from "@/components/admin/DebugParameterBindingsDialog";
-import { DebugParameterDefinitionDialog } from "@/components/admin/DebugParameterDefinitionDialog";
-import { DebugParameterLibraryTable } from "@/components/admin/DebugParameterLibraryTable";
-import { Button } from "@/components/ui/button";
-import {
-  bindingForProtocol,
-  draftFromDebugParameter
-} from "@/debugAdminDraft";
-import { parseDebugAdminSearch, useDebugAdminSearch } from "@/hooks/useDebugAdminSearch";
-import type {
-  DebugAdminParameterDraft,
-  DebugConnectionProtocol,
-  DebugParameter as DomainDebugParameter,
-  DebugParameterNodeBinding
-} from "@/domain/debugging/types";
+import { ArchiveDebugNodeDialog } from "@/components/admin/ArchiveDebugNodeDialog";
+import { DebugModuleManagementDialog } from "@/components/admin/DebugModuleManagementDialog";
+import { DebugNodeBindingsDialog } from "@/components/admin/DebugNodeBindingsDialog";
+import { DebugNodeEditorDialog, type DebugNodeDraft } from "@/components/admin/DebugNodeEditorDialog";
+import { DebugNodeLibraryTable, type DebugNodeLibrarySearch } from "@/components/admin/DebugNodeLibraryTable";
+import { useTopBarActions } from "@/components/layout";
+import { bindingForProtocol } from "@/debugAdminDraft";
+import { buildDebugModulesFromNodes, countDebugNodesByModule } from "@/debugAdminModules";
+import type { DebugConnectionProtocol, DebugNodeProtocolBinding, DebugNodeRegistryEntry, DebugParameter } from "@/domain/debugging/types";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
-import { serializePowerManagementConfig } from "@/powerManagementConfig";
-import { useTopBarActions } from "@/components/layout";
+import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/powerManagementConfig";
 
-function ConfigExportActions({ configJson, runtimeMode }: { configJson: string; runtimeMode: WiseEffRuntimeMode }) {
-  const [syncMessage, setSyncMessage] = useState("导出后可手动替换 src/config/power-management.json。");
-  const [saving, setSaving] = useState(false);
-  const exportConfig = () => {
-    const blob = new Blob([configJson], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "power-management.json";
-    document.body.append(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-    setSyncMessage("JSON 已导出，可手动同步回代码配置源。");
-  };
-
-  const copyConfig = async () => {
-    try {
-      await navigator.clipboard.writeText(configJson);
-      setSyncMessage("JSON 已复制，可手动同步回代码配置源。");
-    } catch {
-      setSyncMessage("当前浏览器限制剪贴板写入，可直接从预览区复制 JSON。");
-    }
-  };
-
-  const saveConfig = async () => {
-    if (runtimeMode === "api") {
-      return;
-    }
-    setSaving(true);
-    try {
-      const response = await fetch("/api/power-management-config", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: configJson
-      });
-      if (!response.ok) {
-        throw new Error("保存失败");
-      }
-      setSyncMessage("已写入 src/config/power-management.json，刷新项目后会读取最新配置。");
-    } catch {
-      setSyncMessage("写入失败：当前环境不支持本地保存时，请导出 JSON 后手动替换。");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="config-admin-actions">
-      <div className="config-actions">
-        <Button type="button" onClick={saveConfig} disabled={saving}>
-          <FileText size={16} />
-          {saving ? "保存中" : "保存到 JSON 文件"}
-        </Button>
-        <Button variant="outline" type="button" onClick={exportConfig}>
-          <Upload size={16} />
-          导出 JSON
-        </Button>
-        <Button variant="outline" type="button" onClick={copyConfig}>
-          <FileText size={16} />
-          复制 JSON
-        </Button>
-      </div>
-      <small className="config-sync-note">{syncMessage}</small>
-    </div>
-  );
+function mockNodesFromParameters(parameters: readonly DebugParameter[]): DebugNodeRegistryEntry[] {
+  return parameters.map((parameter) => ({
+    id: parameter.id,
+    projectId: parameter.projectId,
+    name: parameter.name,
+    description: parameter.description,
+    detailedDescription: parameter.detailedDescription ?? parameter.description,
+    module: parameter.module,
+    enabled: parameter.enabled !== false && !parameter.archivedAt,
+    bindings:
+      parameter.bindings && parameter.bindings.length > 0
+        ? parameter.bindings.map((binding) => ({
+            protocol: binding.protocol,
+            nodePath: binding.nodePath,
+            accessMode: binding.accessMode,
+            enabled: binding.enabled,
+            notes: binding.notes
+          }))
+        : parameter.nodePath
+          ? [{ protocol: "hdc", nodePath: parameter.nodePath, accessMode: parameter.accessMode, enabled: true }]
+          : []
+  }));
 }
 
-function ConfigJsonPreviewSection({
-  configJson,
-  jsonExpanded,
-  onToggle,
-  runtimeMode
-}: {
-  configJson: string;
-  jsonExpanded: boolean;
-  onToggle: () => void;
-  runtimeMode: WiseEffRuntimeMode;
-}) {
-  return (
-    <section className="debug-admin-json-section">
-      <button
-        type="button"
-        className="debug-admin-json-toggle"
-        aria-expanded={jsonExpanded}
-        onClick={onToggle}
-      >
-        <span>{jsonExpanded ? "▾" : "▸"} 配置源预览</span>
-        <small>src/config/power-management.json</small>
-      </button>
-      {jsonExpanded ? (
-        <div className="debug-admin-json-content">
-          <pre>{configJson}</pre>
-          <ConfigExportActions configJson={configJson} runtimeMode={runtimeMode} />
-        </div>
-      ) : null}
-    </section>
-  );
+function mergeNodeBinding(
+  bindings: DebugNodeProtocolBinding[],
+  protocol: DebugConnectionProtocol,
+  patch: Partial<DebugNodeProtocolBinding>
+) {
+  const current = bindingForProtocol(bindings, protocol);
+  const next = bindings.filter((binding) => binding.protocol !== protocol);
+  return [...next, { ...current, ...patch, protocol }];
 }
 
 export function DebuggingAdminPage({
   state,
   dispatch,
-  search: rawSearch,
   runtimeMode = wiseEffRuntimeMode,
   debuggingAdminClient,
   apiAuthPermissions = []
@@ -138,31 +59,43 @@ export function DebuggingAdminPage({
   debuggingAdminClient?: ReturnType<typeof createDebuggingAdminClient>;
   apiAuthPermissions?: string[];
 }) {
-  const [adminParameters, setAdminParameters] = useState<DomainDebugParameter[]>([]);
+  const [adminNodes, setAdminNodes] = useState<DebugNodeRegistryEntry[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const [saveFlash, setSaveFlash] = useState(false);
-  const [jsonExpanded, setJsonExpanded] = useState(false);
+  const [nodeSearch, setNodeSearch] = useState<DebugNodeLibrarySearch>({
+    q: "",
+    protocol: "all",
+    modules: [],
+    sort: "name-asc"
+  });
 
-  const [definitionId, setDefinitionId] = useState<string | null>(null);
-  const [bindingsId, setBindingsId] = useState<string | null>(null);
-  const [archiveId, setArchiveId] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [definitionDraft, setDefinitionDraft] = useState<DebugAdminParameterDraft | null>(null);
-  const [bindingsDraft, setBindingsDraft] = useState<DebugAdminParameterDraft | null>(null);
-  const definitionDraftRef = useRef(definitionDraft);
-  const bindingsDraftRef = useRef(bindingsDraft);
-  definitionDraftRef.current = definitionDraft;
-  bindingsDraftRef.current = bindingsDraft;
+  const [mockDisabledNodeIds, setMockDisabledNodeIds] = useState<Set<string>>(() => new Set());
+  const [editorMode, setEditorMode] = useState<"create" | "edit" | null>(null);
+  const [editorNodeId, setEditorNodeId] = useState<string | null>(null);
+  const [bindingsNodeId, setBindingsNodeId] = useState<string | null>(null);
+  const [bindingsDraft, setBindingsDraft] = useState<DebugNodeProtocolBinding[]>([]);
+  const [disableNodeId, setDisableNodeId] = useState<string | null>(null);
+  const [moduleDialogOpen, setModuleDialogOpen] = useState(false);
+  const [adminModules, setAdminModules] = useState<PowerManagementParameterModule[]>([]);
+  const editorNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
+  const bindingsNodeRef = useRef<DebugNodeRegistryEntry | null>(null);
 
   const isApiMode = runtimeMode === "api";
   const canEditAdminCatalog = !isApiMode || apiAuthPermissions.includes("debugging:admin");
-  const urlSearch = useDebugAdminSearch();
-  const search = rawSearch ? parseDebugAdminSearch(rawSearch) : urlSearch.search;
-  const updateSearch = urlSearch.updateSearch;
-  const library = isApiMode ? adminParameters : state.configDraft.debugParameters;
-  const configJson = useMemo(() => serializePowerManagementConfig(state.configDraft), [state.configDraft]);
+  const library = useMemo(() => {
+    const nodes = isApiMode ? adminNodes : mockNodesFromParameters(state.configDraft.debugParameters);
+    if (isApiMode) {
+      return nodes;
+    }
+    return nodes.map((node) => (mockDisabledNodeIds.has(node.id) ? { ...node, enabled: false } : node));
+  }, [adminNodes, isApiMode, mockDisabledNodeIds, state.configDraft.debugParameters]);
+
+  const modules = useMemo(() => {
+    const existing = isApiMode ? adminModules : state.configDraft.parameterModules;
+    return buildDebugModulesFromNodes(library, existing);
+  }, [adminModules, isApiMode, library, state.configDraft.parameterModules]);
 
   useEffect(() => {
     if (!isApiMode || !debuggingAdminClient) {
@@ -172,15 +105,18 @@ export function DebuggingAdminPage({
     let cancelled = false;
     setAdminLoading(true);
     setAdminError("");
-    debuggingAdminClient
-      .listParameters({ includeArchived: true })
-      .then((parameters) => {
+    Promise.all([
+      debuggingAdminClient.listNodes({ projectId: state.activeProjectId, includeArchived: true }),
+      debuggingAdminClient.listModules()
+    ])
+      .then(([nodes, loadedModules]) => {
         if (cancelled) return;
-        setAdminParameters(parameters);
+        setAdminNodes(nodes);
+        setAdminModules(loadedModules);
       })
       .catch(() => {
         if (!cancelled) {
-          setAdminError("无法加载调试参数目录。");
+          setAdminError("无法加载可调节点目录。");
         }
       })
       .finally(() => {
@@ -192,7 +128,7 @@ export function DebuggingAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [debuggingAdminClient, isApiMode]);
+  }, [debuggingAdminClient, isApiMode, state.activeProjectId]);
 
   const flashSaved = (nextStatus: string) => {
     setSaveStatus(nextStatus);
@@ -200,273 +136,330 @@ export function DebuggingAdminPage({
     setTimeout(() => setSaveFlash(false), 1500);
   };
 
-  const toMockDebugDraft = (draft: DebugAdminParameterDraft) => {
-    const hdcBinding = bindingForProtocol(draft.bindings, "hdc");
-    return {
-      name: draft.name,
-      key: draft.key,
-      description: draft.description,
-      module: draft.module,
-      currentValue: draft.currentValue,
-      targetValue: draft.targetValue,
-      unit: draft.unit,
-      range: draft.range,
-      risk: draft.risk,
-      status: "已同步" as const,
-      nodePath: hdcBinding.nodePath || draft.nodePath,
-      accessMode: hdcBinding.accessMode || draft.accessMode,
-      valueKind: draft.valueKind,
-      valueFormat: draft.valueFormat,
-      normalizationMode: draft.normalizationMode,
-      maxValueBytes: draft.maxValueBytes ?? null
-    };
-  };
-
-  const replaceAdminParameter = (parameter: DomainDebugParameter) => {
-    setAdminParameters((parameters) => {
-      const index = parameters.findIndex((item) => item.id === parameter.id);
-      if (index === -1) return [...parameters, parameter];
-      return parameters.map((item) => (item.id === parameter.id ? parameter : item));
+  const replaceAdminNode = (node: DebugNodeRegistryEntry) => {
+    setAdminNodes((nodes) => {
+      const index = nodes.findIndex((item) => item.id === node.id);
+      if (index === -1) return [...nodes, node];
+      return nodes.map((item) => (item.id === node.id ? node : item));
     });
   };
 
-  const setDefinitionDraftPatch = (patch: Partial<DebugAdminParameterDraft>) => {
-    setDefinitionDraft((draft) => (draft ? { ...draft, ...patch } : draft));
-    setSaveStatus("");
+  const mergeAdminNodeBindings = (nodeId: string, binding: DebugNodeProtocolBinding) => {
+    setAdminNodes((nodes) =>
+      nodes.map((node) => {
+        if (node.id !== nodeId) {
+          return node;
+        }
+        const others = node.bindings.filter((item) => item.protocol !== binding.protocol);
+        return { ...node, bindings: [...others, binding] };
+      })
+    );
   };
 
-  const setBindingsDraftPatch = (protocol: DebugConnectionProtocol, patch: Partial<DebugParameterNodeBinding>) => {
-    const applyPatch = (draft: DebugAdminParameterDraft | null) => {
-      if (!draft) return draft;
-      const currentBinding = bindingForProtocol(draft.bindings, protocol);
-      const nextBinding = { ...currentBinding, ...patch, protocol };
-      const otherBindings = draft.bindings.filter((binding) => binding.protocol !== protocol);
-      return { ...draft, bindings: [...otherBindings, nextBinding] };
-    };
-    setBindingsDraft((draft) => applyPatch(draft));
-    setSaveStatus("");
-  };
+  const editorNode = useMemo(() => {
+    if (!editorNodeId) return null;
+    return library.find((node) => node.id === editorNodeId) ?? null;
+  }, [editorNodeId, library]);
+  editorNodeRef.current = editorNode;
 
-  const openDefinitionDialog = (parameterId: string) => {
-    const parameter = library.find((item) => item.id === parameterId);
-    if (!parameter) return;
-    const draft = draftFromDebugParameter(parameter as DomainDebugParameter);
-    setDefinitionId(parameterId);
-    setDefinitionDraft(draft);
-    setSaveStatus("");
-  };
+  const bindingsNode = useMemo(() => {
+    if (!bindingsNodeId) return null;
+    return library.find((node) => node.id === bindingsNodeId) ?? null;
+  }, [bindingsNodeId, library]);
+  bindingsNodeRef.current = bindingsNode;
 
-  const openBindingsDialog = (parameterId: string) => {
-    const parameter = library.find((item) => item.id === parameterId);
-    if (!parameter) return;
-    const draft = draftFromDebugParameter(parameter as DomainDebugParameter);
-    setBindingsId(parameterId);
-    setBindingsDraft(draft);
-    setSaveStatus("");
-  };
+  useEffect(() => {
+    if (!bindingsNode) {
+      setBindingsDraft([]);
+      return;
+    }
+    setBindingsDraft(bindingsNode.bindings ?? []);
+  }, [bindingsNode]);
 
-  const saveAdminParameter = async (draft: DebugAdminParameterDraft | null) => {
-    if (!draft) return;
-    if (isApiMode) {
-      if (!debuggingAdminClient || !canEditAdminCatalog) return;
-      setAdminLoading(true);
-      setAdminError("");
-      setSaveStatus("");
-      try {
-        const saved = draft.id
-          ? await debuggingAdminClient.updateParameter(draft.id, draft)
-          : await debuggingAdminClient.createParameter(draft);
-        replaceAdminParameter(saved);
-        setDefinitionDraft(draftFromDebugParameter(saved));
-        flashSaved("已保存");
-      } catch {
-        setAdminError("保存调试参数失败。");
-      } finally {
-        setAdminLoading(false);
-      }
+  const saveMockNode = (draft: DebugNodeDraft, existingNode?: DebugNodeRegistryEntry | null) => {
+    if (existingNode) {
+      dispatch({
+        type: "UPDATE_DEBUG_PARAMETER",
+        parameterId: existingNode.id,
+        patch: {
+          name: draft.name,
+          description: draft.description,
+          detailedDescription: draft.detailedDescription,
+          module: draft.module
+        }
+      });
+      setMockDisabledNodeIds((current) => {
+        const next = new Set(current);
+        if (draft.enabled) {
+          next.delete(existingNode.id);
+        } else {
+          next.add(existingNode.id);
+        }
+        return next;
+      });
       return;
     }
 
-    if (!draft.id) {
-      dispatch({ type: "ADD_DEBUG_PARAMETER", initialDraft: toMockDebugDraft(draft) });
-    } else {
-      dispatch({ type: "UPDATE_DEBUG_PARAMETER", parameterId: draft.id, patch: toMockDebugDraft(draft) });
-    }
-    flashSaved("已保存");
+    dispatch({
+      type: "ADD_DEBUG_PARAMETER",
+      initialDraft: {
+        name: draft.name,
+        description: draft.description,
+        detailedDescription: draft.detailedDescription,
+        nodePath: "",
+        accessMode: "RO",
+        key: `debug.node.${Date.now()}`,
+        module: draft.module || "Device Lab",
+        currentValue: "",
+        targetValue: "",
+        unit: "",
+        range: "",
+        risk: "Low",
+        status: "已同步"
+      } as never
+    });
   };
 
-  const saveBindingsToMockState = (draft: DebugAdminParameterDraft) => {
-    if (!draft.id) return;
-    const hdcBinding = bindingForProtocol(draft.bindings, "hdc");
+  const saveMockBindings = (nodeId: string, bindings: DebugNodeProtocolBinding[]) => {
+    const preferred = bindingForProtocol(bindings, "hdc");
     dispatch({
       type: "UPDATE_DEBUG_PARAMETER",
-      parameterId: draft.id,
+      parameterId: nodeId,
       patch: {
-        nodePath: hdcBinding.nodePath,
-        accessMode: hdcBinding.accessMode
-      }
+        bindings,
+        nodePath: preferred.nodePath,
+        accessMode: preferred.accessMode
+      } as never
     });
-    flashSaved("已保存");
   };
 
-  const saveAdminBinding = async (protocol: DebugConnectionProtocol) => {
-    const activeBindingsDraft = bindingsDraftRef.current;
-    if (!activeBindingsDraft) return;
-    if (isApiMode) {
-      if (!debuggingAdminClient || !activeBindingsDraft.id || !canEditAdminCatalog) return;
-      setAdminLoading(true);
-      setAdminError("");
-      setSaveStatus("");
-      try {
-        const binding = await debuggingAdminClient.upsertBinding(
-          activeBindingsDraft.id,
-          protocol,
-          bindingForProtocol(activeBindingsDraft.bindings, protocol)
-        );
-        setBindingsDraft((draft) => {
-          if (!draft) return draft;
-          return {
-            ...draft,
-            bindings: [...draft.bindings.filter((item) => item.protocol !== protocol), binding]
-          };
-        });
-        setAdminParameters((parameters) =>
-          parameters.map((parameter) =>
-            parameter.id === activeBindingsDraft.id
-              ? { ...parameter, bindings: [...(parameter.bindings ?? []).filter((item) => item.protocol !== protocol), binding] }
-              : parameter
-          )
-        );
-        flashSaved("已保存");
-      } catch {
-        setAdminError(`保存 ${protocol.toUpperCase()} 绑定失败。`);
-      } finally {
-        setAdminLoading(false);
-      }
-      return;
-    }
-
-    saveBindingsToMockState(activeBindingsDraft);
-  };
-
-  const saveAllAdminBindings = async () => {
-    await saveAdminBinding("hdc");
-    await saveAdminBinding("adb");
-  };
-
-  const archiveAdminBinding = async (protocol: DebugConnectionProtocol) => {
-    const activeBindingsDraft = bindingsDraftRef.current;
-    if (!activeBindingsDraft) return;
-    if (isApiMode) {
-      if (!debuggingAdminClient || !activeBindingsDraft.id || !canEditAdminCatalog) return;
-      setAdminLoading(true);
-      setAdminError("");
-      setSaveStatus("");
-      try {
-        const binding = await debuggingAdminClient.archiveBinding(activeBindingsDraft.id, protocol);
-        setBindingsDraft((draft) => {
-          if (!draft) return draft;
-          return {
-            ...draft,
-            bindings: [...draft.bindings.filter((item) => item.protocol !== protocol), binding]
-          };
-        });
-        setAdminParameters((parameters) =>
-          parameters.map((parameter) =>
-            parameter.id === activeBindingsDraft.id
-              ? { ...parameter, bindings: [...(parameter.bindings ?? []).filter((item) => item.protocol !== protocol), binding] }
-              : parameter
-          )
-        );
-        flashSaved("已归档");
-      } catch {
-        setAdminError(`归档 ${protocol.toUpperCase()} 绑定失败。`);
-      } finally {
-        setAdminLoading(false);
-      }
-      return;
-    }
-  };
-
-  const archiveAdminParameter = async (parameter: DomainDebugParameter) => {
+  const saveNode = async (draft: DebugNodeDraft) => {
+    const existingNode = editorNodeRef.current;
     if (isApiMode) {
       if (!debuggingAdminClient || !canEditAdminCatalog) return;
       setAdminLoading(true);
       setAdminError("");
       setSaveStatus("");
       try {
-        const archived = await debuggingAdminClient.archiveParameter(parameter.id, "Archived from debugging admin.");
-        replaceAdminParameter(archived);
-        setDefinitionDraft((draft) => (draft?.id === archived.id ? draftFromDebugParameter(archived) : draft));
-        setBindingsDraft((draft) => (draft?.id === archived.id ? draftFromDebugParameter(archived) : draft));
-        flashSaved("已归档");
+        const saved =
+          editorMode === "edit" && existingNode
+            ? await debuggingAdminClient.updateNode(existingNode.id, draft)
+            : await debuggingAdminClient.createNode({
+                projectId: state.activeProjectId ?? null,
+                name: draft.name,
+                description: draft.description,
+                detailedDescription: draft.detailedDescription,
+                module: draft.module,
+                enabled: draft.enabled
+              });
+        replaceAdminNode(saved);
+        setEditorMode(null);
+        setEditorNodeId(null);
+        flashSaved("已保存");
       } catch {
-        setAdminError("归档调试参数失败。");
+        setAdminError("保存调试节点失败。");
       } finally {
         setAdminLoading(false);
       }
       return;
     }
 
-    dispatch({ type: "DELETE_DEBUG_PARAMETER", parameterId: parameter.id });
-    flashSaved("已归档");
+    saveMockNode(draft, existingNode);
+    setEditorMode(null);
+    setEditorNodeId(null);
+    flashSaved("已保存");
   };
 
-  const createParameter = async (draft: DebugAdminParameterDraft) => {
+  const saveNodeBinding = async (protocol: DebugConnectionProtocol) => {
+    const node = bindingsNodeRef.current;
+    if (!node || !debuggingAdminClient || !canEditAdminCatalog) {
+      return;
+    }
+
+    const binding = bindingForProtocol(bindingsDraft, protocol);
+    setAdminLoading(true);
+    setAdminError("");
+    try {
+      const saved = await debuggingAdminClient.upsertNodeBinding(node.id, protocol, binding);
+      mergeAdminNodeBindings(node.id, saved);
+      setBindingsDraft((current) => mergeNodeBinding(current, protocol, saved));
+      flashSaved("已保存 binding");
+    } catch {
+      setAdminError("保存节点 binding 失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const archiveNodeBinding = async (protocol: DebugConnectionProtocol) => {
+    const node = bindingsNodeRef.current;
+    if (!node || !debuggingAdminClient || !canEditAdminCatalog) {
+      return;
+    }
+
+    setAdminLoading(true);
+    setAdminError("");
+    try {
+      const saved = await debuggingAdminClient.archiveNodeBinding(node.id, protocol);
+      mergeAdminNodeBindings(node.id, saved);
+      setBindingsDraft((current) => mergeNodeBinding(current, protocol, saved));
+      flashSaved("已归档 binding");
+    } catch {
+      setAdminError("归档节点 binding 失败。");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  const saveBindingsDialog = () => {
+    const node = bindingsNodeRef.current;
+    if (!node) {
+      return;
+    }
+
+    if (isApiMode) {
+      setBindingsNodeId(null);
+      return;
+    }
+
+    saveMockBindings(node.id, bindingsDraft);
+    setBindingsNodeId(null);
+    flashSaved("已保存");
+  };
+
+  const addDebugModule = async (draft: ParameterModuleDraft) => {
+    if (isApiMode) {
+      if (!debuggingAdminClient || !canEditAdminCatalog) {
+        return;
+      }
+      setAdminLoading(true);
+      setAdminError("");
+      try {
+        const saved = await debuggingAdminClient.createModule(draft);
+        setAdminModules((current) => [...current.filter((module) => module.name !== saved.name), saved]);
+        flashSaved("模块已创建");
+      } catch {
+        setAdminError("创建模块失败。");
+      } finally {
+        setAdminLoading(false);
+      }
+      return;
+    }
+    dispatch({ type: "ADD_PARAMETER_MODULE", module: draft });
+    flashSaved("模块已创建");
+  };
+
+  const updateDebugModule = async (moduleName: string, patch: ParameterModuleDraft) => {
+    const nextName = patch.name.trim();
+    if (!nextName) {
+      return;
+    }
+
+    if (isApiMode) {
+      if (!debuggingAdminClient || !canEditAdminCatalog) {
+        return;
+      }
+
+      setAdminLoading(true);
+      setAdminError("");
+      try {
+        const saved = await debuggingAdminClient.updateModule(moduleName, patch);
+        setAdminModules((current) => {
+          const withoutOld = current.filter((module) => module.name !== moduleName && module.name !== saved.name);
+          return [...withoutOld, saved];
+        });
+        if (saved.name !== moduleName) {
+          setAdminNodes((nodes) =>
+            nodes.map((node) => (node.module === moduleName ? { ...node, module: saved.name } : node))
+          );
+        }
+        flashSaved("模块已更新");
+      } catch {
+        setAdminError("更新模块失败。");
+      } finally {
+        setAdminLoading(false);
+      }
+      return;
+    }
+
+    dispatch({ type: "UPDATE_PARAMETER_MODULE", moduleName, patch });
+    flashSaved("模块已更新");
+  };
+
+  const deleteDebugModule = async (moduleName: string) => {
+    if (countDebugNodesByModule(library, moduleName) > 0) {
+      return;
+    }
+    if (isApiMode) {
+      if (!debuggingAdminClient || !canEditAdminCatalog) {
+        return;
+      }
+      setAdminLoading(true);
+      setAdminError("");
+      try {
+        await debuggingAdminClient.deleteModule(moduleName);
+        setAdminModules((current) => current.filter((module) => module.name !== moduleName));
+        flashSaved("模块已删除");
+      } catch {
+        setAdminError("删除模块失败。");
+      } finally {
+        setAdminLoading(false);
+      }
+      return;
+    }
+    dispatch({ type: "DELETE_PARAMETER_MODULE", moduleName });
+    flashSaved("模块已删除");
+  };
+
+  const openNodeEditorFromModule = (nodeId: string) => {
+    setModuleDialogOpen(false);
+    setEditorMode("edit");
+    setEditorNodeId(nodeId);
+  };
+
+  const disableNode = async (node: DebugNodeRegistryEntry) => {
     if (isApiMode) {
       if (!debuggingAdminClient || !canEditAdminCatalog) return;
       setAdminLoading(true);
       setAdminError("");
       setSaveStatus("");
       try {
-        const created = await debuggingAdminClient.createParameter(draft);
-        replaceAdminParameter(created);
-        setDefinitionId(created.id);
-        setDefinitionDraft(draftFromDebugParameter(created));
-        setCreateOpen(false);
-        flashSaved("已保存");
+        const saved = await debuggingAdminClient.updateNode(node.id, { enabled: false });
+        replaceAdminNode(saved);
+        flashSaved("已禁用");
       } catch {
-        setAdminError("保存调试参数失败。");
+        setAdminError("禁用调试节点失败。");
       } finally {
         setAdminLoading(false);
       }
       return;
     }
 
-    dispatch({ type: "ADD_DEBUG_PARAMETER", initialDraft: toMockDebugDraft(draft) });
-    setCreateOpen(false);
-    flashSaved("已保存");
+    setMockDisabledNodeIds((current) => new Set(current).add(node.id));
+    flashSaved("已禁用");
   };
 
-  const parameterCount = library.length;
-  const highRiskCount = library.filter((parameter) => parameter.risk === "High").length;
+  const nodeCount = library.length;
+  const enabledCount = library.filter((node) => node.enabled).length;
   const onlineDevices = state.devices.filter((device) => device.status === "已连接").length;
   const kpiItems: KpiItem[] = [
-    { id: "params", label: "可调参数", value: parameterCount },
-    {
-      id: "risk",
-      label: "高风险",
-      value: highRiskCount,
-      tone: "warning",
-      interactive: highRiskCount > 0,
-      onClick: () => updateSearch({ risk: "high" })
-    },
+    { id: "nodes", label: "可调节点", value: nodeCount },
+    { id: "enabled-nodes", label: "已启用", value: enabledCount },
     { id: "online-devices", label: "在线设备", value: `${onlineDevices}/${state.devices.length}` },
     { id: "last-save", label: "最近保存", value: saveStatus || "—" }
   ];
 
   useTopBarActions(
     <div className="debug-admin-strip debug-admin-strip--topbar">
-      <span className="debug-admin-stat">可调参数 <strong>{parameterCount}</strong></span>
-      <span className="debug-admin-stat">高风险 <strong>{highRiskCount}</strong></span>
+      <span className="debug-admin-stat">可调节点 <strong>{nodeCount}</strong></span>
+      <span className="debug-admin-stat">已启用 <strong>{enabledCount}</strong></span>
       <span className="debug-admin-stat">在线设备 <strong>{onlineDevices}/{state.devices.length}</strong></span>
       <span className={`debug-admin-save-indicator${saveFlash || saveStatus ? " visible" : ""}`}>{saveStatus || "✓ 已自动保存"}</span>
     </div>,
-    [highRiskCount, onlineDevices, parameterCount, saveFlash, saveStatus, state.devices.length]
+    [enabledCount, nodeCount, onlineDevices, saveFlash, saveStatus, state.devices.length]
   );
 
-  const archiveTarget = archiveId ? library.find((parameter) => parameter.id === archiveId) : null;
-  const bindingsParameter = bindingsId ? library.find((parameter) => parameter.id === bindingsId) : null;
+  const disableTarget = disableNodeId ? library.find((node) => node.id === disableNodeId) : null;
 
   return (
     <div className="debug-admin-shell param-admin-shell">
@@ -474,84 +467,78 @@ export function DebuggingAdminPage({
       <main className="param-admin-main">
         {adminError ? <p className="debug-admin-error" role="alert">{adminError}</p> : null}
         {isApiMode && !canEditAdminCatalog ? <p className="debug-admin-error">缺少 debugging:admin 权限，目录仅可查看。</p> : null}
-        <DebugParameterLibraryTable
-          parameters={library}
-          runtimeMode={runtimeMode}
-          search={search}
-          onUpdateSearch={updateSearch}
-          onEditDefinition={openDefinitionDialog}
-          onEditBindings={openBindingsDialog}
-          onArchive={setArchiveId}
-          onCreate={() => setCreateOpen(true)}
+        <DebugNodeLibraryTable
+          nodes={library}
+          search={nodeSearch}
+          onUpdateSearch={(patch) => setNodeSearch((current) => ({ ...current, ...patch }))}
+          onEdit={(nodeId) => {
+            setEditorMode("edit");
+            setEditorNodeId(nodeId);
+          }}
+          onEditBindings={setBindingsNodeId}
+          onDisable={setDisableNodeId}
+          onCreate={() => {
+            setEditorMode("create");
+            setEditorNodeId(null);
+          }}
+          onManageModules={() => setModuleDialogOpen(true)}
           canEdit={canEditAdminCatalog}
           loading={adminLoading}
         />
       </main>
 
-      {definitionDraft && definitionId ? (
-        <DebugParameterDefinitionDialog
-          draft={definitionDraft}
-          isApiMode={isApiMode}
-          canEdit={canEditAdminCatalog}
-          loading={adminLoading}
-          onDraftChange={setDefinitionDraftPatch}
-          onSave={() => void saveAdminParameter(definitionDraftRef.current)}
-          onClose={() => {
-            setDefinitionId(null);
-            setDefinitionDraft(null);
-          }}
-        />
-      ) : null}
-
-      {bindingsDraft && bindingsId ? (
-        <DebugParameterBindingsDialog
-          parameterName={bindingsParameter?.name ?? bindingsDraft.name}
-          draft={bindingsDraft.bindings}
-          parameterId={bindingsDraft.id ?? ""}
-          isApiMode={isApiMode}
-          canEdit={canEditAdminCatalog}
-          loading={adminLoading}
-          onBindingChange={setBindingsDraftPatch}
-          onSave={() => void saveAllAdminBindings()}
-          onSaveBinding={(protocol) => void saveAdminBinding(protocol)}
-          onArchiveBinding={(protocol) => void archiveAdminBinding(protocol)}
-          onClose={() => {
-            setBindingsId(null);
-            setBindingsDraft(null);
-          }}
-        />
-      ) : null}
-
-      <CreateDebugParameterDialog
-        open={createOpen}
-        isApiMode={isApiMode}
+      <DebugNodeEditorDialog
+        open={editorMode !== null}
+        mode={editorMode === "create" ? "create" : "edit"}
+        node={editorNode}
+        modules={modules.map((module) => module.name)}
+        loading={adminLoading}
         canEdit={canEditAdminCatalog}
-        loading={adminLoading}
-        existingParameters={library}
-        onCreate={(draft) => void createParameter(draft)}
-        onClose={() => setCreateOpen(false)}
-      />
-
-      <ArchiveDebugParameterDialog
-        open={Boolean(archiveTarget)}
-        parameterName={archiveTarget?.name ?? ""}
-        loading={adminLoading}
-        onCancel={() => setArchiveId(null)}
-        onConfirm={() => {
-          if (!archiveTarget) return;
-          void archiveAdminParameter(archiveTarget as DomainDebugParameter);
-          setArchiveId(null);
+        onSave={(draft) => void saveNode(draft)}
+        onClose={() => {
+          setEditorMode(null);
+          setEditorNodeId(null);
         }}
       />
 
-      {!isApiMode ? (
-        <ConfigJsonPreviewSection
-          configJson={configJson}
-          jsonExpanded={jsonExpanded}
-          onToggle={() => setJsonExpanded((value) => !value)}
-          runtimeMode={runtimeMode}
+      {bindingsNode ? (
+        <DebugNodeBindingsDialog
+          nodeName={bindingsNode.name}
+          draft={bindingsDraft}
+          nodeId={bindingsNode.id}
+          isApiMode={isApiMode}
+          canEdit={canEditAdminCatalog}
+          loading={adminLoading}
+          onBindingChange={(protocol, patch) => setBindingsDraft((current) => mergeNodeBinding(current, protocol, patch))}
+          onSave={saveBindingsDialog}
+          onSaveBinding={(protocol) => void saveNodeBinding(protocol)}
+          onArchiveBinding={(protocol) => void archiveNodeBinding(protocol)}
+          onClose={() => setBindingsNodeId(null)}
         />
       ) : null}
+
+      <ArchiveDebugNodeDialog
+        open={Boolean(disableTarget)}
+        nodeName={disableTarget?.name ?? ""}
+        loading={adminLoading}
+        onCancel={() => setDisableNodeId(null)}
+        onConfirm={() => {
+          if (!disableTarget) return;
+          void disableNode(disableTarget);
+          setDisableNodeId(null);
+        }}
+      />
+
+      <DebugModuleManagementDialog
+        open={moduleDialogOpen}
+        modules={modules}
+        nodes={library}
+        onClose={() => setModuleDialogOpen(false)}
+        onAddModule={addDebugModule}
+        onUpdateModule={(moduleName, patch) => void updateDebugModule(moduleName, patch)}
+        onDeleteModule={deleteDebugModule}
+        onEditNode={openNodeEditorFromModule}
+      />
     </div>
   );
 }

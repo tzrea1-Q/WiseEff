@@ -223,6 +223,11 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["debugging"],
     responseBody: "DebugParameterListResponse"
   },
+  "debugging.listRuntimeNodes": {
+    summary: "List runtime debug nodes",
+    tags: ["debugging"],
+    responseBody: "DebugNodeListResponse"
+  },
   "debugging.admin.listParameters": {
     summary: "List debug admin catalog parameters",
     tags: ["debugging"],
@@ -276,6 +281,105 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     tags: ["debugging"],
     responseBody: "DebugAdminBindingResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.listNodes": {
+    summary: "List debug node registry entries",
+    tags: ["debugging"],
+    responseBody: "DebugNodeListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.createNode": {
+    summary: "Create debug node registry entry",
+    tags: ["debugging"],
+    requestBody: "DebugNodeAdminRequest",
+    responseBody: "DebugNodeResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.updateNode": {
+    summary: "Update debug node registry entry",
+    tags: ["debugging"],
+    requestBody: "DebugNodeAdminPatchRequest",
+    responseBody: "DebugNodeResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.upsertNodeBinding": {
+    summary: "Upsert debug node protocol binding",
+    tags: ["debugging"],
+    requestBody: "DebugAdminNodeBindingRequest",
+    responseBody: "DebugAdminNodeBindingResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.patchNodeBinding": {
+    summary: "Update debug node protocol binding",
+    tags: ["debugging"],
+    requestBody: "DebugAdminNodeBindingRequest",
+    responseBody: "DebugAdminNodeBindingResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.archiveNodeBinding": {
+    summary: "Archive debug node protocol binding",
+    tags: ["debugging"],
+    responseBody: "DebugAdminNodeBindingResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
+  },
+  "debugging.admin.listModules": {
+    summary: "List debug node module registry entries",
+    tags: ["debugging"],
+    responseBody: "DebugNodeModuleListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.createModule": {
+    summary: "Create debug node module registry entry",
+    tags: ["debugging"],
+    requestBody: "DebugNodeModuleRequest",
+    responseBody: "DebugNodeModuleResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.updateModule": {
+    summary: "Update debug node module registry entry",
+    tags: ["debugging"],
+    requestBody: "DebugNodeModulePatchRequest",
+    responseBody: "DebugNodeModuleResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.deleteModule": {
+    summary: "Delete debug node module registry entry",
+    tags: ["debugging"],
+    responseBody: "DeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.listReloadBindings": {
+    summary: "List parameter reload bindings",
+    tags: ["debugging"],
+    responseBody: "ParameterReloadBindingListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.upsertReloadBinding": {
+    summary: "Upsert parameter reload binding",
+    tags: ["debugging"],
+    requestBody: "ParameterReloadBindingRequest",
+    responseBody: "ParameterReloadBindingResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.patchReloadBinding": {
+    summary: "Patch parameter reload binding",
+    tags: ["debugging"],
+    requestBody: "ParameterReloadBindingRequest",
+    responseBody: "ParameterReloadBindingResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.listReloadTargets": {
+    summary: "List managed parameters with reload bindings for a project",
+    tags: ["debugging"],
+    responseBody: "ParameterReloadTargetListResponse"
+  },
+  "debugging.reloadParameter": {
+    summary: "Reload managed parameter value onto device",
+    tags: ["debugging"],
+    requestBody: "ReloadParameterRequest",
+    responseBody: "DebugNodeOperationResponse"
   },
   "debugging.createSession": {
     summary: "Create debug session",

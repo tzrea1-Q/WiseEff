@@ -12,6 +12,8 @@ import { registerDebuggingRoutes } from "./routes";
 import * as serviceModule from "./service";
 import type {
   DebugDeviceRecord,
+  DebugNodeBindingRecord,
+  DebugNodeWithBindingsRecord,
   DebugParameterNodeBindingRecord,
   DebugParameterRecord,
   DebugParameterWithBindingsRecord,
@@ -37,7 +39,16 @@ const serviceMocks = vi.hoisted(() => ({
   archiveAdminParameter: vi.fn(),
   restoreAdminParameter: vi.fn(),
   upsertAdminParameterBinding: vi.fn(),
-  archiveAdminParameterBinding: vi.fn()
+  archiveAdminParameterBinding: vi.fn(),
+  listAdminDebugNodes: vi.fn(),
+  createAdminDebugNode: vi.fn(),
+  updateAdminDebugNode: vi.fn(),
+  upsertAdminDebugNodeBinding: vi.fn(),
+  archiveAdminDebugNodeBinding: vi.fn(),
+  listAdminDebugModules: vi.fn(),
+  createAdminDebugModule: vi.fn(),
+  updateAdminDebugModule: vi.fn(),
+  deleteAdminDebugModule: vi.fn()
 }));
 
 vi.mock("./service", () => ({
@@ -198,6 +209,47 @@ function bindingRecord(overrides: Partial<DebugParameterNodeBindingRecord> = {})
   };
 }
 
+function debugNodeWithBindingsRecord(overrides: Partial<DebugNodeWithBindingsRecord> = {}): DebugNodeWithBindingsRecord {
+  return {
+    id: "node-1",
+    organizationId: "org-1",
+    projectId: "aurora",
+    name: "Battery voltage",
+    description: "Reads battery voltage node.",
+    detailedDescription: "Full detail for battery voltage node.",
+    module: "Battery",
+    valueKind: "scalar",
+    valueFormat: "raw",
+    normalizationMode: "trim",
+    maxValueBytes: null,
+    enabled: true,
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    bindings: [],
+    ...overrides
+  };
+}
+
+function debugNodeBindingRecord(overrides: Partial<DebugNodeBindingRecord> = {}): DebugNodeBindingRecord {
+  return {
+    id: "node-binding-1",
+    organizationId: "org-1",
+    projectId: "aurora",
+    nodeId: "node-1",
+    protocol: "hdc",
+    nodePath: "/sys/voltage",
+    accessMode: "RO",
+    enabled: true,
+    notes: null,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    ...overrides
+  };
+}
+
 function sessionRecord(overrides: Partial<DebugSessionRecord> = {}): DebugSessionRecord {
   return {
     id: "session-1",
@@ -209,6 +261,7 @@ function sessionRecord(overrides: Partial<DebugSessionRecord> = {}): DebugSessio
     executionMode: "server",
     bridgeId: null,
     bridgeMachineLabel: null,
+    sessionKind: "node",
     actorUserId: "user-1",
     status: "active",
     startedAt: timestamp,
@@ -224,6 +277,7 @@ function operationRecord(overrides: Partial<NodeOperationRecord> = {}): NodeOper
     projectId: "aurora",
     sessionId: "session-1",
     parameterId: "param-1",
+    parameterDefinitionId: null,
     protocol: "hdc",
     nodePath: "/sys/current",
     operationType: "read",
@@ -584,6 +638,180 @@ describe("debugging routes", () => {
     );
   });
 
+  it("POST /api/v1/debugging/admin/nodes creates a metadata-only debug node with optional bindings", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = debugNodeWithBindingsRecord({
+      id: "node-created",
+      bindings: [debugNodeBindingRecord({ protocol: "hdc", nodePath: "/sys/created" })]
+    });
+    serviceMocks.createAdminDebugNode.mockResolvedValue(item);
+
+    const response = await requestJson<{ item: DebugNodeWithBindingsRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/nodes",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          projectId: "aurora",
+          name: "Created node",
+          module: "Battery",
+          bindings: [{ protocol: "hdc", nodePath: "/sys/created", accessMode: "RW", enabled: true }]
+        })
+      }
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({ item });
+    expect(serviceMocks.createAdminDebugNode).toHaveBeenCalledWith(
+      makeAuth(),
+      expect.objectContaining({
+        projectId: "aurora",
+        name: "Created node",
+        module: "Battery",
+        description: "",
+        enabled: true,
+        bindings: [{ protocol: "hdc", nodePath: "/sys/created", accessMode: "RW", enabled: true }]
+      }),
+      { requestId: "test-request" }
+    );
+  });
+
+  it("PUT and PATCH admin node binding routes parse params and body", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const putItem = debugNodeBindingRecord({ protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RO", notes: "ADB lab" });
+    const patchItem = debugNodeBindingRecord({ protocol: "adb", nodePath: "/sys/adb/path", enabled: false });
+    serviceMocks.upsertAdminDebugNodeBinding.mockResolvedValueOnce(putItem).mockResolvedValueOnce(patchItem);
+
+    const putResponse = await requestJson<{ item: DebugNodeBindingRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/nodes/node-1/bindings/adb",
+      {
+        method: "PUT",
+        body: JSON.stringify({ nodePath: "/sys/adb/path", accessMode: "RO", enabled: true, notes: "ADB lab" })
+      }
+    );
+    const patchResponse = await requestJson<{ item: DebugNodeBindingRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/nodes/node-1/bindings/adb",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ nodePath: "/sys/adb/path", accessMode: "RW", enabled: false })
+      }
+    );
+
+    expect(putResponse.status).toBe(200);
+    expect(putResponse.body).toEqual({ item: putItem });
+    expect(patchResponse.status).toBe(200);
+    expect(patchResponse.body).toEqual({ item: patchItem });
+    expect(serviceMocks.upsertAdminDebugNodeBinding).toHaveBeenNthCalledWith(
+      1,
+      makeAuth(),
+      { nodeId: "node-1", protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RO", enabled: true, notes: "ADB lab" },
+      { requestId: "test-request" }
+    );
+    expect(serviceMocks.upsertAdminDebugNodeBinding).toHaveBeenNthCalledWith(
+      2,
+      makeAuth(),
+      { nodeId: "node-1", protocol: "adb", nodePath: "/sys/adb/path", accessMode: "RW", enabled: false },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("POST /api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive archives a node binding", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const item = debugNodeBindingRecord({ protocol: "adb", enabled: false });
+    serviceMocks.archiveAdminDebugNodeBinding.mockResolvedValue(item);
+
+    const response = await requestJson<{ item: DebugNodeBindingRecord }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/nodes/node-1/bindings/adb/archive",
+      { method: "POST" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ item });
+    expect(serviceMocks.archiveAdminDebugNodeBinding).toHaveBeenCalledWith(
+      makeAuth(),
+      { nodeId: "node-1", protocol: "adb" },
+      { requestId: "test-request" }
+    );
+  });
+
+  it("admin module routes list, create, update, and delete debug modules", async () => {
+    const db = makeDb();
+    const gateway = makeGateway();
+    const moduleItem = {
+      name: "Battery Charging",
+      description: "Charge policy nodes",
+      owner: "Power team",
+      scope: "Aurora",
+      createdAt: timestamp,
+      updatedAt: timestamp
+    };
+    serviceMocks.listAdminDebugModules.mockResolvedValue([moduleItem]);
+    serviceMocks.createAdminDebugModule.mockResolvedValue(moduleItem);
+    serviceMocks.updateAdminDebugModule.mockResolvedValue({ ...moduleItem, name: "Charge Policy" });
+    serviceMocks.deleteAdminDebugModule.mockResolvedValue(undefined);
+
+    const listResponse = await requestJson<{ items: typeof moduleItem[] }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/modules"
+    );
+    const createResponse = await requestJson<{ item: typeof moduleItem }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/modules",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name: "Battery Charging",
+          description: "Charge policy nodes",
+          owner: "Power team",
+          scope: "Aurora"
+        })
+      }
+    );
+    const updateResponse = await requestJson<{ item: typeof moduleItem }>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/modules/Battery%20Charging",
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name: "Charge Policy" })
+      }
+    );
+    const deleteResponse = await requestJson<null>(
+      makeServer({ db, gateway }),
+      "/api/v1/debugging/admin/modules/Unused%20Module",
+      { method: "DELETE" }
+    );
+
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.body).toEqual({ items: [moduleItem] });
+    expect(createResponse.status).toBe(201);
+    expect(createResponse.body).toEqual({ item: moduleItem });
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.item.name).toBe("Charge Policy");
+    expect(deleteResponse.status).toBe(204);
+    expect(serviceMocks.createAdminDebugModule).toHaveBeenCalledWith(
+      makeAuth(),
+      {
+        name: "Battery Charging",
+        description: "Charge policy nodes",
+        owner: "Power team",
+        scope: "Aurora"
+      },
+      { requestId: "test-request" }
+    );
+    expect(serviceMocks.updateAdminDebugModule).toHaveBeenCalledWith(
+      makeAuth(),
+      { moduleName: "Battery Charging", name: "Charge Policy" },
+      { requestId: "test-request" }
+    );
+    expect(serviceMocks.deleteAdminDebugModule).toHaveBeenCalledWith(makeAuth(), "Unused Module", { requestId: "test-request" });
+  });
+
   it("archive and restore admin parameter routes use route params", async () => {
     const db = makeDb();
     const gateway = makeGateway();
@@ -637,7 +865,8 @@ describe("debugging routes", () => {
         projectId: "aurora",
         deviceId: "device-1",
         targetId: "target-1",
-        protocol: "hdc"
+        protocol: "hdc",
+        sessionKind: "node"
       },
       { requestId: "test-request" }
     );

@@ -167,6 +167,22 @@ M2 implementation notes:
 
 HDC 和 ADB node bindings 在 `debugging_parameter_node_bindings` 中按 protocol 独立存储。禁用或归档某个 binding 只影响对应 protocol，不能让另一个 protocol 的 binding 从 admin catalog governance 中消失。
 
+### 节点注册表 vs 参数重载（TD-032）
+
+TD-032 将调试 catalog 拆成三个协作面：
+
+- **Legacy 调试参数**（`debugging_parameters` + `debugging_parameter_node_bindings`）仍是 M3 节点调试 catalog，供 `/node-debugging` 使用，行形态仍带参数语义与按协议 bindings。
+- **调试节点**（`debug_nodes`）是按协议管理的纯设备路径注册表，不含 M1 参数元数据，在调试 Admin **节点注册表** Tab 维护。
+- **参数重载绑定**（`parameter_reload_bindings`）将 M1 `parameter_definitions` 映射到各协议的设备节点路径；名称、模块、单位、风险、当前/推荐值来自 M1，绑定行只存路径、协议、访问模式与启用状态。
+
+运行时分离：
+
+- `/node-debugging` 创建 `session_kind = node` 会话，读写 legacy 调试 catalog。
+- `/debugging` 创建 `session_kind = parameter_reload` 会话，通过 `GET /api/v1/debugging/reload-targets` 列出联邦重载目标，经 `POST /api/v1/debugging/parameters/reload` 写入设备。
+- reload 操作的 `node_operations.parameter_definition_id` 有值；legacy 节点写仍引用 `debugging_parameters.id`。
+
+Admin IA 提供三个 Tab：legacy catalog CRUD、节点注册表 CRUD、重载绑定 upsert。重载绑定编辑不得修改 M1 参数定义本身。
+
 ### 调试值元数据
 
 调试参数携带与协议 binding 分离的显式值元数据：

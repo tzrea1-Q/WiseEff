@@ -100,7 +100,7 @@ describe("WiseEff mature homepage theme", () => {
 
     expect(links).toEqual([
       { label: "参数管理", href: "/parameter-home" },
-      { label: "调试平台", href: "/debugging" },
+      { label: "调试平台", href: "/node-debugging" },
       { label: "日志分析", href: "/logs" }
     ]);
     expect(nav?.querySelector('a[href="#platform"]')).not.toBeInTheDocument();

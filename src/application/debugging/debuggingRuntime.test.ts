@@ -99,6 +99,7 @@ const apiSnapshot = {
 function createGateway(overrides: Partial<DebuggingGateway> = {}): DebuggingGateway {
   return {
     listDevices: vi.fn().mockResolvedValue([apiDevice]),
+    listRuntimeNodes: vi.fn().mockResolvedValue([apiParameter]),
     listParameters: vi.fn().mockResolvedValue([apiParameter]),
     detectTargets: vi.fn().mockResolvedValue([apiTarget]),
     createSession: vi.fn().mockResolvedValue(apiSession),
@@ -136,7 +137,7 @@ describe("createDebuggingRuntimeActions", () => {
     await actions.refresh({ projectId: "api-project" });
 
     expect(gateway.listDevices).toHaveBeenCalledTimes(1);
-    expect(gateway.listParameters).toHaveBeenCalledWith({ projectId: "api-project", protocol: "hdc" });
+    expect(gateway.listRuntimeNodes).toHaveBeenCalledWith({ projectId: "api-project", protocol: "hdc" });
     expect(dispatch).toHaveBeenCalledWith({
       type: "HYDRATE_DEBUG_RUNTIME",
       devices: [
@@ -157,7 +158,7 @@ describe("createDebuggingRuntimeActions", () => {
   it("refreshes shared debug parameters using project only as operation context", async () => {
     const gateway = {
       listDevices: vi.fn(async () => []),
-      listParameters: vi.fn(async () => [
+      listRuntimeNodes: vi.fn(async () => [
         {
           id: "shared-param-1",
           projectId: null,
@@ -191,7 +192,7 @@ describe("createDebuggingRuntimeActions", () => {
 
     await actions.refresh({ projectId: "aurora", protocol: "adb" });
 
-    expect(gateway.listParameters).toHaveBeenCalledWith({ projectId: "aurora", protocol: "adb" });
+    expect(gateway.listRuntimeNodes).toHaveBeenCalledWith({ projectId: "aurora", protocol: "adb" });
     expect(dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "HYDRATE_DEBUG_RUNTIME",
@@ -215,7 +216,8 @@ describe("createDebuggingRuntimeActions", () => {
       projectId: "api-project",
       deviceId: apiDevice.id,
       targetId: apiTarget.id,
-      protocol: "hdc"
+      protocol: "hdc",
+      sessionKind: "node"
     });
     expect(result).toEqual({ session: apiSession, target: apiTarget });
     expect(dispatch).toHaveBeenCalledWith({ type: "SET_DEBUG_ACTIVE_SESSION", session: apiSession, target: apiTarget });
@@ -257,7 +259,8 @@ describe("createDebuggingRuntimeActions", () => {
       projectId: "api-project",
       deviceId: adbDevice.id,
       targetId: adbTarget.id,
-      protocol: "adb"
+      protocol: "adb",
+      sessionKind: "node"
     });
     expect(result).toEqual({ session: adbSession, target: adbTarget });
   });
@@ -301,7 +304,8 @@ describe("createDebuggingRuntimeActions", () => {
       expect.objectContaining({
         projectId: "api-project",
         deviceId: hdcDevice.id,
-        protocol: "hdc"
+        protocol: "hdc",
+        sessionKind: "node"
       })
     );
   });
@@ -359,7 +363,8 @@ describe("createDebuggingRuntimeActions", () => {
         targetId: bridgeTarget.id,
         deviceId: bridgeTarget.deviceId,
         bridgeId: "br-1",
-        protocol: "hdc"
+        protocol: "hdc",
+        sessionKind: "node"
       })
     );
     expect("candidates" in result).toBe(false);
@@ -368,23 +373,32 @@ describe("createDebuggingRuntimeActions", () => {
     }
   });
 
-  it("rejects simulator-only targets when no bridge or real device is available", async () => {
+  it("falls back to simulator targets when no bridge or real device is available", async () => {
     const dispatch = vi.fn();
+    const simulatorTarget = {
+      ...apiTarget,
+      id: "sim-target-aurora-1",
+      targetRef: "simulator://aurora-1",
+      label: "Aurora Simulator 1"
+    };
     const gateway = createGateway({
-      detectTargets: vi.fn().mockResolvedValue([
-        {
-          ...apiTarget,
-          id: "sim-target-aurora-1",
-          targetRef: "simulator://aurora-1",
-          label: "Aurora Simulator 1"
-        }
-      ])
+      detectTargets: vi.fn().mockResolvedValue([simulatorTarget]),
+      createSession: vi.fn().mockResolvedValue({ ...apiSession, targetId: simulatorTarget.id })
     });
     const actions = createDebuggingRuntimeActions({ mode: "api", gateway, dispatch, getState: () => initialState });
 
-    await expect(actions.detectAndStartSession("api-project", { protocol: "hdc" })).rejects.toThrow(
-      "未检测到本地 Bridge 或真实设备，请先安装并配对 Device Bridge。"
+    const result = await actions.detectAndStartSession("api-project", { protocol: "hdc" });
+
+    expect(gateway.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetId: simulatorTarget.id,
+        protocol: "hdc",
+        sessionKind: "node"
+      })
     );
+    if ("target" in result) {
+      expect(result.target).toEqual(simulatorTarget);
+    }
   });
 
   it("reads an API node, returns the read result, and dispatches the operation event", async () => {
@@ -456,8 +470,8 @@ describe("createDebuggingRuntimeActions", () => {
     const secondParameter = { ...apiParameter, id: "api-debug-param-2", targetValue: "22", status: "待下发" as const };
     const gateway = createGateway({
       writeNode: vi.fn(async (input) => {
-        callOrder.push(input.parameterId ?? "");
-        return { ok: true, value: input.value, verified: true, operation: { ...writeOperation, id: `op-${input.parameterId}`, parameterId: input.parameterId } };
+        callOrder.push(input.nodeId ?? "");
+        return { ok: true, value: input.value, verified: true, operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId } };
       })
     });
     const actions = createDebuggingRuntimeActions({
@@ -479,7 +493,7 @@ describe("createDebuggingRuntimeActions", () => {
       1,
       expect.objectContaining({
         sessionId: apiSession.id,
-        parameterId: secondParameter.id,
+        nodeId: secondParameter.id,
         value: secondParameter.targetValue
       })
     );
@@ -487,7 +501,7 @@ describe("createDebuggingRuntimeActions", () => {
       2,
       expect.objectContaining({
         sessionId: apiSession.id,
-        parameterId: firstParameter.id,
+        nodeId: firstParameter.id,
         value: firstParameter.targetValue
       })
     );
@@ -504,12 +518,12 @@ describe("createDebuggingRuntimeActions", () => {
     const writableSecond = { ...apiParameter, id: "api-debug-writable-2", accessMode: "WO" as const, status: pendingStatus, targetValue: "22" };
     const gateway = createGateway({
       writeNode: vi.fn(async (input) => {
-        callOrder.push(input.parameterId ?? "");
+        callOrder.push(input.nodeId ?? "");
         return {
           ok: true,
           value: input.value,
           verified: true,
-          operation: { ...writeOperation, id: `op-${input.parameterId}`, parameterId: input.parameterId }
+          operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId }
         };
       })
     });
@@ -531,11 +545,11 @@ describe("createDebuggingRuntimeActions", () => {
     expect(gateway.writeNode).toHaveBeenCalledTimes(2);
     expect(gateway.writeNode).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ sessionId: apiSession.id, parameterId: writableSecond.id })
+      expect.objectContaining({ sessionId: apiSession.id, nodeId: writableSecond.id })
     );
     expect(gateway.writeNode).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({ sessionId: apiSession.id, parameterId: writableFirst.id })
+      expect.objectContaining({ sessionId: apiSession.id, nodeId: writableFirst.id })
     );
     expect(dispatch).not.toHaveBeenCalledWith({ type: "PUSH_DEBUG_VALUES", parameterIds: expect.any(Array) });
   });
@@ -548,7 +562,7 @@ describe("createDebuggingRuntimeActions", () => {
         ok: true,
         value: input.value,
         verified: true,
-        operation: { ...writeOperation, id: `op-${input.parameterId}`, parameterId: input.parameterId }
+        operation: { ...writeOperation, id: `op-${input.nodeId}`, parameterId: input.nodeId }
       }))
     });
     const actions = createDebuggingRuntimeActions({

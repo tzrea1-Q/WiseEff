@@ -17,9 +17,9 @@ describe("quality snapshot configuration", () => {
   });
 
   it("keeps default E2E Xiaoze flows on deterministic mode", () => {
-    const e2eConfig = readFileSync("playwright.config.ts", "utf8");
+    const sharedConfig = readFileSync("playwright.shared.ts", "utf8");
 
-    expect(e2eConfig).toMatch(/XIAOZE_DETERMINISTIC:\s*"true"/);
+    expect(sharedConfig).toMatch(/XIAOZE_DETERMINISTIC:\s*"true"/);
   });
 
   it("fails fast instead of reusing an unknown local E2E runtime by default", () => {

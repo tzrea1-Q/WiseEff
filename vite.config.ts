@@ -100,12 +100,22 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(projectRoot, "./src")
+      "@": path.resolve(projectRoot, "./src"),
+      "@copilotkit/react-core/v2/styles.css": path.resolve(projectRoot, "./src/test/empty.css"),
+      "@copilotkit/react-core/dist/v2/index.css": path.resolve(projectRoot, "./src/test/empty.css")
     }
   },
   test: {
     environment: "jsdom",
     exclude: [...configDefaults.exclude, ...siblingWorktreeExclude, "e2e/**"],
-    setupFiles: "./src/test/setup.ts"
+    setupFiles: "./src/test/setup.ts",
+    env: {
+      VITE_WISEEFF_RUNTIME_MODE: "mock"
+    },
+    server: {
+      deps: {
+        inline: ["@copilotkit/react-core"]
+      }
+    }
   }
 });

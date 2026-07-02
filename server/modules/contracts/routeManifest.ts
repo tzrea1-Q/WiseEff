@@ -1,7 +1,7 @@
 import type { HttpMethod } from "../../shared/http/router";
 
 export type RouteModule = "auth" | "audit" | "users" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
-export type RouteStability = "mvp" | "commercial-readiness";
+export type RouteStability = "mvp" | "commercial-readiness" | "deprecated";
 
 export type RouteManifestEntry = {
   id: string;
@@ -134,6 +134,7 @@ export const routeManifest = [
   { id: "debugging.listDevices", method: "GET", path: "/api/v1/debugging/devices", module: "debugging", stability: "mvp" },
   { id: "debugging.detectTarget", method: "POST", path: "/api/v1/debugging/targets/detect", module: "debugging", stability: "mvp" },
   { id: "debugging.listParameters", method: "GET", path: "/api/v1/debugging/parameters", module: "debugging", stability: "mvp" },
+  { id: "debugging.listRuntimeNodes", method: "GET", path: "/api/v1/debugging/nodes", module: "debugging", stability: "mvp" },
   { id: "debugging.admin.listParameters", method: "GET", path: "/api/v1/debugging/admin/parameters", module: "debugging", stability: "mvp" },
   { id: "debugging.admin.createParameter", method: "POST", path: "/api/v1/debugging/admin/parameters", module: "debugging", stability: "mvp" },
   {
@@ -178,6 +179,75 @@ export const routeManifest = [
     module: "debugging",
     stability: "mvp"
   },
+  { id: "debugging.admin.listNodes", method: "GET", path: "/api/v1/debugging/admin/nodes", module: "debugging", stability: "mvp" },
+  { id: "debugging.admin.createNode", method: "POST", path: "/api/v1/debugging/admin/nodes", module: "debugging", stability: "mvp" },
+  {
+    id: "debugging.admin.updateNode",
+    method: "PATCH",
+    path: "/api/v1/debugging/admin/nodes/:nodeId",
+    module: "debugging",
+    stability: "mvp"
+  },
+  { id: "debugging.admin.listModules", method: "GET", path: "/api/v1/debugging/admin/modules", module: "debugging", stability: "mvp" },
+  { id: "debugging.admin.createModule", method: "POST", path: "/api/v1/debugging/admin/modules", module: "debugging", stability: "mvp" },
+  {
+    id: "debugging.admin.updateModule",
+    method: "PATCH",
+    path: "/api/v1/debugging/admin/modules/:moduleName",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.deleteModule",
+    method: "DELETE",
+    path: "/api/v1/debugging/admin/modules/:moduleName",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.upsertNodeBinding",
+    method: "PUT",
+    path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.patchNodeBinding",
+    method: "PATCH",
+    path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.archiveNodeBinding",
+    method: "POST",
+    path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.listReloadBindings",
+    method: "GET",
+    path: "/api/v1/debugging/admin/reload-bindings",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.upsertReloadBinding",
+    method: "PUT",
+    path: "/api/v1/debugging/admin/reload-bindings",
+    module: "debugging",
+    stability: "mvp"
+  },
+  {
+    id: "debugging.admin.patchReloadBinding",
+    method: "PATCH",
+    path: "/api/v1/debugging/admin/reload-bindings",
+    module: "debugging",
+    stability: "mvp"
+  },
+  { id: "debugging.listReloadTargets", method: "GET", path: "/api/v1/debugging/reload-targets", module: "debugging", stability: "deprecated" },
+  { id: "debugging.reloadParameter", method: "POST", path: "/api/v1/debugging/parameters/reload", module: "debugging", stability: "deprecated" },
   { id: "debugging.createSession", method: "POST", path: "/api/v1/debugging/sessions", module: "debugging", stability: "mvp" },
   { id: "debugging.getSession", method: "GET", path: "/api/v1/debugging/sessions/:sessionId", module: "debugging", stability: "mvp" },
   {

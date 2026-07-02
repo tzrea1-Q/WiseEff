@@ -173,6 +173,41 @@ describe("M5 OpenAPI contract", () => {
           path: "/api/v1/debugging/admin/parameters/:parameterId/bindings/:protocol/archive",
           module: "debugging",
           stability: "mvp"
+        }),
+        expect.objectContaining({
+          id: "debugging.admin.listNodes",
+          method: "GET",
+          path: "/api/v1/debugging/admin/nodes",
+          module: "debugging",
+          stability: "mvp"
+        }),
+        expect.objectContaining({
+          id: "debugging.admin.upsertNodeBinding",
+          method: "PUT",
+          path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol",
+          module: "debugging",
+          stability: "mvp"
+        }),
+        expect.objectContaining({
+          id: "debugging.admin.patchNodeBinding",
+          method: "PATCH",
+          path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol",
+          module: "debugging",
+          stability: "mvp"
+        }),
+        expect.objectContaining({
+          id: "debugging.admin.archiveNodeBinding",
+          method: "POST",
+          path: "/api/v1/debugging/admin/nodes/:nodeId/bindings/:protocol/archive",
+          module: "debugging",
+          stability: "mvp"
+        }),
+        expect.objectContaining({
+          id: "debugging.reloadParameter",
+          method: "POST",
+          path: "/api/v1/debugging/parameters/reload",
+          module: "debugging",
+          stability: "deprecated"
         })
       ])
     );
@@ -186,6 +221,10 @@ describe("M5 OpenAPI contract", () => {
       requestBody: "DebugAdminBindingRequest",
       responseBody: "DebugAdminBindingResponse"
     });
+    expect(schemaRegistry["debugging.admin.upsertNodeBinding"]).toMatchObject({
+      requestBody: "DebugAdminNodeBindingRequest",
+      responseBody: "DebugAdminNodeBindingResponse"
+    });
 
     const document = buildOpenApiDocument();
     expect(document.paths["/api/v1/debugging/admin/parameters"]?.get).toBeDefined();
@@ -195,6 +234,10 @@ describe("M5 OpenAPI contract", () => {
     ]);
     expect(document.paths["/api/v1/debugging/admin/parameters/{parameterId}/bindings/{protocol}"]?.put?.parameters).toEqual([
       { name: "parameterId", in: "path", required: true, schema: { type: "string" } },
+      { name: "protocol", in: "path", required: true, schema: { type: "string" } }
+    ]);
+    expect(document.paths["/api/v1/debugging/admin/nodes/{nodeId}/bindings/{protocol}"]?.put?.parameters).toEqual([
+      { name: "nodeId", in: "path", required: true, schema: { type: "string" } },
       { name: "protocol", in: "path", required: true, schema: { type: "string" } }
     ]);
   });

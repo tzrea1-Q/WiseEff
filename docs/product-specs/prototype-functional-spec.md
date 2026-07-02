@@ -18,7 +18,11 @@ The log workflow supports upload, staged progress, report/evidence display, hist
 
 ## Debugging Prototype
 
-Debugging supports target discovery, node reads, guarded writes, readback, snapshots, rollback preparation, and operation history. Simulator mode remains useful for tests; HDC evidence is required for real-device claims.
+**Node debugging** (`/node-debugging`) is the supported user path for target discovery, node reads, guarded writes, readback, snapshots, rollback preparation, and operation history.
+
+**Parameter debugging** (`/debugging`) is **temporarily hidden** (2026-07-01): the route resolves to an unavailable page because device **parameter reload** is not implemented end-to-end. `src/DebuggingPage.tsx` remains for future reactivation and component tests. See `docs/exec-plans/completed/2026-07-01-wiseeff-parameter-debugging-platform-redesign.md` and **TD-032**.
+
+Simulator mode remains useful for tests; HDC evidence is required for real-device claims.
 
 ## Agent Prototype
 

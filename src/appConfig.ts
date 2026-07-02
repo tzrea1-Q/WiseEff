@@ -87,22 +87,13 @@ export const navigationItems: PageConfig[] = [
     subtitle: "电池与充电参数数据库、批量导入、权限和审计管理"
   },
   {
-    key: "debugging",
-    path: "/debugging",
-    label: "参数调试",
-    group: "调试平台",
-    icon: TerminalSquare,
-    title: "参数调试平台",
-    subtitle: "连接样机、实时调节充电参数并准备回滚"
-  },
-  {
     key: "node-debugging",
     path: "/node-debugging",
     label: "节点调试",
     group: "调试平台",
     icon: TerminalSquare,
     title: "节点调试平台",
-    subtitle: "通过 HDC / ADB 读写设备节点，完成调试参数验证"
+    subtitle: "通过 HDC / ADB 读写设备节点，完成调试验证"
   },
   {
     key: "debugging-admin",
@@ -110,8 +101,8 @@ export const navigationItems: PageConfig[] = [
     label: "管理后台",
     group: "调试平台",
     icon: Gauge,
-    title: "参数调试管理后台",
-    subtitle: "设备接入、可调充电参数目录、指标和权限管理"
+    title: "调试管理后台",
+    subtitle: "设备接入、可调节点目录、指标和权限管理"
   },
   {
     key: "log-dashboard",
@@ -196,6 +187,18 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  if (path === "/debugging") {
+    return {
+      key: "debugging",
+      path: "/debugging",
+      label: "参数调试",
+      group: "调试平台",
+      icon: TerminalSquare,
+      title: "页面暂时不可用",
+      subtitle: "参数调试工作区已下线，请使用节点调试或调试管理后台。"
+    };
+  }
+
   return navigationItems.find((item) => item.path === path) ?? navigationItems[0];
 }
 
@@ -212,7 +215,7 @@ export function getXiaozeContextSummary(path: string): string {
     case "logs":
       return "正在跟踪充电日志解析、温升模式匹配、根因推断和证据链。";
     case "debugging":
-      return "正在关注样机连接、待下发充电参数和回滚准备状态。";
+      return "参数调试工作区已下线，请使用节点调试或调试管理后台。";
     case "node-debugging":
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
     case "parameter-admin":
@@ -220,7 +223,7 @@ export function getXiaozeContextSummary(path: string): string {
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":
-      return "正在关注设备在线率、充电参数目录覆盖和高风险下发策略。";
+      return "正在关注设备在线率、可调节点目录覆盖和节点访问策略。";
     default:
       return "正在跨充电参数、日志、调试三个场景识别效率提升机会。";
   }

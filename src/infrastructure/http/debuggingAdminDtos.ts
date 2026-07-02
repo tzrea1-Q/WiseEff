@@ -1,9 +1,12 @@
 import type {
   DebugAdminParameterDraft,
   DebugConnectionProtocol,
+  DebugNodeProtocolBinding,
+  DebugNodeRegistryEntry,
   DebugParameter,
   DebugParameterAccessMode,
-  DebugParameterNodeBinding
+  DebugParameterNodeBinding,
+  ParameterReloadBinding
 } from "@/domain/debugging/types";
 import { resolveDebugValueMetadata } from "@/debugValueKind";
 import type {
@@ -12,6 +15,7 @@ import type {
   DebugValueKind
 } from "@/debugValueKind";
 import type { RiskLevel } from "@/domain/parameters/types";
+import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/powerManagementConfig";
 
 export type DebugAdminBindingDto = {
   protocol: DebugConnectionProtocol;
@@ -169,5 +173,121 @@ export function debugAdminParameterToDto(draft: DebugAdminParameterDraft): Debug
       enabled: binding.enabled,
       notes: binding.notes
     }))
+  };
+}
+
+export type DebugAdminNodeDto = {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  name: string;
+  description: string;
+  detailedDescription?: string;
+  module: string;
+  enabled: boolean;
+  archivedAt: string | null;
+  archivedBy: string | null;
+  archiveReason: string | null;
+  bindings?: DebugAdminBindingDto[];
+};
+
+export type DebugAdminNodeWriteDto = {
+  projectId: string | null;
+  name: string;
+  description?: string;
+  detailedDescription?: string;
+  module: string;
+  enabled: boolean;
+  bindings?: DebugAdminParameterBindingWriteDto[];
+};
+
+export type DebugAdminModuleDto = {
+  name: string;
+  description: string;
+  owner: string;
+  scope: string;
+};
+
+export function debugAdminModuleFromDto(dto: DebugAdminModuleDto): PowerManagementParameterModule {
+  return {
+    name: dto.name,
+    description: dto.description,
+    owner: dto.owner,
+    scope: dto.scope
+  };
+}
+
+export function debugAdminModuleToDto(draft: ParameterModuleDraft): DebugAdminModuleDto {
+  return {
+    name: draft.name.trim(),
+    description: draft.description.trim(),
+    owner: draft.owner.trim(),
+    scope: draft.scope.trim()
+  };
+}
+
+export type DebugAdminReloadBindingDto = {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  parameterDefinitionId: string;
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  enabled: boolean;
+  parameterName?: string;
+  parameterKey?: string;
+  module?: string;
+  unit?: string;
+  risk?: RiskLevel;
+  notes?: string | null;
+};
+
+export type DebugAdminReloadBindingWriteDto = {
+  projectId: string;
+  parameterDefinitionId: string;
+  protocol: DebugConnectionProtocol;
+  nodePath: string;
+  accessMode: DebugParameterAccessMode;
+  enabled: boolean;
+};
+
+export function debugAdminNodeBindingFromDto(dto: DebugAdminBindingDto): DebugNodeProtocolBinding {
+  return {
+    protocol: dto.protocol,
+    nodePath: dto.nodePath,
+    accessMode: dto.accessMode,
+    enabled: dto.enabled,
+    notes: dto.notes ?? undefined
+  };
+}
+
+export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistryEntry {
+  return {
+    id: dto.id,
+    projectId: dto.projectId,
+    name: dto.name,
+    description: dto.description,
+    detailedDescription: dto.detailedDescription ?? "",
+    module: dto.module,
+    enabled: dto.enabled,
+    bindings: dto.bindings?.map(debugAdminNodeBindingFromDto) ?? []
+  };
+}
+
+export function debugAdminReloadBindingFromDto(dto: DebugAdminReloadBindingDto): ParameterReloadBinding {
+  return {
+    id: dto.id,
+    projectId: dto.projectId,
+    parameterDefinitionId: dto.parameterDefinitionId,
+    parameterName: dto.parameterName,
+    module: dto.module,
+    unit: dto.unit,
+    risk: dto.risk,
+    protocol: dto.protocol,
+    nodePath: dto.nodePath,
+    accessMode: dto.accessMode,
+    enabled: dto.enabled,
+    notes: dto.notes ?? undefined
   };
 }

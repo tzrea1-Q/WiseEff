@@ -23,9 +23,9 @@ export function SubAppEntryRow({ state: _state }: SubAppEntryRowProps) {
       icon: TerminalSquare,
       kicker: "在线调试",
       title: "调试平台",
-      description: "连接样机、实时下发调试值，保留快照与回滚入口。",
-      chips: ["设备接入", "实时下发", "快照回滚"],
-      primary: { label: "进入调试工作台", href: "/debugging" },
+      description: "连接样机、通过 HDC/ADB 读写设备节点，保留快照与回滚入口。",
+      chips: ["设备接入", "节点读写", "快照回滚"],
+      primary: { label: "进入节点调试", href: "/node-debugging" },
       secondary: { label: "打开调试管理后台", href: "/debugging-admin" }
     },
     {

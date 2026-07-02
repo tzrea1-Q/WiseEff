@@ -9,7 +9,6 @@ describe("WiseEff prototype configuration", () => {
       "/parameters",
       "/parameter-review",
       "/parameter-admin",
-      "/debugging",
       "/node-debugging",
       "/debugging-admin",
       "/log-dashboard",
@@ -69,6 +68,17 @@ describe("WiseEff prototype configuration", () => {
     expect(page.key).toBe("user-permissions");
     expect(page.path).toBe("/user-permissions");
     expect(navigationItems.map((item) => item.path)).not.toContain("/user-permissions");
+  });
+
+  it("keeps the retired parameter debugging route resolvable outside normal navigation", () => {
+    expect(navigationItems.map((item) => item.path)).not.toContain("/debugging");
+    expect(navigationItems.map((item) => item.path)).toEqual(expect.arrayContaining(["/node-debugging"]));
+    const page = getPageByPath("/debugging");
+
+    expect(page.key).toBe("debugging");
+    expect(page.path).toBe("/debugging");
+    expect(page.title).toBe("页面暂时不可用");
+    expect(getXiaozeContextSummary("/debugging")).toContain("下线");
   });
 
   it("keeps the retired comparison route resolvable outside normal navigation", () => {
