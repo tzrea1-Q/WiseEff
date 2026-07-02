@@ -6,7 +6,7 @@ import { isBridgeTokenExpired, runConnectCommand } from "./connectCommand";
 const pairedConfig: BridgeConfig = {
   bridgeId: "bridge_123",
   bridgeToken: "wb_123",
-  tokenExpiresAt: "2026-07-01T00:00:00.000Z",
+  tokenExpiresAt: "2027-07-01T00:00:00.000Z",
   serverUrl: "https://wiseeff.example.com",
   machineLabel: "machine",
   platform: "windows",
@@ -56,7 +56,7 @@ describe("connectCommand", () => {
       json: async () => ({
         bridgeId: "bridge_123",
         bridgeToken: "wb_123",
-        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+        tokenExpiresAt: "2027-07-01T00:00:00.000Z"
       }),
       text: async () => ""
     })) as typeof fetch;
@@ -108,7 +108,7 @@ describe("connectCommand", () => {
       json: async () => ({
         bridgeId: "bridge_123",
         bridgeToken: "wb_123",
-        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+        tokenExpiresAt: "2027-07-01T00:00:00.000Z"
       }),
       text: async () => ""
     })) as typeof fetch;
@@ -168,7 +168,7 @@ describe("connectCommand", () => {
       json: async () => ({
         bridgeId: "bridge_456",
         bridgeToken: "wb_456",
-        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+        tokenExpiresAt: "2027-07-01T00:00:00.000Z"
       }),
       text: async () => ""
     })) as typeof fetch;
@@ -194,7 +194,7 @@ describe("connectCommand", () => {
       json: async () => ({
         bridgeId: "bridge_456",
         bridgeToken: "wb_456",
-        tokenExpiresAt: "2026-07-01T00:00:00.000Z"
+        tokenExpiresAt: "2027-07-01T00:00:00.000Z"
       }),
       text: async () => ""
     })) as typeof fetch;

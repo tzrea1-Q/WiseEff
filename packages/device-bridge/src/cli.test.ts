@@ -1,8 +1,23 @@
-import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
 import { describe, expect, it, vi } from "vitest";
+
+const fsMockState = vi.hoisted(() => ({
+  passthroughExistsSync: null as null | typeof import("node:fs").existsSync,
+  existsSyncMock: vi.fn<(target: string) => boolean>()
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  fsMockState.passthroughExistsSync = actual.existsSync;
+  fsMockState.existsSyncMock.mockImplementation((target) => actual.existsSync(target));
+  return {
+    ...actual,
+    existsSync: (target: string) => fsMockState.existsSyncMock(target)
+  };
+});
+
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 
 import { isCliEntryPoint, resolveCliEntryPath, runCli } from "./cli";
 import type { BridgeConfig } from "./config";
@@ -150,7 +165,7 @@ describe("device bridge cli", () => {
   it("installs macOS launch agent via service install", async () => {
     const capture = createStdoutCapture();
     const bridgeBin = "/Applications/WiseEff Bridge.app/Contents/Resources/wiseeff-bridge";
-    const existsSpy = vi.spyOn(await import("node:fs"), "existsSync").mockImplementation((target) => target === bridgeBin);
+    fsMockState.existsSyncMock.mockImplementation((target) => target === bridgeBin);
 
     const exitCode = await runCli(["service", "install"], {
       stdout: capture.stdout,
@@ -160,7 +175,7 @@ describe("device bridge cli", () => {
       mkdir: vi.fn(async () => undefined),
       writeFile: vi.fn(async () => undefined)
     });
-    existsSpy.mockRestore();
+    fsMockState.existsSyncMock.mockImplementation((target) => fsMockState.passthroughExistsSync!(target));
 
     expect(exitCode).toBe(0);
     expect(capture.logs.some((line) => line.includes("LaunchAgent plist"))).toBe(true);

@@ -5,7 +5,7 @@ const { spawnMock, existsSyncMock } = vi.hoisted(() => ({
     on: vi.fn(),
     unref: vi.fn()
   })),
-  existsSyncMock: vi.fn((target: string) => target.endsWith("wiseeff-bridge"))
+  existsSyncMock: vi.fn((target: string) => target.endsWith("wiseeff-bridge") || target.endsWith("node.exe"))
 }));
 
 vi.mock("node:child_process", async (importOriginal) => {
@@ -40,6 +40,7 @@ vi.mock("./windowsService", () => ({
 }));
 
 import { buildDarwinLoginShellStartScript, ensureBridgeRunning, probeLocalBridgeHealth } from "./ensureBridgeRunning";
+import { resolveDetachedBridgeStartCommand } from "./bridgeRuntimePaths";
 
 describe("probeLocalBridgeHealth", () => {
   it("returns connected state when health endpoint responds", async () => {
@@ -97,26 +98,17 @@ describe("ensureBridgeRunning", () => {
     expect(stdout.error).toHaveBeenCalledWith("Bridge failed to come online within 25 seconds.");
   });
 
-  it("spawns bundled node on Windows instead of .cmd launchers", async () => {
-    const stdout = { log: vi.fn(), error: vi.fn() };
-    const fetchImpl = vi.fn(async () => null) as typeof fetch;
-    spawnMock.mockClear();
-
-    await ensureBridgeRunning({
-      fetchImpl,
-      platform: "win32",
-      execPath: "C:\\Program Files\\nodejs\\node.exe",
-      cliPath: "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js",
-      stdout
+  it("uses bundled node on Windows instead of .cmd launchers", () => {
+    expect(
+      resolveDetachedBridgeStartCommand({
+        platform: "win32",
+        execPath: "C:\\Program Files\\nodejs\\node.exe",
+        cliPath: "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js"
+      })
+    ).toEqual({
+      command: "C:\\Program Files\\nodejs\\node.exe",
+      args: ["C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js", "start"]
     });
-
-    expect(spawnMock).toHaveBeenCalled();
-    const [command, args] = spawnMock.mock.calls.at(-1) ?? [];
-    expect(command).toBe("C:\\Program Files\\nodejs\\node.exe");
-    expect(args).toEqual([
-      "C:\\Users\\dev\\AppData\\Local\\WiseEff\\Bridge\\cli.js",
-      "start"
-    ]);
   });
 
   it("quotes darwin app bundle paths with spaces when spawning start", () => {

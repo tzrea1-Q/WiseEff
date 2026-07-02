@@ -1,13 +1,18 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
-import { createAdbDebugDeviceGateway, createDefaultAdbCommandRunner, type AdbCommandRunner } from "./adbGateway";
+import { createAdbCommandRunner } from "@wiseeff/device-command-core/adbRunner";
+import { createAdbDebugDeviceGateway, type AdbCommandRunner } from "./adbGateway";
 import { compareDebugValues, resolveDebugValueMetadata } from "./valueCodec";
 import { DEBUG_NORMALIZATION_MODE_JSON_CANONICAL, DEBUG_VALUE_FORMAT_JSON, DEBUG_VALUE_KIND_COMPLEX } from "./types";
 
-vi.mock("node:child_process", () => ({
-  spawn: vi.fn()
-}));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    spawn: vi.fn()
+  };
+});
 
 function makeRunner(results: Awaited<ReturnType<AdbCommandRunner>>[]) {
   const calls: Array<{ command: string; args: string[]; timeoutMs: number }> = [];
@@ -35,7 +40,7 @@ describe("ADB debug device gateway", () => {
     child.kill = vi.fn();
     vi.mocked(spawn).mockReturnValueOnce(child as never);
 
-    const runnerPromise = createDefaultAdbCommandRunner()("adb", ["devices"], { timeoutMs: 1000 });
+    const runnerPromise = createAdbCommandRunner({ spawnImpl: spawn })(["devices"], { timeoutMs: 1000 });
     child.stdout.emit("data", "List of devices attached\n");
     child.emit("close", 0);
 

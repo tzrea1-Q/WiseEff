@@ -3004,12 +3004,14 @@ describe("WiseEff app shell", () => {
     const catalog = screen.getByRole("table", { name: "可调节点目录" });
     const chargerRow = within(catalog).getByRole("row", { name: /充电输入限流/ });
     fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
+    const editedPath = "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited";
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
-      target: { value: "/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited" }
+      target: { value: editedPath }
     });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(within(chargerRow).getByRole("button", { name: "路径绑定" }));
 
-    expect(screen.getByTitle("/data/local/tmp/wiseeff_nodes/charger/input_current_limit_ma_edited")).toBeInTheDocument();
+    expect(screen.getByLabelText("HDC 节点路径")).toHaveValue(editedPath);
   });
 
   it("adds and disables debug nodes from the debugging admin catalog", () => {
@@ -3020,6 +3022,7 @@ describe("WiseEff app shell", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "新增节点" }));
     fireEvent.change(screen.getByLabelText("名称"), { target: { value: nextName } });
+    fireEvent.change(screen.getByLabelText("模块"), { target: { value: "Charging Policy" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     const createdRow = screen.getByRole("row", { name: new RegExp(nextName) });

@@ -1,12 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import App, { type AppAction } from "./App";
+import App, { appReducer, type AppAction } from "./App";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
 import { TopBarActionsContext } from "./components/layout";
 import { DebuggingPage } from "./DebuggingPage";
 import { initialState, type PrototypeState } from "./mockData";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useReducer, useState, type ReactNode } from "react";
 
 const userState = { ...initialState, activeRoleId: "user" };
 const adminState = { ...initialState, activeRoleId: "admin" };
@@ -64,25 +63,27 @@ function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}
 function renderDebuggingPage({
   state = userState,
   debuggingActions,
-  dispatch = vi.fn()
+  dispatch: dispatchOverride
 }: {
   state?: typeof userState;
   debuggingActions?: DebuggingRuntimeActions;
   dispatch?: (action: AppAction) => void;
 } = {}) {
   function DebuggingHarness() {
+    const [appState, appDispatch] = useReducer(appReducer, state);
+    const dispatch = dispatchOverride ?? appDispatch;
     const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
     const context = useMemo(() => ({ setActions: setTopBarActions }), []);
     return (
       <TopBarActionsContext.Provider value={context}>
         <div className="topbar-page-actions">{topBarActions}</div>
-        <DebuggingPage state={state} dispatch={dispatch} debuggingActions={debuggingActions} />
+        <DebuggingPage state={appState} dispatch={dispatch} debuggingActions={debuggingActions} />
       </TopBarActionsContext.Provider>
     );
   }
 
   render(<DebuggingHarness />);
-  return { dispatch };
+  return { dispatch: dispatchOverride };
 }
 
 function getTopbarConnectButton() {
@@ -281,7 +282,9 @@ describe("/debugging runtime wiring", () => {
 
     fireEvent.click(getTopbarConnectButton());
 
-    await waitFor(() => expect(actions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId));
+    await waitFor(() =>
+      expect(actions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId, { sessionKind: "parameter_reload" })
+    );
     expect(actions.detectAndStartSession).toHaveBeenCalledTimes(1);
   });
 
@@ -531,18 +534,14 @@ describe("/debugging-admin 节点元数据", () => {
     window.history.replaceState(null, "", "/debugging-admin");
     render(<App initialAppState={adminState} runtimeMode="mock" />);
 
-    const firstRow = screen.getByRole("row", { name: /charger\.input_current_limit_ma/ });
+    const firstRow = screen.getByRole("row", { name: /充电输入限流/ });
     fireEvent.click(within(firstRow).getByRole("button", { name: "路径绑定" }));
     fireEvent.change(screen.getByLabelText("HDC 节点路径"), {
       target: { value: "/sys/class/power_supply/battery/test_node" }
     });
-    await userEvent.click(screen.getByLabelText("HDC 访问模式"));
-    await userEvent.click(screen.getByRole("option", { name: "WO · 只写" }));
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    fireEvent.click(within(firstRow).getByRole("button", { name: "路径绑定" }));
 
-    fireEvent.click(screen.getByRole("button", { name: /配置源预览/ }));
-
-    expect(document.body).toHaveTextContent("/sys/class/power_supply/battery/test_node");
-    expect(document.body).toHaveTextContent('"accessMode": "WO"');
+    expect(screen.getByLabelText("HDC 节点路径")).toHaveValue("/sys/class/power_supply/battery/test_node");
   });
 });

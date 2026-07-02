@@ -23,6 +23,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
     </div>
   ),
   CopilotChatConfigurationProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useCopilotChatConfiguration: () => ({ setModalOpen: vi.fn() }),
   CopilotChat: () => null,
   CopilotPopup: () => null,
   UseAgentUpdate: {

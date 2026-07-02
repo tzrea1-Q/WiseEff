@@ -323,6 +323,33 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     responseBody: "DebugAdminNodeBindingResponse",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
+  "debugging.admin.listModules": {
+    summary: "List debug node module registry entries",
+    tags: ["debugging"],
+    responseBody: "DebugNodeModuleListResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "debugging.admin.createModule": {
+    summary: "Create debug node module registry entry",
+    tags: ["debugging"],
+    requestBody: "DebugNodeModuleRequest",
+    responseBody: "DebugNodeModuleResponse",
+    successStatus: 201,
+    additionalResponses: { "403": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.updateModule": {
+    summary: "Update debug node module registry entry",
+    tags: ["debugging"],
+    requestBody: "DebugNodeModulePatchRequest",
+    responseBody: "DebugNodeModuleResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
+  "debugging.admin.deleteModule": {
+    summary: "Delete debug node module registry entry",
+    tags: ["debugging"],
+    responseBody: "DeleteResponse",
+    additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse", "409": "ErrorResponse" }
+  },
   "debugging.admin.listReloadBindings": {
     summary: "List parameter reload bindings",
     tags: ["debugging"],

@@ -62,7 +62,7 @@ describe("powerManagementConfig", () => {
 
   it("flattens project and debug catalogs for runtime state", () => {
     expect(flattenProjectParameters(bundledPowerManagementConfig)).toHaveLength(36);
-    expect(flattenDebugParameters(bundledPowerManagementConfig)).toHaveLength(8);
+    expect(flattenDebugParameters(bundledPowerManagementConfig)).toHaveLength(10);
   });
 
   it("ships DTS-style multiline matrix values for display verification", () => {
@@ -173,9 +173,9 @@ describe("powerManagementConfig", () => {
     const withDebugParameter = addDebugParameter(draft);
     const addedDebugParameter = withDebugParameter.debugParameters.at(-1);
 
-    expect(addedDebugParameter?.name).toBe("new_debug_parameter_9");
-    expect(addedDebugParameter?.key).toBe("debug.new_parameter_9");
-    expect(deleteDebugParameter(withDebugParameter, addedDebugParameter?.id ?? "").debugParameters).toHaveLength(8);
+    expect(addedDebugParameter?.name).toBe("new_debug_parameter_11");
+    expect(addedDebugParameter?.key).toBe("debug.new_parameter_11");
+    expect(deleteDebugParameter(withDebugParameter, addedDebugParameter?.id ?? "").debugParameters).toHaveLength(10);
   });
 });
 

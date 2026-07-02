@@ -242,7 +242,7 @@ describe("operations routes", () => {
     }
   });
 
-  it("blocks /api/v1/operations/pilot-readiness when contract evidence is missing", async () => {
+  it("reports pilot readiness contract gate as ready when OpenAPI schema coverage is complete", async () => {
     const originalBackupDrillAt = process.env.M5_BACKUP_RESTORE_DRILL_AT;
     process.env.M5_BACKUP_RESTORE_DRILL_AT = "2026-05-29T09:00:00Z";
 
@@ -270,11 +270,10 @@ describe("operations routes", () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toMatchObject({
-        ok: false,
-        status: "blocked",
-        blockedBy: ["contract"],
+        ok: true,
+        status: "pilot_ready",
         gates: {
-          contract: { ok: false, status: "missing" }
+          contract: { ok: true, status: "ready" }
         }
       });
     } finally {

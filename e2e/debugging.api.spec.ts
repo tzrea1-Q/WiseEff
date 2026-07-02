@@ -423,7 +423,16 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
 
   await page.goto(`/node-debugging?project=${projectId}`);
 
-  await expect(page.getByText("在线 · Aurora Simulator 1", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const sessionSummary = page.locator(".session-summary-card");
+  const sessionPrimary = sessionSummary.locator(".session-summary-primary");
+  await expect(sessionPrimary).toBeVisible({ timeout: 30_000 });
+  const sessionStatus = ((await sessionPrimary.textContent()) ?? "").trim();
+  test.skip(
+    /HDC|ADB/i.test(sessionStatus),
+    `Debugging smoke requires simulator gateway; current session summary: ${sessionStatus}`
+  );
+  await expect(sessionPrimary).toContainText("Aurora Simulator 1", { timeout: 30_000 });
+  await expect(sessionPrimary).toContainText("在线");
 
   const fastChargeRow = parameterRow(page, "Fast charge current");
   await expect(fastChargeRow).toContainText("3000", { timeout: 30_000 });
@@ -459,7 +468,18 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
   }
 
   await page.goto(`/node-debugging?project=${projectId}`);
-  await expect(page.getByText("在线 · Aurora Simulator 1", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const sessionSummaryAfterRollback = page.locator(".session-summary-card");
+  const sessionPrimaryAfterRollback = sessionSummaryAfterRollback.locator(".session-summary-primary");
+  await expect(sessionPrimaryAfterRollback).toBeVisible({ timeout: 30_000 });
+  const rollbackSessionStatus = ((await sessionPrimaryAfterRollback.textContent()) ?? "").trim();
+  test.skip(
+    /HDC|ADB/i.test(rollbackSessionStatus),
+    `Debugging smoke requires simulator gateway; current session summary: ${rollbackSessionStatus}`
+  );
+  await expect(sessionPrimaryAfterRollback).toContainText("Aurora Simulator 1", {
+    timeout: 30_000
+  });
+  await expect(sessionPrimaryAfterRollback).toContainText("在线");
   await expect(parameterRow(page, "Fast charge current")).toContainText("3000", { timeout: 30_000 });
 
   await page.goto("/parameter-admin?audit=open");

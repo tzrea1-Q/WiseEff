@@ -136,7 +136,7 @@ async function latestLogByFile(page: Page, fileName: string) {
 }
 
 async function uploadLogThroughUi(page: Page, filePath: string, question?: string) {
-  await page.locator(".topbar-page-actions .button.primary").click();
+  await page.getByRole("button", { name: /上传新日志/ }).click();
   const dialog = page.getByRole("dialog").last();
   await dialog.locator('input[type="file"]').setInputFiles(filePath);
   if (question) {
