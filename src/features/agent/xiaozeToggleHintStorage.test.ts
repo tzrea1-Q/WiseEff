@@ -4,27 +4,31 @@ import {
   markXiaozeToggleHintShown,
   readXiaozeToggleHintDismissed,
   readXiaozeToggleHintShown,
-  XIAOZE_TOGGLE_HINT_SHOWN_SESSION_KEY,
-  XIAOZE_TOGGLE_HINT_STORAGE_KEY
+  resetXiaozeToggleHintPageState
 } from "./xiaozeToggleHintStorage";
 
 describe("xiaozeToggleHintStorage", () => {
   beforeEach(() => {
-    localStorage.clear();
-    sessionStorage.clear();
+    resetXiaozeToggleHintPageState();
   });
 
-  it("reads dismissed state from localStorage", () => {
+  it("tracks dismiss for the current page load only", () => {
     expect(readXiaozeToggleHintDismissed()).toBe(false);
     dismissXiaozeToggleHint();
     expect(readXiaozeToggleHintDismissed()).toBe(true);
-    expect(localStorage.getItem(XIAOZE_TOGGLE_HINT_STORAGE_KEY)).toBe("1");
   });
 
-  it("tracks whether the hint was shown in the current session", () => {
+  it("tracks whether the hint was shown during the current page load", () => {
     expect(readXiaozeToggleHintShown()).toBe(false);
     markXiaozeToggleHintShown();
     expect(readXiaozeToggleHintShown()).toBe(true);
-    expect(sessionStorage.getItem(XIAOZE_TOGGLE_HINT_SHOWN_SESSION_KEY)).toBe("1");
+  });
+
+  it("resets shown and dismissed state on a fresh page load", () => {
+    dismissXiaozeToggleHint();
+    markXiaozeToggleHintShown();
+    resetXiaozeToggleHintPageState();
+    expect(readXiaozeToggleHintDismissed()).toBe(false);
+    expect(readXiaozeToggleHintShown()).toBe(false);
   });
 });

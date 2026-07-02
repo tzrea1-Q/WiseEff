@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { supportsXiaozeProactiveInsightPage } from "./xiaozeProactiveInsights";
-import { useXiaozePageContextValue } from "./xiaozePageContext";
 import {
   dismissXiaozeToggleHint,
   markXiaozeToggleHintShown,
@@ -16,15 +14,11 @@ type XiaozeToggleHintProps = {
 };
 
 export function XiaozeToggleHint({ visible, onOpen }: XiaozeToggleHintProps) {
-  const pageContext = useXiaozePageContextValue();
-  const pageHasProactiveInsights = pageContext?.pageKey
-    ? supportsXiaozeProactiveInsightPage(pageContext.pageKey)
-    : false;
   const [dismissed, setDismissed] = useState(() => readXiaozeToggleHintDismissed());
   const [revealed, setRevealed] = useState(false);
 
   useEffect(() => {
-    if (!visible || dismissed || pageHasProactiveInsights || readXiaozeToggleHintShown()) {
+    if (!visible || dismissed || readXiaozeToggleHintShown()) {
       setRevealed(false);
       return;
     }
@@ -35,9 +29,9 @@ export function XiaozeToggleHint({ visible, onOpen }: XiaozeToggleHintProps) {
     }, XIAOZE_TOGGLE_HINT_DELAY_MS);
 
     return () => window.clearTimeout(timer);
-  }, [dismissed, pageHasProactiveInsights, visible]);
+  }, [dismissed, visible]);
 
-  if (!visible || dismissed || pageHasProactiveInsights || !revealed) {
+  if (!visible || dismissed || !revealed) {
     return null;
   }
 

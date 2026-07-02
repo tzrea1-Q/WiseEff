@@ -1,27 +1,24 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { XiaozeToggleHint } from "./XiaozeToggleHint";
-import { XIAOZE_TOGGLE_HINT_DELAY_MS, XIAOZE_TOGGLE_HINT_STORAGE_KEY, markXiaozeToggleHintShown } from "./xiaozeToggleHintStorage";
-
-const useXiaozePageContextValue = vi.fn();
-
-vi.mock("./xiaozePageContext", () => ({
-  useXiaozePageContextValue: () => useXiaozePageContextValue()
-}));
+import {
+  readXiaozeToggleHintDismissed,
+  resetXiaozeToggleHintPageState,
+  XIAOZE_TOGGLE_HINT_DELAY_MS,
+  markXiaozeToggleHintShown
+} from "./xiaozeToggleHintStorage";
 
 describe("XiaozeToggleHint", () => {
   beforeEach(() => {
-    localStorage.clear();
-    sessionStorage.clear();
+    resetXiaozeToggleHintPageState();
     vi.useFakeTimers();
-    useXiaozePageContextValue.mockReturnValue({ path: "/debugging", pageKey: "debugging" });
   });
 
   afterEach(() => {
     vi.useRealTimers();
   });
 
-  it("reveals after a delay on pages without proactive insights", () => {
+  it("reveals after a delay", () => {
     const onOpen = vi.fn();
 
     render(<XiaozeToggleHint visible onOpen={onOpen} />);
@@ -38,21 +35,17 @@ describe("XiaozeToggleHint", () => {
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 
-  it("does not show on pages that already have proactive insight banners", () => {
-    useXiaozePageContextValue.mockReturnValue({
-      path: "/parameters",
-      pageKey: "parameters",
-      projectId: "aurora"
-    });
-
+  it("also shows on pages with proactive insight banners", () => {
     render(<XiaozeToggleHint visible onOpen={vi.fn()} />);
 
-    vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS + 100);
+    act(() => {
+      vi.advanceTimersByTime(XIAOZE_TOGGLE_HINT_DELAY_MS);
+    });
 
-    expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
+    expect(screen.getByTestId("xiaoze-toggle-hint")).toBeInTheDocument();
   });
 
-  it("persists dismissal", () => {
+  it("hides for the rest of the current page load after dismiss", () => {
     render(<XiaozeToggleHint visible onOpen={vi.fn()} />);
 
     act(() => {
@@ -60,14 +53,13 @@ describe("XiaozeToggleHint", () => {
     });
 
     fireEvent.click(screen.getByLabelText("不再提示"));
-    expect(localStorage.getItem(XIAOZE_TOGGLE_HINT_STORAGE_KEY)).toBe("1");
+    expect(readXiaozeToggleHintDismissed()).toBe(true);
     expect(screen.queryByTestId("xiaoze-toggle-hint")).not.toBeInTheDocument();
   });
 
-  it("does not reappear on later page visits in the same session", () => {
+  it("does not reappear on later page visits in the same page load", () => {
     markXiaozeToggleHintShown();
 
-    useXiaozePageContextValue.mockReturnValue({ path: "/logs/history", pageKey: "logs-history" });
     render(<XiaozeToggleHint visible onOpen={vi.fn()} />);
 
     act(() => {
