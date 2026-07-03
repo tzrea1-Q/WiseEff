@@ -37,9 +37,8 @@ describe("normalized workspace headers", () => {
     expect(within(topbar).getByRole("button", { name: "批量参数导入" })).toBeInTheDocument();
     expect(within(topbarActions).queryByRole("button", { name: "保存到 JSON 文件" })).not.toBeInTheDocument();
     expect(within(topbarActions).queryByRole("button", { name: /导出 JSON/ })).not.toBeInTheDocument();
-    const permissionsButton = within(topbarActions).getByRole("button", { name: "权限" });
-    expect(permissionsButton).toBeInTheDocument();
-    expect(permissionsButton).toHaveAttribute("data-route", "/user-permissions");
+    expect(within(topbarActions).queryByRole("button", { name: "权限" })).not.toBeInTheDocument();
+    expect(within(topbarActions).queryByRole("button", { name: "审计" })).not.toBeInTheDocument();
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
   });
 
@@ -50,10 +49,10 @@ describe("normalized workspace headers", () => {
 
     const parameterAdminTopbar = document.querySelector(".topbar") as HTMLElement;
     const legacyPrimary = within(parameterAdminTopbar).getByRole("button", { name: "批量参数导入" });
-    const auditButton = within(parameterAdminTopbar).getByRole("button", { name: "审计" });
 
     expect(legacyPrimary).toHaveClass("button", "primary");
-    expect(auditButton).toHaveClass("button", "ghost");
+    expect(within(parameterAdminTopbar).queryByRole("button", { name: "审计" })).not.toBeInTheDocument();
+    expect(within(parameterAdminTopbar).queryByRole("button", { name: "权限" })).not.toBeInTheDocument();
     expect(parameterAdminTopbar.querySelector(".export-menu")).not.toBeInTheDocument();
 
     cleanup();
@@ -65,6 +64,6 @@ describe("normalized workspace headers", () => {
     const compactMetrics = debuggingTopbar.querySelector(".debug-admin-strip--topbar");
 
     expect(compactMetrics).toBeInTheDocument();
-    expect(compactMetrics?.querySelectorAll(".debug-admin-stat")).toHaveLength(3);
+    expect(compactMetrics?.querySelectorAll(".debug-admin-stat")).toHaveLength(0);
   });
 });

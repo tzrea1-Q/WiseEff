@@ -85,7 +85,7 @@ export const navigationItems: PageConfig[] = [
     group: "参数管理",
     icon: Database,
     title: "项目参数管理后台",
-    subtitle: "电池与充电参数数据库、批量导入、权限和审计管理"
+    subtitle: "电池与充电参数数据库、批量导入管理"
   },
   {
     key: "node-debugging",

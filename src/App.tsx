@@ -3168,7 +3168,11 @@ function TopBar({
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canCreateProject = canPerform(currentRoleId, "parameter.edit");
   const showProjectInitAction =
-    page.key.startsWith("parameter") && canCreateProject && page.key !== "parameter-admin-projects";
+    page.key.startsWith("parameter") &&
+    canCreateProject &&
+    page.key !== "parameter-admin-projects" &&
+    page.key !== "parameter-admin" &&
+    page.key !== "parameter-home";
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
