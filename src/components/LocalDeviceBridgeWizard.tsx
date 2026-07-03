@@ -4,17 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   formatBridgeConnectFallbackCommand,
   formatBridgeHandleUrlFallbackCommand,
-  formatBridgeServiceInstallCommand,
   bridgeCliDiscoveryHint
 } from "../infrastructure/http/bridgeInstallPaths";
 import {
   buildBridgeConnectUrl,
   connectLocalBridge,
-  launchBridgeInstallService,
   launchBridgeSchemeForConnect,
-  pollLocalBridgeHealth,
-  rememberBridgeSchemeLaunchConfirm,
-  shouldConfirmBridgeSchemeLaunch
+  pollLocalBridgeHealth
 } from "../infrastructure/http/bridgeConnectLauncher";
 import { describeBridgeConnectFailureMessage, shouldShowBridgeConnectFallback } from "../infrastructure/http/bridgeConnectFailure";
 import { resolveBridgeServerUrl, resolveBridgeWebOrigin } from "../infrastructure/http/bridgeServerUrl";
@@ -142,12 +138,6 @@ export function LocalDeviceBridgeWizard({
   const previousNaturalStep = useRef(naturalStep);
   const hostTarget = detectBrowserBridgeTarget();
   const showSetupWizard = !isBridgeOnlinePanelStatus(panelStatus);
-  const showServiceInstallHint =
-    needsLocalBridgeLaunch(panelStatus) ||
-    panelStatus === "not_connected" ||
-    panelStatus === "not_paired";
-  const showLoginAutoStart = hostTarget.platform === "darwin" && showServiceInstallHint && viewStep >= 2;
-  const showWindowsServiceHint = hostTarget.platform === "windows" && showServiceInstallHint && viewStep >= 2;
   const hostTargetLabel = bridgeHostTargetLabel(hostTarget);
   const hasInstallCatalog = Boolean(hostRelease || installerAlternates.length > 0 || portableReleases.length > 0);
   const showWindowsAdminInstallHint =
@@ -591,46 +581,6 @@ export function LocalDeviceBridgeWizard({
               <p className="local-device-bridge-panel__install-desc">{bridgeCliDiscoveryHint(hostTarget.platform)}</p>
             ) : null}
           </div>
-        ) : null}
-
-        {showLoginAutoStart ? (
-          <details className="local-device-bridge-panel__service-hint">
-            <summary>设置登录后自动启动 Bridge</summary>
-            <p className="local-device-bridge-panel__install-desc">
-              <button
-                type="button"
-                className="button local-device-bridge-panel__already-installed-cta"
-                onClick={() => {
-                  if (shouldConfirmBridgeSchemeLaunch()) {
-                    const confirmed = window.confirm("将打开 WiseEff Bridge 并注册登录自启（LaunchAgent）。是否继续？");
-                    if (!confirmed) {
-                      return;
-                    }
-                    rememberBridgeSchemeLaunchConfirm();
-                  }
-                  launchBridgeInstallService();
-                }}
-              >
-                注册登录自启
-              </button>
-              <span className="local-device-bridge-panel__install-desc"> 或终端执行 </span>
-              <code className="local-device-bridge-panel__fallback-command">
-                {formatBridgeServiceInstallCommand("darwin")}
-              </code>
-            </p>
-          </details>
-        ) : null}
-
-        {showWindowsServiceHint ? (
-          <details className="local-device-bridge-panel__service-hint">
-            <summary>设置登录后自动启动 Bridge</summary>
-            <p className="local-device-bridge-panel__install-desc">
-              在命令提示符执行：
-              <code className="local-device-bridge-panel__fallback-command">
-                {formatBridgeServiceInstallCommand("windows")}
-              </code>
-            </p>
-          </details>
         ) : null}
       </div>
     </>

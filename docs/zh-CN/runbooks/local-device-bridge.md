@@ -114,7 +114,7 @@ chmod +x wiseeff-bridge
 
 - 压缩包内含 `cli.js` 与 `wiseeff-bridge` 启动脚本（内部执行 `node cli.js`）。
 - 配置保存在 `~/.wiseeff/bridge.json`。
-- macOS `.pkg` 安装包通过 postinstall 注册 `~/Library/LaunchAgents/com.wiseeff.bridge.plist`；便携包可执行 `wiseeff-bridge service install`，或在 `/node-debugging` 点击「设置登录时自动启动」（`wiseeff-bridge://install-service`）。
+- macOS `.pkg` 安装包通过 postinstall 注册 `~/Library/LaunchAgents/com.wiseeff.bridge.plist`；便携包需手动执行 `wiseeff-bridge service install`（`/node-debugging` 界面不再提供该入口）。
 - macOS 上 `service install|start|stop|uninstall` 管理 LaunchAgent；Windows 上管理后台服务。
 - 在 Mac 上安装 `adb` 和/或 `hdc`，并完成 USB 授权后，再在 `/node-debugging` 中检测设备。
 

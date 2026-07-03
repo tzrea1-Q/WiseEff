@@ -115,7 +115,7 @@ Notes:
 
 - The archive contains `cli.js` and a `wiseeff-bridge` launcher script that runs `node cli.js`.
 - Bridge config is stored at `~/.wiseeff/bridge.json`.
-- The macOS `.pkg` installer registers `~/Library/LaunchAgents/com.wiseeff.bridge.plist` via postinstall; portable installs can run `wiseeff-bridge service install` or open `wiseeff-bridge://install-service` from `/node-debugging`.
+- The macOS `.pkg` installer registers `~/Library/LaunchAgents/com.wiseeff.bridge.plist` via postinstall; portable installs must run `wiseeff-bridge service install` manually (the `/node-debugging` UI no longer exposes this entry point).
 - macOS does not use the Windows `service` commands.
 - Install `adb` and/or `hdc` on the Mac and authorize the USB device before detecting targets in `/node-debugging`.
 
