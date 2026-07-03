@@ -1,4 +1,4 @@
-import { Download, Link2 } from "lucide-react";
+import { Check, Copy, Download, Link2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -78,6 +78,38 @@ type LocalDeviceBridgeWizardProps = {
   releasesLoading?: boolean;
   onLoadInstallReleases?: () => Promise<void>;
 };
+
+function CopyableCommand({ command, label = "命令" }: { command: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <div className="local-device-bridge-panel__command-block">
+      <pre className="local-device-bridge-panel__command-code">
+        <code>{command}</code>
+      </pre>
+      <button
+        type="button"
+        className="local-device-bridge-panel__command-copy"
+        aria-label={copied ? `已复制${label}` : `复制${label}`}
+        title={copied ? "已复制" : "复制"}
+        onClick={() => void handleCopy()}
+      >
+        {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+        <span>{copied ? "已复制" : "复制"}</span>
+      </button>
+    </div>
+  );
+}
 
 function WizardStepItem({
   step,
@@ -559,24 +591,24 @@ export function LocalDeviceBridgeWizard({
             {hostTarget.platform === "windows" ? (
               <>
                 <p className="local-device-bridge-panel__install-desc">推荐（与浏览器点击连接等效）：</p>
-                <code className="local-device-bridge-panel__fallback-command">
-                  {formatBridgeHandleUrlFallbackCommand({
+                <CopyableCommand
+                  command={formatBridgeHandleUrlFallbackCommand({
                     cliPath: health?.launcherPath,
                     connectUrl: connectUrlForFallback
                   })}
-                </code>
+                />
                 <p className="local-device-bridge-panel__install-desc">或使用 connect 子命令：</p>
               </>
             ) : null}
-            <code className="local-device-bridge-panel__fallback-command">
-              {formatBridgeConnectFallbackCommand({
+            <CopyableCommand
+              command={formatBridgeConnectFallbackCommand({
                 platform: hostTarget.platform,
                 serverUrl: resolveBridgeServerUrl(),
                 webOrigin: resolveBridgeWebOrigin(),
                 code: pairingCode?.code,
                 cliPath: health?.launcherPath
               })}
-            </code>
+            />
             {!health?.launcherPath ? (
               <p className="local-device-bridge-panel__install-desc">{bridgeCliDiscoveryHint(hostTarget.platform)}</p>
             ) : null}
