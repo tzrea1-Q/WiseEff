@@ -7595,6 +7595,60 @@ td small {
   gap: 8px;
 }
 
+.local-device-bridge-panel__command-block {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.local-device-bridge-panel__command-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #0f172a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.local-device-bridge-panel__command-code code {
+  font: inherit;
+  color: inherit;
+  background: none;
+}
+
+.local-device-bridge-panel__command-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  border: 0;
+  border-left: 1px solid #e2e8f0;
+  background: #eef2f7;
+  color: #1d4ed8;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.local-device-bridge-panel__command-copy:hover {
+  background: #dbeafe;
+}
+
+.local-device-bridge-panel__command-copy:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: -2px;
+}
+
 .local-device-bridge-panel__host-banner {
   margin: 0;
   padding: 10px 12px;
