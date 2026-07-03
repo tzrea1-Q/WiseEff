@@ -70,6 +70,7 @@ import {
 } from "@/domain/parameters/initialization";
 import { submitParameterRound } from "@/domain/parameters/commands";
 import type {
+  ProjectInitializationStatus,
   ProjectParameterInitializationDraft,
   ProjectParameterInitializationReview,
   RiskLevel
@@ -255,6 +256,7 @@ function writeSidebarCollapsedPreference(isCollapsed: boolean) {
 
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
+  | { type: "UPDATE_PROJECT"; projectId: string; patch: { name?: string; code?: string; status?: ProjectInitializationStatus } }
   | {
       type: "HYDRATE_AUTH_CONTEXT";
       user: User;
@@ -624,8 +626,12 @@ function wouldHaveActiveAdmin(_state: PrototypeState, nextUsers: User[]) {
   return nextUsers.some((user) => user.isActive && user.roleId === "admin");
 }
 
+export function isEditableProjectLifecycleStatus(status: ProjectInitializationStatus) {
+  return status === "initialized" || status === "maintenance";
+}
+
 function canSubmitParameterChangesForProject(state: PrototypeState, projectId: string) {
-  return (state.projectInitializationStatuses[projectId] ?? "initialized") === "initialized";
+  return isEditableProjectLifecycleStatus(state.projectInitializationStatuses[projectId] ?? "initialized");
 }
 
 function buildDraftSubmissionRounds(
@@ -678,6 +684,31 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
   switch (action.type) {
     case "SET_PROJECT":
       return { ...state, activeProjectId: action.projectId };
+    case "UPDATE_PROJECT": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      const configDraft = {
+        ...state.configDraft,
+        projects: state.configDraft.projects.map((project) =>
+          project.id === action.projectId
+            ? {
+                ...project,
+                ...(action.patch.name !== undefined ? { name: action.patch.name } : {}),
+                ...(action.patch.code !== undefined ? { code: action.patch.code } : {})
+              }
+            : project
+        )
+      };
+      const projectInitializationStatuses =
+        action.patch.status !== undefined
+          ? { ...state.projectInitializationStatuses, [action.projectId]: action.patch.status }
+          : state.projectInitializationStatuses;
+      return {
+        ...state,
+        configDraft,
+        projectInitializationStatuses,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
     case "HYDRATE_AUTH_CONTEXT": {
       const existingUsers = state.users.filter((user) => user.id !== action.user.id);
       const isDifferentUser = action.user.id !== state.currentUserId;
@@ -3136,13 +3167,15 @@ function TopBar({
   const [profileOpen, setProfileOpen] = useState(false);
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canCreateProject = canPerform(currentRoleId, "parameter.edit");
-  const showProjectInitAction = page.key.startsWith("parameter") && canCreateProject;
+  const showProjectInitAction =
+    page.key.startsWith("parameter") && canCreateProject && page.key !== "parameter-admin-projects";
   const showProjectSelector =
     page.group === "参数管理" &&
     page.key !== "parameter-home" &&
     page.key !== "parameter-comparison" &&
     page.key !== "parameter-review" &&
-    page.key !== "parameter-admin";
+    page.key !== "parameter-admin" &&
+    page.key !== "parameter-admin-projects";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));

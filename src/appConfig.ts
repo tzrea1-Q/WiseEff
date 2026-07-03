@@ -21,6 +21,7 @@ export type PageKey =
   | "parameter-comparison"
   | "parameter-review"
   | "parameter-admin"
+  | "parameter-admin-projects"
   | "log-dashboard"
   | "logs"
   | "log-admin"
@@ -175,6 +176,18 @@ export function getPageByPath(path: string): PageConfig {
     };
   }
 
+  if (path === "/parameter-admin/projects") {
+    return {
+      key: "parameter-admin-projects",
+      path: "/parameter-admin/projects",
+      label: "项目管理",
+      group: "参数管理",
+      icon: Database,
+      title: "项目参数管理后台",
+      subtitle: "维护项目清单、初始化状态、模块覆盖与参数库入口"
+    };
+  }
+
   if (path === "/parameter-comparison") {
     return {
       key: "parameter-comparison",
@@ -220,6 +233,8 @@ export function getXiaozeContextSummary(path: string): string {
       return "正在关注 HDC 连接状态、节点访问模式、待读写目标值和回读校验结果。";
     case "parameter-admin":
       return "正在关注参数库健康、闲置参数、权限异常和导入风险。";
+    case "parameter-admin-projects":
+      return "正在关注项目清单、初始化进度、模块覆盖和参数规模。";
     case "log-admin":
       return "正在关注分析吞吐、失败记录、权限覆盖和使用趋势。";
     case "debugging-admin":

@@ -62,6 +62,10 @@ export const routeManifest = [
 
   { id: "parameters.listProjects", method: "GET", path: "/api/v1/projects", module: "parameters", stability: "mvp" },
   { id: "parameters.listProjectModules", method: "GET", path: "/api/v1/projects/:projectId/modules", module: "parameters", stability: "mvp" },
+  { id: "parameters.admin.listProjects", method: "GET", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },
+  { id: "parameters.admin.getProject", method: "GET", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
+  { id: "parameters.admin.createProject", method: "POST", path: "/api/v1/parameters/admin/projects", module: "parameters", stability: "mvp" },
+  { id: "parameters.admin.updateProject", method: "PATCH", path: "/api/v1/parameters/admin/projects/:projectId", module: "parameters", stability: "mvp" },
   { id: "parameters.list", method: "GET", path: "/api/v1/parameters", module: "parameters", stability: "mvp" },
   { id: "parameters.get", method: "GET", path: "/api/v1/parameters/:parameterId", module: "parameters", stability: "mvp" },
   { id: "parameters.history", method: "GET", path: "/api/v1/parameters/:parameterId/history", module: "parameters", stability: "mvp" },

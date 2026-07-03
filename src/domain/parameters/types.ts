@@ -148,7 +148,8 @@ export type ProjectInitializationStatus =
   | "initialization_draft"
   | "initialization_pending_review"
   | "initialization_rejected"
-  | "initialized";
+  | "initialized"
+  | "maintenance";
 
 export type ParameterInitializationSourceRole = "primary" | "supplement" | "library";
 

@@ -82,9 +82,27 @@ export const paramsWithRoundIdSchema = z.object({
   roundId: nonEmptyString
 });
 
+export const createProjectBodySchema = z.object({
+  name: nonEmptyString,
+  code: nonEmptyString.max(16),
+  id: nonEmptyString.optional()
+});
+
+export const updateProjectBodySchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    code: nonEmptyString.max(16).optional(),
+    status: nonEmptyString.optional()
+  })
+  .refine((body) => Object.values(body).some((value) => value !== undefined), {
+    message: "At least one field is required."
+  });
+
 export type ListParametersQuery = z.infer<typeof listParametersQuerySchema>;
 export type SaveDraftBody = z.infer<typeof saveDraftBodySchema>;
 export type SubmitRoundBody = z.infer<typeof submitRoundBodySchema>;
 export type ReviewChangeBody = z.infer<typeof reviewChangeBodySchema>;
 export type CreateImportBatchBody = z.infer<typeof createImportBatchBodySchema>;
 export type ApplyImportBatchBody = z.infer<typeof applyImportBatchBodySchema>;
+export type CreateProjectBody = z.infer<typeof createProjectBodySchema>;
+export type UpdateProjectBody = z.infer<typeof updateProjectBodySchema>;

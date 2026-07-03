@@ -12439,11 +12439,8 @@ td small {
 
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  overflow: hidden;
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: 8px;
+  grid-template-columns: repeat(var(--kpi-count, 5), minmax(0, 1fr));
+  gap: 12px;
 }
 
 .kpi-item {
@@ -12453,24 +12450,25 @@ td small {
   align-items: flex-start;
   justify-content: center;
   min-height: 64px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   color: inherit;
-  background: transparent;
-  border: 0;
-  border-right: 1px solid var(--outline);
   text-align: left;
-}
-
-.kpi-strip .kpi-item:last-child {
-  border-right: 0;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
 }
 
 .kpi-item.interactive {
   cursor: pointer;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .kpi-item.interactive:hover {
-  background: rgba(16, 28, 45, 0.04);
+  border-color: var(--app-primary);
+  box-shadow: 0 10px 26px rgba(16, 28, 45, 0.1);
 }
 
 .kpi-label {
@@ -14295,6 +14293,207 @@ body.xiaoze-popup-resize-active {
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+.parameter-admin-subnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.parameter-admin-subnav__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--app-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.parameter-admin-subnav__tab.is-active {
+  color: var(--app-primary);
+  background: #eef5ff;
+  border-color: rgba(0, 82, 204, 0.28);
+}
+
+.project-admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.project-admin-library-table .parameters-table-heading h2 {
+  margin: 0;
+}
+
+.project-admin-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #eef2f7;
+  color: #334155;
+}
+
+.project-admin-status--initialized {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.project-admin-status--maintenance {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.project-admin-status--initialization_pending_review {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.project-admin-status--initialization_rejected {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.project-admin-library-grid {
+  width: 100%;
+  table-layout: auto;
+}
+
+/* Neutralize the sticky/fixed column rules inherited from the shared
+   parameters grid so this table can size columns by content. */
+.project-admin-library-grid th,
+.project-admin-library-grid td {
+  position: static;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+/* Index */
+.project-admin-library-grid th:first-child,
+.project-admin-library-grid td:first-child {
+  width: 44px;
+  text-align: center;
+}
+
+/* Project name absorbs all remaining horizontal space. */
+.project-admin-library-grid th:nth-child(2),
+.project-admin-library-grid td:nth-child(2) {
+  width: 100%;
+  white-space: normal;
+}
+
+.project-admin-library-grid td:nth-child(2) strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Numeric columns (module / parameter counts) centered. */
+.project-admin-library-grid th:nth-child(5),
+.project-admin-library-grid th:nth-child(6),
+.project-admin-library-grid .project-admin-col-numeric {
+  text-align: center;
+}
+
+.project-admin-library-grid .project-admin-col-numeric,
+.project-admin-library-grid .project-admin-col-updated-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Actions column stays compact around the edit icon. */
+.project-admin-library-grid th:last-child,
+.project-admin-library-grid td:last-child {
+  width: 56px;
+  text-align: center;
+}
+
+.project-admin-row-actions {
+  justify-content: center;
+}
+
+.project-admin-row-edit {
+  color: var(--app-muted);
+}
+
+.project-admin-row-edit:hover {
+  color: var(--app-primary);
+}
+
+.project-admin-form-dialog {
+  width: min(520px, calc(100vw - 48px));
+  max-width: 520px;
+}
+
+.project-admin-form-body {
+  padding: 0 20px 8px;
+}
+
+.project-admin-form-grid label span {
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-admin-form-grid input:read-only {
+  background: #f8fafc;
+  color: var(--app-muted);
+  cursor: default;
+}
+
+.project-admin-detail__empty,
+.project-admin-error,
+.project-admin-form-error,
+.project-admin-loading {
+  margin: 0;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+.project-admin-error,
+.project-admin-form-error {
+  color: #ba1a1a;
+}
+
+.project-admin-form-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.project-admin-form-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.project-admin-form-grid input,
+.project-admin-form-select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 12px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.project-admin-form-select {
+  cursor: pointer;
+}
+
+.project-admin-form-select:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .param-admin-empty {
@@ -16381,16 +16580,7 @@ body.xiaoze-popup-resize-active {
 
 @media (max-width: 1280px) {
   .param-admin-shell .kpi-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .param-admin-shell .kpi-item:nth-child(3) {
-    border-right: 0;
-  }
-
-  .param-admin-shell .kpi-item:nth-child(4),
-  .param-admin-shell .kpi-item:nth-child(5) {
-    border-top: 1px solid var(--outline);
+    grid-template-columns: repeat(min(var(--kpi-count, 5), 4), minmax(0, 1fr));
   }
 }
 
@@ -16423,21 +16613,10 @@ body.xiaoze-popup-resize-active {
 @media (max-width: 640px) {
   .param-admin-shell .kpi-strip {
     grid-auto-flow: column;
-    grid-auto-columns: minmax(140px, 1fr);
+    grid-auto-columns: minmax(150px, 1fr);
     grid-template-columns: none;
     overflow-x: auto;
-  }
-
-  .param-admin-shell .kpi-item,
-  .param-admin-shell .kpi-item:nth-child(3),
-  .param-admin-shell .kpi-item:nth-child(4),
-  .param-admin-shell .kpi-item:nth-child(5) {
-    border-top: 0;
-    border-right: 1px solid var(--outline);
-  }
-
-  .param-admin-shell .kpi-strip .kpi-item:last-child {
-    border-right: 0;
+    padding-bottom: 4px;
   }
 
   .insight-item {
