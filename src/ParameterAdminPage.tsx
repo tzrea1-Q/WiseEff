@@ -1,4 +1,4 @@
-import { History, Info, ShieldCheck, Upload } from "lucide-react";
+import { Info, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listParameterModuleNames } from "./powerManagementConfig";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";
@@ -271,14 +271,6 @@ export function ParameterAdminPage({
       <button className="button primary" type="button" onClick={openImportDialog}>
         <Upload size={16} />
         批量参数导入
-      </button>
-      <button className="button subtle" type="button" data-route="/user-permissions" onClick={() => onNavigate("/user-permissions")}>
-        <ShieldCheck size={16} />
-        权限
-      </button>
-      <button className="button ghost" type="button" onClick={openAuditCenter}>
-        <History size={16} />
-        审计
       </button>
     </>,
     [onNavigate, state.activeProjectId]

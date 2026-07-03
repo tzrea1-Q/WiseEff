@@ -3058,7 +3058,8 @@ describe("WiseEff app shell", () => {
 
     const topbar = document.querySelector(".topbar") as HTMLElement;
     expect(topbar).toHaveTextContent("可调节点");
-    expect(topbar).toHaveTextContent("在线设备");
+    expect(topbar).not.toHaveTextContent("在线设备");
+    expect(topbar.querySelectorAll(".debug-admin-strip--topbar .debug-admin-stat")).toHaveLength(0);
     expect(document.querySelector(".workspace-header")).not.toBeInTheDocument();
     expect(within(topbar).queryByRole("heading", { level: 1, name: "参数调试管理后台" })).not.toBeInTheDocument();
   });

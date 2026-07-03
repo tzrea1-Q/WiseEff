@@ -451,12 +451,9 @@ export function DebuggingAdminPage({
 
   useTopBarActions(
     <div className="debug-admin-strip debug-admin-strip--topbar">
-      <span className="debug-admin-stat">可调节点 <strong>{nodeCount}</strong></span>
-      <span className="debug-admin-stat">已启用 <strong>{enabledCount}</strong></span>
-      <span className="debug-admin-stat">在线设备 <strong>{onlineDevices}/{state.devices.length}</strong></span>
       <span className={`debug-admin-save-indicator${saveFlash || saveStatus ? " visible" : ""}`}>{saveStatus || "✓ 已自动保存"}</span>
     </div>,
-    [enabledCount, nodeCount, onlineDevices, saveFlash, saveStatus, state.devices.length]
+    [saveFlash, saveStatus]
   );
 
   const disableTarget = disableNodeId ? library.find((node) => node.id === disableNodeId) : null;
