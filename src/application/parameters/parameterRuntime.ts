@@ -57,8 +57,18 @@ export function formatParameterRuntimeError(error: unknown): string {
     if (error.code === "UNAUTHENTICATED" || error.code === "FORBIDDEN") {
       return "当前账号无权执行此操作，请重新登录或切换角色。";
     }
-    if (error.code === "VALIDATION_FAILED" && error.message) {
-      return error.message;
+    if (error.code === "VALIDATION_FAILED") {
+      const issues = error.details.issues;
+      if (Array.isArray(issues) && issues.length > 0) {
+        const firstIssue = issues[0] as { message?: string; path?: Array<string | number> };
+        const path = Array.isArray(firstIssue.path) ? firstIssue.path.filter((segment) => segment !== "items").join(".") : "";
+        const detail = firstIssue.message ?? error.message;
+        return path ? `导入预览校验失败（${path}）：${detail}` : detail || "导入预览校验失败，请检查逐条核对中的字段是否完整。";
+      }
+      if (error.message && error.message !== "Invalid parameter route input.") {
+        return error.message;
+      }
+      return "导入预览校验失败，请检查逐条核对中的字段是否完整。";
     }
     if (error.message) {
       return error.message;

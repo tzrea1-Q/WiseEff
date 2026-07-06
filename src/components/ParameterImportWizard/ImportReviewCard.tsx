@@ -53,6 +53,44 @@ const STATUS_LABEL: Record<ReviewedImportRow["status"], string> = {
   "new-confirmed": "已创建"
 };
 
+function buildModuleOptions(modules: readonly string[], currentModule: string) {
+  const moduleSet = new Set(modules.map((moduleName) => moduleName.trim()).filter(Boolean));
+  if (currentModule.trim()) {
+    moduleSet.add(currentModule.trim());
+  }
+  return Array.from(moduleSet).sort((left, right) => left.localeCompare(right));
+}
+
+function ImportModuleSelect({
+  value,
+  onChange,
+  moduleNames,
+  ariaLabel
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  moduleNames: string[];
+  ariaLabel: string;
+}) {
+  const options = buildModuleOptions(moduleNames, value);
+
+  return (
+    <label className="import-review-module-select">
+      <span>模块</span>
+      <select aria-label={ariaLabel} value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="" disabled>
+          请选择模块
+        </option>
+        {options.map((moduleName) => (
+          <option key={moduleName} value={moduleName}>
+            {moduleName}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function toEditableFields(row: ReviewedImportRow): EditableFields {
   return {
     name: row.name,
@@ -151,15 +189,12 @@ export function ImportReviewCard({
               <span>参数名</span>
               <input aria-label="编辑参数名" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
             </label>
-            <label>
-              <span>模块</span>
-              <input
-                aria-label="编辑模块"
-                value={draft.module}
-                onChange={(event) => setDraft({ ...draft, module: event.target.value })}
-                list="import-review-module-options"
-              />
-            </label>
+            <ImportModuleSelect
+              ariaLabel="编辑模块"
+              value={draft.module}
+              moduleNames={moduleNames}
+              onChange={(module) => setDraft({ ...draft, module })}
+            />
             <label>
               <span>当前值</span>
               <input aria-label="编辑当前值" value={draft.currentValue ?? ""} onChange={(event) => setDraft({ ...draft, currentValue: event.target.value })} />
@@ -185,11 +220,6 @@ export function ImportReviewCard({
               <RiskPicker value={draft.risk ?? "Medium"} onChange={(risk) => setDraft({ ...draft, risk })} />
             </label>
           </div>
-          <datalist id="import-review-module-options">
-            {moduleNames.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
           <div className="dialog-actions">
             <button type="button" className="button subtle" onClick={cancelEdit}>
               取消
@@ -228,15 +258,12 @@ export function ImportReviewCard({
             <p className="import-review-message" role="alert">
               该行缺少模块信息，请填写模块后再通过。
             </p>
-            <label>
-              <span>模块</span>
-              <input aria-label="补全模块" value={moduleInput} onChange={(event) => setModuleInput(event.target.value)} list="import-review-module-options" />
-            </label>
-            <datalist id="import-review-module-options">
-              {moduleNames.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
+            <ImportModuleSelect
+              ariaLabel="补全模块"
+              value={moduleInput}
+              moduleNames={moduleNames}
+              onChange={setModuleInput}
+            />
             <div className="dialog-actions">
               <button type="button" className="button subtle" onClick={startSkip}>
                 跳过

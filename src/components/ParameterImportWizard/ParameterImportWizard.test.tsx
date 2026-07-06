@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { ParameterImportWizard } from "./ParameterImportWizard";
+import { fillPasteImportContent } from "./testHelpers";
 import { initialState } from "@/mockData";
 
 function renderWizard(overrides: Partial<ComponentProps<typeof ParameterImportWizard>> = {}) {
@@ -44,6 +45,9 @@ describe("ParameterImportWizard", () => {
     const fileInput = dialog.querySelector('input[type="file"]');
     expect(fileInput).toHaveAttribute("accept", ".xlsx,.csv,.json,.dts,.dtsi,.txt");
 
+    expect(within(dialog).getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" })).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("导入内容")).not.toBeInTheDocument();
+
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
   });
 
@@ -51,9 +55,7 @@ describe("ParameterImportWizard", () => {
     renderWizard();
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
-    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
-      target: { value: '[{"name":"x"}]' }
-    });
+    fillPasteImportContent(dialog, '[{"name":"x"}]');
 
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
   });
@@ -89,21 +91,20 @@ describe("ParameterImportWizard", () => {
     renderWizard();
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
-    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
-      target: {
-        value: JSON.stringify([
-          {
-            name: "new_wizard_test_param",
-            module: "Wizard Test Module",
-            currentValue: "1",
-            recommendedValue: "2",
-            range: "0 - 10",
-            unit: "unit",
-            risk: "Low"
-          }
-        ])
-      }
-    });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "new_wizard_test_param",
+          module: "Wizard Test Module",
+          currentValue: "1",
+          recommendedValue: "2",
+          range: "0 - 10",
+          unit: "unit",
+          risk: "Low"
+        }
+      ])
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
     expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();
@@ -120,21 +121,20 @@ describe("ParameterImportWizard", () => {
     renderWizard();
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
-    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
-      target: {
-        value: JSON.stringify([
-          {
-            name: "fast_charge_current_limit_ma",
-            module: "Charging Policy",
-            currentValue: "3200",
-            recommendedValue: "3400",
-            range: "2500 - 4500",
-            unit: "mA",
-            risk: "High"
-          }
-        ])
-      }
-    });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          range: "2500 - 4500",
+          unit: "mA",
+          risk: "High"
+        }
+      ])
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
@@ -151,55 +151,38 @@ describe("ParameterImportWizard", () => {
     renderWizard();
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
-    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
-      target: { value: "not,valid,parameter,rows" }
-    });
+    fillPasteImportContent(dialog, "not,valid,parameter,rows");
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
   });
 
-  it("changing target project after step 3 triggers confirm dialog and resets review state", () => {
-    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
-
+  it("shows the target project as read-only from step 3 onward", () => {
     renderWizard();
 
     const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
-    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
-      target: {
-        value: JSON.stringify([
-          {
-            name: "fast_charge_current_limit_ma",
-            module: "Charging Policy",
-            currentValue: "3200",
-            recommendedValue: "3400",
-            range: "2500 - 4500",
-            unit: "mA",
-            risk: "High"
-          }
-        ])
-      }
-    });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          range: "2500 - 4500",
+          unit: "mA",
+          risk: "High"
+        }
+      ])
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
     expect(within(dialog).getByRole("region", { name: "逐行核对" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
-    expect(within(dialog).getByText("已核对 1/1")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("combobox", { name: "目标项目" })).not.toBeInTheDocument();
 
-    const otherProject = initialState.configDraft.projects.find((project) => project.id !== initialState.activeProjectId);
-    expect(otherProject).toBeDefined();
-
-    fireEvent.change(within(dialog).getByLabelText("目标项目"), {
-      target: { value: otherProject!.id }
-    });
-
-    expect(confirmSpy).toHaveBeenCalledWith("更改项目将重新匹配 diff，已核对进度会重置。");
-    expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();
-    expect(within(dialog).queryByText("已核对 1/1")).not.toBeInTheDocument();
-    expect(within(dialog).queryByText("已通过")).not.toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
-
-    confirmSpy.mockRestore();
+    const activeProject = initialState.configDraft.projects.find((project) => project.id === initialState.activeProjectId);
+    expect(activeProject).toBeDefined();
+    expect(within(dialog).getByLabelText("目标项目")).toHaveTextContent(`${activeProject!.name}（${activeProject!.code}）`);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toSourceItems } from "./toSourceItems";
+import { toImportSourceItem, toSourceItems } from "./toSourceItems";
 import type { ReviewedImportRow } from "./types";
 
 function buildRow(overrides: Partial<ReviewedImportRow> = {}): ReviewedImportRow {
@@ -31,15 +31,28 @@ describe("toSourceItems", () => {
     expect(items.map((item) => item.name)).toEqual(["test_param", "new_param"]);
   });
 
-  it("defaults missing risk/unit/range for eligible rows", () => {
+  it("fills api-required defaults for missing risk, unit, range, and values", () => {
     const items = toSourceItems([buildRow({ risk: undefined, unit: undefined, range: undefined })]);
 
     expect(items[0]).toEqual({
       name: "test_param",
       module: "Charging Policy",
       risk: "Medium",
-      unit: "",
-      range: ""
+      unit: "—",
+      range: "—",
+      currentValue: "—",
+      recommendedValue: "—"
+    });
+  });
+
+  it("mirrors a single provided value into both current and recommended fields", () => {
+    expect(toImportSourceItem(buildRow({ currentValue: "3200" }))).toMatchObject({
+      currentValue: "3200",
+      recommendedValue: "3200"
+    });
+    expect(toImportSourceItem(buildRow({ recommendedValue: "3400" }))).toMatchObject({
+      currentValue: "3400",
+      recommendedValue: "3400"
     });
   });
 

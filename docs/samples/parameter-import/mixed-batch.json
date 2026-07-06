@@ -1,0 +1,137 @@
+[
+  {
+    "name": "fast_charge_current_limit_ma",
+    "module": "Charging Policy",
+    "currentValue": "3850",
+    "recommendedValue": "3400",
+    "range": "2500 - 4500",
+    "unit": "mA",
+    "risk": "High",
+    "valueKind": "scalar",
+    "description": "样例批次：下调 Aurora 快充电流上限",
+    "explanation": "配合热降额曲线，避免 46°C 以上长时间满功率快充。"
+  },
+  {
+    "name": "charge_voltage_limit_mv",
+    "module": "Charging Policy",
+    "currentValue": "4350",
+    "recommendedValue": "4330",
+    "range": "4200 - 4500",
+    "unit": "mV",
+    "risk": "High",
+    "valueKind": "scalar",
+    "description": "样例批次：微调恒压阶段目标电压"
+  },
+  {
+    "name": "battery_temp_target_c",
+    "module": "Battery Safety",
+    "currentValue": "38",
+    "recommendedValue": "36",
+    "range": "30 - 42",
+    "unit": "°C",
+    "risk": "Medium",
+    "valueKind": "scalar",
+    "description": "样例批次：降低快充目标温度"
+  },
+  {
+    "name": "soc_estimation_smoothing",
+    "module": "Battery Estimation",
+    "currentValue": "0.82",
+    "recommendedValue": "0.86",
+    "range": "0.70 - 0.95",
+    "unit": "ratio",
+    "risk": "High",
+    "valueKind": "scalar",
+    "description": "样例批次：提高 SOC 平滑系数"
+  },
+  {
+    "name": "battery_health_reserve_pct",
+    "module": "Battery Health",
+    "currentValue": "12",
+    "recommendedValue": "14",
+    "range": "5 - 18",
+    "unit": "%",
+    "risk": "Medium",
+    "valueKind": "scalar",
+    "description": "样例批次：提高健康保留容量"
+  },
+  {
+    "name": "usb_pd_profile_limit_w",
+    "module": "Charging Protocol",
+    "currentValue": "33",
+    "recommendedValue": "33",
+    "range": "18 - 65",
+    "unit": "W",
+    "risk": "Low",
+    "valueKind": "scalar",
+    "description": "样例批次：与库内推荐值相同，预览应显示为不变"
+  },
+  {
+    "name": "wireless_charge_thermal_derate_pct",
+    "module": "Wireless Charging",
+    "currentValue": "18",
+    "recommendedValue": "22",
+    "range": "10 - 35",
+    "unit": "%",
+    "risk": "Medium",
+    "valueKind": "scalar",
+    "description": "样例批次：提高无线充高温降额比例"
+  },
+  {
+    "name": "low_battery_shutdown_soc",
+    "module": "Battery Protection",
+    "currentValue": "3.2",
+    "recommendedValue": "3.0",
+    "range": "2.0 - 4.5",
+    "unit": "%",
+    "risk": "High",
+    "valueKind": "scalar",
+    "description": "样例批次：统一低电量关机阈值"
+  },
+  {
+    "name": "standby_drain_limit_ma",
+    "module": "Standby Power",
+    "currentValue": "18",
+    "recommendedValue": "16",
+    "range": "8 - 35",
+    "unit": "mA",
+    "risk": "Low",
+    "valueKind": "scalar",
+    "description": "样例批次：收紧待机漏电流告警阈值"
+  },
+  {
+    "name": "aurora_pack_balancing_window_s",
+    "module": "Battery Health",
+    "currentValue": "900",
+    "recommendedValue": "720",
+    "range": "300 - 1800",
+    "unit": "s",
+    "risk": "Medium",
+    "valueKind": "scalar",
+    "description": "样例批次：新增参数 — 均衡窗口时长",
+    "explanation": "库中不存在，Step 3 应走预填并创建。"
+  },
+  {
+    "name": "thermal_guard_hysteresis_c",
+    "module": "Thermal Control",
+    "currentValue": "2.5",
+    "recommendedValue": "3.0",
+    "range": "1.0 - 5.0",
+    "unit": "°C",
+    "risk": "Medium",
+    "valueKind": "scalar",
+    "description": "样例批次：新增参数 — 热保护回滞"
+  },
+  {
+    "name": "nebula_debug_charge_boost_ma",
+    "module": "Charging Policy",
+    "currentValue": "4500",
+    "recommendedValue": "4200",
+    "range": "3500 - 5000",
+    "unit": "mA",
+    "risk": "High",
+    "valueKind": "scalar",
+    "description": "样例批次：新增参数 — 调试项目临时升流",
+    "configFormat": "YAML: power.charge.debug_boost_ma: number"
+  }
+]

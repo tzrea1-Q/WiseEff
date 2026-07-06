@@ -128,10 +128,10 @@ describe("ImportReviewCard", () => {
 
     expect(screen.getByRole("button", { name: "确认模块" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("补全模块"), { target: { value: "New Module" } });
+    fireEvent.change(screen.getByLabelText("补全模块"), { target: { value: "Charging Policy" } });
     fireEvent.click(screen.getByRole("button", { name: "确认模块" }));
 
-    expect(onUpdate).toHaveBeenCalledWith("import-row-1", { module: "New Module" });
+    expect(onUpdate).toHaveBeenCalledWith("import-row-1", { module: "Charging Policy" });
   });
 
   it("only allows edit or skip for conflicting rows", () => {

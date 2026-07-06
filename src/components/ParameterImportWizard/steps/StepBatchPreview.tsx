@@ -27,6 +27,23 @@ const CLASSIFICATION_LABEL: Record<ParameterImportBatchItem["classification"], s
   conflict: "冲突"
 };
 
+const RISK_LABEL: Record<ParameterImportBatchItem["risk"], string> = {
+  High: "高",
+  Medium: "中",
+  Low: "低"
+};
+
+function formatPreviewValue(item: ParameterImportBatchItem): string {
+  const current = item.currentValue?.trim();
+  const recommended = item.recommendedValue?.trim();
+
+  if (current && recommended && current !== recommended) {
+    return `${current} → ${recommended}`;
+  }
+
+  return recommended || current || "—";
+}
+
 export function StepBatchPreview({
   targetProjectId,
   sourceName,
@@ -54,10 +71,16 @@ export function StepBatchPreview({
       setLoading(true);
       setError("");
       try {
+        const items = toSourceItems(reviewedRows);
+        if (items.length === 0) {
+          setError("没有可预览的导入项。请在上一步至少通过或确认一条记录。");
+          return;
+        }
+
         const result = await parameterActions.createImportPreview({
           projectId: targetProjectId,
           sourceName: sourceName || "手动粘贴",
-          items: toSourceItems(reviewedRows)
+          items
         });
         if (cancelled) {
           return;
@@ -104,6 +127,21 @@ export function StepBatchPreview({
     previewBatch?.items.some((item) => isEligibleImportItem(item) && selectedItemIds.has(item.id))
   );
 
+  const eligibleItems = previewBatch?.items.filter(isEligibleImportItem) ?? [];
+  const allEligibleSelected =
+    eligibleItems.length > 0 && eligibleItems.every((item) => selectedItemIds.has(item.id));
+
+  const toggleAllEligible = (checked: boolean) => {
+    if (!previewBatch) {
+      return;
+    }
+    if (checked) {
+      onSelectedItemIdsChange(new Set(eligibleItems.map((item) => item.id)));
+      return;
+    }
+    onSelectedItemIdsChange(new Set());
+  };
+
   return (
     <section className="parameter-import-wizard-step" aria-label="批次预览">
       {loading ? <p className="parameter-import-wizard-empty-hint">正在生成导入预览…</p> : null}
@@ -139,28 +177,61 @@ export function StepBatchPreview({
             </div>
           </dl>
 
-          <ul className="parameter-import-wizard-preview-list" aria-label="预览条目">
-            {previewBatch.items.map((item) => {
-              const eligible = isEligibleImportItem(item);
-              return (
-                <li key={item.id} className="parameter-import-wizard-preview-item">
-                  <label>
+          <div className="parameter-import-preview-table-wrap">
+            <table className="import-review-diff-table parameter-import-preview-table" aria-label="预览条目">
+              <thead>
+                <tr>
+                  <th scope="col" className="parameter-import-preview-table__select">
                     <input
                       type="checkbox"
-                      aria-label={`选择 ${item.name}`}
-                      checked={selectedItemIds.has(item.id)}
-                      disabled={!eligible}
-                      onChange={(event) => toggleItem(item.id, event.target.checked)}
+                      aria-label="全选可应用条目"
+                      checked={allEligibleSelected}
+                      disabled={eligibleItems.length === 0}
+                      onChange={(event) => toggleAllEligible(event.target.checked)}
                     />
-                    <span>{item.name}</span>
-                    <span>{item.module}</span>
-                    <span className="import-review-status-badge">{CLASSIFICATION_LABEL[item.classification]}</span>
-                    {item.riskFlag ? <span className="import-review-badge-new">高风险</span> : null}
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
+                  </th>
+                  <th scope="col">参数名</th>
+                  <th scope="col">模块</th>
+                  <th scope="col">导入值</th>
+                  <th scope="col">变更类型</th>
+                  <th scope="col">风险</th>
+                </tr>
+              </thead>
+              <tbody>
+                {previewBatch.items.map((item) => {
+                  const eligible = isEligibleImportItem(item);
+                  return (
+                    <tr
+                      key={item.id}
+                      className={eligible ? "parameter-import-preview-row" : "parameter-import-preview-row parameter-import-preview-row--disabled"}
+                    >
+                      <td className="parameter-import-preview-table__select">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${item.name}`}
+                          checked={selectedItemIds.has(item.id)}
+                          disabled={!eligible}
+                          onChange={(event) => toggleItem(item.id, event.target.checked)}
+                        />
+                      </td>
+                      <td>
+                        <strong className="parameter-import-preview-table__name">{item.name}</strong>
+                      </td>
+                      <td>{item.module || "—"}</td>
+                      <td className="parameter-import-preview-table__value">{formatPreviewValue(item)}</td>
+                      <td>
+                        <span className="import-review-status-badge">{CLASSIFICATION_LABEL[item.classification]}</span>
+                      </td>
+                      <td>
+                        <span className="parameter-import-preview-table__risk">{RISK_LABEL[item.risk]}</span>
+                        {item.riskFlag ? <span className="import-review-badge-new">高风险</span> : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </>
       ) : null}
 

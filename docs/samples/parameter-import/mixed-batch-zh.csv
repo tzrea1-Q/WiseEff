@@ -1,0 +1,13 @@
+参数名称,模块,当前值,推荐值,范围,单位,重要性,描述,说明,配置格式,值类型
+fast_charge_current_limit_ma,Charging Policy,3850,3400,2500 - 4500,mA,高,样例批次：下调 Aurora 快充电流上限,配合热降额曲线，避免 46°C 以上长时间满功率快充。,,标量
+charge_voltage_limit_mv,Charging Policy,4350,4330,4200 - 4500,mV,高,样例批次：微调恒压阶段目标电压,,,标量
+battery_temp_target_c,Battery Safety,38,36,30 - 42,°C,中,样例批次：降低快充目标温度,,,标量
+soc_estimation_smoothing,Battery Estimation,0.82,0.86,0.70 - 0.95,ratio,高,样例批次：提高 SOC 平滑系数,,,标量
+battery_health_reserve_pct,Battery Health,12,14,5 - 18,%,中,样例批次：提高健康保留容量,,,标量
+usb_pd_profile_limit_w,Charging Protocol,33,33,18 - 65,W,低,样例批次：与库内推荐值相同，预览应显示为不变,,,标量
+wireless_charge_thermal_derate_pct,Wireless Charging,18,22,10 - 35,%,中,样例批次：提高无线充高温降额比例,,,标量
+low_battery_shutdown_soc,Battery Protection,3.2,3.0,2.0 - 4.5,%,高,样例批次：统一低电量关机阈值,,,标量
+standby_drain_limit_ma,Standby Power,18,16,8 - 35,mA,低,样例批次：收紧待机漏电流告警阈值,,,标量
+aurora_pack_balancing_window_s,Battery Health,900,720,300 - 1800,s,中,样例批次：新增参数 — 均衡窗口时长,库中不存在，Step 3 应走预填并创建。,,标量
+thermal_guard_hysteresis_c,Thermal Control,2.5,3.0,1.0 - 5.0,°C,中,样例批次：新增参数 — 热保护回滞,,,标量
+nebula_debug_charge_boost_ma,Charging Policy,4500,4200,3500 - 5000,mA,高,样例批次：新增参数 — 调试项目临时升流,,YAML: power.charge.debug_boost_ma: number,标量

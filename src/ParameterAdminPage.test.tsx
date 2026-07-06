@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { TopBarActionsContext } from "./components/layout";
+import { fillPasteImportContent } from "./components/ParameterImportWizard/testHelpers";
 import { ParameterAdminPage } from "./ParameterAdminPage";
 import { initialState } from "./mockData";
 import type { ParameterPageActions } from "./app/routes";
@@ -273,21 +274,20 @@ describe("ParameterAdminPage", () => {
 
     expect(within(dialog).getByLabelText("目标项目")).toHaveValue(initialState.activeProjectId);
 
-    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
-      target: {
-        value: JSON.stringify([
-          {
-            name: "fast_charge_current_limit_ma",
-            module: "Charging Policy",
-            currentValue: "3200",
-            recommendedValue: "3400",
-            range: "2500 - 4500",
-            unit: "mA",
-            risk: "High"
-          }
-        ])
-      }
-    });
+    fillPasteImportContent(
+      dialog,
+      JSON.stringify([
+        {
+          name: "fast_charge_current_limit_ma",
+          module: "Charging Policy",
+          currentValue: "3200",
+          recommendedValue: "3400",
+          range: "2500 - 4500",
+          unit: "mA",
+          risk: "High"
+        }
+      ])
+    );
     fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
 
     expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();

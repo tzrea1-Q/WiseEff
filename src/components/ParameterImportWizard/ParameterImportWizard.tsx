@@ -115,6 +115,7 @@ export function ParameterImportWizard({
   const [sourceName, setSourceName] = useState("");
   const [sourceText, setSourceText] = useState("");
   const [sourceBytes, setSourceBytes] = useState<Uint8Array | null>(null);
+  const [sourceFromFile, setSourceFromFile] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createProjectPending, setCreateProjectPending] = useState(false);
   const [createProjectError, setCreateProjectError] = useState("");
@@ -129,6 +130,10 @@ export function ParameterImportWizard({
     () => listParameterModuleNames(buildParameterModulesFromRecords(parameters)),
     [parameters]
   );
+  const targetProject = useMemo(
+    () => projects.find((project) => project.id === targetProjectId),
+    [projects, targetProjectId]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -139,6 +144,7 @@ export function ParameterImportWizard({
     setSourceName("");
     setSourceText("");
     setSourceBytes(null);
+    setSourceFromFile(false);
     setCreateProjectOpen(false);
     setCreateProjectError("");
     setParsedRows([]);
@@ -282,22 +288,14 @@ export function ParameterImportWizard({
             })}
           </nav>
 
-          {step >= 3 ? (
+          {step >= 3 && targetProject ? (
             <div className="parameter-import-wizard-project-bar">
-              <label className="parameter-import-wizard-project-switch">
-                <span>目标项目</span>
-                <select
-                  aria-label="目标项目"
-                  value={targetProjectId}
-                  onChange={(event) => handleTargetProjectChange(event.target.value)}
-                >
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}（{project.code}）
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="parameter-import-wizard-project-readonly" aria-label="目标项目">
+                <span className="parameter-import-wizard-project-readonly__label">目标项目</span>
+                <strong>
+                  {targetProject.name}（{targetProject.code}）
+                </strong>
+              </div>
             </div>
           ) : null}
 
@@ -313,10 +311,12 @@ export function ParameterImportWizard({
               sourceName={sourceName}
               sourceText={sourceText}
               sourceBytes={sourceBytes}
-              onSourceChange={({ name, text, bytes }) => {
+              sourceFromFile={sourceFromFile}
+              onSourceChange={({ name, text, bytes, sourceFromFile: fromFile }) => {
                 setSourceName(name);
                 setSourceText(text);
                 setSourceBytes(bytes);
+                setSourceFromFile(fromFile);
               }}
               onDownloadTemplate={downloadImportTemplate}
               onNext={handleParseAndAdvance}
