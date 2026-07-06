@@ -116,6 +116,37 @@ describe("ParameterImportWizard", () => {
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
   });
 
+  it("enables Step 3 next once every row has been approved", () => {
+    renderWizard();
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            currentValue: "3200",
+            recommendedValue: "3400",
+            range: "2500 - 4500",
+            unit: "mA",
+            risk: "High"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("region", { name: "逐行核对" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
+
+    expect(within(dialog).getByText("已核对 1/1")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
+  });
+
   it("blocks advancing past Step 2 when parsing produces zero rows", () => {
     renderWizard();
 

@@ -5,7 +5,7 @@ function buildMatchKey(name: string, module: string): string {
   return `${name}::${module}`;
 }
 
-function findExistingParameter(
+export function findExistingParameter(
   name: string,
   module: string,
   parameters: ParameterRecord[],

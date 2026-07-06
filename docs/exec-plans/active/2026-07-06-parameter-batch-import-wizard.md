@@ -434,13 +434,13 @@ Block Step 3 if `parsedRows.length === 0`.
 - Create: `src/components/ParameterImportWizard/steps/StepRowReview.tsx`
 - Create: `src/components/ParameterImportWizard/ImportReviewCard.test.tsx`
 
-- [ ] **Step 1: Test ImportReviewCard**
+- [x] **Step 1: Test ImportReviewCard**
 
 Existing parameter: shows diff for currentValue vs library; Approve / Edit / Skip (skip requires reason input).
 
 New parameter: shows badge `库中不存在`; button `预填并创建` opens `ParameterDefinitionForm` with mapped initial values.
 
-- [ ] **Step 2: Implement review state updates**
+- [x] **Step 2: Implement review state updates**
 
 ```typescript
 function approveRow(rowId: string): void
@@ -453,11 +453,11 @@ Cannot approve `needs-module` until module filled.
 
 Progress footer: `已核对 {approved}/{total}`.
 
-- [ ] **Step 3: Block Next until all non-skipped rows approved or confirmed**
+- [x] **Step 3: Block Next until all non-skipped rows approved or confirmed**
 
-- [ ] **Step 4: Run tests — PASS**
+- [x] **Step 4: Run tests — PASS**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 

@@ -4,14 +4,55 @@ import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
 import { parseImportSource } from "@/application/parameters/import/detectImportFormat";
-import { matchToLibrary } from "@/application/parameters/import/matchToLibrary";
+import { findExistingParameter, matchToLibrary } from "@/application/parameters/import/matchToLibrary";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/mockData";
+import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
+import { listParameterModuleNames } from "@/powerManagementConfig";
 import { StepParseReport } from "./steps/StepParseReport";
+import { StepRowReview } from "./steps/StepRowReview";
 import { StepSourceAndProject } from "./steps/StepSourceAndProject";
+
+const RESOLVED_ROW_STATUSES = new Set<ReviewedImportRow["status"]>(["approved", "skipped", "new-confirmed"]);
+
+function reviewRowMatchKey(row: ReviewedImportRow): string {
+  return `${row.name}::${row.module}`;
+}
+
+function reconcileReviewedRows(rows: ReviewedImportRow[], parameters: ParameterRecord[], targetProjectId: string): ReviewedImportRow[] {
+  const matchKeyCounts = new Map<string, number>();
+  for (const row of rows) {
+    const key = reviewRowMatchKey(row);
+    matchKeyCounts.set(key, (matchKeyCounts.get(key) ?? 0) + 1);
+  }
+
+  return rows.map((row) => {
+    const matchKey = reviewRowMatchKey(row);
+    if (RESOLVED_ROW_STATUSES.has(row.status)) {
+      return { ...row, matchKey };
+    }
+
+    const duplicateInBatch = (matchKeyCounts.get(matchKey) ?? 0) > 1;
+    if (duplicateInBatch) {
+      return { ...row, matchKey, status: "conflict" as const, existingParameter: undefined };
+    }
+
+    if (!row.module.trim()) {
+      return { ...row, matchKey, status: "needs-module" as const, existingParameter: undefined };
+    }
+
+    const existingParameter = findExistingParameter(row.name, row.module, parameters, targetProjectId);
+    return {
+      ...row,
+      matchKey,
+      status: "pending" as const,
+      existingParameter
+    };
+  });
+}
 
 export type ParameterImportWizardStep = 1 | 2 | 3 | 4 | 5;
 
@@ -73,6 +114,12 @@ export function ParameterImportWizard({
   const [parsedRows, setParsedRows] = useState<ParsedImportRow[]>([]);
   const [reviewedRows, setReviewedRows] = useState<ReviewedImportRow[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+
+  const libraryParameters = useMemo(() => buildParameterLibraryFromRecords(parameters, projects), [parameters, projects]);
+  const moduleNames = useMemo(
+    () => listParameterModuleNames(buildParameterModulesFromRecords(parameters)),
+    [parameters]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -146,6 +193,29 @@ export function ParameterImportWizard({
     }
   };
 
+  const handleApproveRow = (rowId: string) => {
+    setReviewedRows((current) => current.map((row) => (row.rowId === rowId ? { ...row, status: "approved" as const } : row)));
+  };
+
+  const handleSkipRow = (rowId: string, reason: string) => {
+    setReviewedRows((current) =>
+      current.map((row) => (row.rowId === rowId ? { ...row, status: "skipped" as const, skipReason: reason } : row))
+    );
+  };
+
+  const handleUpdateRow = (rowId: string, patch: Partial<ParsedImportRow>) => {
+    setReviewedRows((current) => {
+      const updated = current.map((row) => (row.rowId === rowId ? { ...row, ...patch } : row));
+      return reconcileReviewedRows(updated, parameters, targetProjectId);
+    });
+  };
+
+  const handleConfirmNewRow = (rowId: string, patch: Partial<ParsedImportRow>) => {
+    setReviewedRows((current) =>
+      current.map((row) => (row.rowId === rowId ? { ...row, ...patch, status: "new-confirmed" as const } : row))
+    );
+  };
+
   return (
     <>
       <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="批量参数导入向导">
@@ -188,6 +258,19 @@ export function ParameterImportWizard({
               parseErrors={parseErrors}
               onBack={() => setStep(1)}
               onNext={() => setStep(3)}
+            />
+          ) : step === 3 ? (
+            <StepRowReview
+              reviewedRows={reviewedRows}
+              projects={projects}
+              moduleNames={moduleNames}
+              libraryParameters={libraryParameters}
+              onApproveRow={handleApproveRow}
+              onSkipRow={handleSkipRow}
+              onUpdateRow={handleUpdateRow}
+              onConfirmNewRow={handleConfirmNewRow}
+              onBack={() => setStep(2)}
+              onNext={() => setStep(4)}
             />
           ) : (
             <section className="parameter-import-wizard-step" aria-label={`步骤 ${step}`}>
