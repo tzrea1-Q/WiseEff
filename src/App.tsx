@@ -2197,6 +2197,10 @@ function AppShell({
     });
   }, []);
 
+  const parameterRuntimeConnectedRef = useRef(false);
+  const logRuntimeConnectedRef = useRef(false);
+  const debuggingRuntimeConnectedRef = useRef(false);
+
   const refreshApiRuntimeData = useCallback(
     async (cancelledRef?: { current: boolean }, roleId = stateRef.current.activeRoleId) => {
       const runtimeRoleId = migrateLegacyRoleId(roleId);
@@ -2264,8 +2268,6 @@ function AppShell({
         : undefined,
     [runtimeMode, dispatch]
   );
-  const logRuntimeConnectedRef = useRef(false);
-  const debuggingRuntimeConnectedRef = useRef(false);
 
   useEffect(() => {
     stateRef.current = state;
