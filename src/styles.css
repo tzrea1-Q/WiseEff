@@ -14722,7 +14722,14 @@ body.xiaoze-popup-resize-active {
 .param-admin-module-dialog {
   width: min(720px, calc(100vw - 32px));
   max-height: min(88vh, 920px);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.param-admin-module-dialog .submission-dialog-head,
+.param-admin-module-dialog .dialog-actions {
+  flex-shrink: 0;
 }
 
 .param-admin-module-dialog-body {
@@ -14732,7 +14739,7 @@ body.xiaoze-popup-resize-active {
   padding: 0 20px;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .param-admin-module-toolbar {
@@ -14767,9 +14774,6 @@ body.xiaoze-popup-resize-active {
 }
 
 .param-admin-module-table-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
   border: 1px solid var(--outline);
   border-radius: 10px;
   background: #fff;
@@ -14910,7 +14914,9 @@ body.xiaoze-popup-resize-active {
 }
 
 .param-admin-module-add--inline {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
   padding: 12px;
   border: 1px solid var(--outline);
   border-radius: 10px;
@@ -14922,6 +14928,14 @@ body.xiaoze-popup-resize-active {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+}
+
+.param-admin-module-add--inline .param-admin-module-add-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--outline);
 }
 
 .param-admin-module-add label {

@@ -68,7 +68,6 @@ export type PowerManagementProject = {
 export type PowerManagementParameterModule = {
   name: string;
   description: string;
-  owner: string;
   scope: string;
 };
 
@@ -97,7 +96,6 @@ export function createEmptyParameterModule(name: string): PowerManagementParamet
   return {
     name,
     description: "",
-    owner: "",
     scope: ""
   };
 }
@@ -108,7 +106,6 @@ function normalizeParameterModuleRecord(
   return {
     name: record.name.trim(),
     description: record.description?.trim() ?? "",
-    owner: record.owner?.trim() ?? "",
     scope: record.scope?.trim() ?? ""
   };
 }
@@ -382,7 +379,6 @@ export function updateParameterModule(config: PowerManagementConfig, moduleName:
   const nextModule: PowerManagementParameterModule = {
     name: nextName,
     description: patch.description ?? existing.description,
-    owner: patch.owner ?? existing.owner,
     scope: patch.scope ?? existing.scope
   };
 

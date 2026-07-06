@@ -258,7 +258,6 @@ describe("catalogSplitRepository", () => {
     const moduleRow = {
       name: "Battery",
       description: "Battery nodes",
-      owner: "Power",
       scope: "Lab",
       created_at: timestamp,
       updated_at: timestamp
@@ -269,7 +268,6 @@ describe("catalogSplitRepository", () => {
       organizationId: "org-1",
       name: "Battery",
       description: "Battery nodes",
-      owner: "Power",
       scope: "Lab"
     });
     const listed = await listDebugNodeModules(db, { organizationId: "org-1" });

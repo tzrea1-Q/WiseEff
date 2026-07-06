@@ -24,7 +24,7 @@ function createDebuggingAdminApiMock() {
     get: vi.fn().mockImplementation((path: string) => {
       if (path === "/api/v1/debugging/admin/modules") {
         return Promise.resolve({
-          items: [{ name: "Battery Charging", description: "", owner: "", scope: "" }]
+          items: [{ name: "Battery Charging", description: "", scope: "" }]
         });
       }
       return Promise.resolve({ items: [seedNode] });
@@ -142,6 +142,18 @@ describe("/debugging-admin API mode", () => {
         enabled: true
       })
     );
+  });
+
+  it("blocks invalid node binding saves before calling the API", async () => {
+    const apiClient = renderDebuggingAdminPage();
+
+    await screen.findByText("Fast charge current");
+    fireEvent.click(within(findTableRowByText("Fast charge current")).getByRole("button", { name: "路径绑定" }));
+    fireEvent.change(screen.getByLabelText("HDC 节点路径"), { target: { value: "relative/path" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
+
+    expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
+    expect(apiClient.put).not.toHaveBeenCalled();
   });
 
   it("disables nodes through confirmation dialog", async () => {

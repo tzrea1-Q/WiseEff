@@ -35,15 +35,6 @@ export function ModuleDefinitionForm({
         />
       </label>
       <label>
-        责任团队
-        <input
-          aria-label="责任团队"
-          placeholder="例如 电池算法组"
-          value={module.owner}
-          onChange={(event) => onChange({ owner: event.target.value })}
-        />
-      </label>
-      <label>
         适用范围
         <textarea
           aria-label="适用范围"

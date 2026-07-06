@@ -746,7 +746,6 @@ describe("debugging routes", () => {
     const moduleItem = {
       name: "Battery Charging",
       description: "Charge policy nodes",
-      owner: "Power team",
       scope: "Aurora",
       createdAt: timestamp,
       updatedAt: timestamp
@@ -768,7 +767,6 @@ describe("debugging routes", () => {
         body: JSON.stringify({
           name: "Battery Charging",
           description: "Charge policy nodes",
-          owner: "Power team",
           scope: "Aurora"
         })
       }
@@ -799,7 +797,6 @@ describe("debugging routes", () => {
       {
         name: "Battery Charging",
         description: "Charge policy nodes",
-        owner: "Power team",
         scope: "Aurora"
       },
       { requestId: "test-request" }

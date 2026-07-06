@@ -28,11 +28,11 @@ describe("debugAdminModules", () => {
     expect(
       buildDebugModulesFromNodes(nodes, [
         createEmptyParameterModule("Battery Charging"),
-        { name: "Battery Health", description: "Health metrics", owner: "Lab", scope: "Battery" }
+        { name: "Battery Health", description: "Health metrics", scope: "Battery" }
       ])
     ).toEqual([
       expect.objectContaining({ name: "Battery Charging" }),
-      expect.objectContaining({ name: "Battery Health", description: "Health metrics", owner: "Lab", scope: "Battery" })
+      expect.objectContaining({ name: "Battery Health", description: "Health metrics", scope: "Battery" })
     ]);
   });
 

@@ -16,8 +16,8 @@ const config: PowerManagementConfig = {
     { id: "atlas", name: "Atlas", code: "ATL" }
   ],
   parameterModules: [
-    { name: "Battery Safety", description: "", owner: "", scope: "" },
-    { name: "Charging Policy", description: "", owner: "", scope: "" }
+    { name: "Battery Safety", description: "", scope: "" },
+    { name: "Charging Policy", description: "", scope: "" }
   ],
   parameterLibrary: [
     {

@@ -221,7 +221,6 @@ export type NodeOperationRecord = {
 export type DebugNodeModuleRecord = {
   name: string;
   description: string;
-  owner: string;
   scope: string;
   createdAt: string;
   updatedAt: string;

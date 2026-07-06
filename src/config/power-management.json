@@ -20,61 +20,51 @@
     {
       "name": "Battery Estimation",
       "description": "电池状态估计、平滑与算法调参相关模块。",
-      "owner": "电池算法组",
       "scope": "跨项目 SOC/SOH 估计与状态平滑"
     },
     {
       "name": "Battery Health",
       "description": "电池健康度与容量保留策略。",
-      "owner": "电池健康组",
       "scope": "健康容量与寿命治理"
     },
     {
       "name": "Battery Protection",
       "description": "低电量保护与关机策略。",
-      "owner": "电池安全组",
       "scope": "关机阈值与保护边界"
     },
     {
       "name": "Battery Safety",
       "description": "电池温度与安全边界参数。",
-      "owner": "电池安全组",
       "scope": "温度目标与热安全策略"
     },
     {
       "name": "Charging Policy",
       "description": "充电策略、电流电压与快充控制。",
-      "owner": "充电策略组",
       "scope": "快充/恒压/策略矩阵"
     },
     {
       "name": "Charging Protocol",
       "description": "USB PD 等充电协议能力配置。",
-      "owner": "协议集成组",
       "scope": "协议功率档位与协商"
     },
     {
       "name": "Power IC",
       "description": "PMIC 与升压等电源芯片参数。",
-      "owner": "硬件平台组",
       "scope": "电源芯片电压与升压配置"
     },
     {
       "name": "Standby Power",
       "description": "待机功耗与静态电流控制。",
-      "owner": "低功耗组",
       "scope": "待机场景功耗治理"
     },
     {
       "name": "Thermal Control",
       "description": "热管理与降额曲线配置。",
-      "owner": "热设计组",
       "scope": "热降额与曲线矩阵"
     },
     {
       "name": "Wireless Charging",
       "description": "无线充电热降额与功率策略。",
-      "owner": "无线充电组",
       "scope": "无线充功率与热保护"
     }
   ],

@@ -6,6 +6,7 @@ import type {
   DebugParameter,
   DebugParameterAccessMode
 } from "@/domain/debugging/types";
+import { normalizeBindingNodePath } from "@/domain/debugging/bindingNodePath";
 import { createApiClient } from "./apiClient";
 import type { ParameterReloadTargetDto } from "./debuggingDtos";
 import {
@@ -139,7 +140,7 @@ function isFullDraft(draftOrPatch: DebugAdminParameterDraft | DebugAdminParamete
 
 function bindingWriteBody(binding: DebugAdminBindingInput): DebugAdminBindingWriteDto {
   return {
-    nodePath: binding.nodePath,
+    nodePath: normalizeBindingNodePath(binding.nodePath),
     accessMode: binding.accessMode,
     enabled: binding.enabled,
     notes: binding.notes
@@ -149,7 +150,7 @@ function bindingWriteBody(binding: DebugAdminBindingInput): DebugAdminBindingWri
 function parameterBindingWriteBody(binding: DebugAdminParameterBindingWriteDto): DebugAdminParameterBindingWriteDto {
   return {
     protocol: binding.protocol,
-    nodePath: binding.nodePath,
+    nodePath: normalizeBindingNodePath(binding.nodePath),
     accessMode: binding.accessMode,
     enabled: binding.enabled,
     notes: binding.notes
@@ -237,7 +238,6 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       const response = await apiClient.patch<ItemEnvelope<DebugAdminModuleDto>>(adminModulePath(moduleName), debugAdminModuleToDto({
         name: patch.name ?? moduleName,
         description: patch.description ?? "",
-        owner: patch.owner ?? "",
         scope: patch.scope ?? ""
       }));
       return debugAdminModuleFromDto(response.item);

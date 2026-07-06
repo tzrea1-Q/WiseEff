@@ -78,4 +78,25 @@ describe("DebugNodeBindingsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存 HDC binding" }));
     expect(onSaveBinding).toHaveBeenCalledWith("hdc");
   });
+
+  it("disables protocol save when node path is invalid", () => {
+    render(
+      <DebugNodeBindingsDialog
+        nodeName="快充电流限制"
+        draft={[{ protocol: "hdc", nodePath: "relative/path", accessMode: "RW", enabled: true }]}
+        nodeId="node-1"
+        isApiMode
+        canEdit
+        loading={false}
+        onBindingChange={vi.fn()}
+        onSave={vi.fn()}
+        onSaveBinding={vi.fn()}
+        onArchiveBinding={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("节点路径必须以 / 开头。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存 HDC binding" })).toBeDisabled();
+  });
 });

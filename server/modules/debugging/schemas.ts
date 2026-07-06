@@ -285,7 +285,6 @@ export const debugAdminModuleParamsSchema = z.object({
 export const writeDebugNodeModuleAdminBodySchema = z.object({
   name: nonEmptyString,
   description: optionalTrimmedString.default(""),
-  owner: optionalTrimmedString.default(""),
   scope: optionalTrimmedString.default("")
 });
 

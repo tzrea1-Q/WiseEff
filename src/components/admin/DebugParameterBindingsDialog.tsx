@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { bindingForProtocol } from "@/debugAdminDraft";
 import type { DebugConnectionProtocol, DebugParameterNodeBinding } from "@/domain/debugging/types";
+import { getBindingNodePathValidationError } from "@/domain/debugging/bindingNodePath";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectControl";
@@ -66,17 +67,20 @@ export function DebugParameterBindingsDialog({
               {BINDING_PROTOCOLS.map((protocol) => {
                 const binding = bindingForProtocol(draft, protocol);
                 const label = protocol.toUpperCase();
+                const pathError = getBindingNodePathValidationError(binding.nodePath);
                 return (
                   <div className="debug-admin-binding-panel" key={protocol}>
                     <h4>{label}</h4>
                     <div className="debug-admin-field">
                       <span className="debug-admin-field-label">{label} 节点路径</span>
                       <Input
+                        aria-invalid={pathError ? "true" : "false"}
                         aria-label={`${label} 节点路径`}
                         value={binding.nodePath}
                         disabled={fieldsDisabled}
                         onChange={(event) => onBindingChange(protocol, { nodePath: event.target.value })}
                       />
+                      {pathError ? <span className="field-error">{pathError}</span> : null}
                     </div>
                     <div className="debug-admin-field">
                       <span className="debug-admin-field-label">{label} 访问模式</span>
@@ -111,7 +115,12 @@ export function DebugParameterBindingsDialog({
                     </div>
                     {canRunProtocolActions ? (
                       <div className="debug-admin-binding-actions">
-                        <Button type="button" variant="outline" disabled={fieldsDisabled} onClick={() => onSaveBinding(protocol)}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={fieldsDisabled || Boolean(pathError)}
+                          onClick={() => onSaveBinding(protocol)}
+                        >
                           保存 {label} binding
                         </Button>
                         <Button

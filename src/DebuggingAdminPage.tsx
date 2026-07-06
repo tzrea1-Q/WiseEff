@@ -10,6 +10,11 @@ import { useTopBarActions } from "@/components/layout";
 import { bindingForProtocol } from "@/debugAdminDraft";
 import { buildDebugModulesFromNodes, countDebugNodesByModule } from "@/debugAdminModules";
 import type { DebugConnectionProtocol, DebugNodeProtocolBinding, DebugNodeRegistryEntry, DebugParameter } from "@/domain/debugging/types";
+import {
+  formatDebugAdminBindingSaveError,
+  getBindingNodePathValidationError,
+  normalizeBindingNodePath
+} from "@/domain/debugging/bindingNodePath";
 import { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/powerManagementConfig";
@@ -277,15 +282,24 @@ export function DebuggingAdminPage({
     }
 
     const binding = bindingForProtocol(bindingsDraft, protocol);
+    const pathError = getBindingNodePathValidationError(binding.nodePath);
+    if (pathError) {
+      setAdminError(pathError);
+      return;
+    }
+
     setAdminLoading(true);
     setAdminError("");
     try {
-      const saved = await debuggingAdminClient.upsertNodeBinding(node.id, protocol, binding);
+      const saved = await debuggingAdminClient.upsertNodeBinding(node.id, protocol, {
+        ...binding,
+        nodePath: normalizeBindingNodePath(binding.nodePath)
+      });
       mergeAdminNodeBindings(node.id, saved);
       setBindingsDraft((current) => mergeNodeBinding(current, protocol, saved));
       flashSaved("已保存 binding");
-    } catch {
-      setAdminError("保存节点 binding 失败。");
+    } catch (error) {
+      setAdminError(formatDebugAdminBindingSaveError(error, "保存节点 binding 失败。"));
     } finally {
       setAdminLoading(false);
     }
