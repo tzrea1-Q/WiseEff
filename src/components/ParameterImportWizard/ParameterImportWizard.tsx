@@ -3,10 +3,14 @@ import { useEffect, useMemo, useState, type Dispatch } from "react";
 import type { AppAction } from "@/App";
 import type { ParameterPageActions } from "@/app/routes";
 import { buildImportTemplateWorkbook } from "@/application/parameters/import/buildImportTemplate";
+import { parseImportSource } from "@/application/parameters/import/detectImportFormat";
+import { matchToLibrary } from "@/application/parameters/import/matchToLibrary";
+import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/mockData";
+import { StepParseReport } from "./steps/StepParseReport";
 import { StepSourceAndProject } from "./steps/StepSourceAndProject";
 
 export type ParameterImportWizardStep = 1 | 2 | 3 | 4 | 5;
@@ -50,6 +54,7 @@ export function ParameterImportWizard({
   open,
   onClose,
   projects,
+  parameters,
   activeProjectId,
   parameterActions,
   dispatch,
@@ -65,6 +70,9 @@ export function ParameterImportWizard({
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [createProjectPending, setCreateProjectPending] = useState(false);
   const [createProjectError, setCreateProjectError] = useState("");
+  const [parsedRows, setParsedRows] = useState<ParsedImportRow[]>([]);
+  const [reviewedRows, setReviewedRows] = useState<ReviewedImportRow[]>([]);
+  const [parseErrors, setParseErrors] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) {
@@ -77,6 +85,9 @@ export function ParameterImportWizard({
     setSourceBytes(null);
     setCreateProjectOpen(false);
     setCreateProjectError("");
+    setParsedRows([]);
+    setReviewedRows([]);
+    setParseErrors([]);
   }, [open, activeProjectId]);
 
   useEffect(() => {
@@ -95,6 +106,24 @@ export function ParameterImportWizard({
   if (!open) {
     return null;
   }
+
+  const handleParseAndAdvance = () => {
+    const errors: string[] = [];
+    let parsed: ParsedImportRow[] = [];
+    try {
+      parsed = parseImportSource({
+        fileName: sourceName || undefined,
+        bytes: sourceBytes ?? undefined,
+        text: sourceText || undefined
+      });
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "解析失败，请检查文件内容。");
+    }
+    setParsedRows(parsed);
+    setReviewedRows(matchToLibrary(parsed, parameters, targetProjectId));
+    setParseErrors(errors);
+    setStep(2);
+  };
 
   const handleCreateProject = async (input: { name: string; code: string }) => {
     setCreateProjectPending(true);
@@ -150,7 +179,15 @@ export function ParameterImportWizard({
                 setSourceBytes(bytes);
               }}
               onDownloadTemplate={downloadImportTemplate}
-              onNext={() => setStep(2)}
+              onNext={handleParseAndAdvance}
+            />
+          ) : step === 2 ? (
+            <StepParseReport
+              parsedRows={parsedRows}
+              reviewedRows={reviewedRows}
+              parseErrors={parseErrors}
+              onBack={() => setStep(1)}
+              onNext={() => setStep(3)}
             />
           ) : (
             <section className="parameter-import-wizard-step" aria-label={`步骤 ${step}`}>

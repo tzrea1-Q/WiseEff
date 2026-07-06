@@ -84,4 +84,47 @@ describe("ParameterImportWizard", () => {
     });
     expect(screen.queryByRole("dialog", { name: "新建项目" })).not.toBeInTheDocument();
   });
+
+  it("parses a pasted JSON fixture and shows the Step 2 parse summary counts", () => {
+    renderWizard();
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "new_wizard_test_param",
+            module: "Wizard Test Module",
+            currentValue: "1",
+            recommendedValue: "2",
+            range: "0 - 10",
+            unit: "unit",
+            risk: "Low"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();
+    const summary = within(dialog).getByRole("region", { name: "解析与校验" });
+    expect(within(summary).getByText("总行数").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByText("新增候选").nextElementSibling).toHaveTextContent("1");
+    expect(within(summary).getByText("已有").nextElementSibling).toHaveTextContent("0");
+    expect(within(summary).getByText("冲突").nextElementSibling).toHaveTextContent("0");
+    expect(within(summary).getByText("待补全模块").nextElementSibling).toHaveTextContent("0");
+    expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
+  });
+
+  it("blocks advancing past Step 2 when parsing produces zero rows", () => {
+    renderWizard();
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
+      target: { value: "not,valid,parameter,rows" }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
+  });
 });
