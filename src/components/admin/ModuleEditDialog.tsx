@@ -40,7 +40,7 @@ export function ModuleEditDialog({
           <div className="param-admin-editor-dialog-head-text">
             <span className="eyebrow">模块修改</span>
             <h2>{module.name}</h2>
-            <p>更新模块名称、描述、责任团队与适用范围。修改名称会同步更新共享参数库中的模块归属。</p>
+            <p>更新模块名称、描述与适用范围。修改名称会同步更新共享参数库中的模块归属。</p>
           </div>
           <button type="button" className="audit-dialog-close-icon" onClick={onCancel} aria-label="关闭">
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
@@ -71,7 +71,6 @@ export function ModuleEditDialog({
               onSave({
                 name: draft.name.trim(),
                 description: draft.description.trim(),
-                owner: draft.owner.trim(),
                 scope: draft.scope.trim()
               });
             }}

@@ -5,6 +5,11 @@ import { ReloadBindingEditorDialog, type ReloadBindingDraft } from "@/components
 import { buildModuleSelectOptions } from "@/debugAdminModules";
 import { nodeBindingStatus, nodeBindingStatusLabel } from "@/debugAdminDraft";
 import type { DebugNodeRegistryEntry, ParameterReloadBinding } from "@/domain/debugging/types";
+import {
+  formatDebugAdminBindingSaveError,
+  getBindingNodePathValidationError,
+  normalizeBindingNodePath
+} from "@/domain/debugging/bindingNodePath";
 import type { createDebuggingAdminClient } from "@/infrastructure/http/debuggingAdminClient";
 import type { ParameterReloadTargetDto } from "@/infrastructure/http/debuggingDtos";
 
@@ -144,6 +149,12 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
       return;
     }
 
+    const pathError = getBindingNodePathValidationError(draft.nodePath);
+    if (pathError) {
+      setError(pathError);
+      return;
+    }
+
     setSaveLoading(true);
     setError("");
     try {
@@ -151,15 +162,15 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
         projectId,
         parameterDefinitionId: draft.parameterDefinitionId,
         protocol: draft.protocol,
-        nodePath: draft.nodePath,
+        nodePath: normalizeBindingNodePath(draft.nodePath),
         accessMode: draft.accessMode,
         enabled: draft.enabled,
         notes: draft.notes.trim() ? draft.notes.trim() : null
       });
       setBindingDialog(null);
       reloadCatalog();
-    } catch {
-      setError("保存重载绑定失败，请稍后重试。");
+    } catch (error) {
+      setError(formatDebugAdminBindingSaveError(error, "保存重载绑定失败，请稍后重试。"));
     } finally {
       setSaveLoading(false);
     }

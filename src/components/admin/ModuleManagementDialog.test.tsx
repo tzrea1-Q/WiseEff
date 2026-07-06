@@ -36,7 +36,6 @@ describe("ModuleManagementDialog", () => {
     expect(onAddModule).toHaveBeenCalledWith({
       name: "Custom Power",
       description: "自定义电源模块",
-      owner: "",
       scope: ""
     });
 
@@ -50,7 +49,6 @@ describe("ModuleManagementDialog", () => {
     expect(onUpdateModule).toHaveBeenCalledWith("Standby Power", {
       name: "Standby Energy",
       description: "待机能耗治理",
-      owner: "低功耗组",
       scope: "待机场景功耗治理"
     });
   });

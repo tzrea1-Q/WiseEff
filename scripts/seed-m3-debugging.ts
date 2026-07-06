@@ -330,8 +330,8 @@ export async function seedM3Debugging(db: Database): Promise<void> {
     for (const moduleName of moduleNames) {
       await tx.query(
         `
-        insert into debug_node_modules (id, organization_id, name, description, owner, scope)
-        values ($1, $2, $3, '', '', '')
+        insert into debug_node_modules (id, organization_id, name, description, scope)
+        values ($1, $2, $3, '', '')
         on conflict (organization_id, name) do nothing
         `,
         [`dmod-${organizationId}-${moduleName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, organizationId, moduleName]

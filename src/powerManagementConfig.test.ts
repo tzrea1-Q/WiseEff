@@ -266,7 +266,6 @@ describe("addDebugParameterFromDraft", () => {
     const renamed = updateParameterModule(withModule, "Charging Policy", {
       name: "Charge Policy",
       description: withModule.parameterModules.find((module) => module.name === "Charging Policy")?.description ?? "",
-      owner: withModule.parameterModules.find((module) => module.name === "Charging Policy")?.owner ?? "",
       scope: withModule.parameterModules.find((module) => module.name === "Charging Policy")?.scope ?? ""
     });
     expect(renamed.parameterModules.some((module) => module.name === "Charge Policy")).toBe(true);

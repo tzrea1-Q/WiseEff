@@ -722,7 +722,6 @@ export async function updateProjectParameterCurrentValue(
 type DebugNodeModuleRow = {
   name: string;
   description: string;
-  owner: string;
   scope: string;
   created_at: string | Date;
   updated_at: string | Date;
@@ -732,7 +731,6 @@ function toDebugNodeModuleRecord(row: DebugNodeModuleRow) {
   return {
     name: row.name,
     description: row.description,
-    owner: row.owner,
     scope: row.scope,
     createdAt: dateTimeToIso(row.created_at) ?? "",
     updatedAt: dateTimeToIso(row.updated_at) ?? ""
@@ -742,7 +740,7 @@ function toDebugNodeModuleRecord(row: DebugNodeModuleRow) {
 export async function listDebugNodeModules(db: Queryable, input: { organizationId: string }) {
   const result = await db.query<DebugNodeModuleRow>(
     `
-    select name, description, owner, scope, created_at, updated_at
+    select name, description, scope, created_at, updated_at
     from debug_node_modules
     where organization_id = $1
     order by name asc
@@ -756,7 +754,7 @@ export async function listDebugNodeModules(db: Queryable, input: { organizationI
 export async function getDebugNodeModule(db: Queryable, input: { organizationId: string; name: string }) {
   const result = await db.query<DebugNodeModuleRow>(
     `
-    select name, description, owner, scope, created_at, updated_at
+    select name, description, scope, created_at, updated_at
     from debug_node_modules
     where organization_id = $1
       and name = $2
@@ -788,22 +786,20 @@ export async function createDebugNodeModule(
     organizationId: string;
     name: string;
     description?: string;
-    owner?: string;
     scope?: string;
   }
 ) {
   const result = await db.query<DebugNodeModuleRow>(
     `
-    insert into debug_node_modules (id, organization_id, name, description, owner, scope)
-    values ($1, $2, $3, $4, $5, $6)
-    returning name, description, owner, scope, created_at, updated_at
+    insert into debug_node_modules (id, organization_id, name, description, scope)
+    values ($1, $2, $3, $4, $5)
+    returning name, description, scope, created_at, updated_at
     `,
     [
       randomUUID(),
       input.organizationId,
       input.name,
       input.description ?? "",
-      input.owner ?? "",
       input.scope ?? ""
     ]
   );
@@ -818,7 +814,6 @@ export async function updateDebugNodeModule(
     moduleName: string;
     name?: string;
     description?: string;
-    owner?: string;
     scope?: string;
   }
 ) {
@@ -829,19 +824,17 @@ export async function updateDebugNodeModule(
     set
       name = coalesce($3, name),
       description = coalesce($4, description),
-      owner = coalesce($5, owner),
-      scope = coalesce($6, scope),
+      scope = coalesce($5, scope),
       updated_at = now()
     where organization_id = $1
       and name = $2
-    returning name, description, owner, scope, created_at, updated_at
+    returning name, description, scope, created_at, updated_at
     `,
     [
       input.organizationId,
       input.moduleName,
       nextName ?? null,
       input.description ?? null,
-      input.owner ?? null,
       input.scope ?? null
     ]
   );

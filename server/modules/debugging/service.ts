@@ -250,7 +250,6 @@ type AdminNodeBindingArchiveInput = {
 type AdminDebugModuleWriteInput = {
   name: string;
   description?: string;
-  owner?: string;
   scope?: string;
 };
 
@@ -1550,7 +1549,6 @@ export function createDebuggingService(options: ServiceOptions) {
           organizationId,
           name,
           description: input.description?.trim() ?? "",
-          owner: input.owner?.trim() ?? "",
           scope: input.scope?.trim() ?? ""
         });
 
@@ -1565,7 +1563,7 @@ export function createDebuggingService(options: ServiceOptions) {
               severity: "Low",
               targetType: "debug-node-module",
               targetId: module.name,
-              metadata: { name: module.name, owner: module.owner, scope: module.scope }
+              metadata: { name: module.name, scope: module.scope }
             },
             context
           )
@@ -1608,7 +1606,6 @@ export function createDebuggingService(options: ServiceOptions) {
           moduleName: current.name,
           name: nextName,
           description: input.description?.trim() ?? current.description,
-          owner: input.owner?.trim() ?? current.owner,
           scope: input.scope?.trim() ?? current.scope
         });
         if (!module) {
@@ -1629,7 +1626,6 @@ export function createDebuggingService(options: ServiceOptions) {
               metadata: {
                 previousName: current.name,
                 name: module.name,
-                owner: module.owner,
                 scope: module.scope
               }
             },

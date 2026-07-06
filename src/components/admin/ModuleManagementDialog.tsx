@@ -7,7 +7,6 @@ import { ModuleEditDialog } from "./ModuleEditDialog";
 const emptyModuleDraft = (): ParameterModuleDraft => ({
   name: "",
   description: "",
-  owner: "",
   scope: ""
 });
 
@@ -25,7 +24,7 @@ function moduleMatchesQuery(module: PowerManagementParameterModule, query: strin
   if (!query) {
     return true;
   }
-  const haystack = [module.name, module.description, module.owner, module.scope].join(" ").toLowerCase();
+  const haystack = [module.name, module.description, module.scope].join(" ").toLowerCase();
   return haystack.includes(query);
 }
 
@@ -116,7 +115,6 @@ export function ModuleManagementDialog({
     onAddModule({
       name: addDraft.name.trim(),
       description: addDraft.description.trim(),
-      owner: addDraft.owner.trim(),
       scope: addDraft.scope.trim()
     });
     setAddDraft(emptyModuleDraft());
@@ -150,7 +148,7 @@ export function ModuleManagementDialog({
               <input
                 aria-label="搜索模块"
                 type="search"
-                placeholder="搜索名称、描述、团队或范围"
+                placeholder="搜索名称、描述或范围"
                 value={moduleQuery}
                 onChange={(event) => setModuleQuery(event.target.value)}
               />

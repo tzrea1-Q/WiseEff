@@ -204,7 +204,6 @@ export type DebugAdminNodeWriteDto = {
 export type DebugAdminModuleDto = {
   name: string;
   description: string;
-  owner: string;
   scope: string;
 };
 
@@ -212,7 +211,6 @@ export function debugAdminModuleFromDto(dto: DebugAdminModuleDto): PowerManageme
   return {
     name: dto.name,
     description: dto.description,
-    owner: dto.owner,
     scope: dto.scope
   };
 }
@@ -221,7 +219,6 @@ export function debugAdminModuleToDto(draft: ParameterModuleDraft): DebugAdminMo
   return {
     name: draft.name.trim(),
     description: draft.description.trim(),
-    owner: draft.owner.trim(),
     scope: draft.scope.trim()
   };
 }

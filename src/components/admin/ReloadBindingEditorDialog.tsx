@@ -5,6 +5,7 @@ import { DebugAdminSelectControl } from "@/components/admin/DebugAdminSelectCont
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DebugConnectionProtocol, DebugParameterAccessMode, ParameterReloadBinding } from "@/domain/debugging/types";
+import { getBindingNodePathValidationError } from "@/domain/debugging/bindingNodePath";
 import type { ParameterReloadTargetDto } from "@/infrastructure/http/debuggingDtos";
 
 export type ReloadBindingDraft = {
@@ -100,7 +101,9 @@ export function ReloadBindingEditorDialog({
   }
 
   const fieldsDisabled = !canEdit || loading || !projectId;
-  const canSubmit = draft.parameterDefinitionId.trim().length > 0 && draft.nodePath.trim().length > 0 && !fieldsDisabled;
+  const pathError = getBindingNodePathValidationError(draft.nodePath);
+  const canSubmit =
+    draft.parameterDefinitionId.trim().length > 0 && !pathError && !fieldsDisabled;
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={mode === "create" ? "创建参数重载绑定" : "编辑参数重载绑定"}>
@@ -145,10 +148,12 @@ export function ReloadBindingEditorDialog({
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">节点路径</span>
               <Input
+                aria-invalid={pathError ? "true" : "false"}
                 value={draft.nodePath}
                 disabled={fieldsDisabled}
                 onChange={(event) => setDraft((current) => ({ ...current, nodePath: event.target.value }))}
               />
+              {pathError ? <span className="field-error">{pathError}</span> : null}
             </label>
             <label className="debug-admin-field">
               <span className="debug-admin-field-label">访问模式</span>
