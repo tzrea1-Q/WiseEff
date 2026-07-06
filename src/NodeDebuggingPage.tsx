@@ -83,7 +83,6 @@ type PageNodeOperationEvent = NodeOperationEvent & {
 };
 
 const protocolStorageKey = "wiseeff.nodeDebugging.protocol";
-const protocolSwitchRedetectMessage = "切换协议后需要重新检测设备";
 
 export function readInitialNodeDebuggingProtocol(): DebugConnectionProtocol {
   try {
@@ -349,13 +348,6 @@ function resolveReadRowOutcome(result: NodeReadResult) {
   };
 }
 
-function formatSessionDuration(startedAt: string | null, now: Date) {
-  if (!startedAt) return "—";
-  const startTime = new Date(startedAt).getTime();
-  if (!Number.isFinite(startTime)) return "—";
-  return `${Math.max(0, Math.floor((now.getTime() - startTime) / 60_000))} 分钟`;
-}
-
 function formatBridgeLastSeen(lastSeenAt: string | null) {
   if (!lastSeenAt) return "从未在线";
   const timestamp = new Date(lastSeenAt).getTime();
@@ -381,17 +373,6 @@ function bridgeTargetLabel(target: Pick<DeviceTarget, "label" | "targetRef" | "b
   }
   const targetIdentity = target.targetRef?.trim() || target.label;
   return `${machineLabel} · ${targetIdentity}`;
-}
-
-function isSuccessfulWriteEvent(event: PageNodeOperationEvent) {
-  return (event.action === "write" || event.action === "write-readback") &&
-    (event.status === "写入成功" || event.status === "回读一致");
-}
-
-function compactNodeEventStatus(status: string) {
-  if (status.includes("失败") || status.includes("不一致")) return "失败";
-  if (status.includes("成功") || status.includes("一致") || status.includes("已连接")) return "成功";
-  return status;
 }
 
 function eventActionFromOperation(operation: NodeOperationSnapshot): NodeOperationEvent["action"] {
@@ -450,85 +431,6 @@ type WriteResultWithOperation = NodeWriteResult & { operation?: NodeOperationSna
 type DetectResultWithOperation = Awaited<ReturnType<DebuggingRuntimeActions["detectAndStartSession"]>> & {
   operation?: NodeOperationSnapshot;
 };
-
-function NodeSessionSummaryCard({
-  connected,
-  target,
-  detecting,
-  connectionError,
-  sessionStartedAt,
-  now,
-  writtenCount,
-  pendingCount,
-  failedCount,
-  latestEvent,
-  protocol,
-  onDetect
-}: {
-  connected: boolean;
-  target?: string;
-  detecting: boolean;
-  connectionError: string;
-  sessionStartedAt: string | null;
-  now: Date;
-  writtenCount: number;
-  pendingCount: number;
-  failedCount: number;
-  latestEvent: NodeOperationEvent | null;
-  protocol: DebugConnectionProtocol;
-  onDetect: () => void;
-}) {
-  const label = protocolLabel(protocol);
-  const statusLabel = connected ? `在线 · ${target}` : detecting ? `检测中 · ${label} 设备` : `离线 · ${label} 设备`;
-  const detailLabel = connected
-    ? `通过 ${label} 读写 Linux 节点`
-    : connectionError === protocolSwitchRedetectMessage ? protocolSwitchRedetectMessage : connectionError ? `检测失败，请检查 ${label} 环境` : "等待设备检测";
-
-  return (
-    <section className="session-summary-card" aria-label="调试会话摘要">
-      <div className="session-summary-primary">
-        <span className={connected ? "live-dot" : "idle-dot"} aria-hidden="true" />
-        <div>
-          <strong>{statusLabel}</strong>
-          <small>{detailLabel}</small>
-        </div>
-      </div>
-      <div className="session-summary-metrics">
-        <div>
-          <span>会话时长</span>
-          <strong>{formatSessionDuration(sessionStartedAt, now)}</strong>
-        </div>
-        <div>
-          <span>已写入</span>
-          <strong>{writtenCount}</strong>
-        </div>
-        <div>
-          <span>待写入</span>
-          <strong>{pendingCount}</strong>
-        </div>
-        <div>
-          <span>失败</span>
-          <strong>{failedCount}</strong>
-        </div>
-      </div>
-      <div className="session-summary-snapshot">
-        {latestEvent ? (
-          <>
-            <span>最近操作</span>
-            <strong>{latestEvent.parameterName}</strong>
-            <small>{compactNodeEventStatus(latestEvent.status)}</small>
-          </>
-        ) : (
-          <span>尚无操作 · 检测或写入后自动记录</span>
-        )}
-        <button className="button subtle" type="button" disabled={detecting} onClick={onDetect}>
-          <RotateCw size={16} aria-hidden="true" />
-          {detecting ? "检测中" : "重新检测"}
-        </button>
-      </div>
-    </section>
-  );
-}
 
 function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: DebugConnectionProtocol }) {
   const titleId = `node-write-format-${row.id}`;
@@ -915,14 +817,11 @@ export function NodeDebuggingPage({
   );
   const [target, setTarget] = useState<string | undefined>();
   const [detecting, setDetecting] = useState(false);
-  const [connectionError, setConnectionError] = useState("");
   const [events, setEvents] = useState<PageNodeOperationEvent[]>([]);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
-  const [nowTick, setNowTick] = useState(() => new Date());
-  const [sessionStartedAt, setSessionStartedAt] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | undefined>();
   const [activeTargetId, setActiveTargetId] = useState<string | undefined>();
   const [bridgeTargetCandidates, setBridgeTargetCandidates] = useState<DeviceTarget[]>([]);
@@ -952,11 +851,6 @@ export function NodeDebuggingPage({
 
   const connected = Boolean(target) && !isHdcPlaceholderTarget(target ?? "");
   const normalizedQuery = searchQuery.trim().toLowerCase();
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNowTick(new Date()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -1008,15 +902,6 @@ export function NodeDebuggingPage({
     () => rows.filter((row) => selectedIds.has(row.id) && canWrite(row) && row.runtimeStatus === "待写入"),
     [rows, selectedIds]
   );
-  const writtenCount = useMemo(
-    () => events.filter(isSuccessfulWriteEvent).length,
-    [events]
-  );
-  const failedCount = useMemo(
-    () => rows.filter((row) => row.runtimeStatus === "失败" || row.runtimeStatus === "写入失败").length,
-    [rows]
-  );
-  const latestEvent = events.at(-1) ?? null;
 
   useEffect(() => {
     if (selectAllRef.current) {
@@ -1039,17 +924,13 @@ export function NodeDebuggingPage({
     setActiveSessionId(undefined);
     setBridgeTargetCandidates([]);
     setSelectingBridgeTargetId(null);
-    setSessionStartedAt(null);
-    setConnectionError("");
     autoReadSignatureRef.current = "";
     rowOperationSeqRef.current = {};
     setSelectedIds(new Set());
     if (debuggingActions) {
       void Promise.resolve()
         .then(() => debuggingActions.refresh({ projectId: state.activeProjectId, protocol: nextProtocol }))
-        .catch((error) => {
-          setConnectionError(formatDebuggingRuntimeError(error));
-        });
+        .catch(() => undefined);
     }
   };
 
@@ -1188,15 +1069,12 @@ export function NodeDebuggingPage({
       setActiveTargetId(undefined);
       setTarget(undefined);
       setBridgeTargetCandidates([]);
-      setConnectionError("未检测到 HDC 设备，请插入 USB 设备并授权调试。");
       return;
     }
     setActiveSessionId(session.id);
     setActiveTargetId(detectedTarget.id);
     setTarget(bridgeTargetLabel(detectedTarget));
     setBridgeTargetCandidates([]);
-    setConnectionError("");
-    setSessionStartedAt((current) => current ?? session.startedAt);
   };
 
   const detect = async () => {
@@ -1229,7 +1107,6 @@ export function NodeDebuggingPage({
           setActiveSessionId(undefined);
           setActiveTargetId(undefined);
           setBridgeTargetCandidates(result.candidates);
-          setConnectionError("检测到多个可用设备代理，请选择要调试的设备。");
           return;
         }
         const { session, target: detectedTarget } = result;
@@ -1249,7 +1126,6 @@ export function NodeDebuggingPage({
       setTarget(result.activeTarget && !isHdcPlaceholderTarget(result.activeTarget) ? result.activeTarget : undefined);
       setActiveTargetId(result.activeTarget);
       setBridgeTargetCandidates([]);
-      setConnectionError(result.ok ? "" : result.error || result.stderr || "未检测到 HDC 设备");
       appendEvent({
         parameterName: `${protocolLabel(requestProtocol)} 设备`,
         parameterKey: `${requestProtocol}.list.targets`,
@@ -1261,7 +1137,6 @@ export function NodeDebuggingPage({
         stderr: result.stderr
       });
       if (result.ok && result.activeTarget) {
-        setSessionStartedAt((current) => current ?? new Date().toISOString());
         await readReadableRows(result.activeTarget, rowsRef.current);
       }
     } catch (error) {
@@ -1279,7 +1154,6 @@ export function NodeDebuggingPage({
         formatError: formatDebuggingRuntimeError
       });
       const detectFailureStderr = diagnosticError?.stderr || detectFailureMessage;
-      setConnectionError(detectFailureMessage);
       if (debuggingActions) {
         appendEvent({
           parameterName: `${protocolLabel(requestProtocol)} 设备`,
@@ -1313,16 +1187,13 @@ export function NodeDebuggingPage({
       }) as DetectResultWithOperation;
       if ("candidates" in result) {
         setBridgeTargetCandidates(result.candidates);
-        setConnectionError("仍检测到多个设备代理，请重试选择目标。");
         return;
       }
       applyDetectedSession(result.session, result.target);
       if (result.operation) {
         appendEvent(eventFromOperation(result.operation, rowsRef.current));
       }
-    } catch (error) {
-      const message = formatDebuggingRuntimeError(error);
-      setConnectionError(message);
+    } catch {
     } finally {
       setSelectingBridgeTargetId(null);
       setDetecting(false);
@@ -1511,20 +1382,6 @@ export function NodeDebuggingPage({
             </ul>
           </section>
         ) : null}
-        <NodeSessionSummaryCard
-          connected={connected}
-          target={target}
-          detecting={detecting}
-          connectionError={connectionError}
-          sessionStartedAt={sessionStartedAt}
-          now={nowTick}
-          writtenCount={writtenCount}
-          pendingCount={pendingRows.length}
-          failedCount={failedCount}
-          latestEvent={latestEvent}
-          protocol={protocol}
-          onDetect={() => void detect()}
-        />
 
         <section className="debug-table">
           <div className="panel-header">

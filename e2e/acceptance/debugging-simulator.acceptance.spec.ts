@@ -290,10 +290,10 @@ function parameterRow(page: Page, name: string): Locator {
 }
 
 async function expectSimulatorOnline(page: Page) {
-  const summary = page.locator(".session-summary-card").first();
-  await expect(summary).toBeVisible({ timeout: 30_000 });
-  await expect(summary.locator(".session-summary-primary")).toContainText("Aurora Simulator 1", { timeout: 30_000 });
-  await expect(summary.locator(".session-summary-primary .live-dot")).toHaveCount(1);
+  const devicePill = page.locator(".topbar .device-pill").first();
+  await expect(devicePill).toBeVisible({ timeout: 30_000 });
+  await expect(devicePill).toContainText("Aurora Simulator 1", { timeout: 30_000 });
+  await expect(devicePill.locator(".live-dot")).toHaveCount(1);
 }
 
 async function openParameterSheet(page: Page, name: string) {
