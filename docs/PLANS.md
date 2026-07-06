@@ -22,6 +22,7 @@ Execution plans are first-class repository artifacts. Use them for work that has
 - `exec-plans/active/2026-06-02-wiseeff-m6-6-release-rollback-capacity-gate.md`: release, rollback, capacity, and target synthetic gates.
 - `exec-plans/active/2026-06-27-wiseeff-device-bridge-cors-bootstrap-fix.md`: Device Bridge CORS bootstrap fix — open `/health` CORS, Step 1 pairing entry point, fetch-failed vs process-absent distinction, Bridge CLI proxy support, `webOrigin` defaulting, restart on config change.
 - `exec-plans/active/2026-07-06-wiseeff-notification-center.md`: TopBar notification center — replace static bell placeholder with durable inbox APIs, unread badge, workflow producers, and phased queue-backed delivery.
+- `exec-plans/active/2026-07-06-parameter-batch-import-wizard.md`: Parameter admin batch import wizard — multi-format parse (xlsx/csv/json/DTS fragment), Step 1 target project selection, per-row review, new-parameter prefill, existing import batch API apply.
 
 ## Completed Plans
 
