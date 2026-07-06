@@ -489,11 +489,12 @@ describe("ParametersPage (抽出后的模块)", () => {
     expect(screen.queryByLabelText("参数筛选")).not.toBeInTheDocument();
   });
 
-  it("复用共享模块中的 Excel 单元格转义 helper", () => {
+  it("从独立导出模块引入 Excel 导出 helper", () => {
     const source = readFileSync("src/ParametersPage.tsx", "utf8");
 
-    expect(source).toContain("escapeExcelCell");
-    expect(source).not.toMatch(/function\s+escapeExcelCell/);
+    expect(source).toContain("exportProjectParametersAsExcel");
+    expect(source).toContain("./application/parameters/exportProjectParametersExcel");
+    expect(source).not.toMatch(/function\s+exportProjectParametersAsExcel/);
   });
 
   it("不从 App 模块导入共享 UI 以避免循环依赖", () => {

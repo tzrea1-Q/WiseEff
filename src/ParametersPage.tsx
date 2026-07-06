@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Dispatch } from "react";
 import {
   Badge,
-  escapeExcelCell,
   getContextQuery,
   riskLabels,
   WorkbenchLayout
@@ -22,6 +21,7 @@ import {
   findOpenChangeRequestForParameter,
   formatOpenChangeRequestBlockerMessage
 } from "./application/parameters/parameterRuntime";
+import { exportProjectParametersAsExcel } from "./application/parameters/exportProjectParametersExcel";
 
 type ParameterRiskFilter = "All" | "High" | "Medium" | "Low";
 
@@ -57,43 +57,6 @@ type ParametersPageProps = {
   canEdit?: boolean;
   initializationStatus?: ProjectInitializationStatus;
 };
-
-function exportProjectParametersAsExcel(rows: ParameterRecord[], projectCode: string) {
-  const headers = ["参数名称", "模块", "当前值", "示例", "范围 / 单位", "重要性", "更新时间"];
-  const tableRows = rows
-    .map(
-      (parameter) => `
-        <tr>
-          <td>${escapeExcelCell(parameter.name)}</td>
-          <td>${escapeExcelCell(parameter.module)}</td>
-          <td>${escapeExcelCell(parameter.currentValue)}</td>
-          <td>${escapeExcelCell(parameter.recommendedValue)}</td>
-          <td>${escapeExcelCell(`${parameter.range} ${parameter.unit}`.trim())}</td>
-          <td>${riskLabels[parameter.risk]}</td>
-          <td>${escapeExcelCell(parameter.updatedAt)}</td>
-        </tr>`
-    )
-    .join("");
-  const html = `
-    <html>
-      <head><meta charset="utf-8" /></head>
-      <body>
-        <table>
-          <thead><tr>${headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </body>
-    </html>`;
-  const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${projectCode}-project-parameters.xls`;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
 
 export function ParametersPage({
   state,

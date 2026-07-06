@@ -11,6 +11,7 @@ vi.mock("@copilotkit/react-core/v2", () => ({
 }));
 
 import { existsSync, readFileSync } from "node:fs";
+import * as XLSX from "xlsx";
 import App, { appReducer } from "./App";
 import { initialState } from "./mockData";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
@@ -1523,14 +1524,23 @@ describe("WiseEff app shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "导出 Excel" }));
 
     const exportedBlob = createObjectUrl.mock.calls[0]?.[0] as Blob;
-    const exportedText = await new Promise<string>((resolve, reject) => {
+    const exportedBytes = await new Promise<Uint8Array>((resolve, reject) => {
       const reader = new FileReader();
-      reader.addEventListener("load", () => resolve(String(reader.result)));
+      reader.addEventListener("load", () => resolve(new Uint8Array(reader.result as ArrayBuffer)));
       reader.addEventListener("error", () => reject(reader.error));
-      reader.readAsText(exportedBlob);
+      reader.readAsArrayBuffer(exportedBlob);
     });
 
-    expect(exportedBlob.type).toContain("application/vnd.ms-excel");
+    expect(exportedBlob.type).toContain("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    expect(exportedBytes[0]).toBe(0x50);
+    expect(exportedBytes[1]).toBe(0x4b);
+
+    const workbook = XLSX.read(exportedBytes, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
+    const exportedRows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+    const exportedText = exportedRows.flat().join("\n");
+
+    expect(exportedText).toContain("参数名称");
     expect(exportedText).toContain("fast_charge_current_limit_ma");
     expect(exportedText).toContain("charge_voltage_limit_mv");
     expect(exportedText).not.toContain("battery_health_reserve_pct");
