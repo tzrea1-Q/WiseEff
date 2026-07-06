@@ -1,6 +1,6 @@
 import type { HttpMethod } from "../../shared/http/router";
 
-export type RouteModule = "auth" | "audit" | "users" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
+export type RouteModule = "auth" | "audit" | "notifications" | "users" | "parameters" | "logs" | "jobs" | "debugging" | "operations" | "agent";
 export type RouteStability = "mvp" | "commercial-readiness" | "deprecated";
 
 export type RouteManifestEntry = {
@@ -20,6 +20,29 @@ export const routeManifest = [
 
   { id: "audit.createEvent", method: "POST", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
   { id: "audit.listEvents", method: "GET", path: "/api/v1/audit-events", module: "audit", stability: "mvp" },
+
+  { id: "notifications.list", method: "GET", path: "/api/v1/notifications", module: "notifications", stability: "mvp" },
+  {
+    id: "notifications.unreadCount",
+    method: "GET",
+    path: "/api/v1/notifications/unread-count",
+    module: "notifications",
+    stability: "mvp"
+  },
+  {
+    id: "notifications.markRead",
+    method: "POST",
+    path: "/api/v1/notifications/:notificationId/read",
+    module: "notifications",
+    stability: "mvp"
+  },
+  {
+    id: "notifications.markAllRead",
+    method: "POST",
+    path: "/api/v1/notifications/mark-all-read",
+    module: "notifications",
+    stability: "mvp"
+  },
 
   { id: "users.list", method: "GET", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },
   { id: "users.create", method: "POST", path: "/api/v1/users", module: "users", stability: "commercial-readiness" },

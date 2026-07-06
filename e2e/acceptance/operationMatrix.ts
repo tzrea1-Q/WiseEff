@@ -5,7 +5,7 @@ export type AcceptanceOperationAssertion = "ui" | "api" | "db" | "audit" | "scre
 export type AcceptanceOperation = {
   id: string;
   priority: AcceptanceOperationPriority;
-  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions";
+  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications";
   route: string;
   roles: string[];
   action: string;
@@ -28,6 +28,30 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["AUTH-RUNTIME-001"],
     specFiles: ["e2e/acceptance/auth-runtime.acceptance.spec.ts"],
     assertions: ["ui", "api"]
+  },
+  {
+    id: "NOTIF-INBOX-001",
+    priority: "P1",
+    area: "notifications",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Open the TopBar notification inbox and load inbox APIs for the current user.",
+    coverage: "automated",
+    acceptanceIds: ["NOTIF-INBOX-001"],
+    specFiles: ["e2e/acceptance/notifications.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
+    id: "NOTIF-READ-001",
+    priority: "P1",
+    area: "notifications",
+    route: "/api/v1/notifications/mark-all-read",
+    roles: ["Admin"],
+    action: "Mark inbox notifications read through the backend API.",
+    coverage: "automated",
+    acceptanceIds: ["NOTIF-READ-001"],
+    specFiles: ["e2e/acceptance/notifications.acceptance.spec.ts"],
+    assertions: ["api"]
   },
   {
     id: "SHELL-DIAG-001",

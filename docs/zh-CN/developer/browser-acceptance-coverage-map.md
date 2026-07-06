@@ -19,6 +19,9 @@
 
 ## 当前覆盖重点
 
+- `AUTH-RUNTIME-001`：API mode 浏览器运行时与本地 dev auth 契约一致。
+- `NOTIF-INBOX-001`：TopBar 通知铃铛可打开收件箱面板，且 `/api/v1/notifications` 与未读数 API 对当前用户可用（`e2e/acceptance/notifications.acceptance.spec.ts`）。
+- `NOTIF-READ-001`：通知可通过后端 mark-all-read API 标记已读（`e2e/acceptance/notifications.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。

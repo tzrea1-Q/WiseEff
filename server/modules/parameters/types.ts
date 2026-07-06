@@ -105,6 +105,7 @@ export type ChangeRequestDto = {
   currentValue: string;
   targetValue: string;
   submitter: string;
+  submitterUserId?: string;
   createdAt: string;
   createdAtTs: string;
   updatedAt: string;

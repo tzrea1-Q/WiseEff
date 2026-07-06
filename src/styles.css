@@ -618,6 +618,133 @@ body {
   border-radius: 999px;
 }
 
+.notification-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  color: #fff;
+  background: var(--danger);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+
+.topbar-notification {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.topbar-notification__trigger {
+  position: relative;
+}
+
+.topbar-notification__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.topbar-notification__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 41;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(420px, calc(100vh - 96px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(16, 28, 45, 0.14);
+}
+
+.topbar-notification__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef2f8;
+}
+
+.topbar-notification__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-notification__status,
+.topbar-notification__empty {
+  padding: 16px 14px;
+  color: var(--app-muted);
+  font-size: 13px;
+}
+
+.topbar-notification__status--error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.topbar-notification__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+}
+
+.topbar-notification__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #eef2f8;
+  cursor: pointer;
+  font: inherit;
+}
+
+.topbar-notification__item:hover,
+.topbar-notification__item:focus-visible {
+  background: #f8fafc;
+  outline: none;
+}
+
+.topbar-notification__item--unread {
+  background: #f7fbff;
+}
+
+.topbar-notification__item-title {
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.topbar-notification__item-body {
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.topbar-notification__item-meta {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
 .notification-dot {
   position: absolute;
   top: 8px;

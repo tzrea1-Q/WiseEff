@@ -162,6 +162,7 @@ type ChangeRequestRow = {
   current_value: string;
   target_value: string;
   submitter: string;
+  submitter_user_id?: string;
   status: ParameterChangeRequestStatus;
   risk: ParameterRiskLevel;
   created_at: string | Date;
@@ -461,6 +462,7 @@ function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
     currentValue: row.current_value,
     targetValue: row.target_value,
     submitter: row.submitter,
+    submitterUserId: row.submitter_user_id,
     createdAt,
     createdAtTs: createdAt,
     updatedAt,
@@ -1302,6 +1304,7 @@ export async function listChangeRequests(
       pcr.current_value,
       pcr.target_value,
       users.name as submitter,
+      pcr.submitter_user_id,
       pcr.status,
       pd.risk,
       pcr.created_at,
@@ -1344,6 +1347,7 @@ export async function findOpenChangeRequest(
       pcr.current_value,
       pcr.target_value,
       users.name as submitter,
+      pcr.submitter_user_id,
       pcr.status,
       pd.risk,
       pcr.created_at,
@@ -1390,6 +1394,7 @@ export async function getChangeRequestById(
       pcr.current_value,
       pcr.target_value,
       users.name as submitter,
+      pcr.submitter_user_id,
       pcr.status,
       pd.risk,
       pcr.created_at,

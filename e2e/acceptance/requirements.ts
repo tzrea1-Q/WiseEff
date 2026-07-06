@@ -15,6 +15,18 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "NOTIF-INBOX-001",
+    workflow: "A",
+    title: "TopBar notification bell opens the inbox panel and inbox APIs load for the current user.",
+    required: true
+  },
+  {
+    id: "NOTIF-READ-001",
+    workflow: "A",
+    title: "Notifications can be marked read through the backend inbox API.",
+    required: true
+  },
+  {
     id: "SHELL-DIAG-001",
     workflow: "A",
     title: "Core routes fail acceptance on unexpected console, page, request, or critical API errors.",

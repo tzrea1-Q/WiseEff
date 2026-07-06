@@ -51,6 +51,24 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   },
   "audit.listEvents": { summary: "List audit events", tags: ["audit"], responseBody: "AuditEventListResponse" },
 
+  "notifications.list": { summary: "List inbox notifications", tags: ["notifications"], responseBody: "NotificationListResponse" },
+  "notifications.unreadCount": {
+    summary: "Get unread notification count",
+    tags: ["notifications"],
+    responseBody: "NotificationUnreadCountResponse"
+  },
+  "notifications.markRead": {
+    summary: "Mark one notification read",
+    tags: ["notifications"],
+    responseBody: "NotificationItemResponse",
+    additionalResponses: { "404": "ErrorResponse" }
+  },
+  "notifications.markAllRead": {
+    summary: "Mark all notifications read",
+    tags: ["notifications"],
+    responseBody: "NotificationMarkAllReadResponse"
+  },
+
   "users.list": {
     summary: "List governed users",
     tags: ["users"],
