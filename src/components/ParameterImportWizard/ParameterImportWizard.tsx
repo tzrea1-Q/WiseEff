@@ -6,12 +6,15 @@ import { buildImportTemplateWorkbook } from "@/application/parameters/import/bui
 import { parseImportSource } from "@/application/parameters/import/detectImportFormat";
 import { findExistingParameter, matchToLibrary } from "@/application/parameters/import/matchToLibrary";
 import type { ParsedImportRow, ReviewedImportRow } from "@/application/parameters/import/types";
+import type { ParameterImportBatchDto } from "@/application/ports/ParameterRepository";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { createParameterAdminClient } from "@/infrastructure/http/parameterAdminClient";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { ParameterRecord, Project } from "@/mockData";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "@/parameterAdminLibrary";
 import { listParameterModuleNames } from "@/powerManagementConfig";
+import { StepBatchPreview } from "./steps/StepBatchPreview";
+import { StepConfirmApply } from "./steps/StepConfirmApply";
 import { StepParseReport } from "./steps/StepParseReport";
 import { StepRowReview } from "./steps/StepRowReview";
 import { StepSourceAndProject } from "./steps/StepSourceAndProject";
@@ -114,6 +117,8 @@ export function ParameterImportWizard({
   const [parsedRows, setParsedRows] = useState<ParsedImportRow[]>([]);
   const [reviewedRows, setReviewedRows] = useState<ReviewedImportRow[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
+  const [previewBatch, setPreviewBatch] = useState<ParameterImportBatchDto | null>(null);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
 
   const libraryParameters = useMemo(() => buildParameterLibraryFromRecords(parameters, projects), [parameters, projects]);
   const moduleNames = useMemo(
@@ -135,6 +140,8 @@ export function ParameterImportWizard({
     setParsedRows([]);
     setReviewedRows([]);
     setParseErrors([]);
+    setPreviewBatch(null);
+    setSelectedItemIds(new Set());
   }, [open, activeProjectId]);
 
   useEffect(() => {
@@ -272,19 +279,31 @@ export function ParameterImportWizard({
               onBack={() => setStep(2)}
               onNext={() => setStep(4)}
             />
+          ) : step === 4 ? (
+            <StepBatchPreview
+              targetProjectId={targetProjectId}
+              sourceName={sourceName}
+              reviewedRows={reviewedRows}
+              parameterActions={parameterActions}
+              dispatch={dispatch}
+              previewBatch={previewBatch}
+              selectedItemIds={selectedItemIds}
+              onPreviewBatchChange={setPreviewBatch}
+              onSelectedItemIdsChange={setSelectedItemIds}
+              onBack={() => setStep(3)}
+              onNext={() => setStep(5)}
+            />
           ) : (
-            <section className="parameter-import-wizard-step" aria-label={`步骤 ${step}`}>
-              <p>该步骤正在开发中。</p>
-              <div className="dialog-actions">
-                <button
-                  type="button"
-                  className="button subtle"
-                  onClick={() => setStep((current) => Math.max(1, current - 1) as ParameterImportWizardStep)}
-                >
-                  上一步
-                </button>
-              </div>
-            </section>
+            <StepConfirmApply
+              project={projects.find((project) => project.id === targetProjectId)}
+              sourceName={sourceName}
+              previewBatch={previewBatch}
+              selectedItemIds={selectedItemIds}
+              parameterActions={parameterActions}
+              dispatch={dispatch}
+              onBack={() => setStep(4)}
+              onApplied={onClose}
+            />
           )}
         </div>
       </div>

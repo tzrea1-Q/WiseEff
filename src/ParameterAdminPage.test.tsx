@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { TopBarActionsContext } from "./components/layout";
@@ -261,5 +261,75 @@ describe("ParameterAdminPage", () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByLabelText("目标项目")).toHaveValue(initialState.activeProjectId);
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
+  });
+
+  it("walks the import wizard from paste through preview and apply, using the step 1 target project", async () => {
+    const parameterActions = createParameterActions();
+    renderPage("", initialState, vi.fn(), parameterActions, vi.fn(), "api");
+
+    const toolbar = screen.getByRole("toolbar", { name: "参数管理后台页面操作" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: /批量参数导入/ }));
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+
+    expect(within(dialog).getByLabelText("目标项目")).toHaveValue(initialState.activeProjectId);
+
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            currentValue: "3200",
+            recommendedValue: "3400",
+            range: "2500 - 4500",
+            unit: "mA",
+            risk: "High"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("region", { name: "逐行核对" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    await waitFor(() =>
+      expect(parameterActions.createImportPreview).toHaveBeenCalledWith({
+        projectId: initialState.activeProjectId,
+        sourceName: "pasted-import.txt",
+        items: [
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            risk: "High",
+            unit: "mA",
+            range: "2500 - 4500",
+            currentValue: "3200",
+            recommendedValue: "3400"
+          }
+        ]
+      })
+    );
+
+    await waitFor(() => expect(within(dialog).getByRole("region", { name: "批次预览" })).toBeInTheDocument());
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled());
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("region", { name: "确认应用" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "确认应用" }));
+
+    await waitFor(() =>
+      expect(parameterActions.applyImportBatch).toHaveBeenCalledWith({
+        batchId: "api-import-batch",
+        selectedItemIds: ["preview-item-1", "preview-item-2"]
+      })
+    );
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "批量参数导入向导" })).not.toBeInTheDocument());
   });
 });
