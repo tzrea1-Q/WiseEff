@@ -13,6 +13,27 @@ function nodeDebuggingUrl(projectId: string) {
   return `/node-debugging?project=${encodeURIComponent(projectId)}`;
 }
 
+function logsUrl(projectId: string) {
+  return `/logs?project=${encodeURIComponent(projectId)}`;
+}
+
+function userPermissionsUrl() {
+  return "/user-permissions";
+}
+
+const backendRoleLabels: Record<string, string> = {
+  guest: "访客",
+  "hardware-user": "硬件工程师",
+  "software-user": "软件工程师",
+  "hardware-committer": "硬件合入",
+  "software-committer": "软件合入",
+  admin: "管理员"
+};
+
+function formatRoleLabel(roleId: string) {
+  return backendRoleLabels[roleId] ?? roleId;
+}
+
 export async function notifyParameterReviewSubmitted(
   db: Queryable,
   input: {
@@ -139,6 +160,189 @@ export async function notifyParameterImportCompleted(
       projectId: input.projectId,
       added: input.added,
       updated: input.updated
+    }
+  });
+}
+
+export async function notifyParameterMergeCompleted(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    projectName?: string;
+    requestId: string;
+    parameterName: string;
+    submitterUserId: string;
+    mergerName: string;
+    reviewerUserIds: string[];
+  }
+) {
+  const projectLabel = input.projectName?.trim() || input.projectId;
+  const recipients = uniqueRecipients([input.submitterUserId, ...input.reviewerUserIds]);
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: recipients,
+    category: "parameter.merge.completed",
+    title: `参数已合入 · ${input.parameterName}`,
+    body: `${input.mergerName} 已将 ${projectLabel} 的参数变更合入基线。`,
+    severity: "success",
+    actionUrl: parameterAdminUrl(input.projectId),
+    sourceKind: "parameter-change-request",
+    sourceId: input.requestId,
+    metadata: {
+      projectId: input.projectId,
+      parameterName: input.parameterName,
+      mergerName: input.mergerName
+    }
+  });
+}
+
+export async function notifyLogAnalysisCompleted(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    logId: string;
+    runId: string;
+    fileName: string;
+    recipientUserId: string;
+    conclusion?: string;
+  }
+) {
+  const summary = input.conclusion?.trim() || "分析报告已生成，可在日志分析页查看。";
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: [input.recipientUserId],
+    category: "log.analysis.completed",
+    title: `日志分析完成 · ${input.fileName}`,
+    body: summary,
+    severity: "success",
+    actionUrl: logsUrl(input.projectId),
+    sourceKind: "log-analysis-run",
+    sourceId: input.runId,
+    metadata: {
+      projectId: input.projectId,
+      logId: input.logId,
+      fileName: input.fileName
+    }
+  });
+}
+
+export async function notifyLogAnalysisFailed(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    logId: string;
+    runId: string;
+    fileName: string;
+    recipientUserId: string;
+    failureReason?: string;
+  }
+) {
+  const reason = input.failureReason?.trim() || "日志分析未能完成，请稍后重试或联系管理员。";
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: [input.recipientUserId],
+    category: "log.analysis.failed",
+    title: `日志分析失败 · ${input.fileName}`,
+    body: reason,
+    severity: "danger",
+    actionUrl: logsUrl(input.projectId),
+    sourceKind: "log-analysis-run",
+    sourceId: input.runId,
+    metadata: {
+      projectId: input.projectId,
+      logId: input.logId,
+      fileName: input.fileName
+    }
+  });
+}
+
+export async function notifyDebugSnapshotRollback(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    projectId: string;
+    sessionId: string;
+    snapshotId: string;
+    recipientUserId: string;
+    succeeded: boolean;
+    operationCount?: number;
+  }
+) {
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: [input.recipientUserId],
+    category: "debug.snapshot.rollback",
+    title: input.succeeded ? "调试快照已回滚" : "调试快照回滚失败",
+    body: input.succeeded
+      ? `已成功回滚 ${input.operationCount ?? 0} 项节点写入。`
+      : "部分节点未能恢复，请在调试页检查会话事件。",
+    severity: input.succeeded ? "success" : "danger",
+    actionUrl: nodeDebuggingUrl(input.projectId),
+    sourceKind: "debug-snapshot",
+    sourceId: `${input.snapshotId}:${input.succeeded ? "succeeded" : "failed"}`,
+    metadata: {
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      snapshotId: input.snapshotId,
+      succeeded: input.succeeded
+    }
+  });
+}
+
+export async function notifyUserRoleChanged(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    userId: string;
+    actorName: string;
+    roles: Array<{ projectId?: string | null; roleId: string }>;
+    adminUserIds?: string[];
+  }
+) {
+  const roleSummary = input.roles.map((role) => formatRoleLabel(role.roleId)).join("、") || "未分配";
+  const recipients = uniqueRecipients([input.userId, ...(input.adminUserIds ?? [])]);
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: recipients,
+    category: "user.role.changed",
+    title: "账号角色已更新",
+    body: `${input.actorName} 更新了账号角色：${roleSummary}。`,
+    severity: "info",
+    actionUrl: userPermissionsUrl(),
+    sourceKind: "user",
+    sourceId: input.userId,
+    metadata: {
+      userId: input.userId,
+      roles: input.roles
+    }
+  });
+}
+
+export async function notifyUserDeactivated(
+  db: Queryable,
+  input: {
+    organizationId: string;
+    userId: string;
+    actorName: string;
+    adminUserIds?: string[];
+  }
+) {
+  const recipients = uniqueRecipients([input.userId, ...(input.adminUserIds ?? [])]);
+  await notifyUsers(db, {
+    organizationId: input.organizationId,
+    recipientUserIds: recipients,
+    category: "user.deactivated",
+    title: "账号已停用",
+    body: `${input.actorName} 已停用该账号，如需恢复请联系管理员。`,
+    severity: "warning",
+    actionUrl: userPermissionsUrl(),
+    sourceKind: "user",
+    sourceId: input.userId,
+    metadata: {
+      userId: input.userId
     }
   });
 }

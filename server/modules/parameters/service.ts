@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createAuditEvent } from "../audit/repository";
 import {
   notifyParameterImportCompleted,
+  notifyParameterMergeCompleted,
   notifyParameterReviewAdvanced,
   notifyParameterReviewRejected,
   notifyParameterReviewSubmitted
@@ -1329,6 +1330,23 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       changeRequest: request,
       participants
     }, context);
+
+    const project = await getProjectById(tx, {
+      organizationId: auth.organization.id,
+      projectId: request.projectId
+    });
+    if (request.submitterUserId) {
+      await notifyParameterMergeCompleted(tx, {
+        organizationId: auth.organization.id,
+        projectId: request.projectId,
+        projectName: project?.name,
+        requestId: input.requestId,
+        parameterName: request.title,
+        submitterUserId: request.submitterUserId,
+        mergerName: auth.user.name,
+        reviewerUserIds: reviewDecisions.map((decision) => decision.reviewerUserId)
+      });
+    }
 
     return updated;
   });

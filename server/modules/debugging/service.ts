@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
-import { notifyDebugNodeWriteFailed } from "../notifications/producers";
+import { notifyDebugNodeWriteFailed, notifyDebugSnapshotRollback } from "../notifications/producers";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -2503,6 +2503,16 @@ export function createDebuggingService(options: ServiceOptions) {
             context
           )
         );
+
+        await notifyDebugSnapshotRollback(tx, {
+          organizationId,
+          projectId: session.projectId,
+          sessionId: session.id,
+          snapshotId: claimedSnapshot.id,
+          recipientUserId: auth.user.id,
+          succeeded: !failed,
+          operationCount: operations.length
+        });
 
         return { operations, snapshot: finalSnapshot ?? claimedSnapshot };
       });

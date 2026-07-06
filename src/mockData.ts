@@ -17,6 +17,8 @@ import type {
   ParameterWorkflowAssignees
 } from "@/domain/parameters/types";
 import type { ParameterDraftDto } from "@/application/ports/ParameterRepository";
+import type { NotificationItem } from "@/domain/notifications/types";
+import { createMockNotificationItem } from "@/infrastructure/mock/mockNotificationsGateway";
 import type { PlatformRole, UserAccount } from "@/domain/users/types";
 import { migrateLegacyRoleId, platformRoles } from "@/domain/users/types";
 
@@ -365,6 +367,7 @@ export type PrototypeState = {
   auditEvents: AuditEvent[];
   developers: Developer[];
   notifications: string[];
+  notificationInbox: NotificationItem[];
   lastDebugSnapshot: DebugSnapshot | null;
   debugEvents: DebugEvent[];
   pushedDebugIds: string[];
@@ -1088,6 +1091,12 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       { id: "dev-12", name: "何志", projectId: "atlas", role: "固件工程师" }
     ],
     notifications: ["手机电源管理演示模式已启动"],
+    notificationInbox: [
+      createMockNotificationItem({
+        body: "手机电源管理演示模式已启动",
+        category: "mock.demo"
+      })
+    ],
     lastDebugSnapshot: null,
     debugEvents: [],
     pushedDebugIds: [],

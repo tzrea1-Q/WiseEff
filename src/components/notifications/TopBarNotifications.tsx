@@ -1,55 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNotificationInbox } from "@/application/notifications/useNotificationInbox";
 import type { NotificationItem } from "@/domain/notifications/types";
-import { createNotificationsClient } from "@/infrastructure/http/notificationsClient";
+import { createNotificationsClient, type NotificationsClient } from "@/infrastructure/http/notificationsClient";
 import { wiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { NotificationBell } from "./NotificationBell";
 import { NotificationPanel } from "./NotificationPanel";
 
 type TopBarNotificationsProps = {
-  mockNotifications?: string[];
+  mockNotificationsClient?: NotificationsClient;
   onNavigate: (path: string) => void;
 };
 
-function mockItemsFromStrings(messages: string[]): NotificationItem[] {
-  return messages.map((message, index) => ({
-    id: `mock-notif-${index}`,
-    category: "mock.notification",
-    title: "系统通知",
-    body: message,
-    severity: "info",
-    actionUrl: null,
-    readAt: null,
-    createdAt: new Date(Date.now() - index * 60_000).toISOString()
-  }));
-}
-
-function MockTopBarNotifications({ mockNotifications }: { mockNotifications: string[] }) {
-  const [open, setOpen] = useState(false);
-  const mockItems = mockItemsFromStrings(mockNotifications);
-
-  return (
-    <NotificationBell
-      unreadCount={mockItems.length}
-      open={open}
-      onOpenChange={setOpen}
-      panel={
-        <NotificationPanel
-          items={mockItems}
-          loading={false}
-          error=""
-          onClose={() => setOpen(false)}
-          onRetry={() => undefined}
-          onMarkAllRead={() => setOpen(false)}
-          onOpenItem={() => setOpen(false)}
-        />
-      }
-    />
-  );
-}
-
-function ApiTopBarNotifications({ onNavigate }: { onNavigate: (path: string) => void }) {
-  const inbox = useNotificationInbox(createNotificationsClient());
+function InboxTopBarNotifications({
+  client,
+  onNavigate
+}: {
+  client: NotificationsClient;
+  onNavigate: (path: string) => void;
+}) {
+  const inbox = useNotificationInbox(client);
 
   useEffect(() => {
     if (!inbox.open) return;
@@ -90,10 +59,14 @@ function ApiTopBarNotifications({ onNavigate }: { onNavigate: (path: string) => 
   );
 }
 
-export function TopBarNotifications({ mockNotifications = [], onNavigate }: TopBarNotificationsProps) {
+export function TopBarNotifications({ mockNotificationsClient, onNavigate }: TopBarNotificationsProps) {
   if (wiseEffRuntimeMode === "api") {
-    return <ApiTopBarNotifications onNavigate={onNavigate} />;
+    return <InboxTopBarNotifications client={createNotificationsClient()} onNavigate={onNavigate} />;
   }
 
-  return <MockTopBarNotifications mockNotifications={mockNotifications} />;
+  if (mockNotificationsClient) {
+    return <InboxTopBarNotifications client={mockNotificationsClient} onNavigate={onNavigate} />;
+  }
+
+  return null;
 }

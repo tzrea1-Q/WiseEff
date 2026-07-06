@@ -12,6 +12,7 @@ import {
   getPendingRegistrationRoleRequestById,
   getUserById,
   findPasswordCredentialByUsername,
+  listActiveAdminUserIds,
   listAllPendingRegistrationRoleRequests,
   insertUser,
   insertPasswordCredential,
@@ -21,6 +22,7 @@ import {
   updateUser,
   updateUserActive
 } from "./repository";
+import { notifyUserDeactivated, notifyUserRoleChanged } from "../notifications/producers";
 import type { CreateUserInput, ReplaceUserRolesInput, UpdateUserActiveInput, UpdateUserProfileInput } from "./types";
 
 const roleIds = new Set<BackendRoleId>(["guest", "hardware-user", "software-user", "hardware-committer", "software-committer", "admin"]);
@@ -253,6 +255,16 @@ export async function deactivateUser(
       metadata: { isActive: input.isActive }
     }, context);
 
+    if (!input.isActive) {
+      const adminUserIds = await listActiveAdminUserIds(tx, auth.organization.id);
+      await notifyUserDeactivated(tx, {
+        organizationId: auth.organization.id,
+        userId,
+        actorName: auth.user.name,
+        adminUserIds: adminUserIds.filter((id) => id !== userId)
+      });
+    }
+
     return user;
   });
 }
@@ -280,6 +292,15 @@ export async function replaceUserRoles(
       userId,
       metadata: { roles }
     }, context);
+
+    const adminUserIds = await listActiveAdminUserIds(tx, auth.organization.id);
+    await notifyUserRoleChanged(tx, {
+      organizationId: auth.organization.id,
+      userId,
+      actorName: auth.user.name,
+      roles,
+      adminUserIds: adminUserIds.filter((id) => id !== userId)
+    });
 
     return { ...user, roles };
   });
@@ -339,6 +360,15 @@ export async function approveRegistrationRoleRequest(
         requestedRoleId: request.requestedRoleId
       }
     }, context);
+
+    const adminUserIds = await listActiveAdminUserIds(tx, request.organizationId);
+    await notifyUserRoleChanged(tx, {
+      organizationId: request.organizationId,
+      userId: request.userId,
+      actorName: auth.user.name,
+      roles: [{ projectId: null, roleId: request.requestedRoleId }],
+      adminUserIds: adminUserIds.filter((id) => id !== request.userId)
+    });
 
     return decided;
   });

@@ -68,10 +68,12 @@ type WorkerLogRunSnapshotRow = {
   organization_id: string;
   run_id: string;
   log_id: string;
+  project_id: string;
   file_object_id: string;
   file_name: string;
   storage_key: string;
   analysis_question: string | null;
+  submitted_by_user_id: string | null;
   job_status: LogRunStatus;
   run_status: LogRunStatus;
   record_status: LogRecordStatus;
@@ -119,10 +121,12 @@ export type LogWorkerRunSnapshot = {
   organizationId: string;
   runId: string;
   logId: string;
+  projectId: string;
   fileObjectId: string;
   fileName: string;
   storageKey: string;
   analysisQuestion: string | null;
+  submittedByUserId: string | null;
   jobStatus: LogRunStatus;
   runStatus: LogRunStatus;
   recordStatus: LogRecordStatus;
@@ -247,10 +251,12 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     organizationId: row.organization_id,
     runId: row.run_id,
     logId: row.log_id,
+    projectId: row.project_id,
     fileObjectId: row.file_object_id,
     fileName: row.file_name,
     storageKey: row.storage_key,
     analysisQuestion: row.analysis_question,
+    submittedByUserId: row.submitted_by_user_id,
     jobStatus: row.job_status,
     runStatus: row.run_status,
     recordStatus: row.record_status
@@ -656,10 +662,12 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       job.organization_id,
       run.id as run_id,
       lr.id as log_id,
+      lr.project_id,
       lr.file_object_id,
       lr.file_name,
       lfo.storage_key,
       lr.analysis_question,
+      lr.submitted_by_user_id,
       job.status as job_status,
       run.status as run_status,
       lr.status as record_status
