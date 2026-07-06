@@ -100,7 +100,6 @@ describe("buildDevAllPlan", () => {
       DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
       OBJECT_STORE_MODE: "local",
       OBJECT_STORE_ROOT: ".wiseeff-object-store",
-      DEBUG_DEVICE_GATEWAY_MODE: "simulator",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
     });
     expect(plan.services[1].env).toMatchObject({
@@ -139,42 +138,6 @@ describe("buildDevAllPlan", () => {
       AUTH_TOKEN_ISSUER: "wiseeff-local",
       AUTH_TOKEN_HMAC_SECRET: "wiseeff-local-hmac-secret-32-chars-minimum"
     });
-  });
-
-  it("uses deterministic Xiaoze mode for one-command local startup when LLM settings are blank", () => {
-    const plan = buildDevAllPlan(
-      {
-        AGENT_API_BASE_URL: "",
-        AGENT_MODEL: "",
-        AGENT_API_KEY: ""
-      },
-      "linux"
-    );
-
-    expect(plan.prepare[2].env).toMatchObject({
-      XIAOZE_DETERMINISTIC: "true"
-    });
-    expect(plan.services[0].env).toMatchObject({
-      XIAOZE_DETERMINISTIC: "true"
-    });
-  });
-
-  it("keeps configured Xiaoze LLM settings when model, key, and base URL are present", () => {
-    const plan = buildDevAllPlan(
-      {
-        AGENT_API_BASE_URL: "https://api.example.com/v1",
-        AGENT_MODEL: "MiniMax-M2.7",
-        AGENT_API_KEY: "secret"
-      },
-      "linux"
-    );
-
-    expect(plan.services[0].env).toMatchObject({
-      AGENT_API_BASE_URL: "https://api.example.com/v1",
-      AGENT_MODEL: "MiniMax-M2.7",
-      AGENT_API_KEY: "secret"
-    });
-    expect(plan.services[0].env).not.toHaveProperty("XIAOZE_DETERMINISTIC");
   });
 
   it("restarts an existing WiseEff PostgreSQL container on the configured database port and skips compose startup", async () => {

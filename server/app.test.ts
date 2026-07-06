@@ -847,7 +847,6 @@ describe("WiseEff API", () => {
           DEVICE_BRIDGE_PAIRING_TTL_SECONDS: 300,
           DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
           DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws",
-          XIAOZE_DETERMINISTIC: false,
           XIAOZE_PROACTIVE_ENABLED: false,
           XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
           XIAOZE_CHECKPOINTER: "postgres"
@@ -956,7 +955,6 @@ describe("WiseEff API", () => {
           DEVICE_BRIDGE_PAIRING_TTL_SECONDS: 300,
           DEVICE_BRIDGE_TOKEN_TTL_DAYS: 90,
           DEVICE_BRIDGE_WS_PATH: "/api/v1/device-bridges/ws",
-          XIAOZE_DETERMINISTIC: false,
           XIAOZE_PROACTIVE_ENABLED: false,
           XIAOZE_REASONING_FALLBACK_HEURISTIC: false,
           XIAOZE_CHECKPOINTER: "postgres"

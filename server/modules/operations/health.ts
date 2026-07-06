@@ -3,6 +3,7 @@ import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../job
 import type { DurableQueueHealth } from "../jobs/queuePort";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
+import { isXiaozeDeterministicMode } from "../agent/xiaoze/runtimeMode";
 
 export type DependencyHealth = {
   ok: boolean;
@@ -16,7 +17,6 @@ export type XiaozeLlmEnv = {
   AGENT_API_KEY?: string;
   AGENT_MODEL?: string;
   XIAOZE_MODEL?: string;
-  XIAOZE_DETERMINISTIC?: boolean;
 };
 
 export type OperationsHealthBody = {
@@ -51,7 +51,7 @@ export function checkXiaozeLlmConfig(env?: XiaozeLlmEnv): DependencyHealth | und
     return undefined;
   }
 
-  if (env.XIAOZE_DETERMINISTIC) {
+  if (isXiaozeDeterministicMode()) {
     return {
       ok: true,
       status: "ready",

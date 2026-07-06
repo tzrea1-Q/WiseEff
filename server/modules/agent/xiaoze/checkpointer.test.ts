@@ -33,11 +33,15 @@ describe("xiaoze checkpointer", () => {
   });
 
   it("forces memory when deterministic mode is enabled", () => {
-    const cp = resolveXiaozeCheckpointerFromEnv({
-      XIAOZE_CHECKPOINTER: "postgres",
-      DATABASE_URL: "postgres://localhost/wiseeff",
-      XIAOZE_DETERMINISTIC: true
-    });
-    expect(cp.saver).toBeInstanceOf(MemorySaver);
+    process.env.XIAOZE_DETERMINISTIC = "true";
+    try {
+      const cp = resolveXiaozeCheckpointerFromEnv({
+        XIAOZE_CHECKPOINTER: "postgres",
+        DATABASE_URL: "postgres://localhost/wiseeff"
+      });
+      expect(cp.saver).toBeInstanceOf(MemorySaver);
+    } finally {
+      delete process.env.XIAOZE_DETERMINISTIC;
+    }
   });
 });

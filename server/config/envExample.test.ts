@@ -51,7 +51,6 @@ describe(".env.example", () => {
       OBJECT_STORE_ROOT: ".wiseeff-object-store",
       WISEEFF_LOCAL_BACKUP_DIR: ".wiseeff-backups",
       WISEEFF_LOCAL_RESTORE_DIR: ".wiseeff-restore",
-      DEBUG_DEVICE_GATEWAY_MODE: "multi",
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
       HDC_TIMEOUT_MS: "5000",
       ADB_TIMEOUT_MS: "5000",

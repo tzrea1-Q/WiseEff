@@ -1,6 +1,7 @@
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
 import { MemorySaver } from "@langchain/langgraph";
 import { getSharedPostgresCheckpointerSaver } from "./durableCheckpointer";
+import { isXiaozeDeterministicMode } from "./runtimeMode";
 
 export type XiaozeCheckpointSnapshot = Record<string, unknown>;
 
@@ -44,9 +45,8 @@ export function createXiaozeCheckpointer(options?: XiaozeCheckpointerOptions): X
 export function resolveXiaozeCheckpointerFromEnv(env: {
   XIAOZE_CHECKPOINTER?: XiaozeCheckpointerMode;
   DATABASE_URL?: string;
-  XIAOZE_DETERMINISTIC?: boolean;
 }): XiaozeCheckpointer {
-  if (env.XIAOZE_DETERMINISTIC) {
+  if (isXiaozeDeterministicMode()) {
     return createXiaozeCheckpointer({ mode: "memory" });
   }
   if (env.XIAOZE_CHECKPOINTER === "postgres" && env.DATABASE_URL?.trim()) {

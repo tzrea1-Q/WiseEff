@@ -23,7 +23,7 @@ npm run db:seed:m2
 npm run db:seed:m3
 ```
 
-Fill `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` in `.env` when testing live Xiaoze LLM behavior. For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead. The default `.env.example` profile otherwise prepares local PostgreSQL, local object storage, simulator device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
+Fill `AGENT_API_BASE_URL`, `AGENT_MODEL`, and `AGENT_API_KEY` in `.env` when testing live Xiaoze LLM behavior. The default `.env.example` profile prepares local PostgreSQL, local object storage, multi-protocol device gateway, production-mode local account auth defaults, and optional HMAC smoke inputs.
 
 ## Development Rules
 

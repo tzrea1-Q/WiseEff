@@ -366,33 +366,35 @@ describe("operations health", () => {
   });
 
   it("treats deterministic Xiaoze mode as ready without LLM credentials", async () => {
-    const db: Pick<Queryable, "query"> = {
-      query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
-    };
-    const objectStore = {
-      checkHealth: async () => ({ ok: true as const, status: "ready" as const })
-    };
+    process.env.XIAOZE_DETERMINISTIC = "true";
+    try {
+      const db: Pick<Queryable, "query"> = {
+        query: async <Row,>() => ({ rows: [{ ok: 1 } as Row], rowCount: 1 })
+      };
+      const objectStore = {
+        checkHealth: async () => ({ ok: true as const, status: "ready" as const })
+      };
 
-    await expect(
-      buildReadyHealth({
-        db,
-        objectStore,
-        env: {
-          XIAOZE_DETERMINISTIC: true
-        }
-      })
-    ).resolves.toMatchObject({
-      status: 200,
-      body: {
-        ok: true,
-        dependencies: {
-          xiaozeLlm: {
-            ok: true,
-            status: "ready",
-            message: "Xiaoze deterministic mode; LLM API not required."
+      await expect(
+        buildReadyHealth({
+          db,
+          objectStore
+        })
+      ).resolves.toMatchObject({
+        status: 200,
+        body: {
+          ok: true,
+          dependencies: {
+            xiaozeLlm: {
+              ok: true,
+              status: "ready",
+              message: "Xiaoze deterministic mode; LLM API not required."
+            }
           }
         }
-      }
-    });
+      });
+    } finally {
+      delete process.env.XIAOZE_DETERMINISTIC;
+    }
   });
 });
