@@ -40,6 +40,16 @@ const rawEnvSchema = z.object({
   LOG_ANALYSIS_QUEUE_ATTEMPTS: z.coerce.number().int().positive().default(4),
   LOG_ANALYSIS_QUEUE_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
   LOG_ANALYSIS_QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(1),
+  NOTIFICATION_WORKER_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  NOTIFICATION_DELIVERY_MODE: z.enum(["sync", "async"]).default("sync"),
+  NOTIFICATION_QUEUE_MODE: z.enum(["polling", "durable"]).default("polling"),
+  NOTIFICATION_QUEUE_PREFIX: z.string().default("wiseeff"),
+  NOTIFICATION_QUEUE_ATTEMPTS: z.coerce.number().int().positive().default(4),
+  NOTIFICATION_QUEUE_BACKOFF_MS: z.coerce.number().int().positive().default(1000),
+  NOTIFICATION_QUEUE_CONCURRENCY: z.coerce.number().int().positive().default(1),
   DEVICE_BRIDGE_ARTIFACT_ROOT: z.string().default("ops/self-hosted/bridge-artifacts"),
   DEVICE_BRIDGE_TOOL_ARTIFACT_ROOT: z.string().default("ops/self-hosted/bridge-tool-artifacts"),
   DEVICE_BRIDGE_PAIRING_TTL_SECONDS: z.coerce.number().int().positive().default(1800),
@@ -105,6 +115,9 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   }
   if (env.LOG_ANALYSIS_QUEUE_MODE === "durable" && !env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable");
+  }
+  if (env.NOTIFICATION_QUEUE_MODE === "durable" && !env.REDIS_URL?.trim()) {
+    throw new Error("REDIS_URL is required when NOTIFICATION_QUEUE_MODE=durable");
   }
   if (env.NODE_ENV === "production" && (env.XIAOZE_CHECKPOINTER !== "postgres" || !env.DATABASE_URL?.trim())) {
     throw new Error("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production");

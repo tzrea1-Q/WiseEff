@@ -23,6 +23,7 @@ export type PilotReadinessEnv = {
   M5_DEVICE_GATEWAY_EVIDENCE?: string;
   M5_CONTRACT_CHECK_PASSED?: boolean;
   M5_CONTRACT_ARTIFACT_CHECKED_AT?: string;
+  NOTIFICATION_WORKER_ENABLED?: boolean;
   /** CI/test-only hook; not part of ServerEnv or .env.example. */
   XIAOZE_DETERMINISTIC?: boolean;
 } & XiaozeLlmEnv;
@@ -258,7 +259,8 @@ export function registerOperationsRoutes(
       objectStore: options.objectStore,
       env: options.env,
       durableQueue: options.durableQueue,
-      includeWorkerQueue: true
+      includeWorkerQueue: true,
+      includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true
     })
   );
 
@@ -279,6 +281,7 @@ export function registerOperationsRoutes(
       db: options.db,
       objectStore: options.objectStore,
       includeWorkerQueue: true,
+      includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true,
       durableQueue: options.durableQueue,
       env: options.env
     });

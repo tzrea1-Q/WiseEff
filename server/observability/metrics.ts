@@ -16,6 +16,7 @@ type GaugeSample = {
   value: number;
 };
 
+export type NotificationDeliveryMetricStatus = "delivered" | "retry" | "dead_lettered" | "failed";
 export type LogAnalysisJobMetricStatus = "complete" | "retry" | "dead_lettered" | "failed";
 export type LogAnalysisJobMetricStage = "parse" | "pattern" | "rootcause" | "report";
 export type LogAnalysisJobFailureReason = "parse_error" | "object_store_error" | "stale_run" | "unknown";
@@ -175,6 +176,12 @@ export function createMetricsRegistry(options: { serviceName: string }) {
           stage: input.stage
         });
       }
+    },
+    recordNotificationDeliveryResult(input: { status: NotificationDeliveryMetricStatus; durationMs: number }) {
+      const labels = { status: input.status };
+      incrementCounter("wiseeff_notification_delivery_total", "WiseEff notification outbox delivery results by status.", labels);
+      incrementCounter("wiseeff_notification_delivery_duration_ms_sum", "Total WiseEff notification delivery duration in milliseconds.", labels, input.durationMs);
+      incrementCounter("wiseeff_notification_delivery_duration_ms_count", "Count of WiseEff notification delivery duration samples.", labels);
     },
     renderPrometheus() {
       const allSamples = [...gauges.values(), ...counters.values()].sort((left, right) => left.name.localeCompare(right.name) || labelsKey(left.labels).localeCompare(labelsKey(right.labels)));
