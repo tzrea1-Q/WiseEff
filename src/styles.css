@@ -17748,3 +17748,682 @@ body.xiaoze-popup-resize-active {
     width: 100%;
   }
 }
+
+/* Parameter import wizard — scoped under .parameter-import-wizard */
+.parameter-import-wizard.submission-dialog--wide {
+  width: min(960px, calc(100vw - 48px));
+  max-height: min(90vh, 920px);
+  display: flex;
+  flex-direction: column;
+}
+
+.parameter-import-wizard .parameter-import-wizard-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 12px 22px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: #f8fafc;
+}
+
+.parameter-import-wizard .parameter-import-wizard-steps span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 7px 10px;
+  text-align: center;
+}
+
+.parameter-import-wizard .parameter-import-wizard-steps span small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.68rem;
+}
+
+.parameter-import-wizard .parameter-import-wizard-steps span.active {
+  color: #fff;
+  background: var(--app-primary);
+  box-shadow: 0 8px 18px rgba(0, 82, 204, 0.18);
+}
+
+.parameter-import-wizard .parameter-import-wizard-steps span.complete {
+  color: #0f5132;
+  background: #dcfce7;
+}
+
+.parameter-import-wizard .parameter-import-wizard-project-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 10px 22px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+}
+
+.parameter-import-wizard .parameter-import-wizard-project-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 12px;
+  color: #334155;
+}
+
+.parameter-import-wizard .parameter-import-wizard-project-readonly__label {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.parameter-import-wizard .parameter-import-wizard-project-readonly strong {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.parameter-import-wizard .parameter-import-wizard-project-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.parameter-import-wizard .parameter-import-wizard-project-switch select {
+  min-width: 220px;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-step {
+  display: grid;
+  gap: 16px;
+  padding: 20px 22px 22px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.parameter-import-wizard .parameter-import-wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-grid label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.parameter-import-wizard .parameter-import-wizard-grid label.full-row {
+  grid-column: 1 / -1;
+}
+
+.parameter-import-wizard .parameter-import-wizard-grid input:not(.parameter-import-wizard-file-input),
+.parameter-import-wizard .parameter-import-wizard-grid select,
+.parameter-import-wizard .parameter-import-wizard-grid textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-grid textarea {
+  resize: vertical;
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.parameter-import-wizard .parameter-import-wizard-sources {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  align-items: stretch;
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-field {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  min-height: 0;
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop {
+  position: relative;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 132px;
+  height: 100%;
+  padding: 22px 18px;
+  color: var(--app-primary);
+  text-align: center;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop:hover,
+.parameter-import-wizard .parameter-import-wizard-file-drop:focus-within {
+  background: rgba(0, 82, 204, 0.04);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop--dragging {
+  background: rgba(0, 82, 204, 0.06);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.14);
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop--selected {
+  background: linear-gradient(180deg, #f0fdf4, #ecfdf5);
+  border-color: #86efac;
+  color: #166534;
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop--selected:hover,
+.parameter-import-wizard .parameter-import-wizard-file-drop--selected:focus-within {
+  background: linear-gradient(180deg, #ecfdf5, #dcfce7);
+  border-color: #4ade80;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop__hint {
+  max-width: 36rem;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-drop--selected .parameter-import-wizard-file-drop__hint {
+  color: #15803d;
+}
+
+.parameter-import-wizard .parameter-import-wizard-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-field {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 6px;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  min-height: 0;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-entry {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 132px;
+  height: 100%;
+  padding: 22px 18px;
+  color: var(--app-primary);
+  font-size: 13px;
+  text-align: center;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-entry__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: inherit;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-entry__hint {
+  max-width: 18rem;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-entry:hover,
+.parameter-import-wizard .parameter-import-wizard-paste-entry:focus-visible {
+  background: rgba(0, 82, 204, 0.04);
+  border-color: var(--app-primary);
+  box-shadow: 0 0 0 3px rgba(0, 82, 204, 0.1);
+  outline: 0;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 132px;
+  height: 100%;
+  padding: 18px 16px;
+  background: linear-gradient(180deg, #f0fdf4, #ecfdf5);
+  border: 2px solid #86efac;
+  border-radius: 12px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-summary__copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: #334155;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-summary__copy strong {
+  display: block;
+  font-size: 13px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-summary__copy span {
+  display: block;
+  margin-top: 2px;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.parameter-import-wizard .parameter-import-wizard-paste-summary__actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 8px;
+  justify-content: center;
+}
+
+.parameter-import-paste-backdrop {
+  z-index: 1100;
+}
+
+.parameter-import-paste-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(640px, 100%);
+}
+
+.parameter-import-paste-dialog__header {
+  gap: 12px;
+}
+
+.parameter-import-paste-dialog__header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.parameter-import-paste-dialog__header p {
+  margin: 6px 0 0;
+  color: var(--app-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.parameter-import-paste-dialog__field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.parameter-import-paste-dialog__field textarea {
+  width: 100%;
+  min-height: 220px;
+  padding: 10px 12px;
+  resize: vertical;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.parameter-import-wizard .parameter-import-wizard-new-project {
+  display: flex;
+  align-items: flex-end;
+}
+
+.parameter-import-wizard .parameter-import-wizard-source-name {
+  margin: -4px 0 0;
+  font-size: 12px;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .parameter-import-wizard-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.parameter-import-wizard .parameter-import-wizard-summary-item {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.parameter-import-wizard .parameter-import-wizard-summary-item dt {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .parameter-import-wizard-summary-item dd {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.parameter-import-wizard .parameter-import-wizard-errors {
+  padding: 12px 14px;
+  border: 1px solid rgba(186, 26, 26, 0.24);
+  border-radius: 10px;
+  background: #fff5f5;
+  color: #991b1b;
+  font-size: 13px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-errors ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.parameter-import-wizard .parameter-import-wizard-empty-hint,
+.parameter-import-wizard .parameter-import-wizard-progress {
+  margin: 0;
+  font-size: 13px;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .parameter-import-wizard-progress {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.parameter-import-wizard .import-review-list {
+  display: grid;
+  gap: 12px;
+}
+
+.parameter-import-wizard .import-review-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.parameter-import-wizard .import-review-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.parameter-import-wizard .import-review-card-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.parameter-import-wizard .import-review-card-heading strong {
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.parameter-import-wizard .import-review-card-module {
+  font-size: 12px;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .import-review-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.parameter-import-wizard .import-review-status-badge,
+.parameter-import-wizard .import-review-badge-new {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.parameter-import-wizard .import-review-status-badge {
+  color: #334155;
+  background: #e2e8f0;
+}
+
+.parameter-import-wizard .import-review-badge-new {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.parameter-import-wizard .import-review-diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.parameter-import-wizard .import-review-diff-table th,
+.parameter-import-wizard .import-review-diff-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  text-align: left;
+  vertical-align: top;
+}
+
+.parameter-import-wizard .import-review-diff-table thead th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+}
+
+.parameter-import-wizard .import-review-diff-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.parameter-import-wizard .import-review-diff-row--changed td {
+  background: #fffbeb;
+}
+
+.parameter-import-wizard .import-review-diff-row--changed td:last-child {
+  color: #92400e;
+  font-weight: 700;
+}
+
+.parameter-import-wizard .parameter-import-preview-table-wrap {
+  max-height: min(42vh, 360px);
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+}
+
+.parameter-import-wizard .parameter-import-preview-table {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.parameter-import-wizard .parameter-import-preview-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  white-space: nowrap;
+}
+
+.parameter-import-wizard .parameter-import-preview-table__select {
+  width: 44px;
+  text-align: center;
+}
+
+.parameter-import-wizard .parameter-import-preview-table__select input {
+  margin: 0;
+}
+
+.parameter-import-wizard .parameter-import-preview-table__name {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.parameter-import-wizard .parameter-import-preview-table__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 12px;
+  color: #334155;
+  word-break: break-word;
+}
+
+.parameter-import-wizard .parameter-import-preview-table__risk {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.parameter-import-wizard .parameter-import-preview-row--disabled td {
+  color: #94a3b8;
+  background: #f8fafc;
+}
+
+.parameter-import-wizard .parameter-import-preview-row--disabled .parameter-import-preview-table__name {
+  color: #64748b;
+}
+
+.parameter-import-wizard .import-review-message,
+.parameter-import-wizard .import-review-status-summary {
+  margin: 0;
+  font-size: 13px;
+  color: var(--app-muted);
+}
+
+.parameter-import-wizard .import-review-message {
+  color: #92400e;
+}
+
+.parameter-import-wizard .import-review-edit-form,
+.parameter-import-wizard .import-review-skip-form,
+.parameter-import-wizard .import-review-module-form,
+.parameter-import-wizard .import-review-conflict,
+.parameter-import-wizard .import-review-new-candidate {
+  display: grid;
+  gap: 12px;
+}
+
+.parameter-import-wizard .import-review-module-select {
+  display: grid;
+  gap: 6px;
+  max-width: 360px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.parameter-import-wizard .import-review-module-select select {
+  width: 100%;
+  padding: 8px 32px 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: 8px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+  color: var(--text);
+  font-size: 13px;
+  appearance: none;
+}
+
+.parameter-import-wizard .import-review-edit-form .import-review-module-select select {
+  min-height: 36px;
+}
+
+@media (max-width: 820px) {
+  .parameter-import-wizard .parameter-import-wizard-steps,
+  .parameter-import-wizard .parameter-import-wizard-summary,
+  .parameter-import-wizard .parameter-import-wizard-grid,
+  .parameter-import-wizard .parameter-import-wizard-sources {
+    grid-template-columns: 1fr;
+  }
+
+  .parameter-import-wizard .parameter-import-wizard-project-bar {
+    justify-content: stretch;
+  }
+
+  .parameter-import-wizard .parameter-import-wizard-project-switch {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .parameter-import-wizard .parameter-import-wizard-project-switch select {
+    min-width: 0;
+    width: 100%;
+  }
+}

@@ -351,9 +351,11 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
     await expect(page.getByRole("region", { name: "项目共享参数库" })).toContainText(parameterName);
 
     await page.getByRole("toolbar", { name: /项目参数管理后台页面操作/ }).getByRole("button", { name: "批量参数导入" }).click();
-    const importDialog = page.getByRole("dialog", { name: "参数导入" });
-    await expect(importDialog).toBeVisible();
-    await importDialog.locator("textarea").fill(
+    const importWizard = page.getByRole("dialog", { name: "批量参数导入向导" });
+    await expect(importWizard).toBeVisible();
+    await importWizard.getByRole("button", { name: "粘贴 JSON / CSV / DTS 内容" }).click();
+    const pasteDialog = page.getByRole("dialog", { name: "粘贴导入内容" });
+    await pasteDialog.getByLabelText("导入内容").fill(
       JSON.stringify([
         {
           name: "acceptance_preview_only_ma",
@@ -367,8 +369,14 @@ test.describe("M5.4 manual flow B/C - parameter management browser acceptance", 
         }
       ])
     );
-    await importDialog.getByRole("button", { name: "生成预览" }).click();
-    await expect(importDialog.getByRole("region", { name: "导入预览" })).toBeVisible();
+    await pasteDialog.getByRole("button", { name: "确认" }).click();
+    await importWizard.getByRole("button", { name: "下一步" }).click();
+    await expect(importWizard.getByRole("region", { name: "解析与校验" })).toBeVisible();
+    await importWizard.getByRole("button", { name: "下一步" }).click();
+    await expect(importWizard.getByRole("region", { name: "逐行核对" })).toBeVisible();
+    await importWizard.getByRole("button", { name: "通过" }).click();
+    await importWizard.getByRole("button", { name: "下一步" }).click();
+    await expect(importWizard.getByRole("region", { name: "批次预览" })).toBeVisible();
 
     const auditResponse = await expectSuccessfulApiResponse(page, "/api/v1/audit-events");
     const auditBody = (await auditResponse.json()) as {

@@ -262,6 +262,7 @@ function writeSidebarCollapsedPreference(isCollapsed: boolean) {
 export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "UPDATE_PROJECT"; projectId: string; patch: { name?: string; code?: string; status?: ProjectInitializationStatus } }
+  | { type: "ADD_PARAMETER_ADMIN_PROJECT"; project: { id: string; name: string; code: string } }
   | {
       type: "HYDRATE_AUTH_CONTEXT";
       user: User;
@@ -712,6 +713,21 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         ...state,
         configDraft,
         projectInitializationStatuses,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "ADD_PARAMETER_ADMIN_PROJECT": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      if (state.configDraft.projects.some((project) => project.id === action.project.id)) {
+        return state;
+      }
+      const configDraft = {
+        ...state.configDraft,
+        projects: [...state.configDraft.projects, action.project]
+      };
+      return {
+        ...state,
+        configDraft,
         ...derivePowerManagementRuntimeState(configDraft)
       };
     }

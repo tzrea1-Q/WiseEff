@@ -1,0 +1,39 @@
+/*
+ * Aurora charging + thermal import fragment (manual paste / .dts upload)
+ * 覆盖：字符串列表、cell 数组、多行续行、标量字符串与数值数组
+ */
+/dts-v1/;
+
+/ {
+	charging-policy {
+		fast-charge-profile-matrix = "0", "5000", "1500", "40", "entry",
+					     "1", "9000", "3000", "43", "balanced",
+					     "2", "11000", "3800", "46", "burst",
+					     "3", "12000", "3600", "48", "thermal-cap";
+
+		usb-pd-negotiation-retries = <4 8 12>;
+
+		precharge-current-ma = <180>;
+	};
+
+	thermal-control {
+		battery-thermal-derate-curve = <
+			0 38 3800 4350
+			1 42 3200 4320
+			2 45 2600 4280
+			3 48 1800 4250
+		>;
+
+		wireless-coil-temp-limit-c = <38 42 45>;
+
+		thermal-guard-hysteresis-c = "2.5";
+	};
+
+	standby-power {
+		standby-leakage-monitor-threshold-ma = "16";
+	};
+
+	power-ic {
+		pmic-boost-enable-delay-ms = <120 240 480>;
+	};
+};

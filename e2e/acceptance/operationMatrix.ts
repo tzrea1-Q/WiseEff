@@ -138,6 +138,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "audit"]
   },
   {
+    id: "PARAM-ADMIN-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Run the five-step parameter import wizard through target project selection, multi-format upload, per-row review, batch preview, and apply.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-ADMIN-002"],
+    specFiles: ["e2e/acceptance/parameter-import-wizard.acceptance.spec.ts"],
+    assertions: ["ui", "audit"]
+  },
+  {
     id: "PARAM-DRAFT-EDIT-001",
     priority: "P1",
     area: "parameters",
