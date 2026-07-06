@@ -158,4 +158,48 @@ describe("ParameterImportWizard", () => {
 
     expect(within(dialog).getByRole("button", { name: "下一步" })).toBeDisabled();
   });
+
+  it("changing target project after step 3 triggers confirm dialog and resets review state", () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderWizard();
+
+    const dialog = screen.getByRole("dialog", { name: "批量参数导入向导" });
+    fireEvent.change(within(dialog).getByLabelText("粘贴导入内容（可选）"), {
+      target: {
+        value: JSON.stringify([
+          {
+            name: "fast_charge_current_limit_ma",
+            module: "Charging Policy",
+            currentValue: "3200",
+            recommendedValue: "3400",
+            range: "2500 - 4500",
+            unit: "mA",
+            risk: "High"
+          }
+        ])
+      }
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "下一步" }));
+
+    expect(within(dialog).getByRole("region", { name: "逐行核对" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "通过" }));
+    expect(within(dialog).getByText("已核对 1/1")).toBeInTheDocument();
+
+    const otherProject = initialState.configDraft.projects.find((project) => project.id !== initialState.activeProjectId);
+    expect(otherProject).toBeDefined();
+
+    fireEvent.change(within(dialog).getByLabelText("目标项目"), {
+      target: { value: otherProject!.id }
+    });
+
+    expect(confirmSpy).toHaveBeenCalledWith("更改项目将重新匹配 diff，已核对进度会重置。");
+    expect(within(dialog).getByRole("region", { name: "解析与校验" })).toBeInTheDocument();
+    expect(within(dialog).queryByText("已核对 1/1")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("已通过")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "下一步" })).toBeEnabled();
+
+    confirmSpy.mockRestore();
+  });
 });

@@ -73,6 +73,10 @@ export type ParameterImportWizardProps = {
 
 const TEMPLATE_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
+const WIZARD_STEP_LABELS = ["来源与项目", "解析校验", "逐行核对", "批次预览", "确认应用"] as const;
+
+const PROJECT_CHANGE_RESET_MESSAGE = "更改项目将重新匹配 diff，已核对进度会重置。";
+
 function slugifyProjectCode(code: string) {
   return code
     .trim()
@@ -161,7 +165,7 @@ export function ParameterImportWizard({
     return null;
   }
 
-  const handleParseAndAdvance = () => {
+  const parseAndMatch = (projectId: string) => {
     const errors: string[] = [];
     let parsed: ParsedImportRow[] = [];
     try {
@@ -174,9 +178,31 @@ export function ParameterImportWizard({
       errors.push(error instanceof Error ? error.message : "解析失败，请检查文件内容。");
     }
     setParsedRows(parsed);
-    setReviewedRows(matchToLibrary(parsed, parameters, targetProjectId));
+    setReviewedRows(matchToLibrary(parsed, parameters, projectId));
     setParseErrors(errors);
+  };
+
+  const handleParseAndAdvance = () => {
+    parseAndMatch(targetProjectId);
     setStep(2);
+  };
+
+  const handleTargetProjectChange = (nextProjectId: string) => {
+    if (nextProjectId === targetProjectId) {
+      return;
+    }
+    if (step >= 3) {
+      if (!window.confirm(PROJECT_CHANGE_RESET_MESSAGE)) {
+        return;
+      }
+      setTargetProjectId(nextProjectId);
+      parseAndMatch(nextProjectId);
+      setPreviewBatch(null);
+      setSelectedItemIds(new Set());
+      setStep(2);
+      return;
+    }
+    setTargetProjectId(nextProjectId);
   };
 
   const handleCreateProject = async (input: { name: string; code: string }) => {
@@ -226,7 +252,7 @@ export function ParameterImportWizard({
   return (
     <>
       <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="批量参数导入向导">
-        <div className="submission-dialog parameter-import-wizard">
+        <div className="submission-dialog submission-dialog--wide parameter-import-wizard">
           <div className="submission-dialog-head param-admin-editor-dialog-head">
             <div className="param-admin-editor-dialog-head-text">
               <span className="eyebrow">批量参数导入</span>
@@ -238,11 +264,48 @@ export function ParameterImportWizard({
             </button>
           </div>
 
+          <nav className="parameter-import-wizard-steps" aria-label="导入步骤">
+            {WIZARD_STEP_LABELS.map((label, index) => {
+              const stepNumber = (index + 1) as ParameterImportWizardStep;
+              const classNames = [
+                step === stepNumber ? "active" : "",
+                step > stepNumber ? "complete" : ""
+              ]
+                .filter(Boolean)
+                .join(" ");
+              return (
+                <span key={label} className={classNames || undefined} aria-current={step === stepNumber ? "step" : undefined}>
+                  <small>{stepNumber}</small>
+                  {label}
+                </span>
+              );
+            })}
+          </nav>
+
+          {step >= 3 ? (
+            <div className="parameter-import-wizard-project-bar">
+              <label className="parameter-import-wizard-project-switch">
+                <span>目标项目</span>
+                <select
+                  aria-label="目标项目"
+                  value={targetProjectId}
+                  onChange={(event) => handleTargetProjectChange(event.target.value)}
+                >
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}（{project.code}）
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
           {step === 1 ? (
             <StepSourceAndProject
               projects={projects}
               targetProjectId={targetProjectId}
-              onTargetProjectChange={setTargetProjectId}
+              onTargetProjectChange={handleTargetProjectChange}
               onCreateProject={() => {
                 setCreateProjectError("");
                 setCreateProjectOpen(true);
