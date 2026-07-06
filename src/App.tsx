@@ -24,6 +24,7 @@ import {
   X
 } from "lucide-react";
 import { createPortal } from "react-dom";
+import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   ChangeEvent,
@@ -3230,10 +3231,7 @@ function TopBar({
             options={projectOptions}
           />
         ) : null}
-        <Button className="icon-button" type="button" aria-label="通知" variant="outline" size="icon">
-          <MessageSquareText size={18} />
-          <span className="notification-dot" />
-        </Button>
+        <TopBarNotifications mockNotifications={state.notifications} onNavigate={onNavigate} />
         <div className="topbar-user-switcher">
           <button
             aria-expanded={userMenuOpen}

@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 import { createAuditEvent } from "../audit/repository";
+import {
+  notifyParameterImportCompleted,
+  notifyParameterReviewAdvanced,
+  notifyParameterReviewRejected,
+  notifyParameterReviewSubmitted
+} from "../notifications/producers";
 import type { AuditCorrelationContext } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -726,6 +732,20 @@ export async function applyImportBatch(db: Database, auth: AuthContext, input: A
       }
     }, context);
 
+    const project = await getProjectById(tx, {
+      organizationId: auth.organization.id,
+      projectId: batch.projectId
+    });
+    await notifyParameterImportCompleted(tx, {
+      organizationId: auth.organization.id,
+      projectId: batch.projectId,
+      projectName: project?.name,
+      batchId: batch.id,
+      recipientUserId: auth.user.id,
+      added,
+      updated
+    });
+
     return applied;
   });
 }
@@ -853,6 +873,22 @@ export async function submitParameterChanges(db: Database, auth: AuthContext, in
       },
       traceId: context.requestId ?? randomUUID()
     });
+
+    if (workflowAssignees?.hardwareCommitterId) {
+      const project = await getProjectById(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId
+      });
+      await notifyParameterReviewSubmitted(tx, {
+        organizationId: auth.organization.id,
+        projectId: input.projectId,
+        projectName: project?.name,
+        roundId: round.id,
+        itemCount: items.length,
+        submitterName: auth.user.name,
+        reviewerUserIds: [workflowAssignees.hardwareCommitterId]
+      });
+    }
 
     return workflowAssignees ? { ...round, workflowAssignees, items } : { ...round, items };
   });
@@ -1118,6 +1154,23 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
         ]
       }, context);
 
+      if (request.submitterUserId && request.projectId) {
+        const project = await getProjectById(tx, {
+          organizationId: auth.organization.id,
+          projectId: request.projectId
+        });
+        await notifyParameterReviewRejected(tx, {
+          organizationId: auth.organization.id,
+          projectId: request.projectId,
+          projectName: project?.name,
+          requestId: input.requestId,
+          parameterName: request.title,
+          submitterUserId: request.submitterUserId,
+          reviewerName: auth.user.name,
+          note: input.note
+        });
+      }
+
       return updated;
     }
 
@@ -1174,6 +1227,26 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
           }
         ]
       }, context);
+
+      if (request.submitterUserId && request.projectId) {
+        const project = await getProjectById(tx, {
+          organizationId: auth.organization.id,
+          projectId: request.projectId
+        });
+        const assigneeUserIds =
+          updated.assignedTo && updated.assignedTo !== request.submitterUserId ? [updated.assignedTo] : [];
+        await notifyParameterReviewAdvanced(tx, {
+          organizationId: auth.organization.id,
+          projectId: request.projectId,
+          projectName: project?.name,
+          requestId: input.requestId,
+          parameterName: request.title,
+          submitterUserId: request.submitterUserId,
+          reviewerName: auth.user.name,
+          toStatus: parameterStatusLabels[toStatus] ?? toStatus,
+          assigneeUserIds
+        });
+      }
 
       return updated;
     }

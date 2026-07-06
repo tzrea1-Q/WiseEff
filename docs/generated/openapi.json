@@ -257,6 +257,127 @@
         }
       }
     },
+    "/api/v1/notifications": {
+      "get": {
+        "operationId": "notifications.list",
+        "summary": "List inbox notifications",
+        "tags": [
+          "notifications"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/unread-count": {
+      "get": {
+        "operationId": "notifications.unreadCount",
+        "summary": "Get unread notification count",
+        "tags": [
+          "notifications"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationUnreadCountResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/{notificationId}/read": {
+      "post": {
+        "operationId": "notifications.markRead",
+        "summary": "Mark one notification read",
+        "tags": [
+          "notifications"
+        ],
+        "parameters": [
+          {
+            "name": "notificationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationItemResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "404": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/mark-all-read": {
+      "post": {
+        "operationId": "notifications.markAllRead",
+        "summary": "Mark all notifications read",
+        "tags": [
+          "notifications"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationMarkAllReadResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ErrorResponse"
+          },
+          "500": {
+            "$ref": "#/components/responses/ErrorResponse"
+          }
+        }
+      }
+    },
     "/api/v1/users": {
       "get": {
         "operationId": "users.list",
@@ -3472,6 +3593,22 @@
       "AuditEventListResponse": {
         "type": "object",
         "x-wiseeff-schema": "AuditEventListResponse"
+      },
+      "NotificationListResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "NotificationListResponse"
+      },
+      "NotificationUnreadCountResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "NotificationUnreadCountResponse"
+      },
+      "NotificationItemResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "NotificationItemResponse"
+      },
+      "NotificationMarkAllReadResponse": {
+        "type": "object",
+        "x-wiseeff-schema": "NotificationMarkAllReadResponse"
       },
       "UserGovernanceListResponse": {
         "type": "object",

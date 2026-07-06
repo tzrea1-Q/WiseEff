@@ -32,6 +32,8 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PERM-GOV-001` | H | Yes | User governance page is Admin-only and the active Admin cannot disable itself. | `e2e/acceptance/permissions.acceptance.spec.ts` |
 | `PERM-MATRIX-001` | H | Yes | Role inclusion rules are enforced for visible UI operations. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `PERM-MATRIX-002` | H | Yes | Role inclusion and project-scoped workflow eligibility are enforced by API-backed operations. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
+| `NOTIF-INBOX-001` | A | Yes | TopBar notification bell opens the inbox panel and notification list APIs load for the current user. | `e2e/acceptance/notifications.acceptance.spec.ts` |
+| `NOTIF-READ-001` | A | Yes | Notifications can be marked read through the backend inbox API without cross-user access. | `e2e/acceptance/notifications.acceptance.spec.ts` |
 
 ## Interpretation
 

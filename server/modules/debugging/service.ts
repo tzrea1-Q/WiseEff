@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { MetricsRegistry } from "../../observability/metrics";
 import type { TracingBoundary } from "../../observability/tracing";
 import { createAuditEvent as defaultCreateAuditEvent } from "../audit/repository";
+import { notifyDebugNodeWriteFailed } from "../notifications/producers";
 import type { AuditCorrelationContext, CreateAuditEventInput } from "../audit/types";
 import type { AuthContext } from "../auth/types";
 import type { Database, Queryable } from "../../shared/database/client";
@@ -527,6 +528,28 @@ function failureReason(error: string | undefined, fallback: string) {
 function writeStatus(result: GatewayWriteResult) {
   if (!result.ok) return "failed" as const;
   return result.verified ? ("succeeded" as const) : ("readback_mismatch" as const);
+}
+
+async function maybeNotifyDebugWriteFailed(
+  db: Queryable,
+  auth: AuthContext,
+  session: { id: string; projectId: string },
+  parameterName: string,
+  operation: { id: string; status: string; failureReason?: string | null }
+) {
+  if (operation.status === "succeeded") {
+    return;
+  }
+
+  await notifyDebugNodeWriteFailed(db, {
+    organizationId: auth.organization.id,
+    projectId: session.projectId,
+    sessionId: session.id,
+    operationId: operation.id,
+    recipientUserId: auth.user.id,
+    parameterName,
+    failureReason: operation.failureReason ?? undefined
+  });
 }
 
 async function requireDeviceLease(tx: Queryable, auth: AuthContext, session: DebugSessionRecord) {
@@ -2208,6 +2231,7 @@ export function createDebuggingService(options: ServiceOptions) {
               context
             )
           );
+          await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
           return operation;
         }
 
@@ -2332,6 +2356,7 @@ export function createDebuggingService(options: ServiceOptions) {
           )
         );
 
+        await maybeNotifyDebugWriteFailed(tx, auth, session, parameter.name, operation);
         return operation;
       });
     },

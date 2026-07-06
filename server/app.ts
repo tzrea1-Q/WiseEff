@@ -1,4 +1,5 @@
 import { registerAuditRoutes } from "./modules/audit/routes";
+import { registerNotificationRoutes } from "./modules/notifications/routes";
 import { registerXiaozeRoutes } from "./modules/agent/xiaoze/agUiEndpoint";
 import { createAuthContextResolver } from "./modules/auth/contextFactory";
 import { createLocalAuthService } from "./modules/auth/localAuth";
@@ -111,6 +112,10 @@ export function createWiseEffServer(
 
   registerAuthRoutes(router, { getCurrentAuthContext: authResolver, localAuthService });
   registerAuditRoutes(router, {
+    db: options.db,
+    getCurrentAuthContext: authResolver
+  });
+  registerNotificationRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
