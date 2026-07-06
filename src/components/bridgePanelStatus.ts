@@ -1,6 +1,6 @@
 import { isHdcPlaceholderTarget } from "@wiseeff/device-command-core/hdcTargets";
 
-import type { LocalBridgeHealthState, DeviceBridgePlatform } from "../infrastructure/http/deviceBridgeClient";
+import type { LocalBridgeHealthState, DeviceBridgePlatform, DeviceBridgePairingCode } from "../infrastructure/http/deviceBridgeClient";
 
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 
@@ -117,6 +117,21 @@ export function canConnectBridgeWithoutPairingCode(input: {
   return input.panelStatus === "bridge_blocked" && input.hasRegisteredBridge;
 }
 
+export function normalizeBridgeServerUrl(raw: string) {
+  const url = new URL(raw);
+  url.pathname = "";
+  url.search = "";
+  url.hash = "";
+  return url.toString().replace(/\/$/, "");
+}
+
+export function bridgeServerUrlMismatch(healthServerUrl: string | undefined, targetServerUrl: string) {
+  if (!healthServerUrl?.trim()) {
+    return false;
+  }
+  return normalizeBridgeServerUrl(healthServerUrl) !== normalizeBridgeServerUrl(targetServerUrl);
+}
+
 export function needsPairingCodeForBridgeConnect(input: {
   panelStatus: BridgePanelStatus;
   pairingStale?: boolean;
@@ -132,11 +147,49 @@ export function shouldFetchBridgePairingCode(input: {
   panelStatus: BridgePanelStatus;
   pairingStale?: boolean;
   pairingAuthFailure?: boolean;
+  health?: LocalBridgeHealthState | null;
+  targetServerUrl?: string;
 }): boolean {
-  return (
+  if (
     needsPairingCodeForBridgeConnect(input) ||
-    input.panelStatus === "bridge_blocked"
-  );
+    input.panelStatus === "bridge_blocked" ||
+    input.panelStatus === "not_running"
+  ) {
+    return true;
+  }
+  if (input.panelStatus === "not_connected") {
+    return bridgeServerUrlMismatch(input.health?.serverUrl, input.targetServerUrl ?? "");
+  }
+  return false;
+}
+
+export function resolvePairingCodeForBridgeConnect(input: {
+  panelStatus: BridgePanelStatus;
+  pairingStale?: boolean;
+  pairingAuthFailure?: boolean;
+  pairingCode?: DeviceBridgePairingCode | null;
+  health?: LocalBridgeHealthState | null;
+  targetServerUrl: string;
+}): string | undefined {
+  const code = input.pairingCode?.code;
+  if (!code) {
+    return undefined;
+  }
+
+  if (needsPairingCodeForBridgeConnect(input)) {
+    return code;
+  }
+
+  // When local health is offline, bridge.json may still point at another server (e.g. prod vs local dev).
+  if (input.panelStatus === "not_running" || input.panelStatus === "bridge_blocked") {
+    return code;
+  }
+
+  if (bridgeServerUrlMismatch(input.health?.serverUrl, input.targetServerUrl)) {
+    return code;
+  }
+
+  return undefined;
 }
 
 export function shouldClearStaleBridgeConnectError(input: {
