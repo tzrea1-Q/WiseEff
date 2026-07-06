@@ -2,7 +2,7 @@
 
 > Chinese: [Chinese](../zh-CN/developer/environment-variables.md)
 
-Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill the blank `AGENT_API_*` values when testing live Xiaoze LLM behavior. Set `XIAOZE_DETERMINISTIC=true` for acceptance runs without a live model.
+Use `.env.example` as the local non-HDC staging profile. Copy it to `.env`, then fill the blank `AGENT_API_*` values when testing live Xiaoze LLM behavior.
 
 ## Core Runtime
 
@@ -69,7 +69,7 @@ To exercise the productized local login/register UI, keep the default `AUTH_MODE
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
-| `DEBUG_DEVICE_GATEWAY_MODE` | `simulator` | debugging runtime | Use `hdc`, `adb`, or `multi` for approved real device-lab evidence. |
+| `DEBUG_DEVICE_GATEWAY_MODE` | `multi` (code default) | debugging runtime | Override only for targeted device-lab evidence (`hdc`, `adb`, or `simulator`). |
 | `DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION` | `true` | non-customer staging simulator mode | Never use for customer production signoff. |
 | `HDC_TIMEOUT_MS` | `5000` | HDC adapter | Command timeout budget. |
 | `ADB_TIMEOUT_MS` | `5000` | ADB adapter | Command timeout budget. |
@@ -102,13 +102,12 @@ API mode always includes Xiaoze; mock mode has no Agent UI. The backend always r
 
 | Variable | Local default | Required for | Notes |
 | --- | --- | --- | --- |
-| `AGENT_API_BASE_URL` | blank | live Xiaoze LLM | OpenAI-compatible endpoint. Required when `XIAOZE_DETERMINISTIC` is not set. Never commit secrets or private endpoints. |
+| `AGENT_API_BASE_URL` | blank | live Xiaoze LLM | OpenAI-compatible endpoint. Never commit secrets or private endpoints. |
 | `AGENT_MODEL` | blank | live Xiaoze LLM | Fill locally for live model runs. |
 | `AGENT_API_KEY` | blank | live Xiaoze LLM | Secret. |
 | `AGENT_API_TIMEOUT_MS` | `30000` | live Xiaoze LLM | Request timeout for LangChain `ChatOpenAI`. |
 | `XIAOZE_MODEL` | blank (falls back to `AGENT_MODEL`) | live Xiaoze runs | Optional override for the Xiaoze LangGraph agent model id. |
-| `XIAOZE_DETERMINISTIC` | unset locally | acceptance/offline tests | Injects a fake chat model; no live LLM or `AGENT_API_*` values required. |
-| `XIAOZE_CHECKPOINTER` | `memory` | production Xiaoze planning resume | Use `postgres` in production/self-hosted so LangGraph checkpoints survive restarts and multi-replica routing; tables are ensured by `npm run db:migrate`. `memory` remains valid for local dev, tests, and when `XIAOZE_DETERMINISTIC=true`. |
+| `XIAOZE_CHECKPOINTER` | `memory` | production Xiaoze planning resume | Use `postgres` in production/self-hosted so LangGraph checkpoints survive restarts and multi-replica routing; tables are ensured by `npm run db:migrate`. `memory` remains valid for local dev and tests. |
 | `XIAOZE_REASONING_FALLBACK_HEURISTIC` | `false` | live Xiaoze LLM | Opt-in legacy language heuristic for splitting untagged model content into reasoning vs answer. Keep `false` in production; structured `reasoning_content` / `<think>` tags are the primary path. |
 | `XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggest API | Set `true` to register read-only `POST /api/v1/agent/xiaoze/suggest`. Default off; opt-in only. |
 | `VITE_XIAOZE_PROACTIVE_ENABLED` | `false` | proactive suggestions UI | Mounts `useXiaozeSuggestions` in `AgentInsightBar`. Requires API `XIAOZE_PROACTIVE_ENABLED=true`. Default off. |

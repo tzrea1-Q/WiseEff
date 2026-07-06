@@ -54,7 +54,6 @@ export function buildPlaywrightWebServers({
         ...(process.env.AUTH_OIDC_JWKS_URI ? { AUTH_OIDC_JWKS_URI: process.env.AUTH_OIDC_JWKS_URI } : {}),
         VITE_WISEEFF_RUNTIME_MODE: "api",
         VITE_WISEEFF_API_BASE_URL: apiURL,
-        DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE ?? "simulator",
         OBJECT_STORE_ROOT: process.env.OBJECT_STORE_ROOT ?? ".wiseeff-object-store",
         ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
         ...(includeXiaozeProactive

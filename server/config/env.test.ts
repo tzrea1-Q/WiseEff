@@ -34,7 +34,7 @@ describe("loadServerEnv", () => {
     expect(env.OBJECT_STORAGE_ACCESS_KEY_ID).toBeUndefined();
     expect(env.OBJECT_STORAGE_SECRET_ACCESS_KEY).toBeUndefined();
     expect(env.OBJECT_STORAGE_REGION).toBeUndefined();
-    expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("simulator");
+    expect(env.DEBUG_DEVICE_GATEWAY_MODE).toBe("multi");
     expect(env.HDC_TIMEOUT_MS).toBe(5000);
     expect(env.ADB_TIMEOUT_MS).toBe(5000);
     expect(env.DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION).toBe(false);
@@ -314,12 +314,13 @@ describe("loadServerEnv", () => {
     expect(
       loadServerEnv({
         ...productionEnv,
-        DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
+        DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
+        DEBUG_DEVICE_GATEWAY_MODE: "simulator"
       }).DEBUG_DEVICE_GATEWAY_MODE
     ).toBe("simulator");
   });
 
-  it("requires postgres checkpointer in production when not deterministic", () => {
+  it("requires postgres checkpointer in production", () => {
     expect(() =>
       loadServerEnv({
         ...productionOidcEnv,
@@ -329,21 +330,6 @@ describe("loadServerEnv", () => {
         AGENT_API_BASE_URL: "https://agent.example.com",
         DEBUG_DEVICE_GATEWAY_MODE: "adb"
       })
-    ).toThrow("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production when XIAOZE_DETERMINISTIC is not set");
-  });
-
-  it("allows memory checkpointer in production when XIAOZE_DETERMINISTIC is set", () => {
-    const env = loadServerEnv({
-      ...productionOidcEnv,
-      XIAOZE_DETERMINISTIC: "true",
-      XIAOZE_CHECKPOINTER: "memory",
-      AGENT_MODEL: undefined,
-      AGENT_API_KEY: undefined,
-      AGENT_API_BASE_URL: undefined,
-      DEBUG_DEVICE_GATEWAY_MODE: "adb"
-    });
-
-    expect(env.XIAOZE_CHECKPOINTER).toBe("memory");
-    expect(env.XIAOZE_DETERMINISTIC).toBe(true);
+    ).toThrow("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production");
   });
 });

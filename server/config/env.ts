@@ -19,7 +19,7 @@ const rawEnvSchema = z.object({
   OBJECT_STORAGE_ACCESS_KEY_ID: z.string().optional(),
   OBJECT_STORAGE_SECRET_ACCESS_KEY: z.string().optional(),
   OBJECT_STORAGE_REGION: z.string().optional(),
-  DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator", "hdc", "adb", "multi"]).default("simulator"),
+  DEBUG_DEVICE_GATEWAY_MODE: z.enum(["simulator", "hdc", "adb", "multi"]).default("multi"),
   HDC_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   ADB_TIMEOUT_MS: z.coerce.number().int().positive().default(5000),
   DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: z
@@ -46,10 +46,6 @@ const rawEnvSchema = z.object({
   DEVICE_BRIDGE_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(90),
   DEVICE_BRIDGE_WS_PATH: z.string().default("/api/v1/device-bridges/ws"),
   XIAOZE_MODEL: z.string().optional(),
-  XIAOZE_DETERMINISTIC: z
-    .enum(["true", "false"])
-    .default("false")
-    .transform((value) => value === "true"),
   XIAOZE_PROACTIVE_ENABLED: z
     .enum(["true", "false"])
     .default("false")
@@ -110,14 +106,8 @@ export function loadServerEnv(raw: NodeJS.ProcessEnv): ServerEnv {
   if (env.LOG_ANALYSIS_QUEUE_MODE === "durable" && !env.REDIS_URL?.trim()) {
     throw new Error("REDIS_URL is required when LOG_ANALYSIS_QUEUE_MODE=durable");
   }
-  if (
-    env.NODE_ENV === "production" &&
-    !env.XIAOZE_DETERMINISTIC &&
-    (env.XIAOZE_CHECKPOINTER !== "postgres" || !env.DATABASE_URL?.trim())
-  ) {
-    throw new Error(
-      "XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production when XIAOZE_DETERMINISTIC is not set"
-    );
+  if (env.NODE_ENV === "production" && (env.XIAOZE_CHECKPOINTER !== "postgres" || !env.DATABASE_URL?.trim())) {
+    throw new Error("XIAOZE_CHECKPOINTER=postgres and DATABASE_URL are required in production");
   }
 
   return env;

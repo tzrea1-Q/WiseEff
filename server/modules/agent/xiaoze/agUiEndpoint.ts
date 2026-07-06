@@ -28,6 +28,7 @@ import {
 import { buildXiaozePlanningToolDescriptors, toOpenAiToolDefinitions } from "./toolCatalog";
 import { XIAOZE_PROMPT_DEBUG_EVENT } from "./promptDebug";
 import { XIAOZE_TURN_REPLY_EVENT } from "./xiaozeTurnReply";
+import { isXiaozeDeterministicMode } from "./runtimeMode";
 import {
   turnStateCustomEvent,
   XiaozeTurnStateTracker,
@@ -945,7 +946,6 @@ export function createXiaozeAgentFactory(options: {
     | "AGENT_API_KEY"
     | "AGENT_MODEL"
     | "XIAOZE_MODEL"
-    | "XIAOZE_DETERMINISTIC"
     | "XIAOZE_CHECKPOINTER"
     | "XIAOZE_REASONING_FALLBACK_HEURISTIC"
     | "DATABASE_URL"
@@ -963,7 +963,7 @@ export function createXiaozeAgentFactory(options: {
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db, toolRegistry: registry });
   const executionContextRef: { current: AgentToolExecutionContext | null } = { current: null };
   const planningAgent = createPlanningAgent({
-    model: options.env.XIAOZE_DETERMINISTIC
+    model: isXiaozeDeterministicMode()
       ? createDeterministicPerceptionModel()
       : modelFactory(options.env, planningToolDescriptors),
     runTool: (name, payload) => {
@@ -1004,7 +1004,6 @@ export function registerXiaozeRoutes(
     db?: Database;
     env?: Pick<
       ServerEnv,
-      | "XIAOZE_DETERMINISTIC"
       | "XIAOZE_PROACTIVE_ENABLED"
       | "XIAOZE_CHECKPOINTER"
       | "DATABASE_URL"
@@ -1029,7 +1028,6 @@ export function registerXiaozeRoutes(
   });
 
   const envDefaults = options.env ?? {
-    XIAOZE_DETERMINISTIC: true,
     XIAOZE_CHECKPOINTER: "memory",
     XIAOZE_REASONING_FALLBACK_HEURISTIC: false
   };
@@ -1038,7 +1036,12 @@ export function registerXiaozeRoutes(
     options.createAgent ??
     createXiaozeAgentFactory({
       db: options.db,
-      env: envDefaults
+      env: envDefaults,
+      ...(options.env
+        ? {}
+        : {
+            modelFactory: (_env, _tools) => createDeterministicPerceptionModel()
+          })
     });
   const approvalBridge = options.approvalBridge ?? createOrchestratorApprovalBridge({ db: options.db });
   const persistTurn = createXiaozeTurnPersister({ db: options.db });

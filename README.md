@@ -45,7 +45,7 @@ copy .env.example .env
 npm run dev:all
 ```
 
-`npm run dev:all` auto-detects `docker compose` or `docker-compose`, starts PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, simulator device gateway, production-mode local account auth defaults, optional HMAC smoke inputs, and Xiaoze LLM settings via `AGENT_API_*`. If live model/key values are blank, local startup falls back to deterministic Xiaoze responses (`XIAOZE_DETERMINISTIC=true`).
+`npm run dev:all` auto-detects `docker compose` or `docker-compose`, starts PostgreSQL from `compose.yaml`, waits for readiness, runs migrations and seeds, then starts the WiseEff API and API-mode Vite frontend. Start from `.env.example`; it prepares local PostgreSQL, local object storage, multi-protocol device gateway defaults, production-mode local account auth defaults, optional HMAC smoke inputs, and Xiaoze LLM settings via `AGENT_API_*`.
 
 Development services bind to `127.0.0.1`. Vite usually prints this URL after startup:
 

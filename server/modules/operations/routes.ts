@@ -23,6 +23,8 @@ export type PilotReadinessEnv = {
   M5_DEVICE_GATEWAY_EVIDENCE?: string;
   M5_CONTRACT_CHECK_PASSED?: boolean;
   M5_CONTRACT_ARTIFACT_CHECKED_AT?: string;
+  /** CI/test-only hook; not part of ServerEnv or .env.example. */
+  XIAOZE_DETERMINISTIC?: boolean;
 } & XiaozeLlmEnv;
 
 function requireAdminAccess(auth: AuthContext) {
@@ -84,7 +86,7 @@ const hdcSmokeEvidenceFields = [
 ] as const satisfies readonly (keyof PilotReadinessEnv)[];
 
 function debugGatewayMode(value: unknown): NonNullable<PilotReadinessEnv["DEBUG_DEVICE_GATEWAY_MODE"]> {
-  return value === "hdc" || value === "adb" || value === "multi" ? value : "simulator";
+  return value === "simulator" || value === "hdc" || value === "adb" || value === "multi" ? value : "multi";
 }
 
 function deviceGatewayEvidenceGate(env: PilotReadinessEnv): PilotReadinessGateStatus {

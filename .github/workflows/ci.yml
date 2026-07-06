@@ -85,7 +85,6 @@ jobs:
       WISEEFF_ACCEPTANCE_FRONTEND_URL: http://127.0.0.1:5173
       OBJECT_STORE_MODE: local
       OBJECT_STORE_ROOT: .wiseeff-object-store
-      DEBUG_DEVICE_GATEWAY_MODE: simulator
       DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true"
       XIAOZE_DETERMINISTIC: "true"
       AUTH_MODE: production
@@ -126,7 +125,6 @@ jobs:
             echo "WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
             echo "VITE_WISEEFF_API_BASE_URL=http://127.0.0.1:8787"
             echo "VITE_WISEEFF_RUNTIME_MODE=api"
-            echo "DEBUG_DEVICE_GATEWAY_MODE=simulator"
             echo "DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true"
             echo "M5_CONTRACT_CHECK_PASSED=true"
           } >> .env

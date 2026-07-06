@@ -103,19 +103,14 @@ export function buildDevAllPlan(
 }
 
 function normalizeLocalDevEnv(env: RuntimeEnv): RuntimeEnv {
-  const missingXiaozeLlmSettings =
-    !env.AGENT_MODEL?.trim() || !env.AGENT_API_KEY?.trim() || !env.AGENT_API_BASE_URL?.trim();
-
   return {
     AUTH_MODE: "production",
     AUTH_PROVIDER: "local",
     DATABASE_URL: "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff",
     OBJECT_STORE_MODE: "local",
     OBJECT_STORE_ROOT: ".wiseeff-object-store",
-    DEBUG_DEVICE_GATEWAY_MODE: "simulator",
     DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION: "true",
-    ...env,
-    ...(missingXiaozeLlmSettings ? { XIAOZE_DETERMINISTIC: "true" } : {})
+    ...env
   };
 }
 

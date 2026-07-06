@@ -27,7 +27,7 @@ AGENT_MODEL=
 AGENT_API_KEY=
 ```
 
-For acceptance runs without a live model, set `XIAOZE_DETERMINISTIC=true` instead of filling `AGENT_API_*`.
+Fill `AGENT_API_*` in `.env` / `.env.local` when testing live Xiaoze LLM behavior.
 
 To keep live LLM secrets out of `.env`, copy `.env.local.example` to `.env.local`. That file is gitignored and overrides `.env` at runtime.
 
@@ -129,14 +129,13 @@ The directory is ignored by Git. Do not commit uploaded logs or backup/restore s
 
 ## Device Gateway
 
-Local development uses the simulator:
+Local development defaults to multi-protocol mode (`hdc` + `adb` gateways registered; simulator remains available as a fallback target when no real device is detected). Only override `DEBUG_DEVICE_GATEWAY_MODE` for targeted device-lab evidence runs.
 
 ```text
-DEBUG_DEVICE_GATEWAY_MODE=simulator
 DEVICE_GATEWAY_ALLOW_SIMULATOR_IN_PRODUCTION=true
 ```
 
-Real HDC evidence belongs to the device-lab runbook and must not be replaced by simulator-only proof.
+Real HDC/ADB evidence belongs to the device-lab runbook and must not be replaced by simulator-only proof.
 
 ## Common Workflows
 
