@@ -164,6 +164,53 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(screen.getByText(/若网页未能自动打开 Bridge/)).toBeInTheDocument();
   });
 
+  it("keeps the launch button enabled while a pairing code loads for not_running", () => {
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_running"
+        hasRegisteredBridge
+        protocol="hdc"
+        health={null}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "启动并连接本机" })).toBeEnabled();
+  });
+
+  it("disables the connect button while a required pairing code loads for not_paired", () => {
+    render(
+      <LocalDeviceBridgeWizard
+        panelStatus="not_paired"
+        protocol="hdc"
+        health={null}
+        hostRelease={null}
+        installerAlternates={[]}
+        portableReleases={[]}
+        pairingCode={null}
+        pairingCodeLoading
+        checking={false}
+        detecting={false}
+        connectError=""
+        onConnectError={() => undefined}
+        onRefresh={async () => ({ connected: false })}
+        onDetect={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "重新配对" })).toBeDisabled();
+  });
+
   it("advances to step 2 when clicking the already-installed entry on missing_bridge", () => {
     render(
       <LocalDeviceBridgeWizard
@@ -333,7 +380,7 @@ describe("LocalDeviceBridgeWizard", () => {
     expect(launchBridgeSchemeForConnect).toHaveBeenCalledWith({
       server: expect.any(String),
       webOrigin: expect.any(String),
-      code: undefined
+      code: "123456"
     });
     expect(launchOrder).toBe(2);
     expect(connectLocalBridge).toHaveBeenCalledWith(

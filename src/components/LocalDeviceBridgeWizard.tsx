@@ -23,7 +23,7 @@ import {
 } from "../infrastructure/http/bridgeReleaseSelection";
 import { resolveDeviceBridgeDownloadUrl } from "../infrastructure/http/deviceBridgeDownloadUrl";
 import type { DeviceBridgePairingCode, DeviceBridgeReleaseItem, LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
-import { bridgePanelStatusHint, canConnectBridgeWithoutPairingCode, isBridgeOnlinePanelStatus, needsLocalBridgeLaunch, needsPairingCodeForBridgeConnect, shouldClearStaleBridgeConnectError, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
+import { bridgePanelStatusHint, canConnectBridgeWithoutPairingCode, isBridgeOnlinePanelStatus, needsLocalBridgeLaunch, needsPairingCodeForBridgeConnect, resolvePairingCodeForBridgeConnect, shouldClearStaleBridgeConnectError, type BridgePanelStatus, type DebugConnectionProtocol } from "./bridgePanelStatus";
 import type { LocalBridgeReachability } from "../infrastructure/http/bridgeConnectLauncher";
 import { LocalDeviceBridgeToolsPanel } from "./LocalDeviceBridgeToolsPanel";
 
@@ -232,20 +232,27 @@ export function LocalDeviceBridgeWizard({
       panelStatus,
       hasRegisteredBridge
     });
-
-    if (!pairingCode && needsPairingCode) {
-      onConnectError("配对码尚未就绪，请稍后重试。");
-      return;
-    }
-
-    if (!pairingCode && !canConnectWithoutPairingCode) {
-      onConnectError("配对码尚未就绪，请稍后重试。");
-      return;
-    }
-
     const serverUrl = resolveBridgeServerUrl();
     const webOrigin = resolveBridgeWebOrigin();
-    const pairingCodeValue = needsPairingCode && pairingCode ? pairingCode.code : undefined;
+    const pairingCodeValue = resolvePairingCodeForBridgeConnect({
+      panelStatus,
+      pairingStale,
+      pairingAuthFailure,
+      pairingCode,
+      health,
+      targetServerUrl: serverUrl
+    });
+
+    if (!pairingCodeValue && needsPairingCode) {
+      onConnectError("配对码尚未就绪，请稍后重试。");
+      return;
+    }
+
+    if (!pairingCodeValue && !canConnectWithoutPairingCode) {
+      onConnectError("配对码尚未就绪，请稍后重试。");
+      return;
+    }
+
     const shouldLaunchScheme = needsLocalBridgeLaunch(panelStatus);
 
     // Custom protocol URLs must launch synchronously inside the click handler (before any await).
@@ -297,6 +304,15 @@ export function LocalDeviceBridgeWizard({
     hasRegisteredBridge,
     viewStep
   ]);
+
+  // Only a connect flow that actually consumes a pairing code should be blocked
+  // while the code is loading. Statuses like "not_running" connect without a
+  // code, so gating them on pairingCodeLoading would wrongly disable the button.
+  const pairingCodeRequiredForConnect = needsPairingCodeForBridgeConnect({
+    panelStatus,
+    pairingStale,
+    pairingAuthFailure
+  });
 
   const primaryLabel =
     viewStep === 2
@@ -420,7 +436,7 @@ export function LocalDeviceBridgeWizard({
           <button
             className="button subtle"
             type="button"
-            disabled={checking || detecting || connecting || (viewStep === 2 && pairingCodeLoading)}
+            disabled={checking || detecting || connecting || (viewStep === 2 && pairingCodeRequiredForConnect && pairingCodeLoading)}
             onClick={() => {
               handleConnect();
             }}

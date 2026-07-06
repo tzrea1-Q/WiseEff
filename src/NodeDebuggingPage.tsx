@@ -19,6 +19,7 @@ import {
   type DeviceBridgeReleaseItem,
   type LocalBridgeHealthState
 } from "./infrastructure/http/deviceBridgeClient";
+import { resolveBridgeServerUrl } from "./infrastructure/http/bridgeServerUrl";
 import {
   probeLocalBridgeHealth,
   probeLocalBridgeHealthDetailed,
@@ -733,7 +734,20 @@ function LocalDeviceBridgePanel({
   }, [panelStatus, refreshBridgeState]);
 
   useEffect(() => {
-    if (!shouldFetchBridgePairingCode({ panelStatus, pairingStale, pairingAuthFailure: pairingAuthFailure })) {
+    if (
+      !shouldFetchBridgePairingCode({
+        panelStatus,
+        pairingStale,
+        pairingAuthFailure: pairingAuthFailure,
+        health,
+        targetServerUrl: resolveBridgeServerUrl()
+      })
+    ) {
+      // No pairing code needed for the current status. Clear any lingering
+      // loading flag so a request that was cancelled mid-flight (e.g. the
+      // status changed to one that doesn't need a code) cannot leave the
+      // connect button permanently disabled.
+      setPairingCodeLoading(false);
       return;
     }
 
@@ -759,7 +773,7 @@ function LocalDeviceBridgePanel({
     return () => {
       cancelled = true;
     };
-  }, [panelStatus, pairingStale, pairingAuthFailure]);
+  }, [panelStatus, pairingStale, pairingAuthFailure, health]);
 
   const handleRenameBridge = async (bridge: DeviceBridgeRecord) => {
     const draft = (renameDraftById[bridge.id] ?? bridge.machineLabel).trim();

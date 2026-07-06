@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveBridgePanelStatus, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError, canConnectBridgeWithoutPairingCode } from "./bridgePanelStatus";
+import { deriveBridgePanelStatus, formatDetectFailureMessage, isToolMissingDetectError, shouldClearStaleBridgeConnectError, canConnectBridgeWithoutPairingCode, shouldFetchBridgePairingCode, resolvePairingCodeForBridgeConnect, bridgeServerUrlMismatch } from "./bridgePanelStatus";
 import type { LocalBridgeHealthState } from "../infrastructure/http/deviceBridgeClient";
 
 const connectedHealth: LocalBridgeHealthState = {
@@ -178,6 +178,82 @@ describe("deriveBridgePanelStatus", () => {
         target: "[Empty]"
       })
     ).toBe("online_no_device");
+  });
+});
+
+describe("bridge pairing code policy", () => {
+  it("fetches pairing codes for not_running so server switches can re-pair", () => {
+    expect(
+      shouldFetchBridgePairingCode({
+        panelStatus: "not_running"
+      })
+    ).toBe(true);
+  });
+
+  it("fetches pairing codes when local health reports a different server", () => {
+    expect(
+      shouldFetchBridgePairingCode({
+        panelStatus: "not_connected",
+        health: {
+          ok: true,
+          paired: true,
+          connected: false,
+          serverUrl: "http://101.43.45.27",
+          updatedAt: "2026-07-03T00:00:00.000Z"
+        },
+        targetServerUrl: "http://127.0.0.1:8787"
+      })
+    ).toBe(true);
+  });
+
+  it("passes pairing code for not_running even when pairing is not strictly required", () => {
+    expect(
+      resolvePairingCodeForBridgeConnect({
+        panelStatus: "not_running",
+        pairingCode: { code: "123456", expiresAt: "2026-07-03T00:05:00.000Z" },
+        health: null,
+        targetServerUrl: "http://127.0.0.1:8787"
+      })
+    ).toBe("123456");
+  });
+
+  it("passes pairing code when health serverUrl mismatches the target server", () => {
+    expect(
+      resolvePairingCodeForBridgeConnect({
+        panelStatus: "not_connected",
+        pairingCode: { code: "654321", expiresAt: "2026-07-03T00:05:00.000Z" },
+        health: {
+          ok: true,
+          paired: true,
+          connected: false,
+          serverUrl: "http://101.43.45.27",
+          updatedAt: "2026-07-03T00:00:00.000Z"
+        },
+        targetServerUrl: "http://127.0.0.1:8787"
+      })
+    ).toBe("654321");
+  });
+
+  it("omits pairing code when health and target server already match", () => {
+    expect(
+      resolvePairingCodeForBridgeConnect({
+        panelStatus: "not_connected",
+        pairingCode: { code: "654321", expiresAt: "2026-07-03T00:05:00.000Z" },
+        health: {
+          ok: true,
+          paired: true,
+          connected: false,
+          serverUrl: "http://127.0.0.1:8787",
+          updatedAt: "2026-07-03T00:00:00.000Z"
+        },
+        targetServerUrl: "http://127.0.0.1:8787"
+      })
+    ).toBeUndefined();
+  });
+
+  it("detects server mismatch across trailing slash differences", () => {
+    expect(bridgeServerUrlMismatch("http://127.0.0.1:8787/", "http://127.0.0.1:8787")).toBe(false);
+    expect(bridgeServerUrlMismatch("http://101.43.45.27", "http://127.0.0.1:8787")).toBe(true);
   });
 });
 
