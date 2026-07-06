@@ -69,6 +69,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-ADMIN-002",
+    workflow: "C",
+    title: "Admin can run the five-step parameter import wizard with target project selection, multi-format source, per-row review, batch preview, and apply.",
+    required: false
+  },
+  {
     id: "PARAM-DRAFT-EDIT-001",
     workflow: "B",
     title: "Parameter draft edit and remove operations work before final submission.",

@@ -149,6 +149,7 @@ Implementation note: the mock prototype remains available for demos and componen
 
 面向应用管理员，当前覆盖以下功能：
 
+- 五步批量参数导入向导：第 1 步必须选择目标项目（可新建项目）；第 2 步支持上传或粘贴 `.xlsx`、`.csv`、JSON 及 DTS 片段并展示解析报告；第 3 步逐行审阅（差异对比、编辑、跳过）；第 4–5 步为批次预览与确认应用。
 - 批量参数导入入口。
 - 参数数据库管理视图。
 - 当前库上参数列表管理。

@@ -12,6 +12,8 @@ The frontend can run in mock mode for demos and component tests or API mode for 
 
 The prototype supports parameter browsing, filtering, detail/history inspection, draft editing, submission, review, admin governance, import/export affordances, and audit-oriented UI patterns. API-mode work should preserve these user expectations while moving durable writes to backend routes.
 
+- **Parameter admin import wizard:** Five-step flow on `/parameter-admin` — Step 1 requires a target project (including create-project); Step 2 accepts `.xlsx`, `.csv`, JSON, or DTS fragments with a parse report; Step 3 provides per-row review (diff, edit, skip); Steps 4–5 batch preview and confirm apply.
+
 ## Log Prototype
 
 The log workflow supports upload, staged progress, report/evidence display, history/admin actions, feedback, rerun/archive states, and failure display. Productized behavior uses object storage, worker/job state, and API polling or event seams.

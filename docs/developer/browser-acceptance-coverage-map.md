@@ -16,6 +16,7 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PARAM-ASSIGNEE-003` | B | Yes | Forced invalid workflow assignees are rejected at the API boundary and surfaced by the UI flow. | `e2e/acceptance/parameters-negative.acceptance.spec.ts` |
 | `PARAM-HAPPY-001` | B | Yes | Parameter search, draft, submit, review, merge, persistence, and audit happy path works. | `e2e/acceptance/parameters.acceptance.spec.ts` |
 | `PARAM-ADMIN-001` | C | Yes | Parameter admin import preview and audit drawer remain available to Admin. | `e2e/acceptance/parameters.acceptance.spec.ts` |
+| `PARAM-ADMIN-002` | C | No | Admin can run the five-step parameter import wizard (target project, multi-format source, per-row review, batch preview, apply). | `src/components/ParameterImportWizard` (Playwright e2e follow-up) |
 | `LOG-HAPPY-001` | D | Yes | Log upload, analysis progress, evidence, feedback, archive, and unsupported-file path work. | `e2e/acceptance/log-analysis.acceptance.spec.ts` |
 | `DEBUG-SIM-001` | E | Yes | Simulator read, write, mismatch, rollback, and audit path work, including complex JSON value metadata. | `e2e/acceptance/debugging-simulator.acceptance.spec.ts` |
 | `DEBUG-ADMIN-001` | E | Yes | Debugging admin can create, edit, archive, restore, and protocol-bind catalog parameters in API mode, including complex value metadata. | `e2e/acceptance/debugging-admin.acceptance.spec.ts` |

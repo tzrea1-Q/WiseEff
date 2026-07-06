@@ -138,6 +138,19 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "audit"]
   },
   {
+    id: "PARAM-ADMIN-002",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-admin",
+    roles: ["Admin"],
+    action: "Run the five-step parameter import wizard through target project selection, multi-format upload, per-row review, batch preview, and apply.",
+    coverage: "future",
+    acceptanceIds: ["PARAM-ADMIN-002"],
+    specFiles: ["src/components/ParameterImportWizard"],
+    assertions: ["ui", "audit"],
+    deferralReason: "Playwright acceptance for the import wizard is tracked as follow-up; covered by unit/component tests until e2e lands."
+  },
+  {
     id: "PARAM-DRAFT-EDIT-001",
     priority: "P1",
     area: "parameters",

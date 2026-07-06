@@ -170,8 +170,8 @@ describe("ParameterAdminPage", () => {
     expect(within(toolbar).getByRole("button", { name: /批量参数导入/ })).toBeInTheDocument();
     expect(within(toolbar).queryByRole("button", { name: /导出/ })).not.toBeInTheDocument();
     expect(within(toolbar).queryByRole("button", { name: /保存到 JSON/ })).not.toBeInTheDocument();
-    expect(within(toolbar).getByRole("button", { name: /权限/ })).toBeInTheDocument();
-    expect(within(toolbar).getByRole("button", { name: /审计/ })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: /权限/ })).not.toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: /审计/ })).not.toBeInTheDocument();
   });
 
   it("renders five KPI strip items", () => {
@@ -184,11 +184,11 @@ describe("ParameterAdminPage", () => {
     expect(within(strip).getByText("最近导入")).toBeInTheDocument();
   });
 
-  it("navigates to audit center when audit button is clicked", () => {
+  it("navigates to audit center when last-import KPI is clicked", () => {
     const onNavigate = vi.fn();
     renderPage("", initialState, vi.fn(), undefined, onNavigate);
 
-    fireEvent.click(screen.getByRole("button", { name: /审计/ }));
+    fireEvent.click(screen.getByRole("button", { name: /最近导入/ }));
 
     expect(onNavigate).toHaveBeenCalledWith(
       `/audit?app=parameter&projectId=${encodeURIComponent(initialState.activeProjectId)}`

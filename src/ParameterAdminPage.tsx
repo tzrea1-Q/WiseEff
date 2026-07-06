@@ -4,7 +4,6 @@ import { listParameterModuleNames } from "./powerManagementConfig";
 import { buildParameterLibraryFromRecords, buildParameterModulesFromRecords } from "./parameterAdminLibrary";
 import type { AppAction, ParameterEditorDraft, ParameterValueDraft } from "./App";
 import type { PageProps } from "./app/routes";
-import type { ParameterImportSourceItem } from "@/application/ports/ParameterRepository";
 import { AgentInsightBar, type Insight } from "./components/AgentInsightBar";
 import { CreateParameterDialog } from "./components/CreateParameterDialog";
 import { DeleteParameterDialog } from "./components/DeleteParameterDialog";
@@ -303,79 +302,6 @@ export function ParameterAdminPage({
       ) : null}
     </div>
   );
-}
-
-/**
- * Kept for Task 12 cleanup (`docs/exec-plans/active/2026-07-06-parameter-batch-import-wizard.md`):
- * the batch import wizard (`src/components/ParameterImportWizard`) replaces the inline dialog
- * that used to call this, but the parser itself is still exercised until the wizard's own
- * spreadsheet/JSON parsers (`src/application/parameters/import/*`) fully take over in later tasks.
- */
-export function parseImportItems(source: string): ParameterImportSourceItem[] {
-  const trimmed = source.trim();
-  if (!trimmed) {
-    return [];
-  }
-  try {
-    const parsed = JSON.parse(trimmed);
-    const rows: unknown[] = Array.isArray(parsed) ? parsed : Array.isArray(parsed.items) ? parsed.items : [];
-    return rows.map(normalizeImportItem).filter((item): item is ParameterImportSourceItem => Boolean(item));
-  } catch {
-    return parseCsvImportItems(trimmed);
-  }
-}
-
-function parseCsvImportItems(source: string): ParameterImportSourceItem[] {
-  const [headerLine, ...lines] = source.split(/\r?\n/).filter((line) => line.trim());
-  if (!headerLine) {
-    return [];
-  }
-  const headers = splitCsvLine(headerLine).map((header) => header.trim());
-  return lines
-    .map((line) => {
-      const values = splitCsvLine(line);
-      const row = Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""]));
-      return normalizeImportItem(row);
-    })
-    .filter((item): item is ParameterImportSourceItem => Boolean(item));
-}
-
-function splitCsvLine(line: string) {
-  return line.split(",").map((value) => value.trim().replace(/^"|"$/g, ""));
-}
-
-function normalizeImportItem(row: unknown): ParameterImportSourceItem | null {
-  if (!row || typeof row !== "object") {
-    return null;
-  }
-  const record = row as Record<string, unknown>;
-  const name = String(record.name ?? "").trim();
-  const module = String(record.module ?? "").trim();
-  const risk = normalizeRisk(record.risk);
-  const unit = String(record.unit ?? "").trim();
-  const range = String(record.range ?? "").trim();
-  if (!name || !module || !risk || !unit || !range) {
-    return null;
-  }
-  return {
-    name,
-    module,
-    risk,
-    unit,
-    range,
-    currentValue: String(record.currentValue ?? ""),
-    recommendedValue: String(record.recommendedValue ?? ""),
-    description: String(record.description ?? ""),
-    explanation: String(record.explanation ?? ""),
-    configFormat: String(record.configFormat ?? "")
-  };
-}
-
-function normalizeRisk(value: unknown): ParameterImportSourceItem["risk"] | null {
-  if (value === "High" || value === "Medium" || value === "Low") {
-    return value;
-  }
-  return null;
 }
 
 function parseParamAdminSearch(raw: string): ParamAdminSearch {
