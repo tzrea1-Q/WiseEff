@@ -1,4 +1,4 @@
-import type { ParameterSubmissionRound } from "./mockData";
+import type { ParameterSubmissionRound } from "@/domain/parameters/types";
 
 export const SUBMISSION_TIMELINE_STEPS = [
   "选择参数",

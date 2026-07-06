@@ -14,5 +14,6 @@
     "strict": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "vitest.server.config.ts", "src/vite-env.d.ts", "server/**/*.ts", "scripts/**/*.ts"]
+  "include": ["vite.config.ts", "vitest.server.config.ts", "src/vite-env.d.ts", "server/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["**/*.test.ts"]
 }

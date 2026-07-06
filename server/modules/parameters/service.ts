@@ -1331,11 +1331,11 @@ export async function reviewChange(db: Database, auth: AuthContext, input: Revie
       participants
     }, context);
 
-    const project = await getProjectById(tx, {
-      organizationId: auth.organization.id,
-      projectId: request.projectId
-    });
-    if (request.submitterUserId) {
+    if (request.submitterUserId && request.projectId) {
+      const project = await getProjectById(tx, {
+        organizationId: auth.organization.id,
+        projectId: request.projectId
+      });
       await notifyParameterMergeCompleted(tx, {
         organizationId: auth.organization.id,
         projectId: request.projectId,

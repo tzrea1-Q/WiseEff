@@ -37,6 +37,7 @@ async function deliverOutboxRecord(db: Queryable, record: NotificationOutboxReco
   await insertNotification(db, {
     id: record.id,
     organizationId: record.payload.organizationId,
+    recipientUserIds: [record.payload.recipientUserId],
     recipientUserId: record.payload.recipientUserId,
     category: record.payload.category,
     title: record.payload.title,
