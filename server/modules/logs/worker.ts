@@ -13,6 +13,7 @@ import {
   getLogWorkerRunSnapshot as getActiveLogWorkerRunSnapshot,
   updateRunStageProgress
 } from "./repository";
+import { notifyLogAnalysisCompleted, notifyLogAnalysisFailed } from "../notifications/producers";
 import type { LogStage } from "./status";
 
 export type ProcessLogWorkerOptions = {
@@ -304,6 +305,18 @@ async function processClaimedLogAnalysisJob(
     });
     if (!completed) return { status: "idle" };
 
+    if (snapshot.submittedByUserId) {
+      await notifyLogAnalysisCompleted(db, {
+        organizationId: snapshot.organizationId,
+        projectId: snapshot.projectId,
+        logId: snapshot.logId,
+        runId: snapshot.runId,
+        fileName: snapshot.fileName,
+        recipientUserId: snapshot.submittedByUserId,
+        conclusion: analysis.conclusion
+      });
+    }
+
     recordMetric({ status: "complete", stage: "report" });
     return { status: "processed" };
   } catch (error) {
@@ -354,6 +367,17 @@ async function processClaimedLogAnalysisJob(
       currentStage,
       error: decision.reason
     });
+    if (snapshot.submittedByUserId) {
+      await notifyLogAnalysisFailed(db, {
+        organizationId: snapshot.organizationId,
+        projectId: snapshot.projectId,
+        logId: snapshot.logId,
+        runId: snapshot.runId,
+        fileName: snapshot.fileName,
+        recipientUserId: snapshot.submittedByUserId,
+        failureReason: decision.reason
+      });
+    }
     recordMetric({ status: "dead_lettered", stage: currentStage, failureReason: currentFailureReason, endedAt });
     return { status: "dead-lettered", reason: decision.reason };
   }

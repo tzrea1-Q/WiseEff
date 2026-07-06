@@ -233,6 +233,23 @@ export async function countActiveAdmins(db: Queryable, organizationId: string) {
   return Number(result.rows[0]?.count ?? 0);
 }
 
+export async function listActiveAdminUserIds(db: Queryable, organizationId: string) {
+  const result = await db.query<{ id: string }>(
+    `
+    select distinct users.id
+    from users
+    join user_role_bindings on user_role_bindings.user_id = users.id
+    where users.organization_id = $1
+      and users.is_active = true
+      and user_role_bindings.role_id = 'admin'
+    order by users.id asc
+    `,
+    [organizationId]
+  );
+
+  return result.rows.map((row) => row.id);
+}
+
 const registrationRoleRequestSelect = `
   select
     local_registration_role_requests.id,

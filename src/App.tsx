@@ -25,6 +25,10 @@ import {
 } from "lucide-react";
 import { createPortal } from "react-dom";
 import { TopBarNotifications } from "./components/notifications/TopBarNotifications";
+import {
+  createStateBackedNotificationsClient,
+  prependMockNotificationMessage
+} from "@/infrastructure/mock/mockNotificationsGateway";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   ChangeEvent,
@@ -317,6 +321,7 @@ export type AppAction =
   | { type: "CLEAR_PUSHED_DEBUG_IDS"; parameterIds: string[] }
   | { type: "IMPORT_PARAMETERS" }
   | { type: "ADD_NOTIFICATION"; message: string }
+  | { type: "SET_NOTIFICATION_INBOX"; items: import("@/domain/notifications/types").NotificationItem[] }
   | { type: "UPDATE_PROJECT_PARAMETER_METADATA"; projectId: string; parameterId: string; patch: Partial<ParameterEditorDraft> }
   | { type: "UPDATE_PROJECT_PARAMETER_VALUE"; projectId: string; parameterId: string; patch: Partial<ParameterValueDraft> }
   | { type: "UPDATE_DEBUG_PARAMETER"; parameterId: string; patch: Partial<DebugParameterEditorDraft> }
@@ -1828,7 +1833,13 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
         notifications: ["批量参数导入完成：新增 24 项，冲突 2 项已进入审计队列", ...state.notifications]
       };
     case "ADD_NOTIFICATION":
-      return { ...state, notifications: [action.message, ...state.notifications] };
+      return {
+        ...state,
+        notifications: [action.message, ...state.notifications],
+        notificationInbox: prependMockNotificationMessage(state.notificationInbox, action.message)
+      };
+    case "SET_NOTIFICATION_INBOX":
+      return { ...state, notificationInbox: action.items };
     case "LOG_ADMIN_REANALYZE_LOG": {
       if (!canPerform(activeRoleId, "admin.access")) return state;
       const target = state.logs.find((log) => log.id === action.logId);
@@ -2243,7 +2254,16 @@ function AppShell({
     },
     [debuggingActions, logActions, parameterActions]
   );
-  const parameterRuntimeConnectedRef = useRef(false);
+  const mockNotificationsClient = useMemo(
+    () =>
+      runtimeMode === "mock"
+        ? createStateBackedNotificationsClient({
+            getInbox: () => stateRef.current.notificationInbox,
+            setInbox: (items) => dispatch({ type: "SET_NOTIFICATION_INBOX", items })
+          })
+        : undefined,
+    [runtimeMode, dispatch]
+  );
   const logRuntimeConnectedRef = useRef(false);
   const debuggingRuntimeConnectedRef = useRef(false);
 
@@ -2446,6 +2466,7 @@ function AppShell({
             onNewProject={() => setProjectInitOpen(true)}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
+            mockNotificationsClient={mockNotificationsClient}
           />
         ) : null}
         <TopBarActionsContext.Provider value={topBarActionsContextValue}>
@@ -3150,7 +3171,8 @@ function TopBar({
   onParameterHomeTimeWindowChange,
   onNewProject,
   onLogout,
-  onUpdateCurrentUserProfile
+  onUpdateCurrentUserProfile,
+  mockNotificationsClient
 }: {
   state: PrototypeState;
   dispatch: React.Dispatch<AppAction>;
@@ -3163,6 +3185,7 @@ function TopBar({
   onNewProject: () => void;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
+  mockNotificationsClient?: import("@/infrastructure/http/notificationsClient").NotificationsClient;
 }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -3231,7 +3254,7 @@ function TopBar({
             options={projectOptions}
           />
         ) : null}
-        <TopBarNotifications mockNotifications={state.notifications} onNavigate={onNavigate} />
+        <TopBarNotifications mockNotificationsClient={mockNotificationsClient} onNavigate={onNavigate} />
         <div className="topbar-user-switcher">
           <button
             aria-expanded={userMenuOpen}
@@ -4916,7 +4939,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
           {feedbackToast}
         </div>
       ) : null}
-      {state.notifications[0] ? (
+      {wiseEffRuntimeMode !== "api" && state.notifications[0] ? (
         <div className="logs-feedback-toast" role="status" aria-live="polite">
           {state.notifications[0]}
         </div>
