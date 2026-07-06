@@ -11,6 +11,12 @@ import { createBridgeConnectionPool } from "./modules/deviceBridge/connectionPoo
 import { createBridgeRpcClient } from "./modules/deviceBridge/rpc";
 import { createLogAnalysisQueueRuntime, createLogAnalysisQueueTransport } from "./modules/logs/logAnalysisQueueRuntime";
 import { startLogWorkerLoop } from "./modules/logs/worker";
+import { configureNotificationDelivery } from "./modules/notifications/delivery";
+import {
+  createNotificationQueueRuntime,
+  createNotificationQueueTransport
+} from "./modules/notifications/notificationQueueRuntime";
+import { startNotificationOutboxWorkerLoop } from "./modules/notifications/outboxWorker";
 import { createMetricsRegistry } from "./observability/metrics";
 import { defaultTracingBoundary } from "./observability/tracing";
 import { createObjectStoreFromEnv } from "./objectStoreFactory";
@@ -57,6 +63,50 @@ const stopLogWorker =
   env.LOG_WORKER_ENABLED && env.LOG_ANALYSIS_QUEUE_MODE === "polling" && db && objectStore
     ? startLogWorkerLoop({ db, objectStore, metrics, tracing: defaultTracingBoundary })
     : undefined;
+const notificationQueueEnv = {
+  REDIS_URL: env.REDIS_URL ?? "",
+  NOTIFICATION_QUEUE_PREFIX: env.NOTIFICATION_QUEUE_PREFIX,
+  NOTIFICATION_QUEUE_ATTEMPTS: env.NOTIFICATION_QUEUE_ATTEMPTS,
+  NOTIFICATION_QUEUE_BACKOFF_MS: env.NOTIFICATION_QUEUE_BACKOFF_MS,
+  NOTIFICATION_QUEUE_CONCURRENCY: env.NOTIFICATION_QUEUE_CONCURRENCY
+};
+const notificationDeliveryMode =
+  env.NOTIFICATION_DELIVERY_MODE === "async" && env.NOTIFICATION_WORKER_ENABLED ? "async" : "sync";
+const notificationQueueRuntime =
+  notificationDeliveryMode === "async" &&
+  env.NOTIFICATION_QUEUE_MODE === "durable" &&
+  db
+    ? env.NOTIFICATION_WORKER_ENABLED
+      ? createNotificationQueueRuntime({
+          env: notificationQueueEnv,
+          db,
+          metrics,
+          tracing: defaultTracingBoundary
+        })
+      : createNotificationQueueTransport({ env: notificationQueueEnv })
+    : undefined;
+const stopNotificationWorker =
+  notificationDeliveryMode === "async" &&
+  env.NOTIFICATION_WORKER_ENABLED &&
+  env.NOTIFICATION_QUEUE_MODE === "polling" &&
+  db
+    ? startNotificationOutboxWorkerLoop({
+        db,
+        metrics,
+        tracing: defaultTracingBoundary,
+        maxAttempts: env.NOTIFICATION_QUEUE_ATTEMPTS,
+        retryBaseDelayMs: env.NOTIFICATION_QUEUE_BACKOFF_MS
+      })
+    : undefined;
+
+if (db) {
+  configureNotificationDelivery({
+    mode: notificationDeliveryMode,
+    queue: notificationQueueRuntime?.queue,
+    metrics
+  });
+}
+
 const server = createWiseEffServerFromEnv({
   db,
   objectStore,
@@ -75,18 +125,21 @@ const server = createWiseEffServerFromEnv({
 
 function shutdown() {
   stopLogWorker?.();
-  void logAnalysisQueueRuntime
-    ?.close()
-    .catch((error) => {
+  stopNotificationWorker?.();
+  void Promise.all([
+    logAnalysisQueueRuntime?.close().catch((error) => {
       console.error("Failed to close log-analysis durable queue runtime.", error);
+    }),
+    notificationQueueRuntime?.close().catch((error) => {
+      console.error("Failed to close notification durable queue runtime.", error);
     })
-    .finally(() => {
-      server.close(() => {
-        process.exit(0);
-      });
+  ]).finally(() => {
+    server.close(() => {
+      process.exit(0);
     });
+  });
 
-  if (!logAnalysisQueueRuntime) {
+  if (!logAnalysisQueueRuntime && !notificationQueueRuntime) {
     server.close(() => {
       process.exit(0);
     });

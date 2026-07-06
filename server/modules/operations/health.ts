@@ -2,6 +2,8 @@ import type { Database } from "../../shared/database/client";
 import { buildDurableQueueHealth, type CombinedDurableQueueHealth } from "../jobs/queueHealth";
 import type { DurableQueueHealth } from "../jobs/queuePort";
 import { checkWorkerQueueHealth, type WorkerQueueHealth } from "../jobs/workerHealth";
+import type { NotificationOutboxHealth } from "../notifications/outboxHealth";
+import { checkNotificationOutboxHealth } from "../notifications/outboxHealth";
 import type { ObjectStoreHealthCheck } from "../logs/objectStore";
 import { isXiaozeDeterministicMode } from "../agent/xiaoze/runtimeMode";
 
@@ -28,6 +30,7 @@ export type OperationsHealthBody = {
     objectStore: DependencyHealth;
     workerQueue?: WorkerQueueHealth;
     durableQueue?: CombinedDurableQueueHealth;
+    notificationOutbox?: NotificationOutboxHealth;
     xiaozeLlm?: DependencyHealth;
   };
 };
@@ -170,6 +173,7 @@ export async function buildReadyHealth(options: {
   db?: Pick<Database, "query">;
   objectStore?: ObjectStoreHealthCheck;
   includeWorkerQueue?: boolean;
+  includeNotificationOutbox?: boolean;
   durableQueue?: DurableQueueHealthCheck;
   env?: XiaozeLlmEnv;
 }) {
@@ -177,12 +181,19 @@ export async function buildReadyHealth(options: {
   const objectStore = await checkObjectStore(options.objectStore);
   const xiaozeLlm = checkXiaozeLlmConfig(options.env);
   const workerQueue = options.includeWorkerQueue ? await checkWorkerQueueHealth(options.db) : undefined;
+  const notificationOutbox = options.includeNotificationOutbox ? await checkNotificationOutboxHealth(options.db) : undefined;
   const durableQueueTransport = await checkDurableQueue(options.durableQueue);
   const durableQueue =
     durableQueueTransport && workerQueue
       ? buildDurableQueueHealth({ transport: durableQueueTransport, database: workerQueue })
       : undefined;
-  const ok = database.ok && objectStore.ok && (workerQueue?.ok ?? true) && (durableQueue?.ok ?? true) && (xiaozeLlm?.ok ?? true);
+  const ok =
+    database.ok &&
+    objectStore.ok &&
+    (workerQueue?.ok ?? true) &&
+    (notificationOutbox?.ok ?? true) &&
+    (durableQueue?.ok ?? true) &&
+    (xiaozeLlm?.ok ?? true);
 
   return {
     status: ok ? 200 : 503,
@@ -194,6 +205,7 @@ export async function buildReadyHealth(options: {
         database,
         objectStore,
         ...(workerQueue ? { workerQueue } : {}),
+        ...(notificationOutbox ? { notificationOutbox } : {}),
         ...(durableQueue ? { durableQueue } : {}),
         ...(xiaozeLlm ? { xiaozeLlm } : {})
       }

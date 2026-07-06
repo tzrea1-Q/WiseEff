@@ -164,6 +164,8 @@ export function createWiseEffServer(
       db: options.db,
       objectStore: options.objectStoreHealth,
       includeWorkerQueue: true,
+      includeNotificationOutbox: options.env?.NOTIFICATION_WORKER_ENABLED === true,
+      durableQueue: options.durableQueue,
       env: options.env
     });
     const readiness = readyHealth.body.status === "ready" ? "ready" : "not_ready";
@@ -180,6 +182,15 @@ export function createWiseEffServer(
         processing: readyHealth.body.dependencies.workerQueue.processing,
         deadLettered: readyHealth.body.dependencies.workerQueue.deadLettered,
         oldestQueuedAgeMs: readyHealth.body.dependencies.workerQueue.oldestQueuedAgeMs
+      });
+    }
+    if (readyHealth.body.dependencies.notificationOutbox) {
+      metrics.setQueueStats({
+        queue: "notification-outbox",
+        queued: readyHealth.body.dependencies.notificationOutbox.queued,
+        processing: readyHealth.body.dependencies.notificationOutbox.processing,
+        deadLettered: readyHealth.body.dependencies.notificationOutbox.deadLettered,
+        oldestQueuedAgeMs: readyHealth.body.dependencies.notificationOutbox.oldestQueuedAgeMs
       });
     }
 
