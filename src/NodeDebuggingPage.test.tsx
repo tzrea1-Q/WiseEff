@@ -1,8 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentProps, ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { debuggingRuntimeFailureNotification } from "./application/debugging/debuggingRuntime";
 import type { DebuggingRuntimeActions } from "./application/debugging/debuggingRuntime";
+import { TopBarActionsContext } from "./components/layout";
 import { NodeDebuggingPage } from "./NodeDebuggingPage";
 import { initialState } from "./mockData";
 import { resolveLocalBridgeHealthUrl } from "./infrastructure/http/localBridgeHttpUrl";
@@ -131,6 +134,28 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
+type NodeDebuggingPageProps = ComponentProps<typeof NodeDebuggingPage>;
+
+function NodeDebuggingPageHarness({ pageProps }: { pageProps: NodeDebuggingPageProps }) {
+  const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
+  const context = useMemo(() => ({ setActions: setTopBarActions }), []);
+  return (
+    <TopBarActionsContext.Provider value={context}>
+      <div className="topbar-page-actions">{topBarActions}</div>
+      <NodeDebuggingPage {...pageProps} />
+    </TopBarActionsContext.Provider>
+  );
+}
+
+function renderNodeDebuggingPage(pageProps: NodeDebuggingPageProps) {
+  const view = render(<NodeDebuggingPageHarness pageProps={pageProps} />);
+  return {
+    ...view,
+    rerender: (nextProps: NodeDebuggingPageProps) =>
+      view.rerender(<NodeDebuggingPageHarness pageProps={nextProps} />)
+  };
+}
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/node-debugging");
 });
@@ -145,17 +170,17 @@ afterEach(() => {
 describe("/node-debugging", () => {
   it("uses API gateway actions to auto-detect and shows the returned target label", async () => {
     const debuggingActions = createDebuggingActions();
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId, { protocol: "hdc" }));
-    expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
+    expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
   });
 
   it("passes the selected protocol to API target detection", async () => {
     const debuggingActions = createDebuggingActions();
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    await screen.findByText(/在线 · API Gateway Target/);
+    await screen.findByText(/已连接：API Gateway Target/);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
@@ -166,9 +191,9 @@ describe("/node-debugging", () => {
 
   it("refreshes runtime parameters for the selected protocol when switching protocols", async () => {
     const debuggingActions = createDebuggingActions();
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    await screen.findByText(/在线 · API Gateway Target/);
+    await screen.findByText(/已连接：API Gateway Target/);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.refresh).toHaveBeenCalledWith({
@@ -179,9 +204,9 @@ describe("/node-debugging", () => {
 
   it("clears the active session and auto-detects when switching protocol", async () => {
     const debuggingActions = createDebuggingActions();
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    expect(await screen.findByText(/在线 · API Gateway Target/)).toBeInTheDocument();
+    expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
@@ -190,7 +215,7 @@ describe("/node-debugging", () => {
     ));
     expect(debuggingActions.detectAndStartSession).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(/切换协议后需要重新检测设备/)).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/在线 · API Gateway Target/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/已连接：API Gateway Target/)).toBeInTheDocument());
   });
 
   it("disables rows that are missing a binding for the selected protocol", () => {
@@ -207,7 +232,7 @@ describe("/node-debugging", () => {
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
 
-    render(<NodeDebuggingPage state={missingBindingState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: missingBindingState, debuggingActions });
 
     expect(screen.getByText("未配置该协议节点")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeDisabled();
@@ -224,7 +249,7 @@ describe("/node-debugging", () => {
         return new Promise<never>(() => undefined);
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalled());
     expect(await within(findRowByText("charger.input_current_limit_ma")).findByText("3651")).toBeInTheDocument();
@@ -255,7 +280,7 @@ describe("/node-debugging", () => {
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
 
-    render(<NodeDebuggingPage state={{ ...userState, debugParameters: [hdcOnlyParameter] }} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: { ...userState, debugParameters: [hdcOnlyParameter] }, debuggingActions });
 
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
@@ -276,7 +301,7 @@ describe("/node-debugging", () => {
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
 
-    render(<NodeDebuggingPage state={{ ...userState, debugParameters: [hdcSelectedParameter] }} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: { ...userState, debugParameters: [hdcSelectedParameter] }, debuggingActions });
 
     expect(screen.getByRole("checkbox", { name: /选择/ })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
@@ -297,7 +322,7 @@ describe("/node-debugging", () => {
       readNode: vi.fn()
     });
 
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(
       userState.activeProjectId,
       { protocol: "hdc" }
@@ -314,7 +339,7 @@ describe("/node-debugging", () => {
       await hdcDetect.promise;
     });
 
-    expect(screen.queryByText(/在线 · API Gateway Target/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/已连接：API Gateway Target/)).not.toBeInTheDocument();
     expect(screen.queryByText(/切换协议后需要重新检测设备/)).not.toBeInTheDocument();
     expect(debuggingActions.readNode).not.toHaveBeenCalled();
   });
@@ -330,18 +355,18 @@ describe("/node-debugging", () => {
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
 
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     expect(screen.getByRole("button", { name: "HDC" })).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     expect(screen.getByRole("button", { name: "ADB" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText(/检测中 · ADB 设备/)).toBeInTheDocument();
+    expect(screen.getByText("检测中...")).toBeInTheDocument();
   });
 
   it("uses API gateway actions to read initial readable node rows", async () => {
     const debuggingActions = createDebuggingActions();
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: apiSession.id,
@@ -358,7 +383,7 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       readNode: vi.fn().mockRejectedValue(new Error("Node read failed."))
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/API Gateway Target/);
     const row = findRowByText("charger.input_current_limit_ma");
@@ -375,7 +400,7 @@ describe("/node-debugging", () => {
         stderr: "No such file"
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/API Gateway Target/);
     const row = findRowByText("charger.input_current_limit_ma");
@@ -394,7 +419,7 @@ describe("/node-debugging", () => {
         })
       )
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await screen.findByText(/API Gateway Target/);
     const row = findRowByText("charger.input_current_limit_ma");
@@ -415,16 +440,14 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => new Promise<never>(() => undefined))
     });
-    const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    const { rerender } = renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     expect(findRowByText("charger.input_current_limit_ma")).toBeInTheDocument();
 
-    rerender(
-      <NodeDebuggingPage
-        state={{ ...userState, debugParameters: [apiParameter] }}
-        debuggingActions={debuggingActions}
-      />
-    );
+    rerender({
+      state: { ...userState, debugParameters: [apiParameter] },
+      debuggingActions
+    });
 
     expect(findRowByText("fast_charge_current")).toBeInTheDocument();
     expect(screen.queryByText("charger.input_current_limit_ma")).not.toBeInTheDocument();
@@ -444,14 +467,12 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn(() => detect.promise)
     });
-    const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    const { rerender } = renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    rerender(
-      <NodeDebuggingPage
-        state={{ ...userState, debugParameters: [apiParameter] }}
-        debuggingActions={debuggingActions}
-      />
-    );
+    rerender({
+      state: { ...userState, debugParameters: [apiParameter] },
+      debuggingActions
+    });
     detect.resolve({ session: apiSession, target: apiTarget });
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
@@ -487,17 +508,15 @@ describe("/node-debugging", () => {
         throw new Error("Debug parameter was not found.");
       })
     });
-    const { rerender } = render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    const { rerender } = renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
       nodeId: "dbg-charge-input-current"
     })));
-    rerender(
-      <NodeDebuggingPage
-        state={{ ...userState, debugParameters: [apiParameter] }}
-        debuggingActions={debuggingActions}
-      />
-    );
+    rerender({
+      state: { ...userState, debugParameters: [apiParameter] },
+      debuggingActions
+    });
 
     expect(await screen.findByText(/API Gateway Target/)).toBeInTheDocument();
     await waitFor(() => expect(debuggingActions.readNode).toHaveBeenCalledWith(expect.objectContaining({
@@ -509,8 +528,8 @@ describe("/node-debugging", () => {
 
   it("writes edited writable rows through API gateway actions with session and readback context", async () => {
     const debuggingActions = createDebuggingActions();
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
-    await screen.findByText(/在线 · API Gateway Target/);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
@@ -531,8 +550,8 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       writeNode: vi.fn().mockRejectedValue(new Error("Debug parameter is not configured for the selected protocol."))
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
-    await screen.findByText(/在线 · API Gateway Target/);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
@@ -554,8 +573,8 @@ describe("/node-debugging", () => {
         writeResult: { ok: false, stderr: "Debug parameter is not configured for the selected protocol." }
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
-    await screen.findByText(/在线 · API Gateway Target/);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
@@ -593,8 +612,8 @@ describe("/node-debugging", () => {
         }
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
-    await screen.findByText(/在线 · API Gateway Target/);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
@@ -643,7 +662,7 @@ describe("/node-debugging", () => {
         }
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/API Gateway Target/);
 
     const row = findRowByText("charger.input_current_limit_ma");
@@ -687,9 +706,9 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession: vi.fn().mockRejectedValue(detectError)
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    await screen.findByText("检测失败，请检查 HDC 环境");
+    await screen.findByText("未连接 HDC 设备");
     expect(screen.queryByText(/gateway session create failed/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /节点操作记录/ }));
 
@@ -719,8 +738,8 @@ describe("/node-debugging", () => {
         }
       }))
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
-    await screen.findByText(/在线 · API Gateway Target/);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
+    await screen.findByText(/已连接：API Gateway Target/);
 
     const pendingWoRow = findRowByText("charger.trickle_switch_soc");
     const syncedRwRow = findRowByText("battery.thermal_foldback_pct");
@@ -777,7 +796,7 @@ describe("/node-debugging", () => {
       return new Response(JSON.stringify({ ok: true }));
     }) as typeof fetch);
 
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     const downloadLink = await screen.findByRole("link", { name: "安装 Bridge（Windows）" });
@@ -821,7 +840,7 @@ describe("/node-debugging", () => {
       return new Response(JSON.stringify({ ok: true }));
     }) as typeof fetch);
 
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     expect(await screen.findByText(/缺少 ADB 调试工具/)).toBeInTheDocument();
@@ -866,7 +885,7 @@ describe("/node-debugging", () => {
       return new Response(JSON.stringify({ ok: true }));
     }) as typeof fetch);
 
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
     expect(await screen.findByRole("button", { name: "重新检测设备" })).toBeInTheDocument();
     expect(screen.getByText("管理设备代理")).toBeInTheDocument();
@@ -907,9 +926,9 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions({
       detectAndStartSession
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    await screen.findByText(/在线 · API Gateway Target/);
+    await screen.findByText(/已连接：API Gateway Target/);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
     const picker = await screen.findByRole("region", { name: "设备代理目标选择" });
@@ -924,7 +943,7 @@ describe("/node-debugging", () => {
         bridgeId: "br-1"
       }
     ));
-    expect(await screen.findByText(/在线 · MacBook · serial-123/)).toBeInTheDocument();
+    expect(await screen.findByText(/已连接：MacBook · serial-123/)).toBeInTheDocument();
   });
 
   it("supports inline bridge rename and revoke in adb bridge management", async () => {
@@ -971,7 +990,7 @@ describe("/node-debugging", () => {
     }) as typeof fetch);
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     fireEvent.click(await screen.findByRole("button", { name: "ADB" }));
 
     const renameInput = await screen.findByDisplayValue("Laptop");
@@ -1012,8 +1031,8 @@ describe("/node-debugging", () => {
         readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
       }
     ]);
-    render(<NodeDebuggingPage state={userState} />);
-    await screen.findByText(/在线 · target-a/);
+    renderNodeDebuggingPage({ state: userState });
+    await screen.findByText(/已连接：target-a/);
 
     const row = findRowByText("charger.input_current_limit_ma");
     fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
@@ -1038,7 +1057,7 @@ describe("/node-debugging", () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
     render(<App initialAppState={userState} runtimeMode="mock" />);
 
-    await screen.findByText("检测失败，请检查 HDC 环境");
+    await screen.findByText("未连接 HDC 设备");
 
     const topbarActions = document.querySelector(".topbar-page-actions") as HTMLElement | null;
     expect(topbarActions).toBeInTheDocument();
@@ -1051,7 +1070,7 @@ describe("/node-debugging", () => {
     mockFetchSequence([{ ok: false, targets: [], stderr: "hdc target detection failed" }]);
     render(<App initialAppState={userState} runtimeMode="mock" />);
 
-    await screen.findByText("检测失败，请检查 HDC 环境");
+    await screen.findByText("未连接 HDC 设备");
     expect(screen.queryByText("hdc target detection failed")).not.toBeInTheDocument();
 
     const rwRow = findRowByText("charger.input_current_limit_ma");
@@ -1085,49 +1104,6 @@ describe("/node-debugging", () => {
     expect(rwRow).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledTimes(10);
     expect(fetch).toHaveBeenLastCalledWith("/api/hdc/read-node", expect.objectContaining({ method: "POST" }));
-  });
-
-  it("shows a node debug session summary and updates it after writes", async () => {
-    mockFetchSequence([
-      { ok: true, targets: ["target-a"], activeTarget: "target-a" },
-      { ok: true, value: "3600", returncode: 0, stdout: "3600\n", stderr: "" },
-      { ok: true, value: "43", returncode: 0, stdout: "43\n", stderr: "" },
-      { ok: true, value: "1", returncode: 0, stdout: "1\n", stderr: "" },
-      { ok: true, value: "68", returncode: 0, stdout: "68\n", stderr: "" },
-      { ok: true, value: "84", returncode: 0, stdout: "84\n", stderr: "" },
-      { ok: true, value: "46", returncode: 0, stdout: "46\n", stderr: "" },
-      { ok: true, value: "5200", returncode: 0, stdout: "5200\n", stderr: "" },
-      complexJsonAutoRead,
-      complexDtsAutoRead,
-      {
-        ok: true,
-        verified: true,
-        value: "3700",
-        writeResult: { returncode: 0, stdout: "", stderr: "" },
-        readResult: { returncode: 0, stdout: "3700\n", stderr: "" }
-      }
-    ]);
-    render(<App initialAppState={userState} runtimeMode="mock" />);
-
-    const summary = await screen.findByRole("region", { name: "调试会话摘要" });
-    await within(summary).findByText(/在线 · target-a/);
-    expect(summary).toHaveTextContent("会话时长");
-    expect(summary).toHaveTextContent("已写入");
-    expect(summary).toHaveTextContent("待写入");
-    expect(summary).toHaveTextContent("失败");
-    expect(summary).toHaveTextContent("1");
-
-    const row = findRowByText("charger.input_current_limit_ma");
-    fireEvent.click(within(row).getByRole("button", { name: /查看\/修改/ }));
-    const dialog = screen.getByRole("dialog", { name: /节点详情/ });
-    fireEvent.change(within(dialog).getByLabelText("目标写入值"), { target: { value: "3700" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: /写入并回读/ }));
-
-    await within(row).findByText(/^成功$/);
-    expect(summary).toHaveTextContent("最近操作");
-    expect(summary).toHaveTextContent("充电输入限流");
-    expect(summary).toHaveTextContent("成功");
-    expect(within(summary).getByText("已写入").nextElementSibling).toHaveTextContent("1");
   });
 
   it("uses a compact status set with distinct status classes", async () => {
@@ -1450,7 +1426,7 @@ describe("/node-debugging", () => {
         };
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/API Gateway Target/);
 
     const row = findRowByText("battery.health_dts_fragment");
@@ -1491,7 +1467,7 @@ describe("/node-debugging", () => {
         }
       })
     });
-    render(<NodeDebuggingPage state={userState} debuggingActions={debuggingActions} />);
+    renderNodeDebuggingPage({ state: userState, debuggingActions });
     await screen.findByText(/API Gateway Target/);
 
     const row = findRowByText("charger.policy_overlay_json");

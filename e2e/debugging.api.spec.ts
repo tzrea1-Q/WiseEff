@@ -423,16 +423,15 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
 
   await page.goto(`/node-debugging?project=${projectId}`);
 
-  const sessionSummary = page.locator(".session-summary-card");
-  const sessionPrimary = sessionSummary.locator(".session-summary-primary");
-  await expect(sessionPrimary).toBeVisible({ timeout: 30_000 });
-  const sessionStatus = ((await sessionPrimary.textContent()) ?? "").trim();
+  const devicePill = page.locator(".topbar .device-pill");
+  await expect(devicePill).toBeVisible({ timeout: 30_000 });
+  const deviceStatus = ((await devicePill.textContent()) ?? "").trim();
   test.skip(
-    /HDC|ADB/i.test(sessionStatus),
-    `Debugging smoke requires simulator gateway; current session summary: ${sessionStatus}`
+    /HDC|ADB/i.test(deviceStatus) && !/Aurora Simulator/i.test(deviceStatus),
+    `Debugging smoke requires simulator gateway; current device pill: ${deviceStatus}`
   );
-  await expect(sessionPrimary).toContainText("Aurora Simulator 1", { timeout: 30_000 });
-  await expect(sessionPrimary).toContainText("在线");
+  await expect(devicePill).toContainText("Aurora Simulator 1", { timeout: 30_000 });
+  await expect(devicePill).toContainText("已连接");
 
   const fastChargeRow = parameterRow(page, "Fast charge current");
   await expect(fastChargeRow).toContainText("3000", { timeout: 30_000 });
@@ -468,18 +467,17 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
   }
 
   await page.goto(`/node-debugging?project=${projectId}`);
-  const sessionSummaryAfterRollback = page.locator(".session-summary-card");
-  const sessionPrimaryAfterRollback = sessionSummaryAfterRollback.locator(".session-summary-primary");
-  await expect(sessionPrimaryAfterRollback).toBeVisible({ timeout: 30_000 });
-  const rollbackSessionStatus = ((await sessionPrimaryAfterRollback.textContent()) ?? "").trim();
+  const devicePillAfterRollback = page.locator(".topbar .device-pill");
+  await expect(devicePillAfterRollback).toBeVisible({ timeout: 30_000 });
+  const rollbackDeviceStatus = ((await devicePillAfterRollback.textContent()) ?? "").trim();
   test.skip(
-    /HDC|ADB/i.test(rollbackSessionStatus),
-    `Debugging smoke requires simulator gateway; current session summary: ${rollbackSessionStatus}`
+    /HDC|ADB/i.test(rollbackDeviceStatus) && !/Aurora Simulator/i.test(rollbackDeviceStatus),
+    `Debugging smoke requires simulator gateway; current device pill: ${rollbackDeviceStatus}`
   );
-  await expect(sessionPrimaryAfterRollback).toContainText("Aurora Simulator 1", {
+  await expect(devicePillAfterRollback).toContainText("Aurora Simulator 1", {
     timeout: 30_000
   });
-  await expect(sessionPrimaryAfterRollback).toContainText("在线");
+  await expect(devicePillAfterRollback).toContainText("已连接");
   await expect(parameterRow(page, "Fast charge current")).toContainText("3000", { timeout: 30_000 });
 
   await page.goto("/parameter-admin?audit=open");

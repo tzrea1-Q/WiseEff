@@ -706,10 +706,10 @@ async function expectHdcUiReady(page: Page, config: HdcSmokeConfig) {
   const hdcButton = page.getByRole("button", { name: "HDC", exact: true });
   await expect(hdcButton).toBeVisible({ timeout: 30_000 });
   await expect(hdcButton).toHaveAttribute("aria-pressed", "true");
-  const summary = page.locator(".session-summary-card").first();
-  await expect(summary).toBeVisible({ timeout: 30_000 });
-  await expect(summary.locator(".session-summary-primary")).toContainText("HDC", { timeout: 30_000 });
-  await expect(summary.locator(".session-summary-primary .live-dot")).toHaveCount(1, { timeout: 30_000 });
+  const devicePill = page.locator(".topbar .device-pill").first();
+  await expect(devicePill).toBeVisible({ timeout: 30_000 });
+  await expect(devicePill).toContainText("已连接", { timeout: 30_000 });
+  await expect(devicePill.locator(".live-dot")).toHaveCount(1, { timeout: 30_000 });
 }
 
 function parameterRow(page: Page, name: string) {
