@@ -43,7 +43,6 @@ function debugNodeRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "node-1",
     organization_id: "org-1",
-    project_id: "aurora",
     name: "Battery current",
     description: "Charge current node",
     detailed_description: "",
@@ -68,7 +67,6 @@ function debugNodeBindingRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "node-1:hdc",
     organization_id: "org-1",
-    project_id: "aurora",
     node_id: "node-1",
     protocol: "hdc",
     node_path: "/sys/class/power_supply/battery/current",
@@ -87,7 +85,6 @@ describe("catalogSplitRepository", () => {
 
     const created = await createDebugNode(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       name: "Created node",
       description: "Node metadata only"
     });
@@ -99,7 +96,6 @@ describe("catalogSplitRepository", () => {
     expect(calls[0].values).toEqual([
       expect.any(String),
       "org-1",
-      "aurora",
       "Created node",
       "Node metadata only",
       "",
@@ -112,7 +108,7 @@ describe("catalogSplitRepository", () => {
       null,
       true
     ]);
-    expect(created).toMatchObject({ id: "node-created", name: "Created node", projectId: "aurora" });
+    expect(created).toMatchObject({ id: "node-created", name: "Created node" });
   });
 
   it("upserts and archives debug node bindings scoped to the logical node", async () => {
@@ -123,7 +119,6 @@ describe("catalogSplitRepository", () => {
 
     await upsertDebugNodeBinding(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       nodeId: "node-1",
       protocol: "adb",
       nodePath: "/sys/adb/current",
@@ -139,14 +134,13 @@ describe("catalogSplitRepository", () => {
 
     expect(calls[0].text).toContain("insert into debug_node_bindings");
     expect(calls[0].text).toContain("from debug_nodes n");
-    expect(calls[0].text).toContain("n.id = $4");
+    expect(calls[0].text).toContain("n.id = $3");
     expect(calls[0].text).toContain("n.organization_id = $2");
     expect(calls[0].text).toContain("on conflict (node_id, protocol) do update");
     expect(calls[0].text).toContain("where debug_node_bindings.organization_id = excluded.organization_id");
     expect(calls[0].values).toEqual([
       "node-1:adb",
       "org-1",
-      "aurora",
       "node-1",
       "adb",
       "/sys/adb/current",
@@ -227,15 +221,14 @@ describe("catalogSplitRepository", () => {
 
     const nodes = await listRuntimeDebugNodes(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       protocol: "hdc"
     });
 
     expect(calls[0].text).toContain("from debug_nodes n");
     expect(calls[0].text).toContain("inner join debug_node_bindings b on b.node_id = n.id");
     expect(calls[0].text).toContain("b.enabled = true");
-    expect(calls[0].text).toContain("b.protocol = $3");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "hdc"]);
+    expect(calls[0].text).toContain("b.protocol = $2");
+    expect(calls[0].values).toEqual(["org-1", "hdc"]);
     expect(nodes).toEqual([
       expect.objectContaining({
         id: "node-1",
@@ -251,7 +244,6 @@ describe("catalogSplitRepository", () => {
 
     const nodes = await listRuntimeDebugNodes(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       protocol: "adb"
     });
 

@@ -40,7 +40,7 @@ export type GatewayWriteResult = {
 };
 
 export interface DebugDeviceGateway {
-  detectTargets(input: { projectId: string; deviceId?: string }): Promise<{
+  detectTargets(input: { deviceId?: string }): Promise<{
     ok: boolean;
     targets: GatewayTarget[];
     error?: string;

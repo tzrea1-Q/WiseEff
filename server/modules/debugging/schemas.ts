@@ -12,7 +12,6 @@ import {
 
 const nonEmptyString = z.string().trim().min(1);
 const optionalTrimmedString = z.string().trim().optional();
-const nullableProjectIdSchema = z.union([nonEmptyString, z.null()]).optional();
 const booleanQuerySchema = z
   .union([z.boolean(), z.enum(["true", "false"])])
   .optional()
@@ -75,7 +74,6 @@ export const debugParameterNodeBindingSchema = z.object({
 });
 
 const debugParameterAdminBaseSchema = z.object({
-  projectId: nullableProjectIdSchema,
   name: nonEmptyString,
   key: nonEmptyString,
   description: z.string().trim().default(""),
@@ -94,7 +92,6 @@ const debugParameterAdminBaseSchema = z.object({
 });
 
 export const listDebuggingParametersQuerySchema = z.object({
-  projectId: nonEmptyString.optional(),
   module: nonEmptyString.optional(),
   risk: z.union([nonEmptyString, z.array(nonEmptyString)]).optional(),
   protocol: protocolSchema.optional()
@@ -110,7 +107,6 @@ export const debugAdminCoverageFilters = [
 ] as const;
 
 export const listDebuggingAdminParametersQuerySchema = z.object({
-  projectId: nonEmptyString.optional(),
   module: nonEmptyString.optional(),
   risk: z.union([nonEmptyString, z.array(nonEmptyString)]).optional(),
   protocol: z.enum(debugConnectionProtocols).optional(),
@@ -157,14 +153,12 @@ export const archiveDebugParameterBodySchema = z.object({
 });
 
 export const detectTargetsBodySchema = z.object({
-  projectId: nonEmptyString,
   deviceId: nonEmptyString.optional(),
   bridgeId: nonEmptyString.optional(),
   protocol: protocolSchema
 });
 
 export const createDebugSessionBodySchema = z.object({
-  projectId: nonEmptyString,
   deviceId: nonEmptyString,
   targetId: nonEmptyString,
   bridgeId: nonEmptyString.optional(),
@@ -209,25 +203,10 @@ export const rollbackSnapshotBodySchema = z.object({
 });
 
 export const listRuntimeDebugNodesQuerySchema = z.object({
-  projectId: nonEmptyString,
   protocol: protocolSchema.optional()
 });
 
-export const listParameterReloadTargetsQuerySchema = z.object({
-  projectId: nonEmptyString,
-  protocol: protocolSchema
-});
-
-export const reloadParameterBodySchema = z.object({
-  sessionId: nonEmptyString,
-  parameterDefinitionId: nonEmptyString,
-  value: nonEmptyString,
-  approvalId: nonEmptyString.optional(),
-  confirmationToken: nonEmptyString.optional()
-});
-
 export const listDebugNodesAdminQuerySchema = z.object({
-  projectId: nonEmptyString.optional(),
   protocol: protocolSchema.optional(),
   includeArchived: booleanQuerySchema
 });
@@ -249,7 +228,6 @@ export const debugAdminNodeBindingParamsSchema = z.object({
 });
 
 export const writeDebugNodeAdminBodySchema = z.object({
-  projectId: nullableProjectIdSchema,
   name: nonEmptyString,
   description: optionalTrimmedString.default(""),
   detailedDescription: optionalTrimmedString.default(""),
@@ -265,20 +243,6 @@ export const writeDebugNodeAdminBodySchema = z.object({
 });
 
 export const patchDebugNodeAdminBodySchema = writeDebugNodeAdminBodySchema.partial();
-
-export const upsertParameterReloadBindingBodySchema = z.object({
-  projectId: nullableProjectIdSchema,
-  parameterDefinitionId: nonEmptyString,
-  protocol: protocolSchema,
-  nodePath: nodePathSchema,
-  accessMode: z.enum(debugAccessModes).default("RW"),
-  enabled: z.boolean().default(true),
-  notes: z.string().trim().nullable().optional()
-});
-
-export const listParameterReloadBindingsAdminQuerySchema = z.object({
-  projectId: nonEmptyString.optional()
-});
 
 export const debugAdminModuleParamsSchema = z.object({
   moduleName: nonEmptyString

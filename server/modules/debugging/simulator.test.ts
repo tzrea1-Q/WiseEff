@@ -5,7 +5,7 @@ describe("simulator debugging gateway", () => {
   it("detects online simulator targets", async () => {
     const gateway = createSimulatorDebugDeviceGateway();
 
-    const result = await gateway.detectTargets({ projectId: "aurora" });
+    const result = await gateway.detectTargets({});
 
     expect(result.ok).toBe(true);
     expect(result.targets).toContainEqual(

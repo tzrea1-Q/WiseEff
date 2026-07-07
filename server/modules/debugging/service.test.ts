@@ -42,10 +42,9 @@ function createFakeDb(results: QueuedResult[] = []) {
         rows: [
           {
             organization_id: values[0],
-            project_id: values[1],
-            device_id: values[2],
-            session_id: values[3],
-            lease_owner_user_id: values[4],
+            device_id: values[1],
+            session_id: values[2],
+            lease_owner_user_id: values[3],
             expires_at: "2026-05-27T10:05:00.000Z",
             acquired_at: timestamp,
             updated_at: timestamp
@@ -85,7 +84,7 @@ function createFakeDb(results: QueuedResult[] = []) {
 
 function makeAuth(
   permissions: AuthContext["permissions"],
-  roles: AuthContext["roles"] = [{ projectId: "aurora", roleId: "software-user" }]
+  roles: AuthContext["roles"] = [{ roleId: "software-user" }]
 ): AuthContext {
   return {
     user: {
@@ -155,7 +154,6 @@ function deviceRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "device-1",
     organization_id: "org-1",
-    project_id: "aurora",
     name: "Aurora Simulator",
     transport: "simulator",
     status: "online",
@@ -169,7 +167,6 @@ function targetRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "target-1",
     organization_id: "org-1",
-    project_id: "aurora",
     device_id: "device-1",
     protocol: "hdc",
     bridge_id: null,
@@ -202,7 +199,6 @@ function parameterRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "param-1",
     organization_id: "org-1",
-    project_id: "aurora",
     name: "Fast charge current",
     key: "fast_charge_current",
     description: "Controls constant charge current.",
@@ -233,7 +229,6 @@ function bindingRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "binding-1",
     organization_id: "org-1",
-    project_id: "aurora",
     parameter_id: "param-1",
     protocol: "hdc",
     node_path: "/sys/current",
@@ -251,7 +246,6 @@ function debugNodeRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "node-1",
     organization_id: "org-1",
-    project_id: "aurora",
     name: "Charge current",
     description: "Device charge current node.",
     detailed_description: "",
@@ -276,7 +270,6 @@ function debugNodeBindingRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "node-1:hdc",
     organization_id: "org-1",
-    project_id: "aurora",
     node_id: "node-1",
     protocol: "hdc",
     node_path: "/sys/node/current",
@@ -293,7 +286,6 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "session-1",
     organization_id: "org-1",
-    project_id: "aurora",
     device_id: "device-1",
     target_id: "target-1",
     protocol: "hdc",
@@ -313,31 +305,30 @@ function operationRow(call: QueryCall, overrides: Record<string, unknown> = {}) 
   return {
     id: call.values[0],
     organization_id: call.values[1],
-    project_id: call.values[2],
-    session_id: call.values[3],
-    parameter_id: call.values[4],
-    node_id: call.values[5] ?? null,
-    parameter_definition_id: call.values[6] ?? null,
-    protocol: call.values[7],
-    node_path: call.values[8],
-    operation_type: call.values[9],
-    status: call.values[10],
-    requested_value: call.values[11],
-    previous_value: call.values[12],
-    read_value: call.values[13],
-    readback_value: call.values[14],
-    verified: call.values[15],
-    failure_reason: call.values[16],
-    duration_ms: call.values[17],
-    approval_id: call.values[18],
-    snapshot_id: call.values[19],
-    value_kind: call.values[20] ?? null,
-    value_format: call.values[21] ?? null,
-    normalization_mode: call.values[22] ?? null,
-    requested_value_digest: call.values[23] ?? null,
-    previous_value_digest: call.values[24] ?? null,
-    readback_value_digest: call.values[25] ?? null,
-    value_preview: call.values[26] ?? null,
+    session_id: call.values[2],
+    parameter_id: call.values[3],
+    node_id: call.values[4] ?? null,
+    parameter_definition_id: call.values[5] ?? null,
+    protocol: call.values[6],
+    node_path: call.values[7],
+    operation_type: call.values[8],
+    status: call.values[9],
+    requested_value: call.values[10],
+    previous_value: call.values[11],
+    read_value: call.values[12],
+    readback_value: call.values[13],
+    verified: call.values[14],
+    failure_reason: call.values[15],
+    duration_ms: call.values[16],
+    approval_id: call.values[17],
+    snapshot_id: call.values[18],
+    value_kind: call.values[19] ?? null,
+    value_format: call.values[20] ?? null,
+    normalization_mode: call.values[21] ?? null,
+    requested_value_digest: call.values[22] ?? null,
+    previous_value_digest: call.values[23] ?? null,
+    readback_value_digest: call.values[24] ?? null,
+    value_preview: call.values[25] ?? null,
     created_at: timestamp,
     ...overrides
   };
@@ -347,7 +338,6 @@ function snapshotRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "snapshot-1",
     organization_id: "org-1",
-    project_id: "aurora",
     session_id: "session-1",
     operation_id: null,
     status: "valid",
@@ -362,7 +352,7 @@ const readAuth = makeAuth(["debugging:view", "debugging:read"]);
 const writeAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"]);
 const rollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"]);
 const adminAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:admin"], [
-  { projectId: null, roleId: "admin" }
+  { roleId: "admin" }
 ]);
 const otherProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [{ projectId: "zephyr", roleId: "software-user" }]);
 const otherProjectWriteAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write"], [
@@ -371,10 +361,10 @@ const otherProjectWriteAuth = makeAuth(["debugging:view", "debugging:read", "deb
 const otherProjectRollbackAuth = makeAuth(["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"], [
   { projectId: "zephyr", roleId: "software-user" }
 ]);
-const projectAdminAuth = makeAuth(["debugging:view", "debugging:admin"], [{ projectId: "aurora", roleId: "admin" }]);
+const projectAdminAuth = makeAuth(["debugging:view", "debugging:admin"], [{ roleId: "admin" }]);
 const otherProjectAdminAuth = makeAuth(["debugging:view", "debugging:admin"], [{ projectId: "zephyr", roleId: "admin" }]);
 const multiProjectReadAuth = makeAuth(["debugging:view", "debugging:read"], [
-  { projectId: "aurora", roleId: "software-user" },
+  { roleId: "software-user" },
   { projectId: "zephyr", roleId: "software-user" }
 ]);
 
@@ -432,73 +422,6 @@ describe("debugging service", () => {
     expect(calls[0].text).not.toContain("archived_at is null");
   });
 
-  it("limits admin parameter mutations to accessible projects and global admins for shared parameters", async () => {
-    const serviceForCreate = createDebuggingService({ db: createFakeDb().db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(
-      serviceForCreate.createAdminParameter(projectAdminAuth, {
-        projectId: "zephyr",
-        name: "Denied",
-        key: "denied",
-        description: "",
-        module: "Battery",
-        risk: "Low",
-        unit: "",
-        range: "",
-        currentValue: "",
-        targetValue: "",
-        sortOrder: 0,
-        enabled: true,
-        bindings: []
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "zephyr" }));
-
-    await expect(
-      serviceForCreate.createAdminParameter(projectAdminAuth, {
-        projectId: null,
-        name: "Shared denied",
-        key: "shared_denied",
-        description: "",
-        module: "Battery",
-        risk: "Low",
-        unit: "",
-        range: "",
-        currentValue: "",
-        targetValue: "",
-        sortOrder: 0,
-        enabled: true,
-        bindings: []
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Global debugging admin access is required.", 403));
-
-    const updateDb = createFakeDb([[parameterRow({ project_id: "aurora" })]]);
-    const updateService = createDebuggingService({ db: updateDb.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-    await expect(updateService.updateAdminParameter(projectAdminAuth, { parameterId: "param-1", projectId: null })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Global debugging admin access is required.", 403)
-    );
-    expect(updateDb.rollbacks).toHaveLength(1);
-
-    const archiveDb = createFakeDb([[parameterRow({ project_id: "aurora" })]]);
-    const archiveService = createDebuggingService({ db: archiveDb.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-    await expect(archiveService.archiveAdminParameter(otherProjectAdminAuth, { parameterId: "param-1" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
-    expect(archiveDb.rollbacks).toHaveLength(1);
-
-    const bindingDb = createFakeDb([[parameterRow({ project_id: null })]]);
-    const bindingService = createDebuggingService({ db: bindingDb.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-    await expect(
-      bindingService.upsertAdminParameterBinding(projectAdminAuth, {
-        parameterId: "param-1",
-        protocol: "hdc",
-        nodePath: "/sys/shared",
-        accessMode: "RO",
-        enabled: true
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Global debugging admin access is required.", 403));
-    expect(bindingDb.rollbacks).toHaveLength(1);
-  });
-
   it("archives a debug parameter and writes summary audit metadata", async () => {
     const { db, txCalls, transactions } = createFakeDb([
       [parameterRow({ id: "param-1" })],
@@ -520,7 +443,7 @@ describe("debugging service", () => {
       action: "archive",
       targetType: "debug-parameter",
       targetId: "param-1",
-      metadata: { parameterId: "param-1", projectId: "aurora", enabled: true, archived: true, hasReason: true }
+      metadata: { parameterId: "param-1", enabled: true, archived: true, hasReason: true }
     });
     expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/current");
   });
@@ -540,9 +463,7 @@ describe("debugging service", () => {
 
     const item = await service.createAdminParameter(
       adminAuth,
-      {
-        projectId: "aurora",
-        name: "Created parameter",
+      { name: "Created parameter",
         key: "created_parameter",
         description: "Created in admin.",
         module: "Battery",
@@ -574,7 +495,7 @@ describe("debugging service", () => {
     expect(audit.events[0]).toMatchObject({
       kind: "debug-parameter-admin-create",
       action: "create",
-      metadata: { parameterId: "param-created", projectId: "aurora", enabled: true, bindingCount: 2, protocols: ["hdc", "adb"] }
+      metadata: { parameterId: "param-created", enabled: true, bindingCount: 2, protocols: ["hdc", "adb"] }
     });
     expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/hdc/path");
     expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/adb/path");
@@ -584,13 +505,8 @@ describe("debugging service", () => {
     const { db, txCalls, transactions } = createFakeDb([
       [parameterRow({ id: "param-1", name: "Existing parameter", node_path: "/sys/existing", access_mode: "RO", min_value: "0", max_value: "5000" })],
       [
-        bindingRow({ parameter_id: "param-1", protocol: "hdc", node_path: "/sys/hdc/existing", access_mode: "RW" }),
-        bindingRow({ id: "binding-param-1-adb", parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })
-      ],
-      [
         parameterRow({
           id: "param-1",
-          project_id: null,
           name: "Updated parameter",
           node_path: "/sys/updated",
           access_mode: "RW",
@@ -601,10 +517,9 @@ describe("debugging service", () => {
         })
       ],
       [bindingRow({ parameter_id: "param-1", protocol: "hdc", node_path: "/sys/updated", access_mode: "RW" })],
-      [bindingRow({ id: "binding-param-1-adb", project_id: null, parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })],
       [
-        bindingRow({ project_id: null, parameter_id: "param-1", protocol: "hdc", node_path: "/sys/updated", access_mode: "RW" }),
-        bindingRow({ id: "binding-param-1-adb", project_id: null, parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })
+        bindingRow({ parameter_id: "param-1", protocol: "hdc", node_path: "/sys/updated", access_mode: "RW" }),
+        bindingRow({ id: "binding-param-1-adb", parameter_id: "param-1", protocol: "adb", node_path: "/sys/adb/existing", access_mode: "RO" })
       ]
     ]);
     const audit = createAuditSpy();
@@ -614,7 +529,6 @@ describe("debugging service", () => {
       adminAuth,
       {
         parameterId: "param-1",
-        projectId: null,
         name: "Updated parameter",
         description: "Updated in admin.",
         risk: "High",
@@ -631,18 +545,22 @@ describe("debugging service", () => {
     expect(txCalls[0].text).toContain("from debugging_parameters");
     expect(txCalls.some((call) => call.text.includes("update debugging_parameters"))).toBe(true);
     const bindingUpsertCalls = txCalls.filter((call) => call.text.includes("insert into debugging_parameter_node_bindings"));
-    expect(bindingUpsertCalls).toHaveLength(2);
-    expect(bindingUpsertCalls[0].values.slice(2, 9)).toEqual([null, "param-1", "hdc", "/sys/updated", "RW", true, "Updated binding"]);
-    expect(bindingUpsertCalls[1].values.slice(2, 9)).toEqual([null, "param-1", "adb", "/sys/adb/existing", "RO", true, null]);
+    expect(bindingUpsertCalls).toHaveLength(1);
+    expect(bindingUpsertCalls[0].values[1]).toBe("org-1");
+    expect(bindingUpsertCalls[0].values[2]).toBe("param-1");
+    expect(bindingUpsertCalls[0].values[3]).toBe("hdc");
+    expect(bindingUpsertCalls[0].values[4]).toBe("/sys/updated");
+    expect(bindingUpsertCalls[0].values[5]).toBe("RW");
+    expect(bindingUpsertCalls[0].values[6]).toBe(true);
+    expect(bindingUpsertCalls[0].values[7]).toBe("Updated binding");
     const updateCall = txCalls.find((call) => call.text.includes("update debugging_parameters"));
-    expect(updateCall?.values[2]).toBeNull();
+    expect(updateCall?.values[2]).toBe("Updated parameter");
+    expect(updateCall?.values[10]).toBeNull();
     expect(updateCall?.values[11]).toBeNull();
-    expect(updateCall?.values[12]).toBeNull();
-    expect(updateCall?.values[16]).toBe(0);
-    expect(updateCall?.values[17]).toBe(false);
+    expect(updateCall?.values[15]).toBe(0);
+    expect(updateCall?.values[16]).toBe(false);
     expect(item).toMatchObject({
       id: "param-1",
-      projectId: null,
       name: "Updated parameter",
       minValue: null,
       maxValue: null,
@@ -650,8 +568,8 @@ describe("debugging service", () => {
       enabled: false,
       selectedBinding: expect.objectContaining({ protocol: "hdc", nodePath: "/sys/updated" }),
       bindings: [
-        expect.objectContaining({ projectId: null, parameterId: "param-1", protocol: "hdc", nodePath: "/sys/updated" }),
-        expect.objectContaining({ projectId: null, parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/existing" })
+        expect.objectContaining({ parameterId: "param-1", protocol: "hdc", nodePath: "/sys/updated" }),
+        expect.objectContaining({ parameterId: "param-1", protocol: "adb", nodePath: "/sys/adb/existing" })
       ]
     });
     expect(audit.events[0]).toMatchObject({
@@ -660,13 +578,13 @@ describe("debugging service", () => {
       action: "update",
       targetType: "debug-parameter",
       targetId: "param-1",
-      metadata: { parameterId: "param-1", projectId: null, enabled: false, bindingCount: 2, protocols: ["hdc", "adb"] }
+      metadata: { parameterId: "param-1", enabled: false, bindingCount: 2, protocols: ["hdc", "adb"] }
     });
     expect(JSON.stringify(audit.events[0].metadata)).not.toContain("/sys/updated");
   });
 
   it("upserts an admin parameter binding and converts repository null to NOT_FOUND", async () => {
-    const success = createFakeDb([[parameterRow({ project_id: "aurora" })], [bindingRow({ protocol: "adb", node_path: "/sys/adb/path" })]]);
+    const success = createFakeDb([[parameterRow({})], [bindingRow({ protocol: "adb", node_path: "/sys/adb/path" })]]);
     const audit = createAuditSpy();
     const service = createDebuggingService({ db: success.db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
 
@@ -702,31 +620,17 @@ describe("debugging service", () => {
     expect(missing.rollbacks).toHaveLength(1);
   });
 
-  it("listDevices and listParameters deny different-project auth before querying", async () => {
-    const { db, calls } = createFakeDb();
-    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.listDevices(otherProjectReadAuth, { projectId: "aurora" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
-    await expect(service.listParameters(otherProjectReadAuth, { projectId: "aurora" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
-
-    expect(calls).toHaveLength(0);
-  });
-
-  it("listDevices and listParameters scope unfiltered non-admin queries to auth projects", async () => {
+  it("listDevices and listParameters scope queries to the auth organization", async () => {
     const { db, calls } = createFakeDb([[deviceRow()], [parameterRow()]]);
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
     await expect(service.listDevices(multiProjectReadAuth)).resolves.toEqual([expect.objectContaining({ id: "device-1" })]);
     await expect(service.listParameters(multiProjectReadAuth)).resolves.toEqual([expect.objectContaining({ id: "param-1" })]);
 
-    expect(calls[0].text).toContain("project_id = any($2::text[])");
-    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
-    expect(calls[1].text).toContain("project_id = any($2::text[])");
-    expect(calls[1].values).toEqual(["org-1", ["aurora", "zephyr"]]);
+    expect(calls[0].text).toContain("organization_id = $1");
+    expect(calls[0].values).toEqual(["org-1"]);
+    expect(calls[1].text).toContain("organization_id = $1");
+    expect(calls[1].values).toEqual(["org-1"]);
   });
 
   it("lists selected-protocol parameter bindings for frontend availability", async () => {
@@ -739,7 +643,7 @@ describe("debugging service", () => {
     ]);
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
-    await expect(service.listParameters(readAuth, { projectId: "aurora", protocol: "adb" })).resolves.toEqual([
+    await expect(service.listParameters(readAuth, { protocol: "adb" })).resolves.toEqual([
       expect.objectContaining({
         id: "param-1",
         selectedBinding: expect.objectContaining({
@@ -758,7 +662,7 @@ describe("debugging service", () => {
 
     expect(calls[0].text).toContain("from debugging_parameters");
     expect(calls[1].text).toContain("from debugging_parameter_node_bindings");
-    expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"], "adb"]);
+    expect(calls[1].values).toEqual(["org-1", ["param-1"], "adb"]);
   });
 
   it("filters runtime parameters without an enabled selected-protocol binding", async () => {
@@ -794,7 +698,7 @@ describe("debugging service", () => {
     ]);
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
-    await expect(service.listParameters(readAuth, { projectId: "aurora", protocol: "adb" })).resolves.toEqual([
+    await expect(service.listParameters(readAuth, { protocol: "adb" })).resolves.toEqual([
       expect.objectContaining({
         id: "param-adb-enabled",
         selectedBinding: expect.objectContaining({
@@ -805,85 +709,17 @@ describe("debugging service", () => {
     ]);
   });
 
-  it("lists shared debugging parameters for any authorized project context", async () => {
-    const { db, calls } = createFakeDb([[parameterRow({ project_id: null })]]);
-    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.listParameters(readAuth, { projectId: "aurora" })).resolves.toEqual([
-      expect.objectContaining({ id: "param-1", projectId: null })
-    ]);
-
-    expect(calls[0].text).toContain("(project_id is null or project_id = $2)");
-    expect(calls[0].values).toEqual(["org-1", "aurora"]);
-  });
-
-  it("lists selected-protocol shared parameter bindings without filtering them out by project", async () => {
-    const { db, calls } = createFakeDb([
-      [parameterRow({ project_id: null })],
-      [bindingRow({ project_id: null, protocol: "adb", node_path: "/sys/adb/current", is_smoke_default: true })]
-    ]);
-    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.listParameters(readAuth, { projectId: "aurora", protocol: "adb" })).resolves.toEqual([
-      expect.objectContaining({
-        id: "param-1",
-        projectId: null,
-        selectedBinding: expect.objectContaining({
-          projectId: null,
-          protocol: "adb",
-          nodePath: "/sys/adb/current",
-          isSmokeDefault: true
-        })
-      })
-    ]);
-
-    expect(calls[1].text).toContain("(project_id is null or project_id = $2)");
-    expect(calls[1].values).toEqual(["org-1", "aurora", ["param-1"], "adb"]);
-  });
-
-  it("detectTargets and createSession deny different-project auth before gateway or writes", async () => {
-    const { db, txCalls } = createFakeDb();
-    const gateway = makeGateway();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.detectTargets(otherProjectReadAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
-    await expect(
-      service.createSession(otherProjectReadAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" }));
-
-    expect(gateway.detectTargets).not.toHaveBeenCalled();
-    expect(gateway.writeNode).not.toHaveBeenCalled();
-    expect(txCalls).toHaveLength(0);
-  });
-
-  it("detectTargets rejects a device from another project before gateway or writes", async () => {
-    const { db, txCalls } = createFakeDb([[deviceRow({ project_id: "other-project" })]]);
-    const gateway = makeGateway();
-    const audit = createAuditSpy();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent });
-
-    await expect(service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Debug device does not belong to the requested project.", 400)
-    );
-
-    expect(gateway.detectTargets).not.toHaveBeenCalled();
-    expect(txCalls).toHaveLength(0);
-    expect(audit.createAuditEvent).not.toHaveBeenCalled();
-  });
-
   it("detectTargets requires debugging:read, calls gateway, persists targets, writes audit", async () => {
     const { db, txCalls } = createFakeDb([
       [deviceRow()],
       (call) => [
         targetRow({
-          id: call.values[3],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8]
+          id: call.values[2],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
         })
       ],
       []
@@ -894,18 +730,17 @@ describe("debugging service", () => {
     const { spans, tracing } = createTraceRecorder();
     const service = createDebuggingService({ db, gateway, createAuditEvent: audit.createAuditEvent, metrics, gatewayMode: "simulator", tracing });
 
-    await expect(service.detectTargets(makeAuth(["debugging:view"]), { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
+    await expect(service.detectTargets(makeAuth(["debugging:view"]), { deviceId: "device-1" })).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Missing permission: debugging:read.", 403, { permission: "debugging:read" })
     );
 
-    const targets = await service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" });
+    const targets = await service.detectTargets(readAuth, { deviceId: "device-1" });
 
-    expect(gateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
+    expect(gateway.detectTargets).toHaveBeenCalledWith({ deviceId: "device-1" });
     expect(txCalls.some((call) => call.text.includes("insert into debugging_targets"))).toBe(true);
     expect(targets).toEqual([expect.objectContaining({ id: "target-1", status: "detected", targetRef: "simulator://aurora-1" })]);
     expect(audit.events[0]).toMatchObject({
       organizationId: "org-1",
-      projectId: "aurora",
       actorUserId: "user-1",
       app: "debugging",
       kind: "debug-target-detect",
@@ -952,12 +787,13 @@ describe("debugging service", () => {
       [deviceRow({ transport: "adb" })],
       (call) => [
         targetRow({
-          id: call.values[3],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8]
+          id: call.values[2],
+          device_id: call.values[1],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
         })
       ],
       []
@@ -969,14 +805,12 @@ describe("debugging service", () => {
       createAuditEvent: audit.createAuditEvent
     });
 
-    const targets = await service.detectTargets(readAuth, {
-      projectId: "aurora",
-      deviceId: "device-1",
+    const targets = await service.detectTargets(readAuth, { deviceId: "device-1",
       protocol: "adb"
     });
 
     expect(targets[0]).toMatchObject({ protocol: "adb", targetRef: "emulator-5554" });
-    expect(adbGateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
+    expect(adbGateway.detectTargets).toHaveBeenCalledWith({ deviceId: "device-1" });
     expect(audit.events.at(-1)?.metadata).toMatchObject({ protocol: "adb", targetCount: 1 });
   });
 
@@ -1000,12 +834,13 @@ describe("debugging service", () => {
       [deviceRow({ transport: "adb" })],
       (call) => [
         targetRow({
-          id: call.values[3],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8]
+          id: call.values[2],
+          device_id: call.values[1],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
         })
       ],
       []
@@ -1016,14 +851,12 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    await service.detectTargets(readAuth, {
-      projectId: "aurora",
-      deviceId: "device-1",
+    await service.detectTargets(readAuth, { deviceId: "device-1",
       protocol: "adb"
     });
 
     const upsertCall = txCalls.find((call) => call.text.includes("insert into debugging_targets"));
-    expect(upsertCall?.values[5]).toBe("adb");
+    expect(upsertCall?.values[4]).toBe("adb");
   });
 
   it("detectTargets commits a failed debug event when gateway detection fails", async () => {
@@ -1037,7 +870,7 @@ describe("debugging service", () => {
       gatewayMode: "hdc"
     });
 
-    await expect(service.detectTargets(readAuth, { projectId: "aurora", deviceId: "device-1" })).rejects.toMatchObject(
+    await expect(service.detectTargets(readAuth, { deviceId: "device-1" })).rejects.toMatchObject(
       new ApiError("DEVICE_UNAVAILABLE", "USB bridge unavailable.", 409)
     );
 
@@ -1062,13 +895,13 @@ describe("debugging service", () => {
       [],
       (call) => [
         targetRow({
-          id: call.values[3],
-          device_id: call.values[2],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8]
+          id: call.values[2],
+          device_id: call.values[1],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
         })
       ],
       []
@@ -1083,7 +916,7 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const targets = await service.detectTargets(readAuth, { projectId: "aurora", protocol: "hdc", bridgeId: "br-1" });
+    const targets = await service.detectTargets(readAuth, { protocol: "hdc", bridgeId: "br-1" });
 
     expect(targets).toEqual([
       expect.objectContaining({
@@ -1093,7 +926,7 @@ describe("debugging service", () => {
         targetRef: "serial-1"
       })
     ]);
-    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[4] === "br-1")).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[3] === "br-1")).toBe(true);
   });
 
   it("detectTargets skips bridge detection when bridgeId is omitted", async () => {
@@ -1111,13 +944,13 @@ describe("debugging service", () => {
       [],
       (call) => [
         targetRow({
-          id: call.values[3],
-          device_id: call.values[2],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8]
+          id: call.values[2],
+          device_id: call.values[1],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
         })
       ],
       []
@@ -1130,7 +963,7 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const targets = await service.detectTargets(readAuth, { projectId: "aurora" });
+    const targets = await service.detectTargets(readAuth, {});
 
     expect(bridgeRpcClient.call).not.toHaveBeenCalled();
     expect(targets).toEqual([]);
@@ -1152,13 +985,13 @@ describe("debugging service", () => {
       [],
       (call) => [
         targetRow({
-          id: call.values[3],
-          device_id: call.values[2],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8]
+          id: call.values[2],
+          device_id: call.values[1],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7]
         })
       ],
       []
@@ -1171,7 +1004,7 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const targets = await service.detectTargets(readAuth, { projectId: "aurora", bridgeId: "br-1" });
+    const targets = await service.detectTargets(readAuth, { bridgeId: "br-1" });
 
     expect(bridgeRpcClient.call).toHaveBeenCalledTimes(1);
     expect(bridgeRpcClient.call).toHaveBeenCalledWith("br-1", "debug.detectTargets", { protocol: "hdc" }, { timeoutMs: 5000 });
@@ -1183,7 +1016,7 @@ describe("debugging service", () => {
         targetRef: "serial-1"
       })
     ]);
-    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[4] === "br-1")).toBe(true);
+    expect(txCalls.some((call) => call.text.includes("insert into debugging_targets") && call.values[3] === "br-1")).toBe(true);
   });
 
   it("createSession rejects offline or lost targets and persists an active session", async () => {
@@ -1191,24 +1024,24 @@ describe("debugging service", () => {
     const serviceForLost = createDebuggingService({ db: lost.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
     await expect(
-      serviceForLost.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+      serviceForLost.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })
     ).rejects.toMatchObject(new ApiError("DEVICE_UNAVAILABLE", "Debug target is not detected.", 409));
 
     const offline = createFakeDb([[deviceRow({ status: "offline" })], [targetRow()]]);
     const serviceForOffline = createDebuggingService({ db: offline.db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
     await expect(
-      serviceForOffline.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+      serviceForOffline.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })
     ).rejects.toMatchObject(new ApiError("DEVICE_UNAVAILABLE", "Debug device is offline.", 409));
 
     const { db, txCalls } = createFakeDb([[deviceRow()], [targetRow()], (call) => [sessionRow({ id: call.values[0] })], []]);
     const audit = createAuditSpy();
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: audit.createAuditEvent });
 
-    const session = await service.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" });
+    const session = await service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" });
 
     expect(txCalls.some((call) => call.text.includes("insert into debugging_sessions"))).toBe(true);
-    expect(session).toMatchObject({ projectId: "aurora", deviceId: "device-1", targetId: "target-1", status: "active" });
+    expect(session).toMatchObject({ deviceId: "device-1", targetId: "target-1", status: "active" });
     expect(audit.events[0]).toMatchObject({ kind: "debug-session-create", action: "create", targetId: session.id });
   });
 
@@ -1235,9 +1068,7 @@ describe("debugging service", () => {
     });
 
     await expect(
-      missingBridgeIdService.createSession(readAuth, {
-        projectId: "aurora",
-        deviceId: "bridge:br-1",
+      missingBridgeIdService.createSession(readAuth, { deviceId: "bridge:br-1",
         targetId,
         protocol: "adb"
       })
@@ -1254,7 +1085,7 @@ describe("debugging service", () => {
         })
       ],
       [bridgeRow({ id: "br-1", machine_label: "Laptop" })],
-      (call) => [sessionRow({ id: call.values[0], device_id: call.values[3], target_id: call.values[4], protocol: call.values[5], execution_mode: "bridge", bridge_id: call.values[7], bridge_machine_label: call.values[8] })],
+      (call) => [sessionRow({ id: call.values[0], device_id: call.values[2], target_id: call.values[3], protocol: call.values[4], execution_mode: "bridge", bridge_id: call.values[6], bridge_machine_label: call.values[7] })],
       []
     ]);
     const service = createDebuggingService({
@@ -1265,9 +1096,7 @@ describe("debugging service", () => {
       createAuditEvent: createAuditSpy().createAuditEvent
     });
 
-    const session = await service.createSession(readAuth, {
-      projectId: "aurora",
-      deviceId: "bridge:br-1",
+    const session = await service.createSession(readAuth, { deviceId: "bridge:br-1",
       targetId,
       bridgeId: "br-1",
       protocol: "adb"
@@ -1278,36 +1107,14 @@ describe("debugging service", () => {
       txCalls.some(
         (call) =>
           call.text.includes("insert into debugging_sessions") &&
-          call.values[6] === "bridge" &&
-          call.values[7] === "br-1" &&
-          call.values[8] === "Laptop"
+          call.values[5] === "bridge" &&
+          call.values[6] === "br-1" &&
+          call.values[7] === "Laptop"
       )
     ).toBe(true);
   });
 
-  it("createSession rejects cross-project devices, cross-project targets, and mismatched device targets", async () => {
-    const crossProjectDevice = createFakeDb([[deviceRow({ project_id: "other-project" })], [targetRow()]]);
-    const serviceForDevice = createDebuggingService({
-      db: crossProjectDevice.db,
-      gateway: makeGateway(),
-      createAuditEvent: createAuditSpy().createAuditEvent
-    });
-
-    await expect(
-      serviceForDevice.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug device does not belong to the requested project.", 400));
-
-    const crossProjectTarget = createFakeDb([[deviceRow()], [targetRow({ project_id: "other-project" })]]);
-    const serviceForTarget = createDebuggingService({
-      db: crossProjectTarget.db,
-      gateway: makeGateway(),
-      createAuditEvent: createAuditSpy().createAuditEvent
-    });
-
-    await expect(
-      serviceForTarget.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested project.", 400));
-
+  it("createSession rejects mismatched device targets", async () => {
     const mismatchedTarget = createFakeDb([[deviceRow()], [targetRow({ device_id: "device-2" })]]);
     const serviceForMismatch = createDebuggingService({
       db: mismatchedTarget.db,
@@ -1316,7 +1123,7 @@ describe("debugging service", () => {
     });
 
     await expect(
-      serviceForMismatch.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+      serviceForMismatch.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" })
     ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Debug target does not belong to the requested device.", 400));
   });
 
@@ -1324,19 +1131,18 @@ describe("debugging service", () => {
     const { db, txCalls } = createFakeDb([[deviceRow()], [targetRow()], (call) => [sessionRow({ id: call.values[0] })], []]);
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
-    const session = await service.createSession(readAuth, { projectId: "aurora", deviceId: "device-1", targetId: "target-1" });
+    const session = await service.createSession(readAuth, { deviceId: "device-1", targetId: "target-1" });
 
     const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
-    expect(eventCall?.values.slice(1, 8)).toEqual([
+    expect(eventCall?.values.slice(1, 7)).toEqual([
       "org-1",
-      "aurora",
       session.id,
       null,
       "session-created",
       "info",
       "Debug session created."
     ]);
-    expect(JSON.parse(String(eventCall?.values[8]))).toEqual({
+    expect(JSON.parse(String(eventCall?.values[7]))).toEqual({
       deviceId: "device-1",
       targetId: "target-1",
       protocol: "hdc",
@@ -1443,14 +1249,14 @@ describe("debugging service", () => {
     expect(gateway.readNode).not.toHaveBeenCalled();
   });
 
-  it("reads a shared parameter through the project-scoped session protocol binding", async () => {
+  it("reads a parameter through the active session protocol binding", async () => {
     const adbGateway = makeGateway();
     const { db } = createFakeDb([
-      [sessionRow({ project_id: "aurora", protocol: "adb" })],
+      [sessionRow({ protocol: "adb" })],
       [parameterRow({ project_id: null })],
-      [bindingRow({ project_id: null, protocol: "adb", node_path: "/sys/adb/current", access_mode: "RO" })],
-      [targetRow({ project_id: "aurora", protocol: "adb", target_ref: "emulator-5554" })],
-      (call) => [operationRow(call, { project_id: "aurora", protocol: "adb", node_path: "/sys/adb/current" })]
+      [bindingRow({ protocol: "adb", node_path: "/sys/adb/current", access_mode: "RO" })],
+      [targetRow({ protocol: "adb", target_ref: "emulator-5554" })],
+      (call) => [operationRow(call, { protocol: "adb", node_path: "/sys/adb/current" })]
     ]);
     const service = createDebuggingService({
       db,
@@ -1502,17 +1308,6 @@ describe("debugging service", () => {
 
     await expect(service.readNode(readAuth, { sessionId: "session-1", parameterId: "param-1" })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "Debug parameter is archived or disabled.", 400)
-    );
-    expect(gateway.readNode).not.toHaveBeenCalled();
-  });
-
-  it("readNode denies sessions outside the auth project scope before gateway call", async () => {
-    const { db } = createFakeDb([[sessionRow()]]);
-    const gateway = makeGateway();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.readNode(otherProjectReadAuth, { sessionId: "session-1", nodePath: "/sys/current" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
     );
     expect(gateway.readNode).not.toHaveBeenCalled();
   });
@@ -1628,25 +1423,14 @@ describe("debugging service", () => {
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
-  it("still rejects legacy project-scoped parameters from a different project before gateway call", async () => {
-    const { db } = createFakeDb([[sessionRow()], [parameterRow({ project_id: "other-project" })], [bindingRow()]]);
-    const gateway = makeGateway();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
-      new ApiError("VALIDATION_FAILED", "Legacy project-scoped parameter does not belong to the session project.", 400)
-    );
-    expect(gateway.writeNode).not.toHaveBeenCalled();
-  });
-
-  it("writes a shared writable parameter while operation and audit stay in the session project", async () => {
+  it("writes an org-scoped writable parameter through the active session binding", async () => {
     const { db, txCalls } = createFakeDb([
-      [sessionRow({ project_id: "aurora", protocol: "adb" })],
-      [parameterRow({ project_id: null, risk: "Medium", min_value: "0", max_value: "5000" })],
-      [bindingRow({ project_id: null, protocol: "adb", node_path: "/sys/adb/current", access_mode: "RW" })],
-      [targetRow({ project_id: "aurora", protocol: "adb", target_ref: "emulator-5554" })],
-      (call) => [snapshotRow({ id: call.values[0], project_id: call.values[2], risk: call.values[4] })],
-      (call) => [operationRow(call, { project_id: "aurora", protocol: "adb", node_path: "/sys/adb/current" })],
+      [sessionRow({ protocol: "adb" })],
+      [parameterRow({ risk: "Medium", min_value: "0", max_value: "5000" })],
+      [bindingRow({ protocol: "adb", node_path: "/sys/adb/current", access_mode: "RW" })],
+      [targetRow({ protocol: "adb", target_ref: "emulator-5554" })],
+      (call) => [snapshotRow({ id: call.values[0], risk: call.values[5] })],
+      (call) => [operationRow(call, { protocol: "adb", node_path: "/sys/adb/current" })],
       []
     ]);
     const audit = createAuditSpy();
@@ -1659,10 +1443,8 @@ describe("debugging service", () => {
     await service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" });
 
     const operationInsert = txCalls.find((call) => call.text.includes("insert into node_operations"));
-    expect(operationInsert?.values[2]).toBe("aurora");
-    expect(audit.events.at(-1)).toMatchObject({
-      projectId: "aurora",
-      targetId: "param-1"
+    expect(operationInsert?.values[2]).toBe("session-1");
+    expect(audit.events.at(-1)).toMatchObject({ targetId: "param-1"
     });
   });
 
@@ -1685,7 +1467,7 @@ describe("debugging service", () => {
       [parameterRow({ min_value: null, max_value: null })],
       [bindingRow({ protocol: "adb", node_path: "/sys/adb/current" })],
       [targetRow({ id: "bridge:br-1:adb:serial-1", device_id: "bridge:br-1", bridge_id: "br-1", protocol: "adb", target_ref: "serial-1" })],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { protocol: "adb", snapshot_id: "snapshot-1" })],
       [],
       []
@@ -1770,9 +1552,7 @@ describe("debugging service", () => {
     });
 
     await expect(
-      service.detectTargets(readAuth, {
-        projectId: "aurora",
-        deviceId: "device-1",
+      service.detectTargets(readAuth, { deviceId: "device-1",
         protocol: "adb"
       })
     ).rejects.toMatchObject({
@@ -1788,18 +1568,6 @@ describe("debugging service", () => {
     await expect(service.writeNode(writeAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
       new ApiError("VALIDATION_FAILED", "High-risk write requires confirmation or approval.", 400)
     );
-    expect(gateway.writeNode).not.toHaveBeenCalled();
-  });
-
-  it("writeNode denies sessions outside the auth project scope before gateway call", async () => {
-    const { db } = createFakeDb([[sessionRow()]]);
-    const gateway = makeGateway();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.writeNode(otherProjectWriteAuth, { sessionId: "session-1", parameterId: "param-1", value: "3200" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
-    expect(gateway.readNode).not.toHaveBeenCalled();
     expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
@@ -1828,7 +1596,7 @@ describe("debugging service", () => {
       [targetRow()],
       (call) => {
         callOrder.push("snapshot");
-        return [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })];
+        return [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })];
       },
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       [],
@@ -1844,7 +1612,7 @@ describe("debugging service", () => {
 
     expect(callOrder).toEqual(["gateway-read", "snapshot", "gateway-write"]);
     const snapshotCall = txCalls.find((call) => call.text.includes("insert into debugging_snapshots"));
-    expect(JSON.parse(String(snapshotCall?.values[7]))).toEqual([
+    expect(JSON.parse(String(snapshotCall?.values[6]))).toEqual([
       expect.objectContaining({
         parameterId: "param-1",
         protocol: "hdc",
@@ -1868,7 +1636,7 @@ describe("debugging service", () => {
       [bindingRow()],
       [targetRow()],
       debugDeviceLeaseResult([]),
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       [],
       []
@@ -1899,7 +1667,7 @@ describe("debugging service", () => {
       [parameterRow()],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       []
     ]);
@@ -1936,7 +1704,7 @@ describe("debugging service", () => {
       [parameterRow()],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       []
     ]);
@@ -2002,7 +1770,7 @@ describe("debugging service", () => {
       [parameterRow()],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       [],
       []
@@ -2021,7 +1789,7 @@ describe("debugging service", () => {
       [parameterRow()],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       [],
       []
@@ -2062,7 +1830,7 @@ describe("debugging service", () => {
       [parameterRow()],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       []
     ]);
@@ -2123,36 +1891,6 @@ describe("debugging service", () => {
         })
       ).rejects.toMatchObject(new ApiError(snapshot ? "VALIDATION_FAILED" : "NOT_FOUND", snapshot ? "Snapshot is not valid for this session." : "Snapshot was not found.", snapshot ? 400 : 404));
     }
-  });
-
-  it("rollbackSnapshot rejects snapshots from a different project", async () => {
-    const { db } = createFakeDb([[snapshotRow({ project_id: "other-project" })], [sessionRow()]]);
-    const gateway = makeGateway();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(
-      service.rollbackSnapshot(rollbackAuth, {
-        snapshotId: "snapshot-1",
-        confirmationToken: "confirm-rollback"
-      })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "Snapshot is not valid for this session.", 400));
-    expect(gateway.writeNode).not.toHaveBeenCalled();
-  });
-
-  it("rollbackSnapshot loads snapshot first, then denies inferred sessions outside the auth project scope before gateway writes", async () => {
-    const { db, txCalls } = createFakeDb([[snapshotRow()], [sessionRow()]]);
-    const gateway = makeGateway();
-    const service = createDebuggingService({ db, gateway, createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(
-      service.rollbackSnapshot(otherProjectRollbackAuth, {
-        snapshotId: "snapshot-1",
-        confirmationToken: "confirm-rollback"
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" }));
-    expect(txCalls[0].text).toContain("from debugging_snapshots");
-    expect(txCalls[1].text).toContain("from debugging_sessions");
-    expect(gateway.writeNode).not.toHaveBeenCalled();
   });
 
   it("rollbackSnapshot claims snapshot before gateway writes and conflicts when claim fails", async () => {
@@ -2260,8 +1998,8 @@ describe("debugging service", () => {
     expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.text.includes("status = 'rollback_pending'"))).toBe(true);
     expect(txCalls.some((call) => call.text.includes("update debugging_snapshots") && call.text.includes("status = 'valid'"))).toBe(true);
     const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
-    expect(eventCall?.values.slice(1, 8)).toEqual(["org-1", "aurora", "session-1", null, "rollback-failed", "error", "Snapshot rollback failed."]);
-    expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", failures: [expect.objectContaining({ status: "failed" })] });
+    expect(eventCall?.values.slice(1, 7)).toEqual(["org-1", "session-1", null, "rollback-failed", "error", "Snapshot rollback failed."]);
+    expect(JSON.parse(String(eventCall?.values[7]))).toMatchObject({ snapshotId: "snapshot-1", failures: [expect.objectContaining({ status: "failed" })] });
   });
 
   it("rollbackSnapshot writes previous values, records rollback operations, marks snapshot consumed", async () => {
@@ -2388,16 +2126,15 @@ describe("debugging service", () => {
     });
 
     const eventCall = txCalls.find((call) => call.text.includes("insert into debugging_events"));
-    expect(eventCall?.values.slice(1, 8)).toEqual([
+    expect(eventCall?.values.slice(1, 7)).toEqual([
       "org-1",
-      "aurora",
       "session-1",
       null,
       "rollback-succeeded",
       "info",
       "Snapshot rollback succeeded."
     ]);
-    expect(JSON.parse(String(eventCall?.values[8]))).toMatchObject({ snapshotId: "snapshot-1", operationCount: 1, protocol: "hdc" });
+    expect(JSON.parse(String(eventCall?.values[7]))).toMatchObject({ snapshotId: "snapshot-1", operationCount: 1, protocol: "hdc" });
   });
 
   it("listDevices, listParameters, getSession, and listSessionEvents require view permission and return records", async () => {
@@ -2410,7 +2147,6 @@ describe("debugging service", () => {
         {
           id: "operation-1",
           organization_id: "org-1",
-          project_id: "aurora",
           session_id: "session-1",
           parameter_id: "param-1",
           protocol: "hdc",
@@ -2432,10 +2168,10 @@ describe("debugging service", () => {
     ]);
     const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
 
-    await expect(service.listDevices(makeAuth([]), { projectId: "aurora" })).rejects.toMatchObject(
+    await expect(service.listDevices(makeAuth([]))).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
     );
-    await expect(service.listParameters(makeAuth([]), { projectId: "aurora" })).rejects.toMatchObject(
+    await expect(service.listParameters(makeAuth([]))).rejects.toMatchObject(
       new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
     );
     await expect(service.getSession(makeAuth([]), { sessionId: "session-1" })).rejects.toMatchObject(
@@ -2445,10 +2181,10 @@ describe("debugging service", () => {
       new ApiError("FORBIDDEN", "Missing permission: debugging:view.", 403, { permission: "debugging:view" })
     );
 
-    await expect(service.listDevices(readAuth, { projectId: "aurora" })).resolves.toEqual([
-      expect.objectContaining({ id: "device-1", projectId: "aurora" })
+    await expect(service.listDevices(readAuth)).resolves.toEqual([
+      expect.objectContaining({ id: "device-1" })
     ]);
-    await expect(service.listParameters(readAuth, { projectId: "aurora", module: "Battery", risk: ["Medium"] })).resolves.toEqual([
+    await expect(service.listParameters(readAuth, { module: "Battery", risk: ["Medium"] })).resolves.toEqual([
       expect.objectContaining({ id: "param-1", nodePath: "/sys/current" })
     ]);
     await expect(service.getSession(readAuth, { sessionId: "session-1" })).resolves.toMatchObject({ id: "session-1", status: "active" });
@@ -2462,18 +2198,6 @@ describe("debugging service", () => {
     expect(calls[2].text).toContain("from debugging_sessions");
     expect(calls[3].text).toContain("from debugging_sessions");
     expect(calls[4].text).toContain("from node_operations");
-  });
-
-  it("getSession and listSessionEvents deny session-backed records outside the auth project scope", async () => {
-    const { db } = createFakeDb([[sessionRow()], [sessionRow()]]);
-    const service = createDebuggingService({ db, gateway: makeGateway(), createAuditEvent: createAuditSpy().createAuditEvent });
-
-    await expect(service.getSession(otherProjectReadAuth, { sessionId: "session-1" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
-    await expect(service.listSessionEvents(otherProjectReadAuth, { sessionId: "session-1" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Debug project access is required.", 403, { projectId: "aurora" })
-    );
   });
 
   it("writeNode rejects invalid JSON for complex json-format parameters", async () => {
@@ -2513,7 +2237,7 @@ describe("debugging service", () => {
       ],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1", value_kind: "complex", value_format: "json" })],
       [],
       []
@@ -2555,7 +2279,7 @@ describe("debugging service", () => {
       [parameterRow({ value_kind: "complex", value_format: "json", normalization_mode: "json-canonical", min_value: null, max_value: null })],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1", status: "readback_mismatch", value_kind: "complex" })],
       []
     ]);
@@ -2583,7 +2307,7 @@ describe("debugging service", () => {
       [parameterRow({ value_kind: "complex", value_format: "json", min_value: null, max_value: null })],
       [bindingRow()],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { snapshot_id: "snapshot-1" })],
       [],
       []
@@ -2620,8 +2344,8 @@ describe("debugging service", () => {
       preserveExactRead: false
     });
     const insertCall = txCalls.find((call) => call.text.includes("insert into node_operations"));
-    expect(insertCall?.values?.[4]).toBeNull();
-    expect(insertCall?.values?.[5]).toBe("node-1");
+    expect(insertCall?.values?.[3]).toBeNull();
+    expect(insertCall?.values?.[4]).toBe("node-1");
     expect(operation).toMatchObject({ operationType: "read", status: "succeeded", nodePath: "/sys/node/hdc/current" });
   });
 
@@ -2646,7 +2370,7 @@ describe("debugging service", () => {
       [debugNodeRow({ id: "node-1" })],
       [debugNodeBindingRow({ node_id: "node-1", protocol: "hdc", node_path: "/sys/node/hdc/write", access_mode: "RW" })],
       [targetRow()],
-      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[7])) })],
+      (call) => [snapshotRow({ id: call.values[0], entries: JSON.parse(String(call.values[6])) })],
       (call) => [operationRow(call, { node_id: "node-1", node_path: "/sys/node/hdc/write" })],
       []
     ]);

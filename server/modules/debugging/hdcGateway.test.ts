@@ -29,7 +29,7 @@ describe("HDC debug device gateway", () => {
     ]);
     const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    const result = await gateway.detectTargets({ projectId: "aurora", deviceId: "device-db-id" });
+    const result = await gateway.detectTargets({ deviceId: "device-db-id" });
 
     expect(result).toEqual({
       ok: true,
@@ -63,7 +63,7 @@ describe("HDC debug device gateway", () => {
     ]);
     const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    const result = await gateway.detectTargets({ projectId: "aurora", deviceId: "device-db-id" });
+    const result = await gateway.detectTargets({ deviceId: "device-db-id" });
 
     expect(result).toEqual({
       ok: true,
@@ -90,7 +90,7 @@ describe("HDC debug device gateway", () => {
     ]);
     const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    const result = await gateway.detectTargets({ projectId: "aurora", deviceId: "device-db-id" });
+    const result = await gateway.detectTargets({ deviceId: "device-db-id" });
 
     expect(result).toEqual({
       ok: true,
@@ -102,7 +102,7 @@ describe("HDC debug device gateway", () => {
     const { runCommand } = makeRunner([]);
     const gateway = createHdcDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    const result = await gateway.detectTargets({ projectId: "aurora" });
+    const result = await gateway.detectTargets({});
 
     expect(result).toEqual({
       ok: false,

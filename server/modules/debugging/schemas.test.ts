@@ -20,26 +20,22 @@ describe("debugging schemas", () => {
   it("accepts optional parameter query filters", () => {
     expect(
       listDebuggingParametersQuerySchema.parse({
-        projectId: "aurora",
         module: "power",
         risk: ["Low", "High"]
       })
     ).toEqual({
-      projectId: "aurora",
       module: "power",
       risk: ["Low", "High"]
     });
   });
 
-  it("trims and requires target detection project input", () => {
-    expect(() => detectTargetsBodySchema.parse({ projectId: "   " })).toThrow();
-    expect(detectTargetsBodySchema.parse({ projectId: "aurora", deviceId: "sim-device-1" })).toEqual({
-      projectId: "aurora",
+  it("trims and requires target detection device input when provided", () => {
+    expect(() => detectTargetsBodySchema.parse({ deviceId: "   " })).toThrow();
+    expect(detectTargetsBodySchema.parse({ deviceId: "sim-device-1" })).toEqual({
       deviceId: "sim-device-1",
       protocol: "hdc"
     });
-    expect(detectTargetsBodySchema.parse({ projectId: "aurora", bridgeId: "br-1" })).toEqual({
-      projectId: "aurora",
+    expect(detectTargetsBodySchema.parse({ bridgeId: "br-1" })).toEqual({
       bridgeId: "br-1",
       protocol: "hdc"
     });
@@ -66,21 +62,19 @@ describe("debugging schemas", () => {
     });
   });
 
-  it("requires project, device, and target when creating sessions", () => {
-    expect(() => createDebugSessionBodySchema.parse({ projectId: "aurora" })).toThrow();
+  it("requires device and target when creating sessions", () => {
+    expect(() => createDebugSessionBodySchema.parse({ deviceId: "device-1" })).toThrow();
   });
 });
 
 describe("debugging protocol schemas", () => {
   it("accepts hdc and adb protocols for target detection and sessions", () => {
-    expect(detectTargetsBodySchema.parse({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })).toEqual({
-      projectId: "aurora",
+    expect(detectTargetsBodySchema.parse({ deviceId: "device-1", protocol: "adb" })).toEqual({
       deviceId: "device-1",
       protocol: "adb"
     });
     expect(
       createDebugSessionBodySchema.parse({
-        projectId: "aurora",
         deviceId: "device-1",
         targetId: "adb:serial-1",
         protocol: "adb"
@@ -91,7 +85,6 @@ describe("debugging protocol schemas", () => {
   it("requires bridgeId when targetId references a bridge-backed target", () => {
     expect(() =>
       createDebugSessionBodySchema.parse({
-        projectId: "aurora",
         deviceId: "bridge:br-1",
         targetId: "bridge:br-1:adb:serial-1",
         protocol: "adb"
@@ -99,7 +92,6 @@ describe("debugging protocol schemas", () => {
     ).toThrow();
     expect(
       createDebugSessionBodySchema.parse({
-        projectId: "aurora",
         deviceId: "bridge:br-1",
         targetId: "bridge:br-1:adb:serial-1",
         bridgeId: "br-1",
@@ -109,7 +101,7 @@ describe("debugging protocol schemas", () => {
   });
 
   it("rejects unsupported protocols at the API boundary", () => {
-    expect(() => detectTargetsBodySchema.parse({ projectId: "aurora", protocol: "fastboot" })).toThrow();
+    expect(() => detectTargetsBodySchema.parse({ protocol: "fastboot" })).toThrow();
     expect(() => listDebuggingParametersQuerySchema.parse({ protocol: "fastboot" })).toThrow();
   });
 
@@ -157,13 +149,11 @@ describe("debugging admin schemas", () => {
   it("parses admin list filters", () => {
     expect(
       listDebuggingAdminParametersQuerySchema.parse({
-        projectId: "aurora",
         includeArchived: "true",
         protocol: "adb",
         coverage: "missing-adb"
       })
     ).toEqual({
-      projectId: "aurora",
       includeArchived: true,
       protocol: "adb",
       coverage: "missing-adb"
@@ -173,7 +163,6 @@ describe("debugging admin schemas", () => {
   it("validates parameter metadata and optional bindings", () => {
     expect(
       writeDebugParameterAdminBodySchema.parse({
-        projectId: null,
         name: "Fast charge current",
         key: "debug.fast_charge.current",
         description: "Fast charge current limit.",
@@ -198,7 +187,6 @@ describe("debugging admin schemas", () => {
         ]
       })
     ).toMatchObject({
-      projectId: null,
       name: "Fast charge current",
       enabled: true,
       bindings: [expect.objectContaining({ protocol: "hdc", enabled: true })]
