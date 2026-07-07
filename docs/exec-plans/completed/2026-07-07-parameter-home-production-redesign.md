@@ -4,6 +4,8 @@
 >
 > **Design spec (Chinese):** [2026-07-07-parameter-home-production-redesign-design.md](../../zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md) (approved)
 
+**Status:** ✅ Completed — all Tasks 1–16 implemented, tested, and verified on branch `feat/parameter-home-production-redesign` (commits `1dcd7988`→`927cb37e`, plus closure commit). Dashboard server tests 11/11, feature tests 26/26, `tsc -b` / `contract:check` / `docs:check` PASS. PR: [#163](https://github.com/tzrea1-Q/WiseEff/pull/163). The 3 remaining `test:all` failures (`operations/routes.test.ts`, `operations/health.test.ts`, `parameters/service.test.ts`) and the default-heap `npm run build` OOM were independently confirmed pre-existing on `main` (unrelated to this plan).
+
 **Goal:** Lift `/parameter-home` to production standard — real backend aggregation data (trend, risk, hotspots, workbench signals), server-side explainable hotspot scoring, a new frontend dashboard data layer with partitioned async states, and a role-adaptive command-center redesign using Recharts.
 
 **Architecture:** New `server/modules/parameters/dashboard/` sub-module exposes two aggregation endpoints (`summary`, `hotspots`) computed with SQL over `parameter_history_entries`, `parameter_change_requests`, `parameter_definitions`, `project_parameter_values`, and governance tables. A dedicated `ParameterDashboardRepository` port with HTTP + mock adapters feeds a `parameterDashboardRuntime` that dispatches into a partitioned dashboard state slice (each section: `idle|loading|ready|empty|error`). A new `src/features/parameter-home/` component tree renders the situation strip, role-adaptive workbench, and Recharts-based insight section, replacing the synthetic-data `ParameterManagementHomePage`.
@@ -167,7 +169,7 @@ export interface ParameterDashboardRepository {
 - Create: `src/application/ports/ParameterDashboardRepository.ts`
 - Create: `src/domain/parameters/dashboardTypes.test.ts`
 
-- [ ] **Step 1: Add Recharts**
+- [x] **Step 1: Add Recharts**
 
 ```bash
 npm install recharts@^2.15.0
@@ -175,15 +177,15 @@ npm install recharts@^2.15.0
 
 Expected: `recharts` appears under `dependencies` in `package.json`; lockfile updated.
 
-- [ ] **Step 2: Create shared view-model types**
+- [x] **Step 2: Create shared view-model types**
 
 Create `src/domain/parameters/dashboardTypes.ts` with the exact contents from the "Shared Contracts" section above (all exported types through `DashboardHotspot`).
 
-- [ ] **Step 3: Create the port interface**
+- [x] **Step 3: Create the port interface**
 
 Create `src/application/ports/ParameterDashboardRepository.ts` with the exact `ParameterDashboardRepository` interface from "Shared Contracts".
 
-- [ ] **Step 4: Write a compile-time contract test**
+- [x] **Step 4: Write a compile-time contract test**
 
 ```ts
 // src/domain/parameters/dashboardTypes.test.ts
@@ -225,12 +227,12 @@ describe("dashboard types", () => {
 });
 ```
 
-- [ ] **Step 5: Run test**
+- [x] **Step 5: Run test**
 
 Run: `npm test -- src/domain/parameters/dashboardTypes.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add package.json package-lock.json src/domain/parameters/dashboardTypes.ts src/application/ports/ParameterDashboardRepository.ts src/domain/parameters/dashboardTypes.test.ts
@@ -249,7 +251,7 @@ git commit -m "feat(parameter-home): add recharts, dashboard view-model types, a
 
 The repository exposes pure DB functions returning plain aggregates; the service (Task 4) assembles the `DashboardSummary`. Organization id is always passed by the caller from auth; `projectId` is optional.
 
-- [ ] **Step 1: Write failing repository test**
+- [x] **Step 1: Write failing repository test**
 
 ```ts
 // server/modules/parameters/dashboard/repository.test.ts
@@ -303,16 +305,16 @@ describe("dashboard repository", () => {
 });
 ```
 
-- [ ] **Step 2: Add a shared test fixture seeder**
+- [x] **Step 2: Add a shared test fixture seeder**
 
 Create `server/testing/parameterDashboardFixture.ts` that inserts one org, 3 projects, parameter definitions across risk levels, `project_parameter_values`, dated `parameter_history_entries` (spread across the last 30 days), a few `parameter_change_requests` (mixed statuses incl. `rejected`, `software_merge`), one unapplied `parameter_import_batches`, and one inactive user. Reuse column shapes from `0002_m1_parameters.sql`.
 
-- [ ] **Step 3: Run test to confirm it fails**
+- [x] **Step 3: Run test to confirm it fails**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/repository.test.ts`
 Expected: FAIL with "countKpis is not a function" / module not found.
 
-- [ ] **Step 4: Implement repository**
+- [x] **Step 4: Implement repository**
 
 ```ts
 // server/modules/parameters/dashboard/repository.ts
@@ -468,12 +470,12 @@ export async function aggregateWorkbenchSignals(
 
 > Note: change-request status values stored in DB are the DTO forms (`submitted`, `hardware_review`, `software_review`, `software_merge`, `merged`, `rejected`, `withdrawn`) per `parameterClient.ts`. Confirm exact stored strings in `server/modules/parameters/status.ts` and adjust the `status` literals if they differ.
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/repository.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add server/modules/parameters/dashboard/repository.ts server/modules/parameters/dashboard/repository.test.ts server/testing/parameterDashboardFixture.ts
@@ -490,7 +492,7 @@ git commit -m "feat(parameter-home): dashboard summary aggregation repository"
 - Create: `server/modules/parameters/dashboard/scoring.test.ts`
 - Create: `server/modules/parameters/dashboard/hotspotRepository.test.ts`
 
-- [ ] **Step 1: Write failing scoring test**
+- [x] **Step 1: Write failing scoring test**
 
 ```ts
 // server/modules/parameters/dashboard/scoring.test.ts
@@ -512,12 +514,12 @@ describe("hotspot scoring", () => {
 });
 ```
 
-- [ ] **Step 2: Run to confirm fail**
+- [x] **Step 2: Run to confirm fail**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/scoring.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement scoring (port formula from `parameterHomepageAnalytics.ts`, remove randomness)**
+- [x] **Step 3: Implement scoring (port formula from `parameterHomepageAnalytics.ts`, remove randomness)**
 
 ```ts
 // server/modules/parameters/dashboard/scoring.ts
@@ -562,12 +564,12 @@ export function mapStatus(highRiskCount: number, score: number): { label: string
 }
 ```
 
-- [ ] **Step 4: Run scoring test — PASS**
+- [x] **Step 4: Run scoring test — PASS**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/scoring.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Write failing hotspot repository test**
+- [x] **Step 5: Write failing hotspot repository test**
 
 ```ts
 // server/modules/parameters/dashboard/hotspotRepository.test.ts
@@ -594,16 +596,16 @@ describe("hotspot repository", () => {
 });
 ```
 
-- [ ] **Step 6: Implement `aggregateHotspotGroups`**
+- [x] **Step 6: Implement `aggregateHotspotGroups`**
 
 Implement SQL that, given `dimension`, groups by module / project.id / parameter_definition and returns per group: `groupId`, `title`, `projectId`, `projectCode`, `module`, `parameterCount`, `definitionCount`, `relatedRequestCount` (change requests in window joined by parameter), `highRiskCount`, `riskWeightSum` (`sum(case d.risk when 'High' then 3 when 'Medium' then 2 else 1 end)`), `driftSum` (`sum(abs(current-recommended)/greatest(abs(current),abs(recommended),1)*100)` with numeric cast guarded by `~ '^-?[0-9.]+$'`), `logSignalCount` (0 for now; logs are org-scoped post-0037, so set 0 and document), and `lastChangedAt` (`max(h.changed_at)`). For `overall`, run the three dimension queries and pick top-by-score with at least one of each kind (mirror `deriveOverallHotspots`).
 
-- [ ] **Step 7: Run hotspot repository test — PASS**
+- [x] **Step 7: Run hotspot repository test — PASS**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/hotspotRepository.test.ts`
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add server/modules/parameters/dashboard/scoring.ts server/modules/parameters/dashboard/scoring.test.ts server/modules/parameters/dashboard/hotspotRepository.ts server/modules/parameters/dashboard/hotspotRepository.test.ts
@@ -623,7 +625,7 @@ git commit -m "feat(parameter-home): server-side hotspot aggregation and determi
 - Modify: `server/modules/parameters/routes.ts` (or app registration) to also register dashboard routes
 - Modify: `server/app.ts` / route wiring as needed
 
-- [ ] **Step 1: Schemas (Zod) for query validation**
+- [x] **Step 1: Schemas (Zod) for query validation**
 
 ```ts
 // server/modules/parameters/dashboard/schemas.ts
@@ -641,11 +643,11 @@ export const dashboardHotspotsQuerySchema = z.object({
 });
 ```
 
-- [ ] **Step 2: Service assembles view-model**
+- [x] **Step 2: Service assembles view-model**
 
 `service.ts` exports `getDashboardSummary(db, { auth, projectId, window })` and `getDashboardHotspots(db, { auth, projectId, window, dimension })`. It computes `windowStart`/`windowEnd` from `window` relative to `now` (7d/30d days; 180d weeks), builds `windowLabel` (`近 7/30/180 天`), zero-fills trend labels (`M/D` for day, `第N周` for week), calls repository + scoring, maps groups to `DashboardHotspot` (including `trendDelta`/`trendDirection` from comparing current vs previous equal window change counts, `suggestedPath` per kind following `buildHotspotPath` logic). Org id comes from `auth.organization.id`; caller user id from `auth.user.id`.
 
-- [ ] **Step 3: Write failing service test**
+- [x] **Step 3: Write failing service test**
 
 ```ts
 // server/modules/parameters/dashboard/service.test.ts
@@ -677,12 +679,12 @@ describe("dashboard service", () => {
 });
 ```
 
-- [ ] **Step 4: Run service test — PASS after implementing service**
+- [x] **Step 4: Run service test — PASS after implementing service**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/service.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Routes**
+- [x] **Step 5: Routes**
 
 ```ts
 // server/modules/parameters/dashboard/routes.ts
@@ -716,11 +718,11 @@ function requireDb(db: Database | undefined): Database {
 
 Match the exact `router.get` handler signature and `request.query` parsing used by `registerParameterRoutes` (it may use `parseWithSchema` and `request.auth`); adapt accordingly.
 
-- [ ] **Step 6: Wire registration**
+- [x] **Step 6: Wire registration**
 
 In the same place `registerParameterRoutes` is called (search `registerParameterRoutes` in `server/app.ts`), also call `registerParameterDashboardRoutes(router, db)`.
 
-- [ ] **Step 7: Write failing routes test**
+- [x] **Step 7: Write failing routes test**
 
 ```ts
 // server/modules/parameters/dashboard/routes.test.ts — follow existing routes.test.ts harness
@@ -729,12 +731,12 @@ In the same place `registerParameterRoutes` is called (search `registerParameter
 
 Model it on `server/modules/parameters/routes.test.ts` (same app/test-request helpers). Cover: viewer gets `{ item }` for summary and `{ items }` for hotspots; a no-permission auth gets 403.
 
-- [ ] **Step 8: Run all dashboard module tests — PASS**
+- [x] **Step 8: Run all dashboard module tests — PASS**
 
 Run: `npm run test:server -- server/modules/parameters/dashboard/`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add server/modules/parameters/dashboard/ server/app.ts server/modules/parameters/routes.ts
@@ -750,7 +752,7 @@ git commit -m "feat(parameter-home): dashboard summary/hotspots service and rout
 - Modify: `server/modules/contracts/schemaRegistry.ts`
 - Modify: `docs/generated/openapi.json` (regenerated)
 
-- [ ] **Step 1: Add route manifest entries**
+- [x] **Step 1: Add route manifest entries**
 
 Add two entries mirroring existing parameter routes:
 
@@ -759,7 +761,7 @@ Add two entries mirroring existing parameter routes:
 { id: "parameters-dashboard-hotspots", method: "GET", path: "/api/v1/parameters/dashboard/hotspots" }
 ```
 
-- [ ] **Step 2: Add schema registry entries**
+- [x] **Step 2: Add schema registry entries**
 
 ```ts
 "parameters-dashboard-summary": { summary: "Parameter dashboard summary", tags: ["parameters"], responseBody: "ParameterDashboardSummaryResponse" },
@@ -768,7 +770,7 @@ Add two entries mirroring existing parameter routes:
 
 Follow the exact `schemaRegistry` entry shape already in the file.
 
-- [ ] **Step 3: Regenerate and validate contract**
+- [x] **Step 3: Regenerate and validate contract**
 
 ```bash
 npm run contract:openapi
@@ -777,7 +779,7 @@ npm run contract:check
 
 Expected: `docs/generated/openapi.json` updated; contract check PASS.
 
-- [ ] **Step 4: Run contract module tests**
+- [x] **Step 4: Run contract module tests**
 
 ```bash
 npm run test:server -- server/modules/contracts/
@@ -785,7 +787,7 @@ npm run test:server -- server/modules/contracts/
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add server/modules/contracts/ docs/generated/openapi.json
@@ -803,11 +805,11 @@ git commit -m "feat(parameter-home): register dashboard endpoints in OpenAPI con
 - Create: `src/infrastructure/http/parameterDashboardClient.ts`
 - Create: `src/infrastructure/http/parameterDashboardClient.test.ts`
 
-- [ ] **Step 1: DTO types + mappers**
+- [x] **Step 1: DTO types + mappers**
 
 Create `parameterDashboardDtos.ts` mirroring the domain types (the server returns them already in view-model shape, so DTOs equal domain types; mappers are identity-with-validation). Export `dashboardSummaryFromDto` and `dashboardHotspotFromDto` returning `DashboardSummary` / `DashboardHotspot`.
 
-- [ ] **Step 2: Write failing client test**
+- [x] **Step 2: Write failing client test**
 
 ```ts
 // src/infrastructure/http/parameterDashboardClient.test.ts
@@ -843,12 +845,12 @@ describe("http parameter dashboard repository", () => {
 });
 ```
 
-- [ ] **Step 3: Run to confirm fail**
+- [x] **Step 3: Run to confirm fail**
 
 Run: `npm test -- src/infrastructure/http/parameterDashboardClient.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 4: Implement HTTP adapter**
+- [x] **Step 4: Implement HTTP adapter**
 
 ```ts
 // src/infrastructure/http/parameterDashboardClient.ts
@@ -893,12 +895,12 @@ export function createHttpParameterDashboardRepository(apiClient: ApiClient = cr
 
 > URLSearchParams orders keys by insertion, so the test's expected order (`projectId`, then `window`, then `dimension`) matches. Keep insertion order consistent with the tests.
 
-- [ ] **Step 5: Run client test — PASS**
+- [x] **Step 5: Run client test — PASS**
 
 Run: `npm test -- src/infrastructure/http/parameterDashboardClient.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/infrastructure/http/parameterDashboardDtos.ts src/infrastructure/http/parameterDashboardClient.ts src/infrastructure/http/parameterDashboardClient.test.ts
@@ -915,7 +917,7 @@ git commit -m "feat(parameter-home): http dashboard adapter and dto mappers"
 
 The mock adapter derives the same view-model from `MockRuntimeState`, using **real** mock timestamps/counts. No LCG trend, no jitter.
 
-- [ ] **Step 1: Write failing mock adapter test**
+- [x] **Step 1: Write failing mock adapter test**
 
 ```ts
 // src/infrastructure/mock/mockParameterDashboardRepository.test.ts
@@ -946,12 +948,12 @@ describe("mock parameter dashboard repository", () => {
 
 Match the actual mock-state accessor used by `mockParameterRepository.ts` (it likely takes a `getState` function or a `MockRuntimeState` instance). Follow that exact pattern.
 
-- [ ] **Step 2: Run to confirm fail**
+- [x] **Step 2: Run to confirm fail**
 
 Run: `npm test -- src/infrastructure/mock/mockParameterDashboardRepository.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement mock adapter**
+- [x] **Step 3: Implement mock adapter**
 
 Compute from mock state:
 - KPIs: `parameters.length`, distinct project count, change events = change requests + history-like events within window, distinct contributors, high-risk count.
@@ -962,16 +964,16 @@ Compute from mock state:
 
 > To avoid duplicating the scoring formula, extract the pure scorer into a shared frontend util `src/domain/parameters/hotspotScoring.ts` mirroring `server/.../scoring.ts` (same numbers), and unit-test that both produce equal output for the same input in Task 7 Step 4. This keeps mock/api parity.
 
-- [ ] **Step 4: Add scorer parity assertion**
+- [x] **Step 4: Add scorer parity assertion**
 
 Add to the mock test a case asserting the shared frontend scorer returns the same breakdown as the documented formula for a fixed input (the same fixture used in `server/.../scoring.test.ts`).
 
-- [ ] **Step 5: Run mock adapter test — PASS**
+- [x] **Step 5: Run mock adapter test — PASS**
 
 Run: `npm test -- src/infrastructure/mock/mockParameterDashboardRepository.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/infrastructure/mock/mockParameterDashboardRepository.ts src/infrastructure/mock/mockParameterDashboardRepository.test.ts src/domain/parameters/hotspotScoring.ts
@@ -989,7 +991,7 @@ git commit -m "feat(parameter-home): mock dashboard adapter with real derivation
 - Create: `src/application/parameters/dashboardState.test.ts`
 - Modify: `src/App.tsx` (instantiate repository, actions, hold dashboard state, pass to page)
 
-- [ ] **Step 1: Partitioned state model + reducer**
+- [x] **Step 1: Partitioned state model + reducer**
 
 ```ts
 // src/application/parameters/dashboardState.ts
@@ -1039,7 +1041,7 @@ export function dashboardReducer(state: DashboardState, action: DashboardAction)
 }
 ```
 
-- [ ] **Step 2: Reducer test**
+- [x] **Step 2: Reducer test**
 
 ```ts
 // src/application/parameters/dashboardState.test.ts
@@ -1062,7 +1064,7 @@ describe("dashboardReducer", () => {
 });
 ```
 
-- [ ] **Step 3: Runtime orchestration**
+- [x] **Step 3: Runtime orchestration**
 
 ```ts
 // src/application/parameters/parameterDashboardRuntime.ts
@@ -1109,7 +1111,7 @@ export function createParameterDashboardRuntime({ repository, dispatch }: Option
 }
 ```
 
-- [ ] **Step 4: Runtime test with a stub repository**
+- [x] **Step 4: Runtime test with a stub repository**
 
 ```ts
 // src/application/parameters/parameterDashboardRuntime.test.ts
@@ -1136,12 +1138,12 @@ describe("parameterDashboardRuntime", () => {
 });
 ```
 
-- [ ] **Step 5: Run runtime + reducer tests — PASS**
+- [x] **Step 5: Run runtime + reducer tests — PASS**
 
 Run: `npm test -- src/application/parameters/parameterDashboardRuntime.test.ts src/application/parameters/dashboardState.test.ts`
 Expected: PASS.
 
-- [ ] **Step 6: Wire into App.tsx**
+- [x] **Step 6: Wire into App.tsx**
 
 Near the existing `parameterRepositoryClient` useMemo (~2178), add:
 
@@ -1156,7 +1158,7 @@ const dashboardRuntime = useMemo(() => createParameterDashboardRuntime({ reposit
 
 Trigger `dashboardRuntime.loadSummary({ projectId, window })` on mount / project / window change, and `loadHotspots({ projectId, window, dimension })` on mount / dimension change, via `useEffect`. Pass `dashboardState`, `dashboardRuntime`, and setters (`DASHBOARD_SET_WINDOW`/`DASHBOARD_SET_DIMENSION`) down to the parameter-home route. Use the exact mock-state accessor pattern the file already uses for other mock repositories.
 
-- [ ] **Step 7: Typecheck**
+- [x] **Step 7: Typecheck**
 
 ```bash
 npx tsc -b
@@ -1164,7 +1166,7 @@ npx tsc -b
 
 Expected: no type errors.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add src/application/parameters/parameterDashboardRuntime.ts src/application/parameters/parameterDashboardRuntime.test.ts src/application/parameters/dashboardState.ts src/application/parameters/dashboardState.test.ts src/App.tsx
@@ -1185,11 +1187,11 @@ All new UI lives under `src/features/parameter-home/`. New components use Tailwi
 - Create: `src/features/parameter-home/parameter-home.css` (page-level tokens + panel styles)
 - Create: `src/features/parameter-home/components/SectionState.test.tsx`
 
-- [ ] **Step 1: Define tokens + Panel**
+- [x] **Step 1: Define tokens + Panel**
 
 `parameter-home.css` defines CSS variables scoped to `.parameter-home` (panel radius/border/elevation, spacing rhythm, risk colors `--risk-high/medium/low`, score tones). `Panel.tsx` renders a titled card (`<section>` with heading slot + children + optional actions slot).
 
-- [ ] **Step 2: Write failing SectionState test**
+- [x] **Step 2: Write failing SectionState test**
 
 ```tsx
 // src/features/parameter-home/components/SectionState.test.tsx
@@ -1215,16 +1217,16 @@ describe("SectionState", () => {
 });
 ```
 
-- [ ] **Step 3: Implement primitives**
+- [x] **Step 3: Implement primitives**
 
 `SectionSkeleton` renders `role="status" aria-live="polite"` with shimmer placeholders and the label (visually hidden text ok). `SectionEmpty` renders message + optional CTA. `SectionError` renders message + a `重试` button calling `onRetry`.
 
-- [ ] **Step 4: Run test — PASS**
+- [x] **Step 4: Run test — PASS**
 
 Run: `npm test -- src/features/parameter-home/components/SectionState.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/parameter-home/components/Panel.tsx src/features/parameter-home/components/SectionState.tsx src/features/parameter-home/components/SectionState.test.tsx src/features/parameter-home/parameter-home.css
@@ -1240,7 +1242,7 @@ git commit -m "feat(parameter-home): panel primitive, section state components, 
 - Create: `src/features/parameter-home/components/ProjectRiskChart.tsx`
 - Create: `src/features/parameter-home/components/charts.test.tsx`
 
-- [ ] **Step 1: Write failing chart tests (data + a11y, not pixels)**
+- [x] **Step 1: Write failing chart tests (data + a11y, not pixels)**
 
 ```tsx
 // src/features/parameter-home/components/charts.test.tsx
@@ -1262,18 +1264,18 @@ describe("charts", () => {
 });
 ```
 
-- [ ] **Step 2: Implement charts with Recharts + a11y wrapper**
+- [x] **Step 2: Implement charts with Recharts + a11y wrapper**
 
 Each chart wraps the Recharts `ResponsiveContainer` in a `<figure role="img" aria-label="...">` and includes a visually-hidden `<table>` mirroring the data (so tests and screen readers get labels/values without relying on SVG internals). `UpdateTrendChart` = `LineChart`/`AreaChart` over `label`→`changeCount`. `ProjectRiskChart` = stacked `BarChart` with three `Bar`s using `--risk-high/medium/low` colors.
 
 > Recharts renders width 0 in jsdom; render the chart inside a fixed-size wrapper and rely on the hidden table for assertions. Do not assert on SVG paths.
 
-- [ ] **Step 3: Run chart tests — PASS**
+- [x] **Step 3: Run chart tests — PASS**
 
 Run: `npm test -- src/features/parameter-home/components/charts.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/features/parameter-home/components/UpdateTrendChart.tsx src/features/parameter-home/components/ProjectRiskChart.tsx src/features/parameter-home/components/charts.test.tsx
@@ -1290,7 +1292,7 @@ git commit -m "feat(parameter-home): recharts trend and stacked risk charts with
 - Create: `src/features/parameter-home/components/SituationStrip.test.tsx`
 - Create: `src/features/parameter-home/components/AnalysisContextControls.test.tsx`
 
-- [ ] **Step 1: SituationStrip test**
+- [x] **Step 1: SituationStrip test**
 
 ```tsx
 // SituationStrip.test.tsx
@@ -1311,7 +1313,7 @@ describe("SituationStrip", () => {
 });
 ```
 
-- [ ] **Step 2: AnalysisContextControls test**
+- [x] **Step 2: AnalysisContextControls test**
 
 ```tsx
 // AnalysisContextControls.test.tsx
@@ -1329,16 +1331,16 @@ describe("AnalysisContextControls", () => {
 });
 ```
 
-- [ ] **Step 3: Implement both**
+- [x] **Step 3: Implement both**
 
 `SituationStrip` renders 5 KPI tiles inside a `Panel`; `status==="loading"`→`SectionSkeleton`, `error`→`SectionError`. `AnalysisContextControls` renders a window selector (7d/30d/180d) and the hotspot dimension `ToggleGroup` (总/模块/项目/参数), calling callbacks that dispatch `DASHBOARD_SET_WINDOW` / `DASHBOARD_SET_DIMENSION`.
 
-- [ ] **Step 4: Run tests — PASS**
+- [x] **Step 4: Run tests — PASS**
 
 Run: `npm test -- src/features/parameter-home/components/SituationStrip.test.tsx src/features/parameter-home/components/AnalysisContextControls.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/parameter-home/components/SituationStrip.tsx src/features/parameter-home/components/AnalysisContextControls.tsx src/features/parameter-home/components/SituationStrip.test.tsx src/features/parameter-home/components/AnalysisContextControls.test.tsx
@@ -1355,11 +1357,11 @@ git commit -m "feat(parameter-home): situation strip and unified analysis-contex
 - Create: `src/features/parameter-home/components/WorkbenchPrimary.tsx`
 - Create: `src/features/parameter-home/components/WorkbenchPrimary.test.tsx`
 
-- [ ] **Step 1: Refactor view-model to take real signals**
+- [x] **Step 1: Refactor view-model to take real signals**
 
 New `derivePersonalWorkbench({ roleId, signals, changeRequests, drafts, projects, hotspots })` returns `{ roleView, nextActions, scenarioEntries, emphasis }` where `emphasis` is `"action-first"` for User/Committer and `"insight-first"` for Admin/Guest. Todo counts come from `WorkbenchSignals` (real backend), not mock-only state fields. Keep permission filtering of actions/entries via `canAccessPage`.
 
-- [ ] **Step 2: Write failing view-model test**
+- [x] **Step 2: Write failing view-model test**
 
 ```ts
 // derivePersonalWorkbench.test.ts
@@ -1386,21 +1388,21 @@ describe("derivePersonalWorkbench", () => {
 });
 ```
 
-- [ ] **Step 3: Implement view-model; run test — PASS**
+- [x] **Step 3: Implement view-model; run test — PASS**
 
 Run: `npm test -- src/features/parameter-home/workbench/derivePersonalWorkbench.test.ts`
 Expected: PASS.
 
-- [ ] **Step 4: WorkbenchPrimary component + test**
+- [x] **Step 4: WorkbenchPrimary component + test**
 
 `WorkbenchPrimary` renders `NextActionQueue` + `ScenarioEntries` and orders them per `emphasis`. Test asserts action queue present, entries permission-filtered, and navigation callbacks fire with context paths. Model DOM structure on the current `PersonalWorkbenchHero` but role-adaptive.
 
-- [ ] **Step 5: Run WorkbenchPrimary test — PASS**
+- [x] **Step 5: Run WorkbenchPrimary test — PASS**
 
 Run: `npm test -- src/features/parameter-home/components/WorkbenchPrimary.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/features/parameter-home/workbench/ src/features/parameter-home/components/WorkbenchPrimary.tsx src/features/parameter-home/components/WorkbenchPrimary.test.tsx
@@ -1418,11 +1420,11 @@ git commit -m "feat(parameter-home): role-adaptive workbench primary from real s
 - Create: `src/features/parameter-home/components/HotspotLeaderboard.test.tsx`
 - Create: `src/features/parameter-home/components/InsightSection.test.tsx`
 
-- [ ] **Step 1: Port leaderboard from `ParameterManagementHomePage`**
+- [x] **Step 1: Port leaderboard from `ParameterManagementHomePage`**
 
 Reuse the existing keyboard-nav + accordion behavior, but consume `DashboardHotspot[]` from state (no in-component scoring). Rename the panel heading from "AI 评分拆解" to "热度评分构成"; keep evidence list, dimension bars (`progressbar`), and recommended actions (permission-filtered via `canAccessPage`).
 
-- [ ] **Step 2: Leaderboard test (keyboard nav + rename + a11y)**
+- [x] **Step 2: Leaderboard test (keyboard nav + rename + a11y)**
 
 ```tsx
 // HotspotLeaderboard.test.tsx — assert:
@@ -1432,16 +1434,16 @@ Reuse the existing keyboard-nav + accordion behavior, but consume `DashboardHots
 // - dimension bars expose role=progressbar with aria-valuenow
 ```
 
-- [ ] **Step 3: InsightSection assembly + emphasis test**
+- [x] **Step 3: InsightSection assembly + emphasis test**
 
 `InsightSection` composes `UpdateTrendChart`, `ProjectRiskChart`, `AnalysisContextControls`, and `HotspotLeaderboard`, each guarded by its section status. It is default-expanded for `insight-first` and collapsed-first for `action-first` (progressive disclosure). Test asserts: collapsed by default for a User role prop; expanded for Admin; each sub-section renders its skeleton/empty/error per status.
 
-- [ ] **Step 4: Run tests — PASS**
+- [x] **Step 4: Run tests — PASS**
 
 Run: `npm test -- src/features/parameter-home/components/HotspotLeaderboard.test.tsx src/features/parameter-home/components/InsightSection.test.tsx`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/parameter-home/components/HotspotLeaderboard.tsx src/features/parameter-home/components/HotspotScorePanel.tsx src/features/parameter-home/components/InsightSection.tsx src/features/parameter-home/components/HotspotLeaderboard.test.tsx src/features/parameter-home/components/InsightSection.test.tsx
@@ -1459,11 +1461,11 @@ git commit -m "feat(parameter-home): hotspot leaderboard, explainable score pane
 - Modify: `src/appConfig.ts` (labels/subtitle if changed)
 - Delete: `src/ParameterManagementHomePage.tsx`
 
-- [ ] **Step 1: Build container**
+- [x] **Step 1: Build container**
 
 `ParameterHomePage` receives `state` (for role + hydrated change requests/drafts/projects), `dashboardState`, `dashboardRuntime`, window/dimension setters, and `onNavigate`/`onNewProject`. It renders: `SituationStrip` (from `dashboardState.summary`), `WorkbenchPrimary` (from `derivePersonalWorkbench` fed by `summary.workbenchSignals` + hydrated state), and `InsightSection` (trend/risk from summary; hotspots from `dashboardState.hotspots`). Order + emphasis follow the role's `emphasis`.
 
-- [ ] **Step 2: Container test (role variants × section states)**
+- [x] **Step 2: Container test (role variants × section states)**
 
 ```tsx
 // ParameterHomePage.test.tsx — assert:
@@ -1476,11 +1478,11 @@ git commit -m "feat(parameter-home): hotspot leaderboard, explainable score pane
 
 Use a stubbed `dashboardRuntime` (`vi.fn()` loaders) and hand-built `dashboardState` variants.
 
-- [ ] **Step 3: Route wiring**
+- [x] **Step 3: Route wiring**
 
 In `src/app/routes.tsx`, replace the `case "parameter-home"` block to render `<ParameterHomePage .../>` with the new props (dashboard state/runtime + setters). Remove import of `ParameterManagementHomePage`.
 
-- [ ] **Step 4: Delete old page**
+- [x] **Step 4: Delete old page**
 
 ```bash
 git rm src/ParameterManagementHomePage.tsx
@@ -1488,12 +1490,12 @@ git rm src/ParameterManagementHomePage.tsx
 
 Move the still-needed `HotspotLeaderboard` consumers (e.g. `components/hotspots/HotspotLeaderboard.test.tsx`) to import from the new location, or keep a thin re-export if other pages import it (grep first).
 
-- [ ] **Step 5: Run container + route tests + typecheck**
+- [x] **Step 5: Run container + route tests + typecheck**
 
 Run: `npm test -- src/features/parameter-home/ParameterHomePage.test.tsx src/app` then `npx tsc -b`
 Expected: PASS, no type errors.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/features/parameter-home/ParameterHomePage.tsx src/features/parameter-home/ParameterHomePage.test.tsx src/app/routes.tsx src/appConfig.ts
@@ -1514,7 +1516,7 @@ git commit -m "feat(parameter-home): assemble adaptive command-center page and w
 - Modify: `src/styles.css` (remove `.parameter-homepage*`, `.personal-workbench*`, `.hotspot-*` blocks now owned by `parameter-home.css`)
 - Modify: `src/App.test.tsx` (parameter-home shortcut assertions), any CSS-contract tests referencing removed classes
 
-- [ ] **Step 1: Grep for importers before deleting**
+- [x] **Step 1: Grep for importers before deleting**
 
 ```bash
 rg "parameterHomepageAnalytics|parameterPersonalWorkbench|deriveUpdateTrendSeries|deriveProjectRiskDistribution" src
@@ -1522,19 +1524,19 @@ rg "parameterHomepageAnalytics|parameterPersonalWorkbench|deriveUpdateTrendSerie
 
 Only remove symbols with no remaining importers; keep any still used by other pages.
 
-- [ ] **Step 2: Remove synthetic functions + their tests**
+- [x] **Step 2: Remove synthetic functions + their tests**
 
 Delete `deriveUpdateTrendSeries`, `deriveProjectRiskDistribution`, `lcg`, `projectSeedFromId`, `TREND_*`, `RISK_*` and the tests asserting synthetic output.
 
-- [ ] **Step 3: Remove old CSS blocks**
+- [x] **Step 3: Remove old CSS blocks**
 
 Delete the `.parameter-homepage*` / `.personal-workbench*` / `.hotspot-*` rule blocks from `src/styles.css` (now provided by `parameter-home.css`).
 
-- [ ] **Step 4: Fix regression tests**
+- [x] **Step 4: Fix regression tests**
 
 Update `src/App.test.tsx` and any tests asserting removed classes / old headings so they reflect the new structure.
 
-- [ ] **Step 5: Full frontend test + build**
+- [x] **Step 5: Full frontend test + build**
 
 ```bash
 npm test
@@ -1544,7 +1546,7 @@ npm run build
 
 Expected: all PASS; build succeeds.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/parameterHomepageAnalytics.ts src/parameterHomepageAnalytics.test.ts src/styles.css src/App.test.tsx
@@ -1562,19 +1564,19 @@ git commit -m "refactor(parameter-home): remove synthetic analytics and migrate 
 - Modify: `docs/developer/browser-acceptance-coverage-map.md`, `docs/developer/user-operation-coverage-matrix.md`
 - Modify/Create: `e2e/acceptance/*` spec covering parameter-home real-data path
 
-- [ ] **Step 1: Update FRONTEND.md**
+- [x] **Step 1: Update FRONTEND.md**
 
 Document the new `src/features/parameter-home/` tree, the `ParameterDashboardRepository` seam, partitioned dashboard state, and unified analysis-context controls (window in-page, TopBar keeps project selector).
 
-- [ ] **Step 2: Update API contract doc**
+- [x] **Step 2: Update API contract doc**
 
 Add the two dashboard endpoints (permission, query params, response shape) to `docs/design-docs/api-contract.md`.
 
-- [ ] **Step 3: Acceptance coverage**
+- [x] **Step 3: Acceptance coverage**
 
 Add/adjust a requirement ID in `browser-acceptance-coverage-map.md` and operation ID(s) in `user-operation-coverage-matrix.md` for: viewing parameter-home real dashboard data, switching time window, switching hotspot dimension, and role-adaptive workbench. Add or extend an `e2e/acceptance/` spec that logs in per role and asserts the situation strip, charts, and hotspots render from API data.
 
-- [ ] **Step 4: Browser verification (AGENTS.md mandatory)**
+- [x] **Step 4: Browser verification (AGENTS.md mandatory)**
 
 With `npm run dev:all` running, use `playwright-cli` for each affected role at viewports `1440x900`, `768x1024`, `390x844`:
 
@@ -1588,7 +1590,7 @@ playwright-cli -s=param-home console error
 
 Verify: no overlap/overflow, charts render with real data, loading→ready transitions, empty/error states, hotspot keyboard nav, no console errors, network calls hit the two dashboard endpoints.
 
-- [ ] **Step 5: Run docs governance + full gates**
+- [x] **Step 5: Run docs governance + full gates**
 
 ```bash
 npm run docs:check
@@ -1599,7 +1601,7 @@ npm run contract:check
 
 Expected: all PASS.
 
-- [ ] **Step 6: Mark spec implemented + commit**
+- [x] **Step 6: Mark spec implemented + commit**
 
 ```bash
 git add docs/ e2e/ work/ui-checks/
@@ -1618,21 +1620,21 @@ git commit -m "docs+test(parameter-home): contract, frontend, and acceptance cov
 | `docs/zh-CN/superpowers/specs/2026-07-07-parameter-home-production-redesign-design.md` | Update — status → Implemented | 16 |
 | `docs/developer/browser-acceptance-coverage-map.md` | Update — new requirement id | 16 |
 | `docs/developer/user-operation-coverage-matrix.md` | Update — new operation id | 16 |
-| `docs/design-docs/2026-05-24-parameter-personal-workbench-design.md` | Review — mark evolved-by-this-plan | 16 |
-| `docs/design-docs/2026-05-07-parameter-management-homepage-design.md` | Review — historical | 16 |
+| `docs/design-docs/2026-05-24-parameter-personal-workbench-design.md` | Review — evolved by this plan; superseded banner added pointing to the 2026-07-07 spec (Task 16 closure) | 16 |
+| `docs/design-docs/2026-05-07-parameter-management-homepage-design.md` | Review — historical; superseded banner added pointing to the 2026-07-07 spec (Task 16 closure) | 16 |
 | `docs/zh-CN/FRONTEND` companion (if paired) | Update — mirror FRONTEND.md change | 16 |
 | `ARCHITECTURE.md` | No change | — |
 | `AGENTS.md` | No change | — |
-| `docs/product-specs/product-spec.md` | Review — confirm no per-page contradiction | 16 |
+| `docs/product-specs/product-spec.md` | Review — confirmed unchanged: no parameter-home page-level contradiction (`rg -i "parameter-home\|参数首页\|热度评分\|AI 评分"` returns no conflicting spec text) | 16 |
 
 ## Documentation Update Gate
 
 Plan cannot move to `completed/` until:
 
-- [ ] Every **Update** row is edited or explicitly deferred in `docs/exec-plans/tech-debt-tracker.md` with reason
-- [ ] Every **Review** row is confirmed unchanged (with evidence) or updated
-- [ ] `npm run docs:check` passes
-- [ ] Bilingual FRONTEND pair (if present) stays linked
+- [x] Every **Update** row is edited or explicitly deferred in `docs/exec-plans/tech-debt-tracker.md` with reason
+- [x] Every **Review** row is confirmed unchanged (with evidence) or updated
+- [x] `npm run docs:check` passes
+- [x] Bilingual FRONTEND pair (if present) stays linked
 
 ## UI Interaction Automation Rule
 
