@@ -217,6 +217,8 @@ function debugNodeWithBindingsRecord(overrides: Partial<DebugNodeWithBindingsRec
     name: "Battery voltage",
     description: "Reads battery voltage node.",
     detailedDescription: "Full detail for battery voltage node.",
+    writeFormatExample: "",
+    writeFormatHint: "",
     module: "Battery",
     valueKind: "scalar",
     valueFormat: "raw",

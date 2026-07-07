@@ -26,6 +26,8 @@ function mockNodesFromParameters(parameters: readonly DebugParameter[]): DebugNo
     name: parameter.name,
     description: parameter.description,
     detailedDescription: parameter.detailedDescription ?? parameter.description,
+    writeFormatExample: parameter.writeFormatExample ?? "",
+    writeFormatHint: parameter.writeFormatHint ?? "",
     module: parameter.module,
     enabled: parameter.enabled !== false && !parameter.archivedAt,
     bindings:
@@ -190,6 +192,8 @@ export function DebuggingAdminPage({
           name: draft.name,
           description: draft.description,
           detailedDescription: draft.detailedDescription,
+          writeFormatExample: draft.writeFormatExample,
+          writeFormatHint: draft.writeFormatHint,
           module: draft.module
         }
       });
@@ -211,6 +215,8 @@ export function DebuggingAdminPage({
         name: draft.name,
         description: draft.description,
         detailedDescription: draft.detailedDescription,
+        writeFormatExample: draft.writeFormatExample,
+        writeFormatHint: draft.writeFormatHint,
         nodePath: "",
         accessMode: "RO",
         key: `debug.node.${Date.now()}`,
@@ -254,6 +260,8 @@ export function DebuggingAdminPage({
                 name: draft.name,
                 description: draft.description,
                 detailedDescription: draft.detailedDescription,
+                writeFormatExample: draft.writeFormatExample,
+                writeFormatHint: draft.writeFormatHint,
                 module: draft.module,
                 enabled: draft.enabled
               });

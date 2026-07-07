@@ -8,6 +8,8 @@ const nodes = [
     name: "Fast charge current",
     description: "Charge current node",
     detailedDescription: "",
+    writeFormatExample: "",
+    writeFormatHint: "",
     module: "Battery Charging",
     enabled: true,
     bindings: [{ protocol: "hdc" as const, nodePath: "/sys/hdc/current", accessMode: "RW" as const, enabled: true }]
@@ -17,6 +19,8 @@ const nodes = [
     name: "Cycle count",
     description: "Battery cycle count",
     detailedDescription: "",
+    writeFormatExample: "",
+    writeFormatHint: "",
     module: "Battery Health",
     enabled: true,
     bindings: [{ protocol: "hdc" as const, nodePath: "/sys/hdc/cycles", accessMode: "RO" as const, enabled: true }]

@@ -11,6 +11,8 @@ export type DebugNodeDraft = {
   name: string;
   description: string;
   detailedDescription: string;
+  writeFormatExample: string;
+  writeFormatHint: string;
   module: string;
   enabled: boolean;
 };
@@ -31,6 +33,8 @@ function emptyDraft(): DebugNodeDraft {
     name: "",
     description: "",
     detailedDescription: "",
+    writeFormatExample: "",
+    writeFormatHint: "",
     module: "",
     enabled: true
   };
@@ -41,6 +45,8 @@ function draftFromNode(node: DebugNodeRegistryEntry): DebugNodeDraft {
     name: node.name,
     description: node.description,
     detailedDescription: node.detailedDescription,
+    writeFormatExample: node.writeFormatExample,
+    writeFormatHint: node.writeFormatHint,
     module: node.module,
     enabled: node.enabled
   };
@@ -144,6 +150,27 @@ export function DebugNodeEditorDialog({
                 placeholder="补充节点用途、读写约束与注意事项"
                 rows={2}
                 onChange={(event) => setDraft((current) => ({ ...current, detailedDescription: event.target.value }))}
+              />
+            </label>
+            <label className="debug-admin-field">
+              <span className="debug-admin-field-label">写入格式示例</span>
+              <Input
+                aria-label="写入格式示例"
+                value={draft.writeFormatExample}
+                disabled={fieldsDisabled}
+                placeholder="例如 3100"
+                onChange={(event) => setDraft((current) => ({ ...current, writeFormatExample: event.target.value }))}
+              />
+            </label>
+            <label className="debug-admin-field debug-admin-field--stack debug-admin-field--full">
+              <span className="debug-admin-field-label">写入格式说明</span>
+              <Textarea
+                aria-label="写入格式说明"
+                value={draft.writeFormatHint}
+                disabled={fieldsDisabled}
+                placeholder="留空时使用默认说明：例如输入示例值，系统会通过 HDC/ADB 写入当前节点"
+                rows={2}
+                onChange={(event) => setDraft((current) => ({ ...current, writeFormatHint: event.target.value }))}
               />
             </label>
             <label className="debug-admin-field">

@@ -233,6 +233,8 @@ export type DebugNodeRecord = {
   name: string;
   description: string;
   detailedDescription: string;
+  writeFormatExample: string;
+  writeFormatHint: string;
   module: string;
   valueKind: DebugValueKind;
   valueFormat: DebugValueFormat;

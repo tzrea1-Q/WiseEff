@@ -131,6 +131,8 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
           name: draft.name,
           description: draft.description,
           detailedDescription: draft.detailedDescription,
+          writeFormatExample: draft.writeFormatExample,
+          writeFormatHint: draft.writeFormatHint,
           module: draft.module,
           enabled: draft.enabled
         });

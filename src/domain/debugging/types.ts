@@ -64,6 +64,8 @@ export type DebugParameter = {
   maxValueBytes?: number | null;
   parameterDefinitionId?: string;
   reloadManaged?: boolean;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
 };
 
 export type DebugParameterArchiveState = "active" | "archived";
@@ -127,6 +129,8 @@ export type DebugNodeRegistryEntry = {
   name: string;
   description: string;
   detailedDescription: string;
+  writeFormatExample: string;
+  writeFormatHint: string;
   module: string;
   enabled: boolean;
   bindings: DebugNodeProtocolBinding[];

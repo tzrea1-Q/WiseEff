@@ -255,6 +255,8 @@ function debugNodeRow(overrides: Record<string, unknown> = {}) {
     name: "Charge current",
     description: "Device charge current node.",
     detailed_description: "",
+    write_format_example: "",
+    write_format_hint: "",
     module: "Battery",
     value_kind: "scalar",
     value_format: "raw",
@@ -2601,7 +2603,7 @@ describe("debugging service", () => {
 
   it("readNode resolves debug node binding for the active session protocol", async () => {
     const gateway = makeGateway();
-    const { db } = createFakeDb([
+    const { db, txCalls } = createFakeDb([
       [sessionRow({ protocol: "hdc" })],
       [debugNodeRow({ id: "node-1" })],
       [debugNodeBindingRow({ node_id: "node-1", protocol: "hdc", node_path: "/sys/node/hdc/current" })],
@@ -2617,6 +2619,9 @@ describe("debugging service", () => {
       nodePath: "/sys/node/hdc/current",
       preserveExactRead: false
     });
+    const insertCall = txCalls.find((call) => call.text.includes("insert into node_operations"));
+    expect(insertCall?.values?.[4]).toBeNull();
+    expect(insertCall?.values?.[5]).toBe("node-1");
     expect(operation).toMatchObject({ operationType: "read", status: "succeeded", nodePath: "/sys/node/hdc/current" });
   });
 
