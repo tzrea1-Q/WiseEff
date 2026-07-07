@@ -94,7 +94,9 @@ M6.2 adds OIDC-backed production auth and durable user-governance contract entri
 
 ## 调试参数语义
 
-`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` 只返回 enabled 且未 archived 的共享调试 catalog 行，以及属于请求项目的 legacy 行。`projectId` 查询参数用于鉴权和运行上下文化；它不是共享调试 catalog 行的所有权边界。
+M2 日志与 M3 调试运行时/catalog API 以认证用户的 `organization_id` 为边界，不接受 `projectId` 查询参数或请求体字段。日志记录可含可选 `relatedParameterId` 作为指向 M1 定义的软链接。
+
+`GET /api/v1/debugging/parameters?protocol=adb` 返回 enabled、未 archived 且所选协议 binding 启用的组织 catalog 行。鉴权仅使用组织级调试权限。
 
 当请求提供 `parameterId` 时，读写节点 API 会从 `debugging_parameter_node_bindings` 解析对应协议的 `nodePath`。Catalog 参数请求不需要发送原始 node path。
 
@@ -232,7 +234,7 @@ POST   /api/v1/parameter-import-batches/:batchId/apply
 
 ## 6. Logs
 
-M2 日志合同锁定为：
+M2 日志合同锁定为组织级作用域（迁移 `0037` 移除 `projectId`）：
 
 ```text
 POST /api/v1/log-files
@@ -266,7 +268,6 @@ GET  /api/v1/jobs/:jobId/events
 
 ```json
 {
-  "projectId": "aurora",
   "fileName": "charging_thermal_trace.log",
   "contentType": "text/plain",
   "contentBase64": "V0FSTiB0ZW1wPTc1",
@@ -279,7 +280,6 @@ GET  /api/v1/jobs/:jobId/events
 
 ```json
 {
-  "projectId": "aurora",
   "fileObjectId": "file_123",
   "fileName": "charging_thermal_trace.log",
   "analysisQuestion": "Why did fast charging fold back?",

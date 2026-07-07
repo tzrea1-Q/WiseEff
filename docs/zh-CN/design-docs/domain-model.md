@@ -125,6 +125,7 @@ stateDiagram-v2
 规则：
 
 - 上传记录与文件对象必须绑定。
+- 日志记录与文件对象按 `organization_id` 组织级隔离；可选 `related_parameter_id` 为指向 M1 参数定义的软链接（无 FK）。
 - 不支持格式创建 `Failed` 记录，保留失败原因。
 - 分析结果必须能追溯到具体 run 和 stage。
 - 证据行号必须基于原始文本日志或解析后的稳定索引。
@@ -159,9 +160,9 @@ M2 implementation notes:
 - 写入操作必须记录目标值、回读值、验证结果和错误。
 - 回滚必须引用快照。
 
-调试参数是组织级调试 catalog。`debugging_parameters.project_id` 和 `debugging_parameter_node_bindings.project_id` 可为空；`null` 表示跨项目共享。参数管理仍通过 M1 参数管理表保持项目级作用域。
+调试参数、逻辑调试节点及其协议 binding 均为组织级 catalog，以 `organization_id` 为边界。参数管理仍通过 M1 参数管理表保持项目级作用域。
 
-调试运行时记录仍保留项目上下文。Sessions、targets、leases、node operations、snapshots、events 和 audit rows 都保留 `project_id`，确保权限、操作历史和 evidence 绑定到选定项目上下文。
+调试运行时记录为组织级作用域。Devices、targets、sessions、leases、node operations、snapshots 和 events 均以 `organization_id` 为键；权限使用组织级调试 RBAC，不再依赖参数项目上下文。新的日志/调试审计事件使用 `project_id = null`。
 
 调试 catalog governance 与 runtime execution 分离。`debugging_parameters.enabled=false` 或 `archived_at` 非空会让参数退出 runtime 列表，但保留 audit、snapshot 和 operation history 的可解释性。Admin catalog API 可以查看并恢复 archived 行；runtime 参数读取只使用 enabled 且未 archived 的行。
 
@@ -172,16 +173,16 @@ HDC 和 ADB node bindings 在 `debugging_parameter_node_bindings` 中按 protoco
 TD-032 将调试 catalog 拆成三个协作面：
 
 - **Legacy 调试参数**（`debugging_parameters` + `debugging_parameter_node_bindings`）仍是 M3 节点调试 catalog，供 `/node-debugging` 使用，行形态仍带参数语义与按协议 bindings。
-- **调试节点**（`debug_nodes`）是按协议管理的纯设备路径注册表，不含 M1 参数元数据，在调试 Admin **节点注册表** Tab 维护。
-- **参数重载绑定**（`parameter_reload_bindings`）将 M1 `parameter_definitions` 映射到各协议的设备节点路径；名称、模块、单位、风险、当前/推荐值来自 M1，绑定行只存路径、协议、访问模式与启用状态。
+- **调试节点**（`debug_nodes`）是逻辑、协议无关的可调节点，供 `/node-debugging` 运行时与调试 Admin **节点目录** Tab 使用。
+- **Debug node bindings**（`debug_node_bindings`）为每个逻辑节点存储按协议的 HDC/ADB 路径、访问模式与启用状态。
 
 运行时分离：
 
-- `/node-debugging` 创建 `session_kind = node` 会话，读写 legacy 调试 catalog。
-- `/debugging` 创建 `session_kind = parameter_reload` 会话，通过 `GET /api/v1/debugging/reload-targets` 列出联邦重载目标，经 `POST /api/v1/debugging/parameters/reload` 写入设备。
-- reload 操作的 `node_operations.parameter_definition_id` 有值；legacy 节点写仍引用 `debugging_parameters.id`。
+- `/node-debugging` 创建 `session_kind = node` 会话，通过 `GET /api/v1/debugging/nodes?protocol=...` 列出联邦运行时节点，经 node API 读写。
+- `/debugging` 参数重载工作区仍为**产品下线**（TD-032）。迁移 `0037` 已删除 `parameter_reload_bindings` 及 reload-target/reload-write HTTP 路由。
+- reload 操作的 `node_operations.parameter_definition_id` 仅保留历史审计；legacy 节点写仍引用 `debugging_parameters.id`。
 
-Admin IA 提供三个 Tab：legacy catalog CRUD、节点注册表 CRUD、重载绑定 upsert。重载绑定编辑不得修改 M1 参数定义本身。
+Admin IA 提供单一**节点目录** Tab：逻辑节点 CRUD 与按协议 binding upsert/archive。
 
 ### 调试值元数据
 
@@ -238,7 +239,7 @@ stateDiagram-v2
 
 规则：
 
-- Agent 上下文必须包含 pageKey、projectId、roleId 和用户身份。
+- Agent 上下文在参数管理页面必须包含 pageKey、projectId、roleId 和用户身份；日志与调试页面不注入 projectId。
 - 工具调用必须声明权限和是否需要审批。
 - 变更型工具调用未审批前不能执行。
 - 工具执行结果必须关联审计事件。

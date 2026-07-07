@@ -28,15 +28,19 @@ Rules:
 - Audit: audit event listing and detail.
 - Operations: liveness, readiness, metrics, pilot/release readiness.
 
+## Log and Debugging Scope
+
+M2 log upload/list and M3 debugging runtime/catalog APIs are scoped by authenticated `organization_id`. They do not accept `projectId` query parameters or body fields. Log records may include optional `relatedParameterId` as a soft link to M1 definitions.
+
 ## Debugging Parameter Semantics
 
-`GET /api/v1/debugging/parameters?projectId=:projectId&protocol=adb` returns enabled, non-archived shared debugging catalog rows plus legacy rows owned by the requested project. The `projectId` query parameter authorizes and contextualizes the request; it is not the ownership boundary for shared debugging catalog rows.
+`GET /api/v1/debugging/parameters?protocol=adb` returns enabled, non-archived organization catalog rows with an enabled selected-protocol binding. Authorization uses org-level debugging permissions only.
 
 Read/write node APIs resolve protocol-specific `nodePath` from `debug_node_bindings` when `nodeId` is provided (preferred) or from legacy `debugging_parameter_node_bindings` when `parameterId` is provided. The request does not need to send a raw node path for catalog-backed nodes.
 
 ### Runtime Node Catalog (Option A)
 
-`GET /api/v1/debugging/nodes?projectId=:projectId&protocol=hdc|adb` returns enabled, non-archived logical nodes that have an **enabled binding for the requested protocol**. Nodes missing or with a disabled binding for that protocol are omitted from runtime lists. Admin list APIs return full logical nodes with all bindings so `/debugging-admin` can show HDC/ADB coverage labels.
+`GET /api/v1/debugging/nodes?protocol=hdc|adb` returns enabled, non-archived logical nodes that have an **enabled binding for the requested protocol**. Nodes missing or with a disabled binding for that protocol are omitted from runtime lists. Admin list APIs return full logical nodes with all bindings so `/debugging-admin` can show HDC/ADB coverage labels.
 
 ### Debugging Admin Catalog
 
