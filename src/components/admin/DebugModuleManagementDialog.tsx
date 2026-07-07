@@ -201,6 +201,11 @@ export function DebugModuleManagementDialog({
               </p>
             ) : (
               <table className="param-admin-module-table">
+                <colgroup>
+                  <col className="param-admin-module-col-name" />
+                  <col className="param-admin-module-col-count" />
+                  <col className="param-admin-module-col-actions" />
+                </colgroup>
                 <thead>
                   <tr>
                     <th>模块名称</th>

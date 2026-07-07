@@ -308,7 +308,6 @@ async function processClaimedLogAnalysisJob(
     if (snapshot.submittedByUserId) {
       await notifyLogAnalysisCompleted(db, {
         organizationId: snapshot.organizationId,
-        projectId: snapshot.projectId,
         logId: snapshot.logId,
         runId: snapshot.runId,
         fileName: snapshot.fileName,
@@ -370,7 +369,6 @@ async function processClaimedLogAnalysisJob(
     if (snapshot.submittedByUserId) {
       await notifyLogAnalysisFailed(db, {
         organizationId: snapshot.organizationId,
-        projectId: snapshot.projectId,
         logId: snapshot.logId,
         runId: snapshot.runId,
         fileName: snapshot.fileName,

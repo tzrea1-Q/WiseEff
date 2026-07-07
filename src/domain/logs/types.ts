@@ -25,7 +25,6 @@ export type LogRecord = {
   id: string;
   reportId: string;
   fileName: string;
-  projectId: string;
   source: string;
   fileSizeMB: number;
   status: LogStatus;

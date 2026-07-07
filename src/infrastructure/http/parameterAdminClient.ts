@@ -59,6 +59,9 @@ export function createParameterAdminClient(client: ApiClient = createDefaultApiC
         input
       );
       return response.item;
+    },
+    async deleteProject(projectId: string) {
+      await client.delete<{ ok: true }>(`/api/v1/parameters/admin/projects/${encodeURIComponent(projectId)}`);
     }
   };
 }

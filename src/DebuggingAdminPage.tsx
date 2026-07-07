@@ -22,7 +22,6 @@ import type { ParameterModuleDraft, PowerManagementParameterModule } from "@/pow
 function mockNodesFromParameters(parameters: readonly DebugParameter[]): DebugNodeRegistryEntry[] {
   return parameters.map((parameter) => ({
     id: parameter.id,
-    projectId: parameter.projectId,
     name: parameter.name,
     description: parameter.description,
     detailedDescription: parameter.detailedDescription ?? parameter.description,
@@ -113,7 +112,7 @@ export function DebuggingAdminPage({
     setAdminLoading(true);
     setAdminError("");
     Promise.all([
-      debuggingAdminClient.listNodes({ projectId: state.activeProjectId, includeArchived: true }),
+      debuggingAdminClient.listNodes({ includeArchived: true }),
       debuggingAdminClient.listModules()
     ])
       .then(([nodes, loadedModules]) => {
@@ -135,7 +134,7 @@ export function DebuggingAdminPage({
     return () => {
       cancelled = true;
     };
-  }, [debuggingAdminClient, isApiMode, state.activeProjectId]);
+  }, [debuggingAdminClient, isApiMode]);
 
   const flashSaved = (nextStatus: string) => {
     setSaveStatus(nextStatus);
@@ -256,7 +255,6 @@ export function DebuggingAdminPage({
           editorMode === "edit" && existingNode
             ? await debuggingAdminClient.updateNode(existingNode.id, draft)
             : await debuggingAdminClient.createNode({
-                projectId: state.activeProjectId ?? null,
                 name: draft.name,
                 description: draft.description,
                 detailedDescription: draft.detailedDescription,

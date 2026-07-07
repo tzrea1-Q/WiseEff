@@ -41,7 +41,6 @@ function jobSnapshot(overrides: Partial<LogAnalysisJobSnapshotDto> = {}): LogAna
     id: "job-1",
     kind: "log-analysis" as const,
     organizationId: "org-1",
-    projectId: "aurora",
     logId: "log-1",
     runId: "run-1",
     status: "queued" as const,
@@ -109,14 +108,14 @@ describe("job routes", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("cross-project job snapshot returns FORBIDDEN", async () => {
+  it("cross-org job snapshot returns NOT_FOUND", async () => {
     const db = makeDb();
-    vi.mocked(repository.getJobSnapshot).mockResolvedValue(jobSnapshot({ projectId: "nebula" }));
+    vi.mocked(repository.getJobSnapshot).mockResolvedValue(jobSnapshot({ organizationId: "org-other" }));
 
     const response = await requestJson<{ error: { code: string } }>(makeServer({ db }), "/api/v1/jobs/job-1");
 
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("GET /api/v1/jobs/:jobId/events emits at least one SSE job event", async () => {
@@ -131,15 +130,15 @@ describe("job routes", () => {
     expect(response.text).toContain('"id":"job-1"');
   });
 
-  it("cross-project job SSE returns FORBIDDEN before opening the stream", async () => {
+  it("cross-org job SSE returns NOT_FOUND before opening the stream", async () => {
     const db = makeDb();
-    vi.mocked(repository.getJobSnapshot).mockResolvedValue(jobSnapshot({ projectId: "nebula" }));
+    vi.mocked(repository.getJobSnapshot).mockResolvedValue(jobSnapshot({ organizationId: "org-other" }));
 
     const response = await requestText("/api/v1/jobs/job-1/events", { db });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
-    expect(response.text).toContain('"code":"FORBIDDEN"');
+    expect(response.text).toContain('"code":"NOT_FOUND"');
     expect(response.text).not.toContain("event: error");
   });
 

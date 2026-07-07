@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { AuthContext } from "../auth/types";
-import { requireLogProjectAccess, requireLogView } from "../logs/policy";
+import { requireLogView } from "../logs/policy";
 import type { Database } from "../../shared/database/client";
 import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
@@ -40,7 +40,6 @@ async function loadVisibleJob(db: Database, auth: AuthContext, jobId: string) {
   if (!item || item.organizationId !== auth.organization.id) {
     throw new ApiError("NOT_FOUND", "Job was not found.", 404, { jobId });
   }
-  requireLogProjectAccess(auth, item.projectId);
 
   return item;
 }

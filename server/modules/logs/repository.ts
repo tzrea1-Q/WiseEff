@@ -9,7 +9,6 @@ import type { LogRecordStatus, LogRunStatus, LogStage } from "./status";
 type LogFileObjectRow = {
   id: string;
   organization_id: string;
-  project_id: string;
   storage_key: string;
   file_name: string;
   content_type: string;
@@ -24,7 +23,6 @@ type LogRecordRow = {
   current_run_id?: string | null;
   report_id: string | null;
   file_name: string;
-  project_id: string;
   source: string;
   file_size_bytes: number | string;
   status: LogRecordStatus;
@@ -68,7 +66,6 @@ type WorkerLogRunSnapshotRow = {
   organization_id: string;
   run_id: string;
   log_id: string;
-  project_id: string;
   file_object_id: string;
   file_name: string;
   storage_key: string;
@@ -82,7 +79,6 @@ type WorkerLogRunSnapshotRow = {
 export type LogFileObjectDto = {
   id: string;
   organizationId: string;
-  projectId: string;
   storageKey: string;
   fileName: string;
   contentType: string;
@@ -107,7 +103,6 @@ export type CreateLogRecordWithRunAndJobInput = {
   runId: string;
   jobId: string;
   organizationId: string;
-  projectId: string;
   fileObjectId: string;
   fileName: string;
   source: string;
@@ -121,7 +116,6 @@ export type LogWorkerRunSnapshot = {
   organizationId: string;
   runId: string;
   logId: string;
-  projectId: string;
   fileObjectId: string;
   fileName: string;
   storageKey: string;
@@ -170,7 +164,6 @@ function toFileObjectDto(row: LogFileObjectRow): LogFileObjectDto {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     storageKey: row.storage_key,
     fileName: row.file_name,
     contentType: row.content_type,
@@ -200,7 +193,6 @@ function toLogDto(row: LogRecordRow, evidence = [] as LogRecordDto["evidence"]):
     id: row.id,
     reportId: row.report_id ?? "",
     fileName: row.file_name,
-    projectId: row.project_id,
     source: row.source,
     fileSizeBytes: Number(row.file_size_bytes),
     status,
@@ -251,7 +243,6 @@ function toWorkerLogRunSnapshot(row: WorkerLogRunSnapshotRow): LogWorkerRunSnaps
     organizationId: row.organization_id,
     runId: row.run_id,
     logId: row.log_id,
-    projectId: row.project_id,
     fileObjectId: row.file_object_id,
     fileName: row.file_name,
     storageKey: row.storage_key,
@@ -269,7 +260,6 @@ const logSelect = `
     lr.current_run_id,
     report.id as report_id,
     lr.file_name,
-    lr.project_id,
     lr.source,
     lfo.file_size_bytes,
     lr.status,
@@ -304,7 +294,6 @@ export async function createFileObject(
   input: {
     id: string;
     organizationId: string;
-    projectId: string;
     storageKey: string;
     fileName: string;
     contentType: string;
@@ -316,16 +305,15 @@ export async function createFileObject(
   const result = await db.query<LogFileObjectRow>(
     `
     insert into log_file_objects (
-      id, organization_id, project_id, storage_key, file_name, content_type,
+      id, organization_id, storage_key, file_name, content_type,
       file_size_bytes, checksum_sha256, uploaded_by_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    values ($1, $2, $3, $4, $5, $6, $7, $8)
     returning *
     `,
     [
       input.id,
       input.organizationId,
-      input.projectId,
       input.storageKey,
       input.fileName,
       input.contentType,
@@ -364,16 +352,15 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
     await tx.query<LogRecordRow>(
       `
       insert into log_records (
-        id, organization_id, project_id, file_object_id, file_name, source, status,
+        id, organization_id, file_object_id, file_name, source, status,
         analysis_question, related_parameter_id, submitted_by_user_id
       )
-      values ($1, $2, $3, $4, $5, $6, 'processing', $7, $8, $9)
+      values ($1, $2, $3, $4, $5, 'processing', $6, $7, $8)
       returning id
       `,
       [
         input.logId,
         input.organizationId,
-        input.projectId,
         input.fileObjectId,
         input.fileName,
         input.source,
@@ -410,7 +397,6 @@ export async function createLogRecordWithRunAndJob(db: Database, input: CreateLo
         current_run_id,
         null::text as report_id,
         file_name,
-        project_id,
         source,
         (select file_size_bytes from log_file_objects where id = log_records.file_object_id) as file_size_bytes,
         status,
@@ -441,7 +427,6 @@ export async function markUnsupportedLog(
   input: {
     id: string;
     organizationId: string;
-    projectId: string;
     fileObjectId: string;
     fileName: string;
     source: string;
@@ -454,16 +439,15 @@ export async function markUnsupportedLog(
   const result = await db.query<LogRecordRow>(
     `
     insert into log_records (
-      id, organization_id, project_id, file_object_id, file_name, source, status,
+      id, organization_id, file_object_id, file_name, source, status,
       failure_reason, analysis_question, related_parameter_id, submitted_by_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, 'failed', $7, $8, $9, $10)
+    values ($1, $2, $3, $4, $5, 'failed', $6, $7, $8, $9)
     returning
       id,
       current_run_id,
       null::text as report_id,
       file_name,
-      project_id,
       source,
       (select file_size_bytes from log_file_objects where id = log_records.file_object_id) as file_size_bytes,
       status,
@@ -485,7 +469,6 @@ export async function markUnsupportedLog(
     [
       input.id,
       input.organizationId,
-      input.projectId,
       input.fileObjectId,
       input.fileName,
       input.source,
@@ -503,11 +486,9 @@ export async function listLogs(
   db: Queryable,
   auth: AuthContext,
   query: {
-    projectId?: string;
     status?: LogRecordStatus;
     timeWindow?: "today" | "7d" | "30d";
     includeArchived?: boolean;
-    allowedProjectIds?: string[] | null;
   }
 ) {
   const values: unknown[] = [auth.organization.id];
@@ -515,12 +496,6 @@ export async function listLogs(
 
   if (!query.includeArchived) {
     where.push("lr.archive_state = 'active'");
-  }
-  if (query.allowedProjectIds !== undefined && query.allowedProjectIds !== null) {
-    addCondition(where, values, (placeholder) => `lr.project_id = any(${placeholder}::text[])`, query.allowedProjectIds);
-  }
-  if (query.projectId) {
-    addCondition(where, values, (placeholder) => `lr.project_id = ${placeholder}`, query.projectId);
   }
   if (query.status) {
     addCondition(where, values, (placeholder) => `lr.status = ${placeholder}`, query.status);
@@ -662,7 +637,6 @@ export async function getLogWorkerRunSnapshot(db: Queryable, jobId: string) {
       job.organization_id,
       run.id as run_id,
       lr.id as log_id,
-      lr.project_id,
       lr.file_object_id,
       lr.file_name,
       lfo.storage_key,

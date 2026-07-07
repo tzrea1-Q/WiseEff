@@ -76,7 +76,7 @@ export const HOTSPOT_ACTION_TEMPLATES: Record<HotspotArchetype, ArchetypeActions
     },
     secondary: {
       labelTemplate: "查看 {projectCode} 近期改动",
-      pathTemplate: "/logs?project={projectCode}"
+      pathTemplate: "/logs"
     }
   },
   "impact-wide": {

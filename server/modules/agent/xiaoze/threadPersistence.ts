@@ -10,6 +10,16 @@ import {
   type XiaozePersistableMessage
 } from "./threadRepository";
 
+const ORG_SCOPED_PAGE_KEYS = new Set(["logs", "log-admin", "node-debugging", "debugging-admin"]);
+
+function normalizePageContext(pageContext: PersistXiaozeTurnInput["pageContext"]) {
+  const pageKey = pageContext.pageKey ?? "";
+  if (!ORG_SCOPED_PAGE_KEYS.has(pageKey)) {
+    return pageContext;
+  }
+  return { ...pageContext, projectId: undefined };
+}
+
 export type PersistXiaozeTurnInput = {
   auth: AuthContext;
   requestId: string;
@@ -87,12 +97,14 @@ export function createXiaozeTurnPersister(options: { db: Database }) {
 
     const sessionStarted = !(await getAgentSession(options.db, input.auth.organization.id, input.threadId));
 
+    const pageContext = normalizePageContext(input.pageContext);
+
     const payload: PersistXiaozeTurnMessagesInput = {
       organizationId: input.auth.organization.id,
       actorUserId: input.auth.user.id,
       threadId: input.threadId,
       runId: input.runId,
-      pageContext: input.pageContext,
+      pageContext,
       messages
     };
 
@@ -109,7 +121,7 @@ export function createXiaozeTurnPersister(options: { db: Database }) {
         action: "started",
         targetType: "agent_session",
         targetId: input.threadId,
-        projectId: input.pageContext.projectId,
+        projectId: pageContext.projectId,
         metadata: { sessionId: input.threadId, pageKey: "xiaoze" }
       });
     }
@@ -121,7 +133,7 @@ export function createXiaozeTurnPersister(options: { db: Database }) {
       action: "appended",
       targetType: "agent_session",
       targetId: input.threadId,
-      projectId: input.pageContext.projectId,
+      projectId: pageContext.projectId,
       metadata: {
         sessionId: input.threadId,
         messageIds: messages.map((message) => message.id),

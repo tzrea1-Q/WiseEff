@@ -15,7 +15,6 @@ export type LogRecordDto = {
   id: string;
   reportId: string;
   fileName: string;
-  projectId: string;
   source: string;
   fileSizeBytes: number;
   status: LogRecordStatus;

@@ -11,6 +11,7 @@ import * as service from "./service";
 
 vi.mock("./repository", () => ({
   createProject: vi.fn(),
+  deleteProject: vi.fn(),
   getParameterById: vi.fn(),
   getProjectAdminDetail: vi.fn(),
   listParameterHistory: vi.fn(),
@@ -475,5 +476,37 @@ describe("parameter routes", () => {
       name: "Nova",
       code: "NOVA"
     });
+  });
+
+  it("DELETE /api/v1/parameters/admin/projects/:projectId deletes an empty project", async () => {
+    const db = makeDb();
+    vi.mocked(repository.deleteProject).mockResolvedValue({ deleted: true });
+
+    const response = await requestJson<{ ok: true }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameters/admin/projects/nova",
+      { method: "DELETE" }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ ok: true });
+    expect(repository.deleteProject).toHaveBeenCalledWith(db, {
+      organizationId: "org-1",
+      projectId: "nova"
+    });
+  });
+
+  it("DELETE /api/v1/parameters/admin/projects/:projectId returns 404 when project is missing", async () => {
+    const db = makeDb();
+    vi.mocked(repository.deleteProject).mockResolvedValue({ deleted: false, reason: "not_found" });
+
+    const response = await requestJson<{ error: { code: string } }>(
+      makeServer({ db, auth: makeAuth({ permissions: ["parameter:view", "admin:access"] }) }),
+      "/api/v1/parameters/admin/projects/missing",
+      { method: "DELETE" }
+    );
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 });

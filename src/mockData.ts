@@ -216,7 +216,6 @@ export type LogRecord = {
   id: string;
   reportId: string;
   fileName: string;
-  projectId: string;
   source: string;
   fileSizeMB: number;
   status: LogStatus;
@@ -242,7 +241,6 @@ export type LogRecord = {
 export type Device = {
   id: string;
   name: string;
-  projectId: string;
   transport?: DebugDeviceTransport;
   firmware: string;
   status: DeviceStatus;
@@ -926,7 +924,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         id: "log-active",
         reportId: "RPT-9092",
         fileName: "charging_thermal_trace_20260504.log",
-        projectId: "aurora",
         source: "Battery Thermal",
         fileSizeMB: 48.2,
         status: "Processing",
@@ -973,7 +970,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         id: "log-auth",
         reportId: "RPT-9091",
         fileName: "usb_pd_negotiation_20260503.log",
-        projectId: "aurora",
         source: "PD Negotiation",
         fileSizeMB: 12.6,
         status: "Complete",
@@ -1019,7 +1015,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
         id: "log-failed",
         reportId: "RPT-9090",
         fileName: "thermal_snapshot.bin",
-        projectId: "nebula",
         source: "Thermal Snapshot",
         fileSizeMB: 12.4,
         status: "Failed",
@@ -1060,7 +1055,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       {
         id: "device-x01",
         name: "ChargeLab_X01",
-        projectId: "aurora",
         firmware: "v5.2.0-powerlab",
         status: "未连接",
         lastSeen: "10 分钟前"
@@ -1068,7 +1062,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       {
         id: "device-n07",
         name: "BatteryBench_07",
-        projectId: "nebula",
         firmware: "v5.2.0-beta",
         status: "已连接",
         lastSeen: "刚刚"

@@ -342,6 +342,17 @@ export function deleteProjectParameter(config: PowerManagementConfig, parameterI
   };
 }
 
+export function deleteAdminProject(config: PowerManagementConfig, projectId: string): PowerManagementConfig {
+  return {
+    ...config,
+    projects: config.projects.filter((project) => project.id !== projectId),
+    parameterLibrary: config.parameterLibrary.map((parameter) => ({
+      ...parameter,
+      values: Object.fromEntries(Object.entries(parameter.values).filter(([valueProjectId]) => valueProjectId !== projectId))
+    }))
+  };
+}
+
 export function countParametersByModule(config: PowerManagementConfig, moduleName: string) {
   return config.parameterLibrary.filter((parameter) => parameter.module === moduleName).length;
 }

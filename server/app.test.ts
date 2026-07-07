@@ -154,15 +154,14 @@ function createDebuggingDetectDb() {
         return {
           rows: [
             {
-              id: values[3],
+              id: values[2],
               organization_id: values[0],
-              project_id: values[1],
-              device_id: values[2],
-              bridge_id: values[4],
-              protocol: values[5],
-              target_ref: values[6],
-              label: values[7],
-              status: values[8],
+              device_id: values[1],
+              bridge_id: values[3],
+              protocol: values[4],
+              target_ref: values[5],
+              label: values[6],
+              status: values[7],
               detected_at: "2026-05-27T10:00:00.000Z"
             }
           ] as Row[],
@@ -469,13 +468,13 @@ describe("WiseEff API", () => {
       "/api/v1/debugging/targets/detect",
       {
         method: "POST",
-        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })
+        body: JSON.stringify({ deviceId: "device-1", protocol: "adb" })
       }
     );
 
     expect(response.status).toBe(200);
     expect(response.body.items).toEqual([expect.objectContaining({ protocol: "adb", targetRef: "emulator-5554" })]);
-    expect(adbGateway.detectTargets).toHaveBeenCalledWith({ projectId: "aurora", deviceId: "device-1" });
+    expect(adbGateway.detectTargets).toHaveBeenCalledWith({ deviceId: "device-1" });
   });
 
   it("renders Xiaoze LLM readiness metrics when env is configured", async () => {

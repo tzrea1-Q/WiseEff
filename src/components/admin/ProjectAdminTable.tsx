@@ -1,4 +1,4 @@
-import { Pencil, Search } from "lucide-react";
+import { Pencil, Search, Trash2 } from "lucide-react";
 import { useMemo } from "react";
 import type { ParamAdminProjectsSearch } from "@/hooks/useParamAdminProjectsSearch";
 import type { ParameterAdminProjectRow } from "@/parameterAdminProjects";
@@ -9,6 +9,7 @@ type ProjectAdminTableProps = {
   onUpdateSearch: (patch: Partial<ParamAdminProjectsSearch>) => void;
   onCreateProject: () => void;
   onEditProject: (projectId: string) => void;
+  onDeleteProject: (projectId: string) => void;
 };
 
 const statusOptions = [
@@ -48,7 +49,7 @@ function sortRows(rows: ParameterAdminProjectRow[], sort: string) {
   return next;
 }
 
-export function ProjectAdminTable({ rows, search, onUpdateSearch, onCreateProject, onEditProject }: ProjectAdminTableProps) {
+export function ProjectAdminTable({ rows, search, onUpdateSearch, onCreateProject, onEditProject, onDeleteProject }: ProjectAdminTableProps) {
   const filteredRows = useMemo(() => sortRows(filterRows(rows, search), search.sort), [rows, search]);
   const filtersActive = search.q.trim().length > 0 || search.status !== "all";
 
@@ -57,7 +58,7 @@ export function ProjectAdminTable({ rows, search, onUpdateSearch, onCreateProjec
       <div className="parameters-table-heading">
         <div>
           <h2>项目清单</h2>
-          <p>维护项目基础信息与初始化状态，通过操作列进入弹窗编辑。</p>
+          <p>维护项目基础信息与初始化状态，通过操作列编辑或删除项目。</p>
         </div>
         <div className="param-admin-library-heading-actions">
           <button type="button" className="button primary" onClick={onCreateProject}>
@@ -163,6 +164,15 @@ export function ProjectAdminTable({ rows, search, onUpdateSearch, onCreateProjec
                       onClick={() => onEditProject(row.id)}
                     >
                       <Pencil size={15} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button project-admin-row-delete"
+                      aria-label={`删除 ${row.name}`}
+                      title={`删除 ${row.name}`}
+                      onClick={() => onDeleteProject(row.id)}
+                    >
+                      <Trash2 size={15} aria-hidden="true" />
                     </button>
                   </div>
                 </td>

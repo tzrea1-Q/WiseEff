@@ -236,7 +236,6 @@ describe("log analysis queue runtime", () => {
       name: "analyze-log",
       payload: {
         organizationId: "org-1",
-        projectId: "project-1",
         logId: "log-1",
         runId: "run-1",
         jobId: "job-1"

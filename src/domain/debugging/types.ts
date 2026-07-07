@@ -11,7 +11,6 @@ export type DebugDeviceTransport = "simulator" | "hdc" | "adb" | "multi";
 export type Device = {
   id: string;
   name: string;
-  projectId: string;
   transport?: DebugDeviceTransport;
   firmware: string;
   status: DeviceStatus;
@@ -33,7 +32,6 @@ export type DebugParameterNodeBinding = {
 
 export type DebugParameter = {
   id: string;
-  projectId?: string | null;
   name: string;
   key: string;
   description: string;
@@ -72,7 +70,6 @@ export type DebugParameterArchiveState = "active" | "archived";
 
 export type DebugAdminParameterDraft = {
   id?: string;
-  projectId?: string | null;
   name: string;
   key: string;
   description: string;
@@ -125,7 +122,6 @@ export type DebugNodeProtocolBinding = {
 
 export type DebugNodeRegistryEntry = {
   id: string;
-  projectId?: string | null;
   name: string;
   description: string;
   detailedDescription: string;
@@ -138,7 +134,6 @@ export type DebugNodeRegistryEntry = {
 
 export type ParameterReloadBinding = {
   id: string;
-  projectId?: string | null;
   parameterDefinitionId: string;
   parameterName?: string;
   module?: string;

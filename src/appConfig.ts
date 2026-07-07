@@ -215,6 +215,20 @@ export function getPageByPath(path: string): PageConfig {
   return navigationItems.find((item) => item.path === path) ?? navigationItems[0];
 }
 
+export function pageUsesProjectScope(pageKey: PageKey): boolean {
+  switch (pageKey) {
+    case "parameters":
+    case "parameter-submissions":
+    case "parameter-review":
+    case "parameter-admin":
+    case "parameter-admin-projects":
+    case "parameter-home":
+      return true;
+    default:
+      return false;
+  }
+}
+
 export function getXiaozeContextSummary(path: string): string {
   const page = getPageByPath(path);
 

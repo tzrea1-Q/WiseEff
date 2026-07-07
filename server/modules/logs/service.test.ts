@@ -122,6 +122,7 @@ function adminAuth(overrides: Partial<AuthContext> = {}): AuthContext {
 function crossProjectAuth(overrides: Partial<AuthContext> = {}): AuthContext {
   return makeAuth({
     roles: [{ projectId: "project-2", roleId: "software-user" }],
+    permissions: ["logs:view"],
     ...overrides
   });
 }
@@ -131,7 +132,6 @@ function logRow(overrides: Record<string, unknown> = {}) {
     id: "log-1",
     report_id: null,
     file_name: "pack-controller.log",
-    project_id: "project-1",
     source: "upload",
     file_size_bytes: 2048,
     status: "processing",
@@ -166,7 +166,6 @@ describe("log service", () => {
 
     await expect(
       uploadLogFile(db, objectStore, guest, {
-        projectId: "project-1",
         fileName: "pack-controller.log",
         contentType: "text/plain",
         bytes: Buffer.from("line one")
@@ -175,65 +174,28 @@ describe("log service", () => {
     expect(puts).toHaveLength(0);
   });
 
-  it("scopes list queries to the caller project roles", async () => {
+  it("scopes list queries to the caller organization", async () => {
     const { db, calls } = createFakeDb([[logRow()]]);
 
     await listLogRecords(db, makeAuth(), {});
 
-    expect(calls[0].text).toContain("lr.project_id = any");
-    expect(calls[0].values).toEqual(["org-1", ["project-1"]]);
+    expect(calls[0].text).toContain("lr.organization_id = $1");
+    expect(calls[0].values).toEqual(["org-1"]);
   });
 
-  it("denies cross-project list and upload before object storage", async () => {
-    const { db } = createFakeDb();
-    const { objectStore, puts } = makeObjectStore();
+  it("allows org-scoped list regardless of parameter project roles", async () => {
+    const { db, calls } = createFakeDb([[logRow()]]);
 
-    await expect(listLogRecords(db, crossProjectAuth(), { projectId: "project-1" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Log project access is required.", 403)
-    );
-    await expect(
-      uploadLogFile(db, objectStore, crossProjectAuth(), {
-        projectId: "project-1",
-        fileName: "pack-controller.log",
-        contentType: "text/plain",
-        bytes: Buffer.from("line one")
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Log project access is required.", 403));
+    const logs = await listLogRecords(db, crossProjectAuth(), {});
 
-    expect(puts).toHaveLength(0);
+    expect(logs.items).toHaveLength(1);
+    expect(calls[0].text).toContain("lr.organization_id = $1");
   });
 
-  it("denies cross-project get, rerun, archive, and feedback before writes", async () => {
-    const { db, calls, txCalls } = createFakeDb([
-      [logRow({ project_id: "project-1" })],
-      [],
-      [logRow({ project_id: "project-1" })],
-      [],
-      [logRow({ project_id: "project-1" })],
-      [],
-      [logRow({ project_id: "project-1" })],
-      []
-    ]);
+  it("allows org-scoped get regardless of parameter project roles", async () => {
+    const { db } = createFakeDb([[logRow()], []]);
 
-    await expect(getLogRecord(db, crossProjectAuth(), "log-1")).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Log project access is required.", 403)
-    );
-    await expect(rerunLogAnalysis(db, adminAuth({ roles: [{ projectId: "project-2", roleId: "admin" }] }), { logId: "log-1" })).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Log project access is required.", 403)
-    );
-    await expect(archiveLogRecord(db, adminAuth({ roles: [{ projectId: "project-2", roleId: "admin" }] }), "log-1")).rejects.toMatchObject(
-      new ApiError("FORBIDDEN", "Log project access is required.", 403)
-    );
-    await expect(
-      submitLogFeedback(db, crossProjectAuth(), {
-        logId: "log-1",
-        rating: "helpful"
-      })
-    ).rejects.toMatchObject(new ApiError("FORBIDDEN", "Log project access is required.", 403));
-
-    expect(calls.length + txCalls.length).toBeGreaterThan(0);
-    expect(txCalls.some((call) => call.text.includes("insert into jobs"))).toBe(false);
-    expect(txCalls.some((call) => call.text.includes("insert into audit_events"))).toBe(false);
+    await expect(getLogRecord(db, crossProjectAuth(), "log-1")).resolves.toMatchObject({ id: "log-1" });
   });
 
   it("user with logs:upload can upload supported .log, creating processing record and queued job", async () => {
@@ -242,7 +204,6 @@ describe("log service", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.log",
           file_name: "pack-controller.log",
           content_type: "text/plain",
@@ -261,7 +222,6 @@ describe("log service", () => {
     const { objectStore, puts } = makeObjectStore();
 
     const result = await uploadLogFile(db, objectStore, makeAuth(), {
-      projectId: "project-1",
       fileName: "pack-controller.log",
       contentType: "text/plain",
       bytes: Buffer.from("line one")
@@ -286,7 +246,6 @@ describe("log service", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.log",
           file_name: "pack-controller.log",
           content_type: "text/plain",
@@ -310,7 +269,6 @@ describe("log service", () => {
       objectStore,
       makeAuth(),
       {
-        projectId: "project-1",
         fileName: "pack-controller.log",
         contentType: "text/plain",
         bytes: Buffer.from("line one")
@@ -323,7 +281,6 @@ describe("log service", () => {
         name: "analyze-log",
         payload: {
           organizationId: "org-1",
-          projectId: "project-1",
           logId: "log-1",
           runId: result.job?.runId,
           jobId: "job-1"
@@ -339,7 +296,6 @@ describe("log service", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.bin",
           file_name: "pack-controller.bin",
           content_type: "application/octet-stream",
@@ -362,7 +318,6 @@ describe("log service", () => {
     );
 
     const result = await uploadLogFile(db, objectStore, makeAuth(), {
-      projectId: "project-1",
       fileName: "pack-controller.bin",
       contentType: "application/octet-stream",
       bytes: Buffer.from([1, 2, 3, 4])
@@ -387,7 +342,6 @@ describe("log service", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.bin",
           file_name: "pack-controller.bin",
           content_type: "application/octet-stream",
@@ -408,7 +362,6 @@ describe("log service", () => {
       objectStore,
       makeAuth(),
       {
-        projectId: "project-1",
         fileName: "pack-controller.bin",
         contentType: "application/octet-stream",
         bytes: Buffer.from([1, 2, 3, 4])
@@ -419,13 +372,12 @@ describe("log service", () => {
     expect(enqueued).toEqual([]);
   });
 
-  it("createLogFromFile validates file object ownership and canonical file name", async () => {
+  it("createLogFromFile validates canonical file name", async () => {
     const { db, txCalls } = createFakeDb([
       [
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-2",
           storage_key: "org-1/checksum-pack-controller.log",
           file_name: "pack-controller.log",
           content_type: "text/plain",
@@ -439,11 +391,10 @@ describe("log service", () => {
 
     await expect(
       createLogFromFile(db, makeAuth(), {
-        projectId: "project-1",
         fileObjectId: "file-1",
         fileName: "caller-name.log"
       })
-    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "File object does not belong to the requested project.", 400));
+    ).rejects.toMatchObject(new ApiError("VALIDATION_FAILED", "File name does not match the stored file object.", 400));
 
     expect(txCalls.some((call) => call.text.includes("insert into log_records"))).toBe(false);
   });
@@ -454,7 +405,6 @@ describe("log service", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.log",
           file_name: "pack-controller.log",
           content_type: "text/plain",
@@ -468,7 +418,6 @@ describe("log service", () => {
 
     await expect(
       createLogFromFile(db, makeAuth(), {
-        projectId: "project-1",
         fileObjectId: "file-1",
         fileName: "pack-controller.log"
       })
@@ -567,7 +516,7 @@ describe("log service", () => {
     expect(txCalls.some((call) => call.text.includes("insert into log_feedback"))).toBe(true);
     const auditCall = txCalls.find((call) => call.text.includes("insert into audit_events"));
     expect(auditCall?.values).toContain("log-feedback");
-    expect(auditCall?.values).toContain("project-1");
+    expect(auditCall?.values).toContain(null);
     expect(auditCall?.values[12]).toBe("request-log-feedback-1");
   });
 
@@ -626,7 +575,6 @@ describe("log service", () => {
         name: "analyze-log",
         payload: {
           organizationId: "org-1",
-          projectId: "project-1",
           logId: "log-1",
           runId: result.job.runId,
           jobId: "job-new"

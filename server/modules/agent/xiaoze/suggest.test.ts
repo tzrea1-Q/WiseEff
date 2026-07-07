@@ -28,12 +28,13 @@ describe("runXiaozeSuggest", () => {
       citations: [{ type: "log", id: "log-1", label: "failed log" }]
     });
     const result = await runXiaozeSuggest({
-      context: { projectId: "aurora", projectName: "Aurora 量产平台", pageKey: "logs" },
+      context: { pageKey: "logs" },
       runTool,
       listReadTools: () => ["perception.getProjectOverview", "perception.getRecentLogConclusions"]
     });
     expect(result.suggestions[0]?.headline).toBe("有 1 条日志分析失败，建议优先查看");
-    expect(runTool).toHaveBeenCalledWith("perception.getRecentLogConclusions", { projectId: "aurora" });
+    expect(result.suggestions[0]?.meta).toBe("组织范围");
+    expect(runTool).toHaveBeenCalledWith("perception.getRecentLogConclusions", {});
     expect(runTool).not.toHaveBeenCalledWith("perception.getProjectOverview", expect.anything());
   });
 

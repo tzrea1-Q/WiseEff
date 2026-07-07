@@ -41,7 +41,6 @@ function createDebuggingActions(overrides: Partial<DebuggingRuntimeActions> = {}
     detectAndStartSession: vi.fn().mockResolvedValue({
       session: {
         id: "api-session-1",
-        projectId: userState.activeProjectId,
         deviceId: userState.devices[0].id,
         targetId: "api-target-1",
         status: "active",
@@ -275,7 +274,7 @@ describe("/debugging 单栏骨架", () => {
 });
 
 describe("/debugging runtime wiring", () => {
-  it("API mode connect button starts a runtime debugging session for the active project", async () => {
+  it("API mode connect button starts a runtime debugging session", async () => {
     const actions = createDebuggingActions();
 
     renderDebuggingPage({ debuggingActions: actions });
@@ -283,7 +282,7 @@ describe("/debugging runtime wiring", () => {
     fireEvent.click(getTopbarConnectButton());
 
     await waitFor(() =>
-      expect(actions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId, { sessionKind: "parameter_reload" })
+      expect(actions.detectAndStartSession).toHaveBeenCalledWith({ sessionKind: "parameter_reload" })
     );
     expect(actions.detectAndStartSession).toHaveBeenCalledTimes(1);
   });
@@ -373,7 +372,6 @@ describe("/debugging runtime wiring", () => {
     const pendingConnect = createDeferred<{
       session: {
         id: string;
-        projectId: string;
         deviceId: string;
         targetId: string;
         status: "active" | "closed";
@@ -400,7 +398,6 @@ describe("/debugging runtime wiring", () => {
     pendingConnect.resolve({
       session: {
         id: "api-session-1",
-        projectId: userState.activeProjectId,
         deviceId: userState.devices[0].id,
         targetId: "api-target-1",
         status: "active",
@@ -445,7 +442,11 @@ describe("离线提示条", () => {
 
 describe("SessionSummaryCard 集成", () => {
   it("未连接默认设备时按钮 disabled 且提示连接设备", () => {
-    renderDebuggingPage();
+    const disconnectedState = {
+      ...userState,
+      devices: userState.devices.map((device) => ({ ...device, status: "未连接" as const }))
+    };
+    renderDebuggingPage({ state: disconnectedState });
     const button = screen.getByRole("button", { name: /回滚到上次快照/ });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", expect.stringMatching(/连接/));

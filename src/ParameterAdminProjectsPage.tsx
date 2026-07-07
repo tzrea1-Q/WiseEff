@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PageProps } from "@/app/routes";
 import { ParameterAdminSubNav } from "@/components/admin/ParameterAdminSubNav";
+import { DeleteProjectDialog } from "@/components/admin/DeleteProjectDialog";
 import { ProjectAdminFormDialog } from "@/components/admin/ProjectAdminFormDialog";
 import { ProjectAdminTable } from "@/components/admin/ProjectAdminTable";
 import { KpiStrip, type KpiItem } from "@/components/KpiStrip";
@@ -30,13 +31,17 @@ export function ParameterAdminProjectsPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [formPending, setFormPending] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
   const [formError, setFormError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
   const mockRows = useMemo(() => buildParameterAdminProjectsFromState(state), [state]);
   const rows = isApiMode ? apiRows : mockRows;
   const summary = useMemo(() => summarizeParameterAdminProjects(rows), [rows]);
   const editingProject = rows.find((row) => row.id === editingProjectId) ?? null;
+  const deleteTarget = rows.find((row) => row.id === deleteTargetId) ?? null;
 
   const loadProjects = async () => {
     if (!isApiMode) {
@@ -87,6 +92,14 @@ export function ParameterAdminProjectsPage({
     setEditingProjectId(projectId);
   }, []);
 
+  const openDelete = useCallback((projectId: string) => {
+    if (!rows.some((row) => row.id === projectId)) {
+      return;
+    }
+    setDeleteError("");
+    setDeleteTargetId(projectId);
+  }, [rows]);
+
   const submitForm = async (input: { name: string; code: string; status?: string }) => {
     if (!editingProject) {
       return;
@@ -120,6 +133,31 @@ export function ParameterAdminProjectsPage({
     setEditingProjectId(null);
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) {
+      return;
+    }
+
+    if (isApiMode) {
+      setDeletePending(true);
+      setDeleteError("");
+      try {
+        await adminClient.deleteProject(deleteTarget.id);
+        await parameterActions?.refresh();
+        await loadProjects();
+        setDeleteTargetId(null);
+      } catch (submitError) {
+        setDeleteError(submitError instanceof Error ? submitError.message : "删除项目失败。");
+      } finally {
+        setDeletePending(false);
+      }
+      return;
+    }
+
+    dispatch({ type: "DELETE_PARAMETER_ADMIN_PROJECT", projectId: deleteTarget.id });
+    setDeleteTargetId(null);
+  };
+
   return (
     <div className="param-admin-shell project-admin-shell">
       <ParameterAdminSubNav active="projects" onNavigate={onNavigate} />
@@ -127,6 +165,11 @@ export function ParameterAdminProjectsPage({
       {error ? (
         <p className="project-admin-error" role="alert">
           {error}
+        </p>
+      ) : null}
+      {deleteError ? (
+        <p className="project-admin-error" role="alert">
+          {deleteError}
         </p>
       ) : null}
       {loading && isApiMode ? <p className="project-admin-loading">项目列表加载中…</p> : null}
@@ -137,6 +180,7 @@ export function ParameterAdminProjectsPage({
           onUpdateSearch={updateSearch}
           onCreateProject={openCreate}
           onEditProject={openEdit}
+          onDeleteProject={openDelete}
         />
       </main>
 
@@ -156,6 +200,24 @@ export function ParameterAdminProjectsPage({
           }
         }}
         onSubmit={submitForm}
+      />
+
+      <DeleteProjectDialog
+        loading={deletePending}
+        open={deleteTarget !== null}
+        projectCode={deleteTarget?.code ?? ""}
+        projectName={deleteTarget?.name ?? ""}
+        parameterCount={deleteTarget?.parameterCount ?? 0}
+        moduleCount={deleteTarget?.moduleCount ?? 0}
+        onCancel={() => {
+          if (!deletePending) {
+            setDeleteTargetId(null);
+            setDeleteError("");
+          }
+        }}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
       />
     </div>
   );

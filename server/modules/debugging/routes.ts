@@ -20,8 +20,6 @@ import {
   detectTargetsBodySchema,
   listDebuggingAdminParametersQuerySchema,
   listDebuggingParametersQuerySchema,
-  listParameterReloadBindingsAdminQuerySchema,
-  listParameterReloadTargetsQuerySchema,
   listRuntimeDebugNodesQuerySchema,
   listDebugNodesAdminQuerySchema,
   debugAdminModuleParamsSchema,
@@ -29,20 +27,14 @@ import {
   patchDebugNodeModuleAdminBodySchema,
   patchDebugParameterAdminBodySchema,
   readNodeBodySchema,
-  reloadParameterBodySchema,
   rollbackSnapshotBodySchema,
   upsertDebugParameterNodeBindingBodySchema,
-  upsertParameterReloadBindingBodySchema,
   writeDebugNodeAdminBodySchema,
   writeDebugNodeModuleAdminBodySchema,
   writeDebugParameterAdminBodySchema,
   writeNodeBodySchema
 } from "./schemas";
 import { createDebuggingService } from "./service";
-
-const listDebuggingDevicesQuerySchema = z.object({
-  projectId: z.string().trim().min(1).optional()
-});
 
 const paramsWithSessionIdSchema = z.object({
   sessionId: z.string().trim().min(1)
@@ -137,8 +129,7 @@ export function registerDebuggingRoutes(
   router.get("/api/v1/debugging/devices", async (request) => {
     const { service } = serviceFrom(options);
     const auth = await options.getCurrentAuthContext(request);
-    const query = parseWithSchema(listDebuggingDevicesQuerySchema, request.query);
-    const items = await service.listDevices(auth, query);
+    const items = await service.listDevices(auth);
 
     return { status: 200, body: { items } };
   });
@@ -354,27 +345,6 @@ export function registerDebuggingRoutes(
 
     return { status: 200, body: { item } };
   });
-
-  router.get("/api/v1/debugging/admin/reload-bindings", async (request) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const query = parseWithSchema(listParameterReloadBindingsAdminQuerySchema, request.query);
-    const items = await service.listAdminReloadBindings(auth, query);
-
-    return { status: 200, body: { items } };
-  });
-
-  const upsertAdminReloadBinding = async (request: RouteRequest) => {
-    const { service } = serviceFrom(options);
-    const auth = await options.getCurrentAuthContext(request);
-    const body = parseWithSchema(upsertParameterReloadBindingBodySchema, request.body);
-    const item = await service.upsertAdminReloadBinding(auth, body, { requestId: request.requestId });
-
-    return { status: 200, body: { item } };
-  };
-
-  router.put("/api/v1/debugging/admin/reload-bindings", upsertAdminReloadBinding);
-  router.patch("/api/v1/debugging/admin/reload-bindings", upsertAdminReloadBinding);
 
   router.get("/api/v1/debugging/reload-targets", async () => ({
     status: 410,

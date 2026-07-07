@@ -56,7 +56,7 @@ describe("ADB debug device gateway", () => {
     const { runCommand } = makeRunner([]);
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    await expect(gateway.detectTargets({ projectId: "aurora" })).resolves.toEqual({
+    await expect(gateway.detectTargets({})).resolves.toEqual({
       ok: false,
       targets: [],
       error: "ADB target detection requires deviceId so detected targets can be persisted against a known debugging device."
@@ -75,7 +75,7 @@ describe("ADB debug device gateway", () => {
     ]);
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    await expect(gateway.detectTargets({ projectId: "aurora", deviceId: "device-1" })).resolves.toEqual({
+    await expect(gateway.detectTargets({ deviceId: "device-1" })).resolves.toEqual({
       ok: true,
       targets: [
         {
@@ -94,7 +94,7 @@ describe("ADB debug device gateway", () => {
     const { runCommand } = makeRunner([{ code: 1, stdout: "", stderr: "adb server unavailable", durationMs: 11 }]);
     const gateway = createAdbDebugDeviceGateway({ runCommand, timeoutMs: 1000 });
 
-    await expect(gateway.detectTargets({ projectId: "aurora", deviceId: "device-1" })).resolves.toEqual({
+    await expect(gateway.detectTargets({ deviceId: "device-1" })).resolves.toEqual({
       ok: false,
       targets: [],
       error: "ADB command failed: adb server unavailable"

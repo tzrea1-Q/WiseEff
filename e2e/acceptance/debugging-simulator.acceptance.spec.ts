@@ -10,7 +10,7 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 
 useBrowserDiagnostics(test);
 
-const projectId = "aurora";
+const organizationId = "org-chargelab";
 const fastChargeParameterId = "dbg-fast-charge-current";
 const cycleCountParameterId = "dbg-cycle-count";
 const mismatchParameterId = "dbg-readback-mismatch";
@@ -178,7 +178,6 @@ async function seedComplexSimulatorParameters(client: Client) {
     insert into debugging_parameters (
       id,
       organization_id,
-      project_id,
       name,
       key,
       description,
@@ -201,7 +200,6 @@ async function seedComplexSimulatorParameters(client: Client) {
     values (
       $1,
       'org-chargelab',
-      $2,
       'Config JSON overlay',
       'config_json_overlay',
       'Simulator complex JSON node for acceptance validation.',
@@ -213,15 +211,15 @@ async function seedComplexSimulatorParameters(client: Client) {
       null,
       null,
       'Medium',
+      $2,
       $3,
-      $4,
       60,
       'complex',
       'json',
       'json-canonical',
       now()
     )
-    on conflict (project_id, key) do update set
+    on conflict (organization_id, key) do update set
       name = excluded.name,
       description = excluded.description,
       module = excluded.module,
@@ -240,15 +238,15 @@ async function seedComplexSimulatorParameters(client: Client) {
       normalization_mode = excluded.normalization_mode,
       updated_at = now()
     `,
-    [complexJsonParameterId, projectId, complexJsonCurrentValue, complexJsonTargetValue]
+    [complexJsonParameterId, complexJsonCurrentValue, complexJsonTargetValue]
   );
 
   await client.query(
     `
     insert into debugging_parameter_node_bindings (
-      id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
+      id, organization_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
     )
-    values ($1, 'org-chargelab', $2, $3, 'hdc', '/sys/class/debug/config_json', 'RW', true, 'Seeded complex JSON node binding.', '{}'::jsonb, now())
+    values ($1, 'org-chargelab', $2, 'hdc', '/sys/class/debug/config_json', 'RW', true, 'Seeded complex JSON node binding.', '{}'::jsonb, now())
     on conflict (parameter_id, protocol) do update set
       node_path = excluded.node_path,
       access_mode = excluded.access_mode,
@@ -256,19 +254,19 @@ async function seedComplexSimulatorParameters(client: Client) {
       notes = excluded.notes,
       updated_at = now()
     `,
-    [`${complexJsonParameterId}:hdc`, projectId, complexJsonParameterId]
+    [`${complexJsonParameterId}:hdc`, complexJsonParameterId]
   );
 }
 
 async function cleanupDebuggingAcceptanceState(client: Client) {
-  await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
-  await client.query("delete from debugging_events where project_id = $1", [projectId]);
-  await client.query("update node_operations set snapshot_id = null where project_id = $1", [projectId]);
-  await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
-  await client.query("delete from node_operations where project_id = $1", [projectId]);
-  await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
-  await client.query("delete from debug_device_leases where project_id = $1", [projectId]);
-  await client.query("delete from debugging_sessions where project_id = $1", [projectId]);
+  await client.query("delete from audit_events where app = 'debugging' and organization_id = $1", [organizationId]);
+  await client.query("delete from debugging_events where organization_id = $1", [organizationId]);
+  await client.query("update node_operations set snapshot_id = null where organization_id = $1", [organizationId]);
+  await client.query("update debugging_snapshots set operation_id = null where organization_id = $1", [organizationId]);
+  await client.query("delete from node_operations where organization_id = $1", [organizationId]);
+  await client.query("delete from debugging_snapshots where organization_id = $1", [organizationId]);
+  await client.query("delete from debug_device_leases where organization_id = $1", [organizationId]);
+  await client.query("delete from debugging_sessions where organization_id = $1", [organizationId]);
 }
 
 async function prepareSimulatorAcceptanceState() {
@@ -345,7 +343,7 @@ async function rollbackSnapshotViaApi(page: Page, snapshotId: string) {
 async function createDebuggingSessionViaApi(page: Page, userId = "u-xu-yun") {
   const detectResponse = await page.request.post(apiRoute("/api/v1/debugging/targets/detect"), {
     headers: { ...smokeHeaders(), "x-wiseeff-user": userId },
-    data: { projectId }
+    data: {}
   });
   expect(detectResponse.ok()).toBe(true);
   const detectBody = (await detectResponse.json()) as { items: Array<{ id: string; deviceId: string; targetRef: string }> };
@@ -354,7 +352,7 @@ async function createDebuggingSessionViaApi(page: Page, userId = "u-xu-yun") {
 
   const sessionResponse = await page.request.post(apiRoute("/api/v1/debugging/sessions"), {
     headers: { ...smokeHeaders(), "x-wiseeff-user": userId },
-    data: { projectId, deviceId: target!.deviceId, targetId: target!.id }
+    data: { deviceId: target!.deviceId, targetId: target!.id }
   });
   expect(sessionResponse.ok()).toBe(true);
   const sessionBody = (await sessionResponse.json()) as { item: { id: string } };
@@ -374,18 +372,18 @@ async function complexOperationDbSummary() {
       `
       select value_kind, value_format, normalization_mode, value_preview, requested_value_digest, status
       from node_operations
-      where project_id = $1
+      where organization_id = $1
         and parameter_id = $2
       order by created_at desc
       limit 1
       `,
-      [projectId, complexJsonParameterId]
+      [organizationId, complexJsonParameterId]
     );
     const row = result.rows[0];
 
     return {
       table: "node_operations",
-      predicate: `projectId=${projectId}; parameterId=${complexJsonParameterId}; latest write`,
+      predicate: `organizationId=${organizationId}; parameterId=${complexJsonParameterId}; latest write`,
       observed: row
         ? `status=${row.status}; valueKind=${row.value_kind}; valueFormat=${row.value_format}; normalizationMode=${row.normalization_mode}; preview=${row.value_preview ? "present" : "missing"}; digest=${row.requested_value_digest ? "present" : "missing"}`
         : "missing",
@@ -405,16 +403,16 @@ async function debuggingDbSummary(snapshotId: string) {
       select dp.id as parameter_id, dp.current_value, ds.status as snapshot_status
       from debugging_parameters dp
       left join debugging_snapshots ds on ds.id = $2
-      where dp.project_id = $1
+      where dp.organization_id = $1
         and dp.id = $3
       `,
-      [projectId, snapshotId, fastChargeParameterId]
+      [organizationId, snapshotId, fastChargeParameterId]
     );
     const row = result.rows[0];
 
     return {
       table: "debugging_parameters",
-      predicate: `projectId=${projectId}; parameterId=${fastChargeParameterId}; snapshotId=${snapshotId}`,
+      predicate: `organizationId=${organizationId}; parameterId=${fastChargeParameterId}; snapshotId=${snapshotId}`,
       observed: row
         ? `currentValue=${row.current_value}; snapshotStatus=${row.snapshot_status ?? "missing"}`
         : "missing",
@@ -452,7 +450,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
   test("reads, writes, detects mismatch, rolls back, and records audit evidence", async ({ page }, testInfo) => {
     // @acceptance DEBUG-SIM-001
     // @operation DEBUG-SIM-001
-    await page.goto(`/node-debugging?project=${projectId}`);
+    await page.goto("/node-debugging");
     await expectSimulatorOnline(page);
 
     const fastChargeRow = parameterRow(page, "Fast charge current");
@@ -485,7 +483,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
     const fastChargeSnapshotId = await latestWriteSnapshotId(page, fastChargeParameterId);
     const rollbackResponse = await rollbackSnapshotViaApi(page, fastChargeSnapshotId);
 
-    await page.goto(`/node-debugging?project=${projectId}`);
+    await page.goto("/node-debugging");
     await expectSimulatorOnline(page);
     await expect(parameterRow(page, "Fast charge current")).toContainText("3000", { timeout: 30_000 });
 
@@ -542,7 +540,7 @@ test.describe("M5.4 manual flow E - debugging simulator loop", () => {
   test("blocks node writes for non-writer roles in UI and forced API calls", async ({ page }, testInfo) => {
     // @acceptance DEBUG-PERM-001
     // @operation DEBUG-PERM-001
-    await page.goto(`/node-debugging?project=${projectId}`);
+    await page.goto("/node-debugging");
     await expectSimulatorOnline(page);
 
     const topbar = page.locator(".topbar");

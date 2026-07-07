@@ -44,7 +44,6 @@ function fileObjectRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "file-1",
     organization_id: "org-1",
-    project_id: "aurora",
     storage_key: "org-1/checksum-charging-foldback.log",
     file_name: "charging-foldback.log",
     content_type: "text/plain",
@@ -76,7 +75,6 @@ function logRecord(overrides: Partial<LogRecordDto> = {}): LogRecordDto {
     id: "log-1",
     reportId: "",
     fileName: "charging-foldback.log",
-    projectId: "aurora",
     source: "upload",
     fileSizeBytes: 32,
     status: "processing" as const,
@@ -127,7 +125,6 @@ function fileObject(overrides: Record<string, unknown> = {}) {
   return {
     id: "file-1",
     organizationId: "org-1",
-    projectId: "aurora",
     storageKey: "org-1/checksum-charging-foldback.log",
     fileName: "charging-foldback.log",
     contentType: "text/plain",
@@ -175,7 +172,6 @@ describe("log routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
           fileName: "charging-foldback.log",
           contentType: "text/plain",
           contentBase64: Buffer.from("WARN foldback").toString("base64"),
@@ -192,7 +188,6 @@ describe("log routes", () => {
       objectStore,
       makeAuth(),
       {
-        projectId: "aurora",
         fileName: "charging-foldback.log",
         contentType: "text/plain",
         bytes: Buffer.from("WARN foldback"),
@@ -214,7 +209,6 @@ describe("log routes", () => {
     await requestJson(makeServer({ db, objectStore, logAnalysisQueue }), "/api/v1/log-files", {
       method: "POST",
       body: JSON.stringify({
-        projectId: "aurora",
         fileName: "charging-foldback.log",
         contentType: "text/plain",
         contentBase64: Buffer.from("WARN foldback").toString("base64")
@@ -245,7 +239,6 @@ describe("log routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
           fileName: "charging-foldback.log",
           contentType: "text/plain",
           contentBase64: Buffer.from("WARN foldback").toString("base64")
@@ -272,7 +265,6 @@ describe("log routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
           fileName: "dump.bin",
           contentType: "application/octet-stream",
           contentBase64: Buffer.from([1, 2, 3]).toString("base64")
@@ -291,12 +283,11 @@ describe("log routes", () => {
     const db = makeDb();
     vi.mocked(service.listLogRecords).mockResolvedValue({ items: [] });
 
-    const response = await requestJson(makeServer({ db, objectStore: makeObjectStore() }), "/api/v1/logs?projectId=aurora&includeArchived=true");
+    const response = await requestJson(makeServer({ db, objectStore: makeObjectStore() }), "/api/v1/logs?includeArchived=true");
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [] });
     expect(service.listLogRecords).toHaveBeenCalledWith(db, makeAuth(), {
-      projectId: "aurora",
       includeArchived: true
     });
   });
@@ -341,7 +332,6 @@ describe("log routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
           fileObjectId: "file-1",
           fileName: "charging-foldback.log",
           analysisQuestion: "Why did fast charging fold back?",
@@ -356,7 +346,6 @@ describe("log routes", () => {
       db,
       makeAuth(),
       {
-        projectId: "aurora",
         fileObjectId: "file-1",
         fileName: "charging-foldback.log",
         analysisQuestion: "Why did fast charging fold back?",
@@ -375,7 +364,6 @@ describe("log routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
           fileObjectId: "file-1"
         })
       }
@@ -461,7 +449,6 @@ describe("log routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
           fileName: "charging-foldback.log",
           contentType: "text/plain",
           contentBase64: "not-base64"

@@ -39,7 +39,6 @@ export type GetSessionResponseEnvelopeContract = Expect<
 
 const deviceDto: DebugDeviceDto = {
   id: "device-1",
-  projectId: "aurora",
   name: "Aurora Simulator",
   firmware: "sim-1.0",
   status: "online",
@@ -48,7 +47,6 @@ const deviceDto: DebugDeviceDto = {
 
 const parameterDto: DebugParameterDto = {
   id: "param-1",
-  projectId: "aurora",
   name: "Fast charge current",
   key: "fast_charge_current",
   description: "Controls constant charge current.",
@@ -72,7 +70,6 @@ const targetDto: DebugTargetDto = {
 
 const sessionDto = {
   id: "session-1",
-  projectId: "aurora",
   deviceId: "device-1",
   targetId: "target-1",
   status: "active",
@@ -126,25 +123,25 @@ describe("createHttpDebuggingGateway", () => {
     expect(fetchMock).toHaveBeenCalledWith("/api/v1/debugging/devices", expect.objectContaining({ method: "GET" }));
   });
 
-  it("lists parameters with encoded project filters", async () => {
+  it("lists parameters with optional protocol filter", async () => {
     const fetchMock = createFetchMock({ items: [parameterDto] });
     const gateway = createGateway(fetchMock);
 
-    await expect(gateway.listParameters?.({ projectId: "aurora" })).resolves.toHaveLength(1);
+    await expect(gateway.listParameters?.({ protocol: "adb" })).resolves.toHaveLength(1);
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/v1/debugging/parameters?projectId=aurora", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/debugging/parameters?protocol=adb", expect.objectContaining({ method: "GET" }));
   });
 
   it("detects targets through the production endpoint", async () => {
     const fetchMock = createFetchMock({ items: [targetDto] });
     const gateway = createGateway(fetchMock);
 
-    await expect(gateway.detectTargets({ projectId: "aurora" })).resolves.toEqual([targetDto]);
+    await expect(gateway.detectTargets({ deviceId: "device-1" })).resolves.toEqual([targetDto]);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/debugging/targets/detect",
       expect.objectContaining({
-        body: JSON.stringify({ projectId: "aurora" }),
+        body: JSON.stringify({ deviceId: "device-1" }),
         method: "POST"
       })
     );
@@ -154,20 +151,19 @@ describe("createHttpDebuggingGateway", () => {
     const fetchMock = createFetchMock({ items: [] });
     const gateway = createGateway(fetchMock);
 
-    await gateway.detectTargets({ projectId: "aurora", deviceId: "device-1", protocol: "adb" } as Parameters<typeof gateway.detectTargets>[0]);
+    await gateway.detectTargets({ deviceId: "device-1", protocol: "adb" } as Parameters<typeof gateway.detectTargets>[0]);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/debugging/targets/detect",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })
+        body: JSON.stringify({ deviceId: "device-1", protocol: "adb" })
       })
     );
 
     fetchMock.mockResolvedValueOnce(jsonResponse({ item: { ...sessionDto, protocol: "adb" } }));
 
     await gateway.createSession?.({
-      projectId: "aurora",
       deviceId: "device-1",
       targetId: "adb:device-1",
       protocol: "adb"
@@ -177,7 +173,7 @@ describe("createHttpDebuggingGateway", () => {
       "/api/v1/debugging/sessions",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", targetId: "adb:device-1", protocol: "adb" })
+        body: JSON.stringify({ deviceId: "device-1", targetId: "adb:device-1", protocol: "adb" })
       })
     );
   });
@@ -186,12 +182,12 @@ describe("createHttpDebuggingGateway", () => {
     const fetchMock = createFetchMock({ item: sessionDto });
     const gateway = createGateway(fetchMock);
 
-    await expect(gateway.createSession?.({ projectId: "aurora", deviceId: "device-1", targetId: "target-1" })).resolves.toEqual(sessionDto);
+    await expect(gateway.createSession?.({ deviceId: "device-1", targetId: "target-1" })).resolves.toEqual(sessionDto);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/debugging/sessions",
       expect.objectContaining({
-        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", targetId: "target-1" }),
+        body: JSON.stringify({ deviceId: "device-1", targetId: "target-1" }),
         method: "POST"
       })
     );

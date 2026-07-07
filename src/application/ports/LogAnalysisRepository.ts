@@ -3,7 +3,6 @@ import type { LogRecord, TimeWindow } from "@/domain/logs/types";
 export type LogRunStatus = "queued" | "processing" | "complete" | "failed";
 
 export type LogListQuery = {
-  projectId?: string;
   status?: LogRecord["status"];
   timeWindow?: TimeWindow;
   includeArchived?: boolean;
@@ -22,7 +21,6 @@ export type LogJobSnapshot = {
 };
 
 export type LogUploadInput = {
-  projectId: string;
   file: File;
   analysisQuestion?: string;
   relatedParameterId?: string;

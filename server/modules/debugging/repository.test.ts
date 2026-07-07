@@ -58,7 +58,6 @@ function debugParameterRow(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: "param-1",
     organization_id: "org-1",
-    project_id: null,
     name: "Fast charge current",
     key: "debug.fast_charge.current",
     description: "Parameter",
@@ -89,7 +88,6 @@ function debugParameterNodeBindingRow(overrides: Partial<Record<string, unknown>
   return {
     id: "binding-1",
     organization_id: "org-1",
-    project_id: null,
     parameter_id: "param-1",
     protocol: "hdc",
     node_path: "/sys/current",
@@ -105,11 +103,10 @@ function debugParameterNodeBindingRow(overrides: Partial<Record<string, unknown>
 
 describe("debugging repository", () => {
   it("creates debugging parameters for admin catalog writes", async () => {
-    const { db, calls } = createFakeDb([[debugParameterRow({ id: "param-created", project_id: null })]]);
+    const { db, calls } = createFakeDb([[debugParameterRow({ id: "param-created" })]]);
 
     const created = await createDebugParameter(db, {
       organizationId: "org-1",
-      projectId: null,
       name: "Created",
       key: "debug.created",
       description: "",
@@ -131,7 +128,6 @@ describe("debugging repository", () => {
     expect(calls[0].values).toEqual([
       expect.any(String),
       "org-1",
-      null,
       "Created",
       "debug.created",
       "",
@@ -152,7 +148,7 @@ describe("debugging repository", () => {
       "trim",
       null
     ]);
-    expect(created).toMatchObject({ id: "param-created", projectId: null, enabled: true });
+    expect(created).toMatchObject({ id: "param-created",  enabled: true });
   });
 
   it("updates debugging parameter mutable metadata for admin catalog writes", async () => {
@@ -160,8 +156,7 @@ describe("debugging repository", () => {
       [
         debugParameterRow({
           id: "param-updated",
-          project_id: null,
-          name: "Updated",
+                name: "Updated",
           key: "debug.updated",
           description: "Updated description",
           module: "Diagnostics",
@@ -183,7 +178,6 @@ describe("debugging repository", () => {
     const updated = await updateDebugParameter(db, {
       organizationId: "org-1",
       parameterId: "param-updated",
-      projectId: null,
       name: "Updated",
       key: "debug.updated",
       description: "Updated description",
@@ -207,7 +201,6 @@ describe("debugging repository", () => {
     expect(calls[0].values).toEqual([
       "org-1",
       "param-updated",
-      null,
       "Updated",
       "debug.updated",
       "Updated description",
@@ -231,7 +224,6 @@ describe("debugging repository", () => {
     expect(updated).toMatchObject({
       id: "param-updated",
       name: "Updated",
-      projectId: null,
       enabled: false
     });
   });
@@ -283,7 +275,6 @@ describe("debugging repository", () => {
 
     await upsertDebugParameterNodeBinding(db, {
       organizationId: "org-1",
-      projectId: null,
       parameterId: "param-1",
       protocol: "adb",
       nodePath: "/sys/adb/path",
@@ -299,14 +290,13 @@ describe("debugging repository", () => {
 
     expect(calls[0].text).toContain("insert into debugging_parameter_node_bindings");
     expect(calls[0].text).toContain("from debugging_parameters p");
-    expect(calls[0].text).toContain("p.id = $4");
+    expect(calls[0].text).toContain("p.id = $3");
     expect(calls[0].text).toContain("p.organization_id = $2");
     expect(calls[0].text).toContain("on conflict (parameter_id, protocol) do update");
     expect(calls[0].text).toContain("where debugging_parameter_node_bindings.organization_id = excluded.organization_id");
     expect(calls[0].values).toEqual([
       expect.any(String),
       "org-1",
-      null,
       "param-1",
       "adb",
       "/sys/adb/path",
@@ -323,7 +313,6 @@ describe("debugging repository", () => {
 
     const binding = await upsertDebugParameterNodeBinding(db, {
       organizationId: "org-1",
-      projectId: null,
       parameterId: "param-other-org",
       protocol: "adb",
       nodePath: "/sys/adb/path",
@@ -334,7 +323,7 @@ describe("debugging repository", () => {
 
     expect(calls[0].text).toContain("insert into debugging_parameter_node_bindings");
     expect(calls[0].text).toContain("from debugging_parameters p");
-    expect(calls[0].text).toContain("p.id = $4");
+    expect(calls[0].text).toContain("p.id = $3");
     expect(calls[0].text).toContain("p.organization_id = $2");
     expect(binding).toBeNull();
   });
@@ -345,8 +334,7 @@ describe("debugging repository", () => {
         {
           id: "target-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          device_id: "device-1",
+                device_id: "device-1",
           protocol: "adb",
           target_ref: "emulator-5554",
           label: "ADB target emulator-5554",
@@ -358,8 +346,7 @@ describe("debugging repository", () => {
         {
           id: "session-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          device_id: "device-1",
+                device_id: "device-1",
           target_id: "target-1",
           protocol: "adb",
           actor_user_id: "user-1",
@@ -372,8 +359,7 @@ describe("debugging repository", () => {
         {
           id: "operation-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          session_id: "session-1",
+                session_id: "session-1",
           parameter_id: "param-1",
           protocol: "adb",
           node_path: "/sys/adb/current",
@@ -406,8 +392,7 @@ describe("debugging repository", () => {
         {
           id: "binding-param-1-adb",
           organization_id: "org-1",
-          project_id: "aurora",
-          parameter_id: "param-1",
+                parameter_id: "param-1",
           protocol: "adb",
           node_path: "/sys/adb/current",
           access_mode: "RW",
@@ -447,8 +432,7 @@ describe("debugging repository", () => {
         {
           id: "binding-param-1-adb",
           organization_id: "org-1",
-          project_id: "aurora",
-          parameter_id: "param-1",
+                parameter_id: "param-1",
           protocol: "adb",
           node_path: "/sys/adb/current",
           access_mode: "RW",
@@ -487,14 +471,13 @@ describe("debugging repository", () => {
     expect(calls[0].text).toContain("enabled = true");
   });
 
-  it("listDebugDevices filters by organization and project", async () => {
+  it("listDebugDevices filters by organization", async () => {
     const { db, calls } = createFakeDb([
       [
         {
           id: "device-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          name: "Aurora Simulator",
+                name: "Aurora Simulator",
           transport: "simulator",
           status: "online",
           firmware: "sim-1.0",
@@ -503,18 +486,16 @@ describe("debugging repository", () => {
       ]
     ]);
 
-    const devices = await listDebugDevices(db, { organizationId: "org-1", projectId: "aurora" });
+    const devices = await listDebugDevices(db, { organizationId: "org-1" });
 
     expect(calls[0].text).toContain("from debugging_devices");
     expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("project_id = $2");
-    expect(calls[0].values).toEqual(["org-1", "aurora"]);
+    expect(calls[0].values).toEqual(["org-1"]);
     expect(devices).toEqual([
       {
         id: "device-1",
         organizationId: "org-1",
-        projectId: "aurora",
-        name: "Aurora Simulator",
+          name: "Aurora Simulator",
         transport: "simulator",
         status: "online",
         firmware: "sim-1.0",
@@ -523,25 +504,13 @@ describe("debugging repository", () => {
     ]);
   });
 
-  it("listDebugDevices filters by allowed project IDs when no single project is selected", async () => {
-    const { db, calls } = createFakeDb([[]]);
-
-    await listDebugDevices(db, { organizationId: "org-1", projectIds: ["aurora", "zephyr"] });
-
-    expect(calls[0].text).toContain("from debugging_devices");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("project_id = any($2::text[])");
-    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
-  });
-
   it("getDebugDevice scopes device lookup by organization", async () => {
     const { db, calls } = createFakeDb([
       [
         {
           id: "device-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          name: "Aurora Simulator",
+                name: "Aurora Simulator",
           transport: "simulator",
           status: "online",
           firmware: "sim-1.0",
@@ -556,22 +525,21 @@ describe("debugging repository", () => {
     expect(calls[0].text).toContain("organization_id = $1");
     expect(calls[0].text).toContain("id = $2");
     expect(calls[0].values).toEqual(["org-1", "device-1"]);
-    expect(device).toMatchObject({ id: "device-1", organizationId: "org-1", projectId: "aurora", status: "online" });
+    expect(device).toMatchObject({ id: "device-1", organizationId: "org-1",  status: "online" });
   });
 
   it("upsertDetectedTargets updates target status and device last_seen_at", async () => {
     const { db, calls } = createFakeDb([
       (call) => [
         {
-          id: call.values[3],
+          id: call.values[2],
           organization_id: call.values[0],
-          project_id: call.values[1],
-          device_id: call.values[2],
-          bridge_id: call.values[4],
-          protocol: call.values[5],
-          target_ref: call.values[6],
-          label: call.values[7],
-          status: call.values[8],
+          device_id: call.values[1],
+          bridge_id: call.values[3],
+          protocol: call.values[4],
+          target_ref: call.values[5],
+          label: call.values[6],
+          status: call.values[7],
           detected_at: timestamp
         }
       ],
@@ -580,13 +548,12 @@ describe("debugging repository", () => {
 
     const targets = await upsertDetectedTargets(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       targets: [{ id: "target-1", deviceId: "device-1", targetRef: "simulator://aurora-1", label: "Aurora Target", online: true }]
     });
 
     expect(calls[0].text).toContain("insert into debugging_targets");
     expect(calls[0].text).toContain("on conflict (device_id, protocol, target_ref) do update");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "target-1", null, "hdc", "simulator://aurora-1", "Aurora Target", "detected"]);
+    expect(calls[0].values).toEqual(["org-1", "device-1", "target-1", null, "hdc", "simulator://aurora-1", "Aurora Target", "detected"]);
     expect(calls[1].text).toContain("update debugging_devices");
     expect(calls[1].text).toContain("last_seen_at = now()");
     expect(calls[1].values).toEqual(["org-1", "device-1", "online"]);
@@ -615,7 +582,6 @@ describe("debugging repository", () => {
 
     await upsertDetectedTargets(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       targets: [
         {
           id: "bridge:br-1:hdc:serial-1",
@@ -634,7 +600,6 @@ describe("debugging repository", () => {
     expect(calls[0].values).toEqual([
       "bridge:br-1",
       "org-1",
-      "aurora",
       "Tzrea1deMacBook-Air.local",
       "hdc",
       "online",
@@ -650,8 +615,7 @@ describe("debugging repository", () => {
         {
           id: "param-fast-charge",
           organization_id: "org-1",
-          project_id: "aurora",
-          name: "Fast charge current",
+                name: "Fast charge current",
           key: "fast_charge_current",
           description: "Controls constant charge current.",
           module: "Battery",
@@ -669,8 +633,7 @@ describe("debugging repository", () => {
         {
           id: "param-temp-limit",
           organization_id: "org-1",
-          project_id: "aurora",
-          name: "Temperature limit",
+                name: "Temperature limit",
           key: "temperature_limit",
           description: "Controls charge temperature limit.",
           module: "Thermal",
@@ -690,80 +653,17 @@ describe("debugging repository", () => {
 
     const parameters = await listDebugParameters(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       module: "Battery",
       risk: ["High"]
     });
 
     expect(calls[0].text).toContain("from debugging_parameters");
-    expect(calls[0].text).toContain("project_id = $2");
-    expect(calls[0].text).toContain("module = $3");
-    expect(calls[0].text).toContain("risk = any($4::text[])");
+    expect(calls[0].text).toContain("module = $2");
+    expect(calls[0].text).toContain("risk = any($3::text[])");
     expect(calls[0].text).toContain("order by sort_order asc");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "Battery", ["High"]]);
+    expect(calls[0].values).toEqual(["org-1", "Battery", ["High"]]);
     expect(parameters.map((parameter) => parameter.id)).toEqual(["param-temp-limit", "param-fast-charge"]);
     expect(parameters[0]).toMatchObject({ minValue: 0, maxValue: 70, sortOrder: 10 });
-  });
-
-  it("listDebugParameters filters by allowed project IDs when no single project is selected", async () => {
-    const { db, calls } = createFakeDb([[]]);
-
-    await listDebugParameters(db, {
-      organizationId: "org-1",
-      projectIds: ["aurora", "zephyr"]
-    });
-
-    expect(calls[0].text).toContain("from debugging_parameters");
-    expect(calls[0].text).toContain("organization_id = $1");
-    expect(calls[0].text).toContain("project_id = any($2::text[])");
-    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
-  });
-
-  it("lists shared debugging parameters for a project context", async () => {
-    const { db, calls } = createFakeDb([
-      [
-        {
-          id: "shared-param-1",
-          organization_id: "org-1",
-          project_id: null,
-          name: "ADB smoke readable",
-          key: "adb_smoke_readable",
-          description: "Shared smoke parameter.",
-          module: "Diagnostics",
-          node_path: "/sys/adb/smoke",
-          access_mode: "RO",
-          unit: "",
-          range_label: "",
-          min_value: null,
-          max_value: null,
-          risk: "Low",
-          current_value: "",
-          target_value: "",
-          sort_order: 1
-        }
-      ]
-    ]);
-
-    const parameters = await listDebugParameters(db, { organizationId: "org-1", projectId: "aurora" });
-
-    expect(calls[0].text).toContain("(project_id is null or project_id = $2)");
-    expect(calls[0].values).toEqual(["org-1", "aurora"]);
-    expect(parameters).toEqual([
-      expect.objectContaining({
-        id: "shared-param-1",
-        projectId: null,
-        key: "adb_smoke_readable"
-      })
-    ]);
-  });
-
-  it("lists shared debugging parameters for multiple allowed project contexts", async () => {
-    const { db, calls } = createFakeDb([[]]);
-
-    await listDebugParameters(db, { organizationId: "org-1", projectIds: ["aurora", "zephyr"] });
-
-    expect(calls[0].text).toContain("(project_id is null or project_id = any($2::text[]))");
-    expect(calls[0].values).toEqual(["org-1", ["aurora", "zephyr"]]);
   });
 
   it("maps debugging parameter archive fields", async () => {
@@ -772,8 +672,7 @@ describe("debugging repository", () => {
         {
           id: "param-archived",
           organization_id: "org-1",
-          project_id: null,
-          name: "Archived parameter",
+                name: "Archived parameter",
           key: "debug.archived",
           description: "Archived catalog row.",
           module: "Diagnostics",
@@ -802,7 +701,6 @@ describe("debugging repository", () => {
 
     expect(parameters[0]).toMatchObject({
       id: "param-archived",
-      projectId: null,
       enabled: false,
       archivedAt: "2026-06-22T12:00:00.000Z",
       archivedBy: "user-1",
@@ -813,7 +711,7 @@ describe("debugging repository", () => {
   it("excludes archived debugging parameters from runtime lists by default", async () => {
     const { db, calls } = createFakeDb([[]]);
 
-    await listDebugParameters(db, { organizationId: "org-1", projectId: "aurora" });
+    await listDebugParameters(db, { organizationId: "org-1" });
 
     expect(calls[0].text).toContain("enabled = true");
     expect(calls[0].text).toContain("archived_at is null");
@@ -824,7 +722,6 @@ describe("debugging repository", () => {
 
     await listDebugParameters(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       includeArchived: true
     });
 
@@ -838,8 +735,7 @@ describe("debugging repository", () => {
         {
           id: "binding-shared-adb",
           organization_id: "org-1",
-          project_id: null,
-          parameter_id: "shared-param-1",
+                parameter_id: "shared-param-1",
           protocol: "adb",
           node_path: "/sys/adb/smoke",
           access_mode: "RO",
@@ -854,16 +750,15 @@ describe("debugging repository", () => {
 
     const bindings = await listDebugParameterNodeBindings(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       parameterIds: ["shared-param-1"],
       protocol: "adb"
     });
 
-    expect(calls[0].text).toContain("(project_id is null or project_id = $2)");
+    expect(calls[0].text).toContain("parameter_id = any($2::text[])");
+    expect(calls[0].text).toContain("protocol = $3");
     expect(bindings).toEqual([
       expect.objectContaining({
-        projectId: null,
-        parameterId: "shared-param-1",
+          parameterId: "shared-param-1",
         protocol: "adb",
         isSmokeDefault: true
       })
@@ -876,8 +771,7 @@ describe("debugging repository", () => {
         {
           id: "binding-shared-adb",
           organization_id: "org-1",
-          project_id: null,
-          parameter_id: "shared-param-1",
+                parameter_id: "shared-param-1",
           protocol: "adb",
           node_path: "/sys/adb/smoke",
           access_mode: "RO",
@@ -894,9 +788,7 @@ describe("debugging repository", () => {
 
     expect(calls[0].text).toContain("is_smoke_default = true");
     expect(calls[0].text).toContain("protocol = 'adb'");
-    expect(calls[0].text).toContain("project_id is null");
     expect(binding).toMatchObject({
-      projectId: null,
       parameterId: "shared-param-1",
       protocol: "adb",
       accessMode: "RO",
@@ -929,16 +821,15 @@ describe("debugging repository", () => {
         {
           id: call.values[0],
           organization_id: "org-1",
-          project_id: "aurora",
-          device_id: "device-1",
+                device_id: "device-1",
           target_id: "target-1",
-          protocol: call.values[5],
-          execution_mode: call.values[6],
-          bridge_id: call.values[7],
-          bridge_machine_label: call.values[8],
-          session_kind: call.values[9],
-          actor_user_id: call.values[10],
-          status: call.values[11],
+          protocol: call.values[4],
+          execution_mode: call.values[5],
+          bridge_id: call.values[6],
+          bridge_machine_label: call.values[7],
+          session_kind: call.values[8],
+          actor_user_id: call.values[9],
+          status: call.values[10],
           started_at: timestamp,
           ended_at: null
         }
@@ -947,17 +838,15 @@ describe("debugging repository", () => {
 
     const session = await createDebugSession(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       deviceId: "device-1",
       targetId: "target-1",
       actorUserId: "user-1"
     });
 
     expect(calls[0].text).toContain("insert into debugging_sessions");
-    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "device-1", "target-1", "hdc", "server", null, null, "node", "user-1", "active"]);
+    expect(calls[0].values.slice(1)).toEqual(["org-1", "device-1", "target-1", "hdc", "server", null, null, "node", "user-1", "active"]);
     expect(session).toMatchObject({
       organizationId: "org-1",
-      projectId: "aurora",
       actorUserId: "user-1",
       status: "active",
       sessionKind: "node",
@@ -973,10 +862,9 @@ describe("debugging repository", () => {
       (call) => [
         {
           organization_id: call.values[0],
-          project_id: call.values[1],
-          device_id: call.values[2],
-          session_id: call.values[3],
-          lease_owner_user_id: call.values[4],
+          device_id: call.values[1],
+          session_id: call.values[2],
+          lease_owner_user_id: call.values[3],
           expires_at: "2026-05-27T10:05:00.000Z",
           acquired_at: timestamp,
           updated_at: timestamp
@@ -986,7 +874,6 @@ describe("debugging repository", () => {
 
     const lease = await acquireDebugDeviceLease(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       deviceId: "device-1",
       sessionId: "session-1",
       actorUserId: "user-1",
@@ -994,10 +881,10 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into debug_device_leases");
-    expect(calls[0].text).toContain("on conflict (organization_id, project_id, device_id) do update");
+    expect(calls[0].text).toContain("on conflict (organization_id, device_id) do update");
     expect(calls[0].text).toContain("debug_device_leases.session_id = excluded.session_id");
     expect(calls[0].text).toContain("debug_device_leases.expires_at <= now()");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "session-1", "user-1", 300000]);
+    expect(calls[0].values).toEqual(["org-1", "device-1", "session-1", "user-1", 300000]);
     expect(lease).toMatchObject({ deviceId: "device-1", sessionId: "session-1", leaseOwnerUserId: "user-1" });
   });
 
@@ -1019,7 +906,6 @@ describe("debugging repository", () => {
 
     await acquireDebugDeviceLease(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       deviceId: "device-1",
       sessionId: "session-2",
       actorUserId: "user-2",
@@ -1037,8 +923,7 @@ describe("debugging repository", () => {
       [
         {
           organization_id: "org-1",
-          project_id: "aurora",
-          device_id: "device-1",
+                device_id: "device-1",
           session_id: "session-1",
           lease_owner_user_id: "user-1",
           expires_at: timestamp,
@@ -1050,15 +935,14 @@ describe("debugging repository", () => {
 
     const lease = await releaseDebugDeviceLease(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       deviceId: "device-1",
       sessionId: "session-1"
     });
 
     expect(calls[0].text).toContain("update debug_device_leases");
     expect(calls[0].text).toContain("expires_at = now()");
-    expect(calls[0].text).toContain("session_id = $4");
-    expect(calls[0].values).toEqual(["org-1", "aurora", "device-1", "session-1"]);
+    expect(calls[0].text).toContain("session_id = $3");
+    expect(calls[0].values).toEqual(["org-1", "device-1", "session-1"]);
     expect(lease).toMatchObject({ deviceId: "device-1", sessionId: "session-1" });
   });
 
@@ -1090,39 +974,37 @@ describe("debugging repository", () => {
         {
           id: call.values[0],
           organization_id: call.values[1],
-          project_id: call.values[2],
-          session_id: call.values[3],
-          parameter_id: call.values[4],
-          node_id: call.values[5],
-          parameter_definition_id: call.values[6],
-          protocol: call.values[7],
-          node_path: call.values[8],
-          operation_type: call.values[9],
-          status: call.values[10],
-          requested_value: call.values[11],
-          previous_value: call.values[12],
-          read_value: call.values[13],
-          readback_value: call.values[14],
-          verified: call.values[15],
-          failure_reason: call.values[16],
-          duration_ms: call.values[17],
-          approval_id: call.values[18],
-          snapshot_id: call.values[19],
+          session_id: call.values[2],
+          parameter_id: call.values[3],
+          node_id: call.values[4],
+          parameter_definition_id: call.values[5],
+          protocol: call.values[6],
+          node_path: call.values[7],
+          operation_type: call.values[8],
+          status: call.values[9],
+          requested_value: call.values[10],
+          previous_value: call.values[11],
+          read_value: call.values[12],
+          readback_value: call.values[13],
+          verified: call.values[14],
+          failure_reason: call.values[15],
+          duration_ms: call.values[16],
+          approval_id: call.values[17],
+          snapshot_id: call.values[18],
           created_at: timestamp,
-          value_kind: call.values[20],
-          value_format: call.values[21],
-          normalization_mode: call.values[22],
-          requested_value_digest: call.values[23],
-          previous_value_digest: call.values[24],
-          readback_value_digest: call.values[25],
-          value_preview: call.values[26]
+          value_kind: call.values[19],
+          value_format: call.values[20],
+          normalization_mode: call.values[21],
+          requested_value_digest: call.values[22],
+          previous_value_digest: call.values[23],
+          readback_value_digest: call.values[24],
+          value_preview: call.values[25]
         }
       ]
     ]);
 
     const operation = await insertNodeOperation(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       sessionId: "session-1",
       parameterId: "param-1",
       nodePath: "/sys/current",
@@ -1150,7 +1032,6 @@ describe("debugging repository", () => {
     expect(calls[0].text).toContain("insert into node_operations");
     expect(calls[0].values.slice(1)).toEqual([
       "org-1",
-      "aurora",
       "session-1",
       "param-1",
       "param-1",
@@ -1200,13 +1081,12 @@ describe("debugging repository", () => {
         {
           id: call.values[0],
           organization_id: call.values[1],
-          project_id: call.values[2],
-          session_id: call.values[3],
-          operation_id: call.values[4],
-          status: call.values[5],
-          risk: call.values[6],
-          entries: JSON.parse(String(call.values[7])),
-          created_by_user_id: call.values[8],
+          session_id: call.values[2],
+          operation_id: call.values[3],
+          status: call.values[4],
+          risk: call.values[5],
+          entries: JSON.parse(String(call.values[6])),
+          created_by_user_id: call.values[7],
           created_at: timestamp,
           consumed_at: null
         }
@@ -1215,7 +1095,6 @@ describe("debugging repository", () => {
 
     const snapshot = await createDebugSnapshot(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       sessionId: "session-1",
       operationId: "operation-1",
       risk: "High",
@@ -1224,8 +1103,8 @@ describe("debugging repository", () => {
     });
 
     expect(calls[0].text).toContain("insert into debugging_snapshots");
-    expect(calls[0].text).toContain("$8::jsonb");
-    expect(calls[0].values.slice(1)).toEqual(["org-1", "aurora", "session-1", "operation-1", "valid", "High", JSON.stringify(entries), "user-1"]);
+    expect(calls[0].text).toContain("$7::jsonb");
+    expect(calls[0].values.slice(1)).toEqual(["org-1", "session-1", "operation-1", "valid", "High", JSON.stringify(entries), "user-1"]);
     expect(snapshot).toMatchObject({ status: "valid", risk: "High", entries });
   });
 
@@ -1235,8 +1114,7 @@ describe("debugging repository", () => {
         {
           id: "snapshot-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          session_id: "session-1",
+                session_id: "session-1",
           operation_id: null,
           status: "consumed",
           risk: "High",
@@ -1271,8 +1149,7 @@ describe("debugging repository", () => {
         {
           id: "snapshot-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          session_id: "session-1",
+                session_id: "session-1",
           operation_id: null,
           status: "rollback_pending",
           risk: "High",
@@ -1308,8 +1185,7 @@ describe("debugging repository", () => {
         {
           id: "snapshot-1",
           organization_id: "org-1",
-          project_id: "aurora",
-          session_id: "session-1",
+                session_id: "session-1",
           operation_id: null,
           status: "valid",
           risk: "High",
@@ -1337,8 +1213,7 @@ describe("debugging repository", () => {
         {
           id: "operation-old",
           organization_id: "org-1",
-          project_id: "aurora",
-          session_id: "session-1",
+                session_id: "session-1",
           parameter_id: "param-1",
           node_path: "/sys/current",
           operation_type: "read",
@@ -1358,8 +1233,7 @@ describe("debugging repository", () => {
         {
           id: "operation-new",
           organization_id: "org-1",
-          project_id: "aurora",
-          session_id: "session-1",
+                session_id: "session-1",
           parameter_id: "param-1",
           node_path: "/sys/current",
           operation_type: "write",
@@ -1394,7 +1268,6 @@ describe("debugging repository", () => {
     await insertDebugEvent(db, {
       id: "event-1",
       organizationId: "org-1",
-      projectId: "aurora",
       sessionId: "session-1",
       operationId: "operation-1",
       kind: "write",
@@ -1409,15 +1282,13 @@ describe("debugging repository", () => {
     expect(calls[0].text).toContain("debugging_snapshots.id = $3");
     expect(calls[0].text).toContain("node_operations.organization_id = $1");
     expect(calls[0].text).toContain("debugging_snapshots.organization_id = $1");
-    expect(calls[0].text).toContain("node_operations.project_id = debugging_snapshots.project_id");
     expect(calls[0].text).toContain("node_operations.session_id = debugging_snapshots.session_id");
     expect(calls[0].values).toEqual(["org-1", "operation-1", "snapshot-1"]);
     expect(calls[1].text).toContain("insert into debugging_events");
-    expect(calls[1].text).toContain("$9::jsonb");
+    expect(calls[1].text).toContain("$8::jsonb");
     expect(calls[1].values).toEqual([
       "event-1",
       "org-1",
-      "aurora",
       "session-1",
       "operation-1",
       "write",

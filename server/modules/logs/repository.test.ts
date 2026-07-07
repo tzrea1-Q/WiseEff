@@ -75,7 +75,6 @@ function logRow(overrides: Record<string, unknown> = {}) {
     id: "log-1",
     report_id: null,
     file_name: "pack-controller.log",
-    project_id: "project-1",
     source: "upload",
     file_size_bytes: 2048,
     status: "processing",
@@ -104,7 +103,6 @@ describe("log repository", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.log",
           file_name: "pack-controller.log",
           content_type: "text/plain",
@@ -119,7 +117,6 @@ describe("log repository", () => {
     await createFileObject(db, {
       id: "file-1",
       organizationId: "org-1",
-      projectId: "project-1",
       storageKey: "org-1/checksum-pack-controller.log",
       fileName: "pack-controller.log",
       contentType: "text/plain",
@@ -132,7 +129,6 @@ describe("log repository", () => {
     expect(calls[0].values).toEqual([
       "file-1",
       "org-1",
-      "project-1",
       "org-1/checksum-pack-controller.log",
       "pack-controller.log",
       "text/plain",
@@ -155,7 +151,6 @@ describe("log repository", () => {
       runId: "run-1",
       jobId: "job-1",
       organizationId: "org-1",
-      projectId: "project-1",
       fileObjectId: "file-1",
       fileName: "pack-controller.log",
       source: "upload",
@@ -324,7 +319,6 @@ describe("log repository", () => {
         {
           id: "file-1",
           organization_id: "org-1",
-          project_id: "project-1",
           storage_key: "org-1/checksum-pack-controller.log",
           file_name: "pack-controller.log",
           content_type: "text/plain",
@@ -342,7 +336,7 @@ describe("log repository", () => {
     expect(calls[0].text).toContain("organization_id = $1");
     expect(calls[0].text).toContain("id = $2");
     expect(calls[0].values).toEqual(["org-1", "file-1"]);
-    expect(fileObject).toMatchObject({ id: "file-1", projectId: "project-1", fileName: "pack-controller.log" });
+    expect(fileObject).toMatchObject({ id: "file-1", fileName: "pack-controller.log" });
   });
 
   it("completeRun is transactional and only updates the log when the run is still current", async () => {

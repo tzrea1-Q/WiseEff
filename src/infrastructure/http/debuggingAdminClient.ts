@@ -44,7 +44,6 @@ export type DebugAdminCoverageFilter =
   | "archived";
 
 export type DebugAdminListQuery = {
-  projectId?: string;
   module?: string;
   risk?: string | string[];
   protocol?: DebugConnectionProtocol;
@@ -67,7 +66,6 @@ function appendQuery(path: string, params: URLSearchParams) {
 
 function adminParametersPath(query?: DebugAdminListQuery) {
   const params = new URLSearchParams();
-  if (query?.projectId) params.set("projectId", query.projectId);
   if (query?.module) params.set("module", query.module);
   const risks = Array.isArray(query?.risk) ? query.risk : query?.risk ? [query.risk] : [];
   risks.forEach((risk) => params.append("risk", risk));
@@ -97,10 +95,9 @@ function adminModulePath(moduleName: string) {
   return `/api/v1/debugging/admin/modules/${encodeURIComponent(moduleName)}`;
 }
 
-function appendReloadTargetsQuery(path: string, query: { projectId: string; protocol?: DebugConnectionProtocol }) {
+function appendReloadTargetsQuery(path: string, query?: { protocol?: DebugConnectionProtocol }) {
   const params = new URLSearchParams();
-  params.set("projectId", query.projectId);
-  if (query.protocol) params.set("protocol", query.protocol);
+  if (query?.protocol) params.set("protocol", query.protocol);
   return appendQuery(path, params);
 }
 
@@ -196,9 +193,8 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
       const response = await apiClient.post<ItemEnvelope<DebugAdminBindingDto>>(`${adminBindingPath(parameterId, protocol)}/archive`, {});
       return debugAdminBindingFromDto(response.item);
     },
-    async listNodes(query?: { projectId?: string; protocol?: DebugConnectionProtocol; includeArchived?: boolean }) {
+    async listNodes(query?: { protocol?: DebugConnectionProtocol; includeArchived?: boolean }) {
       const params = new URLSearchParams();
-      if (query?.projectId) params.set("projectId", query.projectId);
       if (query?.protocol) params.set("protocol", query.protocol);
       if (query?.includeArchived) params.set("includeArchived", "true");
       const response = await apiClient.get<ItemsEnvelope<DebugAdminNodeDto>>(appendQuery("/api/v1/debugging/admin/nodes", params));
@@ -245,13 +241,11 @@ export function createDebuggingAdminClient(apiClient: ApiClient = createDefaultA
     async deleteModule(moduleName: string) {
       await apiClient.delete(adminModulePath(moduleName));
     },
-    async listReloadBindings(query?: { projectId?: string }) {
-      const params = new URLSearchParams();
-      if (query?.projectId) params.set("projectId", query.projectId);
-      const response = await apiClient.get<ItemsEnvelope<DebugAdminReloadBindingDto>>(appendQuery("/api/v1/debugging/admin/reload-bindings", params));
+    async listReloadBindings() {
+      const response = await apiClient.get<ItemsEnvelope<DebugAdminReloadBindingDto>>("/api/v1/debugging/admin/reload-bindings");
       return response.items.map(debugAdminReloadBindingFromDto);
     },
-    async listReloadTargetCandidates(query: { projectId: string; protocol?: DebugConnectionProtocol }): Promise<ParameterReloadTargetDto[]> {
+    async listReloadTargetCandidates(query?: { protocol?: DebugConnectionProtocol }): Promise<ParameterReloadTargetDto[]> {
       const response = await apiClient.get<ItemsEnvelope<ParameterReloadTargetDto>>(
         appendReloadTargetsQuery("/api/v1/debugging/reload-targets", query)
       );

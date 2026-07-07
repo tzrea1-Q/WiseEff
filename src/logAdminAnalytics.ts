@@ -1,4 +1,4 @@
-import type { LogRecord, LogStatus, TimeWindow } from "./mockData";
+import type { LogRecord, LogStatus, TimeWindow } from "@/domain/logs/types";
 
 function startOfDay(date: Date): Date {
   const copy = new Date(date.getTime());
@@ -34,8 +34,6 @@ function sortAccessor(log: LogRecord, key: string): string | number {
       return log.reportId;
     case "fileName":
       return log.fileName;
-    case "projectId":
-      return log.projectId;
     case "source":
       return log.source;
     case "stage":

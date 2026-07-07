@@ -191,7 +191,6 @@ describe("LogsPage api upload wiring", () => {
     await confirmSelectedFile();
 
     expect(repository.uploadLog).toHaveBeenCalledWith({
-      projectId: userState.activeProjectId,
       file,
       analysisQuestion: "why"
     });
@@ -217,7 +216,6 @@ describe("LogsPage api upload wiring", () => {
 
     expect(repository.uploadLog).toHaveBeenCalledWith(
       expect.objectContaining({
-        projectId: userState.activeProjectId,
         file
       })
     );

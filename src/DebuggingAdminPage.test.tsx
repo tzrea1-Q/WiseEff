@@ -10,7 +10,6 @@ const adminState = { ...initialState, activeRoleId: "admin" };
 function createDebuggingAdminApiMock() {
   const seedNode = {
     id: "node-1",
-    projectId: "aurora",
     name: "Fast charge current",
     description: "Fast charge node",
     detailedDescription: "Controls constant charge current.",
@@ -81,7 +80,7 @@ describe("/debugging-admin API mode", () => {
     const apiClient = renderDebuggingAdminPage();
 
     expect(await screen.findByText("Fast charge current")).toBeInTheDocument();
-    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes?projectId=aurora&includeArchived=true");
+    expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/nodes?includeArchived=true");
     expect(apiClient.get).toHaveBeenCalledWith("/api/v1/debugging/admin/modules");
     expect(screen.getByText("Battery Charging")).toBeInTheDocument();
 
@@ -110,8 +109,7 @@ describe("/debugging-admin API mode", () => {
         expect.objectContaining({
           name: "Thermal throttle limit",
           module: "Battery Charging",
-          enabled: true,
-          projectId: "aurora"
+          enabled: true
         })
       )
     );

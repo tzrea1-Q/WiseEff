@@ -19,7 +19,6 @@ export type DeviceTarget = {
 export type DebugDeviceSnapshot = {
   id: string;
   name: string;
-  projectId: string;
   transport?: DebugDeviceTransport;
   firmware: string;
   status: "online" | "offline" | "unknown";
@@ -28,7 +27,6 @@ export type DebugDeviceSnapshot = {
 
 export type DebugSessionSnapshot = {
   id: string;
-  projectId: string;
   deviceId: string;
   targetId: string;
   protocol?: DebugConnectionProtocol;
@@ -73,7 +71,6 @@ export type NodeOperationSnapshot = {
 };
 
 export type DetectTargetsInput = {
-  projectId?: string;
   deviceId?: string;
   bridgeId?: string;
   protocol?: DebugConnectionProtocol;
@@ -133,12 +130,11 @@ export type ReloadParameterInput = {
 
 export interface DebuggingGateway {
   listDevices?(): Promise<DebugDeviceSnapshot[]>;
-  listParameters?(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
-  listRuntimeNodes?(query: { projectId: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
-  listReloadTargets?(query: { projectId: string; protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listParameters?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listRuntimeNodes?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
+  listReloadTargets?(query?: { protocol?: DebugConnectionProtocol }): Promise<import("../../domain/debugging/types").DebugParameter[]>;
   detectTargets(input?: DetectTargetsInput): Promise<DeviceTarget[]>;
   createSession?(input: {
-    projectId: string;
     deviceId: string;
     targetId: string;
     protocol?: DebugConnectionProtocol;

@@ -102,7 +102,6 @@ export function createSimulatorDebugDeviceGateway(options: SimulatorGatewayOptio
   return {
     async detectTargets(input) {
       const requestedTargets = targets
-        .filter((target) => (target.projectId ? target.projectId === input.projectId : input.projectId === "aurora"))
         .filter((target) => (input.deviceId ? target.deviceId === input.deviceId : true))
         .map(({ nodes: _nodes, readOnlyNodes: _readOnlyNodes, readbackMismatchNodes: _mismatchNodes, projectId: _projectId, ...target }) => target);
 

@@ -45,7 +45,6 @@ describe("notification producers", () => {
 
     await notifyLogAnalysisCompleted(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       logId: "log-1",
       runId: "run-1",
       fileName: "boot.log",
@@ -54,7 +53,6 @@ describe("notification producers", () => {
     });
     await notifyLogAnalysisFailed(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       logId: "log-2",
       runId: "run-2",
       fileName: "fail.log",
@@ -63,8 +61,15 @@ describe("notification producers", () => {
     });
 
     expect(notifyUsers).toHaveBeenCalledTimes(2);
-    expect(notifyUsers.mock.calls[0]?.[1]).toMatchObject({ category: "log.analysis.completed" });
-    expect(notifyUsers.mock.calls[1]?.[1]).toMatchObject({ category: "log.analysis.failed", severity: "danger" });
+    expect(notifyUsers.mock.calls[0]?.[1]).toMatchObject({
+      category: "log.analysis.completed",
+      actionUrl: "/logs"
+    });
+    expect(notifyUsers.mock.calls[1]?.[1]).toMatchObject({
+      category: "log.analysis.failed",
+      severity: "danger",
+      actionUrl: "/logs"
+    });
   });
 
   it("notifies rollback and user governance events", async () => {
@@ -73,7 +78,6 @@ describe("notification producers", () => {
 
     await notifyDebugSnapshotRollback(db, {
       organizationId: "org-1",
-      projectId: "aurora",
       sessionId: "session-1",
       snapshotId: "snapshot-1",
       recipientUserId: "u-operator",
@@ -95,7 +99,10 @@ describe("notification producers", () => {
     });
 
     expect(notifyUsers).toHaveBeenCalledTimes(3);
-    expect(notifyUsers.mock.calls[0]?.[1]).toMatchObject({ category: "debug.snapshot.rollback" });
+    expect(notifyUsers.mock.calls[0]?.[1]).toMatchObject({
+      category: "debug.snapshot.rollback",
+      actionUrl: "/node-debugging"
+    });
     expect(notifyUsers.mock.calls[1]?.[1]).toMatchObject({ category: "user.role.changed" });
     expect(notifyUsers.mock.calls[2]?.[1]).toMatchObject({ category: "user.deactivated" });
   });

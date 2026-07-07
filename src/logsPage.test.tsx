@@ -100,7 +100,7 @@ describe("LogsPage · Header", () => {
     expect(document.querySelector(".log-timeline__step--current")).toBeInTheDocument();
   });
 
-  it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和项目", () => {
+  it("辅助栏默认显示历史 Tab，切换元数据 Tab 显示文件名和设备", () => {
     window.history.replaceState(null, "", "/logs");
 
     render(<App initialAppState={userState} />);
@@ -110,7 +110,7 @@ describe("LogsPage · Header", () => {
     fireEvent.click(within(auxPanel).getByRole("tab", { name: "元数据" }));
     const metadataPanel = within(auxPanel).getByRole("tabpanel", { name: "元数据" });
     expect(within(metadataPanel).getByText(/charging_thermal_trace/)).toBeInTheDocument();
-    expect(within(metadataPanel).getByText("aurora")).toBeInTheDocument();
+    expect(within(metadataPanel).getByText("ChargeLab_X01")).toBeInTheDocument();
   });
 
   it("结论卡展示 [问 Agent 关于此结论] 按钮，并能打开小泽", () => {

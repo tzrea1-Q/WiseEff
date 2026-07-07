@@ -345,7 +345,9 @@ function buildHotspotForGroup(
   const driftValue = parameters.reduce((total, parameter) => total + driftScore(parameter), 0);
   const logSignals =
     hotspotKind === "project" || hotspotKind === "parameter"
-      ? state.logs.filter((log) => log.projectId === projectId).length
+      ? state.logs.filter((log) =>
+          parameters.some((parameter) => parameter.id === log.relatedParameterId)
+        ).length
       : state.logs.filter((log) => mentionsModule(log, module)).length;
   const scoreBreakdown: HotspotScoreBreakdown = {
     frequency: Math.round((parameters.length * 4 * profile.parameterWeight + relatedRequests.length * 10 * profile.requestWeight) * 10) / 10,

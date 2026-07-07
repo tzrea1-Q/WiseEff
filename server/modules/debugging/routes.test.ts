@@ -66,7 +66,7 @@ function makeAuth(overrides: Partial<AuthContext> = {}): AuthContext {
       isActive: true
     },
     organization: { id: "org-1", name: "ChargeLab" },
-    roles: [{ projectId: "aurora", roleId: "software-user" }],
+    roles: [{  roleId: "software-user" }],
     permissions: ["debugging:view", "debugging:read", "debugging:write", "debugging:rollback"],
     ...overrides
   };
@@ -124,7 +124,6 @@ function deviceRecord(overrides: Partial<DebugDeviceRecord> = {}): DebugDeviceRe
   return {
     id: "device-1",
     organizationId: "org-1",
-    projectId: "aurora",
     name: "Aurora Simulator",
     transport: "simulator",
     status: "online",
@@ -138,7 +137,6 @@ function targetRecord(overrides: Partial<DebugTargetRecord> = {}): DebugTargetRe
   return {
     id: "target-1",
     organizationId: "org-1",
-    projectId: "aurora",
     deviceId: "device-1",
     bridgeId: null,
     protocol: "hdc",
@@ -154,7 +152,6 @@ function parameterRecord(overrides: Partial<DebugParameterRecord> = {}): DebugPa
   return {
     id: "param-1",
     organizationId: "org-1",
-    projectId: "aurora",
     name: "Fast charge current",
     key: "fast_charge_current",
     description: "Controls constant charge current.",
@@ -195,7 +192,6 @@ function bindingRecord(overrides: Partial<DebugParameterNodeBindingRecord> = {})
   return {
     id: "binding-1",
     organizationId: "org-1",
-    projectId: "aurora",
     parameterId: "param-1",
     protocol: "hdc",
     nodePath: "/sys/current",
@@ -213,7 +209,6 @@ function debugNodeWithBindingsRecord(overrides: Partial<DebugNodeWithBindingsRec
   return {
     id: "node-1",
     organizationId: "org-1",
-    projectId: "aurora",
     name: "Battery voltage",
     description: "Reads battery voltage node.",
     detailedDescription: "Full detail for battery voltage node.",
@@ -239,7 +234,6 @@ function debugNodeBindingRecord(overrides: Partial<DebugNodeBindingRecord> = {})
   return {
     id: "node-binding-1",
     organizationId: "org-1",
-    projectId: "aurora",
     nodeId: "node-1",
     protocol: "hdc",
     nodePath: "/sys/voltage",
@@ -256,7 +250,6 @@ function sessionRecord(overrides: Partial<DebugSessionRecord> = {}): DebugSessio
   return {
     id: "session-1",
     organizationId: "org-1",
-    projectId: "aurora",
     deviceId: "device-1",
     targetId: "target-1",
     protocol: "hdc",
@@ -276,7 +269,6 @@ function operationRecord(overrides: Partial<NodeOperationRecord> = {}): NodeOper
   return {
     id: "op-1",
     organizationId: "org-1",
-    projectId: "aurora",
     sessionId: "session-1",
     parameterId: "param-1",
     parameterDefinitionId: null,
@@ -309,7 +301,6 @@ function snapshotRecord(overrides: Partial<DebugSnapshotRecord> = {}): DebugSnap
   return {
     id: "snapshot-1",
     organizationId: "org-1",
-    projectId: "aurora",
     sessionId: "session-1",
     operationId: "op-2",
     status: "valid",
@@ -326,7 +317,7 @@ describe("debugging routes", () => {
     vi.mocked(serviceModule.createDebuggingService).mockReturnValue(serviceMocks as unknown as ReturnType<typeof serviceModule.createDebuggingService>);
   });
 
-  it("GET /api/v1/debugging/devices?projectId=aurora returns items", async () => {
+  it("GET /api/v1/debugging/devices returns items", async () => {
     const db = makeDb();
     const gateway = makeGateway();
     const device = deviceRecord();
@@ -334,13 +325,13 @@ describe("debugging routes", () => {
 
     const response = await requestJson<{ items: DebugDeviceRecord[] }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/devices?projectId=aurora"
+      "/api/v1/debugging/devices"
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [device] });
     expect(serviceModule.createDebuggingService).toHaveBeenCalledWith({ db, gateway });
-    expect(serviceMocks.listDevices).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora" });
+    expect(serviceMocks.listDevices).toHaveBeenCalledWith(makeAuth());
   });
 
   it("passes metrics and gateway mode into the debugging service", async () => {
@@ -359,7 +350,7 @@ describe("debugging routes", () => {
       getCurrentAuthContext: () => makeAuth()
     });
 
-    const response = await requestJson(createHttpServer(router), "/api/v1/debugging/devices?projectId=aurora");
+    const response = await requestJson(createHttpServer(router), "/api/v1/debugging/devices");
 
     expect(response.status).toBe(200);
     expect(serviceModule.createDebuggingService).toHaveBeenCalledWith({
@@ -382,7 +373,7 @@ describe("debugging routes", () => {
       "/api/v1/debugging/targets/detect",
       {
         method: "POST",
-        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1" })
+        body: JSON.stringify({  deviceId: "device-1" })
       }
     );
 
@@ -390,7 +381,7 @@ describe("debugging routes", () => {
     expect(response.body).toEqual({ items: [target] });
     expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
       makeAuth(),
-      { projectId: "aurora", deviceId: "device-1", protocol: "hdc" },
+      {  deviceId: "device-1", protocol: "hdc" },
       { requestId: "test-request" }
     );
   });
@@ -406,19 +397,19 @@ describe("debugging routes", () => {
       "/api/v1/debugging/targets/detect",
       {
         method: "POST",
-        body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", protocol: "adb" })
+        body: JSON.stringify({  deviceId: "device-1", protocol: "adb" })
       }
     );
 
     expect(response.status).toBe(200);
     expect(serviceMocks.detectTargets).toHaveBeenCalledWith(
       makeAuth(),
-      { projectId: "aurora", deviceId: "device-1", protocol: "adb" },
+      {  deviceId: "device-1", protocol: "adb" },
       { requestId: "test-request" }
     );
   });
 
-  it("GET /api/v1/debugging/parameters?projectId=aurora returns debug parameter DTOs", async () => {
+  it("GET /api/v1/debugging/parameters returns debug parameter DTOs", async () => {
     const db = makeDb();
     const gateway = makeGateway();
     const parameter = parameterRecord();
@@ -426,12 +417,12 @@ describe("debugging routes", () => {
 
     const response = await requestJson<{ items: DebugParameterRecord[] }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/parameters?projectId=aurora&risk=Medium&risk=High"
+      "/api/v1/debugging/parameters?risk=Medium&risk=High"
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [parameter] });
-    expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora", risk: ["Medium", "High"] });
+    expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), {  risk: ["Medium", "High"] });
   });
 
   it("passes the selected protocol to the parameter listing service", async () => {
@@ -442,7 +433,7 @@ describe("debugging routes", () => {
       selectedBinding: {
         id: "binding-param-1-adb",
         organizationId: "org-1",
-        projectId: null,
+        
         parameterId: "param-1",
         protocol: "adb" as const,
         nodePath: "/sys/adb/current",
@@ -459,34 +450,34 @@ describe("debugging routes", () => {
 
     const response = await requestJson<{ items: unknown[] }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/parameters?projectId=aurora&protocol=adb"
+      "/api/v1/debugging/parameters?protocol=adb"
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [parameter] });
-    expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), { projectId: "aurora", protocol: "adb", risk: undefined });
+    expect(serviceMocks.listParameters).toHaveBeenCalledWith(makeAuth(), {  protocol: "adb", risk: undefined });
   });
 
   it("GET /api/v1/debugging/admin/parameters parses includeArchived, risk, protocol, and coverage", async () => {
     const db = makeDb();
     const gateway = makeGateway();
     const item = parameterWithBindingsRecord({
-      projectId: null,
-      bindings: [bindingRecord({ projectId: null, protocol: "adb" })],
-      selectedBinding: bindingRecord({ projectId: null, protocol: "adb" })
+      
+      bindings: [bindingRecord({  protocol: "adb" })],
+      selectedBinding: bindingRecord({  protocol: "adb" })
     });
     const auth = makeAuth({ permissions: ["debugging:view", "debugging:admin"] });
     serviceMocks.listAdminParameters.mockResolvedValue([item]);
 
     const response = await requestJson<{ items: DebugParameterWithBindingsRecord[] }>(
       makeServer({ db, gateway, auth }),
-      "/api/v1/debugging/admin/parameters?projectId=aurora&includeArchived=true&risk=Medium&risk=High&protocol=adb&coverage=dual-protocol"
+      "/api/v1/debugging/admin/parameters?includeArchived=true&risk=Medium&risk=High&protocol=adb&coverage=dual-protocol"
     );
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ items: [item] });
     expect(serviceMocks.listAdminParameters).toHaveBeenCalledWith(auth, {
-      projectId: "aurora",
+      
       includeArchived: true,
       risk: ["Medium", "High"],
       protocol: "adb",
@@ -506,7 +497,7 @@ describe("debugging routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
+          
           name: "Created parameter",
           key: "created_parameter",
           module: "Battery",
@@ -521,7 +512,7 @@ describe("debugging routes", () => {
     expect(serviceMocks.createAdminParameter).toHaveBeenCalledWith(
       makeAuth(),
       expect.objectContaining({
-        projectId: "aurora",
+        
         name: "Created parameter",
         key: "created_parameter",
         description: "",
@@ -538,7 +529,7 @@ describe("debugging routes", () => {
     const db = makeDb();
     const gateway = makeGateway();
     const item = parameterWithBindingsRecord({
-      projectId: null,
+      
       minValue: null,
       maxValue: null,
       sortOrder: 0,
@@ -552,7 +543,7 @@ describe("debugging routes", () => {
       {
         method: "PATCH",
         body: JSON.stringify({
-          projectId: null,
+          
           minValue: null,
           maxValue: null,
           sortOrder: 0,
@@ -567,7 +558,7 @@ describe("debugging routes", () => {
       makeAuth(),
       {
         parameterId: "param-1",
-        projectId: null,
+        
         minValue: null,
         maxValue: null,
         sortOrder: 0,
@@ -655,7 +646,7 @@ describe("debugging routes", () => {
       {
         method: "POST",
         body: JSON.stringify({
-          projectId: "aurora",
+          
           name: "Created node",
           module: "Battery",
           bindings: [{ protocol: "hdc", nodePath: "/sys/created", accessMode: "RW", enabled: true }]
@@ -668,7 +659,7 @@ describe("debugging routes", () => {
     expect(serviceMocks.createAdminDebugNode).toHaveBeenCalledWith(
       makeAuth(),
       expect.objectContaining({
-        projectId: "aurora",
+        
         name: "Created node",
         module: "Battery",
         description: "",
@@ -853,7 +844,7 @@ describe("debugging routes", () => {
 
     const response = await requestJson<{ item: DebugSessionRecord }>(makeServer({ db, gateway }), "/api/v1/debugging/sessions", {
       method: "POST",
-      body: JSON.stringify({ projectId: "aurora", deviceId: "device-1", targetId: "target-1" })
+      body: JSON.stringify({  deviceId: "device-1", targetId: "target-1" })
     });
 
     expect(response.status).toBe(201);
@@ -861,7 +852,7 @@ describe("debugging routes", () => {
     expect(serviceMocks.createSession).toHaveBeenCalledWith(
       makeAuth(),
       {
-        projectId: "aurora",
+        
         deviceId: "device-1",
         targetId: "target-1",
         protocol: "hdc",
@@ -1045,12 +1036,12 @@ describe("debugging routes", () => {
     const gateway = makeGateway();
     const missingDb = await requestJson<{ error: { code: string } }>(
       makeServer({ gateway }),
-      "/api/v1/debugging/devices?projectId=aurora"
+      "/api/v1/debugging/devices"
     );
 
     const missingGateway = await requestJson<{ error: { code: string } }>(
       makeServer({ db: makeDb() }),
-      "/api/v1/debugging/devices?projectId=aurora"
+      "/api/v1/debugging/devices"
     );
 
     expect(missingDb.status).toBe(500);
@@ -1065,7 +1056,7 @@ describe("debugging routes", () => {
 
     const response = await requestJson<{ error: { code: string; details: { issues?: unknown[] } } }>(
       makeServer({ db, gateway }),
-      "/api/v1/debugging/targets/detect",
+      "/api/v1/debugging/sessions",
       {
         method: "POST",
         body: JSON.stringify({ deviceId: "device-1" })

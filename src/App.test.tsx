@@ -37,7 +37,6 @@ const apiProject = {
 const apiDebugDevice = {
   id: "api-debug-device",
   name: "API Debug Device",
-  projectId: initialState.activeProjectId,
   firmware: "v1.0.0",
   status: "online" as const,
   lastSeenAt: "2026-05-25T08:00:00.000Z"
@@ -790,8 +789,50 @@ describe("WiseEff app shell", () => {
     );
 
     expect(await screen.findByText("api_debug_runtime_parameter")).toBeInTheDocument();
-    expect(debuggingGateway.listDevices).toHaveBeenCalledTimes(1);
-    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" }));
+    expect(debuggingGateway.listDevices).toHaveBeenCalled();
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ protocol: "hdc" }));
+  });
+
+  it("refreshes debugging runtime when navigating back to node debugging", async () => {
+    window.localStorage.setItem("wiseeff.nodeDebugging.protocol", "hdc");
+    window.history.replaceState(null, "", "/debugging-admin");
+    const debuggingGateway = createAppDebuggingGateway({
+      listRuntimeNodes: vi.fn().mockResolvedValue([apiDebugParameter])
+    });
+
+    render(
+      <App
+        authClient={{
+          getCurrentAuthContext: async () => ({
+            user: {
+              id: "u-api-debug",
+              organizationId: "org-chargelab",
+              name: "API Debugger",
+              email: "api-debugger@chargelab.cn",
+              title: "API Debug Engineer",
+              isActive: true
+            },
+            organization: { id: "org-chargelab", name: "ChargeLab" },
+            roles: [{ projectId: null, roleId: "admin" }],
+            permissions: ["admin:access", "debugging:use"]
+          })
+        }}
+        debuggingGateway={debuggingGateway}
+        initialAppState={adminState}
+        parameterRepository={createAppParameterRepository()}
+        runtimeMode="api"
+      />
+    );
+
+    await screen.findByText("可调节点目录");
+    expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "节点调试" }));
+
+    await waitFor(() => expect(debuggingGateway.listRuntimeNodes).toHaveBeenCalledTimes(2));
+    expect(debuggingGateway.listRuntimeNodes).toHaveBeenLastCalledWith({
+      protocol: "hdc"
+    });
   });
 
   it("skips debugging runtime hydration for roles without debugging access", async () => {
@@ -856,7 +897,7 @@ describe("WiseEff app shell", () => {
       />
     );
 
-    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" }));
+    await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ protocol: "hdc" }));
     expect(debuggingGateway.detectTargets).not.toHaveBeenCalled();
     expect(debuggingGateway.readNode).not.toHaveBeenCalled();
   });
@@ -877,7 +918,6 @@ describe("WiseEff app shell", () => {
     );
 
     await waitFor(() => expect(debuggingGateway.listParameters).toHaveBeenCalledWith({
-      projectId: initialState.activeProjectId,
       protocol: "adb"
     }));
   });
@@ -917,7 +957,7 @@ describe("WiseEff app shell", () => {
     expect(await screen.findByText("api_debug_runtime_parameter")).toBeInTheDocument();
     expect(parameterRepository.listProjects).toHaveBeenCalledTimes(1);
     expect(debuggingGateway.listDevices).toHaveBeenCalled();
-    expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ projectId: initialState.activeProjectId, protocol: "hdc" });
+    expect(debuggingGateway.listParameters).toHaveBeenCalledWith({ protocol: "hdc" });
   });
 
   it("threads debugging runtime props through debugging route cases", () => {
@@ -1104,7 +1144,6 @@ describe("WiseEff app shell", () => {
         {
           id: apiDebugDevice.id,
           name: apiDebugDevice.name,
-          projectId: apiDebugDevice.projectId,
           firmware: apiDebugDevice.firmware,
           status: "已连接",
           lastSeen: apiDebugDevice.lastSeenAt
@@ -2347,16 +2386,105 @@ describe("WiseEff app shell", () => {
     );
 
     const row = screen.getByRole("row", { name: /dts_fast_charge_profile_matrix/ });
-    const summary = row.querySelector(".parameter-value-summary");
+    const summary = row.querySelector(".review-change-complex-summary");
 
     expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent("dts_fast_charge_profile_matrix");
     expect(summary).toHaveTextContent("复杂配置");
-    expect(summary).toHaveTextContent("fast-charge-profile-matrix");
     expect(summary).toHaveTextContent("4 行 · 当前与目标不同");
     expect(summary?.getAttribute("title") ?? "").not.toContain('"burst"');
     expect(summary?.getAttribute("title") ?? "").not.toContain('"boost"');
     expect(row).not.toHaveTextContent('"burst"');
     expect(row).not.toHaveTextContent('"boost"');
+  });
+
+  it("summarizes flattened complex review changes when valueKind is missing on the request", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const complexParameter = initialState.parameters.find((parameter) => parameter.name === "battery_thermal_derate_curve");
+    expect(complexParameter).toBeDefined();
+    const flattenedCurrent =
+      "battery-thermal-derate-curve = < 0 38 3800 4350 1 42 3200 4320 2 45 2600 4280 >;";
+    const flattenedTarget =
+      "battery-thermal-derate-curve = < 0 38 3800 4350 1 42 3200 4320 2 45 2600 4380 >;";
+    const complexRequest = {
+      ...initialState.changeRequests[0],
+      id: "PRQ-complex-flattened",
+      submissionRoundId: "PRS-complex-flattened",
+      projectId: complexParameter!.projectId,
+      parameterId: complexParameter!.id,
+      module: complexParameter!.module,
+      title: complexParameter!.name,
+      currentValue: flattenedCurrent,
+      targetValue: flattenedTarget,
+      submitter: "Xu Yun",
+      status: "硬件Committer检视" as const
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          changeRequests: [complexRequest, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    const row = screen.getByRole("row", { name: /battery_thermal_derate_curve/ });
+    const summary = row.querySelector(".review-change-complex-summary");
+
+    expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent("battery_thermal_derate_curve");
+    expect(summary).toHaveTextContent("复杂配置");
+    expect(summary).toHaveTextContent("当前与目标不同");
+    expect(row).not.toHaveTextContent("4280 >;");
+    expect(row).not.toHaveTextContent("4380 >;");
+  });
+
+  it("renders a structured review detail summary for complex parameters", () => {
+    window.history.replaceState(null, "", "/parameter-review");
+    const complexParameter = initialState.parameters.find((parameter) => parameter.name === "battery_thermal_derate_curve");
+    expect(complexParameter).toBeDefined();
+    const flattenedCurrent =
+      "battery-thermal-derate-curve = < 0 38 3800 4350 1 42 3200 4320 2 45 2600 4280 >;";
+    const flattenedTarget =
+      "battery-thermal-derate-curve = < 0 38 3800 4350 1 42 3200 4320 2 45 2600 4380 >;";
+    const complexRequest = {
+      ...initialState.changeRequests[0],
+      id: "PRQ-complex-detail-summary",
+      submissionRoundId: "PRS-complex-detail-summary",
+      projectId: complexParameter!.projectId,
+      parameterId: complexParameter!.id,
+      module: complexParameter!.module,
+      title: complexParameter!.name,
+      currentValue: flattenedCurrent,
+      targetValue: flattenedTarget,
+      aiSummary: `${complexParameter!.name} changes from ${flattenedCurrent} to ${flattenedTarget}.`,
+      submitter: "Xu Yun",
+      status: "硬件Committer检视" as const
+    };
+
+    render(
+      <App
+        initialAppState={{
+          ...initialState,
+          activeRoleId: "admin",
+          changeRequests: [complexRequest, ...initialState.changeRequests]
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "查看 battery_thermal_derate_curve 提交详情" }));
+
+    const reviewDetail = screen.getByRole("complementary", { name: "审阅详情" });
+    expect(reviewDetail).toHaveTextContent("battery_thermal_derate_curve 为复杂配置");
+    expect(within(reviewDetail).getByRole("button", { name: "查看提交详情" })).toBeInTheDocument();
+    expect(reviewDetail).not.toHaveTextContent("changes from");
+    expect(reviewDetail).not.toHaveTextContent("4280 >;");
+    expect(reviewDetail).not.toHaveTextContent("Risk level:");
+
+    fireEvent.click(within(reviewDetail).getByRole("button", { name: "查看提交详情" }));
+    expect(screen.getByRole("dialog", { name: "提交详情" })).toBeInTheDocument();
   });
 
   it("keeps scalar review changes with trailing whitespace in the simple value layout", () => {
@@ -2391,6 +2519,7 @@ describe("WiseEff app shell", () => {
     const changeButton = within(row).getByRole("button", { name: "查看 battery_health_reserve_pct 提交详情" });
 
     expect(changeButton.querySelector(".parameter-value-summary")).not.toBeInTheDocument();
+    expect(changeButton.querySelector(".review-change-complex-summary")).not.toBeInTheDocument();
     expect(changeButton.querySelector(".value-change__values")).toHaveTextContent("15");
     expect(changeButton.querySelector(".value-change__values")).toHaveTextContent("13");
     expect(changeButton).not.toHaveTextContent("复杂配置");
@@ -2699,15 +2828,25 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText("实时可调参数")).not.toBeInTheDocument();
   });
 
-  it("removes the global project selector from review and parameter admin topbars", () => {
-    ["/parameter-review", "/parameter-admin"].forEach((path) => {
+  it("shows the project selector only on parameter-management routes", () => {
+    ["/parameters", "/parameter-review", "/parameter-admin", "/parameter-home"].forEach((path) => {
       cleanup();
       window.history.replaceState(null, "", path);
       renderAppForCurrentPath();
 
       const topbar = document.querySelector<HTMLElement>(".topbar");
       expect(topbar).not.toBeNull();
-      expect(within(topbar as HTMLElement).queryByRole("combobox")).not.toBeInTheDocument();
+      expect(within(topbar as HTMLElement).getByRole("combobox", { name: "项目" })).toBeInTheDocument();
+    });
+
+    ["/logs", "/log-admin", "/node-debugging", "/debugging-admin"].forEach((path) => {
+      cleanup();
+      window.history.replaceState(null, "", path);
+      renderAppForCurrentPath();
+
+      const topbar = document.querySelector<HTMLElement>(".topbar");
+      expect(topbar).not.toBeNull();
+      expect(within(topbar as HTMLElement).queryByRole("combobox", { name: "项目" })).not.toBeInTheDocument();
     });
   });
 

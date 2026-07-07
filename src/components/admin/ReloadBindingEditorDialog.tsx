@@ -21,7 +21,6 @@ export type ReloadBindingEditorDialogProps = {
   open: boolean;
   mode: "create" | "edit";
   binding?: ParameterReloadBinding | null;
-  projectId?: string;
   candidates: readonly ParameterReloadTargetDto[];
   candidatesLoading: boolean;
   loading: boolean;
@@ -56,7 +55,6 @@ export function ReloadBindingEditorDialog({
   open,
   mode,
   binding,
-  projectId,
   candidates,
   candidatesLoading,
   loading,
@@ -100,7 +98,7 @@ export function ReloadBindingEditorDialog({
     return null;
   }
 
-  const fieldsDisabled = !canEdit || loading || !projectId;
+  const fieldsDisabled = !canEdit || loading;
   const pathError = getBindingNodePathValidationError(draft.nodePath);
   const canSubmit =
     draft.parameterDefinitionId.trim().length > 0 && !pathError && !fieldsDisabled;
@@ -117,8 +115,6 @@ export function ReloadBindingEditorDialog({
             <CircleX size={22} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
-
-        {!projectId ? <p className="debug-admin-error">请先选择项目后再维护重载绑定。</p> : null}
 
         <div className="debug-admin-form-section">
           <div className="debug-admin-form-fields">

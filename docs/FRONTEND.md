@@ -36,6 +36,10 @@ M6.2 OIDC runtime support uses an async authorization provider so API clients ca
 
 When API mode starts, the app calls `/api/v1/me` before rendering the main shell. If the current token is missing or rejected, it shows the WiseEff auth screen with local account login and registration forms. Local login uses username and password. Registration collects one of the localized hardware/software department organization choices, name, a self-service platform role, username, and password. The registration role picker excludes Admin. Hardware/Software Committer requests create an inactive account with the matching base User role plus a pending Admin approval request; `/api/v1/auth/register` returns `202 pending_approval` without a session token, and the auth screen stays on a pending-approval result state without the editable registration form until an Admin approves the request from `/user-permissions`. Successful local login or non-committer registration stores the opaque `we_local_*` session token in `localStorage` under `wiseeff.localAuthToken`; the default API client prefers an OIDC runtime token when one is available and otherwise falls back to this local token. The topbar user menu opens the current-user profile dialog and logout action. Profile updates call `PATCH /api/v1/me/profile`; logout calls `POST /api/v1/auth/logout` and clears the local token.
 
+## TopBar Project Selector
+
+The TopBar project picker is visible only on parameter-management routes. `pageUsesProjectScope()` in `src/appConfig.ts` returns `true` for `parameters`, `parameter-submissions`, `parameter-review`, `parameter-admin`, `parameter-admin-projects`, and `parameter-home`. It is hidden on log analysis (`logs`, `log-admin`) and debugging (`node-debugging`, `debugging-admin`) routes because M2/M3 data loads from authenticated organization context without `projectId`. Parameter pages may still read `?project=` from the URL; log and debug pages ignore project query params.
+
 `/user-permissions` uses the user-governance HTTP client in API mode for listing users, creating local-account users, activation changes, profile updates, and role replacement. The Admin Add User dialog creates an active local account in the current Admin organization with `name`, `username`, optional job title, initial password, and initial role; it no longer uses email as the account identifier. API-mode rows hydrate from `/api/v1/users`, including local usernames, before operators make changes, so UI rows use backend governed ids instead of mock ids. UI permission checks remain UX only; backend `/api/v1/users` routes enforce `users:manage`, self-lockout protection, credential hashing, and audit.
 
 ## Parameter Repository
@@ -60,7 +64,7 @@ The M1 API smoke lives in `e2e/parameter-management.api.spec.ts` and requires `D
 
 In `mock` mode, uploads use the reducer's simulated log path: supported `.log`, `.txt`, and `.json` files become processing records that can be promoted through prototype state, while unsupported files become failed mock records. This keeps component tests and demos independent from PostgreSQL and object storage.
 
-In `api` mode, `src/infrastructure/http/logClient.ts` maps the port to `/api/v1/log-files`, `/api/v1/logs`, `/api/v1/jobs`, archive/unarchive, rerun, and feedback endpoints. Uploads send base64 file content, hydrate the created `LogRecord`, poll the job until a terminal state, then refresh the completed report and evidence. Archive and feedback actions refresh active logs afterward, so default `/logs` excludes archived records.
+In `api` mode, `src/infrastructure/http/logClient.ts` maps the port to `/api/v1/log-files`, `/api/v1/logs`, `/api/v1/jobs`, archive/unarchive, rerun, and feedback endpoints. Uploads send base64 file content without `projectId` (organization inferred from auth), hydrate the created `LogRecord`, poll the job until a terminal state, then refresh the completed report and evidence. Archive and feedback actions refresh active logs afterward, so default `/logs` excludes archived records.
 
 The M2 API smoke lives in `e2e/log-analysis.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, `db:seed:m1`, and `db:seed:m2`.
 
@@ -72,9 +76,9 @@ Runtime split:
 
 - `mock` mode keeps `DebuggingPage` reducer behavior for demos and component tests; the `/debugging` route is not linked in navigation.
 - Local HDC helpers remain available for non-API `/node-debugging` experiments.
-- `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events.
+- `api` mode uses `src/infrastructure/http/debuggingClient.ts` for HDC/ADB devices, targets, parameters, sessions, node reads, node writes, snapshot rollback, and session events. Runtime and admin calls are organization-scoped and do not send `projectId`.
 
-**Parameter debugging route:** `/debugging` is restored (TD-032). It federates M1 parameter metadata with `parameter_reload_bindings`, creates `parameter_reload` sessions, and writes through `POST /api/v1/debugging/parameters/reload`. `/node-debugging` remains the legacy M3 node catalog workspace.
+**Parameter debugging route:** `/debugging` remains product-offline (TD-032). Migration `0037` removed `parameter_reload_bindings` and reload HTTP routes. `/node-debugging` is the M3 node catalog workspace.
 
 ### Local Device Bridge (Phase A)
 

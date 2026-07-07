@@ -35,7 +35,6 @@ type Fixture = {
   log: {
     id: string;
     organization_id: string;
-    project_id: string;
     file_object_id: string;
     file_name: string;
     status: string;
@@ -46,7 +45,6 @@ type Fixture = {
   file: {
     id: string;
     organization_id: string;
-    project_id: string;
     storage_key: string;
     file_name: string;
     content_type: string;
@@ -89,7 +87,6 @@ function createFixture(overrides: Partial<Fixture> = {}): Fixture {
     log: {
       id: "log-1",
       organization_id: "org-1",
-      project_id: "project-1",
       file_object_id: "file-1",
       file_name: "pack-controller.log",
       status: "processing",
@@ -100,7 +97,6 @@ function createFixture(overrides: Partial<Fixture> = {}): Fixture {
     file: {
       id: "file-1",
       organization_id: "org-1",
-      project_id: "project-1",
       storage_key: "org-1/pack-controller.log",
       file_name: "pack-controller.log",
       content_type: "text/plain",
@@ -188,7 +184,6 @@ function createFakeWorkerDb(fixture = createFixture()) {
               error_message: fixture.job.error_message,
               updated_at: fixture.job.updated_at,
               job_id: fixture.job.id,
-              project_id: fixture.log.project_id,
               run_id: fixture.run.id,
               log_id: fixture.log.id,
               file_object_id: fixture.log.file_object_id,
@@ -444,7 +439,6 @@ describe("log worker", () => {
       log: {
         id: "log-1",
         organization_id: "org-1",
-        project_id: "project-1",
         file_object_id: "file-1",
         file_name: "pack-controller.log",
         status: "processing",
@@ -757,7 +751,6 @@ describe("log worker", () => {
       log: {
         id: "log-1",
         organization_id: "org-1",
-        project_id: "project-1",
         file_object_id: "file-1",
         file_name: "pack-controller.log",
         status: "processing",

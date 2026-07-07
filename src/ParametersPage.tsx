@@ -347,7 +347,7 @@ export function ParametersPage({
       ? activeParameterById.get(contextQuery.parameterId)
       : selected ?? projectParameters[0];
 
-    if (!originLog || originLog.projectId !== resolvedProjectId || !requestedParameter) {
+    if (!originLog || !requestedParameter) {
       return;
     }
 

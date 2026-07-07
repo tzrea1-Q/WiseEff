@@ -9,12 +9,12 @@ function parameterAdminUrl(projectId: string) {
   return `/parameter-admin?project=${encodeURIComponent(projectId)}`;
 }
 
-function nodeDebuggingUrl(projectId: string) {
-  return `/node-debugging?project=${encodeURIComponent(projectId)}`;
+function nodeDebuggingUrl() {
+  return "/node-debugging";
 }
 
-function logsUrl(projectId: string) {
-  return `/logs?project=${encodeURIComponent(projectId)}`;
+function logsUrl() {
+  return "/logs";
 }
 
 function userPermissionsUrl() {
@@ -201,7 +201,6 @@ export async function notifyLogAnalysisCompleted(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     logId: string;
     runId: string;
     fileName: string;
@@ -217,11 +216,10 @@ export async function notifyLogAnalysisCompleted(
     title: `日志分析完成 · ${input.fileName}`,
     body: summary,
     severity: "success",
-    actionUrl: logsUrl(input.projectId),
+    actionUrl: logsUrl(),
     sourceKind: "log-analysis-run",
     sourceId: input.runId,
     metadata: {
-      projectId: input.projectId,
       logId: input.logId,
       fileName: input.fileName
     }
@@ -232,7 +230,6 @@ export async function notifyLogAnalysisFailed(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     logId: string;
     runId: string;
     fileName: string;
@@ -248,11 +245,10 @@ export async function notifyLogAnalysisFailed(
     title: `日志分析失败 · ${input.fileName}`,
     body: reason,
     severity: "danger",
-    actionUrl: logsUrl(input.projectId),
+    actionUrl: logsUrl(),
     sourceKind: "log-analysis-run",
     sourceId: input.runId,
     metadata: {
-      projectId: input.projectId,
       logId: input.logId,
       fileName: input.fileName
     }
@@ -263,7 +259,6 @@ export async function notifyDebugSnapshotRollback(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     sessionId: string;
     snapshotId: string;
     recipientUserId: string;
@@ -280,11 +275,10 @@ export async function notifyDebugSnapshotRollback(
       ? `已成功回滚 ${input.operationCount ?? 0} 项节点写入。`
       : "部分节点未能恢复，请在调试页检查会话事件。",
     severity: input.succeeded ? "success" : "danger",
-    actionUrl: nodeDebuggingUrl(input.projectId),
+    actionUrl: nodeDebuggingUrl(),
     sourceKind: "debug-snapshot",
     sourceId: `${input.snapshotId}:${input.succeeded ? "succeeded" : "failed"}`,
     metadata: {
-      projectId: input.projectId,
       sessionId: input.sessionId,
       snapshotId: input.snapshotId,
       succeeded: input.succeeded
@@ -351,7 +345,6 @@ export async function notifyDebugNodeWriteFailed(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     sessionId: string;
     operationId: string;
     recipientUserId: string;
@@ -367,11 +360,10 @@ export async function notifyDebugNodeWriteFailed(
     title: `调试写入失败 · ${input.parameterName}`,
     body: reason,
     severity: "danger",
-    actionUrl: nodeDebuggingUrl(input.projectId),
+    actionUrl: nodeDebuggingUrl(),
     sourceKind: "debug-node-operation",
     sourceId: input.operationId,
     metadata: {
-      projectId: input.projectId,
       sessionId: input.sessionId,
       parameterName: input.parameterName
     }

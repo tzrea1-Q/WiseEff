@@ -49,8 +49,6 @@ export function LogRecordDrawer({
           <span className="font-mono text-xs text-primary">{record.reportId}</span>
           <SheetTitle className="truncate text-base">{record.fileName}</SheetTitle>
           <SheetDescription className="text-xs">
-            项目 <span className="text-foreground">{record.projectId}</span>
-            <span className="mx-1">·</span>
             来源 <span className="text-foreground">{record.source}</span>
             <span className="mx-1">·</span>
             {record.fileSizeMB.toFixed(1)}MB

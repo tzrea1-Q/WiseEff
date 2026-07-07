@@ -65,7 +65,6 @@ export type DebugValueEnvelope = {
 export type DebugDeviceRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
   name: string;
   transport: "simulator" | "hdc" | "adb" | "multi";
   status: DebugDeviceStatus;
@@ -76,7 +75,6 @@ export type DebugDeviceRecord = {
 export type DebugTargetRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
   deviceId: string;
   bridgeId: string | null;
   targetRef: string;
@@ -89,7 +87,6 @@ export type DebugTargetRecord = {
 export type DebugParameterRecord = {
   id: string;
   organizationId: string;
-  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -117,7 +114,6 @@ export type DebugParameterRecord = {
 export type DebugParameterNodeBindingRecord = {
   id: string;
   organizationId: string;
-  projectId: string | null;
   parameterId: string;
   protocol: DebugConnectionProtocol;
   nodePath: string;
@@ -137,7 +133,6 @@ export type DebugParameterWithBindingsRecord = DebugParameterRecord & {
 export type DebugSessionRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
   deviceId: string;
   targetId: string;
   protocol: DebugConnectionProtocol;
@@ -153,7 +148,6 @@ export type DebugSessionRecord = {
 
 export type DebugDeviceLeaseRecord = {
   organizationId: string;
-  projectId: string;
   deviceId: string;
   sessionId: string;
   leaseOwnerUserId: string;
@@ -178,7 +172,6 @@ export type DebugSnapshotEntry = {
 export type DebugSnapshotRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
   sessionId: string;
   operationId: string | null;
   status: DebugSnapshotStatus;
@@ -190,7 +183,6 @@ export type DebugSnapshotRecord = {
 export type NodeOperationRecord = {
   id: string;
   organizationId: string;
-  projectId: string;
   sessionId: string;
   parameterId: string | null;
   parameterDefinitionId: string | null;
@@ -217,7 +209,6 @@ export type NodeOperationRecord = {
   valuePreview: string | null;
 };
 
-
 export type DebugNodeModuleRecord = {
   name: string;
   description: string;
@@ -229,7 +220,6 @@ export type DebugNodeModuleRecord = {
 export type DebugNodeRecord = {
   id: string;
   organizationId: string;
-  projectId: string | null;
   name: string;
   description: string;
   detailedDescription: string;
@@ -251,7 +241,6 @@ export type DebugNodeRecord = {
 export type DebugNodeBindingRecord = {
   id: string;
   organizationId: string;
-  projectId: string | null;
   nodeId: string;
   protocol: DebugConnectionProtocol;
   nodePath: string;
@@ -271,36 +260,4 @@ export type DebugRuntimeNodeRecord = DebugNodeRecord & {
 
 export type DebugNodeWithBindingsRecord = DebugNodeRecord & {
   bindings: DebugNodeBindingRecord[];
-};
-
-export type ParameterReloadBindingRecord = {
-  id: string;
-  organizationId: string;
-  projectId: string | null;
-  parameterDefinitionId: string;
-  protocol: DebugConnectionProtocol;
-  nodePath: string;
-  accessMode: DebugAccessMode;
-  enabled: boolean;
-  notes: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type ParameterReloadTargetRecord = {
-  parameterDefinitionId: string;
-  name: string;
-  module: string;
-  unit: string;
-  range: string;
-  risk: DebugRiskLevel;
-  currentValue: string;
-  recommendedValue: string;
-  binding: {
-    id: string;
-    protocol: DebugConnectionProtocol;
-    nodePath: string;
-    accessMode: DebugAccessMode;
-    enabled: boolean;
-  } | null;
 };

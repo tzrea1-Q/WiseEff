@@ -37,7 +37,6 @@ import type {
 type DebugDeviceRow = {
   id: string;
   organization_id: string;
-  project_id: string;
   name: string;
   transport: "simulator" | "hdc" | "adb" | "multi";
   status: DebugDeviceStatus;
@@ -47,7 +46,6 @@ type DebugDeviceRow = {
 
 type DebugDeviceLeaseRow = {
   organization_id: string;
-  project_id: string;
   device_id: string;
   session_id: string;
   lease_owner_user_id: string;
@@ -59,7 +57,6 @@ type DebugDeviceLeaseRow = {
 type DebugTargetRow = {
   id: string;
   organization_id: string;
-  project_id: string;
   device_id: string;
   bridge_id: string | null;
   protocol?: DebugConnectionProtocol;
@@ -72,7 +69,6 @@ type DebugTargetRow = {
 type DebugParameterRow = {
   id: string;
   organization_id: string;
-  project_id: string | null;
   name: string;
   key: string;
   description: string;
@@ -100,7 +96,6 @@ type DebugParameterRow = {
 type DebugSessionRow = {
   id: string;
   organization_id: string;
-  project_id: string;
   device_id: string;
   target_id: string;
   protocol?: DebugConnectionProtocol;
@@ -117,7 +112,6 @@ type DebugSessionRow = {
 type DebugParameterNodeBindingRow = {
   id: string;
   organization_id: string;
-  project_id: string | null;
   parameter_id: string;
   protocol: DebugConnectionProtocol;
   node_path: string;
@@ -132,7 +126,6 @@ type DebugParameterNodeBindingRow = {
 type DebugSnapshotRow = {
   id: string;
   organization_id: string;
-  project_id: string;
   session_id: string;
   operation_id: string | null;
   status: DebugSnapshotStatus;
@@ -144,7 +137,6 @@ type DebugSnapshotRow = {
 type NodeOperationRow = {
   id: string;
   organization_id: string;
-  project_id: string;
   session_id: string;
   parameter_id: string | null;
   parameter_definition_id?: string | null;
@@ -188,7 +180,6 @@ function toDebugDeviceRecord(row: DebugDeviceRow): DebugDeviceRecord {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     name: row.name,
     transport: row.transport,
     status: row.status,
@@ -200,7 +191,6 @@ function toDebugDeviceRecord(row: DebugDeviceRow): DebugDeviceRecord {
 function toDebugDeviceLeaseRecord(row: DebugDeviceLeaseRow): DebugDeviceLeaseRecord {
   return {
     organizationId: row.organization_id,
-    projectId: row.project_id,
     deviceId: row.device_id,
     sessionId: row.session_id,
     leaseOwnerUserId: row.lease_owner_user_id,
@@ -214,7 +204,6 @@ function toDebugTargetRecord(row: DebugTargetRow): DebugTargetRecord {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     deviceId: row.device_id,
     bridgeId: row.bridge_id ?? null,
     protocol: row.protocol ?? defaultDebugConnectionProtocol,
@@ -229,7 +218,6 @@ function toDebugParameterRecord(row: DebugParameterRow): DebugParameterRecord {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     name: row.name,
     key: row.key,
     description: row.description,
@@ -259,7 +247,6 @@ function toDebugParameterNodeBindingRecord(row: DebugParameterNodeBindingRow): D
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     parameterId: row.parameter_id,
     protocol: row.protocol,
     nodePath: row.node_path,
@@ -276,7 +263,6 @@ function toDebugSessionRecord(row: DebugSessionRow): DebugSessionRecord {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     deviceId: row.device_id,
     targetId: row.target_id,
     protocol: row.protocol ?? defaultDebugConnectionProtocol,
@@ -295,7 +281,6 @@ function toDebugSnapshotRecord(row: DebugSnapshotRow): DebugSnapshotRecord {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     sessionId: row.session_id,
     operationId: row.operation_id,
     status: row.status,
@@ -309,7 +294,6 @@ function toNodeOperationRecord(row: NodeOperationRow): NodeOperationRecord {
   return {
     id: row.id,
     organizationId: row.organization_id,
-    projectId: row.project_id,
     sessionId: row.session_id,
     parameterId: row.parameter_id,
     parameterDefinitionId: row.parameter_definition_id ?? null,
@@ -342,18 +326,9 @@ function addCondition(parts: string[], values: unknown[], condition: (placeholde
   parts.push(condition(`$${values.length}`));
 }
 
-function addNullableProjectCondition(parts: string[], values: unknown[], projectId?: string, projectIds?: string[]) {
-  if (projectId) {
-    addCondition(parts, values, (placeholder) => `(project_id is null or project_id = ${placeholder})`, projectId);
-  } else if (projectIds?.length) {
-    addCondition(parts, values, (placeholder) => `(project_id is null or project_id = any(${placeholder}::text[]))`, projectIds);
-  }
-}
-
 const debugParameterColumns = `
   id,
   organization_id,
-  project_id,
   name,
   key,
   description,
@@ -381,7 +356,6 @@ const debugParameterColumns = `
 const debugParameterNodeBindingColumns = `
   id,
   organization_id,
-  project_id,
   parameter_id,
   protocol,
   node_path,
@@ -396,7 +370,6 @@ const debugParameterNodeBindingColumns = `
 const nodeOperationColumns = `
   id,
   organization_id,
-  project_id,
   session_id,
   parameter_id,
   parameter_definition_id,
@@ -425,7 +398,6 @@ const nodeOperationColumns = `
 
 export type WriteDebugParameterInput = {
   organizationId: string;
-  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -449,25 +421,16 @@ export type WriteDebugParameterInput = {
 
 export async function listDebugDevices(
   db: Queryable,
-  input: { organizationId: string; projectId?: string; projectIds?: string[] }
+  input: { organizationId: string }
 ): Promise<DebugDeviceRecord[]> {
-  const values: unknown[] = [input.organizationId];
-  const where = ["organization_id = $1"];
-
-  if (input.projectId) {
-    addCondition(where, values, (placeholder) => `project_id = ${placeholder}`, input.projectId);
-  } else if (input.projectIds?.length) {
-    addCondition(where, values, (placeholder) => `project_id = any(${placeholder}::text[])`, input.projectIds);
-  }
-
   const result = await db.query<DebugDeviceRow>(
     `
-    select id, organization_id, project_id, name, transport, status, firmware, last_seen_at
+    select id, organization_id, name, transport, status, firmware, last_seen_at
     from debugging_devices
-    where ${where.join("\n      and ")}
+    where organization_id = $1
     order by last_seen_at desc nulls last, name asc, id asc
     `,
-    values
+    [input.organizationId]
   );
 
   return result.rows.map(toDebugDeviceRecord);
@@ -479,7 +442,7 @@ export async function getDebugDevice(
 ): Promise<DebugDeviceRecord | null> {
   const result = await db.query<DebugDeviceRow>(
     `
-    select id, organization_id, project_id, name, transport, status, firmware, last_seen_at
+    select id, organization_id, name, transport, status, firmware, last_seen_at
     from debugging_devices
     where organization_id = $1
       and id = $2
@@ -493,12 +456,11 @@ export async function getDebugDevice(
 
 export async function listDebugParameters(
   db: Queryable,
-  input: { organizationId: string; projectId?: string; projectIds?: string[]; module?: string; risk?: string[]; includeArchived?: boolean }
+  input: { organizationId: string; module?: string; risk?: string[]; includeArchived?: boolean }
 ): Promise<DebugParameterRecord[]> {
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
-  addNullableProjectCondition(where, values, input.projectId, input.projectIds);
   if (input.module) {
     addCondition(where, values, (placeholder) => `module = ${placeholder}`, input.module);
   }
@@ -564,7 +526,6 @@ export async function createDebugParameter(db: Queryable, input: WriteDebugParam
     insert into debugging_parameters (
       id,
       organization_id,
-      project_id,
       name,
       key,
       description,
@@ -606,15 +567,13 @@ export async function createDebugParameter(db: Queryable, input: WriteDebugParam
       $18,
       $19,
       $20,
-      $21,
-      $22
+      $21
     )
     returning ${debugParameterColumns}
     `,
     [
       randomUUID(),
       input.organizationId,
-      input.projectId,
       input.name,
       input.key,
       input.description,
@@ -647,26 +606,25 @@ export async function updateDebugParameter(
   const result = await db.query<DebugParameterRow>(
     `
     update debugging_parameters
-    set project_id = $3,
-      name = $4,
-      key = $5,
-      description = $6,
-      module = $7,
-      node_path = $8,
-      access_mode = $9,
-      unit = $10,
-      range_label = $11,
-      min_value = $12,
-      max_value = $13,
-      risk = $14,
-      current_value = $15,
-      target_value = $16,
-      sort_order = $17,
-      enabled = $18,
-      value_kind = $19,
-      value_format = $20,
-      normalization_mode = $21,
-      max_value_bytes = $22,
+    set name = $3,
+      key = $4,
+      description = $5,
+      module = $6,
+      node_path = $7,
+      access_mode = $8,
+      unit = $9,
+      range_label = $10,
+      min_value = $11,
+      max_value = $12,
+      risk = $13,
+      current_value = $14,
+      target_value = $15,
+      sort_order = $16,
+      enabled = $17,
+      value_kind = $18,
+      value_format = $19,
+      normalization_mode = $20,
+      max_value_bytes = $21,
       updated_at = now()
     where organization_id = $1
       and id = $2
@@ -675,7 +633,6 @@ export async function updateDebugParameter(
     [
       input.organizationId,
       input.parameterId,
-      input.projectId,
       input.name,
       input.key,
       input.description,
@@ -765,12 +722,11 @@ export async function getDebugParameterNodeBinding(
 
 export async function listDebugParameterNodeBindings(
   db: Queryable,
-  input: { organizationId: string; projectId?: string; parameterIds?: string[]; protocol?: DebugConnectionProtocol }
+  input: { organizationId: string; parameterIds?: string[]; protocol?: DebugConnectionProtocol }
 ): Promise<DebugParameterNodeBindingRecord[]> {
   const values: unknown[] = [input.organizationId];
   const where = ["organization_id = $1"];
 
-  addNullableProjectCondition(where, values, input.projectId);
   if (input.parameterIds?.length) {
     addCondition(where, values, (placeholder) => `parameter_id = any(${placeholder}::text[])`, input.parameterIds);
   }
@@ -795,7 +751,6 @@ export async function upsertDebugParameterNodeBinding(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string | null;
     parameterId: string;
     protocol: DebugConnectionProtocol;
     nodePath: string;
@@ -809,7 +764,6 @@ export async function upsertDebugParameterNodeBinding(
     insert into debugging_parameter_node_bindings (
       id,
       organization_id,
-      project_id,
       parameter_id,
       protocol,
       node_path,
@@ -820,23 +774,20 @@ export async function upsertDebugParameterNodeBinding(
     select
       $1,
       p.organization_id,
-      p.project_id,
       p.id,
+      $4,
       $5,
       $6,
       $7,
-      $8,
-      $9
+      $8
     from debugging_parameters p
-    where p.id = $4
+    where p.id = $3
       and p.organization_id = $2
-      and ($3::text is null or p.project_id is null or p.project_id = $3)
     on conflict (parameter_id, protocol) do update
     set node_path = excluded.node_path,
       access_mode = excluded.access_mode,
       enabled = excluded.enabled,
       notes = excluded.notes,
-      project_id = excluded.project_id,
       updated_at = now()
     where debugging_parameter_node_bindings.organization_id = excluded.organization_id
     returning ${debugParameterNodeBindingColumns}
@@ -844,7 +795,6 @@ export async function upsertDebugParameterNodeBinding(
     [
       randomUUID(),
       input.organizationId,
-      input.projectId,
       input.parameterId,
       input.protocol,
       input.nodePath,
@@ -886,7 +836,6 @@ export async function getDefaultAdbSmokeParameterNodeBinding(
     select ${debugParameterNodeBindingColumns}
     from debugging_parameter_node_bindings
     where organization_id = $1
-      and project_id is null
       and protocol = 'adb'
       and is_smoke_default = true
       ${input.includeDisabled ? "" : "and enabled = true"}
@@ -908,7 +857,6 @@ export async function getDebugSession(
     select
       id,
       organization_id,
-      project_id,
       device_id,
       target_id,
       protocol,
@@ -937,7 +885,7 @@ export async function getDebugTarget(
 ): Promise<DebugTargetRecord | null> {
   const result = await db.query<DebugTargetRow>(
     `
-    select id, organization_id, project_id, device_id, bridge_id, protocol, target_ref, label, status, detected_at
+    select id, organization_id, device_id, bridge_id, protocol, target_ref, label, status, detected_at
     from debugging_targets
     where organization_id = $1
       and id = $2
@@ -955,7 +903,7 @@ export async function getDebugSnapshot(
 ): Promise<DebugSnapshotRecord | null> {
   const result = await db.query<DebugSnapshotRow>(
     `
-    select id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    select id, organization_id, session_id, operation_id, status, risk, entries, created_at
     from debugging_snapshots
     where organization_id = $1
       and id = $2
@@ -989,7 +937,6 @@ async function ensureBridgeDebugDevices(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     targets: Array<{
       deviceId: string;
       bridgeMachineLabel?: string;
@@ -1018,9 +965,9 @@ async function ensureBridgeDebugDevices(
     await db.query(
       `
       insert into debugging_devices (
-        id, organization_id, project_id, name, transport, status, firmware, last_seen_at
+        id, organization_id, name, transport, status, firmware, last_seen_at
       )
-      values ($1, $2, $3, $4, $5, $6, $7, case when $6 = 'online' then now() else null end)
+      values ($1, $2, $3, $4, $5, $6, case when $5 = 'online' then now() else null end)
       on conflict (id) do update
       set name = excluded.name,
         transport = excluded.transport,
@@ -1031,7 +978,7 @@ async function ensureBridgeDebugDevices(
         end,
         updated_at = now()
       `,
-      [deviceId, input.organizationId, input.projectId, device.name, device.protocol, status, "bridge"]
+      [deviceId, input.organizationId, device.name, device.protocol, status, "bridge"]
     );
   }
 }
@@ -1040,7 +987,6 @@ export async function upsertDetectedTargets(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     targets: Array<{
       id: string;
       deviceId: string;
@@ -1061,19 +1007,18 @@ export async function upsertDetectedTargets(
     const result = await db.query<DebugTargetRow>(
       `
       insert into debugging_targets (
-        organization_id, project_id, device_id, id, bridge_id, protocol, target_ref, label, status
+        organization_id, device_id, id, bridge_id, protocol, target_ref, label, status
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
       on conflict (device_id, protocol, target_ref) do update
       set label = excluded.label,
         bridge_id = excluded.bridge_id,
         status = excluded.status,
         detected_at = now()
-      returning id, organization_id, project_id, device_id, bridge_id, protocol, target_ref, label, status, detected_at
+      returning id, organization_id, device_id, bridge_id, protocol, target_ref, label, status, detected_at
       `,
       [
         input.organizationId,
-        input.projectId,
         target.deviceId,
         target.id,
         target.bridgeId ?? null,
@@ -1119,7 +1064,6 @@ export async function createDebugSession(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     deviceId: string;
     targetId: string;
     protocol?: DebugConnectionProtocol;
@@ -1135,7 +1079,6 @@ export async function createDebugSession(
     insert into debugging_sessions (
       id,
       organization_id,
-      project_id,
       device_id,
       target_id,
       protocol,
@@ -1146,11 +1089,10 @@ export async function createDebugSession(
       actor_user_id,
       status
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
     returning
       id,
       organization_id,
-      project_id,
       device_id,
       target_id,
       protocol,
@@ -1166,7 +1108,6 @@ export async function createDebugSession(
     [
       randomUUID(),
       input.organizationId,
-      input.projectId,
       input.deviceId,
       input.targetId,
       input.protocol ?? defaultDebugConnectionProtocol,
@@ -1186,7 +1127,6 @@ export async function acquireDebugDeviceLease(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     deviceId: string;
     sessionId: string;
     actorUserId: string;
@@ -1196,10 +1136,10 @@ export async function acquireDebugDeviceLease(
   const result = await db.query<DebugDeviceLeaseRow>(
     `
     insert into debug_device_leases (
-      organization_id, project_id, device_id, session_id, lease_owner_user_id, expires_at
+      organization_id, device_id, session_id, lease_owner_user_id, expires_at
     )
-    values ($1, $2, $3, $4, $5, now() + ($6 * interval '1 millisecond'))
-    on conflict (organization_id, project_id, device_id) do update
+    values ($1, $2, $3, $4, now() + ($5 * interval '1 millisecond'))
+    on conflict (organization_id, device_id) do update
     set session_id = excluded.session_id,
       lease_owner_user_id = excluded.lease_owner_user_id,
       expires_at = excluded.expires_at,
@@ -1210,9 +1150,9 @@ export async function acquireDebugDeviceLease(
       updated_at = now()
     where debug_device_leases.session_id = excluded.session_id
       or debug_device_leases.expires_at <= now()
-    returning organization_id, project_id, device_id, session_id, lease_owner_user_id, expires_at, acquired_at, updated_at
+    returning organization_id, device_id, session_id, lease_owner_user_id, expires_at, acquired_at, updated_at
     `,
-    [input.organizationId, input.projectId, input.deviceId, input.sessionId, input.actorUserId, input.leaseTtlMs]
+    [input.organizationId, input.deviceId, input.sessionId, input.actorUserId, input.leaseTtlMs]
   );
 
   return result.rows[0] ? toDebugDeviceLeaseRecord(result.rows[0]) : null;
@@ -1222,7 +1162,6 @@ export async function releaseDebugDeviceLease(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     deviceId: string;
     sessionId: string;
   }
@@ -1233,12 +1172,11 @@ export async function releaseDebugDeviceLease(
     set expires_at = now(),
       updated_at = now()
     where organization_id = $1
-      and project_id = $2
-      and device_id = $3
-      and session_id = $4
-    returning organization_id, project_id, device_id, session_id, lease_owner_user_id, expires_at, acquired_at, updated_at
+      and device_id = $2
+      and session_id = $3
+    returning organization_id, device_id, session_id, lease_owner_user_id, expires_at, acquired_at, updated_at
     `,
-    [input.organizationId, input.projectId, input.deviceId, input.sessionId]
+    [input.organizationId, input.deviceId, input.sessionId]
   );
 
   return result.rows[0] ? toDebugDeviceLeaseRecord(result.rows[0]) : null;
@@ -1248,7 +1186,6 @@ export async function insertNodeOperation(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     sessionId: string;
     parameterId: string | null;
     nodeId?: string | null;
@@ -1279,20 +1216,19 @@ export async function insertNodeOperation(
   const result = await db.query<NodeOperationRow>(
     `
     insert into node_operations (
-      id, organization_id, project_id, session_id, parameter_id, node_id, parameter_definition_id, protocol, node_path, operation_type,
+      id, organization_id, session_id, parameter_id, node_id, parameter_definition_id, protocol, node_path, operation_type,
       status, requested_value, previous_value, read_value, readback_value, verified,
       failure_reason, duration_ms, approval_id, snapshot_id,
       value_kind, value_format, normalization_mode,
       requested_value_digest, previous_value_digest, readback_value_digest, value_preview,
       actor_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
     returning ${nodeOperationColumns}
     `,
     [
       randomUUID(),
       input.organizationId,
-      input.projectId,
       input.sessionId,
       input.parameterId,
       input.nodeId ?? input.parameterId,
@@ -1328,7 +1264,6 @@ export async function createDebugSnapshot(
   db: Queryable,
   input: {
     organizationId: string;
-    projectId: string;
     sessionId: string;
     operationId?: string | null;
     risk: DebugRiskLevel;
@@ -1339,15 +1274,14 @@ export async function createDebugSnapshot(
   const result = await db.query<DebugSnapshotRow>(
     `
     insert into debugging_snapshots (
-      id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_by_user_id
+      id, organization_id, session_id, operation_id, status, risk, entries, created_by_user_id
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
-    returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+    returning id, organization_id, session_id, operation_id, status, risk, entries, created_at
     `,
     [
       randomUUID(),
       input.organizationId,
-      input.projectId,
       input.sessionId,
       input.operationId ?? null,
       "valid",
@@ -1373,7 +1307,6 @@ export async function linkOperationSnapshot(
       and debugging_snapshots.id = $3
       and node_operations.organization_id = $1
       and debugging_snapshots.organization_id = $1
-      and node_operations.project_id = debugging_snapshots.project_id
       and node_operations.session_id = debugging_snapshots.session_id
     `,
     [input.organizationId, input.operationId, input.snapshotId]
@@ -1392,7 +1325,7 @@ export async function markSnapshotConsumed(
     where organization_id = $1
       and id = $2
       and status in ('valid', 'rollback_pending')
-    returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    returning id, organization_id, session_id, operation_id, status, risk, entries, created_at
     `,
     [input.organizationId, input.snapshotId]
   );
@@ -1411,7 +1344,7 @@ export async function claimSnapshotForRollback(
     where organization_id = $1
       and id = $2
       and status = 'valid'
-    returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    returning id, organization_id, session_id, operation_id, status, risk, entries, created_at
     `,
     [input.organizationId, input.snapshotId]
   );
@@ -1430,7 +1363,7 @@ export async function restoreSnapshotValid(
     where organization_id = $1
       and id = $2
       and status = 'rollback_pending'
-    returning id, organization_id, project_id, session_id, operation_id, status, risk, entries, created_at
+    returning id, organization_id, session_id, operation_id, status, risk, entries, created_at
     `,
     [input.organizationId, input.snapshotId]
   );
@@ -1443,7 +1376,6 @@ export async function insertDebugEvent(
   input: {
     id?: string;
     organizationId: string;
-    projectId: string;
     sessionId?: string;
     operationId?: string;
     kind: string;
@@ -1455,14 +1387,13 @@ export async function insertDebugEvent(
   await db.query(
     `
     insert into debugging_events (
-      id, organization_id, project_id, session_id, operation_id, kind, severity, message, metadata
+      id, organization_id, session_id, operation_id, kind, severity, message, metadata
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+    values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
     `,
     [
       input.id ?? randomUUID(),
       input.organizationId,
-      input.projectId,
       input.sessionId ?? null,
       input.operationId ?? null,
       input.kind,

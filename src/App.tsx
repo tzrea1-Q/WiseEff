@@ -80,6 +80,14 @@ import type {
   ProjectParameterInitializationReview,
   RiskLevel
 } from "@/domain/parameters/types";
+import type { ParameterValueKind } from "@/powerManagementConfig";
+import {
+  buildReviewDetailSummary,
+  getParameterValueSummary,
+  isRedundantReviewSummary,
+  shouldShowReviewDetailReason,
+  shouldSummarizeReviewChange
+} from "@/parameterValueKind";
 import {
   migrateLegacyRoleId,
   platformRoles,
@@ -91,7 +99,7 @@ import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
-import { getPageByPath, getXiaozeContextSummary, navigationItems, PageConfig, utilityItems } from "./appConfig";
+import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
 
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
@@ -158,6 +166,7 @@ import {
   updateParameterModule,
   deleteParameterModule,
   deleteDebugParameter,
+  deleteAdminProject,
   deleteProjectParameter,
   updateDebugParameter,
   updateProjectParameter,
@@ -263,6 +272,7 @@ export type AppAction =
   | { type: "SET_PROJECT"; projectId: string }
   | { type: "UPDATE_PROJECT"; projectId: string; patch: { name?: string; code?: string; status?: ProjectInitializationStatus } }
   | { type: "ADD_PARAMETER_ADMIN_PROJECT"; project: { id: string; name: string; code: string } }
+  | { type: "DELETE_PARAMETER_ADMIN_PROJECT"; projectId: string }
   | {
       type: "HYDRATE_AUTH_CONTEXT";
       user: User;
@@ -730,6 +740,38 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       return {
         ...state,
         configDraft,
+        ...derivePowerManagementRuntimeState(configDraft)
+      };
+    }
+    case "DELETE_PARAMETER_ADMIN_PROJECT": {
+      if (!canPerform(activeRoleId, "admin.access")) return state;
+      const projectExists = state.configDraft.projects.some((project) => project.id === action.projectId);
+      if (!projectExists) {
+        return state;
+      }
+
+      const configDraft = deleteAdminProject(state.configDraft, action.projectId);
+      const nextActiveProjectId =
+        state.activeProjectId === action.projectId
+          ? configDraft.projects[0]?.id ?? state.activeProjectId
+          : state.activeProjectId;
+      const { [action.projectId]: _removedStatus, ...projectInitializationStatuses } = state.projectInitializationStatuses;
+
+      return {
+        ...state,
+        activeProjectId: nextActiveProjectId,
+        configDraft,
+        projectInitializationStatuses,
+        parameterInitializationDrafts: state.parameterInitializationDrafts.filter(
+          (draft) => draft.projectId !== action.projectId
+        ),
+        parameterInitializationReviews: state.parameterInitializationReviews.filter((review) => {
+          const draft = state.parameterInitializationDrafts.find((item) => item.id === review.draftId);
+          return draft?.projectId !== action.projectId;
+        }),
+        changeRequests: state.changeRequests.filter((request) => request.projectId !== action.projectId),
+        parameterSubmissionRounds: state.parameterSubmissionRounds.filter((round) => round.projectId !== action.projectId),
+        parameterDrafts: state.parameterDrafts.filter((draft) => draft.projectId !== action.projectId),
         ...derivePowerManagementRuntimeState(configDraft)
       };
     }
@@ -1249,7 +1291,6 @@ export function reducer(state: PrototypeState, action: AppAction): PrototypeStat
       const newLog: LogRecord = {
         id: `log-upload-${Date.now()}`,
         fileName: action.fileName,
-        projectId: state.activeProjectId,
         status: supportedLog ? "Processing" : "Failed",
         stage: "parse",
         confidence: supportedLog ? 24 : 0,
@@ -2119,15 +2160,20 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const usesProjectScope = pageUsesProjectScope(page.key);
   const xiaozePageContext = useMemo(
     () => ({
       path,
       pageKey: page.key,
-      projectId: state.activeProjectId,
-      projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name,
+      ...(usesProjectScope
+        ? {
+            projectId: state.activeProjectId,
+            projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name
+          }
+        : {}),
       roleId: currentRoleId
     }),
-    [path, page.key, state.activeProjectId, state.configDraft.projects, currentRoleId]
+    [path, page.key, usesProjectScope, state.activeProjectId, state.configDraft.projects, currentRoleId]
   );
   const parameterRepositoryClient = useMemo(
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
@@ -2224,7 +2270,7 @@ function AppShell({
       const runtimeRoleId = migrateLegacyRoleId(roleId);
       const debuggingProtocol = pageKeyRef.current === "node-debugging" ? readInitialNodeDebuggingProtocol() : "hdc";
       const debuggingRefresh = canPerform(runtimeRoleId, "debugging.use")
-        ? debuggingActions.refresh({ projectId: stateRef.current.activeProjectId, protocol: debuggingProtocol })
+        ? debuggingActions.refresh({ protocol: debuggingProtocol })
         : Promise.resolve("skipped" as const);
       const [parameterRefreshResult, logRefreshResult, debuggingRefreshResult] = await Promise.allSettled([
         parameterActions.refresh({ notifyOnFailure: false }),
@@ -2352,6 +2398,34 @@ function AppShell({
       cancelled = true;
     };
   }, [currentRoleId, page.key, runtimeMode, userGovernanceActionsClient]);
+
+  useEffect(() => {
+    if (runtimeMode !== "api" || page.key !== "node-debugging") {
+      return;
+    }
+    if (!canPerform(currentRoleId, "debugging.use")) {
+      return;
+    }
+
+    let cancelled = false;
+    const protocol = readInitialNodeDebuggingProtocol();
+    void debuggingActions
+      .refresh({ protocol })
+      .then(() => {
+        if (!cancelled) {
+          setDebuggingRuntimeReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDebuggingRuntimeReady(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentRoleId, debuggingActions, page.key, runtimeMode]);
 
   useEffect(() => {
     const syncPathFromHistory = () => {
@@ -2549,7 +2623,7 @@ function AppShell({
         <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
-          projectId={state.activeProjectId}
+          projectId={usesProjectScope ? state.activeProjectId : undefined}
           roleId={currentRoleId}
           visibleRecords={xiaozeContextSummary ? [{ summary: xiaozeContextSummary }] : undefined}
         />
@@ -3217,13 +3291,7 @@ function TopBar({
     page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
     page.key !== "parameter-home";
-  const showProjectSelector =
-    page.group === "参数管理" &&
-    page.key !== "parameter-home" &&
-    page.key !== "parameter-comparison" &&
-    page.key !== "parameter-review" &&
-    page.key !== "parameter-admin" &&
-    page.key !== "parameter-admin-projects";
+  const showProjectSelector = pageUsesProjectScope(page.key);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
@@ -3624,7 +3692,11 @@ export function getContextQuery(search: string) {
 }
 
 function isComplexSubmissionHistoryItem(item: ParameterSubmissionItem) {
-  return item.valueKind === "complex";
+  return shouldSummarizeReviewChange({
+    valueKind: item.valueKind,
+    currentValue: item.currentValue,
+    targetValue: item.targetValue
+  });
 }
 
 function getSubmissionHistoryLineCount(value: string) {
@@ -3636,13 +3708,6 @@ function formatSubmissionHistoryValue(value: string, unit: string, isComplexItem
     return value || "-";
   }
   return `${value || "-"} ${unit}`.trim();
-}
-
-function getSubmissionValueSummary(value: string) {
-  const firstLine = value.split(/\r?\n/)[0]?.trim() ?? "";
-  const propertyName = firstLine.replace(/\s*=.*$/, "").trim() || "配置块";
-  const lineCount = value.split(/\r?\n/).filter((line) => line.trim()).length;
-  return { propertyName, lineCount };
 }
 
 type SubmissionHistoryDiffLineKind = "equal" | "remove" | "add";
@@ -3758,17 +3823,35 @@ function SubmissionHistoryDiffCard({ item }: { item: ParameterSubmissionItem }) 
   );
 }
 
-function ReviewChangeValueSummary({ request }: { request: ChangeRequest }) {
-  if (request.valueKind === "complex") {
-    const valueSummary = getSubmissionValueSummary(request.currentValue || request.targetValue);
+function ReviewChangeValueSummary({
+  request,
+  parameter,
+  layout = "inline"
+}: {
+  request: ChangeRequest;
+  parameter?: { valueKind?: ParameterValueKind; configFormat?: string; name?: string };
+  layout?: "inline" | "complex";
+}) {
+  if (shouldSummarizeReviewChange(request, parameter)) {
+    const valueSummary = getParameterValueSummary(request.currentValue || request.targetValue);
     const differenceLabel = request.currentValue === request.targetValue ? "当前与目标一致" : "当前与目标不同";
+    const tooltip = `${request.title} · ${valueSummary.lineCount} 行 · ${differenceLabel}`;
+
+    if (layout === "complex") {
+      return (
+        <span className="review-change-complex-summary" title={tooltip}>
+          <span className="review-change-complex-summary__title">{request.title}</span>
+          <span className="review-change-complex-summary__meta">
+            <span className="review-change-complex-badge">复杂配置</span>
+            <small>{valueSummary.lineCount} 行 · {differenceLabel}</small>
+          </span>
+        </span>
+      );
+    }
+
     return (
-      <span
-        className="parameter-value-summary review-change-value-summary"
-        title={`${valueSummary.propertyName} · ${valueSummary.lineCount} 行 · ${differenceLabel}`}
-      >
-        <span>复杂配置</span>
-        <strong>{valueSummary.propertyName}</strong>
+      <span className="review-change-complex-summary__meta" title={tooltip}>
+        <span className="review-change-complex-badge">复杂配置</span>
         <small>{valueSummary.lineCount} 行 · {differenceLabel}</small>
       </span>
     );
@@ -3780,6 +3863,71 @@ function ReviewChangeValueSummary({ request }: { request: ChangeRequest }) {
       <ArrowRight size={14} />
       <strong>{request.targetValue.trim() || "-"}</strong>
     </span>
+  );
+}
+
+function ReviewDetailSummary({
+  request,
+  parameter,
+  onOpenSubmissionDetail
+}: {
+  request: ChangeRequest;
+  parameter?: ParameterRecord;
+  onOpenSubmissionDetail?: () => void;
+}) {
+  const summary = buildReviewDetailSummary({
+    title: request.title,
+    currentValue: request.currentValue,
+    targetValue: request.targetValue,
+    valueKind: request.valueKind ?? parameter?.valueKind,
+    configFormat: parameter?.configFormat
+  });
+  const supplementalSummary = request.aiSummary.trim();
+  const showSupplementalSummary =
+    supplementalSummary.length > 0 && !isRedundantReviewSummary(supplementalSummary);
+  const reasons = request.aiSuggestion?.reasons?.filter(shouldShowReviewDetailReason) ?? [];
+
+  return (
+    <div className="review-detail-summary">
+      {summary.isComplex ? (
+        <>
+          <p className="review-detail-summary__headline">{summary.headline}</p>
+          <div className="review-change-complex-summary__meta">
+            <span className="review-change-complex-badge">复杂配置</span>
+            <small>{summary.differenceLabel}</small>
+          </div>
+          {summary.hasDifference ? (
+            <p className="review-detail-summary__hint">
+              配置内容存在差异，请{" "}
+              <button
+                className="review-detail-summary__link"
+                type="button"
+                onClick={onOpenSubmissionDetail}
+              >
+                查看提交详情
+              </button>
+              {" "}了解行级对比。
+            </p>
+          ) : (
+            <p className="review-detail-summary__hint">配置内容与目标一致。</p>
+          )}
+        </>
+      ) : (
+        <p className="review-detail-summary__headline">
+          {showSupplementalSummary ? supplementalSummary : summary.headline}
+        </p>
+      )}
+      {summary.isComplex && showSupplementalSummary ? (
+        <p className="review-detail-summary__supplement">{supplementalSummary}</p>
+      ) : null}
+      {reasons.length > 0 ? (
+        <ul className="review-detail-summary__reasons">
+          {reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
@@ -4391,6 +4539,7 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                 const { request } = row;
                 const parameter = state.parameters.find((item) => item.id === request.parameterId);
                 const project = state.configDraft.projects.find((item) => item.id === (request.projectId ?? parameter?.projectId));
+                const isComplexReviewChange = shouldSummarizeReviewChange(request, parameter);
 
                 return (
                   <TableRow
@@ -4403,7 +4552,13 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                     <TableCell>{request.submitter}</TableCell>
                     <TableCell className="change-cell">
                       <button
-                        className="value-change value-change-button"
+                        className={[
+                          "value-change",
+                          "value-change-button",
+                          isComplexReviewChange ? "value-change-button--complex" : ""
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
                         type="button"
                         aria-label={`查看 ${request.title} 提交详情`}
                         onClick={(event) => {
@@ -4411,8 +4566,14 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
                           openSubmissionDetail(request);
                         }}
                       >
-                        <span className="value-change__title">{request.title}</span>
-                        <ReviewChangeValueSummary request={request} />
+                        {isComplexReviewChange ? (
+                          <ReviewChangeValueSummary layout="complex" parameter={parameter} request={request} />
+                        ) : (
+                          <>
+                            <span className="value-change__title">{request.title}</span>
+                            <ReviewChangeValueSummary parameter={parameter} request={request} />
+                          </>
+                        )}
                       </button>
                     </TableCell>
                     <TableCell>
@@ -4507,7 +4668,11 @@ function ParameterReviewPage({ state, dispatch, search, parameterActions }: Page
             ) : null}
             <div className="ai-summary-card">
               <SectionLabel icon={<Sparkles size={16} />} label="审阅摘要" />
-              <p>{selected.aiSummary}</p>
+              <ReviewDetailSummary
+                onOpenSubmissionDetail={() => openSubmissionDetail(selected)}
+                parameter={state.parameters.find((item) => item.id === selected.parameterId)}
+                request={selected}
+              />
             </div>
             {selected.rejectReason ? (
               <div className="rejection-reason-card">
@@ -4623,14 +4788,13 @@ function RejectReviewDialog({
   );
 }
 
-function createEmptyLogRecord(projectId: string): LogRecord {
+function createEmptyLogRecord(): LogRecord {
   const nowIso = new Date(0).toISOString();
 
   return {
     id: "empty-log-selection",
     reportId: "RPT-EMPTY",
     fileName: "暂无日志",
-    projectId,
     source: "Empty State",
     fileSizeMB: 0,
     status: "Failed",
@@ -4665,7 +4829,7 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
   const [liveMessage, setLiveMessage] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const prevLogCount = useRef(state.logs.length);
-  const emptyLogRecord = useMemo(() => createEmptyLogRecord(state.activeProjectId), [state.activeProjectId]);
+  const emptyLogRecord = useMemo(() => createEmptyLogRecord(), []);
   const selectedLog = state.logs.find((log) => log.id === selectedLogId) ?? state.logs[0];
   const hasActiveLog = Boolean(selectedLog);
   const activeLog = selectedLog ?? emptyLogRecord;
@@ -4778,9 +4942,6 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
     if (activeLog.relatedParameterId) {
       params.set("parameter", activeLog.relatedParameterId);
     }
-    if (activeLog.projectId) {
-      params.set("project", activeLog.projectId);
-    }
     params.set("logId", activeLog.id);
 
     onNavigate(`/parameters?${params.toString()}`);
@@ -4863,13 +5024,13 @@ function LogsPage({ state, dispatch, onNavigate, logActions }: PageProps) {
       setPendingUpload({ fileName: file.name, previousLogIds: beforeLogIds });
 
       try {
-        await logActions.upload({ projectId: state.activeProjectId, file, analysisQuestion: question });
+        await logActions.upload({ file, analysisQuestion: question });
       } catch (error) {
         setPendingUpload(null);
         throw error;
       }
     },
-    [dispatch, logActions, state.activeProjectId, state.logs]
+    [dispatch, logActions, state.logs]
   );
   const handleRetryLog = useCallback(() => {
     if (!logActions) {
@@ -5708,10 +5869,6 @@ function LogsAuxPanel({
             <div>
               <dt>文件名</dt>
               <dd>{activeLog.fileName}</dd>
-            </div>
-            <div>
-              <dt>项目</dt>
-              <dd>{activeLog.projectId}</dd>
             </div>
             <div>
               <dt>设备</dt>

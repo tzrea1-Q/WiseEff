@@ -14,6 +14,7 @@ import {
   deleteParameterModule,
   deleteDebugParameter,
   deleteProjectParameter,
+  deleteAdminProject,
   updateProjectParameter,
   updateProjectParameterMetadata
 } from "./powerManagementConfig";
@@ -176,6 +177,32 @@ describe("powerManagementConfig", () => {
     expect(addedDebugParameter?.name).toBe("new_debug_parameter_11");
     expect(addedDebugParameter?.key).toBe("debug.new_parameter_11");
     expect(deleteDebugParameter(withDebugParameter, addedDebugParameter?.id ?? "").debugParameters).toHaveLength(10);
+  });
+
+  it("removes an admin project and its parameter values while keeping parameter definitions", () => {
+    const draft = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const librarySizeBefore = draft.parameterLibrary.length;
+    const next = deleteAdminProject(draft, "atlas");
+
+    expect(next.projects.some((project) => project.id === "atlas")).toBe(false);
+    expect(next.parameterLibrary).toHaveLength(librarySizeBefore);
+    expect(next.parameterLibrary.every((parameter) => parameter.values.atlas === undefined)).toBe(true);
+    expect(next.parameterLibrary.some((parameter) => Object.keys(parameter.values).length > 0)).toBe(true);
+  });
+
+  it("removes an empty admin project from the config draft", () => {
+    const draft = clonePowerManagementConfig(bundledPowerManagementConfig);
+    const next = deleteAdminProject(
+      {
+        ...draft,
+        projects: [...draft.projects, { id: "empty-test", name: "Empty Test", code: "EMP" }]
+      },
+      "empty-test"
+    );
+
+    expect(next.projects.some((project) => project.id === "empty-test")).toBe(false);
+    expect(next.parameterLibrary.every((parameter) => parameter.values["empty-test"] === undefined)).toBe(true);
+    expect(next.projects).toHaveLength(draft.projects.length);
   });
 });
 

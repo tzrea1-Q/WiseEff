@@ -56,7 +56,6 @@ type ParsedAdbDevice = {
 };
 
 type AdbSmokeConfig = {
-  projectId: string;
   deviceId: string;
   targetRef: string;
   parameterId: string;
@@ -69,7 +68,7 @@ type AdbSmokeConfig = {
   confirmRollback: string;
 };
 
-type MinimalAdbSmokeConfig = Pick<AdbSmokeConfig, "projectId" | "deviceId" | "targetRef" | "parameterId" | "nodePath">;
+type MinimalAdbSmokeConfig = Pick<AdbSmokeConfig, "deviceId" | "targetRef" | "parameterId" | "nodePath">;
 type AdbSmokeEnv = Partial<Record<"ADB_SMOKE_DEVICE_ID" | "ADB_SMOKE_TARGET_REF" | "ADB_SMOKE_PARAMETER_ID" | "ADB_SMOKE_NODE_PATH" | "ADB_SMOKE_ENABLE_WRITE" | "ADB_SMOKE_WRITE_VALUE" | "ADB_SMOKE_CONFIRM_WRITE" | "ADB_SMOKE_CONFIRM_ROLLBACK" | "ADB_SMOKE_EXPECT_READ_PATTERN" | "ADB_SMOKE_USER_ID", string>>;
 type AdbSmokeQueryClient = Pick<Client, "query">;
 
@@ -85,8 +84,6 @@ type AdbSmokeBindingRow = {
   access_mode: string;
   enabled: boolean;
   is_smoke_default: boolean;
-  binding_project_id: string | null;
-  parameter_project_id: string | null;
 };
 
 const acceptanceOrganizationId = "org-chargelab";
@@ -176,7 +173,6 @@ test.describe("ADB device-lab preflight validation", () => {
     expect(() =>
       validateAdbSmokeOverrides(
         {
-          projectId: "aurora",
           deviceId: "device-1",
           targetRef: "target-1",
           parameterId: "param-1",
@@ -193,7 +189,6 @@ test.describe("ADB device-lab preflight validation", () => {
     expect(() =>
       finalizeAdbSmokeConfig(
         {
-          projectId: "aurora",
           deviceId: "device-1",
           targetRef: "target-1",
           parameterId: "param-1",
@@ -216,15 +211,12 @@ test.describe("ADB device-lab preflight validation", () => {
           node_path: "/safe/node",
           access_mode: "RO",
           enabled: true,
-          is_smoke_default: true,
-          binding_project_id: null,
-          parameter_project_id: null
+          is_smoke_default: true
         }
       ]
     ]);
 
-    await expect(resolveAdbSmokeCatalogConfig(client, { projectId: "aurora", targetRef: "target-1" })).resolves.toMatchObject({
-      projectId: "aurora",
+    await expect(resolveAdbSmokeCatalogConfig(client, { targetRef: "target-1" })).resolves.toMatchObject({
       deviceId: "device-1",
       targetRef: "target-1",
       parameterId: "param-1",
@@ -235,7 +227,7 @@ test.describe("ADB device-lab preflight validation", () => {
   test("rejects missing ADB inventory rows with redacted diagnostics", async () => {
     const client = createAdbSmokeConfigClient([[], []]);
 
-    await expect(resolveAdbSmokeCatalogConfig(client, { projectId: "aurora", targetRef: "target-1" })).rejects.toThrow(
+    await expect(resolveAdbSmokeCatalogConfig(client, { targetRef: "target-1" })).rejects.toThrow(
       /exactly one ADB debugging device inventory row.*count=0/
     );
   });
@@ -249,14 +241,12 @@ test.describe("ADB device-lab preflight validation", () => {
           node_path: "/safe/node",
           access_mode: "WO",
           enabled: true,
-          is_smoke_default: true,
-          binding_project_id: null,
-          parameter_project_id: null
+          is_smoke_default: true
         }
       ]
     ]);
 
-    await expect(resolveAdbSmokeCatalogConfig(client, { projectId: "aurora", targetRef: "target-1" })).rejects.toThrow(
+    await expect(resolveAdbSmokeCatalogConfig(client, { targetRef: "target-1" })).rejects.toThrow(
       /default ADB smoke binding must be readable.*accessMode=WO/
     );
   });
@@ -285,7 +275,7 @@ test.describe("ADB device-lab preflight validation", () => {
       }
     } as unknown as Client;
 
-    await cleanupDebuggingAcceptanceState(client, "aurora");
+    await cleanupDebuggingAcceptanceState(client);
 
     const sessionDelete = queries.find((query) => query.includes("delete from debugging_sessions"));
     expect(sessionDelete).toContain("debug_device_leases");
@@ -302,7 +292,6 @@ test.describe("ADB device-lab preflight validation", () => {
   test("requires explicit write and rollback confirmations when write mode is enabled", () => {
     const previousEnv = { ...process.env };
     try {
-      process.env.ADB_SMOKE_PROJECT_ID = "project-1";
       process.env.ADB_SMOKE_DEVICE_ID = "device-1";
       process.env.ADB_SMOKE_TARGET_REF = "target-1";
       process.env.ADB_SMOKE_PARAMETER_ID = "param-1";
@@ -314,7 +303,6 @@ test.describe("ADB device-lab preflight validation", () => {
 
       expect(() =>
         finalizeAdbSmokeConfig({
-          projectId: "project-1",
           deviceId: "device-1",
           targetRef: "target-1",
           parameterId: "param-1",
@@ -372,10 +360,10 @@ test.describe("ADB device-lab evidence redaction", () => {
 
   test("shape-summarizes identifier-bearing API evidence paths", () => {
     const rollbackPath = apiEvidencePath("/api/v1/debugging/snapshots/raw-snapshot-id/rollback");
-    const auditPath = apiEvidencePath("/api/v1/audit-events?app=debugging&projectId=raw-project-id&limit=100");
+    const auditPath = apiEvidencePath("/api/v1/audit-events?app=debugging&limit=100");
 
     expect(rollbackPath).toBe("/api/v1/debugging/snapshots/:snapshotId/rollback");
-    expect(auditPath).toContain("projectId=set:length=14");
+    expect(auditPath).toBe("/api/v1/audit-events?app=debugging&limit=100");
     expect(auditPath).not.toContain("raw-project-id");
     expect(auditPath).not.toContain("raw-snapshot-id");
   });
@@ -498,74 +486,74 @@ async function seedM3DebuggingPermissions(client: Client) {
   );
 }
 
-async function cleanupDebuggingAcceptanceState(client: Client, projectId: string) {
-  await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
-  await client.query("delete from debugging_events where project_id = $1", [projectId]);
+async function cleanupDebuggingAcceptanceState(client: Client) {
+  await client.query("delete from audit_events where app = 'debugging' and organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("delete from debugging_events where organization_id = $1", [acceptanceOrganizationId]);
   await client.query(
     `
     update node_operations operations
     set snapshot_id = null
-    where operations.project_id = $1
+    where operations.organization_id = $1
       and not exists (
         select 1
         from debug_device_leases leases
         where leases.session_id = operations.session_id
       )
     `,
-    [projectId]
+    [acceptanceOrganizationId]
   );
   await client.query(
     `
     update debugging_snapshots snapshots
     set operation_id = null
-    where snapshots.project_id = $1
+    where snapshots.organization_id = $1
       and not exists (
         select 1
         from debug_device_leases leases
         where leases.session_id = snapshots.session_id
       )
     `,
-    [projectId]
+    [acceptanceOrganizationId]
   );
   await client.query(
     `
     delete from node_operations operations
-    where operations.project_id = $1
+    where operations.organization_id = $1
       and not exists (
         select 1
         from debug_device_leases leases
         where leases.session_id = operations.session_id
       )
     `,
-    [projectId]
+    [acceptanceOrganizationId]
   );
   await client.query(
     `
     delete from debugging_snapshots snapshots
-    where snapshots.project_id = $1
+    where snapshots.organization_id = $1
       and not exists (
         select 1
         from debug_device_leases leases
         where leases.session_id = snapshots.session_id
       )
     `,
-    [projectId]
+    [acceptanceOrganizationId]
   );
   await client.query(
     `
     delete from debugging_sessions sessions
-    where sessions.project_id = $1
+    where sessions.organization_id = $1
       and not exists (
         select 1
         from debug_device_leases leases
         where leases.session_id = sessions.id
       )
     `,
-    [projectId]
+    [acceptanceOrganizationId]
   );
 }
 
-async function prepareAdbAcceptanceState(projectId: string) {
+async function prepareAdbAcceptanceState() {
   runSeedScript("db:migrate");
   runSeedScript("db:seed:m0");
   runSeedScript("db:seed:m1");
@@ -573,16 +561,8 @@ async function prepareAdbAcceptanceState(projectId: string) {
 
   await withPgClient(async (client) => {
     await seedM3DebuggingPermissions(client);
-    await cleanupDebuggingAcceptanceState(client, projectId);
+    await cleanupDebuggingAcceptanceState(client);
   });
-}
-
-function requireAdbSmokeProjectId(env: NodeJS.ProcessEnv = process.env) {
-  const projectId = env.ADB_SMOKE_PROJECT_ID?.trim();
-  if (!projectId) {
-    throw new Error("ADB device-lab acceptance requires ADB_SMOKE_PROJECT_ID as the operation project context.");
-  }
-  return projectId;
 }
 
 function validateOverride(name: keyof AdbSmokeEnv, discovered: string, override: string | undefined) {
@@ -640,7 +620,7 @@ function candidateShapes(rows: Array<{ id?: string; parameter_id?: string; statu
 
 async function resolveAdbSmokeCatalogConfig(
   client: AdbSmokeQueryClient,
-  input: { projectId: string; targetRef: string }
+  input: { targetRef: string }
 ): Promise<MinimalAdbSmokeConfig> {
   const devices = await client.query<AdbSmokeDeviceRow>(
     `
@@ -665,9 +645,7 @@ async function resolveAdbSmokeCatalogConfig(
       bindings.node_path,
       bindings.access_mode,
       bindings.enabled,
-      bindings.is_smoke_default,
-      bindings.project_id as binding_project_id,
-      parameters.project_id as parameter_project_id
+      bindings.is_smoke_default
     from debugging_parameter_node_bindings bindings
     join debugging_parameters parameters
       on parameters.organization_id = bindings.organization_id
@@ -686,9 +664,6 @@ async function resolveAdbSmokeCatalogConfig(
   }
 
   const binding = bindings.rows[0];
-  if (binding.binding_project_id !== null || binding.parameter_project_id !== null) {
-    throw new Error("Default ADB smoke binding must be shared; bindingProject=present or parameterProject=present.");
-  }
   if (!binding.enabled) {
     throw new Error("Default ADB smoke binding must be enabled; enabled=false.");
   }
@@ -697,7 +672,6 @@ async function resolveAdbSmokeCatalogConfig(
   }
 
   return {
-    projectId: input.projectId,
     deviceId: devices.rows[0].id,
     targetRef: input.targetRef,
     parameterId: binding.parameter_id,
@@ -714,7 +688,7 @@ function createAdbSmokeConfigClient(results: unknown[][]): AdbSmokeQueryClient {
   };
 }
 
-async function resolveAdbSmokeConfig(input: { projectId: string; targetRef: string }): Promise<AdbSmokeConfig> {
+async function resolveAdbSmokeConfig(input: { targetRef: string }): Promise<AdbSmokeConfig> {
   return withPgClient(async (client) => {
     const config = await resolveAdbSmokeCatalogConfig(client, input);
     return finalizeAdbSmokeConfig(config);
@@ -872,8 +846,8 @@ function compactAuditMetadata(metadata: Record<string, unknown> | undefined) {
   });
 }
 
-async function getAuditEvents(request: APIRequestContext, userId: string, projectId: string) {
-  const auditPath = `/api/v1/audit-events?app=debugging&projectId=${encodeURIComponent(projectId)}&limit=100`;
+async function getAuditEvents(request: APIRequestContext, userId: string) {
+  const auditPath = "/api/v1/audit-events?app=debugging&limit=100";
   const response = await request.get(apiRoute(auditPath), {
     headers: {
       ...smokeHeaders(),
@@ -954,7 +928,7 @@ async function selectAdbProtocol(page: Page) {
 }
 
 async function expectAdbUiReady(page: Page, config: AdbSmokeConfig) {
-  await page.goto(`/node-debugging?project=${encodeURIComponent(config.projectId)}`);
+  await page.goto("/node-debugging");
   await selectAdbProtocol(page);
   await expect(page.locator("body")).toContainText(/ADB/);
 }
@@ -974,10 +948,9 @@ test.describe("ADB device-lab full-chain loop", () => {
       "ADB device-lab acceptance is skipped unless real hardware is available."
     );
 
-    const projectId = requireAdbSmokeProjectId();
     const targetRef = requireSingleReadyAdbTarget();
-    await prepareAdbAcceptanceState(projectId);
-    const config = await resolveAdbSmokeConfig({ projectId, targetRef });
+    await prepareAdbAcceptanceState();
+    const config = await resolveAdbSmokeConfig({ targetRef });
     const frontendGuard = await installFrontendDebuggingApiGuard(page);
     await expectAdbUiReady(page, config);
     expect(
@@ -991,7 +964,7 @@ test.describe("ADB device-lab full-chain loop", () => {
     const detected = await postJson<{ items: DebugTargetDto[] }>(
       request,
       "/api/v1/debugging/targets/detect",
-      { projectId: config.projectId, deviceId: config.deviceId, protocol: "adb" },
+      { deviceId: config.deviceId, protocol: "adb" },
       config.userId,
       (body) => `targets=${body.items.length}; detectedTargetRef=${identifierShape(body.items[0]?.targetRef)}`
     );
@@ -1009,7 +982,7 @@ test.describe("ADB device-lab full-chain loop", () => {
     const sessionResponse = await postJson<{ item: DebugSessionDto }>(
       request,
       "/api/v1/debugging/sessions",
-      { projectId: config.projectId, deviceId: config.deviceId, targetId: target!.id, protocol: "adb" },
+      { deviceId: config.deviceId, targetId: target!.id, protocol: "adb" },
       config.userId,
       (body) => `session=${identifierShape(body.item.id)}; protocol=${body.item.protocol ?? "unset"}`
     );
@@ -1133,7 +1106,7 @@ test.describe("ADB device-lab full-chain loop", () => {
       });
     }
 
-    const audit = await getAuditEvents(request, config.userId, config.projectId);
+    const audit = await getAuditEvents(request, config.userId);
     apiSummaries.push(audit.summary);
     const auditSummaries = [
       summarizeAudit(audit.events, "debug-target-detect", config.deviceId),
@@ -1165,7 +1138,6 @@ test.describe("ADB device-lab full-chain loop", () => {
           ADB_DEVICE_LAB_AVAILABLE: process.env.ADB_DEVICE_LAB_AVAILABLE?.trim() || "unset",
           ADB_SMOKE_ENABLE_WRITE: config.writeEnabled ? "true" : "false",
           ADB_SMOKE_WRITE_VALUE: config.writeValue ? "set" : "unset",
-          ADB_SMOKE_PROJECT_ID: identifierShape(config.projectId),
           ADB_SMOKE_DEVICE_ID: process.env.ADB_SMOKE_DEVICE_ID?.trim() ? "override-validated" : "auto",
           ADB_SMOKE_TARGET_REF: process.env.ADB_SMOKE_TARGET_REF?.trim() ? "override-validated" : "auto",
           ADB_SMOKE_PARAMETER_ID: process.env.ADB_SMOKE_PARAMETER_ID?.trim() ? "override-validated" : "auto",
@@ -1176,13 +1148,13 @@ test.describe("ADB device-lab full-chain loop", () => {
       reproduction: {
         steps: [
           "Set DEBUG_DEVICE_GATEWAY_MODE=adb and ADB_DEVICE_LAB_AVAILABLE=true.",
-          "Set ADB_SMOKE_PROJECT_ID as the operation project context; device, target, parameter, and node path are auto-discovered from one ready ADB device and the shared default ADB smoke binding.",
+          "Device, target, parameter, and node path are auto-discovered from one ready ADB device and the org-scoped default ADB smoke binding.",
           "Optionally set ADB_SMOKE_ENABLE_WRITE=true plus ADB_SMOKE_WRITE_VALUE, ADB_SMOKE_CONFIRM_WRITE, and ADB_SMOKE_CONFIRM_ROLLBACK for write/readback/rollback.",
           "Run npm run acceptance:e2e -- e2e/acceptance/adb-device-lab.acceptance.spec.ts."
         ]
       },
       notes: [
-        `Browser route=/node-debugging?project=${identifierShape(config.projectId)}; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
+        `Browser route=/node-debugging; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
         `Frontend debugging API guard fulfilled ${frontendGuard.detectRequests} auto-detect request(s) with an empty target list and blocked ${frontendGuard.blockedRequests.length} unexpected session/read/write/rollback request(s).`,
         "Console/network diagnostics: this spec relies on Playwright request API summaries, default retain-on-failure traces, operation evidence artifacts, and the frontend debugging API guard; no extra browser console collector is installed in this spec.",
         `Frontend selected the ADB protocol only; the current frontend detect path cannot pass deviceId, so real detect/session evidence uses Playwright request API calls with configured device ${identifierShape(config.deviceId)} and protocol=adb, while read/write/rollback evidence is scoped through that ADB session.`,
