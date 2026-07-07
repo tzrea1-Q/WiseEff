@@ -5,6 +5,7 @@ import { ApiError } from "../../shared/http/errors";
 import type { RouteRequest, WiseEffRouter } from "../../shared/http/router";
 import {
   createProject,
+  deleteProject,
   getParameterById,
   getProjectAdminDetail,
   listParameterHistory,
@@ -213,6 +214,23 @@ export function registerParameterRoutes(
     }
 
     return { status: 200, body: { item } };
+  });
+
+  router.delete("/api/v1/parameters/admin/projects/:projectId", async (request) => {
+    const db = requireDb(options.db);
+    const auth = await options.getCurrentAuthContext(request);
+    requireCanAdmin(auth);
+    const params = parseWithSchema(paramsWithProjectIdSchema, request.params);
+    const result = await deleteProject(db, {
+      organizationId: auth.organization.id,
+      projectId: params.projectId
+    });
+
+    if (!result.deleted) {
+      throw new ApiError("NOT_FOUND", "Project was not found.", 404, { projectId: params.projectId });
+    }
+
+    return { status: 200, body: { ok: true as const } };
   });
 
   router.get("/api/v1/projects/:projectId/modules", async (request) => {

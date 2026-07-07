@@ -175,6 +175,8 @@ type ChangeRequestRow = {
   reviewer_note: string | null;
   reject_reason: string | null;
   fast_track: boolean;
+  value_kind?: string | null;
+  config_format?: string;
 };
 
 type WorkflowAssigneesRow = {
@@ -236,6 +238,8 @@ type SubmissionItemRow = {
   unit: string;
   risk: ParameterRiskLevel;
   reason: string;
+  value_kind?: string | null;
+  config_format?: string;
 };
 
 type ImportBatchRow = {
@@ -403,7 +407,11 @@ function toSubmissionItemDto(row: SubmissionItemRow): ParameterSubmissionItemDto
     targetValue: row.target_value,
     unit: row.unit,
     risk: row.risk,
-    reason: row.reason
+    reason: row.reason,
+    valueKind: resolveParameterValueKind({
+      value_kind: row.value_kind ?? null,
+      config_format: row.config_format ?? ""
+    })
   };
 }
 
@@ -446,10 +454,29 @@ function waitingHoursSince(value: string | Date) {
   return Math.max(0, Math.floor((Date.now() - createdAt) / (60 * 60 * 1000)));
 }
 
+function buildChangeRequestSummary(row: ChangeRequestRow): string {
+  const valueKind = resolveParameterValueKind({
+    value_kind: row.value_kind ?? null,
+    config_format: row.config_format ?? ""
+  });
+
+  if (valueKind === "complex") {
+    const lineCount = Math.max(
+      row.current_value.split(/\r?\n/).filter((line) => line.trim()).length,
+      row.target_value.split(/\r?\n/).filter((line) => line.trim()).length,
+      1
+    );
+    const differenceLabel = row.current_value === row.target_value ? "当前与目标一致" : "当前与目标不同";
+    return `${row.title} 为复杂配置（${lineCount} 行），${differenceLabel}。`;
+  }
+
+  return `${row.title} 从 ${row.current_value.trim()} 调整为 ${row.target_value.trim()}。`;
+}
+
 function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
   const createdAt = dateTimeToIso(row.created_at);
   const updatedAt = dateTimeToIso(row.updated_at);
-  const summary = `${row.title} changes from ${row.current_value} to ${row.target_value}.`;
+  const summary = buildChangeRequestSummary(row);
 
   return {
     id: row.id,
@@ -494,7 +521,11 @@ function toChangeRequestDto(row: ChangeRequestRow): ChangeRequestDto {
     assignedTo: row.assigned_to_user_id ?? row.assigned_to ?? undefined,
     workflowAssignees: workflowAssigneesFromRow(row),
     fastTrack: row.fast_track,
-    reviewerNote: row.reviewer_note ?? undefined
+    reviewerNote: row.reviewer_note ?? undefined,
+    valueKind: resolveParameterValueKind({
+      value_kind: row.value_kind ?? null,
+      config_format: row.config_format ?? ""
+    })
   };
 }
 
@@ -707,6 +738,138 @@ export async function updateProject(
   }
 
   return getProjectAdminDetail(db, { organizationId: input.organizationId, projectId: input.projectId });
+}
+
+export async function deleteProject(
+  db: Queryable,
+  input: { organizationId: string; projectId: string }
+): Promise<{ deleted: boolean; reason?: "not_found" }> {
+  const exists = await db.query<{ id: string }>(
+    `
+    select id
+    from projects
+    where organization_id = $1
+      and id = $2
+    `,
+    [input.organizationId, input.projectId]
+  );
+
+  if (!exists.rows[0]) {
+    return { deleted: false, reason: "not_found" };
+  }
+
+  const { organizationId, projectId } = input;
+
+  await db.query(
+    `
+    delete from parameter_review_decisions
+    where organization_id = $1
+      and request_id in (
+        select id
+        from parameter_change_requests
+        where organization_id = $1
+          and project_id = $2
+      )
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from parameter_submission_items
+    where organization_id = $1
+      and (
+        change_request_id in (
+          select id
+          from parameter_change_requests
+          where organization_id = $1
+            and project_id = $2
+        )
+        or submission_round_id in (
+          select id
+          from parameter_submission_rounds
+          where organization_id = $1
+            and project_id = $2
+        )
+      )
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from parameter_history_entries
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from parameter_change_requests
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from parameter_drafts
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from parameter_submission_rounds
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from parameter_import_batches
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from project_parameter_values
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  await db.query(
+    `
+    delete from project_modules
+    where organization_id = $1
+      and project_id = $2
+    `,
+    [organizationId, projectId]
+  );
+
+  const result = await db.query<{ id: string }>(
+    `
+    delete from projects
+    where organization_id = $1
+      and id = $2
+    returning id
+    `,
+    [organizationId, projectId]
+  );
+
+  return result.rows[0] ? { deleted: true } : { deleted: false, reason: "not_found" };
 }
 
 export async function listProjectModules(db: Queryable, query: { organizationId: string; projectId: string }) {
@@ -1010,6 +1173,8 @@ export async function createChangeRequest(
       users.name as submitter,
       inserted.status,
       pd.risk,
+      pd.value_kind,
+      pd.config_format,
       inserted.created_at,
       inserted.updated_at,
       inserted.assigned_to_user_id,
@@ -1108,6 +1273,8 @@ export async function createSubmissionItem(
       inserted.target_value,
       pd.unit,
       pd.risk,
+      pd.value_kind,
+      pd.config_format,
       inserted.reason
     from inserted
     inner join project_parameter_values ppv on ppv.id = inserted.project_parameter_value_id
@@ -1307,6 +1474,8 @@ export async function listChangeRequests(
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
+      pd.value_kind,
+      pd.config_format,
       pcr.created_at,
       pcr.updated_at,
       pcr.assigned_to_user_id,
@@ -1350,6 +1519,8 @@ export async function findOpenChangeRequest(
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
+      pd.value_kind,
+      pd.config_format,
       pcr.created_at,
       pcr.updated_at,
       pcr.assigned_to_user_id,
@@ -1397,6 +1568,8 @@ export async function getChangeRequestById(
       pcr.submitter_user_id,
       pcr.status,
       pd.risk,
+      pd.value_kind,
+      pd.config_format,
       pcr.created_at,
       pcr.updated_at,
       pcr.assigned_to_user_id,
@@ -1587,6 +1760,8 @@ export async function updateChangeRequestStatus(
       (select name from users where id = parameter_change_requests.submitter_user_id) as submitter,
       status,
       (select risk from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as risk,
+      (select value_kind from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as value_kind,
+      (select config_format from parameter_definitions where id = parameter_change_requests.parameter_definition_id) as config_format,
       created_at,
       updated_at,
       assigned_to_user_id,
@@ -2047,6 +2222,8 @@ async function listSubmissionItemsByRoundIds(
       psi.target_value,
       pd.unit,
       pd.risk,
+      pd.value_kind,
+      pd.config_format,
       psi.reason
     from parameter_submission_items psi
     inner join project_parameter_values ppv on ppv.id = psi.project_parameter_value_id

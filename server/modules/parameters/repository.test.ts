@@ -5,6 +5,7 @@ import {
   createSubmissionItem,
   createSubmissionRound,
   deleteDraft,
+  deleteProject,
   findOpenChangeRequest,
   getChangeRequestById,
   getImportBatchForUpdate,
@@ -87,6 +88,35 @@ describe("parameter repository", () => {
     expect(calls[0].text).toContain("id = $2");
     expect(calls[0].values).toEqual(["org-chargelab", "aurora"]);
     expect(row).toEqual({ id: "aurora", name: "Aurora", code: "AUR" });
+  });
+
+  it("deleteProject cascades parameter data and removes the project", async () => {
+    const { db, calls } = createFakeDb([
+      [{ id: "aurora" }],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [],
+      [{ id: "aurora" }]
+    ]);
+
+    const deleted = await deleteProject(db, { organizationId: "org-chargelab", projectId: "aurora" });
+
+    expect(deleted).toEqual({ deleted: true });
+    expect(calls.some((call) => call.text.includes("delete from parameter_review_decisions"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("delete from project_parameter_values"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("delete from project_modules"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("delete from projects"))).toBe(true);
+    expect(calls.some((call) => call.text.includes("delete from parameter_definitions"))).toBe(false);
+
+    const { db: missingDb } = createFakeDb([[]]);
+    const missing = await deleteProject(missingDb, { organizationId: "org-chargelab", projectId: "missing" });
+    expect(missing).toEqual({ deleted: false, reason: "not_found" });
   });
 
   it("listParameters accepts project, module, risk, query, and limit filters", async () => {

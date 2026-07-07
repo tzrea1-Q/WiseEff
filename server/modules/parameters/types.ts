@@ -119,6 +119,7 @@ export type ChangeRequestDto = {
   workflowAssignees?: ParameterWorkflowAssigneesDto;
   fastTrack?: boolean;
   reviewerNote?: string;
+  valueKind?: "scalar" | "complex";
 };
 
 export type ParameterSubmissionItemDto = {
@@ -131,6 +132,7 @@ export type ParameterSubmissionItemDto = {
   unit: string;
   risk: ParameterRiskLevel;
   reason: string;
+  valueKind?: "scalar" | "complex";
 };
 
 export type ParameterSubmissionRoundDto = {
