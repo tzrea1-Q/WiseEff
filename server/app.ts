@@ -30,6 +30,7 @@ import { defaultTracingBoundary, type TracingBoundary } from "./observability/tr
 import type { ObjectStore, ObjectStoreHealthCheck } from "./modules/logs/objectStore";
 import type { LogAnalysisQueue } from "./modules/logs/logAnalysisQueue";
 import { registerParameterRoutes } from "./modules/parameters/routes";
+import { registerParameterDashboardRoutes } from "./modules/parameters/dashboard/routes";
 import { registerUserRoutes } from "./modules/users/routes";
 import { createHttpServer } from "./shared/http/server";
 import { createRouter, type RouteRequest } from "./shared/http/router";
@@ -124,6 +125,10 @@ export function createWiseEffServer(
     getCurrentAuthContext: authResolver
   });
   registerParameterRoutes(router, {
+    db: options.db,
+    getCurrentAuthContext: authResolver
+  });
+  registerParameterDashboardRoutes(router, {
     db: options.db,
     getCurrentAuthContext: authResolver
   });
