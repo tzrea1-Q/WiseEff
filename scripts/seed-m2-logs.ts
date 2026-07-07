@@ -9,7 +9,6 @@ import { createPostgresDatabase, type Database } from "../server/shared/database
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const organizationId = "org-chargelab";
-const projectId = "aurora";
 const seedUserId = "u-xu-yun";
 const completedLogId = "log-aurora-charging-foldback";
 const completedFileObjectId = "log-file-aurora-charging-foldback";
@@ -38,7 +37,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       insert into log_file_objects (
         id,
         organization_id,
-        project_id,
         storage_key,
         file_name,
         content_type,
@@ -46,7 +44,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         checksum_sha256,
         uploaded_by_user_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
       on conflict (id) do update set
         storage_key = excluded.storage_key,
         file_name = excluded.file_name,
@@ -58,7 +56,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       [
         completedFileObjectId,
         organizationId,
-        projectId,
         `${organizationId}/${logChecksum}-charging-foldback.log`,
         "charging-foldback.log",
         "text/plain",
@@ -73,7 +70,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       insert into log_file_objects (
         id,
         organization_id,
-        project_id,
         storage_key,
         file_name,
         content_type,
@@ -81,7 +77,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         checksum_sha256,
         uploaded_by_user_id
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      values ($1, $2, $3, $4, $5, $6, $7, $8)
       on conflict (id) do update set
         storage_key = excluded.storage_key,
         file_name = excluded.file_name,
@@ -93,7 +89,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       [
         failedFileObjectId,
         organizationId,
-        projectId,
         `${organizationId}/${unsupportedChecksum}-unsupported.bin`,
         "unsupported.bin",
         "application/octet-stream",
@@ -108,7 +103,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       insert into log_records (
         id,
         organization_id,
-        project_id,
         file_object_id,
         file_name,
         source,
@@ -120,7 +114,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         captured_at,
         updated_at
       )
-      values ($1, $2, $3, $4, $5, 'upload', 'complete', 'active', $6, $7, $8, $9, $9)
+      values ($1, $2, $3, $4, 'upload', 'complete', 'active', $5, $6, $7, $8, $8)
       on conflict (id) do update set
         file_object_id = excluded.file_object_id,
         file_name = excluded.file_name,
@@ -136,7 +130,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       [
         completedLogId,
         organizationId,
-        projectId,
         completedFileObjectId,
         "charging-foldback.log",
         "Why did fast charging fold back?",
@@ -326,7 +319,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       insert into log_records (
         id,
         organization_id,
-        project_id,
         file_object_id,
         file_name,
         source,
@@ -337,7 +329,7 @@ export async function seedM2Logs(db: Database): Promise<void> {
         captured_at,
         updated_at
       )
-      values ($1, $2, $3, $4, $5, 'upload', 'failed', 'active', $6, $7, $8, $8)
+      values ($1, $2, $3, $4, 'upload', 'failed', 'active', $5, $6, $7, $7)
       on conflict (id) do update set
         file_object_id = excluded.file_object_id,
         file_name = excluded.file_name,
@@ -354,7 +346,6 @@ export async function seedM2Logs(db: Database): Promise<void> {
       [
         failedLogId,
         organizationId,
-        projectId,
         failedFileObjectId,
         "unsupported.bin",
         "Unsupported log format: .bin files are not accepted in M2.",
