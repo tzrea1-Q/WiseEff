@@ -8,7 +8,6 @@ import { createLogRuntimeActions, logRuntimeFailureNotification } from "./logRun
 const apiLog: LogRecord = {
   ...initialState.logs[0],
   id: "api-log-1",
-  projectId: "api-project",
   fileName: "api-upload.log",
   status: "Processing",
   stage: "parse",
@@ -75,7 +74,7 @@ describe("createLogRuntimeActions", () => {
     const actions = createLogRuntimeActions({ mode: "mock", dispatch, getState: () => initialState });
     const file = createFile("motor.log");
 
-    await actions.upload({ projectId: initialState.activeProjectId, file, analysisQuestion: "Why did it fail?" });
+    await actions.upload({ file, analysisQuestion: "Why did it fail?" });
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({
@@ -90,7 +89,7 @@ describe("createLogRuntimeActions", () => {
     const dispatch = vi.fn();
     const repository = createRepository();
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
-    const query = { projectId: "api-project", includeArchived: true };
+    const query = { includeArchived: true };
 
     await actions.refresh(query);
 
@@ -110,7 +109,7 @@ describe("createLogRuntimeActions", () => {
       getState: () => initialState,
       pollIntervalMs: 0
     });
-    const input = { projectId: "api-project", file: createFile(), analysisQuestion: "Find root cause" };
+    const input = { file: createFile(), analysisQuestion: "Find root cause" };
 
     await actions.upload(input);
 
@@ -161,8 +160,8 @@ describe("createLogRuntimeActions", () => {
       getState: () => initialState,
       pollIntervalMs: 0
     });
-    const firstUpload = actions.upload({ projectId: "api-project", file: createFile("x.log") });
-    const secondUpload = actions.upload({ projectId: "api-project", file: createFile("x.log") });
+    const firstUpload = actions.upload({ file: createFile("x.log") });
+    const secondUpload = actions.upload({ file: createFile("x.log") });
 
     resolveFirstUpload({ log: firstLog, job: firstJob });
     resolveSecondUpload({ log: secondLog, job: secondJob });
@@ -222,7 +221,7 @@ describe("createLogRuntimeActions", () => {
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await expect(actions.upload({ projectId: "api-project", file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
+    await expect(actions.upload({ file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
@@ -251,7 +250,7 @@ describe("createLogRuntimeActions", () => {
     });
     const actions = createLogRuntimeActions({ mode: "api", repository, dispatch, getState: () => initialState });
 
-    await expect(actions.upload({ projectId: "api-project", file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
+    await expect(actions.upload({ file: createFile() })).rejects.toThrow(logRuntimeFailureNotification);
 
     expect(dispatch).toHaveBeenCalledWith({ type: "ADD_NOTIFICATION", message: logRuntimeFailureNotification });
   });
@@ -317,9 +316,9 @@ describe("createLogRuntimeActions", () => {
       pollIntervalMs: 0
     });
 
-    const firstUpload = actions.upload({ projectId: "api-project", file: createFile("first.log") });
+    const firstUpload = actions.upload({ file: createFile("first.log") });
     await Promise.resolve();
-    const secondUpload = actions.upload({ projectId: "api-project", file: createFile("second.log") });
+    const secondUpload = actions.upload({ file: createFile("second.log") });
     await Promise.resolve();
 
     resolveSecondJob(secondCompleteJob);
@@ -391,7 +390,7 @@ describe("createLogRuntimeActions", () => {
       maxPollAttempts: 1
     });
 
-    await actions.upload({ projectId: "api-project", file: createFile("timeout.log") });
+    await actions.upload({ file: createFile("timeout.log") });
 
     expect(repository.getJob).toHaveBeenCalledTimes(1);
     expect(repository.getLog).toHaveBeenCalledWith(apiLog.id);

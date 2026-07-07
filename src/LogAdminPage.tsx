@@ -133,7 +133,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
   const canAct = canPerform(state.activeRoleId, "admin.access");
   const selectedRecord = selectedRecordId ? state.logs.find((log) => log.id === selectedRecordId) ?? null : null;
 
-  const projectName = (projectId: string): string => state.configDraft.projects.find((project) => project.id === projectId)?.name ?? projectId;
   const toggleStatusFilter = (status: string) => {
     if (!Object.keys(statusLabels).includes(status)) return;
     setStatusFilter((current) =>
@@ -157,18 +156,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       header: "文件名",
       render: (record) => <span className="font-medium text-foreground">{record.fileName}</span>,
       sortAccessor: (record) => record.fileName
-    },
-    {
-      key: "projectId",
-      header: "项目",
-      headerFilter: {
-        label: "项目",
-        values: Array.from(new Set(windowLogs.map((record) => projectName(record.projectId)))),
-        getValue: (record) => projectName(record.projectId)
-      },
-      render: (record) => <span className="text-muted-foreground">{projectName(record.projectId)}</span>,
-      sortAccessor: (record) => record.projectId,
-      widthClass: "w-36"
     },
     {
       key: "source",
@@ -272,7 +259,6 @@ export function LogAdminPage({ state, dispatch, onNavigate, search: _search, log
       rows: filteredRows.map((record) => ({
         reportId: record.reportId,
         fileName: record.fileName,
-        projectId: record.projectId,
         source: record.source,
         status: record.status,
         stage: record.stage,

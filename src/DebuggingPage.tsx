@@ -65,7 +65,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
   const pendingRuntimeActionsRef = useRef<Set<RuntimeActionName>>(new Set());
   const runtimeRequestSeqRef = useRef<Record<RuntimeActionName, number>>({ connect: 0, push: 0, rollback: 0 });
 
-  const activeDevice = state.devices.find((d) => d.projectId === state.activeProjectId) ?? state.devices[0] ?? null;
+  const activeDevice = state.devices[0] ?? null;
   const debugParameters = state.debugParameters;
   const connected = activeDevice?.status === "已连接";
 
@@ -271,7 +271,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
               void runRuntimeAction(
                 "connect",
                 async () => {
-                  await debuggingActions.detectAndStartSession(state.activeProjectId, { sessionKind: "parameter_reload" });
+                  await debuggingActions.detectAndStartSession({ sessionKind: "parameter_reload" });
                 },
                 "Debug connection failed"
               );
@@ -285,7 +285,7 @@ export function DebuggingPage({ state, dispatch, debuggingActions }: DebuggingPa
         </button>
       ) : null}
     </div>,
-    [activeDevice?.id, activeDevice?.name, connected, debuggingActions, pendingRuntimeActions, state.activeProjectId]
+    [activeDevice?.id, activeDevice?.name, connected, debuggingActions, pendingRuntimeActions]
   );
 
   if (!activeDevice) {

@@ -47,6 +47,7 @@ import {
   isComplexDebugParameter
 } from "./debugValueKind";
 import { resolveWriteFormatExample, resolveWriteFormatHint } from "@/domain/debugging/writeFormat";
+import { nodeRowSubtitle } from "@/domain/debugging/nodeRowSubtitle";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 type NodeRuntimeStatus =
@@ -874,7 +875,8 @@ export function NodeDebuggingPage({
       const matchesSearch =
         !normalizedQuery ||
         row.name.toLowerCase().includes(normalizedQuery) ||
-        row.key.toLowerCase().includes(normalizedQuery);
+        row.key.toLowerCase().includes(normalizedQuery) ||
+        row.description.toLowerCase().includes(normalizedQuery);
       const matchesStatus = statusFilters.length === 0 || statusFilters.includes(row.runtimeStatus);
       return matchesSearch && matchesStatus;
     });
@@ -887,6 +889,7 @@ export function NodeDebuggingPage({
   const toggleArrayFilter = (currentValues: string[], value: string) =>
     currentValues.includes(value) ? currentValues.filter((item) => item !== value) : [...currentValues, value];
   const editingRow = editingRowId ? rows.find((row) => row.id === editingRowId) ?? null : null;
+  const editingRowSubtitle = editingRow ? nodeRowSubtitle(editingRow) : "";
   const selectableVisibleIds = useMemo(
     () => visibleRows.filter((row) => canWrite(row)).map((row) => row.id),
     [visibleRows]
@@ -931,7 +934,7 @@ export function NodeDebuggingPage({
     setSelectedIds(new Set());
     if (debuggingActions) {
       void Promise.resolve()
-        .then(() => debuggingActions.refresh({ projectId: state.activeProjectId, protocol: nextProtocol }))
+        .then(() => debuggingActions.refresh({ protocol: nextProtocol }))
         .catch(() => undefined);
     }
   };
@@ -1099,7 +1102,7 @@ export function NodeDebuggingPage({
           healthProbe.health?.connected && healthProbe.health.bridgeId
             ? healthProbe.health.bridgeId
             : undefined;
-        const result = await debuggingActions.detectAndStartSession(state.activeProjectId, {
+        const result = await debuggingActions.detectAndStartSession({
           protocol: requestProtocol,
           ...(localBridgeId ? { bridgeId: localBridgeId } : {})
         }) as DetectResultWithOperation;
@@ -1182,7 +1185,7 @@ export function NodeDebuggingPage({
     setSelectingBridgeTargetId(selectedTarget.id);
     setDetecting(true);
     try {
-      const result = await debuggingActions.detectAndStartSession(state.activeProjectId, {
+      const result = await debuggingActions.detectAndStartSession({
         protocol,
         targetId: selectedTarget.id,
         bridgeId: selectedTarget.bridgeId
@@ -1457,7 +1460,9 @@ export function NodeDebuggingPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleRows.map((row) => (
+                  {visibleRows.map((row) => {
+                    const subtitle = nodeRowSubtitle(row);
+                    return (
                     <tr key={row.id}>
                       <td data-label="选择">
                         <input
@@ -1470,7 +1475,7 @@ export function NodeDebuggingPage({
                       </td>
                       <td data-label="参数名称">
                         <strong>{row.name}</strong>
-                        <small>{row.key}</small>
+                        {subtitle ? <small>{subtitle}</small> : null}
                       </td>
                       <td data-label="访问模式">{row.accessMode}</td>
                       <td className="mono" data-label="当前值">
@@ -1502,7 +1507,8 @@ export function NodeDebuggingPage({
                         </button>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1536,7 +1542,7 @@ export function NodeDebuggingPage({
           open
           onClose={() => setEditingRowId(null)}
           title="节点详情"
-          description={`${editingRow.name} · ${editingRow.key}`}
+          description={editingRowSubtitle ? `${editingRow.name} · ${editingRowSubtitle}` : editingRow.name}
           footer={
             canWrite(editingRow) ? (
               <div className="draft-sheet-footer">

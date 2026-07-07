@@ -180,7 +180,7 @@ describe("LogsPage · 主行动", () => {
 
     expect(window.location.pathname).toBe("/parameters");
     expect(window.location.search).toContain("logId=log-auth");
-    expect(window.location.search).toContain("project=aurora");
+    expect(window.location.search).not.toContain("project=");
   });
 
   it("从日志跳到参数页后，修改原因预填日志结论", () => {

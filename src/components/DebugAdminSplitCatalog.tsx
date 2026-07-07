@@ -17,12 +17,11 @@ export type DebugAdminCatalogView = "legacy" | "nodes" | "reload-bindings";
 
 type DebugAdminSplitCatalogProps = {
   view: DebugAdminCatalogView;
-  projectId?: string;
   client?: ReturnType<typeof createDebuggingAdminClient>;
   canEdit: boolean;
 };
 
-export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: DebugAdminSplitCatalogProps) {
+export function DebugAdminSplitCatalog({ view, client, canEdit }: DebugAdminSplitCatalogProps) {
   const [nodes, setNodes] = useState<DebugNodeRegistryEntry[]>([]);
   const [moduleNames, setModuleNames] = useState<string[]>([]);
   const [bindings, setBindings] = useState<ParameterReloadBinding[]>([]);
@@ -50,10 +49,10 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
     const request =
       view === "nodes"
         ? Promise.all([
-            client.listNodes({ projectId, includeArchived: true }),
+            client.listNodes({ includeArchived: true }),
             client.listModules()
           ])
-        : client.listReloadBindings({ projectId });
+        : client.listReloadBindings();
 
     request
       .then((items) => {
@@ -83,17 +82,17 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
     return () => {
       cancelled = true;
     };
-  }, [client, projectId, refreshKey, view]);
+  }, [client, refreshKey, view]);
 
   useEffect(() => {
-    if (!client || !bindingDialog || !projectId) {
+    if (!client || !bindingDialog) {
       return;
     }
 
     let cancelled = false;
     setCandidatesLoading(true);
     client
-      .listReloadTargetCandidates({ projectId })
+      .listReloadTargetCandidates()
       .then((items) => {
         if (!cancelled) {
           setReloadCandidates(items);
@@ -113,7 +112,7 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
     return () => {
       cancelled = true;
     };
-  }, [bindingDialog, client, projectId]);
+  }, [bindingDialog, client]);
 
   const saveNode = async (draft: DebugNodeDraft) => {
     if (!client) {
@@ -127,7 +126,6 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
         await client.updateNode(nodeDialog.node.id, draft);
       } else {
         await client.createNode({
-          projectId: projectId ?? null,
           name: draft.name,
           description: draft.description,
           detailedDescription: draft.detailedDescription,
@@ -147,7 +145,7 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
   };
 
   const saveBinding = async (draft: ReloadBindingDraft) => {
-    if (!client || !projectId) {
+    if (!client) {
       return;
     }
 
@@ -161,7 +159,6 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
     setError("");
     try {
       await client.upsertReloadBinding({
-        projectId,
         parameterDefinitionId: draft.parameterDefinitionId,
         protocol: draft.protocol,
         nodePath: normalizeBindingNodePath(draft.nodePath),
@@ -306,7 +303,6 @@ export function DebugAdminSplitCatalog({ view, projectId, client, canEdit }: Deb
         open={Boolean(bindingDialog)}
         mode={bindingDialog?.mode ?? "create"}
         binding={bindingDialog?.binding}
-        projectId={projectId}
         candidates={reloadCandidates}
         candidatesLoading={candidatesLoading}
         loading={saveLoading}

@@ -55,9 +55,8 @@ export type DebuggingRuntimeDispatchAction =
   | Extract<AppAction, { type: "CONNECT_DEVICE" } | { type: "PUSH_DEBUG_VALUES" } | { type: "ROLLBACK_LAST_SNAPSHOT" } | { type: "ADD_NOTIFICATION" }>;
 
 export type DebuggingRuntimeActions = {
-  refresh(query?: { projectId?: string; protocol?: DebugConnectionProtocol }): Promise<void>;
+  refresh(query?: { protocol?: DebugConnectionProtocol }): Promise<void>;
   detectAndStartSession(
-    projectId: string,
     options?: { protocol?: DebugConnectionProtocol; targetId?: string; bridgeId?: string; sessionKind?: "node" | "parameter_reload" }
   ): Promise<
     | { session: DebugSessionSnapshot; target: DeviceTarget }
@@ -140,7 +139,6 @@ function deviceFromApi(device: DebugDeviceSnapshot): Device {
   return {
     id: device.id,
     name: device.name,
-    projectId: device.projectId,
     transport: device.transport,
     firmware: device.firmware,
     status: deviceStatusFromApi(device.status),
@@ -162,36 +160,27 @@ function isSimulatorTarget(target: Pick<DeviceTarget, "targetRef">) {
 
 function findProtocolDebugDevice(
   devices: Device[],
-  projectId: string,
   protocol: DebugConnectionProtocol = "hdc"
 ): Device | undefined {
-  const projectDevices = devices.filter((item) => item.projectId === projectId);
-  return projectDevices.find((item) => transportMatchesProtocol(item.transport, protocol));
+  return devices.find((item) => transportMatchesProtocol(item.transport, protocol));
 }
 
-function resolveProjectDebugDeviceFromDevices(
+function resolveDebugDeviceFromDevices(
   devices: Device[],
-  projectId: string,
   protocol: DebugConnectionProtocol = "hdc"
 ): Device {
-  const projectDevices = devices.filter((item) => item.projectId === projectId);
   const device =
-    findProtocolDebugDevice(devices, projectId, protocol) ??
-    (protocol === "adb" ? projectDevices.find((item) => item.id.startsWith("adb-")) : undefined) ??
-    projectDevices[0] ??
+    findProtocolDebugDevice(devices, protocol) ??
+    (protocol === "adb" ? devices.find((item) => item.id.startsWith("adb-")) : undefined) ??
     devices[0];
   if (!device) {
-    throw new Error("No debug device is registered for this project.");
+    throw new Error("No debug device is registered for this organization.");
   }
   return device;
 }
 
-function resolveProjectDebugDevice(
-  state: PrototypeState,
-  projectId: string,
-  protocol: DebugConnectionProtocol = "hdc"
-): Device {
-  return resolveProjectDebugDeviceFromDevices(state.devices, projectId, protocol);
+function resolveDebugDevice(state: PrototypeState, protocol: DebugConnectionProtocol = "hdc"): Device {
+  return resolveDebugDeviceFromDevices(state.devices, protocol);
 }
 
 function dispatchOperation(dispatch: DebuggingRuntimeOptions["dispatch"], operation?: NodeOperationSnapshot) {
@@ -247,18 +236,18 @@ export function createDebuggingRuntimeActions({
   dispatch,
   getState
 }: DebuggingRuntimeOptions): DebuggingRuntimeActions {
-  const refresh = async (query?: { projectId?: string; protocol?: DebugConnectionProtocol }) => {
+  const refresh = async (query?: { protocol?: DebugConnectionProtocol }) => {
     if (mode !== "api") {
       return;
     }
 
     await runApi(dispatch, async () => {
       const api = requireGateway(gateway);
-      const parameterQuery = { ...query, protocol: query?.protocol ?? "hdc" as const };
+      const parameterQuery = { protocol: query?.protocol ?? "hdc" as const };
       const [devices, debugParameters] = await Promise.all([
         api.listDevices?.() ?? Promise.resolve([]),
-        query?.projectId && api.listRuntimeNodes
-          ? api.listRuntimeNodes({ projectId: query.projectId, protocol: parameterQuery.protocol })
+        api.listRuntimeNodes
+          ? api.listRuntimeNodes(parameterQuery)
           : api.listParameters?.(parameterQuery) ?? Promise.resolve([])
       ]);
 
@@ -272,17 +261,16 @@ export function createDebuggingRuntimeActions({
 
   return {
     refresh,
-    async detectAndStartSession(projectId, options) {
+    async detectAndStartSession(options) {
       const protocol = options?.protocol ?? "hdc";
       if (mode !== "api") {
-        const device = resolveProjectDebugDevice(getState(), projectId, protocol);
+        const device = resolveDebugDevice(getState(), protocol);
         dispatch({ type: "CONNECT_DEVICE", deviceId: device.id });
         const target = { id: device.id, deviceId: device.id, protocol, label: device.name };
         return {
           target,
           session: {
             id: `mock-session-${device.id}`,
-            projectId,
             deviceId: device.id,
             targetId: target.id,
             protocol,
@@ -296,17 +284,16 @@ export function createDebuggingRuntimeActions({
       return runApi(dispatch, async () => {
         const api = requireGateway(gateway);
         let state = getState();
-        let device = findProtocolDebugDevice(state.devices, projectId, protocol);
+        let device = findProtocolDebugDevice(state.devices, protocol);
         if (!device && api.listDevices) {
           const apiDevices = (await api.listDevices()).map(deviceFromApi);
           if (apiDevices.length > 0) {
             state = { ...state, devices: apiDevices };
-            device = resolveProjectDebugDevice(state, projectId, protocol);
+            device = resolveDebugDevice(state, protocol);
           }
         }
-        device ??= resolveProjectDebugDevice(state, projectId, protocol);
+        device ??= resolveDebugDevice(state, protocol);
         const detectedTargets = await api.detectTargets({
-          projectId,
           protocol,
           ...(options?.bridgeId ? { bridgeId: options.bridgeId } : {})
         });
@@ -334,7 +321,6 @@ export function createDebuggingRuntimeActions({
           throw new Error("Debug session creation is not supported by this gateway.");
         }
         const session = await api.createSession({
-          projectId,
           deviceId: target.deviceId ?? device.id,
           targetId: target.id,
           protocol,

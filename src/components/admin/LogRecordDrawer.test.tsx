@@ -13,7 +13,6 @@ const record: LogRecord = {
   id: "log-active",
   reportId: "RPT-9092",
   fileName: "charging_thermal_trace_20260504.log",
-  projectId: "aurora",
   source: "Battery Thermal",
   fileSizeMB: 48.2,
   status: "Processing",

@@ -14,7 +14,6 @@ import {
 
 export function emptyDebugAdminDraft(index: number): DebugAdminParameterDraft {
   return {
-    projectId: null,
     name: `new_debug_parameter_${index}`,
     key: `debug.new_parameter_${index}`,
     description: "",
@@ -41,7 +40,6 @@ export function emptyDebugAdminDraft(index: number): DebugAdminParameterDraft {
 export function draftFromDebugParameter(parameter: DomainDebugParameter): DebugAdminParameterDraft {
   return {
     id: parameter.id,
-    projectId: parameter.projectId ?? null,
     name: parameter.name,
     key: parameter.key,
     description: parameter.description,
