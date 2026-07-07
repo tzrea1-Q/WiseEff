@@ -1,9 +1,16 @@
 import { useMemo, useState } from "react";
-import type { HomepageTimeWindow, UpdateTrendPoint } from "../parameterHomepageAnalytics";
+
+type LegacyTrendPoint = {
+  label: string;
+  value: number;
+  date: string;
+};
+
+type LegacyTrendWindow = "7d" | "30d" | "180d";
 
 type UpdateTrendChartProps = {
-  series: UpdateTrendPoint[];
-  timeWindow: HomepageTimeWindow;
+  series: LegacyTrendPoint[];
+  timeWindow: LegacyTrendWindow;
 };
 
 const VIEWBOX_WIDTH = 600;
@@ -13,7 +20,7 @@ const PADDING_RIGHT = 16;
 const PADDING_TOP = 20;
 const PADDING_BOTTOM = 28;
 
-function deriveAxisIndexes(length: number, timeWindow: HomepageTimeWindow) {
+function deriveAxisIndexes(length: number, timeWindow: LegacyTrendWindow) {
   if (length <= 0) return [];
 
   const lastIndex = length - 1;

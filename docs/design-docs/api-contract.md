@@ -20,7 +20,7 @@ Rules:
 
 - Auth and users: `/me`, user listing, user creation, activation, role replacement.
 - Projects and modules: project metadata and module lookup.
-- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports.
+- Parameters: parameter listing, detail, history, drafts, submission rounds, change requests, imports, and dashboard aggregation (`/parameters/dashboard/summary`, `/parameters/dashboard/hotspots`).
 - Logs: upload/file records, analysis records, runs, rerun, archive, feedback.
 - Jobs: status and progress events.
 - Debugging: devices, target detection, sessions, node reads/writes, snapshots, rollback.
@@ -75,6 +75,27 @@ Runtime and admin debugging parameter DTOs include optional value metadata:
 Admin `POST`/`PATCH` validates combinations: scalar defaults to `raw`/`trim`; `json-canonical` requires `valueFormat=json`; complex JSON targets must parse. Node write requests keep `value: string`; the service resolves format, normalization, digest, preview, and comparison from parameter metadata.
 
 Node operation DTOs may include `valueKind`, `valueFormat`, `normalizationMode`, `valuePreview`, and value digests for complex writes without returning full large payloads in list views.
+
+## Parameter Dashboard
+
+Read-only aggregation endpoints for `/parameter-home`. Both routes require parameter view permission (`canViewParameters`) and scope results to the authenticated organization. Optional `projectId` narrows aggregates to one managed project; omit it for org-wide totals.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/parameters/dashboard/summary` | KPIs, update trend buckets, per-project risk buckets, and workbench signals for the selected window (`7d`, `30d`, `180d`). |
+| `GET` | `/api/v1/parameters/dashboard/hotspots` | Ranked hotspot leaderboard for the selected window and dimension (`overall`, `module`, `project`, `parameter`). |
+
+Query parameters:
+
+- `summary`: `window` (default `30d`), optional `projectId`
+- `hotspots`: `window` (default `30d`), `dimension` (default `overall`), optional `projectId`
+
+Response envelopes:
+
+- `summary` returns `{ item: DashboardSummary }`
+- `hotspots` returns `{ items: DashboardHotspot[] }`
+
+`DashboardHotspot.scoreBreakdown` is deterministic server-side scoring (frequency, risk, impact, workflow, drift). Frontend presentation helpers in `src/hotspotPresentation.ts` map breakdown dominance to action templates but do not compute business aggregates.
 
 ## Governance
 

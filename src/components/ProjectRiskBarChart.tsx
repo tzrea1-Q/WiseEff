@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ProjectRiskBucket } from "../parameterHomepageAnalytics";
+import type { ProjectRiskBucket } from "@/domain/parameters/dashboardTypes";
 
 type ProjectRiskBarChartProps = {
   buckets: ProjectRiskBucket[];

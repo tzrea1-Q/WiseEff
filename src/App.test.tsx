@@ -1281,7 +1281,7 @@ describe("WiseEff app shell", () => {
     expect(document.querySelector('a[href="/parameters"]')).not.toBeInTheDocument();
   });
 
-  it("adds a parameter management homepage without replacing the platform homepage", () => {
+  it("adds a parameter management homepage without replacing the platform homepage", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
@@ -1290,9 +1290,9 @@ describe("WiseEff app shell", () => {
     expect(screen.getAllByRole("main")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
     expect(screen.queryByText("参数运营中枢")).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "推荐依据" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "个人工作台" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "洞察分析" })).toBeInTheDocument();
+    expect(screen.getByText("热榜")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "主要功能" })).toBeInTheDocument();
     expect(screen.queryByText("管理视角")).not.toBeInTheDocument();
@@ -1300,12 +1300,11 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
     expect(screen.getByText("参数更新趋势")).toBeInTheDocument();
-    expect(screen.getByText("各项目参数更新情况")).toBeInTheDocument();
+    expect(screen.getByText("各项目参数风险分布")).toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
     expect(document.querySelector(".topbar")).toBeInTheDocument();
     const topbar = document.querySelector(".topbar") as HTMLElement;
-    const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
 
     expect(topbar.querySelector(".topbar-title")).toHaveTextContent("我的工作台");
     expect(topbar.querySelector(".topbar-subtitle")).toHaveTextContent("待办事项 · 主要功能 · 热榜");
@@ -1314,26 +1313,23 @@ describe("WiseEff app shell", () => {
     expect(within(topbar).queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "参数管理快捷入口" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "对比分析" })).not.toBeInTheDocument();
-    expectSelectValue(timeWindowSelect, "30d");
+    expect(within(topbar).queryByRole("combobox", { name: "时间范围" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "时间窗口" }).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("button", { name: "看板" }).filter((btn) => btn.classList.contains("active"))).toHaveLength(0);
     const activeNavButtons = screen.getAllByRole("button", { name: "我的工作台" }).filter((btn) => btn.classList.contains("active"));
     expect(activeNavButtons.length).toBe(1);
   });
 
-  it("updates parameter homepage analytics from the topbar time range selector", () => {
+  it("updates parameter homepage analytics from the in-page time window controls", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
 
-    const topbar = document.querySelector(".topbar") as HTMLElement;
-    const timeWindowSelect = within(topbar).getByRole("combobox", { name: "时间范围" });
+    expect(await screen.findByText(/近 30 天 ·/)).toBeInTheDocument();
 
-    expect(screen.getByText(/近 30 天 ·/)).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("radio", { name: "近 7 天" })[0]!);
 
-    changeSelectValue(timeWindowSelect, "7天");
-
-    expectSelectValue(timeWindowSelect, "7d");
-    expect(screen.getByText(/近 7 天 ·/)).toBeInTheDocument();
+    expect(await screen.findByText(/近 7 天 ·/)).toBeInTheDocument();
     expect(screen.queryByText(/近 30 天 ·/)).not.toBeInTheDocument();
   });
 
@@ -1480,40 +1476,42 @@ describe("WiseEff app shell", () => {
     expect(screen.getByLabelText("项目信息")).toHaveClass("project-init-form-card");
   });
 
-  it("preserves contextual query strings when navigating from parameter homepage hotspots", () => {
+  it("preserves contextual query strings when navigating from parameter homepage hotspots", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
-    fireEvent.click(within(hotspotRegion).getAllByRole("button", { name: /进入/ })[0]);
+    await screen.findByRole("button", { name: /创建高风险专项审阅/ });
+    const hotspotEnter = document.querySelector(".parameter-home__hotspot-row-enter") as HTMLButtonElement;
+    expect(hotspotEnter).toBeTruthy();
+    fireEvent.click(hotspotEnter);
 
     expect(["/parameters", "/parameter-review"]).toContain(window.location.pathname);
     expect(window.location.search).toMatch(/module=|project=/);
   });
 
-  it("renders parameter homepage hotspots as leaderboard with AI panel instead of legacy cards", () => {
+  it("renders parameter homepage hotspots as leaderboard with score panel instead of legacy cards", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
 
-    const hotspotRegion = screen.getByRole("region", { name: "热榜" });
+    expect(await screen.findByText("热榜")).toBeInTheDocument();
 
     expect(document.querySelector(".hotspot-card")).not.toBeInTheDocument();
-    expect(within(hotspotRegion).queryByRole("button", { name: /查看评分/ })).not.toBeInTheDocument();
-    expect(document.querySelector(".hotspot-row")).toBeInTheDocument();
-    expect(document.querySelector(".hotspot-list")).toBeInTheDocument();
-    expect(within(hotspotRegion).getByRole("region", { name: /AI 评分拆解/ })).toBeInTheDocument();
-    expect(within(hotspotRegion).queryByText("AI 建议动作")).not.toBeInTheDocument();
-    expect(within(hotspotRegion).getByRole("button", { name: /创建高风险专项审阅/ })).toBeInTheDocument();
+    expect(within(document.body).queryByRole("button", { name: /查看评分/ })).not.toBeInTheDocument();
+    expect(document.querySelector(".parameter-home__hotspot-row")).toBeInTheDocument();
+    expect(document.querySelector(".parameter-home__hotspot-list")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /热度评分构成/ })).toBeInTheDocument();
+    expect(screen.queryByText("AI 建议动作")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /创建高风险专项审阅/ })).toBeInTheDocument();
   });
 
-  it("navigates from a hotspot AI primary action with contextual query strings", () => {
+  it("navigates from a hotspot AI primary action with contextual query strings", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
 
-    fireEvent.click(screen.getByRole("button", { name: /创建高风险专项审阅/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /创建高风险专项审阅/ }));
 
     expect(window.location.pathname).toBe("/parameter-review");
     expect(window.location.search).toContain("filter=high-risk");
@@ -2714,7 +2712,7 @@ describe("WiseEff app shell", () => {
       },
       {
         path: "/parameter-home",
-        present: ["热榜", "参数更新趋势", "各项目参数更新情况", "参数修改", "参数审阅"],
+        present: ["热榜", "参数更新趋势", "各项目参数风险分布", "参数修改", "参数审阅"],
         absent: [
           "推荐依据",
           "保留原看板指标，用来解释工作台行动排序",

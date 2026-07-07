@@ -14,10 +14,13 @@ import type {
   ParameterRuntimeRefreshResult,
   ParameterRuntimeVoidResult
 } from "@/application/parameters/parameterRuntime";
+import type { DashboardState } from "@/application/parameters/dashboardState";
+import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
+import type { DashboardWindow, HotspotDimension } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
@@ -26,14 +29,13 @@ import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
 import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
-import { ParameterManagementHomePage } from "@/ParameterManagementHomePage";
+import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
-import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (
@@ -63,8 +65,11 @@ export type PageProps = {
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   userGovernanceActions?: UserGovernanceActions;
-  parameterHomeTimeWindow?: HomepageTimeWindow;
   runtimeMode?: WiseEffRuntimeMode;
+  dashboardState?: DashboardState;
+  dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
+  onDashboardWindowChange?: (window: DashboardWindow) => void;
+  onDashboardDimensionChange?: (dimension: HotspotDimension) => void;
 };
 
 export type PageRouterProps = PageProps & {
@@ -91,8 +96,11 @@ export function PageRouter({
   logActions,
   parameterActions,
   userGovernanceActions,
-  parameterHomeTimeWindow,
   runtimeMode,
+  dashboardState,
+  dashboardRuntime,
+  onDashboardWindowChange,
+  onDashboardDimensionChange,
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
@@ -149,11 +157,14 @@ export function PageRouter({
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-home":
       return (
-        <ParameterManagementHomePage
+        <ParameterHomePage
           state={state}
+          dashboardState={dashboardState!}
+          dashboardRuntime={dashboardRuntime!}
+          onDashboardWindowChange={onDashboardWindowChange!}
+          onDashboardDimensionChange={onDashboardDimensionChange!}
           onNavigate={onNavigate}
           onNewProject={onNewProject}
-          timeWindow={parameterHomeTimeWindow}
         />
       );
     case "parameter-comparison":

@@ -63,6 +63,12 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     required: true
   },
   {
+    id: "PARAM-HOME-001",
+    workflow: "B",
+    title: "Parameter home dashboard loads summary and hotspots from API data and supports in-page window and dimension controls.",
+    required: true
+  },
+  {
     id: "PARAM-ADMIN-001",
     workflow: "C",
     title: "Parameter admin import preview and audit drawer remain available to Admin.",

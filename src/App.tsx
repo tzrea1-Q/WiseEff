@@ -65,6 +65,11 @@ import {
   type HydrateParameterRuntimeAction,
   type ParameterRuntimeActions
 } from "@/application/parameters/parameterRuntime";
+import {
+  dashboardReducer,
+  initialDashboardState
+} from "@/application/parameters/dashboardState";
+import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { ParameterDraftDto, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
@@ -104,7 +109,6 @@ import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjec
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
 }
-import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
@@ -219,6 +223,8 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
+import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -405,12 +411,6 @@ function archivedLogIdsFromHydratedLogs(archivedLogIds: string[], logs: LogRecor
 
   return next;
 }
-
-const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
-  { value: "7d", label: "7天" },
-  { value: "30d", label: "30天" },
-  { value: "180d", label: "180天" }
-];
 
 type SelectOption<Value extends string = string> = {
   value: Value;
@@ -2144,7 +2144,6 @@ function AppShell({
   const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
-  const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
@@ -2178,6 +2177,18 @@ function AppShell({
   const parameterRepositoryClient = useMemo(
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
+  );
+  const dashboardRepository = useMemo(
+    () =>
+      runtimeMode === "api"
+        ? createHttpParameterDashboardRepository()
+        : createMockParameterDashboardRepository(() => stateRef.current),
+    [runtimeMode]
+  );
+  const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
+  const dashboardRuntime = useMemo(
+    () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
+    [dashboardRepository]
   );
   const logAnalysisRepositoryClient = useMemo(
     () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
@@ -2336,6 +2347,19 @@ function AppShell({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (page.key !== "parameter-home") {
+      return;
+    }
+    const projectId = state.activeProjectId || undefined;
+    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
+    void dashboardRuntime.loadHotspots({
+      projectId,
+      window: dashboardState.window,
+      dimension: dashboardState.dimension
+    });
+  }, [page.key, state.activeProjectId, dashboardState.window, dashboardState.dimension, dashboardRuntime]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -2555,8 +2579,6 @@ function AppShell({
             search={search}
             onNavigate={navigate}
             pageActions={topBarActions}
-            parameterHomeTimeWindow={parameterHomeTimeWindow}
-            onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
             onNewProject={() => setProjectInitOpen(true)}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
@@ -2581,7 +2603,12 @@ function AppShell({
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
-                parameterHomeTimeWindow={parameterHomeTimeWindow}
+                dashboardState={dashboardState}
+                dashboardRuntime={dashboardRuntime}
+                onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
+                onDashboardDimensionChange={(dimension) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
@@ -2607,7 +2634,12 @@ function AppShell({
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
-                parameterHomeTimeWindow={parameterHomeTimeWindow}
+                dashboardState={dashboardState}
+                dashboardRuntime={dashboardRuntime}
+                onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
+                onDashboardDimensionChange={(dimension) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
@@ -3261,8 +3293,6 @@ function TopBar({
   search,
   onNavigate,
   pageActions,
-  parameterHomeTimeWindow,
-  onParameterHomeTimeWindowChange,
   onNewProject,
   onLogout,
   onUpdateCurrentUserProfile,
@@ -3274,8 +3304,6 @@ function TopBar({
   search: string;
   onNavigate: (path: string) => void;
   pageActions?: ReactNode;
-  parameterHomeTimeWindow: HomepageTimeWindow;
-  onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
   onNewProject: () => void;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
@@ -3322,17 +3350,6 @@ function TopBar({
             ) : null}
             {pageActions}
           </div>
-        ) : null}
-        {page.key === "parameter-home" ? (
-          <label className="topbar-time-window-control">
-            <span>时间范围</span>
-            <SelectControl
-              ariaLabel="时间范围"
-              value={parameterHomeTimeWindow}
-              onValueChange={onParameterHomeTimeWindowChange}
-              options={homepageTimeWindowOptions}
-            />
-          </label>
         ) : null}
         {showProjectSelector ? (
           <SelectControl

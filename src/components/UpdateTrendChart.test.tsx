@@ -1,13 +1,18 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { UpdateTrendChart } from "./UpdateTrendChart";
-import type { UpdateTrendPoint } from "../parameterHomepageAnalytics";
+
+type LegacyTrendPoint = {
+  label: string;
+  value: number;
+  date: string;
+};
 
 afterEach(() => {
   cleanup();
 });
 
-const sampleSeries: UpdateTrendPoint[] = [
+const sampleSeries: LegacyTrendPoint[] = [
   { label: "5/4", value: 2, date: "2026-05-04T00:00:00.000Z" },
   { label: "5/5", value: 5, date: "2026-05-05T00:00:00.000Z" },
   { label: "5/6", value: 4, date: "2026-05-06T00:00:00.000Z" },
@@ -26,7 +31,7 @@ describe("UpdateTrendChart", () => {
   });
 
   it("hides per-point dots in 30d mode", () => {
-    const series: UpdateTrendPoint[] = Array.from({ length: 30 }, (_, index) => ({
+    const series: LegacyTrendPoint[] = Array.from({ length: 30 }, (_, index) => ({
       label: `5/${index + 1}`,
       value: index % 5,
       date: `2026-05-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`
@@ -36,7 +41,7 @@ describe("UpdateTrendChart", () => {
   });
 
   it("renders denser X-axis labels in 30d mode", () => {
-    const series: UpdateTrendPoint[] = Array.from({ length: 30 }, (_, index) => ({
+    const series: LegacyTrendPoint[] = Array.from({ length: 30 }, (_, index) => ({
       label: `4/${index + 1}`,
       value: index % 5,
       date: `2026-04-${String(index + 1).padStart(2, "0")}T00:00:00.000Z`

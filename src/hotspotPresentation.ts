@@ -2,7 +2,7 @@
 // Pure functions only; no React imports.
 
 import type { PrototypeState } from "./mockData";
-import type { HomepageTimeWindow, HotspotScoreBreakdown, ParameterHotspot } from "./parameterHomepageAnalytics";
+import type { DashboardWindow, HotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
 
 export type HotspotStatusLevel = "alert" | "watch" | "healthy";
 
@@ -26,6 +26,19 @@ export type HotspotActionSpec = {
 export type HotspotActionPair = {
   primary: HotspotActionSpec;
   secondary?: HotspotActionSpec;
+};
+
+export type HotspotPresentationInput = {
+  id?: string;
+  module: string;
+  projectCode: string;
+  highRiskCount: number;
+  changeCount: number;
+  title: string;
+  score: number;
+  scoreBreakdown: HotspotScoreBreakdown;
+  lastChangedAt?: string;
+  kind?: "module" | "project" | "parameter";
 };
 
 type ActionTemplate = {
@@ -94,7 +107,7 @@ export const HOTSPOT_ACTION_TEMPLATES: Record<HotspotArchetype, ArchetypeActions
 const TIE_BREAK_ORDER: Array<keyof HotspotScoreBreakdown> = ["risk", "drift", "workflow", "frequency", "impact"];
 
 export function mapHotspotStatus(
-  hotspot: Pick<ParameterHotspot, "highRiskCount" | "score">
+  hotspot: Pick<HotspotPresentationInput, "highRiskCount" | "score">
 ): { level: HotspotStatusLevel; label: string } {
   if (hotspot.highRiskCount >= 5 || hotspot.score >= 180) {
     return { level: "alert", label: "需要关注" };
@@ -106,8 +119,8 @@ export function mapHotspotStatus(
 }
 
 export function deriveHotspotTrend(
-  hotspot: Pick<ParameterHotspot, "id">,
-  timeWindow: HomepageTimeWindow
+  hotspot: Pick<HotspotPresentationInput, "id">,
+  timeWindow: DashboardWindow
 ): HotspotTrend {
   const seed = hashString(`${hotspot.id}|${timeWindow}`);
   const rng = createLcg(seed);
@@ -119,7 +132,7 @@ export function deriveHotspotTrend(
   return { delta, direction: delta > 0 ? "up" : "down" };
 }
 
-export function classifyHotspotArchetype(hotspot: Pick<ParameterHotspot, "scoreBreakdown">): HotspotArchetype {
+export function classifyHotspotArchetype(hotspot: Pick<HotspotPresentationInput, "scoreBreakdown">): HotspotArchetype {
   const entries = Object.entries(hotspot.scoreBreakdown) as Array<[keyof HotspotScoreBreakdown, number]>;
   const max = Math.max(...entries.map(([, value]) => value));
 
@@ -132,7 +145,7 @@ export function classifyHotspotArchetype(hotspot: Pick<ParameterHotspot, "scoreB
 }
 
 export function generateHotspotActions(
-  hotspot: Pick<ParameterHotspot, "module" | "projectCode" | "highRiskCount" | "changeCount" | "title" | "scoreBreakdown">
+  hotspot: Pick<HotspotPresentationInput, "module" | "projectCode" | "highRiskCount" | "changeCount" | "title" | "scoreBreakdown">
 ): HotspotActionPair {
   const templates = HOTSPOT_ACTION_TEMPLATES[classifyHotspotArchetype(hotspot)];
 
@@ -143,7 +156,8 @@ export function generateHotspotActions(
 }
 
 export function computeEyebrow(
-  hotspot: Pick<ParameterHotspot, "module" | "projectCode" | "lastChangedAt"> & Partial<Pick<ParameterHotspot, "kind">>,
+  hotspot: Pick<HotspotPresentationInput, "module" | "projectCode" | "lastChangedAt"> &
+    Partial<Pick<HotspotPresentationInput, "kind">>,
   state: Pick<PrototypeState, "parameters">
 ): string {
   if (hotspot.kind === "parameter") {
@@ -163,7 +177,7 @@ export function computeEyebrow(
 
 function renderActionTemplate(
   template: ActionTemplate,
-  hotspot: Pick<ParameterHotspot, "module" | "projectCode" | "highRiskCount" | "changeCount" | "title">
+  hotspot: Pick<HotspotPresentationInput, "module" | "projectCode" | "highRiskCount" | "changeCount" | "title">
 ): HotspotActionSpec {
   const slots: Record<string, string> = {
     module: hotspot.module,

@@ -8,6 +8,7 @@ useBrowserDiagnostics(test);
 
 const routes = [
   "/",
+  "/parameter-home",
   "/parameters",
   "/parameter-review",
   "/parameter-admin",

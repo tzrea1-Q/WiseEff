@@ -1,0 +1,62 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import pg from "pg";
+import { createDatabase, type Database } from "../shared/database/client";
+import { applyMigrations } from "../shared/database/migrations";
+
+const projectRoot = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
+const migrationsDir = path.join(projectRoot, "server", "migrations");
+
+let migrationsApplied = false;
+
+export type InMemoryTestDatabase = Database & {
+  rollback: () => Promise<void>;
+};
+
+function resolveTestDatabaseUrl() {
+  return (
+    process.env.TEST_DATABASE_URL?.trim() ||
+    process.env.DATABASE_URL?.trim() ||
+    "postgres://wiseeff:wiseeff@127.0.0.1:5432/wiseeff"
+  );
+}
+
+async function ensureMigrations() {
+  if (migrationsApplied) return;
+  const client = new pg.Client({ connectionString: resolveTestDatabaseUrl() });
+  await client.connect();
+  try {
+    const db = createDatabase({
+      query: async (text, values = []) => {
+        const result = await client.query(text, values);
+        return { rows: result.rows, rowCount: result.rowCount };
+      }
+    });
+    await applyMigrations(db, migrationsDir);
+    migrationsApplied = true;
+  } finally {
+    await client.end();
+  }
+}
+
+export async function createInMemoryTestDatabase(): Promise<InMemoryTestDatabase> {
+  await ensureMigrations();
+  const client = new pg.Client({ connectionString: resolveTestDatabaseUrl() });
+  await client.connect();
+  await client.query("begin");
+
+  const db = createDatabase({
+    query: async (text, values = []) => {
+      const result = await client.query(text, values);
+      return { rows: result.rows, rowCount: result.rowCount };
+    }
+  });
+
+  return {
+    ...db,
+    rollback: async () => {
+      await client.query("rollback");
+      await client.end();
+    }
+  };
+}
