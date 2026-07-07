@@ -16,7 +16,6 @@ const base64String = nonEmptyString.refine(
 const booleanQuerySchema = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
 
 export const createLogFileBodySchema = z.object({
-  projectId: nonEmptyString,
   fileName: nonEmptyString,
   contentType: nonEmptyString,
   contentBase64: base64String,
@@ -25,7 +24,6 @@ export const createLogFileBodySchema = z.object({
 });
 
 export const createLogBodySchema = z.object({
-  projectId: nonEmptyString,
   fileObjectId: nonEmptyString,
   fileName: nonEmptyString,
   analysisQuestion: z.string().optional(),
@@ -33,7 +31,6 @@ export const createLogBodySchema = z.object({
 });
 
 export const listLogsQuerySchema = z.object({
-  projectId: nonEmptyString.optional(),
   status: z.enum(logRecordStatuses).optional(),
   timeWindow: z.enum(["today", "7d", "30d"]).optional(),
   includeArchived: booleanQuerySchema.optional()

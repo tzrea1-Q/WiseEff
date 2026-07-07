@@ -79,7 +79,6 @@ export function registerLogRoutes(
     const body = parseWithSchema(createLogFileBodySchema, request.body);
     const bytes = Buffer.from(body.contentBase64, "base64");
     const result = await uploadLogFile(db, objectStore, auth, {
-      projectId: body.projectId,
       fileName: body.fileName,
       contentType: body.contentType,
       bytes,

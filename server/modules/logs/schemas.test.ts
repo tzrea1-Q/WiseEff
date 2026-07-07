@@ -5,7 +5,6 @@ import { createLogFileBodySchema, listLogsQuerySchema, logFeedbackBodySchema } f
 describe("log schemas", () => {
   it("accepts valid base64 log file content", () => {
     const result = createLogFileBodySchema.safeParse({
-      projectId: "aurora",
       fileName: "pack-controller.log",
       contentType: "text/plain",
       contentBase64: Buffer.from("abc").toString("base64")
@@ -17,7 +16,6 @@ describe("log schemas", () => {
   it("rejects empty or invalid base64 log file content", () => {
     expect(
       createLogFileBodySchema.safeParse({
-        projectId: "aurora",
         fileName: "pack-controller.log",
         contentType: "text/plain",
         contentBase64: ""
@@ -25,7 +23,6 @@ describe("log schemas", () => {
     ).toBe(false);
     expect(
       createLogFileBodySchema.safeParse({
-        projectId: "aurora",
         fileName: "pack-controller.log",
         contentType: "text/plain",
         contentBase64: "not base64!!!"

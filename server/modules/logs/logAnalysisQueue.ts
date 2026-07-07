@@ -2,7 +2,6 @@ import type { DurableQueue } from "../jobs/queuePort";
 
 export type LogAnalysisQueuePayload = {
   organizationId: string;
-  projectId: string;
   logId: string;
   runId: string;
   jobId: string;
