@@ -224,6 +224,8 @@ type AdminNodeWriteInput = {
   name: string;
   description?: string;
   detailedDescription?: string;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
   module?: string;
   valueKind?: DebugParameterRecord["valueKind"];
   valueFormat?: DebugParameterRecord["valueFormat"];
@@ -1424,6 +1426,8 @@ export function createDebuggingService(options: ServiceOptions) {
           name: input.name,
           description: input.description ?? "",
           detailedDescription: input.detailedDescription ?? "",
+          writeFormatExample: input.writeFormatExample ?? "",
+          writeFormatHint: input.writeFormatHint ?? "",
           module: input.module ?? "",
           valueKind: input.valueKind,
           valueFormat: input.valueFormat,
@@ -1490,6 +1494,8 @@ export function createDebuggingService(options: ServiceOptions) {
           name: input.name ?? current.name,
           description: input.description ?? current.description,
           detailedDescription: input.detailedDescription ?? current.detailedDescription,
+          writeFormatExample: input.writeFormatExample ?? current.writeFormatExample,
+          writeFormatHint: input.writeFormatHint ?? current.writeFormatHint,
           module: input.module ?? current.module,
           valueKind: input.valueKind ?? current.valueKind,
           valueFormat: input.valueFormat ?? current.valueFormat,
@@ -2055,7 +2061,7 @@ export function createDebuggingService(options: ServiceOptions) {
           organizationId,
           projectId: session.projectId,
           sessionId: session.id,
-          parameterId: catalogNodeId,
+          parameterId: input.parameterId ?? null,
           nodeId: catalogNodeId,
           protocol,
           nodePath,
@@ -2079,7 +2085,7 @@ export function createDebuggingService(options: ServiceOptions) {
               action: "read",
               severity: result.ok ? "Low" : "Medium",
               targetType: "debug-node",
-              targetId: input.parameterId ?? nodePath,
+              targetId: input.nodeId ?? input.parameterId ?? nodePath,
               metadata: {
                 sessionId: session.id,
                 operationId: operation.id,
@@ -2128,7 +2134,7 @@ export function createDebuggingService(options: ServiceOptions) {
           const binding = await requireNodeBinding(tx, organizationId, node.id, protocol);
           parameter = ensureWritable(runtimeNodeAsParameter({ node, binding }), session, input, binding.accessMode);
           catalogNodeId = node.id;
-          parameterId = node.id;
+          parameterId = null;
           nodePath = binding.nodePath;
           accessMode = binding.accessMode;
         } else if (input.parameterId?.trim()) {

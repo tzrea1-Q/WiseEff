@@ -183,6 +183,8 @@ export type DebugAdminNodeDto = {
   name: string;
   description: string;
   detailedDescription?: string;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
   module: string;
   enabled: boolean;
   archivedAt: string | null;
@@ -196,6 +198,8 @@ export type DebugAdminNodeWriteDto = {
   name: string;
   description?: string;
   detailedDescription?: string;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
   module: string;
   enabled: boolean;
   bindings?: DebugAdminParameterBindingWriteDto[];
@@ -266,6 +270,8 @@ export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistry
     name: dto.name,
     description: dto.description,
     detailedDescription: dto.detailedDescription ?? "",
+    writeFormatExample: dto.writeFormatExample ?? "",
+    writeFormatHint: dto.writeFormatHint ?? "",
     module: dto.module,
     enabled: dto.enabled,
     bindings: dto.bindings?.map(debugAdminNodeBindingFromDto) ?? []

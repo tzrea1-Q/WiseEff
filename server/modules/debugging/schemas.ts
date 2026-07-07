@@ -253,6 +253,8 @@ export const writeDebugNodeAdminBodySchema = z.object({
   name: nonEmptyString,
   description: optionalTrimmedString.default(""),
   detailedDescription: optionalTrimmedString.default(""),
+  writeFormatExample: optionalTrimmedString.default(""),
+  writeFormatHint: optionalTrimmedString.default(""),
   module: nonEmptyString,
   valueKind: debugValueKindSchema.default(DEBUG_VALUE_KIND_SCALAR),
   valueFormat: debugValueFormatSchema.default(DEBUG_VALUE_FORMAT_RAW),

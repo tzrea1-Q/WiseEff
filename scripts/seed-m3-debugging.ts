@@ -263,13 +263,16 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       await tx.query(
         `
         insert into debug_nodes (
-          id, organization_id, project_id, name, description, detailed_description, module, enabled
+          id, organization_id, project_id, name, description, detailed_description,
+          write_format_example, write_format_hint, module, enabled
         )
-        values ($1, $2, $3, $4, $5, $6, $7, true)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
         on conflict (id) do update set
           name = excluded.name,
           description = excluded.description,
           detailed_description = excluded.detailed_description,
+          write_format_example = excluded.write_format_example,
+          write_format_hint = excluded.write_format_hint,
           module = excluded.module,
           enabled = excluded.enabled,
           updated_at = now()
@@ -281,6 +284,10 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           parameter.name,
           parameter.description,
           parameter.description,
+          parameter.id === "dbg-fast-charge-current" ? "3100" : "",
+          parameter.id === "dbg-fast-charge-current"
+            ? "输入毫安值，例如 3100，系统会通过 HDC 写入 constant_charge_current 节点。"
+            : "",
           parameter.module
         ]
       );

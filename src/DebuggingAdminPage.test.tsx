@@ -14,6 +14,8 @@ function createDebuggingAdminApiMock() {
     name: "Fast charge current",
     description: "Fast charge node",
     detailedDescription: "Controls constant charge current.",
+    writeFormatExample: "3100",
+    writeFormatHint: "输入毫安值，例如 3100。",
     module: "Battery Charging",
     enabled: true,
     bindings: [{ protocol: "hdc", nodePath: "/sys/hdc/current", accessMode: "RW", enabled: true }]

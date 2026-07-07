@@ -25,6 +25,8 @@ type DebugNodeRow = {
   name: string;
   description: string;
   detailed_description: string;
+  write_format_example: string;
+  write_format_hint: string;
   module: string;
   value_kind: DebugValueKind;
   value_format: DebugValueFormat;
@@ -89,6 +91,8 @@ function toDebugNodeRecord(row: DebugNodeRow): DebugNodeRecord {
     name: row.name,
     description: row.description,
     detailedDescription: row.detailed_description,
+    writeFormatExample: row.write_format_example,
+    writeFormatHint: row.write_format_hint,
     module: row.module,
     valueKind: row.value_kind,
     valueFormat: row.value_format,
@@ -151,6 +155,8 @@ const debugNodeColumns = `
   n.name,
   n.description,
   n.detailed_description,
+  n.write_format_example,
+  n.write_format_hint,
   n.module,
   n.value_kind,
   n.value_format,
@@ -292,6 +298,8 @@ export async function createDebugNode(
     name: string;
     description?: string;
     detailedDescription?: string;
+    writeFormatExample?: string;
+    writeFormatHint?: string;
     module?: string;
     valueKind?: DebugValueKind;
     valueFormat?: DebugValueFormat;
@@ -303,10 +311,11 @@ export async function createDebugNode(
   const result = await db.query<DebugNodeRow>(
     `
     insert into debug_nodes (
-      id, organization_id, project_id, name, description, detailed_description, module,
+      id, organization_id, project_id, name, description, detailed_description,
+      write_format_example, write_format_hint, module,
       value_kind, value_format, normalization_mode, max_value_bytes, enabled
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     returning ${debugNodeOnlyColumns}
     `,
     [
@@ -316,6 +325,8 @@ export async function createDebugNode(
       input.name,
       input.description ?? "",
       input.detailedDescription ?? "",
+      input.writeFormatExample ?? "",
+      input.writeFormatHint ?? "",
       input.module ?? "",
       input.valueKind ?? DEBUG_VALUE_KIND_SCALAR,
       input.valueFormat ?? DEBUG_VALUE_FORMAT_RAW,
@@ -336,6 +347,8 @@ export async function updateDebugNode(
     name?: string;
     description?: string;
     detailedDescription?: string;
+    writeFormatExample?: string;
+    writeFormatHint?: string;
     module?: string;
     valueKind?: DebugValueKind;
     valueFormat?: DebugValueFormat;
@@ -354,15 +367,17 @@ export async function updateDebugNode(
       name = coalesce($3, name),
       description = coalesce($4, description),
       detailed_description = coalesce($5, detailed_description),
-      module = coalesce($6, module),
-      value_kind = coalesce($7, value_kind),
-      value_format = coalesce($8, value_format),
-      normalization_mode = coalesce($9, normalization_mode),
-      max_value_bytes = coalesce($10, max_value_bytes),
-      enabled = coalesce($11, enabled),
-      archived_at = coalesce($12, archived_at),
-      archived_by = coalesce($13, archived_by),
-      archive_reason = coalesce($14, archive_reason),
+      write_format_example = coalesce($6, write_format_example),
+      write_format_hint = coalesce($7, write_format_hint),
+      module = coalesce($8, module),
+      value_kind = coalesce($9, value_kind),
+      value_format = coalesce($10, value_format),
+      normalization_mode = coalesce($11, normalization_mode),
+      max_value_bytes = coalesce($12, max_value_bytes),
+      enabled = coalesce($13, enabled),
+      archived_at = coalesce($14, archived_at),
+      archived_by = coalesce($15, archived_by),
+      archive_reason = coalesce($16, archive_reason),
       updated_at = now()
     where organization_id = $1 and id = $2
     returning ${debugNodeOnlyColumns}
@@ -373,6 +388,8 @@ export async function updateDebugNode(
       input.name ?? null,
       input.description ?? null,
       input.detailedDescription ?? null,
+      input.writeFormatExample ?? null,
+      input.writeFormatHint ?? null,
       input.module ?? null,
       input.valueKind ?? null,
       input.valueFormat ?? null,

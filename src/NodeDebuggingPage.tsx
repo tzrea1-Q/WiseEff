@@ -46,6 +46,7 @@ import {
   getDebugValueFormatLabel,
   isComplexDebugParameter
 } from "./debugValueKind";
+import { resolveWriteFormatExample, resolveWriteFormatHint } from "@/domain/debugging/writeFormat";
 import type { DebugParameter, PrototypeState } from "./mockData";
 
 type NodeRuntimeStatus =
@@ -434,7 +435,8 @@ type DetectResultWithOperation = Awaited<ReturnType<DebuggingRuntimeActions["det
 
 function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: DebugConnectionProtocol }) {
   const titleId = `node-write-format-${row.id}`;
-  const exampleValue = row.targetValue || row.currentValue || "value";
+  const exampleValue = resolveWriteFormatExample(row);
+  const exampleHint = resolveWriteFormatHint(row, exampleValue, protocol);
   const isComplex = isComplexDebugParameter(row);
 
   return (
@@ -480,7 +482,7 @@ function NodeWriteFormatPanel({ row, protocol }: { row: RuntimeRow; protocol: De
         <div className="node-write-format-example">
           <strong>示例</strong>
           <code>{exampleValue}</code>
-          <span>例如输入 {exampleValue}，系统会通过 {protocolLabel(protocol)} 将该值写入当前节点。</span>
+          <span>{exampleHint}</span>
         </div>
       ) : null}
     </section>

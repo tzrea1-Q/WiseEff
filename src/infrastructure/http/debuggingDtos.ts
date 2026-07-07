@@ -313,6 +313,8 @@ export type DebugRuntimeNodeDto = {
   projectId: string | null;
   name: string;
   description: string;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
   module: string;
   protocol: DebugConnectionProtocol;
   nodePath: string;
@@ -326,6 +328,8 @@ export function debugRuntimeNodeToDebugParameter(dto: DebugRuntimeNodeDto): Debu
     name: dto.name,
     key: dto.id,
     description: dto.description,
+    writeFormatExample: dto.writeFormatExample,
+    writeFormatHint: dto.writeFormatHint,
     module: dto.module || "Device Nodes",
     currentValue: "",
     targetValue: "",

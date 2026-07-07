@@ -57,6 +57,8 @@ export type PowerManagementDebugParameter = {
   maxValueBytes?: number | null;
   parameterDefinitionId?: string;
   reloadManaged?: boolean;
+  writeFormatExample?: string;
+  writeFormatHint?: string;
 };
 
 export type PowerManagementProject = {

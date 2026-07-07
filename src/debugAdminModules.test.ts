@@ -8,6 +8,8 @@ const nodes = [
     name: "Fast charge current",
     description: "Brief",
     detailedDescription: "Detailed",
+    writeFormatExample: "",
+    writeFormatHint: "",
     module: "Battery Charging",
     enabled: true,
     bindings: []
@@ -17,6 +19,8 @@ const nodes = [
     name: "Cycle count",
     description: "",
     detailedDescription: "",
+    writeFormatExample: "",
+    writeFormatHint: "",
     module: "Battery Health",
     enabled: true,
     bindings: []
