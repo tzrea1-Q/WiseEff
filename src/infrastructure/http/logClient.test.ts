@@ -8,7 +8,6 @@ const baseLogDto: LogRecordDto = {
   id: "log-1",
   reportId: "report-1",
   fileName: "pack-controller.log",
-  projectId: "aurora",
   source: "upload",
   fileSizeBytes: 1_048_576,
   status: "complete",
@@ -71,9 +70,9 @@ describe("createHttpLogAnalysisRepository", () => {
     const fetchMock = createFetchMock({ items: [baseLogDto] });
     const repository = createRepository(fetchMock);
 
-    await expect(repository.listLogs({ projectId: "aurora", status: "Complete", includeArchived: true })).resolves.toHaveLength(1);
+    await expect(repository.listLogs({ status: "Complete", includeArchived: true })).resolves.toHaveLength(1);
 
-    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/logs?projectId=aurora&status=complete&includeArchived=true");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/v1/logs?status=complete&includeArchived=true");
   });
 
   it("gets a log by id", async () => {
@@ -112,7 +111,6 @@ describe("createHttpLogAnalysisRepository", () => {
 
     await expect(
       repository.uploadLog({
-        projectId: "aurora",
         file,
         analysisQuestion: "Why did charging slow?",
         relatedParameterId: "fast-charge-current"
@@ -125,7 +123,6 @@ describe("createHttpLogAnalysisRepository", () => {
       headers: { Accept: "application/json", "Content-Type": "application/json" }
     });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      projectId: "aurora",
       fileName: "diagnostics.csv",
       contentType: "text/csv",
       contentBase64: btoa("timestamp,message\n1,ok"),

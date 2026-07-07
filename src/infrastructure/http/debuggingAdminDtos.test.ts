@@ -8,7 +8,6 @@ import {
 
 const adminParameterDto: DebugAdminParameterDto = {
   id: "param-complex-1",
-  projectId: null,
   name: "DTS profile",
   key: "debug.dts.profile",
   description: "Complex DTS node payload",
@@ -33,7 +32,6 @@ const adminParameterDto: DebugAdminParameterDto = {
 
 const adminDraft: DebugAdminParameterDraft = {
   id: "param-complex-1",
-  projectId: null,
   name: "DTS profile",
   key: "debug.dts.profile",
   description: "Complex DTS node payload",
@@ -63,7 +61,6 @@ describe("debugging admin dto mappers", () => {
     expect(
       debugAdminParameterFromDto({
         id: "legacy-param",
-        projectId: null,
         name: "Legacy scalar",
         key: "debug.legacy.scalar",
         description: "",

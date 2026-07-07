@@ -40,9 +40,8 @@ function appendQuery(path: string, params: URLSearchParams) {
   return query ? `${path}?${query}` : path;
 }
 
-function buildParametersPath(query?: { projectId?: string; protocol?: string }) {
+function buildParametersPath(query?: { protocol?: string }) {
   const params = new URLSearchParams();
-  if (query?.projectId) params.set("projectId", query.projectId);
   if (query?.protocol) params.set("protocol", query.protocol);
   return appendQuery("/api/v1/debugging/parameters", params);
 }
@@ -55,10 +54,9 @@ function snapshotRollbackPath(snapshotId: string) {
   return `/api/v1/debugging/snapshots/${encodeURIComponent(snapshotId)}/rollback`;
 }
 
-function buildReloadTargetsPath(query: { projectId: string; protocol?: string }) {
+function buildReloadTargetsPath(query?: { protocol?: string }) {
   const params = new URLSearchParams();
-  params.set("projectId", query.projectId);
-  if (query.protocol) params.set("protocol", query.protocol);
+  if (query?.protocol) params.set("protocol", query.protocol);
   return appendQuery("/api/v1/debugging/reload-targets", params);
 }
 
@@ -74,10 +72,9 @@ function readNodeRequestBody(input: ReadNodeInput): ReadNodeInput {
   return body;
 }
 
-function buildRuntimeNodesPath(query: { projectId: string; protocol?: string }) {
+function buildRuntimeNodesPath(query?: { protocol?: string }) {
   const params = new URLSearchParams();
-  params.set("projectId", query.projectId);
-  if (query.protocol) params.set("protocol", query.protocol);
+  if (query?.protocol) params.set("protocol", query.protocol);
   return appendQuery("/api/v1/debugging/nodes", params);
 }
 
@@ -99,7 +96,7 @@ export function createHttpDebuggingGateway(apiClient: ApiClient = createDefaultA
       const response = await apiClient.get<ItemsEnvelope<DebugDeviceDto>>("/api/v1/debugging/devices");
       return response.items;
     },
-    async listRuntimeNodes(query: { projectId: string; protocol?: DebugConnectionProtocol }) {
+    async listRuntimeNodes(query?: { protocol?: DebugConnectionProtocol }) {
       const response = await apiClient.get<ItemsEnvelope<DebugRuntimeNodeDto>>(buildRuntimeNodesPath(query));
       return response.items.map(debugRuntimeNodeToDebugParameter);
     },

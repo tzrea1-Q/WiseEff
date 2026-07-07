@@ -14,7 +14,6 @@ export type LogRecordDto = {
   id: string;
   reportId: string;
   fileName: string;
-  projectId: string;
   source: string;
   fileSizeBytes: number;
   status: "uploaded" | "processing" | "complete" | "failed";
@@ -50,7 +49,6 @@ export function logRecordFromDto(dto: LogRecordDto): LogRecord {
     id: dto.id,
     reportId: dto.reportId,
     fileName: dto.fileName,
-    projectId: dto.projectId,
     source: dto.source,
     fileSizeMB: Math.round((dto.fileSizeBytes / 1024 / 1024) * 10) / 10,
     status: statusLabels[dto.status],

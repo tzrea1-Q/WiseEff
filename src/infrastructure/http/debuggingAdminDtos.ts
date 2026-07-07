@@ -28,7 +28,6 @@ export type DebugAdminBindingDto = {
 
 export type DebugAdminParameterDto = {
   id: string;
-  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -67,7 +66,6 @@ export type DebugAdminParameterBindingWriteDto = DebugAdminBindingWriteDto & {
 };
 
 export type DebugAdminParameterWriteDto = {
-  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -102,7 +100,6 @@ export function debugAdminParameterFromDto(dto: DebugAdminParameterDto): DebugPa
 
   return {
     id: dto.id,
-    projectId: dto.projectId,
     name: dto.name,
     key: dto.key,
     description: dto.description,
@@ -146,7 +143,6 @@ export function debugAdminParameterToDto(draft: DebugAdminParameterDraft): Debug
   const valueMetadata = resolveDebugValueMetadata(draft);
 
   return {
-    projectId: draft.projectId ?? null,
     name: draft.name,
     key: draft.key,
     description: draft.description,
@@ -179,7 +175,6 @@ export function debugAdminParameterToDto(draft: DebugAdminParameterDraft): Debug
 export type DebugAdminNodeDto = {
   id: string;
   organizationId: string;
-  projectId: string | null;
   name: string;
   description: string;
   detailedDescription?: string;
@@ -194,7 +189,6 @@ export type DebugAdminNodeDto = {
 };
 
 export type DebugAdminNodeWriteDto = {
-  projectId: string | null;
   name: string;
   description?: string;
   detailedDescription?: string;
@@ -230,7 +224,6 @@ export function debugAdminModuleToDto(draft: ParameterModuleDraft): DebugAdminMo
 export type DebugAdminReloadBindingDto = {
   id: string;
   organizationId: string;
-  projectId: string;
   parameterDefinitionId: string;
   protocol: DebugConnectionProtocol;
   nodePath: string;
@@ -245,7 +238,6 @@ export type DebugAdminReloadBindingDto = {
 };
 
 export type DebugAdminReloadBindingWriteDto = {
-  projectId: string;
   parameterDefinitionId: string;
   protocol: DebugConnectionProtocol;
   nodePath: string;
@@ -266,7 +258,6 @@ export function debugAdminNodeBindingFromDto(dto: DebugAdminBindingDto): DebugNo
 export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistryEntry {
   return {
     id: dto.id,
-    projectId: dto.projectId,
     name: dto.name,
     description: dto.description,
     detailedDescription: dto.detailedDescription ?? "",
@@ -281,7 +272,6 @@ export function debugAdminNodeFromDto(dto: DebugAdminNodeDto): DebugNodeRegistry
 export function debugAdminReloadBindingFromDto(dto: DebugAdminReloadBindingDto): ParameterReloadBinding {
   return {
     id: dto.id,
-    projectId: dto.projectId,
     parameterDefinitionId: dto.parameterDefinitionId,
     parameterName: dto.parameterName,
     module: dto.module,

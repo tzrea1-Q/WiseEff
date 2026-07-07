@@ -12,7 +12,6 @@ const baseLogDto: LogRecordDto = {
   id: "log-1",
   reportId: "report-1",
   fileName: "pack-controller.log",
-  projectId: "aurora",
   source: "upload",
   fileSizeBytes: 1_572_864,
   status: "complete",

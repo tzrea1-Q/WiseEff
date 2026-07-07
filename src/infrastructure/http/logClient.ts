@@ -33,7 +33,6 @@ function appendQuery(path: string, params: URLSearchParams) {
 
 function buildLogsPath(query?: LogListQuery) {
   const params = new URLSearchParams();
-  if (query?.projectId) params.set("projectId", query.projectId);
   if (query?.status) params.set("status", backendStatus(query.status));
   if (query?.timeWindow) params.set("timeWindow", query.timeWindow);
   if (query?.includeArchived !== undefined) params.set("includeArchived", String(query.includeArchived));
@@ -68,7 +67,6 @@ async function fileToBase64(file: File) {
 
 function uploadBody(input: LogUploadInput, contentBase64: string) {
   return {
-    projectId: input.projectId,
     fileName: input.file.name,
     contentType: input.file.type || "application/octet-stream",
     contentBase64,

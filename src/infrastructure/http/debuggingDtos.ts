@@ -23,7 +23,6 @@ import type {
 
 export type DebugDeviceDto = {
   id: string;
-  projectId: string;
   name: string;
   transport?: DebugDeviceTransport;
   firmware: string;
@@ -56,7 +55,6 @@ export type DebugParameterNodeBindingDto = {
 
 export type DebugParameterDto = {
   id: string;
-  projectId: string | null;
   name: string;
   key: string;
   description: string;
@@ -127,7 +125,6 @@ export function debugDeviceFromDto(dto: DebugDeviceDto): Device {
   return {
     id: dto.id,
     name: dto.name,
-    projectId: dto.projectId,
     transport: dto.transport,
     firmware: dto.firmware,
     status: deviceStatusLabels[dto.status],
@@ -164,7 +161,6 @@ export function debugParameterFromDto(dto: DebugParameterDto): DebugParameter {
 
   return {
     id: dto.id,
-    projectId: dto.projectId,
     name: dto.name,
     key: dto.key,
     description: dto.description,
@@ -310,7 +306,6 @@ export type ParameterReloadTargetDto = {
 
 export type DebugRuntimeNodeDto = {
   id: string;
-  projectId: string | null;
   name: string;
   description: string;
   writeFormatExample?: string;

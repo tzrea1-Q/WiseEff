@@ -14,7 +14,6 @@ function createApiClientMock() {
 
 const adminParameterDto = {
   id: "param-1",
-  projectId: null,
   name: "Fast charge current",
   key: "debug.fast_charge.current",
   description: "Parameter",
@@ -46,7 +45,6 @@ const adminParameterDto = {
 } as const;
 
 const draft: DebugAdminParameterDraft = {
-  projectId: null,
   name: "Created",
   key: "debug.created",
   description: "",
@@ -108,7 +106,6 @@ describe("debugging admin client", () => {
     expect(apiClient.post).toHaveBeenCalledWith(
       "/api/v1/debugging/admin/parameters",
       expect.objectContaining({
-        projectId: null,
         key: "debug.created",
         nodePath: "/sys/created",
         accessMode: "RO",

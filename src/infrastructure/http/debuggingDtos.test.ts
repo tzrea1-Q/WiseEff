@@ -16,7 +16,6 @@ import {
 
 const deviceDto: DebugDeviceDto = {
   id: "device-1",
-  projectId: "aurora",
   name: "Simulator",
   transport: "hdc",
   firmware: "1.0.0",
@@ -26,7 +25,6 @@ const deviceDto: DebugDeviceDto = {
 
 const parameterDto: DebugParameterDto = {
   id: "param-1",
-  projectId: "aurora",
   name: "Fast charge current",
   key: "fast-charge-current",
   description: "Charge limit",
@@ -202,7 +200,6 @@ describe("debugging dto mappers", () => {
     expect(
       debugParameterFromDto({
         id: "param-1",
-        projectId: "aurora",
         name: "Fast charge current",
         key: "fast-charge-current",
         description: "Charge limit",
@@ -229,10 +226,9 @@ describe("debugging dto mappers", () => {
     });
   });
 
-  it("maps shared debugging parameters without a project id", () => {
+  it("maps org-scoped debugging parameters", () => {
     const parameter = debugParameterFromDto({
       id: "shared-param-1",
-      projectId: null,
       name: "ADB smoke readable",
       key: "adb_smoke_readable",
       description: "Shared smoke parameter.",
@@ -264,7 +260,6 @@ describe("debugging dto mappers", () => {
       ]
     });
 
-    expect(parameter.projectId).toBeNull();
     expect(parameter.bindingStatus).toBe("configured");
     expect(parameter.bindings?.[0]).toMatchObject({
       protocol: "adb",
