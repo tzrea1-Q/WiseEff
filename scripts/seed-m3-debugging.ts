@@ -5,7 +5,6 @@ import { loadServerEnv } from "../server/config/env";
 import { createPostgresDatabase, type Database } from "../server/shared/database/client";
 
 const organizationId = "org-chargelab";
-const projectId = "aurora";
 const deviceId = "sim-device-aurora-1";
 const targetId = "sim-target-aurora-1";
 const targetRef = "simulator://aurora-1";
@@ -132,7 +131,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       insert into debugging_devices (
         id,
         organization_id,
-        project_id,
         name,
         transport,
         status,
@@ -141,10 +139,9 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         metadata,
         updated_at
       )
-      values ($1, $2, $3, $4, 'simulator', 'online', $5, now(), $6::jsonb, now())
+      values ($1, $2, $3, 'simulator', 'online', $4, now(), $5::jsonb, now())
       on conflict (id) do update set
         organization_id = excluded.organization_id,
-        project_id = excluded.project_id,
         name = excluded.name,
         transport = excluded.transport,
         status = excluded.status,
@@ -156,7 +153,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       [
         deviceId,
         organizationId,
-        projectId,
         "Aurora Simulator Device",
         "sim-fw-aurora-1",
         JSON.stringify({ fixture: "test-fixtures/debugging/simulator-state.json" })
@@ -168,7 +164,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       insert into debugging_targets (
         id,
         organization_id,
-        project_id,
         device_id,
         protocol,
         target_ref,
@@ -177,10 +172,9 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         detected_at,
         metadata
       )
-      values ($1, $2, $3, $4, 'hdc', $5, $6, 'detected', now(), $7::jsonb)
+      values ($1, $2, $3, 'hdc', $4, $5, 'detected', now(), $6::jsonb)
       on conflict (device_id, protocol, target_ref) do update set
         organization_id = excluded.organization_id,
-        project_id = excluded.project_id,
         id = excluded.id,
         label = excluded.label,
         status = excluded.status,
@@ -190,7 +184,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       [
         targetId,
         organizationId,
-        projectId,
         deviceId,
         targetRef,
         "Aurora Simulator 1",
@@ -204,7 +197,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         insert into debugging_parameters (
           id,
           organization_id,
-          project_id,
           name,
           key,
           description,
@@ -221,9 +213,8 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           sort_order,
           updated_at
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
-        on conflict (project_id, key) do update set
-          organization_id = excluded.organization_id,
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
+        on conflict (organization_id, key) do update set
           name = excluded.name,
           description = excluded.description,
           module = excluded.module,
@@ -242,7 +233,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         [
           parameter.id,
           organizationId,
-          projectId,
           parameter.name,
           parameter.key,
           parameter.description,
@@ -263,10 +253,10 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       await tx.query(
         `
         insert into debug_nodes (
-          id, organization_id, project_id, name, description, detailed_description,
+          id, organization_id, name, description, detailed_description,
           write_format_example, write_format_hint, module, enabled
         )
-        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, true)
         on conflict (id) do update set
           name = excluded.name,
           description = excluded.description,
@@ -280,7 +270,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         [
           parameter.id,
           organizationId,
-          projectId,
           parameter.name,
           parameter.description,
           parameter.description,
@@ -295,9 +284,9 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       await tx.query(
         `
         insert into debug_node_bindings (
-          id, organization_id, project_id, node_id, protocol, node_path, access_mode, enabled, notes
+          id, organization_id, node_id, protocol, node_path, access_mode, enabled, notes
         )
-        values ($1, $2, $3, $4, 'hdc', $5, $6, true, $7)
+        values ($1, $2, $3, 'hdc', $4, $5, true, $6)
         on conflict (node_id, protocol) do update set
           node_path = excluded.node_path,
           access_mode = excluded.access_mode,
@@ -308,7 +297,6 @@ export async function seedM3Debugging(db: Database): Promise<void> {
         [
           `${parameter.id}:hdc`,
           organizationId,
-          projectId,
           parameter.id,
           parameter.nodePath,
           parameter.accessMode,
@@ -319,9 +307,9 @@ export async function seedM3Debugging(db: Database): Promise<void> {
       await tx.query(
         `
         insert into debugging_parameter_node_bindings (
-          id, organization_id, project_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
+          id, organization_id, parameter_id, protocol, node_path, access_mode, enabled, notes, metadata, updated_at
         )
-        values ($1, $2, $3, $4, 'hdc', $5, $6, true, $7, '{}'::jsonb, now())
+        values ($1, $2, $3, 'hdc', $4, $5, true, $6, '{}'::jsonb, now())
         on conflict (parameter_id, protocol) do update set
           node_path = excluded.node_path,
           access_mode = excluded.access_mode,
@@ -329,7 +317,7 @@ export async function seedM3Debugging(db: Database): Promise<void> {
           notes = excluded.notes,
           updated_at = now()
         `,
-        [`${parameter.id}:hdc`, organizationId, projectId, parameter.id, parameter.nodePath, parameter.accessMode, "Seeded HDC node binding."]
+        [`${parameter.id}:hdc`, organizationId, parameter.id, parameter.nodePath, parameter.accessMode, "Seeded HDC node binding."]
       );
     }
 
