@@ -58,6 +58,27 @@ Page action flow:
 
 The M1 API smoke lives in `e2e/parameter-management.api.spec.ts` and requires `DATABASE_URL` plus `db:migrate`, `db:seed:m0`, and `db:seed:m1`.
 
+## Parameter Dashboard
+
+`ParameterDashboardRepository` is the read-only frontend port for `/parameter-home`. It is separate from `ParameterRepository` write flows. Page code calls `createParameterDashboardRuntime()` from `src/application/parameters/parameterDashboardRuntime.ts`, which dispatches partitioned dashboard state in `src/application/parameters/dashboardState.ts`.
+
+View-model types live in `src/domain/parameters/dashboardTypes.ts` (`DashboardSummary`, `DashboardHotspot`, `DashboardWindow`, `HotspotDimension`, `WorkbenchSignals`). The UI lives under `src/features/parameter-home/`:
+
+- `ParameterHomePage.tsx` wires dashboard runtime/state, role-adaptive workbench, and insight sections.
+- `components/SituationStrip.tsx` renders KPI cards from `summary.kpis`.
+- `components/AnalysisContextControls.tsx` owns in-page time-window and hotspot-dimension toggles (not the TopBar).
+- `components/InsightSection.tsx` loads trend/risk charts and the hotspot leaderboard from dashboard state.
+- `workbench/derivePersonalWorkbench.ts` composes role-specific next actions from `WorkbenchSignals`, drafts, change requests, and hotspot context.
+
+`dashboardState` keeps independent section status for `summary` and `hotspots` (`idle | loading | ready | empty | error`). `App.tsx` triggers `loadSummary` and `loadHotspots` when `/parameter-home` mounts or when `window`, `dimension`, or active project changes.
+
+Runtime split:
+
+- `mock` mode uses `src/infrastructure/mock/mockParameterDashboardRepository.ts`, deriving trend, risk buckets, hotspots, and workbench signals from `PrototypeState`.
+- `api` mode uses `src/infrastructure/http/parameterDashboardClient.ts` against `/api/v1/parameters/dashboard/summary` and `/api/v1/parameters/dashboard/hotspots`.
+
+Browser acceptance for the production dashboard path lives in `e2e/acceptance/parameter-home.acceptance.spec.ts` (`PARAM-HOME-001`).
+
 ## Log Analysis Repository
 
 `LogAnalysisRepository` is the frontend port for M2 log-analysis workflows. Page components call runtime actions from `src/application/logs/logRuntime.ts`; those actions keep mock demos responsive in `mock` mode and call a repository in `api` mode.

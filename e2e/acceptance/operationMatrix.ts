@@ -126,6 +126,18 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     assertions: ["ui", "api", "db", "audit"]
   },
   {
+    id: "PARAM-HOME-001",
+    priority: "P1",
+    area: "parameters",
+    route: "/parameter-home",
+    roles: ["Admin"],
+    action: "Load parameter-home dashboard summary and hotspots APIs, render insight sections, and switch time window and hotspot dimension in-page.",
+    coverage: "automated",
+    acceptanceIds: ["PARAM-HOME-001"],
+    specFiles: ["e2e/acceptance/parameter-home.acceptance.spec.ts"],
+    assertions: ["ui", "api"]
+  },
+  {
     id: "PARAM-ADMIN-001",
     priority: "P1",
     area: "parameters",

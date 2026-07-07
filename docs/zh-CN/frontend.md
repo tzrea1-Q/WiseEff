@@ -45,6 +45,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 前端页面不要直接拼业务写入逻辑，而是调用 application ports：
 
 - 参数管理：`ParameterRepository`
+- 参数看板：`ParameterDashboardRepository`
 - 日志分析：`LogAnalysisRepository`
 - 设备调试：`DebuggingGateway`
 每个 port 通常有两类实现：
@@ -59,6 +60,7 @@ API mode 启动时会先调用 `/api/v1/me`。如果当前 token 缺失或被拒
 - `/parameters`：筛选参数、查看详情和历史、创建草稿、提交本轮修改。
 - `/parameter-review`：查看待审请求、推进或拒绝流程。
 - `/parameter-admin`：mock mode 下保留直接管理体验；API mode 下写入应走 import/review 流程。
+- `/parameter-home`：参数看板首页。UI 位于 `src/features/parameter-home/`，通过 `ParameterDashboardRepository` 读取 `/api/v1/parameters/dashboard/summary` 与 `/api/v1/parameters/dashboard/hotspots`。页面内 `AnalysisContextControls` 负责时间窗口与热榜维度切换；`dashboardState` 为 `summary` 与 `hotspots` 维护独立异步分区（`idle | loading | ready | empty | error`）。`derivePersonalWorkbench.ts` 基于 `WorkbenchSignals` 与角色生成待办与场景入口。
 
 日志分析：
 

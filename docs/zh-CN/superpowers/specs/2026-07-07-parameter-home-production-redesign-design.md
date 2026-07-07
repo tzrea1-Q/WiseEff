@@ -1,8 +1,8 @@
 # 参数管理首页生产级重设计方案
 
 日期：2026-07-07
-状态：**设计已确认，待实施**
-适用范围：`/parameter-home`（组件 `ParameterManagementHomePage`）
+状态：**已实施**
+适用范围：`/parameter-home`（组件 `ParameterHomePage`，特性目录 `src/features/parameter-home/`）
 
 ## 背景与问题
 
