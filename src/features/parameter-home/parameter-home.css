@@ -13,6 +13,16 @@
   gap: var(--ph-section-gap);
 }
 
+.parameter-home__context-bar {
+  margin-bottom: 0.25rem;
+}
+
+.parameter-home p.parameter-home__section-empty {
+  color: var(--muted-foreground);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
 .parameter-home__panel {
   border: 1px solid var(--ph-panel-border);
   border-radius: var(--ph-panel-radius);

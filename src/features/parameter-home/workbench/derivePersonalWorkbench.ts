@@ -294,7 +294,6 @@ function buildScenarioEntries(
   roleId: PlatformRoleId,
   roleView: WorkbenchRoleView
 ): WorkbenchScenarioEntry[] {
-  const reviewCount = getReviewRequests(input.changeRequests, roleId).length;
   const candidates: WorkbenchScenarioEntry[] =
     roleView === "admin"
       ? [

@@ -29,7 +29,7 @@ import { LogAdminPage } from "@/LogAdminPage";
 import { NodeDebuggingPage } from "@/NodeDebuggingPage";
 import { ParameterAdminPage } from "@/ParameterAdminPage";
 import { ParameterAdminProjectsPage } from "@/ParameterAdminProjectsPage";
-import { ParameterManagementHomePage } from "@/ParameterManagementHomePage";
+import { ParameterHomePage } from "@/features/parameter-home/ParameterHomePage";
 import { ParametersPage as UserParametersPage } from "@/ParametersPage";
 import { UserPermissionsPage } from "@/UserPermissionsPage";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -98,8 +98,11 @@ export function PageRouter({
   logActions,
   parameterActions,
   userGovernanceActions,
-  parameterHomeTimeWindow,
   runtimeMode,
+  dashboardState,
+  dashboardRuntime,
+  onDashboardWindowChange,
+  onDashboardDimensionChange,
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
@@ -156,11 +159,14 @@ export function PageRouter({
       return <ParameterSubmissionsPage state={state} dispatch={dispatch} onNavigate={onNavigate} search={search} parameterActions={parameterActions} />;
     case "parameter-home":
       return (
-        <ParameterManagementHomePage
+        <ParameterHomePage
           state={state}
+          dashboardState={dashboardState!}
+          dashboardRuntime={dashboardRuntime!}
+          onDashboardWindowChange={onDashboardWindowChange!}
+          onDashboardDimensionChange={onDashboardDimensionChange!}
           onNavigate={onNavigate}
           onNewProject={onNewProject}
-          timeWindow={parameterHomeTimeWindow}
         />
       );
     case "parameter-comparison":
