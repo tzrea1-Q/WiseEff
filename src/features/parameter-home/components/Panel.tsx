@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import "./parameter-home.css";
+import "../parameter-home.css";
 
 type PanelProps = {
   title: string;

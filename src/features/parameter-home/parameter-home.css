@@ -104,6 +104,28 @@
   align-items: center;
 }
 
+.parameter-home__context-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.parameter-home__context-label {
+  color: var(--muted-foreground);
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.parameter-home__toggle-group {
+  flex-wrap: wrap;
+}
+
+.parameter-home__toggle-item {
+  font-size: 0.78rem;
+}
+
 .parameter-home__charts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
