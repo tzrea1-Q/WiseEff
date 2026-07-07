@@ -35,7 +35,7 @@ export function registerParameterDashboardRoutes(
     const item = await getDashboardSummary(requireDb(options.db), {
       auth,
       projectId: query.projectId,
-      window: query.window
+      window: query.window ?? "30d"
     });
     return { status: 200, body: { item } };
   });
@@ -49,8 +49,8 @@ export function registerParameterDashboardRoutes(
     const items = await getDashboardHotspots(requireDb(options.db), {
       auth,
       projectId: query.projectId,
-      window: query.window,
-      dimension: query.dimension
+      window: query.window ?? "30d",
+      dimension: query.dimension ?? "overall"
     });
     return { status: 200, body: { items } };
   });

@@ -65,6 +65,11 @@ import {
   type HydrateParameterRuntimeAction,
   type ParameterRuntimeActions
 } from "@/application/parameters/parameterRuntime";
+import {
+  dashboardReducer,
+  initialDashboardState
+} from "@/application/parameters/dashboardState";
+import { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { ParameterDraftDto, ParameterRepository, ProjectSummary } from "@/application/ports/ParameterRepository";
 import { canAccessPage, canPerform } from "@/app/permissions";
 import {
@@ -219,6 +224,8 @@ import {
   type UpdateCurrentUserProfileInput
 } from "@/infrastructure/http/authClient";
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
+import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
+import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -2179,6 +2186,18 @@ function AppShell({
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
     [parameterRepository, runtimeMode]
   );
+  const dashboardRepository = useMemo(
+    () =>
+      runtimeMode === "api"
+        ? createHttpParameterDashboardRepository()
+        : createMockParameterDashboardRepository(() => stateRef.current),
+    [runtimeMode]
+  );
+  const [dashboardState, dashboardDispatch] = useReducer(dashboardReducer, initialDashboardState);
+  const dashboardRuntime = useMemo(
+    () => createParameterDashboardRuntime({ repository: dashboardRepository, dispatch: dashboardDispatch }),
+    [dashboardRepository]
+  );
   const logAnalysisRepositoryClient = useMemo(
     () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
     [logAnalysisRepository, runtimeMode]
@@ -2336,6 +2355,19 @@ function AppShell({
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (page.key !== "parameter-home") {
+      return;
+    }
+    const projectId = state.activeProjectId || undefined;
+    void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
+    void dashboardRuntime.loadHotspots({
+      projectId,
+      window: dashboardState.window,
+      dimension: dashboardState.dimension
+    });
+  }, [page.key, state.activeProjectId, dashboardState.window, dashboardState.dimension, dashboardRuntime]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -2582,6 +2614,12 @@ function AppShell({
                 runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
+                dashboardState={dashboardState}
+                dashboardRuntime={dashboardRuntime}
+                onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
+                onDashboardDimensionChange={(dimension) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
@@ -2608,6 +2646,12 @@ function AppShell({
                 runtimeMode={runtimeMode}
                 search={search}
                 parameterHomeTimeWindow={parameterHomeTimeWindow}
+                dashboardState={dashboardState}
+                dashboardRuntime={dashboardRuntime}
+                onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
+                onDashboardDimensionChange={(dimension) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}

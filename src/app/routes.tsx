@@ -14,10 +14,13 @@ import type {
   ParameterRuntimeRefreshResult,
   ParameterRuntimeVoidResult
 } from "@/application/parameters/parameterRuntime";
+import type { DashboardState } from "@/application/parameters/dashboardState";
+import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DebuggingRuntimeActions } from "@/application/debugging/debuggingRuntime";
 import type { DebuggingGateway } from "@/application/ports/DebuggingGateway";
 import type { LogRuntimeActions } from "@/application/logs/logRuntime";
 import type { AppAction } from "@/App";
+import type { DashboardWindow, HotspotDimension } from "@/domain/parameters/dashboardTypes";
 import { canAccessPage, canPerform, getAccessibleFallbackPath, getRequiredRoleForPage, getRequiredRoleLabel } from "@/app/permissions";
 import type { WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import { AuditCenterPage } from "@/AuditCenterPage";
@@ -65,6 +68,10 @@ export type PageProps = {
   userGovernanceActions?: UserGovernanceActions;
   parameterHomeTimeWindow?: HomepageTimeWindow;
   runtimeMode?: WiseEffRuntimeMode;
+  dashboardState?: DashboardState;
+  dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
+  onDashboardWindowChange?: (window: DashboardWindow) => void;
+  onDashboardDimensionChange?: (dimension: HotspotDimension) => void;
 };
 
 export type PageRouterProps = PageProps & {
