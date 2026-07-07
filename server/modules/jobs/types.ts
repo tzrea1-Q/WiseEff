@@ -24,6 +24,4 @@ export type ClaimedLogAnalysisJobDto = LogAnalysisJobDto & {
 
 export type LogAnalysisJobSnapshotDto = LogAnalysisJobDto & {
   organizationId: string;
-  projectId: string;
-  logId: string;
 };
