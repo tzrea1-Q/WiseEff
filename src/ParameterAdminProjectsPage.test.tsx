@@ -104,4 +104,60 @@ describe("ParameterAdminProjectsPage", () => {
     expect(onNewProject).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog", { name: "新建项目" })).not.toBeInTheDocument();
   });
+
+  it("allows deleting projects that still have parameters", () => {
+    const dispatch = vi.fn();
+    window.history.replaceState(null, "", "/parameter-admin/projects");
+
+    render(
+      <ParameterAdminProjectsPage
+        state={initialState}
+        dispatch={dispatch}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="mock"
+      />
+    );
+
+    const atlasProject = initialState.configDraft.projects.find((project) => project.id === "atlas");
+    const deleteButton = screen.getByRole("button", { name: `删除 ${atlasProject?.name ?? "atlas"}` });
+    expect(deleteButton).not.toBeDisabled();
+
+    fireEvent.click(deleteButton);
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "DELETE_PARAMETER_ADMIN_PROJECT",
+      projectId: "atlas"
+    });
+  });
+
+  it("opens delete confirmation and dispatches delete for empty projects", () => {
+    const dispatch = vi.fn();
+    const stateWithEmptyProject = {
+      ...initialState,
+      configDraft: {
+        ...initialState.configDraft,
+        projects: [...initialState.configDraft.projects, { id: "empty-test", name: "Empty Test", code: "EMP" }]
+      }
+    };
+
+    render(
+      <ParameterAdminProjectsPage
+        state={stateWithEmptyProject}
+        dispatch={dispatch}
+        onNavigate={vi.fn()}
+        search=""
+        runtimeMode="mock"
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "删除 Empty Test" }));
+    fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
+
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "DELETE_PARAMETER_ADMIN_PROJECT",
+      projectId: "empty-test"
+    });
+  });
 });

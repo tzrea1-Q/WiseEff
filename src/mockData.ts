@@ -241,7 +241,6 @@ export type LogRecord = {
 export type Device = {
   id: string;
   name: string;
-  projectId?: string;
   transport?: DebugDeviceTransport;
   firmware: string;
   status: DeviceStatus;
@@ -1056,7 +1055,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       {
         id: "device-x01",
         name: "ChargeLab_X01",
-        projectId: "aurora",
         firmware: "v5.2.0-powerlab",
         status: "未连接",
         lastSeen: "10 分钟前"
@@ -1064,7 +1062,6 @@ export function createPrototypeState(configDraft: PowerManagementConfig = cloneP
       {
         id: "device-n07",
         name: "BatteryBench_07",
-        projectId: "nebula",
         firmware: "v5.2.0-beta",
         status: "已连接",
         lastSeen: "刚刚"

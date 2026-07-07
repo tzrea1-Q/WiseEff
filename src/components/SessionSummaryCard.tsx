@@ -11,7 +11,7 @@ export function SessionSummaryCard({
   now: Date;
   onRollbackRequest: () => void;
 }) {
-  const activeDevice = state.devices.find((device) => device.projectId === state.activeProjectId) ?? state.devices[0];
+  const activeDevice = state.devices.find((device) => device.status === "已连接") ?? state.devices[0];
   const metrics = deriveSessionMetrics(state, now);
   const snapshot = state.lastDebugSnapshot;
   const connected = activeDevice.status === "已连接";

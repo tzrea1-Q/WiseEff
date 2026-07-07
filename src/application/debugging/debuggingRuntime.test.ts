@@ -269,12 +269,11 @@ describe("createDebuggingRuntimeActions", () => {
       getState: () => ({
         ...initialState,
         devices: [
-          { ...initialState.devices[0], id: "sim-device-aurora", projectId: "api-project", transport: "simulator" as const },
-          { ...initialState.devices[1], id: "adb-device-aurora", projectId: "api-project", transport: "adb" as const },
+          { ...initialState.devices[0], id: "sim-device-aurora", transport: "simulator" as const },
+          { ...initialState.devices[1], id: "adb-device-aurora", transport: "adb" as const },
           {
             id: hdcDevice.id,
             name: hdcDevice.name,
-            projectId: "api-project",
             firmware: hdcDevice.firmware,
             status: "已连接" as const,
             lastSeen: hdcDevice.lastSeenAt ?? "-",

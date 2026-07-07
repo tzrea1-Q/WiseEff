@@ -99,7 +99,7 @@ import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
-import { getPageByPath, getXiaozeContextSummary, navigationItems, PageConfig, utilityItems } from "./appConfig";
+import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
 
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
@@ -2160,15 +2160,20 @@ function AppShell({
   const isParameterHome = page.key === "parameter-home";
   const currentRoleId = migrateLegacyRoleId(state.activeRoleId);
   const canAccessCurrentPage = canAccessPage(currentRoleId, page.key);
+  const usesProjectScope = pageUsesProjectScope(page.key);
   const xiaozePageContext = useMemo(
     () => ({
       path,
       pageKey: page.key,
-      projectId: state.activeProjectId,
-      projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name,
+      ...(usesProjectScope
+        ? {
+            projectId: state.activeProjectId,
+            projectName: state.configDraft.projects.find((project) => project.id === state.activeProjectId)?.name
+          }
+        : {}),
       roleId: currentRoleId
     }),
-    [path, page.key, state.activeProjectId, state.configDraft.projects, currentRoleId]
+    [path, page.key, usesProjectScope, state.activeProjectId, state.configDraft.projects, currentRoleId]
   );
   const parameterRepositoryClient = useMemo(
     () => parameterRepository ?? (runtimeMode === "api" ? createHttpParameterRepository() : undefined),
@@ -2618,7 +2623,7 @@ function AppShell({
         <XiaozePageContextRegistrar
           path={path}
           pageKey={page.key}
-          projectId={state.activeProjectId}
+          projectId={usesProjectScope ? state.activeProjectId : undefined}
           roleId={currentRoleId}
           visibleRecords={xiaozeContextSummary ? [{ summary: xiaozeContextSummary }] : undefined}
         />
@@ -3286,13 +3291,7 @@ function TopBar({
     page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
     page.key !== "parameter-home";
-  const showProjectSelector =
-    page.group === "参数管理" &&
-    page.key !== "parameter-home" &&
-    page.key !== "parameter-comparison" &&
-    page.key !== "parameter-review" &&
-    page.key !== "parameter-admin" &&
-    page.key !== "parameter-admin-projects";
+  const showProjectSelector = pageUsesProjectScope(page.key);
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));

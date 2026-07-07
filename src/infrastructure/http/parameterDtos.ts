@@ -103,6 +103,7 @@ export function changeRequestFromDto(dto: ChangeRequestDto): ChangeRequest {
   return {
     ...dto,
     status: changeRequestStatusLabels[dto.status],
+    valueKind: dto.valueKind,
     impact: dto.impact.map((item) => ({
       ...item,
       risk: riskLabels[item.risk]
