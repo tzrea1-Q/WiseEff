@@ -36,7 +36,6 @@ import type { UserGovernanceActions } from "@/UserPermissionsPage";
 import { NoEntryPage } from "@/components/NoEntryPage";
 import type { PageConfig } from "@/appConfig";
 import type { PrototypeState } from "@/mockData";
-import type { HomepageTimeWindow } from "@/parameterHomepageAnalytics";
 import type { ParameterDraftItem, ParameterRecord } from "@/domain/parameters/types";
 
 const NodeDebuggingPageWithRuntimeProps = NodeDebuggingPage as (
@@ -66,7 +65,6 @@ export type PageProps = {
   logActions?: LogRuntimeActions;
   parameterActions?: ParameterPageActions;
   userGovernanceActions?: UserGovernanceActions;
-  parameterHomeTimeWindow?: HomepageTimeWindow;
   runtimeMode?: WiseEffRuntimeMode;
   dashboardState?: DashboardState;
   dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;

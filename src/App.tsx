@@ -109,7 +109,6 @@ import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjec
 function isStaticDownloadPath(pathname: string) {
   return pathname.startsWith("/downloads/");
 }
-import type { HomepageTimeWindow } from "./parameterHomepageAnalytics";
 import { TopBarActionsContext, useTopBarActions } from "./components/layout";
 import { applyTimeWindow, deriveMetrics } from "./logAdminAnalytics";
 import { ColumnFilter } from "./components/ColumnFilter";
@@ -412,12 +411,6 @@ function archivedLogIdsFromHydratedLogs(archivedLogIds: string[], logs: LogRecor
 
   return next;
 }
-
-const homepageTimeWindowOptions: Array<{ value: HomepageTimeWindow; label: string }> = [
-  { value: "7d", label: "7天" },
-  { value: "30d", label: "30天" },
-  { value: "180d", label: "180天" }
-];
 
 type SelectOption<Value extends string = string> = {
   value: Value;
@@ -2151,7 +2144,6 @@ function AppShell({
   const stateRef = useRef(state);
   const [path, setPath] = useState(() => getPageByPath(window.location.pathname).path);
   const [search, setSearch] = useState(() => window.location.search);
-  const [parameterHomeTimeWindow, setParameterHomeTimeWindow] = useState<HomepageTimeWindow>("30d");
   const [topBarActions, setTopBarActions] = useState<ReactNode | null>(null);
   const [projectInitOpen, setProjectInitOpen] = useState(false);
   const [debuggingRuntimeReady, setDebuggingRuntimeReady] = useState(runtimeMode !== "api");
@@ -2587,8 +2579,6 @@ function AppShell({
             search={search}
             onNavigate={navigate}
             pageActions={topBarActions}
-            parameterHomeTimeWindow={parameterHomeTimeWindow}
-            onParameterHomeTimeWindowChange={setParameterHomeTimeWindow}
             onNewProject={() => setProjectInitOpen(true)}
             onLogout={handleLogout}
             onUpdateCurrentUserProfile={handleUpdateCurrentUserProfile}
@@ -2613,7 +2603,6 @@ function AppShell({
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
-                parameterHomeTimeWindow={parameterHomeTimeWindow}
                 dashboardState={dashboardState}
                 dashboardRuntime={dashboardRuntime}
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
@@ -2645,7 +2634,6 @@ function AppShell({
                 userGovernanceActions={userGovernanceActionsClient}
                 runtimeMode={runtimeMode}
                 search={search}
-                parameterHomeTimeWindow={parameterHomeTimeWindow}
                 dashboardState={dashboardState}
                 dashboardRuntime={dashboardRuntime}
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
@@ -3305,8 +3293,6 @@ function TopBar({
   search,
   onNavigate,
   pageActions,
-  parameterHomeTimeWindow,
-  onParameterHomeTimeWindowChange,
   onNewProject,
   onLogout,
   onUpdateCurrentUserProfile,
@@ -3318,8 +3304,6 @@ function TopBar({
   search: string;
   onNavigate: (path: string) => void;
   pageActions?: ReactNode;
-  parameterHomeTimeWindow: HomepageTimeWindow;
-  onParameterHomeTimeWindowChange: (value: HomepageTimeWindow) => void;
   onNewProject: () => void;
   onLogout?: () => Promise<void> | void;
   onUpdateCurrentUserProfile?: (input: UpdateCurrentUserProfileInput) => Promise<void>;
@@ -3366,17 +3350,6 @@ function TopBar({
             ) : null}
             {pageActions}
           </div>
-        ) : null}
-        {page.key === "parameter-home" ? (
-          <label className="topbar-time-window-control">
-            <span>时间范围</span>
-            <SelectControl
-              ariaLabel="时间范围"
-              value={parameterHomeTimeWindow}
-              onValueChange={onParameterHomeTimeWindowChange}
-              options={homepageTimeWindowOptions}
-            />
-          </label>
         ) : null}
         {showProjectSelector ? (
           <SelectControl

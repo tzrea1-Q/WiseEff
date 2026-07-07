@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectRiskBarChart } from "./ProjectRiskBarChart";
-import type { ProjectRiskBucket } from "../parameterHomepageAnalytics";
+import type { ProjectRiskBucket } from "@/domain/parameters/dashboardTypes";
 
 afterEach(() => {
   cleanup();

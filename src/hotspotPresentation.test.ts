@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PrototypeState } from "./mockData";
-import type { HomepageTimeWindow, HotspotScoreBreakdown } from "./parameterHomepageAnalytics";
+import type { DashboardWindow, HotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
 import {
   classifyHotspotArchetype,
   computeEyebrow,
@@ -96,7 +96,7 @@ describe("deriveHotspotTrend", () => {
 
     expect(deriveHotspotTrend(hotspot, "30d")).toEqual(deriveHotspotTrend(hotspot, "30d"));
 
-    for (const win of ["7d", "30d", "180d"] as HomepageTimeWindow[]) {
+    for (const win of ["7d", "30d", "180d"] as DashboardWindow[]) {
       const trend = deriveHotspotTrend(hotspot, win);
 
       expect(trend.delta).toBeGreaterThanOrEqual(-25);
