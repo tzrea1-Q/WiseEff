@@ -17,13 +17,18 @@ const connectedState = () => {
 describe("SessionSummaryCard", () => {
   it("未连接设备时显示设备名 + 未连接状态 + 按钮 disabled", () => {
     const base = createPrototypeState();
+    const disconnectedState = {
+      ...base,
+      devices: base.devices.map((device) => ({ ...device, status: "未连接" as const }))
+    };
     render(
       <SessionSummaryCard
-        state={base}
+        state={disconnectedState}
         now={new Date("2026-05-10T20:05:00.000Z")}
         onRollbackRequest={() => undefined}
       />
     );
+    expect(screen.getByText(/离线/)).toBeInTheDocument();
     expect(screen.getByText(/ChargeLab_X01/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /回滚到上次快照/ })).toBeDisabled();
   });

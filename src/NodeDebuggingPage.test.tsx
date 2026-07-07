@@ -172,7 +172,7 @@ describe("/node-debugging", () => {
     const debuggingActions = createDebuggingActions();
     renderNodeDebuggingPage({ state: userState, debuggingActions });
 
-    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(userState.activeProjectId, { protocol: "hdc" }));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith({ protocol: "hdc" }));
     expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
   });
 
@@ -183,10 +183,7 @@ describe("/node-debugging", () => {
     await screen.findByText(/已连接：API Gateway Target/);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
-    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
-      userState.activeProjectId,
-      { protocol: "adb" }
-    ));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
   });
 
   it("refreshes runtime parameters for the selected protocol when switching protocols", async () => {
@@ -196,10 +193,7 @@ describe("/node-debugging", () => {
     await screen.findByText(/已连接：API Gateway Target/);
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
-    await waitFor(() => expect(debuggingActions.refresh).toHaveBeenCalledWith({
-      projectId: userState.activeProjectId,
-      protocol: "adb"
-    }));
+    await waitFor(() => expect(debuggingActions.refresh).toHaveBeenCalledWith({ protocol: "adb" }));
   });
 
   it("clears the active session and auto-detects when switching protocol", async () => {
@@ -209,10 +203,7 @@ describe("/node-debugging", () => {
     expect(await screen.findByText(/已连接：API Gateway Target/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
 
-    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
-      userState.activeProjectId,
-      { protocol: "adb" }
-    ));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
     expect(debuggingActions.detectAndStartSession).toHaveBeenCalledTimes(2);
     expect(screen.queryByText(/切换协议后需要重新检测设备/)).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByText(/已连接：API Gateway Target/)).toBeInTheDocument());
@@ -323,16 +314,10 @@ describe("/node-debugging", () => {
     });
 
     renderNodeDebuggingPage({ state: userState, debuggingActions });
-    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith(
-      userState.activeProjectId,
-      { protocol: "hdc" }
-    ));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenCalledWith({ protocol: "hdc" }));
 
     fireEvent.click(screen.getByRole("button", { name: "ADB" }));
-    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith(
-      userState.activeProjectId,
-      { protocol: "adb" }
-    ));
+    await waitFor(() => expect(debuggingActions.detectAndStartSession).toHaveBeenLastCalledWith({ protocol: "adb" }));
 
     await act(async () => {
       hdcDetect.resolve({ session: apiSession, target: apiTarget });
@@ -935,14 +920,11 @@ describe("/node-debugging", () => {
     const selectTargetButton = within(picker).getByRole("button", { name: "连接 MacBook · serial-123" });
     fireEvent.click(selectTargetButton);
 
-    await waitFor(() => expect(detectAndStartSession).toHaveBeenLastCalledWith(
-      userState.activeProjectId,
-      {
-        protocol: "adb",
-        targetId: "bridge:br-1:adb:serial-123",
-        bridgeId: "br-1"
-      }
-    ));
+    await waitFor(() => expect(detectAndStartSession).toHaveBeenLastCalledWith({
+      protocol: "adb",
+      targetId: "bridge:br-1:adb:serial-123",
+      bridgeId: "br-1"
+    }));
     expect(await screen.findByText(/已连接：MacBook · serial-123/)).toBeInTheDocument();
   });
 

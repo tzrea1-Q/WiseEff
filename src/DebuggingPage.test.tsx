@@ -442,7 +442,11 @@ describe("离线提示条", () => {
 
 describe("SessionSummaryCard 集成", () => {
   it("未连接默认设备时按钮 disabled 且提示连接设备", () => {
-    renderDebuggingPage();
+    const disconnectedState = {
+      ...userState,
+      devices: userState.devices.map((device) => ({ ...device, status: "未连接" as const }))
+    };
+    renderDebuggingPage({ state: disconnectedState });
     const button = screen.getByRole("button", { name: /回滚到上次快照/ });
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("title", expect.stringMatching(/连接/));

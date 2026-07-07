@@ -136,12 +136,11 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(within(table).getByText(/thermal_snapshot\.bin/)).toBeInTheDocument();
   });
 
-  it("keeps header filters only on project, source module, and status", async () => {
+  it("keeps header filters only on source module and status", async () => {
     renderPage();
 
     const table = screen.getByRole("table", { name: "日志分析记录" });
     const checks: Array<[string, string, string]> = [
-      ["项目", "筛选项目", "Aurora 量产平台"],
       ["来源模块", "筛选来源模块", "Battery Thermal"],
       ["状态", "筛选状态", "失败"]
     ];
@@ -157,10 +156,11 @@ describe("LogAdminPage M3 skeleton", () => {
     expect(screen.queryByRole("button", { name: "筛选文件名" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选分析阶段" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "筛选置信度" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "筛选项目" })).not.toBeInTheDocument();
 
-    const projectHeader = within(table).getByRole("columnheader", { name: /项目/ });
-    await userEvent.click(within(projectHeader).getByRole("button", { name: "筛选项目" }));
-    await userEvent.click(within(projectHeader).getByRole("checkbox", { name: "Aurora 量产平台" }));
+    const sourceHeader = within(table).getByRole("columnheader", { name: /来源模块/ });
+    await userEvent.click(within(sourceHeader).getByRole("button", { name: "筛选来源模块" }));
+    await userEvent.click(within(sourceHeader).getByRole("checkbox", { name: "Battery Thermal" }));
 
     expect(within(table).getByText(/charging_thermal_trace_20260504\.log/)).toBeInTheDocument();
     expect(within(table).queryByText(/thermal_snapshot\.bin/)).not.toBeInTheDocument();
