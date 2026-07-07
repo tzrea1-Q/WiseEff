@@ -41,7 +41,6 @@ type DebugSnapshotDto = {
 };
 
 type HdcSmokeConfig = {
-  projectId: string;
   deviceId: string;
   targetRef: string;
   parameterId: string;
@@ -79,7 +78,7 @@ type HdcSmokeEnv = Partial<Record<
   string
 >>;
 
-type MinimalHdcSmokeConfig = Pick<HdcSmokeConfig, "projectId" | "deviceId" | "targetRef" | "parameterId" | "nodePath">;
+type MinimalHdcSmokeConfig = Pick<HdcSmokeConfig, "deviceId" | "targetRef" | "parameterId" | "nodePath">;
 type HdcSmokeQueryClient = Pick<Client, "query">;
 
 const acceptanceOrganizationId = "org-chargelab";
@@ -111,13 +110,12 @@ test.describe("HDC device-lab preflight validation", () => {
 
     await expect(
       prepareHdcSmokeCatalogConfig(client, {
-        projectId: "aurora",
         targetRef: "target-one",
         nodePath: "/data/local/tmp/wiseeff_hdc_smoke_node"
       })
     ).resolves.toMatchObject({
-      projectId: "aurora",
       deviceId: "hdc-device-lab-aurora",
+      targetRef: "target-one",
       parameterId: "hdc-smoke-temp-node",
       nodePath: "/data/local/tmp/wiseeff_hdc_smoke_node"
     });
@@ -136,22 +134,20 @@ test.describe("HDC device-lab preflight validation", () => {
     } as unknown as Client;
 
     await prepareHdcSmokeCatalogConfig(client, {
-      projectId: "aurora",
       targetRef: "target-one",
       nodePath: "/data/local/tmp/wiseeff_hdc_smoke_node"
     });
 
     const safetyUpdate = calls.find((call) => call.text.includes("update debugging_parameter_node_bindings"));
     expect(safetyUpdate?.text).toContain("protocol = 'hdc'");
-    expect(safetyUpdate?.text).toContain("parameter_id <> $3");
-    expect(safetyUpdate?.values).toEqual([acceptanceOrganizationId, "aurora", defaultHdcSmokeParameterId]);
+    expect(safetyUpdate?.text).toContain("parameter_id <> $2");
+    expect(safetyUpdate?.values).toEqual([acceptanceOrganizationId, defaultHdcSmokeParameterId]);
   });
 
   test("requires explicit write and rollback confirmations before writing HDC hardware", () => {
     expect(() =>
       finalizeHdcSmokeConfig(
         {
-          projectId: "aurora",
           deviceId: "hdc-device-lab-aurora",
           targetRef: "target-one",
           parameterId: "hdc-smoke-temp-node",
@@ -297,7 +293,7 @@ function finalizeHdcSmokeConfig(config: MinimalHdcSmokeConfig, env: HdcSmokeEnv 
 
 async function prepareHdcSmokeCatalogConfig(
   client: HdcSmokeQueryClient,
-  input: { projectId: string; targetRef: string; nodePath: string }
+  input: { targetRef: string; nodePath: string }
 ): Promise<MinimalHdcSmokeConfig> {
   await client.query(
     `
@@ -306,11 +302,10 @@ async function prepareHdcSmokeCatalogConfig(
       notes = 'Disabled by HDC device-lab safety setup; only the lab temporary node remains enabled for real hardware evidence.',
       updated_at = now()
     where organization_id = $1
-      and project_id = $2
-      and parameter_id <> $3
+      and parameter_id <> $2
       and protocol = 'hdc'
     `,
-    [acceptanceOrganizationId, input.projectId, defaultHdcSmokeParameterId]
+    [acceptanceOrganizationId, defaultHdcSmokeParameterId]
   );
 
   await client.query(
@@ -318,7 +313,6 @@ async function prepareHdcSmokeCatalogConfig(
     insert into debugging_devices (
       id,
       organization_id,
-      project_id,
       name,
       transport,
       status,
@@ -327,10 +321,9 @@ async function prepareHdcSmokeCatalogConfig(
       metadata,
       updated_at
     )
-    values ($1, $2, $3, $4, 'hdc', 'online', $5, now(), $6::jsonb, now())
+    values ($1, $2, $3, 'hdc', 'online', $4, now(), $5::jsonb, now())
     on conflict (id) do update set
       organization_id = excluded.organization_id,
-      project_id = excluded.project_id,
       name = excluded.name,
       transport = excluded.transport,
       status = excluded.status,
@@ -342,7 +335,6 @@ async function prepareHdcSmokeCatalogConfig(
     [
       defaultHdcSmokeDeviceId,
       acceptanceOrganizationId,
-      input.projectId,
       "HDC Device Lab Target",
       "hdc-lab",
       JSON.stringify({ labOnly: true, targetRefShape: identifierShape(input.targetRef) })
@@ -354,7 +346,6 @@ async function prepareHdcSmokeCatalogConfig(
     insert into debugging_parameters (
       id,
       organization_id,
-      project_id,
       name,
       key,
       description,
@@ -371,9 +362,8 @@ async function prepareHdcSmokeCatalogConfig(
       sort_order,
       updated_at
     )
-    values ($1, $2, $3, $4, $5, $6, $7, $8, 'RW', '', 'lab string', null, null, 'High', $9, $9, 5, now())
-    on conflict (project_id, key) do update set
-      organization_id = excluded.organization_id,
+    values ($1, $2, $3, $4, $5, $6, $7, 'RW', '', 'lab string', null, null, 'High', $8, $8, 5, now())
+    on conflict (organization_id, key) do update set
       name = excluded.name,
       description = excluded.description,
       module = excluded.module,
@@ -392,7 +382,6 @@ async function prepareHdcSmokeCatalogConfig(
     [
       defaultHdcSmokeParameterId,
       acceptanceOrganizationId,
-      input.projectId,
       "HDC smoke temporary node",
       "hdc_smoke_temp_node",
       "Lab-only temporary file node used for HDC full-chain acceptance.",
@@ -407,7 +396,6 @@ async function prepareHdcSmokeCatalogConfig(
     insert into debugging_parameter_node_bindings (
       id,
       organization_id,
-      project_id,
       parameter_id,
       protocol,
       node_path,
@@ -417,9 +405,8 @@ async function prepareHdcSmokeCatalogConfig(
       metadata,
       updated_at
     )
-    values ($1, $2, $3, $4, 'hdc', $5, 'RW', true, $6, $7::jsonb, now())
+    values ($1, $2, $3, 'hdc', $4, 'RW', true, $5, $6::jsonb, now())
     on conflict (parameter_id, protocol) do update set
-      project_id = excluded.project_id,
       node_path = excluded.node_path,
       access_mode = excluded.access_mode,
       enabled = excluded.enabled,
@@ -430,7 +417,6 @@ async function prepareHdcSmokeCatalogConfig(
     [
       `${defaultHdcSmokeParameterId}:hdc`,
       acceptanceOrganizationId,
-      input.projectId,
       defaultHdcSmokeParameterId,
       input.nodePath,
       "Lab-only HDC smoke binding. Do not point this at customer or production device nodes.",
@@ -439,7 +425,6 @@ async function prepareHdcSmokeCatalogConfig(
   );
 
   return {
-    projectId: input.projectId,
     deviceId: defaultHdcSmokeDeviceId,
     targetRef: input.targetRef,
     parameterId: defaultHdcSmokeParameterId,
@@ -504,18 +489,18 @@ async function seedM3DebuggingPermissions(client: Client) {
   );
 }
 
-async function cleanupDebuggingAcceptanceState(client: Client, projectId: string) {
-  await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
-  await client.query("delete from debugging_events where project_id = $1", [projectId]);
-  await client.query("update node_operations set snapshot_id = null where project_id = $1", [projectId]);
-  await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
-  await client.query("delete from node_operations where project_id = $1", [projectId]);
-  await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
-  await client.query("delete from debug_device_leases where project_id = $1", [projectId]);
-  await client.query("delete from debugging_sessions where project_id = $1", [projectId]);
+async function cleanupDebuggingAcceptanceState(client: Client) {
+  await client.query("delete from audit_events where app = 'debugging' and organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("delete from debugging_events where organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("update node_operations set snapshot_id = null where organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("update debugging_snapshots set operation_id = null where organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("delete from node_operations where organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("delete from debugging_snapshots where organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("delete from debug_device_leases where organization_id = $1", [acceptanceOrganizationId]);
+  await client.query("delete from debugging_sessions where organization_id = $1", [acceptanceOrganizationId]);
 }
 
-async function prepareHdcAcceptanceState(projectId: string) {
+async function prepareHdcAcceptanceState() {
   runSeedScript("db:migrate");
   runSeedScript("db:seed:m0");
   runSeedScript("db:seed:m1");
@@ -523,22 +508,13 @@ async function prepareHdcAcceptanceState(projectId: string) {
 
   await withPgClient(async (client) => {
     await seedM3DebuggingPermissions(client);
-    await cleanupDebuggingAcceptanceState(client, projectId);
+    await cleanupDebuggingAcceptanceState(client);
   });
 }
 
-function requireHdcSmokeProjectId(env: NodeJS.ProcessEnv = process.env) {
-  const projectId = env.HDC_SMOKE_PROJECT_ID?.trim() || "aurora";
-  if (!projectId) {
-    throw new Error("HDC device-lab acceptance requires HDC_SMOKE_PROJECT_ID as the operation project context.");
-  }
-  return projectId;
-}
-
-async function resolveHdcSmokeConfig(input: { projectId: string; targetRef: string }): Promise<HdcSmokeConfig> {
+async function resolveHdcSmokeConfig(input: { targetRef: string }): Promise<HdcSmokeConfig> {
   return withPgClient(async (client) => {
     const minimalConfig = await prepareHdcSmokeCatalogConfig(client, {
-      projectId: input.projectId,
       targetRef: input.targetRef,
       nodePath: process.env.HDC_SMOKE_NODE_PATH?.trim() || defaultHdcSmokeNodePath
     });
@@ -679,8 +655,8 @@ function summarizeAudit(events: AuditEventDto[], kind: string, targetId: string 
   };
 }
 
-async function getAuditEvents(request: APIRequestContext, userId: string, projectId: string) {
-  const auditPath = `/api/v1/audit-events?app=debugging&projectId=${encodeURIComponent(projectId)}&limit=100`;
+async function getAuditEvents(request: APIRequestContext, userId: string) {
+  const auditPath = "/api/v1/audit-events?app=debugging&limit=100";
   const response = await request.get(apiRoute(auditPath), {
     headers: {
       ...smokeHeaders(),
@@ -702,7 +678,7 @@ async function getAuditEvents(request: APIRequestContext, userId: string, projec
 }
 
 async function expectHdcUiReady(page: Page, config: HdcSmokeConfig) {
-  await page.goto(`/node-debugging?project=${encodeURIComponent(config.projectId)}`);
+  await page.goto("/node-debugging");
   const hdcButton = page.getByRole("button", { name: "HDC", exact: true });
   await expect(hdcButton).toBeVisible({ timeout: 30_000 });
   await expect(hdcButton).toHaveAttribute("aria-pressed", "true");
@@ -764,7 +740,7 @@ async function postJson<T>(
 }
 
 async function latestWriteOperationFromAudit(request: APIRequestContext, config: HdcSmokeConfig) {
-  const audit = await getAuditEvents(request, config.userId, config.projectId);
+  const audit = await getAuditEvents(request, config.userId);
   const event = audit.events.find((item) =>
     item.kind === "debug-node-write" &&
     item.targetId === config.parameterId &&
@@ -806,10 +782,9 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
       "HDC device-lab acceptance is skipped unless real hardware is available and approved for writes."
     );
 
-    const projectId = requireHdcSmokeProjectId();
     const targetRef = requireSingleReadyHdcTarget();
-    await prepareHdcAcceptanceState(projectId);
-    const config = await resolveHdcSmokeConfig({ projectId, targetRef });
+    await prepareHdcAcceptanceState();
+    const config = await resolveHdcSmokeConfig({ targetRef });
     prepareHdcSmokeNode(config.targetRef, config);
 
     const apiSummaries: OperationEvidenceApiSummary[] = [];
@@ -829,7 +804,7 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
     const detected = await postJson<{ items: DebugTargetDto[] }>(
       request,
       "/api/v1/debugging/targets/detect",
-      { projectId: config.projectId, deviceId: config.deviceId, protocol: "hdc" },
+      { deviceId: config.deviceId, protocol: "hdc" },
       config.userId,
       (body) => `targets=${body.items.length}; detectedTargetRef=${identifierShape(body.items[0]?.targetRef)}`
     );
@@ -844,7 +819,7 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
     const sessionResponse = await postJson<{ item: DebugSessionDto }>(
       request,
       "/api/v1/debugging/sessions",
-      { projectId: config.projectId, deviceId: config.deviceId, targetId: target!.id, protocol: "hdc" },
+      { deviceId: config.deviceId, targetId: target!.id, protocol: "hdc" },
       config.userId,
       (body) => `session=${identifierShape(body.item.id)}; protocol=${body.item.protocol ?? "unset"}`
     );
@@ -917,7 +892,7 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
       `HDC final read mismatch; original ${stringValueShape(config.originalValue)} and final ${stringValueShape(restoredReadResponse.body.operation.readValue)}.`
     ).toBe(true);
 
-    const finalAudit = await getAuditEvents(request, config.userId, config.projectId);
+    const finalAudit = await getAuditEvents(request, config.userId);
     apiSummaries.push(finalAudit.summary);
     const auditSummaries = [
       summarizeAudit(finalAudit.events, "debug-target-detect", config.deviceId),
@@ -945,7 +920,6 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
         envSummary: {
           DEBUG_DEVICE_GATEWAY_MODE: process.env.DEBUG_DEVICE_GATEWAY_MODE?.trim() || "unset",
           HDC_DEVICE_LAB_AVAILABLE: process.env.HDC_DEVICE_LAB_AVAILABLE?.trim() || "unset",
-          HDC_SMOKE_PROJECT_ID: process.env.HDC_SMOKE_PROJECT_ID?.trim() ? identifierShape(config.projectId) : "default",
           HDC_SMOKE_DEVICE_ID: process.env.HDC_SMOKE_DEVICE_ID?.trim() ? "override-validated" : "auto-lab",
           HDC_SMOKE_TARGET_REF: process.env.HDC_SMOKE_TARGET_REF?.trim() ? "override-validated" : "auto",
           HDC_SMOKE_PARAMETER_ID: process.env.HDC_SMOKE_PARAMETER_ID?.trim() ? "override-validated" : "auto-lab",
@@ -960,12 +934,12 @@ test.describe("M5.4 manual flow F - HDC device-lab loop", () => {
         steps: [
           "Connect exactly one HDC target to the machine running the WiseEff API.",
           "Set DEBUG_DEVICE_GATEWAY_MODE=hdc, HDC_DEVICE_LAB_AVAILABLE=true, HDC_SMOKE_CONFIRM_WRITE=confirm-high-risk-write, and HDC_SMOKE_CONFIRM_ROLLBACK=confirm-rollback.",
-          "Optionally set HDC_SMOKE_PROJECT_ID, HDC_SMOKE_NODE_PATH, HDC_SMOKE_WRITE_VALUE, and validation overrides.",
+          "Optionally set HDC_SMOKE_NODE_PATH, HDC_SMOKE_WRITE_VALUE, and validation overrides.",
           "Run npm run acceptance:e2e -- e2e/acceptance/hdc-device-lab.acceptance.spec.ts."
         ]
       },
       notes: [
-        `Browser route=/node-debugging?project=${identifierShape(config.projectId)}; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
+        `Browser route=/node-debugging; viewport=${viewport ? `${viewport.width}x${viewport.height}` : "unknown"}.`,
         `Frontend selected the default HDC protocol, detected ${identifierShape(config.targetRef)}, read the lab-only temporary node, wrote an approved value through the UI, and verified readback.`,
         `Read evidence for configured parameter ${identifierShape(config.parameterId)}: ${readEvidence}.`,
         `Write evidence for configured parameter ${identifierShape(config.parameterId)}: ${writeEvidence({

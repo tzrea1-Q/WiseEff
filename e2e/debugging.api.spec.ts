@@ -5,7 +5,7 @@ import { WebSocket } from "ws";
 import { apiRoute, smokeHeaders } from "./acceptance/helpers/runtime";
 
 const databaseUrl = process.env.DATABASE_URL;
-const projectId = "aurora";
+const organizationId = "org-chargelab";
 
 const fastChargeParameterId = "dbg-fast-charge-current";
 const cycleCountParameterId = "dbg-cycle-count";
@@ -53,7 +53,6 @@ type DeviceBridgePairingResultDto = {
 };
 
 type HdcSmokeConfig = {
-  projectId: string;
   deviceId: string;
   targetRef: string;
   parameterId: string;
@@ -137,14 +136,14 @@ async function seedM3DebuggingPermissions(client: Client) {
 }
 
 async function cleanupM3E2EState(client: Client) {
-  await client.query("delete from audit_events where app = 'debugging' and project_id = $1", [projectId]);
-  await client.query("delete from debugging_events where project_id = $1", [projectId]);
-  await client.query("update node_operations set snapshot_id = null where project_id = $1", [projectId]);
-  await client.query("update debugging_snapshots set operation_id = null where project_id = $1", [projectId]);
-  await client.query("delete from node_operations where project_id = $1", [projectId]);
-  await client.query("delete from debugging_snapshots where project_id = $1", [projectId]);
-  await client.query("delete from debug_device_leases where project_id = $1", [projectId]);
-  await client.query("delete from debugging_sessions where project_id = $1", [projectId]);
+  await client.query("delete from audit_events where app = 'debugging' and organization_id = $1", [organizationId]);
+  await client.query("delete from debugging_events where organization_id = $1", [organizationId]);
+  await client.query("update node_operations set snapshot_id = null where organization_id = $1", [organizationId]);
+  await client.query("update debugging_snapshots set operation_id = null where organization_id = $1", [organizationId]);
+  await client.query("delete from node_operations where organization_id = $1", [organizationId]);
+  await client.query("delete from debugging_snapshots where organization_id = $1", [organizationId]);
+  await client.query("delete from debug_device_leases where organization_id = $1", [organizationId]);
+  await client.query("delete from debugging_sessions where organization_id = $1", [organizationId]);
 }
 
 
@@ -225,7 +224,6 @@ async function prepareDebuggingApiSmokeState() {
 
 function requireHdcSmokeConfig(): HdcSmokeConfig {
   const required = [
-    "HDC_SMOKE_PROJECT_ID",
     "HDC_SMOKE_DEVICE_ID",
     "HDC_SMOKE_TARGET_REF",
     "HDC_SMOKE_PARAMETER_ID",
@@ -238,13 +236,12 @@ function requireHdcSmokeConfig(): HdcSmokeConfig {
     throw new Error(
       [
         `HDC device-lab smoke requires ${missing.join(", ")} when DEBUG_DEVICE_GATEWAY_MODE=hdc and HDC_DEVICE_LAB_AVAILABLE=true.`,
-        "Set HDC_SMOKE_PROJECT_ID, HDC_SMOKE_DEVICE_ID, HDC_SMOKE_TARGET_REF, HDC_SMOKE_PARAMETER_ID, HDC_SMOKE_NODE_PATH, and HDC_SMOKE_WRITE_VALUE to a real lab target/parameter before running this smoke. The smoke restores the node through the snapshot rollback API created by the write."
+        "Set HDC_SMOKE_DEVICE_ID, HDC_SMOKE_TARGET_REF, HDC_SMOKE_PARAMETER_ID, HDC_SMOKE_NODE_PATH, and HDC_SMOKE_WRITE_VALUE to a real lab target/parameter before running this smoke. The smoke restores the node through the snapshot rollback API created by the write."
       ].join(" ")
     );
   }
 
   return {
-    projectId: process.env.HDC_SMOKE_PROJECT_ID!.trim(),
     deviceId: process.env.HDC_SMOKE_DEVICE_ID!.trim(),
     targetRef: process.env.HDC_SMOKE_TARGET_REF!.trim(),
     parameterId: process.env.HDC_SMOKE_PARAMETER_ID!.trim(),
@@ -421,7 +418,7 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
     "The full UI smoke is simulator-backed by default. Run HDC device-lab acceptance separately with real hardware."
   );
 
-  await page.goto(`/node-debugging?project=${projectId}`);
+  await page.goto("/node-debugging");
 
   const devicePill = page.locator(".topbar .device-pill");
   await expect(devicePill).toBeVisible({ timeout: 30_000 });
@@ -466,7 +463,7 @@ test("M3 simulator debugging read, write, mismatch, rollback, and audit loop", a
     await rollbackSnapshotViaApi(page, fastChargeSnapshotId);
   }
 
-  await page.goto(`/node-debugging?project=${projectId}`);
+  await page.goto("/node-debugging");
   const devicePillAfterRollback = page.locator(".topbar .device-pill");
   await expect(devicePillAfterRollback).toBeVisible({ timeout: 30_000 });
   const rollbackDeviceStatus = ((await devicePillAfterRollback.textContent()) ?? "").trim();
@@ -518,7 +515,7 @@ test("HDC device-lab smoke detects target, reads, writes, verifies read-back, an
   const detected = await postJson<{ items: DebugTargetDto[] }>(
     page,
     "/api/v1/debugging/targets/detect",
-    { projectId: config.projectId, deviceId: config.deviceId },
+    { deviceId: config.deviceId },
     config.userId
   );
   const target = detected.items.find((item) => item.targetRef === config.targetRef);
@@ -530,7 +527,7 @@ test("HDC device-lab smoke detects target, reads, writes, verifies read-back, an
   const sessionResponse = await postJson<{ item: DebugSessionDto }>(
     page,
     "/api/v1/debugging/sessions",
-    { projectId: config.projectId, deviceId: config.deviceId, targetId: target!.id },
+    { deviceId: config.deviceId, targetId: target!.id },
     config.userId
   );
 
@@ -620,7 +617,7 @@ test("bridge-backed detect and session write enforce execution mode and governed
     const detected = await postJson<{ items: DebugTargetDto[] }>(
       page,
       "/api/v1/debugging/targets/detect",
-      { projectId, protocol: "hdc", bridgeId: bridgePair.bridgeId },
+      { protocol: "hdc", bridgeId: bridgePair.bridgeId },
       userId
     );
     const bridgeTarget = detected.items.find((item) => item.id.startsWith("bridge:"));
@@ -632,7 +629,6 @@ test("bridge-backed detect and session write enforce execution mode and governed
       page,
       "/api/v1/debugging/sessions",
       {
-        projectId,
         deviceId: `bridge:${bridgePair.bridgeId}`,
         targetId: bridgeTarget!.id,
         bridgeId: bridgePair.bridgeId,

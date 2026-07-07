@@ -9,7 +9,7 @@ import { recordOperationEvidence, summarizeApiResponse } from "./helpers/operati
 
 useBrowserDiagnostics(test);
 
-const projectId = "aurora";
+const organizationId = "org-chargelab";
 const analysisQuestion = "Why did fast charging fold back?";
 const supportedFixture = path.resolve("test-fixtures/logs/charging-foldback.log");
 const unsupportedFixture = path.resolve("test-fixtures/logs/unsupported.bin");
@@ -51,13 +51,13 @@ async function cleanupAcceptanceLogs() {
       `
       select id, file_object_id
       from log_records
-      where project_id = $1
+      where organization_id = $1
         and (
           analysis_question = $2
           or file_name in ($3, $4)
         )
       `,
-      [projectId, analysisQuestion, supportedFileName, unsupportedFileName]
+      [organizationId, analysisQuestion, supportedFileName, unsupportedFileName]
     );
     const logIds = logs.rows.map((row) => row.id);
     const fileObjectIds = logs.rows.map((row) => row.file_object_id);
@@ -131,7 +131,7 @@ async function seedLogAdminUser() {
 
 async function latestLogByFile(page: Page, fileName: string) {
   const response = await page.request.get(
-    apiRoute(`/api/v1/logs?projectId=${projectId}&includeArchived=true`),
+    apiRoute("/api/v1/logs?includeArchived=true"),
     { headers: smokeHeaders() }
   );
   expect(response.ok()).toBe(true);
@@ -244,7 +244,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
   test("uploads, completes, links evidence, audits feedback, archives, and records unsupported upload failure", async ({ page }, testInfo) => {
     // @acceptance LOG-HAPPY-001
     // @operation LOG-HAPPY-001
-    await page.goto(`/logs?project=${projectId}`);
+    await page.goto("/logs");
 
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
 
@@ -294,10 +294,10 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       .poll(async () => (await latestLogByFile(page, supportedFileName)).archiveState)
       .toBe("archived");
 
-    await page.goto(`/logs?project=${projectId}`);
+    await page.goto("/logs");
     await page.reload();
     await expect(historyItem(page, supportedFileName)).toHaveCount(0);
-    const activeLogs = await page.request.get(apiRoute(`/api/v1/logs?projectId=${projectId}`), { headers: smokeHeaders() });
+    const activeLogs = await page.request.get(apiRoute("/api/v1/logs"), { headers: smokeHeaders() });
     const activeBody = (await activeLogs.json()) as { items: Array<{ fileName: string }> };
     expect(activeBody.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ fileName: supportedFileName })]));
 
@@ -331,7 +331,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
         }),
         summarizeApiResponse(activeLogs, {
           method: "GET",
-          path: `/api/v1/logs?projectId=${projectId}`,
+          path: "/api/v1/logs",
           responseSummary: `active logs=${activeBody.items.length}; archived log hidden`
         }),
         summarizeApiResponse(auditResponse, {
@@ -354,7 +354,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
     // @operation LOG-REANALYZE-001
     await cleanupAcceptanceLogs();
 
-    await page.goto(`/logs?project=${projectId}`);
+    await page.goto("/logs");
     await uploadLogThroughUi(page, supportedFixture, analysisQuestion);
     const completedLog = await latestLogByFile(page, supportedFileName);
     await expect
@@ -395,7 +395,7 @@ test.describe("M5.4 manual flow D - log analysis browser acceptance", () => {
       }, { timeout: 70_000 })
       .toBe("complete");
 
-    await page.goto(`/logs?project=${projectId}`);
+    await page.goto("/logs");
     await expect(historyItem(page, supportedFileName)).toBeVisible();
     await historyItem(page, supportedFileName).click();
     await expect(page.locator("#log-conclusion-title")).toContainText(/AI 正在分析|thermal|foldback/i, { timeout: 30_000 });

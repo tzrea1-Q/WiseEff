@@ -42,7 +42,6 @@ type ReleaseManifestDto = {
   items: Array<{ platform: string; arch: string; downloadUrl: string }>;
 };
 
-const projectId = "aurora";
 const userId = process.env.DEVICE_BRIDGE_LAB_USER_ID?.trim() || "u-xu-yun";
 const parameterId = process.env.DEVICE_BRIDGE_LAB_PARAMETER_ID?.trim() || "dbg-fast-charge-current";
 const readNodePath =
@@ -194,7 +193,7 @@ test.describe("local device bridge conditional acceptance", () => {
     }
 
     const apiSummaries: OperationEvidenceApiSummary[] = [];
-    await page.goto(`/node-debugging?project=${projectId}`);
+    await page.goto("/node-debugging");
     await expect(page.locator("body")).toBeVisible();
     await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
     await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
@@ -247,7 +246,7 @@ test.describe("local device bridge conditional acceptance", () => {
       const detectResponse = await postJson<{ items: DebugTargetDto[] }>(
         request,
         "/api/v1/debugging/targets/detect",
-        { projectId, protocol: "hdc" },
+        { protocol: "hdc" },
         (body) => `targets=${body.items.length}`
       );
       apiSummaries.push(detectResponse.summary);
@@ -259,7 +258,6 @@ test.describe("local device bridge conditional acceptance", () => {
         request,
         "/api/v1/debugging/sessions",
         {
-          projectId,
           deviceId: `bridge:${paired.bridgeId}`,
           targetId: bridgeTarget!.id,
           bridgeId: paired.bridgeId,
@@ -351,7 +349,7 @@ test.describe("local device bridge conditional acceptance", () => {
       throw new Error("DEVICE_BRIDGE_SERVER_URL is required when DEVICE_BRIDGE_HDC_AVAILABLE=true.");
     }
 
-    await page.goto(`/node-debugging?project=${projectId}`);
+    await page.goto("/node-debugging");
     await expect(page.locator("body")).toBeVisible();
     await expect(page.getByText("安装 Bridge", { exact: false })).toBeVisible();
     await expect(page.getByText("图形安装包（推荐）")).toBeVisible();
@@ -360,7 +358,7 @@ test.describe("local device bridge conditional acceptance", () => {
     const detectResponse = await postJson<{ items: DebugTargetDto[] }>(
       request,
       "/api/v1/debugging/targets/detect",
-      { projectId, protocol: "hdc" },
+      { protocol: "hdc" },
       (body) => `targets=${body.items.length}`
     );
     const bridgeTarget = detectResponse.body.items.find((item) => item.id.startsWith("bridge:"));
