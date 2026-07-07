@@ -75,6 +75,63 @@ describe("createPerceptionTools", () => {
     expect(parameter?.recommended_value).toBe("35");
     expect(result.citations[0]?.snippet).toContain("电池快充");
   });
+
+  it("getNodeSnapshot queries by organization only", async () => {
+    let capturedSql = "";
+    let capturedValues: unknown[] = [];
+    const nodeDb = {
+      query: async <Row,>(text: string, values?: unknown[]) => {
+        capturedSql = text;
+        capturedValues = values ?? [];
+        return {
+          rows: [
+            {
+              id: "dp-1",
+              name: "battery_temp",
+              current_value: "38",
+              target_value: "35",
+              node_path: "battery/temp",
+              protocol: "adb"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+    };
+    const tool = createPerceptionTools({ db: nodeDb }).find((t) => t.name === "perception.getNodeSnapshot")!;
+    const result = await tool.run(adminContext as any, { projectId: "p1" });
+    expect(capturedSql).not.toContain("project_id");
+    expect(capturedValues).toEqual(["org1"]);
+    expect((result.data as { nodes?: unknown[] }).nodes).toHaveLength(1);
+  });
+
+  it("getRecentLogConclusions queries by organization only", async () => {
+    let capturedSql = "";
+    let capturedValues: unknown[] = [];
+    const logDb = {
+      query: async <Row,>(text: string, values?: unknown[]) => {
+        capturedSql = text;
+        capturedValues = values ?? [];
+        return {
+          rows: [
+            {
+              id: "log-1",
+              status: "Failed",
+              severity: "high",
+              conclusion: "thermal throttling detected"
+            }
+          ] as Row[],
+          rowCount: 1
+        };
+      }
+    };
+    const tool = createPerceptionTools({ db: logDb }).find((t) => t.name === "perception.getRecentLogConclusions")!;
+    const result = await tool.run(adminContext as any, {});
+    expect(capturedSql).not.toContain("project_id");
+    expect(capturedValues).toEqual(["org1"]);
+    expect(result.summary).toContain("thermal throttling detected");
+    expect(result.citations[0]?.type).toBe("log");
+  });
 });
 
 describe("perception authz boundary", () => {

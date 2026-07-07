@@ -27,7 +27,6 @@ type ParameterSearchRow = {
 type NodeSnapshotRow = {
   id: string;
   name: string;
-  project_id: string | null;
   current_value: string | null;
   target_value: string | null;
   node_path: string | null;
@@ -36,7 +35,6 @@ type NodeSnapshotRow = {
 
 type LogConclusionRow = {
   id: string;
-  project_id: string | null;
   status: string;
   severity: string;
   conclusion: string | null;
@@ -146,13 +144,11 @@ limit 20
       kind: "read",
       permission: "debugging:view",
       requiresApproval: false,
-      run: async (context, payload) => {
-        const projectId = readProjectId(context.projectId, payload);
+      run: async (context, _payload) => {
         const { rows } = await options.db.query<NodeSnapshotRow>(
           `
 select p.id,
        p.name,
-       p.project_id,
        p.current_value,
        p.target_value,
        b.node_path,
@@ -163,13 +159,12 @@ left join debugging_parameter_node_bindings b
  and b.organization_id = p.organization_id
  and b.enabled = true
 where p.organization_id = $1
-  and ($2::text is null or p.project_id is null or p.project_id = $2)
   and p.enabled = true
   and p.archived_at is null
 order by p.sort_order asc, p.name asc
 limit 20
           `,
-          [context.auth.organization.id, projectId ?? null]
+          [context.auth.organization.id]
         );
         return {
           summary: `Node snapshot: ${rows.length} debugging parameters with bindings.`,
@@ -190,23 +185,20 @@ limit 20
       kind: "read",
       permission: "logs:view",
       requiresApproval: false,
-      run: async (context, payload) => {
-        const projectId = readProjectId(context.projectId, payload);
+      run: async (context, _payload) => {
         const { rows } = await options.db.query<LogConclusionRow>(
           `
 select lr.id,
-       lr.project_id,
        lr.status,
        coalesce(report.severity, 'unknown') as severity,
        coalesce(report.conclusion, lr.failure_reason) as conclusion
 from log_records lr
 left join log_analysis_reports report on report.run_id = lr.current_run_id
 where lr.organization_id = $1
-  and ($2::text is null or lr.project_id = $2)
 order by lr.captured_at desc
 limit 10
           `,
-          [context.auth.organization.id, projectId ?? null]
+          [context.auth.organization.id]
         );
         const primary = rows[0];
         return {
