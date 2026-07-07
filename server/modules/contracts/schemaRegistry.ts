@@ -217,6 +217,18 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
     requestBody: "ApplyParameterImportBatchRequest",
     responseBody: "ParameterImportBatchResponse"
   },
+  "parameters-dashboard-summary": {
+    summary: "Parameter dashboard summary",
+    tags: ["parameters"],
+    responseBody: "ParameterDashboardSummaryResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
+  "parameters-dashboard-hotspots": {
+    summary: "Parameter dashboard hotspots",
+    tags: ["parameters"],
+    responseBody: "ParameterDashboardHotspotsResponse",
+    additionalResponses: { "403": "ErrorResponse" }
+  },
 
   "logs.uploadFile": {
     summary: "Upload log file",

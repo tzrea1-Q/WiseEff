@@ -144,6 +144,20 @@ export const routeManifest = [
     module: "parameters",
     stability: "mvp"
   },
+  {
+    id: "parameters-dashboard-summary",
+    method: "GET",
+    path: "/api/v1/parameters/dashboard/summary",
+    module: "parameters",
+    stability: "mvp"
+  },
+  {
+    id: "parameters-dashboard-hotspots",
+    method: "GET",
+    path: "/api/v1/parameters/dashboard/hotspots",
+    module: "parameters",
+    stability: "mvp"
+  },
 
   { id: "logs.uploadFile", method: "POST", path: "/api/v1/log-files", module: "logs", stability: "mvp" },
   { id: "logs.upload", method: "POST", path: "/api/v1/logs", module: "logs", stability: "mvp" },
