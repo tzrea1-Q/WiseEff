@@ -8,6 +8,13 @@ const PERSONAL_LABELS: Record<WorkbenchRoleView, [string, string, string, string
   guest: ["我的变更", "我的提交", "我的草稿", "待处理事项", "高风险经手"]
 };
 
+const PERSONAL_TREND: Record<WorkbenchRoleView, { title: string; changeSeriesName: string; workflowSeriesName: string }> = {
+  user: { title: "我的变更趋势", changeSeriesName: "我的变更", workflowSeriesName: "我的提交" },
+  committer: { title: "我的审阅趋势", changeSeriesName: "我的审阅完成", workflowSeriesName: "我处理的流程" },
+  admin: { title: "我的治理趋势", changeSeriesName: "我的治理操作", workflowSeriesName: "我发起的导入" },
+  guest: { title: "我的变更趋势", changeSeriesName: "我的变更", workflowSeriesName: "我的提交" }
+};
+
 const PERSONAL_KEYS: Array<keyof PersonalDashboardKpis> = [
   "contributionCount",
   "workflowCount",
@@ -47,11 +54,12 @@ export function deriveOverviewPresentation(
   }
 
   const labels = PERSONAL_LABELS[roleView];
+  const trend = PERSONAL_TREND[roleView];
   return {
     panelSubtitle: "我的关键指标",
-    trendTitle: "我的变更趋势",
-    changeSeriesName: "我的变更",
-    workflowSeriesName: "我的流程",
+    trendTitle: trend.title,
+    changeSeriesName: trend.changeSeriesName,
+    workflowSeriesName: trend.workflowSeriesName,
     kpiItems: PERSONAL_KEYS.map((key, index) => ({
       key,
       label: labels[index],

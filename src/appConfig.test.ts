@@ -49,7 +49,7 @@ describe("WiseEff prototype configuration", () => {
     expect(parameterHome.label).toBe("我的工作台");
     expect(parameterHome.group).toBe("参数管理");
     expect(parameterHome.title).toBe("我的工作台");
-    expect(parameterHome.subtitle).toBe("待办事项 · 主要功能 · 热榜");
+    expect(parameterHome.subtitle).toBe("");
     expect(logDashboard.label).toBe("看板");
     expect(logDashboard.group).toBe("日志分析");
   });

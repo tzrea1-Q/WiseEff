@@ -13,10 +13,11 @@ type ApiClient = ReturnType<typeof createApiClient>;
 type ItemEnvelope<T> = { item: T };
 type ItemsEnvelope<T> = { items: T[] };
 
-function summaryPath(input: { projectId?: string; window: DashboardWindow }) {
+function summaryPath(input: { projectId?: string; window: DashboardWindow; perspectiveRoleId?: string }) {
   const params = new URLSearchParams();
   if (input.projectId) params.set("projectId", input.projectId);
   params.set("window", input.window);
+  if (input.perspectiveRoleId) params.set("perspectiveRoleId", input.perspectiveRoleId);
   return `/api/v1/parameters/dashboard/summary?${params.toString()}`;
 }
 

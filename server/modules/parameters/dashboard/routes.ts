@@ -35,7 +35,8 @@ export function registerParameterDashboardRoutes(
     const item = await getDashboardSummary(requireDb(options.db), {
       auth,
       projectId: query.projectId,
-      window: query.window ?? "30d"
+      window: query.window ?? "30d",
+      perspectiveRoleId: query.perspectiveRoleId
     });
     return { status: 200, body: { item } };
   });
@@ -50,7 +51,7 @@ export function registerParameterDashboardRoutes(
       auth,
       projectId: query.projectId,
       window: query.window ?? "30d",
-      dimension: query.dimension ?? "overall"
+      dimension: query.dimension ?? "project"
     });
     return { status: 200, body: { items } };
   });

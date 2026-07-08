@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useMemo, useState, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { DashboardState } from "@/application/parameters/dashboardState";
 import type { DashboardSummary, DashboardHotspot } from "@/domain/parameters/dashboardTypes";
+import { TopBarActionsContext } from "@/components/layout";
 import { initialState } from "@/mockData";
 import { ParameterHomePage } from "./ParameterHomePage";
 
@@ -55,8 +57,12 @@ const hotspot: DashboardHotspot = {
   statusLabel: "需要关注",
   statusLevel: "watch",
   score: 180,
-  scoreBreakdown: { frequency: 30, risk: 30, impact: 30, workflow: 30, drift: 60 },
-  evidence: ["高风险参数 2 项"],
+  scoreBreakdown: { frequency: 30, scope: 40, workflow: 25, collaboration: 15 },
+  evidence: [
+    "累计修改 12 / 200 个参数（6%）",
+    "窗口内 8 次参数变更",
+    "待处理流程 2 项 · 窗口内 3 项请求"
+  ],
   trendDelta: 0,
   trendDirection: "flat",
   suggestedPath: "/parameters?project=aurora"
@@ -65,13 +71,26 @@ const hotspot: DashboardHotspot = {
 function buildDashboardState(over: Partial<DashboardState> = {}): DashboardState {
   return {
     window: "30d",
-    dimension: "overall",
+    dimension: "project",
     overviewScope: "personal",
     projectScope: null,
     summary: { status: "ready", data: summary, error: null },
     hotspots: { status: "ready", data: [hotspot], error: null },
     ...over
   };
+}
+
+function TopBarActionsHarness({ children }: { children: ReactNode }) {
+  const [actions, setActions] = useState<ReactNode | null>(null);
+  const [leadingActions, setLeadingActions] = useState<ReactNode | null>(null);
+  const value = useMemo(() => ({ setActions, setLeadingActions }), []);
+
+  return (
+    <TopBarActionsContext.Provider value={value}>
+      <div data-testid="topbar-leading">{leadingActions}</div>
+      {children}
+    </TopBarActionsContext.Provider>
+  );
 }
 
 function renderPage(over: {
@@ -85,43 +104,37 @@ function renderPage(over: {
   const onDashboardOverviewScopeChange = over.onDashboardOverviewScopeChange ?? vi.fn();
 
   render(
-    <ParameterHomePage
-      state={{ ...initialState, activeRoleId: over.roleId ?? "hardware-user" }}
-      dashboardState={over.dashboardState ?? buildDashboardState()}
-      dashboardRuntime={{ loadSummary, loadHotspots }}
-      onDashboardWindowChange={vi.fn()}
-      onDashboardDimensionChange={vi.fn()}
-      onDashboardOverviewScopeChange={onDashboardOverviewScopeChange}
-      onDashboardProjectChange={vi.fn()}
-      onNavigate={vi.fn()}
-      onNewProject={vi.fn()}
-    />
+    <TopBarActionsHarness>
+      <ParameterHomePage
+        state={{ ...initialState, activeRoleId: over.roleId ?? "hardware-user" }}
+        dashboardState={over.dashboardState ?? buildDashboardState()}
+        dashboardRuntime={{ loadSummary, loadHotspots }}
+        onDashboardWindowChange={vi.fn()}
+        onDashboardDimensionChange={vi.fn()}
+        onDashboardOverviewScopeChange={onDashboardOverviewScopeChange}
+        onDashboardProjectChange={vi.fn()}
+        onNavigate={vi.fn()}
+        onNewProject={vi.fn()}
+      />
+    </TopBarActionsHarness>
   );
 
   return { loadSummary, loadHotspots, onDashboardOverviewScopeChange };
 }
 
 describe("ParameterHomePage", () => {
-  it("renders workbench above hotspot for user role with collapsed insight", () => {
+  it("defaults to the overview workbench page", () => {
     renderPage({ roleId: "hardware-user" });
-    const workbench = screen.getByRole("region", { name: "个人工作台" });
-    const insight = screen.getByRole("region", { name: "洞察分析" });
-    expect(screen.getByRole("button", { name: "展开洞察" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "个人工作台" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /参数更新趋势/ })).toBeInTheDocument();
-    expect(
-      workbench.compareDocumentPosition(insight) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "热榜" })).not.toBeInTheDocument();
   });
 
-  it("renders insight prominently for admin role", () => {
+  it("shows hotspot dimension controls only on the hotspot page", () => {
     renderPage({ roleId: "admin" });
-    const workbench = screen.getByRole("region", { name: "个人工作台" });
-    const insight = screen.getByRole("region", { name: "洞察分析" });
-    expect(screen.getByRole("img", { name: /参数更新趋势/ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "展开洞察" })).not.toBeInTheDocument();
-    expect(
-      workbench.compareDocumentPosition(insight) & Node.DOCUMENT_POSITION_FOLLOWING
-    ).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "热榜维度" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
+    expect(screen.getByRole("group", { name: "热榜维度" })).toBeInTheDocument();
   });
 
   it("shows situation skeleton while summary is loading", () => {
@@ -140,7 +153,11 @@ describe("ParameterHomePage", () => {
       })
     });
     fireEvent.click(screen.getAllByRole("button", { name: "重试" })[0]);
-    expect(loadSummary).toHaveBeenCalledWith({ projectId: undefined, window: "30d" });
+    expect(loadSummary).toHaveBeenCalledWith({
+      projectId: undefined,
+      window: "30d",
+      perspectiveRoleId: "hardware-user"
+    });
   });
 
   it("shows independent hotspot error", () => {
@@ -150,6 +167,7 @@ describe("ParameterHomePage", () => {
       }),
       roleId: "admin"
     });
+    fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
     expect(screen.getByText("热榜失败")).toBeInTheDocument();
   });
 
@@ -161,14 +179,29 @@ describe("ParameterHomePage", () => {
   it("renders a single in-page context control bar", () => {
     renderPage({ roleId: "admin" });
     expect(screen.getAllByRole("group", { name: "时间窗口" })).toHaveLength(1);
+    expect(screen.queryByRole("group", { name: "热榜维度" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
     expect(screen.getAllByRole("group", { name: "热榜维度" })).toHaveLength(1);
+  });
+
+  it("switches between workbench overview and hotspot pages", () => {
+    renderPage({ roleId: "admin" });
+
+    expect(screen.getByRole("group", { name: "工作台视图" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "待办事项" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "热榜" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: /热榜/ }));
+    expect(screen.getByRole("region", { name: "热榜" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "待办事项" })).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "热榜维度" })).toBeInTheDocument();
   });
 
   it("lays out situation overview beside update trend", () => {
     renderPage({ roleId: "admin" });
     expect(document.querySelector(".parameter-home__overview-row")).not.toBeNull();
-    expect(screen.getByText("概览")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "我的变更趋势" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "概览", level: 2 })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "我的治理趋势" })).toBeInTheDocument();
   });
 
   it("defaults guest role to overall overview scope on mount", () => {

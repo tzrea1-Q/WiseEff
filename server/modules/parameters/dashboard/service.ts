@@ -8,6 +8,7 @@ import type {
   TrendPoint
 } from "../../../../src/domain/parameters/dashboardTypes";
 import { getPlatformRole, migrateLegacyRoleId } from "../../../../src/domain/users/types";
+import { resolvePersonalRoleLevel } from "./personalMetrics";
 import {
   aggregatePersonalTrend,
   aggregateRiskDistribution,
@@ -18,6 +19,14 @@ import {
 } from "./repository";
 import { aggregateHotspotGroups, type HotspotGroupAggregate } from "./hotspotRepository";
 import { mapStatus, scoreHotspotGroup, WINDOW_PROFILES } from "./scoring";
+import {
+  buildBehavioralHotspotEvidence,
+  mapBehavioralHotspotStatus,
+  BEHAVIORAL_WINDOW_PROFILES,
+  scoreBehavioralHotspot,
+  toBehavioralScoreInput
+} from "../../../../src/domain/parameters/projectHotspotScoring";
+import { usesBehavioralHotspotScoring } from "../../../../src/domain/parameters/dashboardTypes";
 
 const windowLabels: Record<DashboardWindow, string> = {
   "7d": "近 7 天",
@@ -29,6 +38,7 @@ type ServiceInput = {
   auth: AuthContext;
   projectId?: string;
   window: DashboardWindow;
+  perspectiveRoleId?: string;
 };
 
 type HotspotServiceInput = ServiceInput & {
@@ -71,12 +81,28 @@ function labelTrendPoints(points: Array<{ bucketStart: string; changeCount: numb
 }
 
 function resolveRoleLevel(input: ServiceInput): "guest" | "user" | "committer" | "admin" {
+  const perspectiveRoleId = input.perspectiveRoleId?.trim();
+  if (perspectiveRoleId) {
+    return resolvePersonalRoleLevel(perspectiveRoleId);
+  }
   const scopedRole =
     (input.projectId ? input.auth.roles.find((role) => role.projectId === input.projectId) : undefined) ??
     input.auth.roles.find((role) => role.projectId === null) ??
     input.auth.roles[0];
   const roleId = migrateLegacyRoleId(scopedRole?.roleId ?? "guest");
   return getPlatformRole(roleId).level;
+}
+
+function resolvePerspectiveRoleId(input: ServiceInput) {
+  const perspectiveRoleId = input.perspectiveRoleId?.trim();
+  if (perspectiveRoleId) {
+    return migrateLegacyRoleId(perspectiveRoleId);
+  }
+  const scopedRole =
+    (input.projectId ? input.auth.roles.find((role) => role.projectId === input.projectId) : undefined) ??
+    input.auth.roles.find((role) => role.projectId === null) ??
+    input.auth.roles[0];
+  return migrateLegacyRoleId(scopedRole?.roleId ?? "guest");
 }
 
 function buildHotspotPath(
@@ -98,11 +124,11 @@ function buildHotspotPath(
   }
 
   return relatedRequestCount > 0
-    ? `/parameter-review?project=${encodeURIComponent(projectId ?? "")}&parameter=${encodeURIComponent(groupId)}`
-    : `/parameters?project=${encodeURIComponent(projectId ?? "")}&parameter=${encodeURIComponent(groupId)}`;
+    ? `/parameter-review?parameter=${encodeURIComponent(groupId)}`
+    : `/parameters?parameter=${encodeURIComponent(groupId)}`;
 }
 
-function buildEvidence(group: HotspotGroupAggregate) {
+function buildLegacyEvidence(group: HotspotGroupAggregate) {
   return [
     `${group.highRiskCount} 个高风险参数`,
     `${Math.round(group.driftSum)}% 累计推荐偏离`,
@@ -121,7 +147,45 @@ function computeTrend(current: number, previous: number): Pick<DashboardHotspot,
   };
 }
 
-function mapGroupToHotspot(
+function computeBehavioralScore(group: HotspotGroupAggregate, window: DashboardWindow) {
+  return scoreBehavioralHotspot(toBehavioralScoreInput(group), BEHAVIORAL_WINDOW_PROFILES[window]).score;
+}
+
+function mapBehavioralGroupToHotspot(
+  group: HotspotGroupAggregate,
+  window: DashboardWindow,
+  previousGroup?: HotspotGroupAggregate
+): DashboardHotspot {
+  const scoreInput = toBehavioralScoreInput(group);
+  const scored = scoreBehavioralHotspot(scoreInput, BEHAVIORAL_WINDOW_PROFILES[window]);
+  const status = mapBehavioralHotspotStatus({ ...scoreInput, score: scored.score });
+  const previousScore = previousGroup ? computeBehavioralScore(previousGroup, window) : 0;
+  const trend = computeTrend(scored.score, previousScore);
+
+  return {
+    id: `${group.kind}:${group.groupId}`,
+    kind: group.kind,
+    title: group.title,
+    projectId: group.projectId,
+    projectCode: group.projectCode,
+    module: group.module,
+    statusLabel: status.label,
+    statusLevel: status.level,
+    score: scored.score,
+    scoreBreakdown: {
+      frequency: scored.frequency,
+      scope: scored.scope,
+      workflow: scored.workflow,
+      collaboration: scored.collaboration
+    },
+    evidence: buildBehavioralHotspotEvidence(scoreInput, group.kind),
+    ...trend,
+    lastChangedAt: group.lastChangedAt,
+    suggestedPath: buildHotspotPath(group.kind, group.groupId, group.projectId, group.module, group.relatedRequestCount)
+  };
+}
+
+function mapLegacyGroupToHotspot(
   group: HotspotGroupAggregate,
   window: DashboardWindow,
   previousGroup?: HotspotGroupAggregate
@@ -159,36 +223,23 @@ function mapGroupToHotspot(
       workflow: scored.workflow,
       drift: scored.drift
     },
-    evidence: buildEvidence(group),
+    evidence: buildLegacyEvidence(group),
     ...trend,
     lastChangedAt: group.lastChangedAt,
     suggestedPath: buildHotspotPath(group.kind, group.groupId, group.projectId, group.module, group.relatedRequestCount)
   };
 }
 
-function pickOverallHotspots(hotspots: DashboardHotspot[], limit = 5) {
-  const sorted = [...hotspots].sort((first, second) => second.score - first.score);
-  const requiredKinds: Array<DashboardHotspot["kind"]> = ["module", "project", "parameter"];
-  const picked: DashboardHotspot[] = [];
-  const pickedIds = new Set<string>();
-
-  for (const kind of requiredKinds) {
-    const best = sorted.find((hotspot) => hotspot.kind === kind);
-    if (best) {
-      picked.push(best);
-      pickedIds.add(best.id);
-    }
+function mapGroupToHotspot(
+  group: HotspotGroupAggregate,
+  window: DashboardWindow,
+  previousGroup?: HotspotGroupAggregate
+): DashboardHotspot {
+  if (usesBehavioralHotspotScoring(group.kind)) {
+    return mapBehavioralGroupToHotspot(group, window, previousGroup);
   }
 
-  for (const candidate of sorted) {
-    if (picked.length >= limit) break;
-    if (!pickedIds.has(candidate.id)) {
-      picked.push(candidate);
-      pickedIds.add(candidate.id);
-    }
-  }
-
-  return picked.sort((first, second) => second.score - first.score).slice(0, limit);
+  return mapLegacyGroupToHotspot(group, window, previousGroup);
 }
 
 export async function getDashboardSummary(db: Database, input: ServiceInput): Promise<DashboardSummary> {
@@ -204,12 +255,14 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
     workbenchSignalsPromise
   ]);
   const roleLevel = resolveRoleLevel(input);
+  const perspectiveRoleId = resolvePerspectiveRoleId(input);
   const [personalKpis, personalTrendRaw] = await Promise.all([
     countPersonalKpis(db, {
       organizationId,
       projectId,
       userId: input.auth.user.id,
       windowStart,
+      perspectiveRoleId,
       workbenchSignals,
       roleLevel
     }),
@@ -219,7 +272,8 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
       userId: input.auth.user.id,
       windowStart,
       windowEnd,
-      granularity
+      granularity,
+      roleLevel
     })
   ]);
 
@@ -248,27 +302,21 @@ export async function getDashboardHotspots(db: Database, input: HotspotServiceIn
     aggregateHotspotGroups(db, {
       organizationId,
       projectId,
-      dimension: input.dimension === "overall" ? "overall" : input.dimension,
+      dimension: input.dimension,
       windowStart,
       windowEnd
     }),
     aggregateHotspotGroups(db, {
       organizationId,
       projectId,
-      dimension: input.dimension === "overall" ? "overall" : input.dimension,
+      dimension: input.dimension,
       windowStart: previousStart.toISOString(),
       windowEnd: previousEnd
     })
   ]);
 
   const previousById = new Map(previousGroups.map((group) => [`${group.kind}:${group.groupId}`, group]));
-  const hotspots = currentGroups
+  return currentGroups
     .map((group) => mapGroupToHotspot(group, input.window, previousById.get(`${group.kind}:${group.groupId}`)))
     .sort((first, second) => second.score - first.score);
-
-  if (input.dimension === "overall") {
-    return pickOverallHotspots(hotspots);
-  }
-
-  return hotspots;
 }

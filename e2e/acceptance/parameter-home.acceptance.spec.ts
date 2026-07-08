@@ -14,7 +14,7 @@ test.describe("parameter-home production dashboard", () => {
       headers: smokeHeaders()
     });
     const hotspotsResponse = await page.request.get(
-      apiRoute("/api/v1/parameters/dashboard/hotspots?window=30d&dimension=overall"),
+      apiRoute("/api/v1/parameters/dashboard/hotspots?window=30d&dimension=project"),
       { headers: smokeHeaders() }
     );
 

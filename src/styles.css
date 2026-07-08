@@ -385,6 +385,19 @@ body {
   letter-spacing: 0;
 }
 
+.topbar-page-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.topbar-page-leading {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
 .topbar-subtitle {
   max-width: 620px;
   margin-top: 2px;
@@ -1219,6 +1232,7 @@ body {
   flex: 1 1 auto;
   padding: 24px 28px 112px;
   overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .home-content {
@@ -11219,6 +11233,11 @@ td small {
 
   .topbar-title {
     font-size: 16px;
+  }
+
+  .topbar-page-head {
+    gap: 10px;
+    width: 100%;
   }
 
   .topbar-subtitle,

@@ -45,6 +45,16 @@ describe("mock parameter dashboard repository", () => {
     expect(hotspots[0].score).toBeGreaterThanOrEqual(hotspots[hotspots.length - 1].score);
   });
 
+  it("returns parameter hotspots with project-scope behavioral breakdown", async () => {
+    const state = createMockRuntimeState();
+    const repo = createMockParameterDashboardRepository(() => state.current);
+    const hotspots = await repo.listDashboardHotspots({ window: "30d", dimension: "parameter" });
+    expect(hotspots.length).toBeGreaterThan(0);
+    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
+    expect(hotspots[0].scoreBreakdown).not.toHaveProperty("risk");
+    expect(hotspots[0].evidence[0]).toMatch(/个项目中修改/);
+  });
+
   it("matches shared scorer output for a fixed fixture input", () => {
     const input = {
       parameterCount: 4,

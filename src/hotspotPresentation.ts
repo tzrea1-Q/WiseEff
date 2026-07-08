@@ -2,7 +2,8 @@
 // Pure functions only; no React imports.
 
 import type { PrototypeState } from "./mockData";
-import type { DashboardWindow, HotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
+import type { DashboardWindow, HotspotScoreBreakdown, LegacyHotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
+import { formatAuditRelativeTime } from "@/domain/audit/formatAuditTime";
 
 export type HotspotStatusLevel = "alert" | "watch" | "healthy";
 
@@ -104,7 +105,7 @@ export const HOTSPOT_ACTION_TEMPLATES: Record<HotspotArchetype, ArchetypeActions
   }
 };
 
-const TIE_BREAK_ORDER: Array<keyof HotspotScoreBreakdown> = ["risk", "drift", "workflow", "frequency", "impact"];
+const TIE_BREAK_ORDER: Array<keyof LegacyHotspotScoreBreakdown> = ["risk", "drift", "workflow", "frequency", "impact"];
 
 export function mapHotspotStatus(
   hotspot: Pick<HotspotPresentationInput, "highRiskCount" | "score">
@@ -132,8 +133,26 @@ export function deriveHotspotTrend(
   return { delta, direction: delta > 0 ? "up" : "down" };
 }
 
-export function classifyHotspotArchetype(hotspot: Pick<HotspotPresentationInput, "scoreBreakdown">): HotspotArchetype {
-  const entries = Object.entries(hotspot.scoreBreakdown) as Array<[keyof HotspotScoreBreakdown, number]>;
+export function classifyHotspotArchetype(
+  hotspot: Pick<HotspotPresentationInput, "scoreBreakdown"> & Partial<Pick<HotspotPresentationInput, "kind">>
+): HotspotArchetype {
+  if ("scope" in hotspot.scoreBreakdown) {
+    const breakdown = hotspot.scoreBreakdown;
+    const entries: Array<[HotspotArchetype, number]> = [
+      ["change-surge", breakdown.frequency],
+      ["impact-wide", breakdown.scope],
+      ["workflow-stuck", breakdown.workflow],
+      ["impact-wide", breakdown.collaboration]
+    ];
+    const max = Math.max(...entries.map(([, value]) => value));
+    if (max === 0) {
+      return "change-surge";
+    }
+    const winners = entries.filter(([, value]) => value === max).map(([archetype]) => archetype);
+    return winners[0] ?? "change-surge";
+  }
+
+  const entries = Object.entries(hotspot.scoreBreakdown) as Array<[keyof LegacyHotspotScoreBreakdown, number]>;
   const max = Math.max(...entries.map(([, value]) => value));
 
   if (max === 0) {
@@ -172,7 +191,16 @@ export function computeEyebrow(
     return `${hotspot.projectCode} · ${projectCount} 项目`;
   }
 
-  return hotspot.lastChangedAt ? `最近变更 ${hotspot.lastChangedAt}` : "多次变更";
+  return hotspot.lastChangedAt ? `最近变更 ${formatHotspotLastChangedAt(hotspot.lastChangedAt)}` : "多次变更";
+}
+
+function formatHotspotLastChangedAt(lastChangedAt: string): string {
+  const parsed = new Date(lastChangedAt).getTime();
+  if (Number.isFinite(parsed)) {
+    return formatAuditRelativeTime(lastChangedAt);
+  }
+
+  return lastChangedAt;
 }
 
 function renderActionTemplate(
@@ -199,7 +227,7 @@ function fillTemplate(template: string, slots: Record<string, string>, encode: b
   });
 }
 
-function archetypeForDimension(dimension: keyof HotspotScoreBreakdown): HotspotArchetype {
+function archetypeForDimension(dimension: keyof LegacyHotspotScoreBreakdown): HotspotArchetype {
   switch (dimension) {
     case "risk":
       return "risk-heavy";

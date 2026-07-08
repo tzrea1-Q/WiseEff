@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { PrototypeState } from "./mockData";
 import type { DashboardWindow, HotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
 import {
@@ -203,6 +203,15 @@ describe("computeEyebrow", () => {
     expect(computeEyebrow(makeHotspot({ module: "项目参数", projectCode: "AUR-Prod", lastChangedAt: "36 分钟前" }), state)).toBe(
       "最近变更 36 分钟前"
     );
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-08T12:00:00.000Z"));
+    expect(
+      computeEyebrow(
+        makeHotspot({ module: "项目参数", projectCode: "AUR-Prod", lastChangedAt: "2026-07-06T09:01:09.370Z" }),
+        state
+      )
+    ).toBe("最近变更 2 天前");
+    vi.useRealTimers();
     expect(computeEyebrow(makeHotspot({ module: "项目参数", projectCode: "AUR-Prod" }), state)).toBe("多次变更");
   });
 });

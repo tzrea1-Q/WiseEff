@@ -16,8 +16,8 @@ type InsightSectionProps = {
   hotspots: DashboardHotspot[];
   hotspotsError?: string | null;
   state: PrototypeState;
+  layout?: "embedded" | "page";
   onHotspotsRetry: () => void;
-  onNavigate: (path: string) => void;
 };
 
 export function InsightSection({
@@ -28,20 +28,32 @@ export function InsightSection({
   hotspots,
   hotspotsError,
   state,
-  onHotspotsRetry,
-  onNavigate
+  layout = "embedded",
+  onHotspotsRetry
 }: InsightSectionProps) {
-  const [expanded, setExpanded] = useState(emphasis === "insight-first");
+  const [expanded, setExpanded] = useState(emphasis === "insight-first" || layout === "page");
+  const [expandedHotspotIds, setExpandedHotspotIds] = useState<string[]>([]);
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
-  const isAccordionMode = useIsAccordionMode(1099);
+  const isViewportAccordion = useIsAccordionMode(1099);
+  const isAccordionMode = layout === "page" || isViewportAccordion;
 
   useEffect(() => {
+    setExpandedHotspotIds([]);
     setSelectedHotspotId(null);
   }, [dimension]);
 
+  const toggleHotspotExpanded = (id: string) => {
+    setExpandedHotspotIds((current) =>
+      current.includes(id) ? current.filter((hotspotId) => hotspotId !== id) : [...current, id]
+    );
+  };
+
   return (
-    <section className="parameter-home__insight" aria-label="洞察分析">
-      {emphasis === "action-first" ? (
+    <section
+      className={layout === "page" ? "parameter-home__insight parameter-home__insight--page" : "parameter-home__insight"}
+      aria-label={layout === "page" ? "热榜" : "洞察分析"}
+    >
+      {layout === "embedded" && emphasis === "action-first" ? (
         <div className="parameter-home__insight-head">
           <button type="button" className="parameter-home__insight-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
             {expanded ? "收起洞察" : "展开洞察"}
@@ -61,11 +73,12 @@ export function InsightSection({
               <HotspotLeaderboard
                 hotspots={hotspots}
                 selectedId={selectedHotspotId}
+                expandedIds={expandedHotspotIds}
                 sectionId="parameter-home-hotspots"
                 state={state}
                 isAccordionMode={isAccordionMode}
-                onNavigate={onNavigate}
                 onSelectionChange={setSelectedHotspotId}
+                onToggleExpanded={toggleHotspotExpanded}
               />
             ) : null}
         </Panel>

@@ -23,7 +23,26 @@ describe("dashboard types", () => {
     expect(summary.window).toBe("30d");
   });
 
-  it("hotspot carries score breakdown", () => {
+  it("hotspot carries legacy score breakdown", () => {
+    const hotspot: DashboardHotspot = {
+      id: "module:charging",
+      kind: "module",
+      title: "Charging Policy",
+      projectCode: "3 个项目",
+      module: "Charging Policy",
+      statusLabel: "需要关注",
+      statusLevel: "watch",
+      score: 100,
+      scoreBreakdown: { frequency: 20, risk: 20, impact: 20, workflow: 20, drift: 20 },
+      evidence: [],
+      trendDelta: 0,
+      trendDirection: "flat",
+      suggestedPath: "/parameters?module=Charging%20Policy"
+    };
+    expect(hotspot.scoreBreakdown.frequency).toBe(20);
+  });
+
+  it("project hotspot carries behavioral score breakdown", () => {
     const hotspot: DashboardHotspot = {
       id: "project:aurora",
       kind: "project",
@@ -33,12 +52,12 @@ describe("dashboard types", () => {
       statusLabel: "需要关注",
       statusLevel: "watch",
       score: 100,
-      scoreBreakdown: { frequency: 20, risk: 20, impact: 20, workflow: 20, drift: 20 },
+      scoreBreakdown: { frequency: 20, scope: 20, workflow: 20, collaboration: 20 },
       evidence: [],
       trendDelta: 0,
       trendDirection: "flat",
       suggestedPath: "/parameters?project=aurora"
     };
-    expect(hotspot.scoreBreakdown.frequency).toBe(20);
+    expect("scope" in hotspot.scoreBreakdown).toBe(true);
   });
 });

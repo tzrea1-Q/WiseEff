@@ -80,6 +80,7 @@ describe("dashboard repository", () => {
       projectId: "aurora",
       userId: "u-xu-yun",
       windowStart: "2026-06-01T00:00:00Z",
+      perspectiveRoleId: "software-user",
       workbenchSignals: {
         reviewQueue: 5,
         myDrafts: 4,
@@ -130,7 +131,8 @@ describe("dashboard repository", () => {
       userId: "u-xu-yun",
       windowStart: "2026-07-01T00:00:00Z",
       windowEnd: "2026-07-02T00:00:00Z",
-      granularity: "day"
+      granularity: "day",
+      roleLevel: "user"
     });
 
     expect(query).toHaveBeenCalledTimes(1);
@@ -145,5 +147,28 @@ describe("dashboard repository", () => {
         workflowEventCount: 2
       }
     ]);
+  });
+
+  it("counts committer personal KPIs from review decisions", async () => {
+    const result = await countPersonalKpis(db, {
+      organizationId: "org-chargelab",
+      projectId: null,
+      userId: "u-xu-yun",
+      windowStart: "2026-06-01T00:00:00.000Z",
+      perspectiveRoleId: "hardware-committer",
+      workbenchSignals: {
+        reviewQueue: 0,
+        myDrafts: 0,
+        returnedChanges: 0,
+        waitingMerge: 0,
+        unappliedImportBatches: 0,
+        inactiveAccounts: 0
+      },
+      roleLevel: "committer"
+    });
+
+    expect(result.contributionCount).toBe(2);
+    expect(result.workflowCount).toBe(2);
+    expect(result.openItemCount).toBeGreaterThanOrEqual(0);
   });
 });

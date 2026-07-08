@@ -108,8 +108,8 @@ export type DashboardSummary = {
 
 | 字段 | user | committer | admin |
 |------|------|-----------|-------|
-| `contributionCount` | `parameter_history_entries` 中 `changed_by_user_id = userId` 的记录数 | 审阅记录中 `reviewed_by_user_id = userId` 且状态为通过/退回的数 | 审计/治理写操作中 `actor_user_id = userId` 的数（导入应用、用户状态变更等） |
-| `workflowCount` | `parameter_change_requests` 中 `created_by_user_id = userId` 的数 | 审阅队列中由当前用户在本窗口内处理的变更请求数 | 导入批次中 `created_by_user_id = userId` 的数 |
+| `contributionCount` | `parameter_history_entries` 中 `changed_by_user_id = userId` 的记录数 | **去重** `parameter_review_decisions.request_id`（我在窗口内参与审阅过的变更请求数） | 审计/治理写操作中 `actor_user_id = userId` 的数（导入应用、用户状态变更等） |
+| `workflowCount` | `parameter_change_requests` 中 `created_by_user_id = userId` 的数 | 我在窗口内的审阅**操作次数**（`parameter_review_decisions` 条数） | 导入批次中 `created_by_user_id = userId` 的数 |
 | `openItemCount` | 当前未提交草稿数（`parameter_drafts`，`user_id = userId`） | 当前待当前用户审阅的开放变更请求数 | 未应用导入批次数 |
 | `pendingTodoCount` | 被退回变更数 + 待合入数（复用 `workbenchSignals.returnedChanges + waitingMerge`） | 待审队列中涉及高风险参数的项数 | 停用/待复核账号数（`workbenchSignals.inactiveAccounts`） |
 | `highRiskTouchCount` | 上述个人变更中 `risk = High` 的参数涉及数 | 上述审阅中高风险参数涉及数 | 治理操作中触及高风险参数的次数 |

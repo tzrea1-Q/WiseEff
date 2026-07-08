@@ -19,7 +19,7 @@ function formatError(error: unknown): string {
 
 export function createParameterDashboardRuntime({ repository, dispatch }: Options) {
   return {
-    async loadSummary(input: { projectId?: string; window: DashboardWindow }) {
+    async loadSummary(input: { projectId?: string; window: DashboardWindow; perspectiveRoleId?: string }) {
       dispatch({ type: "DASHBOARD_SUMMARY_LOADING" });
       try {
         const data = await repository.listDashboardSummary(input);

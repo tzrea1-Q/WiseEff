@@ -19,8 +19,12 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "需要关注",
     statusLevel: "watch",
     score: 182.4,
-    scoreBreakdown: { frequency: 40, risk: 36, impact: 30, workflow: 28, drift: 48.4 },
-    evidence: ["近 30 天 12 次变更"],
+    scoreBreakdown: { frequency: 40, scope: 36, workflow: 28, collaboration: 24 },
+    evidence: [
+      "累计修改 18 / 240 个参数（8%）",
+      "窗口内 12 次参数变更",
+      "待处理流程 3 项 · 窗口内 4 项请求"
+    ],
     trendDelta: 8,
     trendDirection: "up",
     suggestedPath: "/parameters?module=power"
@@ -34,32 +38,44 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "偏高",
     statusLevel: "elevated",
     score: 146.2,
-    scoreBreakdown: { frequency: 28, risk: 24, impact: 22, workflow: 26, drift: 46.2 },
-    evidence: ["流程堆积 3 项"],
+    scoreBreakdown: { frequency: 28, scope: 24, workflow: 26, collaboration: 22 },
+    evidence: [
+      "累计修改 10 / 180 个参数（6%）",
+      "窗口内 6 次参数变更",
+      "待处理流程 2 项 · 窗口内 3 项请求"
+    ],
     trendDelta: -4,
     trendDirection: "down",
     suggestedPath: "/parameters?module=thermal"
   }
 ];
 
-function renderLeaderboard(over: Partial<{ selectedId: string | null; isAccordionMode: boolean }> = {}) {
+function renderLeaderboard(
+  over: Partial<{
+    selectedId: string | null;
+    expandedIds: string[];
+    isAccordionMode: boolean;
+  }> = {}
+) {
   const selectedId = over.selectedId ?? hotspots[0].id;
-  const onNavigate = vi.fn();
+  const expandedIds = over.expandedIds ?? (over.isAccordionMode ? [] : [selectedId].filter(Boolean) as string[]);
   const onSelectionChange = vi.fn();
+  const onToggleExpanded = vi.fn();
 
   render(
     <HotspotLeaderboard
       hotspots={hotspots}
       selectedId={selectedId}
+      expandedIds={expandedIds}
       sectionId="test-hotspots"
       state={initialState}
       isAccordionMode={over.isAccordionMode ?? false}
-      onNavigate={onNavigate}
       onSelectionChange={onSelectionChange}
+      onToggleExpanded={onToggleExpanded}
     />
   );
 
-  return { selectedId, onNavigate, onSelectionChange };
+  return { selectedId, expandedIds, onSelectionChange, onToggleExpanded };
 }
 
 describe("HotspotLeaderboard", () => {
@@ -72,7 +88,7 @@ describe("HotspotLeaderboard", () => {
 
   it("moves focus with ArrowDown", () => {
     const { onSelectionChange } = renderLeaderboard();
-    const rowButtons = screen.getAllByRole("button", { name: /选择热区/ });
+    const rowButtons = screen.getAllByRole("button", { name: /热区 #/ });
 
     rowButtons[0].focus();
     fireEvent.keyDown(rowButtons[0], { key: "ArrowDown" });
@@ -80,10 +96,10 @@ describe("HotspotLeaderboard", () => {
     expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
-  it('uses "热度评分构成" detail panel heading', () => {
+  it("labels detail panels without a duplicate score heading", () => {
     renderLeaderboard();
-    expect(screen.getByRole("region", { name: /热度评分构成 · 功率模块/ })).toBeInTheDocument();
-    expect(screen.queryByText(/AI 评分拆解/)).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /功率模块 热榜详情/ })).toBeInTheDocument();
+    expect(screen.queryByText(/热度评分构成/)).not.toBeInTheDocument();
   });
 
   it("exposes dimension bars as progressbar with aria-valuenow", () => {
@@ -91,5 +107,23 @@ describe("HotspotLeaderboard", () => {
     const bars = screen.getAllByRole("progressbar");
     expect(bars.length).toBeGreaterThan(0);
     expect(bars[0]).toHaveAttribute("aria-valuenow");
+  });
+
+  it("toggles each row independently in accordion mode", () => {
+    const { onToggleExpanded } = renderLeaderboard({ isAccordionMode: true, expandedIds: [] });
+
+    fireEvent.click(screen.getByRole("button", { name: /展开热区 #1 功率模块/ }));
+    expect(onToggleExpanded).toHaveBeenCalledWith("module:power");
+
+    fireEvent.click(screen.getByRole("button", { name: /展开热区 #2 热管理/ }));
+    expect(onToggleExpanded).toHaveBeenCalledWith("module:thermal");
+  });
+
+  it("renders detail panels for all expanded rows in accordion mode", () => {
+    renderLeaderboard({ isAccordionMode: true, expandedIds: hotspots.map((hotspot) => hotspot.id) });
+
+    expect(screen.getAllByRole("region", { name: /热榜详情/ })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /收起热区 #1 功率模块/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: /收起热区 #2 热管理/ })).toHaveAttribute("aria-expanded", "true");
   });
 });

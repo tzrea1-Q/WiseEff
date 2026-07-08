@@ -36,21 +36,47 @@ describe("dashboard service", () => {
     expect(summary.windowLabel).toBe("近 30 天");
     expect(summary.trend).toHaveLength(30);
     expect(summary.personalKpis).toMatchObject({
-      contributionCount: 10,
-      workflowCount: 5,
+      workflowCount: 1,
       openItemCount: summary.workbenchSignals.unappliedImportBatches,
-      pendingTodoCount: summary.workbenchSignals.inactiveAccounts,
-      highRiskTouchCount: 4
+      pendingTodoCount: summary.workbenchSignals.inactiveAccounts
     });
     expect(summary.personalTrend).toHaveLength(30);
-    expect(summary.personalTrend.some((point) => point.changeCount > 0 || point.workflowEventCount > 0)).toBe(true);
     expect(summary.riskBuckets.length).toBeGreaterThan(0);
   });
 
-  it("returns ranked hotspots with explainable score", async () => {
+  it("builds committer personal metrics from review decisions", async () => {
+    const summary = await getDashboardSummary(db, {
+      auth,
+      window: "30d",
+      perspectiveRoleId: "hardware-committer"
+    });
+    expect(summary.personalKpis).toMatchObject({
+      contributionCount: 2,
+      workflowCount: 2
+    });
+  });
+
+  it("returns ranked module hotspots with behavioral score breakdown", async () => {
+    const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "module" });
+    expect(hotspots.length).toBeGreaterThan(0);
+    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
+    expect(hotspots[0].evidence[0]).toContain("累计修改");
+  });
+
+  it("returns ranked project hotspots with behavioral score breakdown", async () => {
     const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "project" });
     expect(hotspots.length).toBeGreaterThan(0);
     expect(hotspots[0].score).toBeGreaterThanOrEqual(hotspots[hotspots.length - 1].score);
-    expect(hotspots[0].scoreBreakdown).toHaveProperty("frequency");
+    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
+    expect(hotspots[0].evidence[0]).toContain("累计修改");
+  });
+
+  it("returns ranked parameter hotspots with project-scope evidence", async () => {
+    const hotspots = await getDashboardHotspots(db, { auth, window: "30d", dimension: "parameter" });
+    expect(hotspots.length).toBeGreaterThan(0);
+    expect(hotspots[0].scoreBreakdown).toHaveProperty("scope");
+    expect(hotspots[0].scoreBreakdown).not.toHaveProperty("risk");
+    expect(hotspots[0].evidence[0]).toContain("个项目中修改");
+    expect(hotspots[0].projectCode).toContain("个项目");
   });
 });

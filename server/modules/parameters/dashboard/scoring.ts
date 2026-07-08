@@ -1,4 +1,4 @@
-import type { HotspotScoreBreakdown } from "../../../../src/domain/parameters/dashboardTypes";
+import type { LegacyHotspotScoreBreakdown } from "../../../../src/domain/parameters/dashboardTypes";
 
 export type WindowProfile = {
   requestWeight: number;
@@ -24,7 +24,7 @@ export type ScoreInput = {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
-export function scoreHotspotGroup(input: ScoreInput, profile: WindowProfile): HotspotScoreBreakdown & { score: number } {
+export function scoreHotspotGroup(input: ScoreInput, profile: WindowProfile): LegacyHotspotScoreBreakdown & { score: number } {
   const frequency = round1(input.parameterCount * 4 * profile.parameterWeight + input.relatedRequestCount * 10 * profile.requestWeight);
   const risk = input.riskWeightSum * 6;
   const impact = round1(input.definitionCount * 5 + input.logSignalCount * 8 * profile.logWeight);

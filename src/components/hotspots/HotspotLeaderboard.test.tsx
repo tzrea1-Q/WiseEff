@@ -9,6 +9,12 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const behavioralEvidence = [
+  "累计修改 12 / 200 个参数（6%）",
+  "窗口内 8 次参数变更",
+  "待处理流程 2 项 · 窗口内 3 项请求"
+];
+
 const hotspots: DashboardHotspot[] = [
   {
     id: "module:power",
@@ -19,8 +25,8 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "需要关注",
     statusLevel: "watch",
     score: 182.4,
-    scoreBreakdown: { frequency: 40, risk: 36, impact: 30, workflow: 28, drift: 48.4 },
-    evidence: ["近 30 天 12 次变更"],
+    scoreBreakdown: { frequency: 40, scope: 36, workflow: 28, collaboration: 24 },
+    evidence: behavioralEvidence,
     trendDelta: 8,
     trendDirection: "up",
     suggestedPath: "/parameters?module=power"
@@ -34,8 +40,8 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "偏高",
     statusLevel: "elevated",
     score: 146.2,
-    scoreBreakdown: { frequency: 28, risk: 24, impact: 22, workflow: 26, drift: 46.2 },
-    evidence: ["流程堆积 3 项"],
+    scoreBreakdown: { frequency: 28, scope: 24, workflow: 26, collaboration: 22 },
+    evidence: behavioralEvidence,
     trendDelta: -4,
     trendDirection: "down",
     suggestedPath: "/parameters?module=thermal"
@@ -49,8 +55,8 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "正常",
     statusLevel: "normal",
     score: 96.5,
-    scoreBreakdown: { frequency: 18, risk: 12, impact: 16, workflow: 14, drift: 36.5 },
-    evidence: ["稳定运行"],
+    scoreBreakdown: { frequency: 18, scope: 16, workflow: 14, collaboration: 12 },
+    evidence: behavioralEvidence,
     trendDelta: 0,
     trendDirection: "flat",
     suggestedPath: "/parameters?module=comm"
@@ -64,8 +70,8 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "偏高",
     statusLevel: "elevated",
     score: 132.1,
-    scoreBreakdown: { frequency: 22, risk: 20, impact: 18, workflow: 20, drift: 52.1 },
-    evidence: ["偏离推荐值"],
+    scoreBreakdown: { frequency: 22, scope: 20, workflow: 20, collaboration: 18 },
+    evidence: behavioralEvidence,
     trendDelta: 3,
     trendDirection: "up",
     suggestedPath: "/parameters?module=safety"
@@ -79,64 +85,64 @@ const hotspots: DashboardHotspot[] = [
     statusLabel: "正常",
     statusLevel: "normal",
     score: 88.3,
-    scoreBreakdown: { frequency: 16, risk: 10, impact: 14, workflow: 12, drift: 36.3 },
-    evidence: ["低风险"],
+    scoreBreakdown: { frequency: 16, scope: 14, workflow: 12, collaboration: 10 },
+    evidence: behavioralEvidence,
     trendDelta: -2,
     trendDirection: "down",
     suggestedPath: "/parameters?module=display"
   }
 ];
 
-function renderLeaderboard(over: Partial<{ selectedId: string | null; isAccordionMode: boolean }> = {}) {
+function renderLeaderboard(
+  over: Partial<{
+    selectedId: string | null;
+    expandedIds: string[];
+    isAccordionMode: boolean;
+  }> = {}
+) {
   const selectedId = over.selectedId ?? hotspots[0].id;
-  const onNavigate = vi.fn();
+  const expandedIds = over.expandedIds ?? (over.isAccordionMode ? [] : [selectedId].filter(Boolean) as string[]);
   const onSelectionChange = vi.fn();
+  const onToggleExpanded = vi.fn();
 
   render(
     <HotspotLeaderboard
       hotspots={hotspots}
       selectedId={selectedId}
+      expandedIds={expandedIds}
       sectionId="test-hotspots"
       state={initialState}
       isAccordionMode={over.isAccordionMode ?? false}
-      onNavigate={onNavigate}
       onSelectionChange={onSelectionChange}
+      onToggleExpanded={onToggleExpanded}
     />
   );
 
-  return { selectedId, onNavigate, onSelectionChange };
+  return { selectedId, expandedIds, onSelectionChange, onToggleExpanded };
 }
 
 describe("HotspotLeaderboard", () => {
-  it("renders five rows with a selected current row and one enter button per row", () => {
+  it("renders five rows with a selected current row", () => {
     renderLeaderboard();
 
     expect(document.querySelectorAll(".parameter-home__hotspot-row")).toHaveLength(hotspots.length);
     const rowButtons = screen.getAllByRole("button", { name: /选择热区/ });
     expect(rowButtons[0]).toHaveAttribute("aria-current", "true");
     expect(rowButtons.slice(1).every((button) => !button.hasAttribute("aria-current"))).toBe(true);
-    expect(screen.getAllByRole("button", { name: /^进入 / })).toHaveLength(hotspots.length);
+    expect(document.querySelector(".parameter-home__hotspot-row-enter")).toBeNull();
   });
 
-  it("selects rows, preserves selection when entering, and triggers action navigation", () => {
-    const { selectedId, onNavigate, onSelectionChange } = renderLeaderboard();
+  it("selects rows in desktop mode", () => {
+    const { onSelectionChange } = renderLeaderboard();
     const second = hotspots[1];
 
     fireEvent.click(screen.getByRole("button", { name: new RegExp(`选择热区 #2 ${second.title}`) }));
     expect(onSelectionChange).toHaveBeenLastCalledWith(second.id);
-
-    const firstEnter = screen.getByRole("button", { name: `进入 ${hotspots[0].title}` });
-    fireEvent.click(firstEnter);
-    expect(onNavigate).toHaveBeenLastCalledWith(hotspots[0].suggestedPath);
-    expect(onSelectionChange).not.toHaveBeenLastCalledWith(selectedId);
-
-    fireEvent.click(screen.getByRole("button", { name: /查看 功率模块 漂移详情/ }));
-    expect(onNavigate).toHaveBeenLastCalledWith(expect.stringContaining("/parameters?module="));
   });
 
   it("moves focus with arrow keys and selects with Enter", () => {
     const { onSelectionChange } = renderLeaderboard();
-    const rowButtons = screen.getAllByRole("button", { name: /选择热区/ });
+    const rowButtons = screen.getAllByRole("button", { name: /热区 #/ });
 
     rowButtons[0].focus();
     fireEvent.keyDown(rowButtons[0], { key: "ArrowDown" });
@@ -150,12 +156,14 @@ describe("HotspotLeaderboard", () => {
     expect(rowButtons.at(-1)).toHaveFocus();
   });
 
-  it("renders the detail panel inside the selected row in accordion mode", () => {
-    renderLeaderboard({ isAccordionMode: true });
-    const selectedRow = document.querySelector('.parameter-home__hotspot-row[data-selected="true"]') as HTMLElement;
+  it("renders the detail panel inside each expanded row in accordion mode", () => {
+    renderLeaderboard({ isAccordionMode: true, expandedIds: [hotspots[0].id, hotspots[1].id] });
+    const selectedRows = document.querySelectorAll('.parameter-home__hotspot-row[data-selected="true"]');
 
-    expect(within(selectedRow).getByRole("region", { name: /热度评分构成/ })).toBeInTheDocument();
-    expect(screen.getAllByRole("region", { name: /热度评分构成/ })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: `选择热区 #1 ${hotspots[0].title}` })).toHaveAttribute("aria-expanded", "true");
+    expect(selectedRows).toHaveLength(2);
+    expect(within(selectedRows[0] as HTMLElement).getByRole("region", { name: /热榜详情/ })).toBeInTheDocument();
+    expect(within(selectedRows[1] as HTMLElement).getByRole("region", { name: /热榜详情/ })).toBeInTheDocument();
+    expect(screen.getAllByRole("region", { name: /热榜详情/ })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: `收起热区 #1 ${hotspots[0].title}` })).toHaveAttribute("aria-expanded", "true");
   });
 });

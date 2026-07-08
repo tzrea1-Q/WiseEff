@@ -19,7 +19,7 @@ export type DashboardState = {
 
 export const initialDashboardState: DashboardState = {
   window: "30d",
-  dimension: "overall",
+  dimension: "project",
   overviewScope: "personal",
   projectScope: null,
   summary: { status: "idle", data: null, error: null },

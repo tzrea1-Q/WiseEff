@@ -1,7 +1,14 @@
 import type { DashboardHotspot } from "@/domain/parameters/dashboardTypes";
-import { RecommendedHotspotActions } from "./HotspotLeaderboard";
+import { isBehavioralHotspotScoreBreakdown } from "@/domain/parameters/dashboardTypes";
 
-const HOTSPOT_DIMENSIONS: Array<{ key: keyof DashboardHotspot["scoreBreakdown"]; label: string }> = [
+const PROJECT_DIMENSIONS: Array<{ key: keyof Extract<DashboardHotspot["scoreBreakdown"], { scope: number }>; label: string }> = [
+  { key: "frequency", label: "窗口变更频次" },
+  { key: "scope", label: "累计修改范围" },
+  { key: "workflow", label: "流程压力" },
+  { key: "collaboration", label: "协作广度" }
+];
+
+const LEGACY_DIMENSIONS: Array<{ key: keyof Extract<DashboardHotspot["scoreBreakdown"], { risk: number }>; label: string }> = [
   { key: "frequency", label: "变更频次" },
   { key: "risk", label: "风险权重" },
   { key: "impact", label: "影响范围" },
@@ -14,19 +21,16 @@ type HotspotScorePanelProps = {
   dimensionCeiling: number;
   sectionId: string;
   variant: "desktop" | "accordion";
-  roleId: string;
-  onNavigate: (path: string) => void;
 };
 
-export function HotspotScorePanel({
-  hotspot,
-  dimensionCeiling,
-  sectionId,
-  variant,
-  roleId,
-  onNavigate
-}: HotspotScorePanelProps) {
-  const titleId = `${sectionId}-panel-title`;
+export function HotspotScorePanel({ hotspot, dimensionCeiling, sectionId, variant }: HotspotScorePanelProps) {
+  const dimensions = isBehavioralHotspotScoreBreakdown(hotspot.scoreBreakdown, hotspot.kind)
+    ? PROJECT_DIMENSIONS.map((dimension) =>
+        dimension.key === "scope" && hotspot.kind === "parameter"
+          ? { ...dimension, label: "项目修改范围" }
+          : dimension
+      )
+    : LEGACY_DIMENSIONS;
 
   return (
     <aside
@@ -35,13 +39,10 @@ export function HotspotScorePanel({
       data-variant={variant}
       role="region"
       aria-live="polite"
-      aria-labelledby={titleId}
+      aria-label={`${hotspot.title} 热榜详情`}
     >
-      <header>
-        <h3 id={titleId}>热度评分构成 · {hotspot.title}</h3>
-      </header>
       <section className="parameter-home__hotspot-panel-evidence">
-        <h4>关联证据</h4>
+        <h3>关联证据</h3>
         <ul>
           {hotspot.evidence.map((evidence) => (
             <li key={evidence}>{evidence}</li>
@@ -49,10 +50,10 @@ export function HotspotScorePanel({
         </ul>
       </section>
       <section className="parameter-home__hotspot-panel-dimensions">
-        <h4>维度得分</h4>
+        <h3>维度得分</h3>
         <ul className="parameter-home__dimension-bars">
-          {HOTSPOT_DIMENSIONS.map((dimension) => {
-            const value = hotspot.scoreBreakdown[dimension.key];
+          {dimensions.map((dimension) => {
+            const value = hotspot.scoreBreakdown[dimension.key as keyof typeof hotspot.scoreBreakdown] ?? 0;
             return (
               <li key={dimension.key}>
                 <span className="parameter-home__dim-label">{dimension.label}</span>
@@ -71,9 +72,6 @@ export function HotspotScorePanel({
             );
           })}
         </ul>
-      </section>
-      <section className="parameter-home__hotspot-panel-actions">
-        <RecommendedHotspotActions hotspot={hotspot} roleId={roleId} onNavigate={onNavigate} />
       </section>
     </aside>
   );
