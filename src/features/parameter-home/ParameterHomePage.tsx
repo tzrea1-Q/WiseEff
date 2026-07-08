@@ -6,7 +6,7 @@ import type { PrototypeState } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
 import { AnalysisContextControls } from "./components/AnalysisContextControls";
 import { InsightSection } from "./components/InsightSection";
-import { SituationStrip } from "./components/SituationStrip";
+import { OverviewRow } from "./components/OverviewRow";
 import { WorkbenchPrimary } from "./components/WorkbenchPrimary";
 import { derivePersonalWorkbench } from "./workbench/derivePersonalWorkbench";
 import "./parameter-home.css";
@@ -26,6 +26,7 @@ export type ParameterHomePageProps = {
   dashboardRuntime: ReturnType<typeof createParameterDashboardRuntime>;
   onDashboardWindowChange: (window: DashboardWindow) => void;
   onDashboardDimensionChange: (dimension: HotspotDimension) => void;
+  onDashboardProjectChange: (projectId: string | null) => void;
   onNavigate: (path: string) => void;
   onNewProject?: () => void;
 };
@@ -36,12 +37,17 @@ export function ParameterHomePage({
   dashboardRuntime,
   onDashboardWindowChange,
   onDashboardDimensionChange,
+  onDashboardProjectChange,
   onNavigate,
   onNewProject
 }: ParameterHomePageProps) {
   useTopBarActions(null, []);
 
-  const projectId = state.activeProjectId || undefined;
+  const projectId = dashboardState.projectScope ?? undefined;
+  const projectOptions = useMemo(
+    () => state.configDraft.projects.map((project) => ({ value: project.id, label: project.name })),
+    [state.configDraft.projects]
+  );
   const summary = dashboardState.summary.data;
   const hotspots = dashboardState.hotspots.data;
   const workbench = useMemo(
@@ -73,12 +79,13 @@ export function ParameterHomePage({
     });
   };
 
-  const situationStrip = (
-    <SituationStrip
-      status={dashboardState.summary.status}
+  const overviewRow = (
+    <OverviewRow
+      summaryStatus={dashboardState.summary.status}
+      summary={summary}
       kpis={summary?.kpis ?? null}
-      error={dashboardState.summary.error}
-      onRetry={reloadSummary}
+      summaryError={dashboardState.summary.error}
+      onSummaryRetry={reloadSummary}
     />
   );
 
@@ -89,18 +96,12 @@ export function ParameterHomePage({
   const insightSection = (
     <InsightSection
       emphasis={workbench.emphasis}
-      window={dashboardState.window}
       dimension={dashboardState.dimension}
-      summaryStatus={dashboardState.summary.status}
       hotspotsStatus={dashboardState.hotspots.status}
       summary={summary}
       hotspots={hotspots}
-      summaryError={dashboardState.summary.error}
       hotspotsError={dashboardState.hotspots.error}
       state={state}
-      onWindowChange={onDashboardWindowChange}
-      onDimensionChange={onDashboardDimensionChange}
-      onSummaryRetry={reloadSummary}
       onHotspotsRetry={reloadHotspots}
       onNavigate={onNavigate}
     />
@@ -112,24 +113,17 @@ export function ParameterHomePage({
         <AnalysisContextControls
           window={dashboardState.window}
           dimension={dashboardState.dimension}
+          projectScope={dashboardState.projectScope}
+          projectOptions={projectOptions}
           onWindowChange={onDashboardWindowChange}
           onDimensionChange={onDashboardDimensionChange}
+          onProjectChange={onDashboardProjectChange}
         />
       </div>
 
-      {workbench.emphasis === "action-first" ? (
-        <>
-          {workbenchPrimary}
-          {situationStrip}
-          {insightSection}
-        </>
-      ) : (
-        <>
-          {situationStrip}
-          {insightSection}
-          {workbenchPrimary}
-        </>
-      )}
+      {overviewRow}
+      {workbenchPrimary}
+      {insightSection}
     </section>
   );
 }

@@ -70,6 +70,7 @@ export type PageProps = {
   dashboardRuntime?: ReturnType<typeof createParameterDashboardRuntime>;
   onDashboardWindowChange?: (window: DashboardWindow) => void;
   onDashboardDimensionChange?: (dimension: HotspotDimension) => void;
+  onDashboardProjectChange?: (projectId: string | null) => void;
 };
 
 export type PageRouterProps = PageProps & {
@@ -101,6 +102,7 @@ export function PageRouter({
   dashboardRuntime,
   onDashboardWindowChange,
   onDashboardDimensionChange,
+  onDashboardProjectChange,
   HomePage,
   ParameterSubmissionsPage,
   ParameterReviewPage,
@@ -163,6 +165,7 @@ export function PageRouter({
           dashboardRuntime={dashboardRuntime!}
           onDashboardWindowChange={onDashboardWindowChange!}
           onDashboardDimensionChange={onDashboardDimensionChange!}
+          onDashboardProjectChange={onDashboardProjectChange!}
           onNavigate={onNavigate}
           onNewProject={onNewProject}
         />

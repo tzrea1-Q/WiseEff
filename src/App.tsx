@@ -2352,14 +2352,14 @@ function AppShell({
     if (page.key !== "parameter-home") {
       return;
     }
-    const projectId = state.activeProjectId || undefined;
+    const projectId = dashboardState.projectScope ?? undefined;
     void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
     void dashboardRuntime.loadHotspots({
       projectId,
       window: dashboardState.window,
       dimension: dashboardState.dimension
     });
-  }, [page.key, state.activeProjectId, dashboardState.window, dashboardState.dimension, dashboardRuntime]);
+  }, [page.key, dashboardState.projectScope, dashboardState.window, dashboardState.dimension, dashboardRuntime]);
 
   useEffect(() => {
     pageKeyRef.current = page.key;
@@ -2609,6 +2609,9 @@ function AppShell({
                 onDashboardDimensionChange={(dimension) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
                 }
+                onDashboardProjectChange={(projectId) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
+                }
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
                 ParameterReviewPage={ParameterReviewPage}
@@ -2639,6 +2642,9 @@ function AppShell({
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
                 onDashboardDimensionChange={(dimension) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
+                onDashboardProjectChange={(projectId) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
                 HomePage={HomePage}
                 ParameterSubmissionsPage={ParameterSubmissionsPage}
@@ -3319,7 +3325,7 @@ function TopBar({
     page.key !== "parameter-admin-projects" &&
     page.key !== "parameter-admin" &&
     page.key !== "parameter-home";
-  const showProjectSelector = pageUsesProjectScope(page.key);
+  const showProjectSelector = pageUsesProjectScope(page.key) && page.key !== "parameter-home";
   const currentUser = state.users.find((user) => user.id === state.currentUserId);
   const currentRole = roles.find((role) => role.id === currentRoleId);
   const projectOptions = state.configDraft.projects.map((project) => ({ value: project.id, label: project.name }));
