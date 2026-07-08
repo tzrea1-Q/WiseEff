@@ -57,6 +57,21 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
     return body as T;
   }
 
+  async function raw(path: string, init: RequestInit): Promise<Response> {
+    const response = await fetchImpl(`${baseUrl}${path}`, {
+      ...init,
+      headers: await headers((init.headers ?? {}) as Record<string, string>)
+    });
+
+    if (!response.ok) {
+      const body = await parseJson(response);
+      const error = body?.error ?? {};
+      throw new WiseEffApiError(error.code ?? "INTERNAL_ERROR", error.message ?? "Request failed.", error.details ?? {}, error.requestId ?? "");
+    }
+
+    return response;
+  }
+
   return {
     get: <T>(path: string) =>
       request<T>(path, {
@@ -98,6 +113,7 @@ export function createApiClient({ baseUrl, authorization, getAuthorization, onAu
         headers: { Accept: "application/json" },
         body: formData
       });
-    }
+    },
+    raw
   };
 }
