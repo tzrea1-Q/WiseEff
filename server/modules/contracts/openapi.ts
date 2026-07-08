@@ -3,7 +3,8 @@ import { routeManifest } from "./routeManifest";
 import { schemaRegistry } from "./schemaRegistry";
 
 type SchemaRef = { $ref: string };
-type MediaTypeObject = { schema: SchemaRef };
+type BinarySchema = { type: "string"; format: "binary" };
+type MediaTypeObject = { schema: SchemaRef | BinarySchema };
 type ResponseObject = { description: string; content?: Record<string, MediaTypeObject> };
 type ResponseRef = { $ref: string };
 type ParameterObject = {
@@ -67,6 +68,18 @@ function jsonContent(schemaName: string) {
   };
 }
 
+function binaryContent() {
+  return {
+    "application/octet-stream": {
+      schema: { type: "string" as const, format: "binary" as const }
+    }
+  };
+}
+
+function responseContent(schema: { responseBody: string; responseMedia?: "json" | "binary" }) {
+  return schema.responseMedia === "binary" ? binaryContent() : jsonContent(schema.responseBody);
+}
+
 function buildSchemaPlaceholders() {
   const schemas: Record<string, unknown> = {
     ErrorEnvelope: {
@@ -91,7 +104,10 @@ function buildSchemaPlaceholders() {
     if (schema.requestBody) {
       schemas[schema.requestBody] = { type: "object", "x-wiseeff-schema": schema.requestBody };
     }
-    schemas[schema.responseBody] = { type: "object", "x-wiseeff-schema": schema.responseBody };
+    schemas[schema.responseBody] =
+      schema.responseMedia === "binary"
+        ? { type: "string", format: "binary", "x-wiseeff-schema": schema.responseBody }
+        : { type: "object", "x-wiseeff-schema": schema.responseBody };
     for (const responseBody of Object.values(schema.additionalSuccessResponses ?? {})) {
       schemas[responseBody] = { type: "object", "x-wiseeff-schema": responseBody };
     }
@@ -128,7 +144,7 @@ export function buildOpenApiDocument(): OpenApiDocument {
       responses: {
         [schema.successStatus ?? 200]: {
           description: "Successful response.",
-          content: jsonContent(schema.responseBody)
+          content: responseContent(schema)
         },
         ...(schema.additionalSuccessResponses
           ? Object.fromEntries(

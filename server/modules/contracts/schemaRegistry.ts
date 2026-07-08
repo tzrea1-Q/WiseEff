@@ -5,6 +5,7 @@ export type ContractSchemaRef = {
   tags: RouteManifestEntry["module"][];
   requestBody?: string;
   responseBody: string;
+  responseMedia?: "json" | "binary";
   successStatus?: 200 | 201;
   additionalSuccessResponses?: Record<string, string>;
   additionalResponses?: Record<string, string>;
@@ -286,7 +287,8 @@ export const schemaRegistry: Record<string, ContractSchemaRef> = {
   "productFeedback.attachmentContent": {
     summary: "Get product feedback attachment content",
     tags: ["product-feedback"],
-    responseBody: "ProductFeedbackAttachmentContentResponse",
+    responseBody: "BinaryAttachment",
+    responseMedia: "binary",
     additionalResponses: { "403": "ErrorResponse", "404": "ErrorResponse" }
   },
 

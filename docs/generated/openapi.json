@@ -1982,9 +1982,10 @@
           "200": {
             "description": "Successful response.",
             "content": {
-              "application/json": {
+              "application/octet-stream": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProductFeedbackAttachmentContentResponse"
+                  "type": "string",
+                  "format": "binary"
                 }
               }
             }
@@ -4064,9 +4065,10 @@
         "type": "object",
         "x-wiseeff-schema": "PatchProductFeedbackRequest"
       },
-      "ProductFeedbackAttachmentContentResponse": {
-        "type": "object",
-        "x-wiseeff-schema": "ProductFeedbackAttachmentContentResponse"
+      "BinaryAttachment": {
+        "type": "string",
+        "format": "binary",
+        "x-wiseeff-schema": "BinaryAttachment"
       },
       "JobResponse": {
         "type": "object",

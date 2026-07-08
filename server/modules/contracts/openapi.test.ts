@@ -264,6 +264,20 @@ describe("M5 OpenAPI contract", () => {
     ]);
   });
 
+  it("declares product feedback attachment content as binary", () => {
+    const document = buildOpenApiDocument();
+    const response = document.paths["/api/v1/product-feedback/{id}/attachments/{attachmentId}/content"]?.get?.responses["200"];
+
+    expect(response).toMatchObject({
+      description: "Successful response.",
+      content: {
+        "application/octet-stream": {
+          schema: { type: "string", format: "binary" }
+        }
+      }
+    });
+  });
+
   it("publishes route-specific success status codes", () => {
     const document = buildOpenApiDocument();
     const createdRoutes = [
