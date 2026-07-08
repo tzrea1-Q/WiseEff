@@ -17,6 +17,14 @@ const summary: DashboardSummary = {
     highRiskParameters: 12
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 3, workflowEventCount: 1 }],
+  personalKpis: {
+    contributionCount: 0,
+    workflowCount: 0,
+    openItemCount: 0,
+    pendingTodoCount: 0,
+    highRiskTouchCount: 0
+  },
+  personalTrend: [],
   riskBuckets: [
     {
       projectId: "aurora",
@@ -58,6 +66,7 @@ function buildDashboardState(over: Partial<DashboardState> = {}): DashboardState
   return {
     window: "30d",
     dimension: "overall",
+    overviewScope: "personal",
     projectScope: null,
     summary: { status: "ready", data: summary, error: null },
     hotspots: { status: "ready", data: [hotspot], error: null },
@@ -69,9 +78,11 @@ function renderPage(over: {
   roleId?: string;
   dashboardState?: DashboardState;
   runtime?: { loadSummary: ReturnType<typeof vi.fn>; loadHotspots: ReturnType<typeof vi.fn> };
+  onDashboardOverviewScopeChange?: ReturnType<typeof vi.fn>;
 } = {}) {
   const loadSummary = over.runtime?.loadSummary ?? vi.fn();
   const loadHotspots = over.runtime?.loadHotspots ?? vi.fn();
+  const onDashboardOverviewScopeChange = over.onDashboardOverviewScopeChange ?? vi.fn();
 
   render(
     <ParameterHomePage
@@ -80,13 +91,14 @@ function renderPage(over: {
       dashboardRuntime={{ loadSummary, loadHotspots }}
       onDashboardWindowChange={vi.fn()}
       onDashboardDimensionChange={vi.fn()}
+      onDashboardOverviewScopeChange={onDashboardOverviewScopeChange}
       onDashboardProjectChange={vi.fn()}
       onNavigate={vi.fn()}
       onNewProject={vi.fn()}
     />
   );
 
-  return { loadSummary, loadHotspots };
+  return { loadSummary, loadHotspots, onDashboardOverviewScopeChange };
 }
 
 describe("ParameterHomePage", () => {
@@ -156,6 +168,50 @@ describe("ParameterHomePage", () => {
     renderPage({ roleId: "admin" });
     expect(document.querySelector(".parameter-home__overview-row")).not.toBeNull();
     expect(screen.getByText("概览")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "我的变更趋势" })).toBeInTheDocument();
+  });
+
+  it("defaults guest role to overall overview scope on mount", () => {
+    const onDashboardOverviewScopeChange = vi.fn();
+    renderPage({ roleId: "guest", onDashboardOverviewScopeChange });
+    expect(onDashboardOverviewScopeChange).toHaveBeenCalledWith("overall");
+  });
+
+  it("defaults user role to personal overview scope on mount", () => {
+    const onDashboardOverviewScopeChange = vi.fn();
+    renderPage({ roleId: "hardware-user", onDashboardOverviewScopeChange });
+    expect(onDashboardOverviewScopeChange).toHaveBeenCalledWith("personal");
+  });
+
+  it("shows overall KPI labels for guest role", () => {
+    renderPage({
+      roleId: "guest",
+      dashboardState: buildDashboardState({ overviewScope: "overall" })
+    });
+    expect(screen.getByText("参数总量", { selector: ".parameter-home__situation-stat-label" })).toBeInTheDocument();
+    expect(screen.queryByText("我的变更", { selector: ".parameter-home__situation-stat-label" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "参数更新趋势" })).toBeInTheDocument();
+  });
+
+  it("shows personal KPI labels for user role", () => {
+    renderPage({
+      roleId: "hardware-user",
+      dashboardState: buildDashboardState({
+        overviewScope: "personal",
+        summary: {
+          status: "ready",
+          data: {
+            ...summary,
+            personalKpis: {
+              ...summary.personalKpis,
+              contributionCount: 4
+            }
+          },
+          error: null
+        }
+      })
+    });
+    expect(screen.getByText("我的变更", { selector: ".parameter-home__situation-stat-label" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "我的变更趋势" })).toBeInTheDocument();
   });
 });

@@ -1333,6 +1333,16 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByText(/近 30 天 ·/)).not.toBeInTheDocument();
   });
 
+  it("shows overview scope toggle on parameter homepage", async () => {
+    window.history.replaceState(null, "", "/parameter-home");
+
+    renderAppForCurrentPath();
+
+    expect(await screen.findByRole("group", { name: "概览视角" })).toBeInTheDocument();
+    expect(screen.getAllByRole("radio", { name: "个人" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("radio", { name: "整体" }).length).toBeGreaterThanOrEqual(1);
+  });
+
   it("keeps the WiseEff workbench shell on non-home routes", () => {
     window.history.replaceState(null, "", "/parameters");
 

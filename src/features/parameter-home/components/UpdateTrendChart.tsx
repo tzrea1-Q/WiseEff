@@ -12,9 +12,15 @@ import {
 
 type UpdateTrendChartProps = {
   points: TrendPoint[];
+  changeSeriesName?: string;
+  workflowSeriesName?: string;
 };
 
-export function UpdateTrendChart({ points }: UpdateTrendChartProps) {
+export function UpdateTrendChart({
+  points,
+  changeSeriesName = "参数变更",
+  workflowSeriesName = "流程事件"
+}: UpdateTrendChartProps) {
   const data = points.map((point) => ({
     label: point.label,
     changeCount: point.changeCount,
@@ -32,7 +38,7 @@ export function UpdateTrendChart({ points }: UpdateTrendChartProps) {
           <Area
             type="monotone"
             dataKey="changeCount"
-            name="参数变更"
+            name={changeSeriesName}
             stroke="var(--ph-accent-light, #5b8fd9)"
             fill="var(--primary-soft)"
             fillOpacity={0.42}
@@ -40,7 +46,7 @@ export function UpdateTrendChart({ points }: UpdateTrendChartProps) {
           <Line
             type="monotone"
             dataKey="workflowEventCount"
-            name="流程事件"
+            name={workflowSeriesName}
             stroke="var(--app-secondary)"
             strokeWidth={2}
             dot={false}

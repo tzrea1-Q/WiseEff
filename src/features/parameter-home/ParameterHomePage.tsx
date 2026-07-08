@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { createParameterDashboardRuntime } from "@/application/parameters/parameterDashboardRuntime";
 import type { DashboardState } from "@/application/parameters/dashboardState";
-import type { DashboardWindow, HotspotDimension, WorkbenchSignals } from "@/domain/parameters/dashboardTypes";
+import type { DashboardWindow, HotspotDimension, OverviewScope, WorkbenchSignals } from "@/domain/parameters/dashboardTypes";
 import type { PrototypeState } from "@/mockData";
 import { useTopBarActions } from "@/components/layout";
 import { AnalysisContextControls } from "./components/AnalysisContextControls";
@@ -26,6 +26,7 @@ export type ParameterHomePageProps = {
   dashboardRuntime: ReturnType<typeof createParameterDashboardRuntime>;
   onDashboardWindowChange: (window: DashboardWindow) => void;
   onDashboardDimensionChange: (dimension: HotspotDimension) => void;
+  onDashboardOverviewScopeChange: (scope: OverviewScope) => void;
   onDashboardProjectChange: (projectId: string | null) => void;
   onNavigate: (path: string) => void;
   onNewProject?: () => void;
@@ -37,6 +38,7 @@ export function ParameterHomePage({
   dashboardRuntime,
   onDashboardWindowChange,
   onDashboardDimensionChange,
+  onDashboardOverviewScopeChange,
   onDashboardProjectChange,
   onNavigate,
   onNewProject
@@ -66,6 +68,13 @@ export function ParameterHomePage({
       }),
     [state.activeRoleId, state.changeRequests, state.parameterDrafts, state.configDraft.projects, summary?.workbenchSignals, hotspots]
   );
+  const previousRoleViewRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (previousRoleViewRef.current === workbench.roleView) return;
+    previousRoleViewRef.current = workbench.roleView;
+    onDashboardOverviewScopeChange(workbench.roleView === "guest" ? "overall" : "personal");
+  }, [workbench.roleView, onDashboardOverviewScopeChange]);
 
   const reloadSummary = () => {
     void dashboardRuntime.loadSummary({ projectId, window: dashboardState.window });
@@ -84,6 +93,9 @@ export function ParameterHomePage({
       summaryStatus={dashboardState.summary.status}
       summary={summary}
       kpis={summary?.kpis ?? null}
+      overviewScope={dashboardState.overviewScope}
+      roleView={workbench.roleView}
+      onOverviewScopeChange={onDashboardOverviewScopeChange}
       summaryError={dashboardState.summary.error}
       onSummaryRetry={reloadSummary}
     />

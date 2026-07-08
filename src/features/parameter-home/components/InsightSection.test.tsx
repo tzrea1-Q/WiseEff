@@ -16,6 +16,14 @@ const summary: DashboardSummary = {
     highRiskParameters: 2
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 2, workflowEventCount: 1 }],
+  personalKpis: {
+    contributionCount: 0,
+    workflowCount: 0,
+    openItemCount: 0,
+    pendingTodoCount: 0,
+    highRiskTouchCount: 0
+  },
+  personalTrend: [],
   riskBuckets: [
     {
       projectId: "aurora",

@@ -7,10 +7,13 @@ import type {
   HotspotDimension,
   TrendPoint
 } from "../../../../src/domain/parameters/dashboardTypes";
+import { getPlatformRole, migrateLegacyRoleId } from "../../../../src/domain/users/types";
 import {
+  aggregatePersonalTrend,
   aggregateRiskDistribution,
   aggregateTrend,
   aggregateWorkbenchSignals,
+  countPersonalKpis,
   countKpis
 } from "./repository";
 import { aggregateHotspotGroups, type HotspotGroupAggregate } from "./hotspotRepository";
@@ -65,6 +68,15 @@ function labelTrendPoints(points: Array<{ bucketStart: string; changeCount: numb
     changeCount: point.changeCount,
     workflowEventCount: point.workflowEventCount
   }));
+}
+
+function resolveRoleLevel(input: ServiceInput): "guest" | "user" | "committer" | "admin" {
+  const scopedRole =
+    (input.projectId ? input.auth.roles.find((role) => role.projectId === input.projectId) : undefined) ??
+    input.auth.roles.find((role) => role.projectId === null) ??
+    input.auth.roles[0];
+  const roleId = migrateLegacyRoleId(scopedRole?.roleId ?? "guest");
+  return getPlatformRole(roleId).level;
 }
 
 function buildHotspotPath(
@@ -183,12 +195,32 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
   const organizationId = input.auth.organization.id;
   const { windowStart, windowEnd, granularity } = resolveWindowBounds(input.window);
   const projectId = input.projectId ?? null;
+  const workbenchSignalsPromise = aggregateWorkbenchSignals(db, { organizationId, projectId, userId: input.auth.user.id });
 
   const [kpis, trendRaw, riskBuckets, workbenchSignals] = await Promise.all([
     countKpis(db, { organizationId, projectId, windowStart }),
     aggregateTrend(db, { organizationId, projectId, windowStart, windowEnd, granularity }),
     aggregateRiskDistribution(db, { organizationId, projectId }),
-    aggregateWorkbenchSignals(db, { organizationId, projectId, userId: input.auth.user.id })
+    workbenchSignalsPromise
+  ]);
+  const roleLevel = resolveRoleLevel(input);
+  const [personalKpis, personalTrendRaw] = await Promise.all([
+    countPersonalKpis(db, {
+      organizationId,
+      projectId,
+      userId: input.auth.user.id,
+      windowStart,
+      workbenchSignals,
+      roleLevel
+    }),
+    aggregatePersonalTrend(db, {
+      organizationId,
+      projectId,
+      userId: input.auth.user.id,
+      windowStart,
+      windowEnd,
+      granularity
+    })
   ]);
 
   return {
@@ -197,6 +229,8 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
     projectId,
     kpis,
     trend: labelTrendPoints(trendRaw, granularity),
+    personalKpis,
+    personalTrend: labelTrendPoints(personalTrendRaw, granularity),
     riskBuckets,
     workbenchSignals
   };

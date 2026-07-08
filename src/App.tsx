@@ -2609,6 +2609,9 @@ function AppShell({
                 onDashboardDimensionChange={(dimension) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
                 }
+                onDashboardOverviewScopeChange={(scope) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
+                }
                 onDashboardProjectChange={(projectId) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })
                 }
@@ -2642,6 +2645,9 @@ function AppShell({
                 onDashboardWindowChange={(window) => dashboardDispatch({ type: "DASHBOARD_SET_WINDOW", window })}
                 onDashboardDimensionChange={(dimension) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_DIMENSION", dimension })
+                }
+                onDashboardOverviewScopeChange={(scope) =>
+                  dashboardDispatch({ type: "DASHBOARD_SET_OVERVIEW_SCOPE", scope })
                 }
                 onDashboardProjectChange={(projectId) =>
                   dashboardDispatch({ type: "DASHBOARD_SET_PROJECT", projectId })

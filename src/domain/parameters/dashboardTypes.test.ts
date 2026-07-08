@@ -9,6 +9,14 @@ describe("dashboard types", () => {
       projectId: null,
       kpis: { totalParameters: 0, managedProjects: 0, changeFrequency: 0, activeContributors: 0, highRiskParameters: 0 },
       trend: [],
+      personalKpis: {
+        contributionCount: 0,
+        workflowCount: 0,
+        openItemCount: 0,
+        pendingTodoCount: 0,
+        highRiskTouchCount: 0
+      },
+      personalTrend: [],
       riskBuckets: [],
       workbenchSignals: { reviewQueue: 0, myDrafts: 0, returnedChanges: 0, waitingMerge: 0, unappliedImportBatches: 0, inactiveAccounts: 0 }
     };

@@ -30,11 +30,20 @@ describe("dashboard service", () => {
     await db.rollback();
   });
 
-  it("builds a full summary with zero-filled trend", async () => {
+  it("builds a full summary with personal metrics and trend", async () => {
     const summary = await getDashboardSummary(db, { auth, window: "30d" });
     expect(summary.window).toBe("30d");
     expect(summary.windowLabel).toBe("近 30 天");
     expect(summary.trend).toHaveLength(30);
+    expect(summary.personalKpis).toMatchObject({
+      contributionCount: 10,
+      workflowCount: 5,
+      openItemCount: summary.workbenchSignals.unappliedImportBatches,
+      pendingTodoCount: summary.workbenchSignals.inactiveAccounts,
+      highRiskTouchCount: 4
+    });
+    expect(summary.personalTrend).toHaveLength(30);
+    expect(summary.personalTrend.some((point) => point.changeCount > 0 || point.workflowEventCount > 0)).toBe(true);
     expect(summary.riskBuckets.length).toBeGreaterThan(0);
   });
 
