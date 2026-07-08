@@ -252,7 +252,7 @@ describe("product feedback service", () => {
   it("allows open to in_progress and rejects skip or closed updates", async () => {
     const openDb = createFakeDb([[feedbackRow({ status: "open" })], [], [feedbackRow({ status: "in_progress" })], []]);
 
-    const updated = await updateProductFeedback(openDb.db, adminAuth(), "feedback-1", { status: "in_progress", adminNote: "" });
+    const updated = await updateProductFeedback(openDb.db, adminAuth(), "feedback-1", { status: "in_progress", adminNote: null });
 
     expect(updated.status).toBe("in_progress");
     expect(openDb.txCalls.find((call) => call.text.includes("update product_feedback"))?.values).toEqual([

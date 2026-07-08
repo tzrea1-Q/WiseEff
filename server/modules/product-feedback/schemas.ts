@@ -42,7 +42,7 @@ export const listProductFeedbackQuerySchema = z.object({
 export const patchProductFeedbackBodySchema = z
   .object({
     status: z.enum(feedbackStatuses).optional(),
-    adminNote: z.string().max(2000).optional()
+    adminNote: z.string().max(2000).nullable().optional()
   })
   .refine(
     (value) => Object.prototype.hasOwnProperty.call(value, "status") || Object.prototype.hasOwnProperty.call(value, "adminNote"),

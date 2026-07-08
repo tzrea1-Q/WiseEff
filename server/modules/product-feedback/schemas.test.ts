@@ -91,5 +91,6 @@ describe("product feedback schemas", () => {
     expect(patchProductFeedbackBodySchema.safeParse({ adminNote: "x".repeat(2001) }).success).toBe(false);
     expect(patchProductFeedbackBodySchema.safeParse({ status: "in_progress" }).success).toBe(true);
     expect(patchProductFeedbackBodySchema.safeParse({ adminNote: "" }).success).toBe(true);
+    expect(patchProductFeedbackBodySchema.parse({ adminNote: null })).toEqual({ adminNote: null });
   });
 });
