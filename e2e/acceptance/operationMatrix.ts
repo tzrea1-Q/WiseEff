@@ -5,7 +5,7 @@ export type AcceptanceOperationAssertion = "ui" | "api" | "db" | "audit" | "scre
 export type AcceptanceOperation = {
   id: string;
   priority: AcceptanceOperationPriority;
-  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications";
+  area: "auth" | "shell" | "parameters" | "logs" | "debugging" | "agent" | "permissions" | "notifications" | "product-feedback";
   route: string;
   roles: string[];
   action: string;
@@ -52,6 +52,42 @@ export const acceptanceOperations: AcceptanceOperation[] = [
     acceptanceIds: ["NOTIF-READ-001"],
     specFiles: ["e2e/acceptance/notifications.acceptance.spec.ts"],
     assertions: ["api"]
+  },
+  {
+    id: "PFB-SUBMIT-001",
+    priority: "P1",
+    area: "product-feedback",
+    route: "/parameters",
+    roles: ["Admin"],
+    action: "Submit product feedback from the sidebar with a required description and optional pasted image.",
+    coverage: "automated",
+    acceptanceIds: ["PFB-SUBMIT-001"],
+    specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
+    id: "PFB-ADMIN-001",
+    priority: "P1",
+    area: "product-feedback",
+    route: "/feedback-admin",
+    roles: ["Admin"],
+    action: "List product feedback, open detail, advance status from open to in_progress to closed, and save an admin note.",
+    coverage: "automated",
+    acceptanceIds: ["PFB-ADMIN-001"],
+    specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "audit", "screenshot"]
+  },
+  {
+    id: "PFB-AUTHZ-001",
+    priority: "P1",
+    area: "product-feedback",
+    route: "/feedback-admin",
+    roles: ["Hardware User"],
+    action: "Deny non-Admin access to product feedback admin list/detail/update APIs and the feedback-admin page.",
+    coverage: "automated",
+    acceptanceIds: ["PFB-AUTHZ-001"],
+    specFiles: ["e2e/acceptance/product-feedback.acceptance.spec.ts"],
+    assertions: ["ui", "api", "db", "screenshot"]
   },
   {
     id: "SHELL-DIAG-001",

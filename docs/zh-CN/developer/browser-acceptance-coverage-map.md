@@ -22,6 +22,9 @@
 - `AUTH-RUNTIME-001`：API mode 浏览器运行时与本地 dev auth 契约一致。
 - `NOTIF-INBOX-001`：TopBar 通知铃铛可打开收件箱面板，且 `/api/v1/notifications` 与未读数 API 对当前用户可用（`e2e/acceptance/notifications.acceptance.spec.ts`）。
 - `NOTIF-READ-001`：通知可通过后端 mark-all-read API 标记已读（`e2e/acceptance/notifications.acceptance.spec.ts`）。
+- `PFB-SUBMIT-001`：活跃用户从侧边栏提交产品反馈，包含描述和可选截图；API 持久化，UI 展示成功提示（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
+- `PFB-ADMIN-001`：Admin 在 `/feedback-admin` 列表打开详情，将反馈从 `open` 推进到 `in_progress` 再到 `closed`，并写入处理备注（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
+- `PFB-AUTHZ-001`：非 Admin 无法访问产品反馈管理 API 或 `/feedback-admin` 页面（`e2e/acceptance/product-feedback.acceptance.spec.ts`）。
 - `DEBUG-SIM-001`：模拟器读、写、回读不一致、回滚与审计路径，包含复杂 JSON 值元数据。
 - `DEBUG-ADMIN-001`：API mode 下调试管理后台可新增、编辑、归档、恢复，并维护 HDC/ADB binding 与复杂值元数据。
 - `BRIDGE-WIN-001`：`/node-debugging` 的 Windows 优先本地 Bridge 面板可覆盖缺失安装、未配对、未启动、在线无设备与在线目标状态，并展示同源 Windows 下载入口。

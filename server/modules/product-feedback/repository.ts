@@ -133,20 +133,20 @@ export async function insertAttachments(
       id, feedback_id, organization_id, storage_key, file_name, content_type, size_bytes, checksum, sort_order
     )
     select
-      input.id,
-      input.feedback_id,
+      input.id::uuid,
+      input.feedback_id::uuid,
       input.organization_id,
       input.storage_key,
       input.file_name,
       input.content_type,
-      input.size_bytes,
+      input.size_bytes::integer,
       input.checksum,
-      input.sort_order
+      input.sort_order::integer
     from (values ${placeholders.join(", ")}) as input (
       id, feedback_id, organization_id, storage_key, file_name, content_type, size_bytes, checksum, sort_order
     )
     inner join product_feedback feedback
-      on feedback.id = input.feedback_id
+      on feedback.id = input.feedback_id::uuid
       and feedback.organization_id = input.organization_id
     returning *
     `,

@@ -1,4 +1,4 @@
-export type AcceptanceWorkflowId = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+export type AcceptanceWorkflowId = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I";
 
 export type AcceptanceRequirement = {
   id: string;
@@ -24,6 +24,24 @@ export const acceptanceRequirements: AcceptanceRequirement[] = [
     id: "NOTIF-READ-001",
     workflow: "A",
     title: "Notifications can be marked read through the backend inbox API.",
+    required: true
+  },
+  {
+    id: "PFB-SUBMIT-001",
+    workflow: "I",
+    title: "Active user submits product feedback from the sidebar with description and optional images; API persists it and the UI shows success.",
+    required: true
+  },
+  {
+    id: "PFB-ADMIN-001",
+    workflow: "I",
+    title: "Admin lists product feedback, opens detail, advances open to in_progress to closed, and sets an admin note.",
+    required: true
+  },
+  {
+    id: "PFB-AUTHZ-001",
+    workflow: "I",
+    title: "Non-Admin users cannot access product feedback admin APIs or the feedback-admin page.",
     required: true
   },
   {

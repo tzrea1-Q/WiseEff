@@ -36,6 +36,9 @@ For operation-level coverage, also review [user-operation-coverage-matrix.md](us
 | `PERM-MATRIX-002` | H | Yes | Role inclusion and project-scoped workflow eligibility are enforced by API-backed operations. | `e2e/acceptance/permissions-matrix.acceptance.spec.ts` |
 | `NOTIF-INBOX-001` | A | Yes | TopBar notification bell opens the inbox panel and notification list APIs load for the current user. | `e2e/acceptance/notifications.acceptance.spec.ts` |
 | `NOTIF-READ-001` | A | Yes | Notifications can be marked read through the backend inbox API without cross-user access. | `e2e/acceptance/notifications.acceptance.spec.ts` |
+| `PFB-SUBMIT-001` | I | Yes | Active user submits feedback from the sidebar with description and optional images; API persists the item; success UI is shown. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
+| `PFB-ADMIN-001` | I | Yes | Admin lists `/feedback-admin`, opens detail, advances open to in_progress to closed, and sets an admin note. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
+| `PFB-AUTHZ-001` | I | Yes | Non-Admin users cannot access product feedback admin APIs or the feedback-admin page. | `e2e/acceptance/product-feedback.acceptance.spec.ts` |
 
 ## Interpretation
 
