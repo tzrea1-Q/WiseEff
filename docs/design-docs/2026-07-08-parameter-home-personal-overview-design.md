@@ -1,7 +1,7 @@
 # 参数首页：个人/整体概览切换
 
 **日期**：2026-07-08  
-**状态**：已批准（设计评审通过，待实现计划）  
+**状态**：已实现 — 见 [2026-07-08-parameter-home-personal-overview.md](../exec-plans/active/2026-07-08-parameter-home-personal-overview.md)  
 **范围**：参数管理首页（`/parameter-home`）概览区
 
 ## 背景与目标

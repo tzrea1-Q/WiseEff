@@ -4,6 +4,10 @@
 >
 > **Design spec:** [2026-07-08-parameter-home-personal-overview-design.md](../../design-docs/2026-07-08-parameter-home-personal-overview-design.md) (approved)
 
+## Status
+
+**Implemented** on branch `feat/parameter-home-personal-overview`.
+
 **Goal:** Add a personal/org-wide toggle to the parameter home overview panel so non-guest users default to personal KPIs and personal trend, while guest users default to org-wide metrics, with time-window and project-scope filters applied to both views.
 
 **Architecture:** Extend `DashboardSummary` with `personalKpis` and `personalTrend` computed server-side (and mirrored in mock). Add `overviewScope` to `dashboardState`. Render toggle in `SituationStrip` via `Panel.actions`; map role-specific KPI labels in `deriveOverviewPresentation`. Reuse existing trend chart with different `points` and legend labels.
