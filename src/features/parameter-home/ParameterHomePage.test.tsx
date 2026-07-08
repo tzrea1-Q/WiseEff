@@ -17,6 +17,14 @@ const summary: DashboardSummary = {
     highRiskParameters: 12
   },
   trend: [{ bucketStart: "2026-07-01T00:00:00Z", label: "7/1", changeCount: 3, workflowEventCount: 1 }],
+  personalKpis: {
+    contributionCount: 0,
+    workflowCount: 0,
+    openItemCount: 0,
+    pendingTodoCount: 0,
+    highRiskTouchCount: 0
+  },
+  personalTrend: [],
   riskBuckets: [
     {
       projectId: "aurora",
@@ -58,6 +66,7 @@ function buildDashboardState(over: Partial<DashboardState> = {}): DashboardState
   return {
     window: "30d",
     dimension: "overall",
+    overviewScope: "personal",
     projectScope: null,
     summary: { status: "ready", data: summary, error: null },
     hotspots: { status: "ready", data: [hotspot], error: null },

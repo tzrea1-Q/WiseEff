@@ -321,6 +321,14 @@ export function createMockParameterDashboardRepository(getState: () => Prototype
           highRiskParameters: parameters.filter((parameter) => parameter.risk === "High").length
         },
         trend: buildTrend(state, input.window, input.projectId),
+        personalKpis: {
+          contributionCount: 0,
+          workflowCount: 0,
+          openItemCount: 0,
+          pendingTodoCount: 0,
+          highRiskTouchCount: 0
+        },
+        personalTrend: [],
         riskBuckets: buildRiskBuckets(state, input.projectId),
         workbenchSignals: buildWorkbenchSignals(state, state.currentUserId, input.projectId)
       };

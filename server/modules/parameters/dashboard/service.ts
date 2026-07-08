@@ -197,6 +197,14 @@ export async function getDashboardSummary(db: Database, input: ServiceInput): Pr
     projectId,
     kpis,
     trend: labelTrendPoints(trendRaw, granularity),
+    personalKpis: {
+      contributionCount: 0,
+      workflowCount: 0,
+      openItemCount: 0,
+      pendingTodoCount: 0,
+      highRiskTouchCount: 0
+    },
+    personalTrend: [],
     riskBuckets,
     workbenchSignals
   };

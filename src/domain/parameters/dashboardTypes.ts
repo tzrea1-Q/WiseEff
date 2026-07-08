@@ -9,6 +9,16 @@ export type DashboardKpis = {
   highRiskParameters: number;
 };
 
+export type OverviewScope = "personal" | "overall";
+
+export type PersonalDashboardKpis = {
+  contributionCount: number;
+  workflowCount: number;
+  openItemCount: number;
+  pendingTodoCount: number;
+  highRiskTouchCount: number;
+};
+
 export type TrendPoint = {
   bucketStart: string; // ISO timestamp of bucket start
   label: string; // "7/1" (day) or "第3周" (week)
@@ -41,6 +51,8 @@ export type DashboardSummary = {
   projectId: string | null; // null = all projects in org
   kpis: DashboardKpis;
   trend: TrendPoint[];
+  personalKpis: PersonalDashboardKpis;
+  personalTrend: TrendPoint[];
   riskBuckets: ProjectRiskBucket[];
   workbenchSignals: WorkbenchSignals;
 };
