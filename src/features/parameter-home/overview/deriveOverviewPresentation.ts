@@ -1,8 +1,6 @@
 import type { OverviewScope, PersonalDashboardKpis, DashboardKpis } from "@/domain/parameters/dashboardTypes";
 import type { WorkbenchRoleView } from "../workbench/derivePersonalWorkbench";
 
-type KpiItem = { key: string; label: string; value: number };
-
 const PERSONAL_LABELS: Record<WorkbenchRoleView, [string, string, string, string, string]> = {
   user: ["我的变更", "我的提交", "我的草稿", "待处理事项", "高风险经手"],
   committer: ["我的审阅完成", "我处理的流程", "待我审阅", "队列高风险", "高风险审阅"],
