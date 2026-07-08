@@ -1299,7 +1299,7 @@ describe("WiseEff app shell", () => {
     expect(screen.getByRole("button", { name: /打开 管理后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /打开 新建项目/ })).toBeInTheDocument();
     expect(screen.queryByText("我要治理")).not.toBeInTheDocument();
-    expect(screen.getByText("概览")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "概览" })).toBeInTheDocument();
     expect(screen.queryByText("各项目参数风险分布")).not.toBeInTheDocument();
     expect(screen.queryByText("关键参数变化")).not.toBeInTheDocument();
     expect(screen.queryByText("审核合入情况")).not.toBeInTheDocument();
@@ -2842,7 +2842,7 @@ describe("WiseEff app shell", () => {
     expect(screen.queryByRole("heading", { name: "智能参数管理" })).not.toBeInTheDocument();
   });
 
-  it("provides a left-bottom feedback entry for internal testing feedback", () => {
+  it("provides a left-bottom feedback entry for internal testing feedback", async () => {
     window.history.replaceState(null, "", "/parameter-home");
 
     renderAppForCurrentPath();
@@ -2869,7 +2869,7 @@ describe("WiseEff app shell", () => {
     fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: "导出按钮需要提示成功状态" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
 
-    expect(screen.getByText("反馈已记录，内测团队会结合页面路径和问题类型跟进。")).toBeInTheDocument();
+    expect(await screen.findByText("反馈已记录，内测团队会结合页面路径和问题类型跟进。")).toBeInTheDocument();
   });
 
   it("toggles and remembers the app sidebar collapsed state", () => {
@@ -2937,47 +2937,6 @@ describe("WiseEff app shell", () => {
     expect(css).toContain("@media (max-width: 520px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain(".log-timeline__step--current span");
-  });
-
-  it("attaches a screenshot pasted from the clipboard for internal feedback", async () => {
-    window.history.replaceState(null, "", "/parameter-home");
-    const pastedImage = new File(["pasted screenshot"], "feedback.png", { type: "image/png" });
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:pasted-feedback-screenshot");
-    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
-
-    renderAppForCurrentPath();
-
-    fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
-    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
-    const pasteZone = within(dialog).getByText("粘贴上传截图").closest("section") as HTMLElement;
-
-    expect(within(dialog).queryByRole("button", { name: "截取当前页面" })).not.toBeInTheDocument();
-
-    fireEvent.paste(pasteZone, { clipboardData: { files: [pastedImage] } });
-
-    expect(await within(dialog).findByAltText("问题反馈截图预览")).toHaveAttribute("src", "blob:pasted-feedback-screenshot");
-    expect(screen.getByText("截图已粘贴，可随反馈一起提交。")).toBeInTheDocument();
-
-    fireEvent.change(within(dialog).getByLabelText("问题描述"), { target: { value: "对比页卡片内容发生重叠" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "提交反馈" }));
-
-    expect(screen.getByText("反馈已记录，并附带粘贴截图。")).toBeInTheDocument();
-  });
-
-  it("shows inline guidance when pasted feedback content is not an image", () => {
-    window.history.replaceState(null, "", "/parameter-home");
-    const pastedText = new File(["not an image"], "notes.txt", { type: "text/plain" });
-
-    renderAppForCurrentPath();
-
-    fireEvent.click(screen.getByRole("button", { name: "问题反馈" }));
-    const dialog = screen.getByRole("dialog", { name: "问题反馈" });
-    const pasteZone = within(dialog).getByText("粘贴上传截图").closest("section") as HTMLElement;
-
-    fireEvent.paste(pasteZone, { clipboardData: { files: [pastedText] } });
-
-    expect(screen.getByText("请粘贴 PNG、JPG 或 WebP 格式截图。")).toBeInTheDocument();
-    expect(within(dialog).queryByAltText("问题反馈截图预览")).not.toBeInTheDocument();
   });
 
   it("resolves direct tutorial urls back to the home surface", () => {

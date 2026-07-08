@@ -10822,11 +10822,38 @@ td small {
   border-style: solid;
 }
 
+.feedback-screenshot-preview.has-image .feedback-thumbnail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-width: none;
+  padding: 10px;
+}
+
+.feedback-thumbnail {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  background: #ffffff;
+  border-radius: 8px;
+}
+
 .feedback-screenshot-preview img {
   display: block;
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
+}
+
+.feedback-thumbnail figcaption {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .feedback-capture-actions {
@@ -10839,7 +10866,7 @@ td small {
 }
 
 .feedback-remove-shot {
-  max-width: 94px;
+  max-width: 100%;
 }
 
 .feedback-capture-status {
@@ -10861,6 +10888,19 @@ td small {
   color: var(--success);
   background: rgba(15, 124, 85, 0.1);
   border: 1px solid rgba(15, 124, 85, 0.2);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.feedback-error {
+  justify-self: center;
+  width: calc(100% - 48px);
+  padding: 10px 12px;
+  color: var(--danger);
+  background: rgba(186, 26, 26, 0.1);
+  border: 1px solid rgba(186, 26, 26, 0.2);
   border-radius: 8px;
   font-size: 13px;
   font-weight: 750;
@@ -10995,6 +11035,10 @@ td small {
 
   .feedback-screenshot-preview {
     min-height: 132px;
+  }
+
+  .feedback-screenshot-preview.has-image .feedback-thumbnail-grid {
+    grid-template-columns: 1fr;
   }
 
   .feedback-screenshot-preview div {
@@ -11429,7 +11473,8 @@ td small {
   .feedback-context,
   .feedback-layout,
   .feedback-dialog .dialog-actions,
-  .feedback-success {
+  .feedback-success,
+  .feedback-error {
     padding-right: 0;
     padding-left: 0;
   }
@@ -11439,7 +11484,8 @@ td small {
   }
 
   .feedback-context,
-  .feedback-success {
+  .feedback-success,
+  .feedback-error {
     width: calc(100% - 28px);
   }
 

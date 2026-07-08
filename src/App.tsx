@@ -18,7 +18,6 @@ import {
   RotateCcw,
   Search,
   Sparkles,
-  Trash2,
   Upload,
   UserRound,
   X
@@ -32,7 +31,6 @@ import {
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type {
   ChangeEvent,
-  ClipboardEvent as ReactClipboardEvent,
   CSSProperties,
   FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
@@ -59,7 +57,9 @@ import {
   type LogRuntimeActions
 } from "@/application/logs/logRuntime";
 import type { LogAnalysisRepository, LogJobSnapshot } from "@/application/ports/LogAnalysisRepository";
+import type { ProductFeedbackRepository } from "@/application/ports/ProductFeedbackRepository";
 import { createHttpLogAnalysisRepository } from "@/infrastructure/http/logClient";
+import { createHttpProductFeedbackRepository } from "@/infrastructure/http/productFeedbackClient";
 import {
   createParameterRuntimeActions,
   type HydrateParameterRuntimeAction,
@@ -103,6 +103,7 @@ import {
 import { XiaozePageContext, XiaozePageContextRegistrar } from "@/features/agent/useXiaozePageContext";
 import { XiaozeProvider, XiaozeProactiveInsights } from "@/features/agent/XiaozeProvider";
 import { supportsXiaozeProactiveInsights } from "@/features/agent/xiaozeProactiveInsights";
+import { FeedbackDialog } from "@/features/product-feedback/FeedbackDialog";
 import { xiaozeProactiveEnabled } from "@/infrastructure/http/runtimeMode";
 import { getPageByPath, getXiaozeContextSummary, navigationItems, pageUsesProjectScope, PageConfig, utilityItems } from "./appConfig";
 
@@ -186,14 +187,6 @@ import {
   CardTitle
 } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -225,6 +218,7 @@ import {
 import { createHttpParameterRepository } from "@/infrastructure/http/parameterClient";
 import { createHttpParameterDashboardRepository } from "@/infrastructure/http/parameterDashboardClient";
 import { createMockParameterDashboardRepository } from "@/infrastructure/mock/mockParameterDashboardRepository";
+import { createMockProductFeedbackRepository } from "@/infrastructure/mock/mockProductFeedbackRepository";
 import { createUserGovernanceClient } from "@/infrastructure/http/userGovernanceClient";
 import { wiseEffRuntimeMode, type WiseEffRuntimeMode } from "@/infrastructure/http/runtimeMode";
 import type { UserGovernanceActions } from "@/UserPermissionsPage";
@@ -2090,6 +2084,7 @@ type AppProps = {
   initialAppState?: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
+  productFeedbackRepository?: ProductFeedbackRepository;
   runtimeMode?: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 };
@@ -2101,6 +2096,7 @@ function App({
   initialAppState = initialState,
   logAnalysisRepository,
   parameterRepository,
+  productFeedbackRepository,
   runtimeMode = wiseEffRuntimeMode,
   userGovernanceActions
 }: AppProps = {}) {
@@ -2114,6 +2110,7 @@ function App({
         key={mockDataFingerprint}
         logAnalysisRepository={logAnalysisRepository}
         parameterRepository={parameterRepository}
+        productFeedbackRepository={productFeedbackRepository}
         runtimeMode={runtimeMode}
         userGovernanceActions={userGovernanceActions}
       />
@@ -2128,6 +2125,7 @@ function AppShell({
   initialAppState,
   logAnalysisRepository,
   parameterRepository,
+  productFeedbackRepository,
   runtimeMode,
   userGovernanceActions
 }: {
@@ -2137,6 +2135,7 @@ function AppShell({
   initialAppState: PrototypeState;
   logAnalysisRepository?: LogAnalysisRepository;
   parameterRepository?: ParameterRepository;
+  productFeedbackRepository?: ProductFeedbackRepository;
   runtimeMode: WiseEffRuntimeMode;
   userGovernanceActions?: UserGovernanceActions;
 }) {
@@ -2197,6 +2196,10 @@ function AppShell({
   const logAnalysisRepositoryClient = useMemo(
     () => logAnalysisRepository ?? (runtimeMode === "api" ? createHttpLogAnalysisRepository() : undefined),
     [logAnalysisRepository, runtimeMode]
+  );
+  const productFeedbackRepositoryClient = useMemo(
+    () => productFeedbackRepository ?? (runtimeMode === "api" ? createHttpProductFeedbackRepository() : createMockProductFeedbackRepository()),
+    [productFeedbackRepository, runtimeMode]
   );
   const debuggingGatewayClient = useMemo(
     () => debuggingGateway ?? (runtimeMode === "api" ? createHttpDebuggingGateway() : undefined),
@@ -2578,6 +2581,7 @@ function AppShell({
             isCollapsed={sidebarCollapsed}
             onNavigate={navigate}
             onToggleCollapsed={toggleSidebarCollapsed}
+            productFeedbackRepository={productFeedbackRepositoryClient}
           />
         ) : null}
       <div className={isPlatformHome ? "main-shell home-main-shell" : "main-shell"}>
@@ -3008,13 +3012,15 @@ function Sidebar({
   currentRoleId,
   isCollapsed,
   onNavigate,
-  onToggleCollapsed
+  onToggleCollapsed,
+  productFeedbackRepository
 }: {
   activePath: string;
   currentRoleId: string;
   isCollapsed: boolean;
   onNavigate: (path: string) => void;
   onToggleCollapsed: () => void;
+  productFeedbackRepository: ProductFeedbackRepository;
 }) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const pageTitle = getPageByPath(activePath).title;
@@ -3122,191 +3128,15 @@ function Sidebar({
             );
           })}
       </div>
-      <FeedbackDialog open={feedbackOpen} pagePath={activePath} pageTitle={pageTitle} onOpenChange={setFeedbackOpen} />
+      <FeedbackDialog
+        open={feedbackOpen}
+        pagePath={activePath}
+        pageTitle={pageTitle}
+        productFeedbackRepository={productFeedbackRepository}
+        onOpenChange={setFeedbackOpen}
+      />
     </aside>
   );
-}
-
-function FeedbackDialog({
-  open,
-  pagePath,
-  pageTitle,
-  onOpenChange
-}: {
-  open: boolean;
-  pagePath: string;
-  pageTitle: string;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [description, setDescription] = useState("");
-  const [feedbackType, setFeedbackType] = useState("体验问题");
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null);
-  const [screenshotStatus, setScreenshotStatus] = useState<"idle" | "ready" | "invalid">("idle");
-  const [submitted, setSubmitted] = useState(false);
-  const screenshotUrlRef = useRef<string | null>(null);
-  const trimmedDescription = description.trim();
-
-  useEffect(() => {
-    return () => {
-      if (screenshotUrlRef.current) {
-        URL.revokeObjectURL(screenshotUrlRef.current);
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!open) {
-      setSubmitted(false);
-    }
-  }, [open]);
-
-  const handleScreenshotPaste = (event: ReactClipboardEvent<HTMLElement>) => {
-    const image = getPastedImage(event.clipboardData);
-    if (!image) {
-      setScreenshotStatus("invalid");
-      return;
-    }
-    event.preventDefault();
-    updateScreenshotUrl(URL.createObjectURL(image));
-    setScreenshotStatus("ready");
-  };
-
-  const updateScreenshotUrl = (nextUrl: string) => {
-    if (screenshotUrlRef.current) {
-      URL.revokeObjectURL(screenshotUrlRef.current);
-    }
-    screenshotUrlRef.current = nextUrl;
-    setScreenshotUrl(nextUrl);
-  };
-
-  const removeScreenshot = () => {
-    if (screenshotUrlRef.current) {
-      URL.revokeObjectURL(screenshotUrlRef.current);
-    }
-    screenshotUrlRef.current = null;
-    setScreenshotUrl(null);
-    setScreenshotStatus("idle");
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="feedback-dialog">
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!trimmedDescription) {
-            return;
-          }
-          setSubmitted(true);
-        }}
-      >
-        <DialogHeader className="feedback-dialog-header">
-          <div>
-            <span className="eyebrow">Internal Beta Feedback</span>
-            <DialogTitle>问题反馈</DialogTitle>
-            <DialogDescription>反馈会携带页面路径、类型、描述和可选截图，方便内测团队定位问题。</DialogDescription>
-          </div>
-        </DialogHeader>
-        <div className="feedback-context">
-          <div>
-            <span>当前页面</span>
-            <strong>{pageTitle}</strong>
-          </div>
-          <code>{pagePath}</code>
-        </div>
-        <div className="feedback-layout">
-          <section className="feedback-section" aria-labelledby="feedback-info-title">
-            <div className="feedback-section-title">
-              <span id="feedback-info-title">问题信息</span>
-              <small>必填</small>
-            </div>
-            <Label htmlFor="feedback-type">反馈类型</Label>
-            <SelectControl
-              id="feedback-type"
-              ariaLabel="反馈类型"
-              value={feedbackType}
-              onValueChange={setFeedbackType}
-              options={["体验问题", "数据问题", "导出/提交异常", "功能建议"].map((label) => ({ value: label, label }))}
-            />
-            <Label htmlFor="feedback-description">问题描述</Label>
-            <Textarea
-              id="feedback-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              rows={6}
-              placeholder="描述复现步骤、期望结果或你看到的异常现象"
-            />
-          </section>
-          <section
-            className="feedback-section feedback-capture-panel"
-            aria-labelledby="feedback-capture-title"
-            onPaste={handleScreenshotPaste}
-            tabIndex={0}
-          >
-            <div className="feedback-section-title">
-              <span id="feedback-capture-title">粘贴上传截图</span>
-              <small>可选</small>
-            </div>
-            <div className={screenshotUrl ? "feedback-screenshot-preview has-image" : "feedback-screenshot-preview"}>
-              {screenshotUrl ? (
-                <img src={screenshotUrl} alt="问题反馈截图预览" />
-              ) : (
-                <div>
-                  <Upload size={28} />
-                  <strong>粘贴截图</strong>
-                  <span>复制截图后点击此区域，按 Ctrl/⌘ + V 粘贴，支持 PNG、JPG、WebP。</span>
-                </div>
-              )}
-            </div>
-            {screenshotUrl ? (
-              <div className="feedback-capture-actions">
-                <Button className="feedback-remove-shot" type="button" variant="outline" onClick={removeScreenshot}>
-                  <Trash2 size={16} />
-                  移除
-                </Button>
-              </div>
-            ) : null}
-            {screenshotStatus === "ready" ? <p className="feedback-capture-status success">截图已粘贴，可随反馈一起提交。</p> : null}
-            {screenshotStatus === "invalid" ? <p className="feedback-capture-status">请粘贴 PNG、JPG 或 WebP 格式截图。</p> : null}
-          </section>
-        </div>
-        {submitted ? (
-          <p className="feedback-success">
-            {screenshotUrl ? "反馈已记录，并附带粘贴截图。" : "反馈已记录，内测团队会结合页面路径和问题类型跟进。"}
-          </p>
-        ) : null}
-        <DialogFooter className="dialog-actions">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            关闭
-          </Button>
-          <Button type="submit" disabled={!trimmedDescription}>
-            提交反馈
-          </Button>
-        </DialogFooter>
-      </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function getPastedImage(clipboardData: DataTransfer) {
-  const file = Array.from(clipboardData.files ?? []).find(isSupportedScreenshotImage);
-  if (file) {
-    return file;
-  }
-
-  const item = Array.from(clipboardData.items ?? []).find(
-    (clipboardItem) => clipboardItem.kind === "file" && isSupportedScreenshotMimeType(clipboardItem.type)
-  );
-  return item?.getAsFile() ?? null;
-}
-
-function isSupportedScreenshotImage(file: File) {
-  return isSupportedScreenshotMimeType(file.type);
-}
-
-function isSupportedScreenshotMimeType(type: string) {
-  return /^image\/(png|jpe?g|webp)$/i.test(type);
 }
 
 function TopBar({
